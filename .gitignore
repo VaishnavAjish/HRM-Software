@@ -22,3 +22,8 @@ Thumbs.db
 # IDE / Editor files
 .vscode/
 .idea/
+
+# Backend
+uploads/
+*.log
+coverage/
