@@ -1,0 +1,403 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─────────────────────────────────────────────────────────
+   Brand color themes — RGB channels so /opacity modifiers work
+   Master Admin = Indigo  |  Nidhi Impex = Amber  |  Silver Star = Sky
+   ───────────────────────────────────────────────────────── */
+
+:root,
+[data-theme="indigo"] {
+  --brand-50:  238 242 255;
+  --brand-100: 224 231 255;
+  --brand-200: 199 210 254;
+  --brand-300: 165 180 252;
+  --brand-400: 129 140 248;
+  --brand-500:  99 102 241;
+  --brand-600:  79  70 229;
+  --brand-700:  67  56 202;
+  --brand-800:  55  48 163;
+  --brand-900:  49  46 129;
+  /* structural */
+  --sidebar-bg: #0d0e1e;
+  --page-bg:    #f6f6ff;
+}
+
+[data-theme="amber"] {
+  --brand-50:  255 251 235;
+  --brand-100: 254 243 199;
+  --brand-200: 253 230 138;
+  --brand-300: 252 211  77;
+  --brand-400: 251 191  36;
+  --brand-500: 245 158  11;
+  --brand-600: 217 119   6;
+  --brand-700: 180  83   9;
+  --brand-800: 146  64  14;
+  --brand-900: 120  53  15;
+  /* structural */
+  --sidebar-bg: #1a1200;
+  --page-bg:    #fffdf5;
+}
+
+[data-theme="rose"] {
+  --brand-50:  255 241 242;
+  --brand-100: 255 228 230;
+  --brand-200: 254 205 211;
+  --brand-300: 253 164 175;
+  --brand-400: 251 113 133;
+  --brand-500: 244  63  94;
+  --brand-600: 225  29  72;
+  --brand-700: 190  18  60;
+  --brand-800: 159  18  57;
+  --brand-900: 136  19  55;
+  /* structural */
+  --sidebar-bg: #1c080f;
+  --page-bg:    #fff6f8;
+}
+
+[data-theme="sky"] {
+  --brand-50:  240 249 255;
+  --brand-100: 224 242 254;
+  --brand-200: 186 230 253;
+  --brand-300: 125 211 252;
+  --brand-400:  56 189 248;
+  --brand-500:  14 165 233;
+  --brand-600:   2 132 199;
+  --brand-700:   3 105 161;
+  --brand-800:   7  89 133;
+  --brand-900:  12  74 110;
+  /* structural */
+  --sidebar-bg: #04101e;
+  --page-bg:    #f5fbff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Inter", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  width: 100%;
+  max-width: 100%;
+  text-align: left;
+  border: none;
+  min-height: 100vh;
+  display: block;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Skeleton animation */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, #f0f4f8 25%, #e2e8f0 50%, #f0f4f8 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+/* Dark mode scrollbar */
+.dark ::-webkit-scrollbar-track {
+  background: #1e293b;
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: #475569;
+}
+
+.employee-ag-grid,
+.salary-ag-grid {
+  min-height: 180px;
+  width: 100%;
+  --ag-font-family: "Inter", system-ui, sans-serif;
+  --ag-font-size: 13px;
+  --ag-border-color: #e5e7eb;
+  --ag-secondary-border-color: #f3f4f6;
+  --ag-header-background-color: #ffffff;
+  --ag-header-foreground-color: #6b7280;
+  --ag-background-color: #ffffff;
+  --ag-foreground-color: #111827;
+  --ag-row-hover-color: #f3f4f6;
+  --ag-odd-row-background-color: #ffffff;
+  --ag-cell-horizontal-padding: 20px;
+}
+
+.employee-ag-grid.ag-theme-alpine-dark,
+.salary-ag-grid.ag-theme-alpine-dark,
+.dark .employee-ag-grid,
+.dark .salary-ag-grid {
+  --ag-border-color: #374151;
+  --ag-secondary-border-color: #374151;
+  --ag-header-background-color: #1f2937;
+  --ag-header-foreground-color: #9ca3af;
+  --ag-background-color: #1f2937;
+  --ag-foreground-color: #f9fafb;
+  --ag-row-hover-color: rgba(55, 65, 81, 0.5);
+  --ag-odd-row-background-color: #1f2937;
+}
+
+.employee-ag-grid .ag-root-wrapper,
+.salary-ag-grid .ag-root-wrapper {
+  border: 0;
+}
+
+.dark .employee-ag-grid .ag-root-wrapper,
+.dark .salary-ag-grid .ag-root-wrapper,
+.dark .employee-ag-grid .ag-header,
+.dark .salary-ag-grid .ag-header,
+.dark .employee-ag-grid .ag-row,
+.dark .salary-ag-grid .ag-row,
+.dark .employee-ag-grid .ag-cell,
+.dark .salary-ag-grid .ag-cell,
+.dark .employee-ag-grid .ag-center-cols-viewport,
+.dark .salary-ag-grid .ag-center-cols-viewport,
+.dark .employee-ag-grid .ag-center-cols-container,
+.dark .salary-ag-grid .ag-center-cols-container,
+.dark .salary-ag-grid .ag-pinned-right-cols-container,
+.dark .salary-ag-grid .ag-pinned-right-header {
+  background-color: #1f2937;
+  color: #f9fafb;
+}
+
+.dark .employee-ag-grid .ag-header-cell,
+.dark .salary-ag-grid .ag-header-cell {
+  color: #9ca3af;
+}
+
+.employee-ag-grid .ag-header-cell-filter-button,
+.salary-ag-grid .ag-header-cell-filter-button {
+  border-radius: 6px;
+  margin-left: 4px;
+  opacity: 0.72;
+  transition:
+    background-color 0.18s ease,
+    color 0.18s ease,
+    opacity 0.18s ease;
+}
+
+.employee-ag-grid .ag-header-cell-filter-button:hover,
+.salary-ag-grid .ag-header-cell-filter-button:hover,
+.employee-ag-grid .ag-header-cell-filter-button.ag-filter-active,
+.salary-ag-grid .ag-header-cell-filter-button.ag-filter-active {
+  background-color: rgb(var(--brand-600) / 0.1);
+  color: rgb(var(--brand-600));
+  opacity: 1;
+}
+
+.dark .employee-ag-grid .ag-header-cell-filter-button:hover,
+.dark .salary-ag-grid .ag-header-cell-filter-button:hover,
+.dark .employee-ag-grid .ag-header-cell-filter-button.ag-filter-active,
+.dark .salary-ag-grid .ag-header-cell-filter-button.ag-filter-active {
+  background-color: rgba(96, 165, 250, 0.14);
+  color: #93c5fd;
+}
+
+.dark .employee-ag-grid .ag-menu,
+.dark .salary-ag-grid .ag-menu,
+.dark .employee-ag-grid .ag-filter,
+.dark .salary-ag-grid .ag-filter,
+.dark .employee-ag-grid .ag-input-field-input,
+.dark .salary-ag-grid .ag-input-field-input {
+  background-color: #111827;
+  color: #f9fafb;
+}
+
+.dark .employee-ag-grid .ag-input-field-input,
+.dark .salary-ag-grid .ag-input-field-input {
+  border-color: #4b5563;
+}
+
+.employee-ag-grid .ag-header-cell-label,
+.salary-ag-grid .ag-header-cell-label {
+  align-items: center;
+  font-size: 12px;
+  font-weight: 600;
+  gap: 4px;
+  justify-content: flex-start;
+  letter-spacing: 0.025em;
+  text-transform: uppercase;
+}
+
+.employee-ag-grid.grid-header-frozen .ag-header,
+.salary-ag-grid.grid-header-frozen .ag-header {
+  position: sticky;
+  top: 64px;
+  z-index: 20;
+  box-shadow: 0 8px 18px -18px rgba(15, 23, 42, 0.75);
+}
+
+.employee-ag-grid .employee-ag-cell,
+.salary-ag-grid .salary-ag-cell {
+  align-items: center;
+  display: flex;
+}
+
+.employee-ag-grid .ag-center-cols-viewport,
+.salary-ag-grid .ag-center-cols-viewport {
+  min-height: 128px;
+}
+
+.salary-ag-grid .ag-pinned-right-cols-container,
+.salary-ag-grid .ag-pinned-right-header {
+  box-shadow: -8px 0 18px -18px rgba(15, 23, 42, 0.75);
+}
+
+/* AG Grid Dark Filter Popup */
+
+.dark .ag-menu,
+.dark .ag-filter-wrapper,
+.dark .ag-popup-child {
+  background-color: #111827 !important;
+  border: 1px solid #374151 !important;
+  color: #f9fafb !important;
+}
+
+.dark .ag-input-field-input {
+  background-color: #0f172a !important;
+  color: white !important;
+  border-color: rgb(var(--brand-600)) !important;
+}
+
+.dark .ag-picker-field-wrapper {
+  background-color: #1e293b !important;
+  color: white !important;
+  border-color: #374151 !important;
+}
+
+.dark .ag-menu-option:hover {
+  background-color: #1e293b !important;
+}
+
+/* Dark filter buttons */
+
+.dark .ag-standard-button {
+  background-color: #1e293b !important;
+  color: #f9fafb !important;
+  border: 1px solid #374151 !important;
+}
+
+.dark .ag-standard-button:hover {
+  background-color: #334155 !important;
+  color: #ffffff !important;
+}
+
+.dark .ag-input-field-input::placeholder {
+  color: #94a3b8 !important;
+}
+
+/* ─────────────────────────────────────────────────────────
+   Capacitor Mobile & Safe Area Responsive Adjustments
+   ───────────────────────────────────────────────────────── */
+
+/* Touch & tap enhancements for native app experience */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+  touch-action: manipulation;
+  height: 100%;
+  width: 100%;
+}
+
+/* Safe area inset adjustments for devices with notches / home indicators */
+header {
+  padding-top: env(safe-area-inset-top, 0px) !important;
+  height: calc(4rem + env(safe-area-inset-top, 0px)) !important;
+}
+
+aside {
+  padding-top: env(safe-area-inset-top, 0px) !important;
+  padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+}
+
+main {
+  padding-bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px)) !important;
+}
+
+/* Modal and layout overrides on mobile screens */
+@media (max-width: 768px) {
+  /* Make multi-section forms (e.g. AddEditEmployeeModal) responsive by stacking layout vertically */
+  .max-w-5xl .flex.min-h-0.flex-1 {
+    flex-direction: column !important;
+  }
+  
+  /* Convert the vertical form sidebar tabs into a horizontal scrollable strip */
+  .max-w-5xl .w-72.flex-shrink-0 {
+    width: 100% !important;
+    border-right: none !important;
+    border-bottom: 1px solid #e5e7eb !important;
+    display: flex !important;
+    flex-direction: row !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    padding: 8px !important;
+    gap: 8px !important;
+  }
+  
+  .dark .max-w-5xl .w-72.flex-shrink-0 {
+    border-bottom-color: rgba(255, 255, 255, 0.1) !important;
+  }
+  
+  .max-w-5xl .w-72.flex-shrink-0 > button {
+    flex-shrink: 0 !important;
+    margin-bottom: 0 !important;
+    white-space: nowrap !important;
+    width: auto !important;
+    padding: 6px 12px !important;
+  }
+
+  /* Compact grid paddings and heights for mobile */
+  .employee-ag-grid, .salary-ag-grid {
+    min-height: 350px !important;
+    max-height: 60vh !important;
+  }
+  
+  .ag-theme-alpine, .ag-theme-alpine-dark {
+    --ag-cell-horizontal-padding: 12px !important;
+  }
+}
+
+/* Stacking buttons & controls gracefully on mobile layout headers */
+@media (max-width: 640px) {
+  .flex.flex-col.sm\:flex-row.gap-3.items-start.sm\:items-center > .flex.flex-wrap.gap-2.ml-auto.items-center {
+    width: 100% !important;
+    margin-left: 0 !important;
+    justify-content: flex-start !important;
+  }
+  
+  .flex.flex-col.sm\:flex-row.gap-3.items-start.sm\:items-center > .flex.flex-wrap.gap-2.ml-auto.items-center > button,
+  .flex.flex-col.sm\:flex-row.gap-3.items-start.sm\:items-center > .flex.flex-wrap.gap-2.ml-auto.items-center > div {
+    flex: 1 1 auto !important;
+    justify-content: center !important;
+  }
+}
+
