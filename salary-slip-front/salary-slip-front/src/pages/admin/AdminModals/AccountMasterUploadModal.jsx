@@ -53,9 +53,9 @@ export default function AccountMasterUploadModal({
       noPadding
       noHeader
       footer={
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           {/* left info */}
-          <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500">
+          <div className="flex flex-wrap items-center gap-2 text-xs text-gray-400 dark:text-gray-500">
             {preview ? (
               <>
                 <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-brand-50 dark:bg-brand-900/20 text-brand-600 dark:text-brand-400 font-medium">
@@ -73,7 +73,7 @@ export default function AccountMasterUploadModal({
           </div>
 
           {/* right buttons */}
-          <div className="flex gap-2.5">
+          <div className="flex flex-wrap gap-2.5">
             {showFullPreview ? (
               <>
                 <button

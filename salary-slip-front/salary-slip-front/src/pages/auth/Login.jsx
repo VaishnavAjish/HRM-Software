@@ -31,7 +31,6 @@ import {
 import toast from "react-hot-toast";
 import { authApi } from "../../utils/api";
 import { COMPANY_OPTIONS, getCompanyUnits } from "../../config/companyConfig";
-import AppointmentModal from "./AppointmentModal";
 import WelcomePopup from "./WelcomePopup";
 
 /* ─── Step indicator ─── */
@@ -152,7 +151,7 @@ export default function Login() {
   const [step, setStep] = useState(1);
 
   /* ── Appointment ── */
-  const [showAppointment, setShowAppointment] = useState(false);
+  // (Removed showAppointment state)
 
   // Step 1
   const [fCompanyId, setFCompanyId] = useState("");
@@ -166,6 +165,7 @@ export default function Login() {
   const [fAddress, setFAddress] = useState("");
   const [foundUser, setFoundUser] = useState(null);
   const [s1Loading, setS1Loading] = useState(false);
+  const [verificationToken, setVerificationToken] = useState("");
 
   // Step 2 — email + OTP
   const [emailInput, setEmailInput] = useState("");
@@ -205,9 +205,9 @@ export default function Login() {
     );
     if (result.success) {
       toast.success("Welcome back!");
-      const fallbackPath = result.role === "admin" ? "/admin" : "/employee";
+      const fallbackPath = result.role === "admin" ? "/admin" : (result.role === "agent" ? "/agent" : (result.role === "candidate" ? "/candidate" : "/employee"));
       const requestedPath = location.state?.from?.pathname;
-      const roleHomePrefix = result.role === "admin" ? "/admin" : "/employee";
+      const roleHomePrefix = result.role === "admin" ? "/admin" : (result.role === "agent" ? "/agent" : (result.role === "candidate" ? "/candidate" : "/employee"));
       const nextPath = requestedPath?.startsWith(roleHomePrefix)
         ? requestedPath
         : fallbackPath;
@@ -283,6 +283,7 @@ export default function Login() {
       };
 
       setFoundUser(found);
+      setVerificationToken(data?.verification_token || "");
       setEmailInput(apiUser?.email || "");
       setOtpSent(false);
       setOtp("    ");
@@ -317,6 +318,7 @@ export default function Login() {
         emailInput.trim(),
         companyCode,
         unit,
+        verificationToken,
       );
       setOtp("    ");
       setOtpVerifyLoading(false);
@@ -352,6 +354,7 @@ export default function Login() {
         entered,
         companyCode,
         unit,
+        verificationToken,
       );
       setOtpErr("");
       setNewPass("");
@@ -404,6 +407,7 @@ export default function Login() {
         emailInput.trim(),
         companyCode,
         unit,
+        verificationToken,
       );
       toast.success("Password updated! You can now log in.");
 
@@ -421,6 +425,7 @@ export default function Login() {
       setFDob("");
       setFAddress("");
       setFoundUser(null);
+      setVerificationToken("");
       setEmailInput("");
       setOtpSent(false);
       setOtp("    ");
@@ -448,6 +453,7 @@ export default function Login() {
     setFDob("");
     setFAddress("");
     setFoundUser(null);
+    setVerificationToken("");
     setEmailInput("");
     setOtpSent(false);
     setOtp("    ");
@@ -618,15 +624,6 @@ export default function Login() {
                   </button>
                 </div>
 
-                <div className="pt-2 border-t border-gray-50 dark:border-gray-700/50">
-                  <button
-                    type="button"
-                    onClick={() => setShowAppointment(true)}
-                    className="inline-flex items-center gap-1.5 text-sm font-semibold text-brand-600 dark:text-brand-400 hover:underline"
-                  >
-                    <Calendar size={15} /> Appointment Form
-                  </button>
-                </div>
               </div>
             </div>
           </>
@@ -1062,10 +1059,6 @@ export default function Login() {
           </div>
         )}
 
-        <AppointmentModal
-          isOpen={showAppointment}
-          onClose={() => setShowAppointment(false)}
-        />
       </div>
     </div>
   );

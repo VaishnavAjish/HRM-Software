@@ -16,6 +16,12 @@ async function apiRequest(path, options = {}) {
   const response = await fetch(`${baseUrl}/api${path}`, {
     ...options,
     headers,
+    // Without this, GET requests can be served from the HTTP cache instead
+    // of hitting the network — barely noticeable on desktop Chrome, but the
+    // Android WebView the mobile app runs in caches GETs more aggressively,
+    // which is why a freshly-added trial form or a just-assigned emp_code
+    // wouldn't show up anywhere until a full reload forced a real refetch.
+    cache: "no-store",
   });
 
   const contentType = response.headers.get("content-type") || "";
@@ -29,6 +35,14 @@ async function apiRequest(path, options = {}) {
     const error = new Error(message);
     error.status = response.status;
     error.data = data;
+
+    // Only an already-authenticated request whose token got rejected counts
+    // as a session expiring — a plain login attempt with a wrong password is
+    // also a 401 but carries no Authorization header, so it's excluded here.
+    if (response.status === 401 && headers.Authorization) {
+      window.dispatchEvent(new CustomEvent("auth:unauthorized"));
+    }
+
     throw error;
   }
 
@@ -85,7 +99,7 @@ export const salaryApi = {
   },
 
   getAllSlips(accessToken, tokenType = "Bearer", filters = {}, companyId) {
-    const params = new URLSearchParams();
+    const params = new URLSearchParams({ no_pagination: 1 });
     Object.entries(mergeCompanyFilters(filters, companyId)).forEach(
       ([key, value]) => {
         if (!value) return;
@@ -162,7 +176,7 @@ export const salaryApi = {
         : {},
       body: JSON.stringify({
         ...payload,
-        company_code: resolveWriteCompanyId(companyId, payload?.company_code),
+        company_code: payload.company_code !== undefined ? payload.company_code : resolveWriteCompanyId(companyId, payload?.company_code),
       }),
     });
   },
@@ -175,7 +189,7 @@ export const salaryApi = {
         : {},
       body: JSON.stringify({
         ...payload,
-        company_code: resolveWriteCompanyId(companyId, payload?.company_code),
+        company_code: payload.company_code !== undefined ? payload.company_code : resolveWriteCompanyId(companyId, payload?.company_code),
       }),
     });
   },
@@ -344,6 +358,7 @@ export const authApi = {
       mobile_number: details.mob_num,
       dob: details.dob,
       address: details.address,
+      type: 0,
     });
 
     const formData = new FormData();
@@ -358,20 +373,21 @@ export const authApi = {
     });
   },
 
-  verifyEmail(empCode, email, companyId, unit) {
+  verifyEmail(empCode, email, companyId, unit, verificationToken) {
     return apiRequest("/new-email", {
       method: "POST",
       body: JSON.stringify(
         this.buildScopedResetPayload(companyId, unit, {
           emp_code: empCode,
           email,
+          verification_token: verificationToken,
           type: 1,
         }),
       ),
     });
   },
 
-  verifyEmailOtp(empCode, email, otp, companyId, unit) {
+  verifyEmailOtp(empCode, email, otp, companyId, unit, verificationToken) {
     return apiRequest("/new-email-otp", {
       method: "POST",
       body: JSON.stringify(
@@ -379,13 +395,14 @@ export const authApi = {
           emp_code: empCode,
           email,
           otp,
+          verification_token: verificationToken,
           type: 2,
         }),
       ),
     });
   },
 
-  setNewPassword(empCode, password, email, companyId, unit) {
+  setNewPassword(empCode, password, email, companyId, unit, verificationToken) {
     return apiRequest("/new-password", {
       method: "POST",
       body: JSON.stringify(
@@ -393,6 +410,7 @@ export const authApi = {
           emp_code: empCode,
           password,
           email,
+          verification_token: verificationToken,
           type: 3,
         }),
       ),
@@ -478,6 +496,49 @@ export const authApi = {
     });
   },
 
+  createCandidateAccount(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest("/appointment/create-account", {
+      method: "POST",
+      headers: accessToken
+        ? { Authorization: `${tokenType} ${accessToken}` }
+        : {},
+      body: payload instanceof FormData ? payload : JSON.stringify(payload),
+    });
+  },
+
+  getAgents(accessToken, tokenType = "Bearer", companyScope = null) {
+    const params = new URLSearchParams();
+    if (companyScope?.companyId && companyScope.companyId !== "all-companies") {
+      params.append("company_code", companyScope.companyId);
+    }
+    const qs = params.toString() ? `?${params.toString()}` : "";
+    return apiRequest(`/agents${qs}`, {
+      method: "GET",
+      headers: accessToken
+        ? { Authorization: `${tokenType} ${accessToken}` }
+        : {},
+    });
+  },
+
+  updateAgent(id, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/agents/${id}`, {
+      method: "PUT",
+      headers: accessToken
+        ? { Authorization: `${tokenType} ${accessToken}` }
+        : {},
+      body: JSON.stringify(payload),
+    });
+  },
+
+  deleteAgent(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/agents/${id}`, {
+      method: "DELETE",
+      headers: accessToken
+        ? { Authorization: `${tokenType} ${accessToken}` }
+        : {},
+    });
+  },
+
   submitAppointmentForm(payload, accessToken, tokenType = "Bearer") {
     return apiRequest("/appointment", {
       method: "POST",
@@ -485,6 +546,14 @@ export const authApi = {
         ? { Authorization: `${tokenType} ${accessToken}` }
         : {},
       body: payload,
+    });
+  },
+
+  getAgentCandidates(accessToken, tokenType = "Bearer") {
+    return apiRequest("/agent/candidates", {
+      headers: accessToken
+        ? { Authorization: `${tokenType} ${accessToken}` }
+        : {},
     });
   },
 

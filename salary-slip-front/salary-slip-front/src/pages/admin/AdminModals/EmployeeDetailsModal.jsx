@@ -98,7 +98,7 @@ export default function EmployeeDetailsModal({
         : "Employee";
 
   return createPortal(
-    <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+    <div className="modal-overlay fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
       <div className="absolute inset-0" onClick={onClose} />
 
       <div className="relative flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-2xl dark:border-white/10 dark:bg-[#0b0f1a]">
@@ -168,7 +168,7 @@ export default function EmployeeDetailsModal({
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-4 sm:mt-0">
                 {[
                   { label: "Department", value: selected.department },
                   { label: "Unit", value: selected.unit },
@@ -192,8 +192,25 @@ export default function EmployeeDetailsModal({
               </div>
             </div>
 
-            {/* Tabs */}
-            <div className="mt-5 flex gap-5 overflow-x-auto border-b border-gray-200 dark:border-white/10">
+            {/* Tabs — 2×2 grid on mobile, horizontal strip on sm+ */}
+            <div className="mt-5 sm:hidden grid grid-cols-2 gap-2">
+              {TABS.map(({ key, label, icon: Icon }) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setActiveTab(key)}
+                  className={`flex items-center justify-center gap-1.5 rounded-xl border px-3 py-2.5 text-xs font-semibold transition ${
+                    activeTab === key
+                      ? "border-violet-500 bg-violet-50 text-violet-600 dark:border-violet-400 dark:bg-violet-500/10 dark:text-violet-300"
+                      : "border-gray-200 bg-gray-50 text-gray-500 hover:bg-gray-100 dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-400 dark:hover:bg-white/[0.06]"
+                  }`}
+                >
+                  <Icon size={13} />
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="mt-5 hidden sm:flex gap-5 overflow-x-auto scrollbar-hide whitespace-nowrap border-b border-gray-200 dark:border-white/10">
               {TABS.map(({ key, label, icon: Icon }) => (
                 <button
                   key={key}
@@ -311,7 +328,7 @@ export default function EmployeeDetailsModal({
             Encrypted data safe keeping
           </div>
 
-          <div className="ml-auto flex gap-3">
+          <div className="ml-auto flex flex-wrap justify-end gap-3">
             <Button variant="secondary" onClick={onClose}>
               Close
             </Button>

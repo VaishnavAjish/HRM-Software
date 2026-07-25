@@ -4,6 +4,7 @@ import { AgGridReact } from "ag-grid-react";
 import GridHeaderContextMenu from "../../components/ui/GridHeaderContextMenu";
 import useGridHeaderContextMenu from "../../hooks/useGridHeaderContextMenu";
 import { useTheme } from "../../context/ThemeContext";
+import useIsMobile from "../../hooks/useIsMobile";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 import {
@@ -31,6 +32,7 @@ import { useCompany } from "../../context/CompanyContext";
 import { authApi } from "../../utils/api";
 import { exportNodeToPdf } from "../../utils/pdfUtils";
 import TrialFormModal from "../auth/TrialFormModal";
+import AppointmentModal from "../auth/AppointmentModal";
 
 function firstPresent(...values) {
   return values.find((value) => value !== undefined && value !== null) ?? "";
@@ -49,6 +51,7 @@ function normalizeTrialForm(item, index) {
   return {
     id: firstPresent(item.id, item.trial_form_id, item._id, index),
     status: displayStatus,
+    processed: Number(item.processed ?? 0) === 1,
     isPrinted: Number(item.print ?? 0) === 1,
     fromNo: firstPresent(item.form_no, item.fromNo),
     date: firstPresent(item.trial_date, item.date, item.created_at),
@@ -152,155 +155,151 @@ const Row = ({ label, value, full }) => (
   </tr>
 );
 
-const PrintableTrialForm = ({ data, formRef }) => (
-  <div
-    ref={formRef}
-    data-trial-print-form
-    className="mx-auto w-full max-w-[850px] rounded-lg border border-dotted border-gray-600 bg-white p-6 text-black shadow-sm"
-  >
-    <div className="mb-1 flex items-start justify-between">
-      <div className="flex-1" />
-      <div className="flex-1 text-center">
-        <h1 className="text-2xl font-black uppercase tracking-widest text-black">
-          Nidhi Impex
-        </h1>
-        <p className="mt-1 inline-block rounded-full bg-gray-900 px-4 py-1 text-xs font-bold uppercase tracking-widest text-white">
-          Trial Form
-        </p>
-      </div>
-      <div className="flex-1 space-y-1 text-right text-[13px] font-semibold text-black">
-        <p>
-          Date : <span className="font-bold">{formatDate(data.date)}</span>
-        </p>
-        <p>
-          Form No : <span className="font-bold">{data.fromNo}</span>
-        </p>
-      </div>
-    </div>
-    <div className="mb-2 mt-2 border-t-2 border-black" />
+const PrintableTrialForm = ({ data, formRef }) => {
+  const allFields = [
+    { label: "Branch / Unit", value: data.unit },
+    { label: "Gender", value: data.gender },
+    { label: "Department", value: data.department, full: true },
+    { label: "Name of Employee", value: data.name, full: true },
+    { label: "Address", value: data.address, full: true },
+    { label: "Mobile No 1", value: data.mobileNo1 },
+    { label: "Mobile No 2", value: data.mobileNo2 },
+    { label: "Email Id", value: data.email, full: true },
+    { label: "Last Company Name", value: data.lastCompanyName, full: true },
+    { label: "Last Company Address", value: data.lastCompanyAddress, full: true },
+    { label: "Experience", value: data.experience },
+    { label: "Reason for Leaving", value: data.reasonForLeaving },
+    { label: "Hastak Name & Code", value: [data.hastakName, data.hastakCode ? `- ${data.hastakCode}` : ""].filter(Boolean).join(" ") },
+    { label: "Hastak Mobile No", value: data.hastakMobileNo },
+    { label: "Contractor", value: data.contractor, full: true },
+    { label: "Manager Name", value: data.managerName },
+    { label: "Akar", value: data.akar },
+  ];
 
-    <div className="overflow-hidden rounded-lg border border-black">
-      <table className="w-full border-collapse text-[13px]">
-        <tbody>
-          <Row label="Department" value={data.department} full />
-          <Row label="Name of Employee" value={data.name} full />
-          <Row label="Address" value={data.address} full />
-          <tr>
-            <td className="border border-black bg-gray-50 px-3 py-2 text-[12px] font-bold uppercase text-black">
-              Mobile No 1
-            </td>
-            <td className="border border-black px-3 py-2 text-[13px] font-medium text-black">
-              {data.mobileNo1}
-            </td>
-            <td className="border border-black bg-gray-50 px-3 py-2 text-[12px] font-bold uppercase text-black">
-              Gender
-            </td>
-            <td className="border border-black px-3 py-2 text-[13px] font-medium uppercase text-black">
-              {data.gender}
-            </td>
-          </tr>
-          <tr>
-            <td className="border border-black bg-gray-50 px-3 py-2 text-[12px] font-bold uppercase text-black">
-              Mobile No 2
-            </td>
-            <td className="border border-black px-3 py-2 text-[13px] font-medium text-black">
-              {data.mobileNo2}
-            </td>
-            <td className="border border-black bg-gray-50 px-3 py-2 text-[12px] font-bold uppercase text-black">
-              Email Id
-            </td>
-            <td className="border border-black px-3 py-2 text-[13px] font-medium lowercase text-black">
-              {data.email}
-            </td>
-          </tr>
-          <Row label="Last Company Name" value={data.lastCompanyName} full />
-          <Row
-            label="Last Company Address"
-            value={data.lastCompanyAddress}
-            full
-          />
-          <tr>
-            <td className="border border-black bg-gray-50 px-3 py-2 text-[12px] font-bold uppercase text-black">
-              Experience
-            </td>
-            <td className="border border-black px-3 py-2 text-[13px] font-medium uppercase text-black">
-              {data.experience}
-            </td>
-            <td className="border border-black bg-gray-50 px-3 py-2 text-[12px] font-bold uppercase text-black">
-              Reason for Leaving
-            </td>
-            <td className="border border-black px-3 py-2 text-[13px] font-medium uppercase text-black">
-              {data.reasonForLeaving}
-            </td>
-          </tr>
-          <tr>
-            <td className="border border-black bg-gray-50 px-3 py-2 text-[12px] font-bold uppercase text-black">
-              Hastak Name &amp; Code
-            </td>
-            <td className="border border-black px-3 py-2 text-[13px] font-medium uppercase text-black">
-              {data.hastakName} {data.hastakCode ? `- ${data.hastakCode}` : ""}
-            </td>
-            <td className="border border-black bg-gray-50 px-3 py-2 text-[12px] font-bold uppercase text-black">
-              Hastak Mobile No
-            </td>
-            <td className="border border-black px-3 py-2 text-[13px] font-medium text-black">
-              {data.hastakMobileNo}
-            </td>
-          </tr>
-          <Row label="Department" value={data.department} full />
-          <Row label="Contractor" value={data.contractor} full />
-          <tr>
-            <td className="border border-black bg-gray-50 px-3 py-2 text-[12px] font-bold uppercase text-black">
-              Manager Name
-            </td>
-            <td className="border border-black px-3 py-2 text-[13px] font-medium uppercase text-black">
-              {data.managerName}
-            </td>
-            <td className="border border-black bg-gray-50 px-3 py-2 text-[12px] font-bold uppercase text-black">
-              Akar
-            </td>
-            <td className="border border-black px-3 py-2 text-[13px] font-medium uppercase text-black">
-              {data.akar}
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+  return (
+    <div
+      ref={formRef}
+      data-trial-print-form
+      className="mx-auto w-full max-w-[850px]"
+    >
+      {/* ── Main white card ── */}
+      <div className="rounded-xl border border-dashed border-gray-400 bg-white p-4 sm:p-6 shadow-sm text-black">
 
-    <div className="mt-8 grid grid-cols-2 gap-x-16 gap-y-8 text-[13px] font-bold text-black">
-      <div className="text-center">
-        <div className="mb-1 h-8 border-b border-black px-1 text-[13px] font-semibold uppercase">
-          {data.empSignature}
+        {/* Header — centred logo + right-aligned date/form no */}
+        <div className="flex items-start justify-between mb-1">
+          <div className="flex-1" />
+          <div className="flex-1 text-center">
+            <h1 className="text-xl sm:text-2xl font-black uppercase tracking-widest text-black">
+              Nidhi Impex
+            </h1>
+            <div className="mt-2">
+              <span className="inline-block rounded-full bg-gray-900 px-4 py-1 text-xs font-bold uppercase tracking-widest text-white">
+                Trial Form
+              </span>
+            </div>
+          </div>
+          <div className="flex-1 text-right space-y-1 text-[13px] font-semibold text-black">
+            <p>Date : <span className="font-bold">{formatDate(data.date)}</span></p>
+            <p>Form No : <span className="font-bold">{data.fromNo}</span></p>
+          </div>
         </div>
-        <p>Emp - Signature</p>
-      </div>
-      <div className="text-center">
-        <div className="mb-1 h-8 border-b border-black px-1 text-[13px] font-semibold uppercase">
-          {data.managerSignature}
+
+        <div className="border-t-2 border-black mt-3 mb-4" />
+
+        {/* ── Candidate Details section header ── */}
+        <div className="rounded-md bg-brand-600 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-white mb-3">
+          Candidate Details
         </div>
-        <p>Manager</p>
-      </div>
-      <div className="text-center">
-        <div className="mb-1 h-8 border-b border-black px-1 text-[13px] font-semibold uppercase">
-          {data.hastakSignature}
+
+        {/* ── Fields grid — screen view ── */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 print:hidden">
+          {allFields.map(({ label, value, full }) => (
+            <div key={label} className={`flex flex-col gap-0.5 ${full ? "sm:col-span-2" : ""}`}>
+              <span className="text-[11px] font-bold uppercase tracking-wide text-gray-500">
+                {label}
+              </span>
+              <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-[13px] font-semibold uppercase text-black min-h-[34px]">
+                {value || "-"}
+              </div>
+            </div>
+          ))}
         </div>
-        <p>Hastak Signature</p>
-      </div>
-      <div className="text-center">
-        <div className="mb-1 h-8 border-b border-black px-1 text-[13px] font-semibold uppercase">
-          {data.hrSignature}
+
+        {/* ── Print table — always shown when printing ── */}
+        <div className="hidden print:block overflow-x-auto rounded-lg border border-black">
+          <table className="w-full min-w-[600px] border-collapse text-[13px]">
+            <tbody>
+              <Row label="Department" value={data.department} full />
+              <Row label="Name of Employee" value={data.name} full />
+              <Row label="Address" value={data.address} full />
+              <tr>
+                <td className="border border-black bg-gray-50 px-3 py-2 text-[12px] font-bold uppercase text-black">Mobile No 1</td>
+                <td className="border border-black px-3 py-2 text-[13px] font-medium text-black">{data.mobileNo1}</td>
+                <td className="border border-black bg-gray-50 px-3 py-2 text-[12px] font-bold uppercase text-black">Gender</td>
+                <td className="border border-black px-3 py-2 text-[13px] font-medium uppercase text-black">{data.gender}</td>
+              </tr>
+              <tr>
+                <td className="border border-black bg-gray-50 px-3 py-2 text-[12px] font-bold uppercase text-black">Mobile No 2</td>
+                <td className="border border-black px-3 py-2 text-[13px] font-medium text-black">{data.mobileNo2}</td>
+                <td className="border border-black bg-gray-50 px-3 py-2 text-[12px] font-bold uppercase text-black">Email Id</td>
+                <td className="border border-black px-3 py-2 text-[13px] font-medium lowercase text-black">{data.email}</td>
+              </tr>
+              <Row label="Last Company Name" value={data.lastCompanyName} full />
+              <Row label="Last Company Address" value={data.lastCompanyAddress} full />
+              <tr>
+                <td className="border border-black bg-gray-50 px-3 py-2 text-[12px] font-bold uppercase text-black">Experience</td>
+                <td className="border border-black px-3 py-2 text-[13px] font-medium uppercase text-black">{data.experience}</td>
+                <td className="border border-black bg-gray-50 px-3 py-2 text-[12px] font-bold uppercase text-black">Reason for Leaving</td>
+                <td className="border border-black px-3 py-2 text-[13px] font-medium uppercase text-black">{data.reasonForLeaving}</td>
+              </tr>
+              <tr>
+                <td className="border border-black bg-gray-50 px-3 py-2 text-[12px] font-bold uppercase text-black">Hastak Name &amp; Code</td>
+                <td className="border border-black px-3 py-2 text-[13px] font-medium uppercase text-black">{data.hastakName} {data.hastakCode ? `- ${data.hastakCode}` : ""}</td>
+                <td className="border border-black bg-gray-50 px-3 py-2 text-[12px] font-bold uppercase text-black">Hastak Mobile No</td>
+                <td className="border border-black px-3 py-2 text-[13px] font-medium text-black">{data.hastakMobileNo}</td>
+              </tr>
+              <Row label="Contractor" value={data.contractor} full />
+              <tr>
+                <td className="border border-black bg-gray-50 px-3 py-2 text-[12px] font-bold uppercase text-black">Manager Name</td>
+                <td className="border border-black px-3 py-2 text-[13px] font-medium uppercase text-black">{data.managerName}</td>
+                <td className="border border-black bg-gray-50 px-3 py-2 text-[12px] font-bold uppercase text-black">Akar</td>
+                <td className="border border-black px-3 py-2 text-[13px] font-medium uppercase text-black">{data.akar}</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
-        <p>H R</p>
+
+        {/* ── Signatures ── */}
+        <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-x-16 gap-y-8 text-[13px] font-bold text-black">
+          <div className="text-center">
+            <div className="mb-1 h-8 border-b border-black px-1 text-[13px] font-semibold uppercase">{data.empSignature}</div>
+            <p>Emp - Signature</p>
+          </div>
+          <div className="text-center">
+            <div className="mb-1 h-8 border-b border-black px-1 text-[13px] font-semibold uppercase">{data.managerSignature}</div>
+            <p>Manager</p>
+          </div>
+          <div className="text-center">
+            <div className="mb-1 h-8 border-b border-black px-1 text-[13px] font-semibold uppercase">{data.hastakSignature}</div>
+            <p>Hastak Signature</p>
+          </div>
+          <div className="text-center">
+            <div className="mb-1 h-8 border-b border-black px-1 text-[13px] font-semibold uppercase">{data.hrSignature}</div>
+            <p>H R</p>
+          </div>
+        </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 export default function TrialForm() {
   const { user } = useAuth();
   const { companyId, companyScope, scopeKey } = useCompany();
   const [loading, setLoading] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [prefillTrialData, setPrefillTrialData] = useState(null);
+  const [showAppointmentModal, setShowAppointmentModal] = useState(false);
   const [forms, setForms] = useState([]);
   const [selected, setSelected] = useState(null);
   const [addFormOpen, setAddFormOpen] = useState(false);
@@ -312,6 +311,7 @@ export default function TrialForm() {
   const gridRef = useRef(null);
   const gridContainerRef = useRef(null);
   const { dark } = useTheme();
+  const isMobile = useIsMobile(768);
   const { headerMenu, headerFrozen, closeHeaderMenu, toggleHeaderFrozen } =
     useGridHeaderContextMenu(gridRef, gridContainerRef);
 
@@ -688,7 +688,7 @@ export default function TrialForm() {
         headerName: "Actions",
         field: "id",
         pinned: "right",
-        width: 380,
+        width: user?.role === 'agent' ? 200 : 380,
         sortable: false,
         filter: false,
         cellRenderer: ({ data }) => (
@@ -701,48 +701,69 @@ export default function TrialForm() {
             >
               View
             </Button>
-            <button
-              onClick={() => handleStatusUpdate(data.id, true)}
-              disabled={
-                Boolean(statusLoading[data.id]) || data.status === "Approved"
-              }
-              className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold transition ${
-                data.status === "Approved"
-                  ? "bg-green-600 text-white cursor-default"
-                  : "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 hover:bg-green-100 disabled:opacity-50"
-              }`}
-            >
-              {statusLoading[data.id] === "Approved" ? (
-                <Loader2 size={11} className="animate-spin" />
+            {user?.role !== 'agent' && (
+              <>
+                <button
+                  onClick={() => handleStatusUpdate(data.id, true)}
+                  disabled={
+                    Boolean(statusLoading[data.id]) || data.status === "Approved"
+                  }
+                  className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold transition ${
+                    data.status === "Approved"
+                      ? "bg-green-600 text-white cursor-default"
+                      : "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 hover:bg-green-100 disabled:opacity-50"
+                  }`}
+                >
+                  {statusLoading[data.id] === "Approved" ? (
+                    <Loader2 size={11} className="animate-spin" />
+                  ) : (
+                    <CheckCircle2 size={11} />
+                  )}
+                  Approve
+                </button>
+                <button
+                  onClick={() => handleStatusUpdate(data.id, false)}
+                  disabled={
+                    Boolean(statusLoading[data.id]) || data.status === "Rejected"
+                  }
+                  className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold transition ${
+                    data.status === "Rejected"
+                      ? "bg-red-600 text-white cursor-default"
+                      : "bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 hover:bg-red-100 disabled:opacity-50"
+                  }`}
+                >
+                  {statusLoading[data.id] === "Rejected" ? (
+                    <Loader2 size={11} className="animate-spin" />
+                  ) : (
+                    <XCircle size={11} />
+                  )}
+                  Reject
+                </button>
+                <button
+                  onClick={() => setDeleteTarget(data)}
+                  className="inline-flex items-center gap-1 rounded-lg bg-red-50 px-2.5 py-1.5 text-xs font-bold text-red-700 transition hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400"
+                >
+                  <Trash2 size={11} />
+                </button>
+              </>
+            )}
+            {data.status === "Approved" && user?.role === 'agent' && (
+              data.processed ? (
+                <span className="inline-flex items-center gap-1 rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs font-bold text-gray-500 dark:bg-gray-700 dark:text-gray-400 whitespace-nowrap">
+                  <CheckCircle2 size={11} /> Processed
+                </span>
               ) : (
-                <CheckCircle2 size={11} />
-              )}
-              Approve
-            </button>
-            <button
-              onClick={() => handleStatusUpdate(data.id, false)}
-              disabled={
-                Boolean(statusLoading[data.id]) || data.status === "Rejected"
-              }
-              className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold transition ${
-                data.status === "Rejected"
-                  ? "bg-red-600 text-white cursor-default"
-                  : "bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 hover:bg-red-100 disabled:opacity-50"
-              }`}
-            >
-              {statusLoading[data.id] === "Rejected" ? (
-                <Loader2 size={11} className="animate-spin" />
-              ) : (
-                <XCircle size={11} />
-              )}
-              Reject
-            </button>
-            <button
-              onClick={() => setDeleteTarget(data)}
-              className="inline-flex items-center gap-1 rounded-lg bg-red-50 px-2.5 py-1.5 text-xs font-bold text-red-700 transition hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400"
-            >
-              <Trash2 size={11} />
-            </button>
+                <button
+                  onClick={() => {
+                    setPrefillTrialData(data);
+                    setShowAppointmentModal(true);
+                  }}
+                  className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-2.5 py-1.5 text-xs font-bold text-blue-700 transition hover:bg-blue-100 dark:bg-blue-900/20 dark:text-blue-400 whitespace-nowrap"
+                >
+                  <Plus size={11} /> Process
+                </button>
+              )
+            )}
           </div>
         ),
       },
@@ -795,7 +816,7 @@ export default function TrialForm() {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             variant="primary"
             onClick={() => setAddFormOpen(true)}
@@ -865,47 +886,188 @@ export default function TrialForm() {
         ))}
       </div>
 
-      {/* Table */}
-      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
-        {loading ? (
-          <div className="p-4">
-            <SkeletonTable rows={6} cols={7} />
-          </div>
-        ) : (
-          <div
-            ref={gridContainerRef}
-            className={`salary-ag-grid ${dark ? "ag-theme-alpine-dark" : "ag-theme-alpine"} ${headerFrozen ? "grid-header-frozen" : ""}`}
-          >
-            <AgGridReact
-              ref={gridRef}
-              rowData={forms}
-              columnDefs={columnDefs}
-              defaultColDef={defaultColDef}
-              getRowId={(params) => String(params.data.id)}
-              domLayout="autoHeight"
-              rowHeight={58}
-              headerHeight={48}
-              popupParent={document.body}
-              enableCellTextSelection
-              animateRows
-              overlayNoRowsTemplate="<span class='text-gray-400 text-sm'>No trial forms found</span>"
-            />
-            <GridHeaderContextMenu
-              menu={headerMenu}
-              frozen={headerFrozen}
-              onClose={closeHeaderMenu}
-              onToggleFrozen={toggleHeaderFrozen}
-            />
-          </div>
-        )}
-      </div>
+      {/* Table — desktop only */}
+      {isMobile ? (
+        /* ── Mobile card list ────────────────────────────────────────────── */
+        <div className="space-y-3">
+          {loading ? (
+            <div className="p-4">
+              <SkeletonTable rows={4} cols={2} />
+            </div>
+          ) : forms.length === 0 ? (
+            <div className="flex flex-col items-center justify-center rounded-xl border border-gray-200 bg-white py-12 text-center dark:border-gray-700 dark:bg-gray-800">
+              <FileSpreadsheet size={32} className="mb-3 text-gray-300" />
+              <p className="text-sm text-gray-400">No trial forms found</p>
+            </div>
+          ) : (
+            forms.map((form) => (
+              <div
+                key={form.id}
+                className="rounded-xl border border-gray-200 bg-white px-4 py-4 shadow-sm dark:border-gray-700 dark:bg-gray-800"
+              >
+                {/* Top row: name + status */}
+                <div className="flex items-start justify-between gap-2">
+                  <p className="font-bold text-gray-900 capitalize dark:text-white">
+                    {form.name?.toLowerCase() || "—"}
+                  </p>
+                  <StatusBadge status={form.status} />
+                </div>
+
+                {/* Detail chips */}
+                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+                  {form.fromNo && (
+                    <span>
+                      <span className="font-semibold text-gray-700 dark:text-gray-300">Form #</span>{" "}
+                      {form.fromNo}
+                    </span>
+                  )}
+                  {form.date && (
+                    <span>
+                      <span className="font-semibold text-gray-700 dark:text-gray-300">Date:</span>{" "}
+                      {formatDate(form.date)}
+                    </span>
+                  )}
+                  {form.department && (
+                    <span>
+                      <span className="font-semibold text-gray-700 dark:text-gray-300">Dept:</span>{" "}
+                      {form.department}
+                    </span>
+                  )}
+                  {form.mobileNo1 && (
+                    <span className="flex items-center gap-1">
+                      <Phone size={11} className="text-green-500" />
+                      {form.mobileNo1}
+                    </span>
+                  )}
+                </div>
+
+                {/* Actions */}
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={() => setSelected(form)}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-700"
+                  >
+                    <Eye size={13} />
+                    View Full Application
+                  </button>
+                  <button
+                    onClick={() => setEditTarget(form)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-xs font-semibold text-brand-700 transition hover:bg-brand-100 dark:border-brand-700 dark:bg-brand-900/20 dark:text-brand-400"
+                  >
+                    <Pencil size={13} />
+                    Edit
+                  </button>
+                  {user?.role !== 'agent' && (
+                    <>
+                      <button
+                        onClick={() => handleStatusUpdate(form.id, true)}
+                        disabled={
+                          Boolean(statusLoading[form.id]) || form.status === "Approved"
+                        }
+                        className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition ${
+                          form.status === "Approved"
+                            ? "bg-green-600 text-white cursor-default"
+                            : "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 hover:bg-green-100 disabled:opacity-50"
+                        }`}
+                      >
+                        {statusLoading[form.id] === "Approved" ? (
+                          <Loader2 size={13} className="animate-spin" />
+                        ) : (
+                          <CheckCircle2 size={13} />
+                        )}
+                        Approve
+                      </button>
+                      <button
+                        onClick={() => handleStatusUpdate(form.id, false)}
+                        disabled={
+                          Boolean(statusLoading[form.id]) || form.status === "Rejected"
+                        }
+                        className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition ${
+                          form.status === "Rejected"
+                            ? "bg-red-600 text-white cursor-default"
+                            : "bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 hover:bg-red-100 disabled:opacity-50"
+                        }`}
+                      >
+                        {statusLoading[form.id] === "Rejected" ? (
+                          <Loader2 size={13} className="animate-spin" />
+                        ) : (
+                          <XCircle size={13} />
+                        )}
+                        Reject
+                      </button>
+                      <button
+                        onClick={() => setDeleteTarget(form)}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-600 transition hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </>
+                  )}
+                  {form.status === "Approved" && user?.role === 'agent' && (
+                    form.processed ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-lg bg-gray-100 px-3 py-2 text-xs font-semibold text-gray-500 dark:bg-gray-700 dark:text-gray-400">
+                        <CheckCircle2 size={13} /> Processed
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          setPrefillTrialData(form);
+                          setShowAppointmentModal(true);
+                        }}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 transition hover:bg-blue-100 dark:bg-blue-900/20 dark:text-blue-400"
+                      >
+                        <Plus size={13} /> Process
+                      </button>
+                    )
+                  )}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      ) : (
+        /* ── Desktop AG Grid ────────────────────────────────────────────── */
+        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+          {loading ? (
+            <div className="p-4">
+              <SkeletonTable rows={6} cols={7} />
+            </div>
+          ) : (
+            <div
+              ref={gridContainerRef}
+              className={`salary-ag-grid ${dark ? "ag-theme-alpine-dark" : "ag-theme-alpine"} ${headerFrozen ? "grid-header-frozen" : ""}`}
+            >
+              <AgGridReact
+                ref={gridRef}
+                rowData={forms}
+                columnDefs={columnDefs}
+                defaultColDef={defaultColDef}
+                getRowId={(params) => String(params.data.id)}
+                domLayout="autoHeight"
+                rowHeight={58}
+                headerHeight={48}
+                popupParent={document.body}
+                enableCellTextSelection
+                animateRows
+                overlayNoRowsTemplate="<span class='text-gray-400 text-sm'>No trial forms found</span>"
+              />
+              <GridHeaderContextMenu
+                menu={headerMenu}
+                frozen={headerFrozen}
+                onClose={closeHeaderMenu}
+                onToggleFrozen={toggleHeaderFrozen}
+              />
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Detail Modal */}
       <Modal
         isOpen={Boolean(selected)}
         onClose={() => setSelected(null)}
         title={
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2">
             <span>Trial Form Details</span>
             {selected && <StatusBadge status={selected.status} />}
             {selected &&
@@ -925,48 +1087,69 @@ export default function TrialForm() {
           selected && (
             <div className="flex flex-wrap items-center justify-between gap-3">
               {/* Status actions — left side */}
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => handleStatusUpdate(selected.id, true)}
-                  disabled={
-                    Boolean(statusLoading[selected.id]) ||
-                    selected.status === "Approved"
-                  }
-                  className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-semibold transition shadow-sm ${
-                    selected.status === "Approved"
-                      ? "bg-green-600 text-white cursor-default"
-                      : "bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
-                  }`}
-                >
-                  {statusLoading[selected.id] === "Approved" ? (
-                    <Loader2 size={14} className="animate-spin" />
+              <div className="flex flex-wrap items-center gap-2">
+                {user?.role !== 'agent' && (
+                  <>
+                    <button
+                      onClick={() => handleStatusUpdate(selected.id, true)}
+                      disabled={
+                        Boolean(statusLoading[selected.id]) ||
+                        selected.status === "Approved"
+                      }
+                      className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-semibold transition shadow-sm ${
+                        selected.status === "Approved"
+                          ? "bg-green-600 text-white cursor-default"
+                          : "bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
+                      }`}
+                    >
+                      {statusLoading[selected.id] === "Approved" ? (
+                        <Loader2 size={14} className="animate-spin" />
+                      ) : (
+                        <CheckCircle2 size={14} />
+                      )}
+                      Approve
+                    </button>
+                    <button
+                      onClick={() => handleStatusUpdate(selected.id, false)}
+                      disabled={
+                        Boolean(statusLoading[selected.id]) ||
+                        selected.status === "Rejected"
+                      }
+                      className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-semibold transition shadow-sm ${
+                        selected.status === "Rejected"
+                          ? "bg-red-600 text-white cursor-default"
+                          : "bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+                      }`}
+                    >
+                      {statusLoading[selected.id] === "Rejected" ? (
+                        <Loader2 size={14} className="animate-spin" />
+                      ) : (
+                        <XCircle size={14} />
+                      )}
+                      Reject
+                    </button>
+                  </>
+                )}
+                {selected.status === "Approved" && user?.role === 'agent' && (
+                  selected.processed ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-xl bg-gray-100 px-4 py-2 text-sm font-semibold text-gray-500 dark:bg-gray-700 dark:text-gray-400">
+                      <CheckCircle2 size={14} /> Processed
+                    </span>
                   ) : (
-                    <CheckCircle2 size={14} />
-                  )}
-                  Approve
-                </button>
-                <button
-                  onClick={() => handleStatusUpdate(selected.id, false)}
-                  disabled={
-                    Boolean(statusLoading[selected.id]) ||
-                    selected.status === "Rejected"
-                  }
-                  className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-semibold transition shadow-sm ${
-                    selected.status === "Rejected"
-                      ? "bg-red-600 text-white cursor-default"
-                      : "bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
-                  }`}
-                >
-                  {statusLoading[selected.id] === "Rejected" ? (
-                    <Loader2 size={14} className="animate-spin" />
-                  ) : (
-                    <XCircle size={14} />
-                  )}
-                  Reject
-                </button>
+                    <button
+                      onClick={() => {
+                        setPrefillTrialData(selected);
+                        setShowAppointmentModal(true);
+                      }}
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
+                    >
+                      <Plus size={14} /> Process
+                    </button>
+                  )
+                )}
               </div>
               {/* Document actions — right side */}
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Button variant="secondary" onClick={() => setSelected(null)}>
                   Close
                 </Button>
@@ -1032,21 +1215,32 @@ export default function TrialForm() {
       </Modal>
 
       <TrialFormModal
-        isOpen={addFormOpen}
+        isOpen={addFormOpen || Boolean(editTarget)}
         onClose={() => {
           setAddFormOpen(false);
-          loadForms();
+          setEditTarget(null);
         }}
-      />
-
-      <TrialFormModal
-        isOpen={Boolean(editTarget)}
-        onClose={() => setEditTarget(null)}
         initialData={editTarget}
         onSuccess={() => {
+          setAddFormOpen(false);
           setEditTarget(null);
           loadForms();
         }}
+      />
+      <AppointmentModal
+        isOpen={showAppointmentModal}
+        onClose={() => {
+          setShowAppointmentModal(false);
+          setPrefillTrialData(null);
+        }}
+        onSuccess={() => {
+          setShowAppointmentModal(false);
+          setPrefillTrialData(null);
+          setSelected(null);
+          loadForms();
+        }}
+        initialData={prefillTrialData}
+        isPrefillFromTrial={true}
       />
     </div>
   );

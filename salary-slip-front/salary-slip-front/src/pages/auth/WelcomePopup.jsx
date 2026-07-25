@@ -43,8 +43,8 @@ export default function WelcomePopup({ onDismiss, onSetup }) {
   );
 
   const Shell = ({ children }) => (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm">
-      <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-6xl h-[78vh] flex flex-col overflow-hidden">
+    <div className="modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/60 backdrop-blur-sm">
+      <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-6xl max-h-[90vh] h-[90vh] md:h-[78vh] flex flex-col overflow-hidden">
         {children}
       </div>
     </div>
@@ -55,20 +55,20 @@ export default function WelcomePopup({ onDismiss, onSetup }) {
     <Shell>
       {step === 0 && (
         <>
-          <div className="relative overflow-hidden flex-shrink-0 bg-gradient-to-br from-brand-600 via-brand-700 to-brand-900 px-12 py-8">
+          <div className="relative overflow-hidden flex-shrink-0 bg-gradient-to-br from-brand-600 via-brand-700 to-brand-900 px-5 py-6 sm:px-12 sm:py-8">
             <Blobs />
             <button onClick={onDismiss} className="absolute top-5 right-5 p-2 rounded-xl bg-white/15 hover:bg-white/25 text-white transition-colors"><X size={18} /></button>
-            <div className="relative z-10 flex items-center gap-6">
-              <div className="w-[72px] h-[72px] rounded-2xl bg-white/20 border border-white/25 flex items-center justify-center flex-shrink-0 shadow-xl"><ClipboardList size={32} className="text-white" /></div>
+            <div className="relative z-10 flex items-center gap-3 sm:gap-6">
+              <div className="w-12 h-12 sm:w-[72px] sm:h-[72px] rounded-2xl bg-white/20 border border-white/25 flex items-center justify-center flex-shrink-0 shadow-xl"><ClipboardList size={32} className="text-white" /></div>
               <div>
-                <h2 className="text-3xl font-bold text-white leading-tight">Welcome to {APP_LABEL}</h2>
-                <p className="text-base text-white/70 mt-1.5">Complete HR & salary management — here's what you can control</p>
+                <h2 className="text-lg sm:text-3xl font-bold text-white leading-tight">Welcome to {APP_LABEL}</h2>
+                <p className="text-xs sm:text-base text-white/70 mt-1 sm:mt-1.5">Complete HR & salary management — here's what you can control</p>
               </div>
             </div>
           </div>
-          <div className="flex-1 px-12 py-8 flex flex-col overflow-hidden">
+          <div className="flex-1 px-5 py-6 sm:px-12 sm:py-8 flex flex-col overflow-hidden">
             <p className="text-[11px] font-bold uppercase tracking-widest text-gray-400 mb-5 flex-shrink-0">What you can manage</p>
-            <div className="grid grid-cols-4 gap-5 flex-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 flex-1 overflow-y-auto pb-4 pr-2">
               {[
                 { icon: Users,         label: "Employee Management", desc: "Add, view and manage all employee records across both companies and branches. Keep profiles and details up to date.", bg: "bg-brand-50 dark:bg-brand-900/20",   ic: "text-brand-600 dark:text-brand-400",  dot: "bg-brand-500" },
                 { icon: DollarSign,    label: "Salary Processing",   desc: "Calculate, review and publish monthly salaries with a full breakdown of earnings, allowances and deductions per employee.", bg: "bg-green-50 dark:bg-green-900/20",   ic: "text-green-600 dark:text-green-400",  dot: "bg-green-500" },
@@ -88,9 +88,9 @@ export default function WelcomePopup({ onDismiss, onSetup }) {
               ))}
             </div>
           </div>
-          <div className="flex-shrink-0 px-12 py-5 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
+          <div className="flex-shrink-0 px-5 py-4 sm:px-12 sm:py-5 border-t border-gray-100 dark:border-gray-800 flex flex-wrap items-center justify-between gap-3">
             <Dots active={0} />
-            <button onClick={() => setStep(1)} className="flex items-center gap-2 px-8 py-3.5 bg-brand-600 hover:bg-brand-700 text-white rounded-2xl font-semibold text-sm transition-colors shadow-lg shadow-brand-600/20">
+            <button onClick={() => setStep(1)} className="flex items-center gap-2 px-4 py-2.5 sm:px-8 sm:py-3.5 bg-brand-600 hover:bg-brand-700 text-white rounded-2xl font-semibold text-xs sm:text-sm transition-colors shadow-lg shadow-brand-600/20">
               Next — Admin capabilities <ChevronRight size={16} />
             </button>
           </div>
@@ -98,20 +98,20 @@ export default function WelcomePopup({ onDismiss, onSetup }) {
       )}
       {step === 1 && (
         <>
-          <div className="relative overflow-hidden flex-shrink-0 bg-gradient-to-br from-indigo-600 via-brand-700 to-brand-900 px-12 py-8">
+          <div className="relative overflow-hidden flex-shrink-0 bg-gradient-to-br from-indigo-600 via-brand-700 to-brand-900 px-5 py-6 sm:px-12 sm:py-8">
             <Blobs />
             <button onClick={onDismiss} className="absolute top-5 right-5 p-2 rounded-xl bg-white/15 hover:bg-white/25 text-white transition-colors"><X size={18} /></button>
-            <div className="relative z-10 flex items-center gap-6">
-              <div className="w-[72px] h-[72px] rounded-2xl bg-white/20 border border-white/25 flex items-center justify-center flex-shrink-0 shadow-xl"><Building2 size={32} className="text-white" /></div>
+            <div className="relative z-10 flex items-center gap-3 sm:gap-6">
+              <div className="w-12 h-12 sm:w-[72px] sm:h-[72px] rounded-2xl bg-white/20 border border-white/25 flex items-center justify-center flex-shrink-0 shadow-xl"><Building2 size={32} className="text-white" /></div>
               <div>
-                <h2 className="text-3xl font-bold text-white leading-tight">Powerful Admin Capabilities</h2>
-                <p className="text-base text-white/70 mt-1.5">Everything you need to run HR operations across both companies</p>
+                <h2 className="text-lg sm:text-3xl font-bold text-white leading-tight">Powerful Admin Capabilities</h2>
+                <p className="text-xs sm:text-base text-white/70 mt-1 sm:mt-1.5">Everything you need to run HR operations across both companies</p>
               </div>
             </div>
           </div>
-          <div className="flex-1 px-12 py-8 flex flex-col overflow-hidden">
+          <div className="flex-1 px-5 py-6 sm:px-12 sm:py-8 flex flex-col overflow-hidden">
             <p className="text-[11px] font-bold uppercase tracking-widest text-gray-400 mb-5 flex-shrink-0">Key admin features</p>
-            <div className="grid grid-cols-3 gap-6 flex-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 flex-1 overflow-y-auto pb-4 pr-2">
               {[
                 { icon: Building2, num: "01", title: "Multi-Company & Branch Scope",   desc: "Switch seamlessly between Nidhi Impex and Silver Star, or view a combined dashboard across all branches from a single admin account.", items: ["Nidhi Impex — Shreeji & Ichapur", "Silver Star — Daduk & Ichapur", "Combined all-company view"], color: "bg-brand-600", light: "bg-brand-50 dark:bg-brand-900/20", tc: "text-brand-600 dark:text-brand-400", border: "border-brand-100 dark:border-brand-800" },
                 { icon: Users,     num: "02", title: "Full Employee Lifecycle",        desc: "Manage every stage of an employee's journey — from onboarding and profile updates to salary processing and annual tax document generation.", items: ["Add & edit employee profiles", "Assign to company & branch", "Track salary history"], color: "bg-indigo-500", light: "bg-indigo-50 dark:bg-indigo-900/20", tc: "text-indigo-600 dark:text-indigo-400", border: "border-indigo-100 dark:border-indigo-800" },
@@ -138,12 +138,12 @@ export default function WelcomePopup({ onDismiss, onSetup }) {
               ))}
             </div>
           </div>
-          <div className="flex-shrink-0 px-12 py-5 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
+          <div className="flex-shrink-0 px-5 py-4 sm:px-12 sm:py-5 border-t border-gray-100 dark:border-gray-800 flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-4">
               <Dots active={1} />
               <button onClick={() => setStep(0)} className="text-sm text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 font-medium transition-colors">← Back</button>
             </div>
-            <button onClick={onSetup} className="flex items-center gap-2 px-8 py-3.5 bg-brand-600 hover:bg-brand-700 text-white rounded-2xl font-semibold text-sm transition-colors shadow-lg shadow-brand-600/20">
+            <button onClick={onSetup} className="flex items-center gap-2 px-4 py-2.5 sm:px-8 sm:py-3.5 bg-brand-600 hover:bg-brand-700 text-white rounded-2xl font-semibold text-xs sm:text-sm transition-colors shadow-lg shadow-brand-600/20">
               Get Started — Set Password
             </button>
           </div>
@@ -157,20 +157,20 @@ export default function WelcomePopup({ onDismiss, onSetup }) {
     <Shell>
       {step === 0 && (
         <>
-          <div className="relative overflow-hidden flex-shrink-0 bg-gradient-to-br from-brand-500 via-brand-600 to-brand-900 px-12 py-8">
+          <div className="relative overflow-hidden flex-shrink-0 bg-gradient-to-br from-brand-500 via-brand-600 to-brand-900 px-5 py-6 sm:px-12 sm:py-8">
             <Blobs />
             <button onClick={onDismiss} className="absolute top-5 right-5 p-2 rounded-xl bg-white/15 hover:bg-white/25 text-white transition-colors"><X size={18} /></button>
-            <div className="relative z-10 flex items-center gap-6">
-              <div className="w-[72px] h-[72px] rounded-2xl bg-white/20 border border-white/25 flex items-center justify-center flex-shrink-0 shadow-xl"><Sparkles size={32} className="text-white" /></div>
+            <div className="relative z-10 flex items-center gap-3 sm:gap-6">
+              <div className="w-12 h-12 sm:w-[72px] sm:h-[72px] rounded-2xl bg-white/20 border border-white/25 flex items-center justify-center flex-shrink-0 shadow-xl"><Sparkles size={32} className="text-white" /></div>
               <div>
-                <h2 className="text-3xl font-bold text-white leading-tight">Welcome to {APP_LABEL}</h2>
-                <p className="text-base text-white/70 mt-1.5">Your all-in-one salary portal — here's everything you can access</p>
+                <h2 className="text-lg sm:text-3xl font-bold text-white leading-tight">Welcome to {APP_LABEL}</h2>
+                <p className="text-xs sm:text-base text-white/70 mt-1 sm:mt-1.5">Your all-in-one salary portal — here's everything you can access</p>
               </div>
             </div>
           </div>
-          <div className="flex-1 px-12 py-8 flex flex-col overflow-hidden">
+          <div className="flex-1 px-5 py-6 sm:px-12 sm:py-8 flex flex-col overflow-hidden">
             <p className="text-[11px] font-bold uppercase tracking-widest text-gray-400 mb-5 flex-shrink-0">What you get</p>
-            <div className="grid grid-cols-4 gap-5 flex-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 flex-1 overflow-y-auto pb-4 pr-2">
               {[
                 { icon: FileText,      label: "Payslips",       desc: "View and download your monthly salary slips anytime, anywhere — no more waiting for HR to hand them out.", bg: "bg-brand-50 dark:bg-brand-900/20",   ic: "text-brand-600 dark:text-brand-400", dot: "bg-brand-500" },
                 { icon: DollarSign,    label: "Salary Breakup", desc: "See a complete breakdown of your gross pay, all allowances, every deduction, and your final net take-home amount.", bg: "bg-green-50 dark:bg-green-900/20",   ic: "text-green-600 dark:text-green-400", dot: "bg-green-500" },
@@ -190,9 +190,9 @@ export default function WelcomePopup({ onDismiss, onSetup }) {
               ))}
             </div>
           </div>
-          <div className="flex-shrink-0 px-12 py-5 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
+          <div className="flex-shrink-0 px-5 py-4 sm:px-12 sm:py-5 border-t border-gray-100 dark:border-gray-800 flex flex-wrap items-center justify-between gap-3">
             <Dots active={0} />
-            <button onClick={() => setStep(1)} className="flex items-center gap-2 px-8 py-3.5 bg-brand-600 hover:bg-brand-700 text-white rounded-2xl font-semibold text-sm transition-colors shadow-lg shadow-brand-600/20">
+            <button onClick={() => setStep(1)} className="flex items-center gap-2 px-4 py-2.5 sm:px-8 sm:py-3.5 bg-brand-600 hover:bg-brand-700 text-white rounded-2xl font-semibold text-xs sm:text-sm transition-colors shadow-lg shadow-brand-600/20">
               Next — How to get started <ChevronRight size={16} />
             </button>
           </div>
@@ -200,20 +200,20 @@ export default function WelcomePopup({ onDismiss, onSetup }) {
       )}
       {step === 1 && (
         <>
-          <div className="relative overflow-hidden flex-shrink-0 bg-gradient-to-br from-violet-500 via-brand-600 to-brand-900 px-12 py-8">
+          <div className="relative overflow-hidden flex-shrink-0 bg-gradient-to-br from-violet-500 via-brand-600 to-brand-900 px-5 py-6 sm:px-12 sm:py-8">
             <Blobs />
             <button onClick={onDismiss} className="absolute top-5 right-5 p-2 rounded-xl bg-white/15 hover:bg-white/25 text-white transition-colors"><X size={18} /></button>
-            <div className="relative z-10 flex items-center gap-6">
-              <div className="w-[72px] h-[72px] rounded-2xl bg-white/20 border border-white/25 flex items-center justify-center flex-shrink-0 shadow-xl"><UserCheck size={32} className="text-white" /></div>
+            <div className="relative z-10 flex items-center gap-3 sm:gap-6">
+              <div className="w-12 h-12 sm:w-[72px] sm:h-[72px] rounded-2xl bg-white/20 border border-white/25 flex items-center justify-center flex-shrink-0 shadow-xl"><UserCheck size={32} className="text-white" /></div>
               <div>
-                <h2 className="text-3xl font-bold text-white leading-tight">Getting Started Is Easy</h2>
-                <p className="text-base text-white/70 mt-1.5">First-time users complete 3 quick steps before logging in</p>
+                <h2 className="text-lg sm:text-3xl font-bold text-white leading-tight">Getting Started Is Easy</h2>
+                <p className="text-xs sm:text-base text-white/70 mt-1 sm:mt-1.5">First-time users complete 3 quick steps before logging in</p>
               </div>
             </div>
           </div>
-          <div className="flex-1 px-12 py-8 flex flex-col overflow-hidden">
+          <div className="flex-1 px-5 py-6 sm:px-12 sm:py-8 flex flex-col overflow-hidden">
             <p className="text-[11px] font-bold uppercase tracking-widest text-gray-400 mb-5 flex-shrink-0">3 quick steps</p>
-            <div className="grid grid-cols-3 gap-6 flex-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 flex-1 overflow-y-auto pb-4 pr-2">
               {[
                 { icon: Camera,   num: "01", title: "Verify Your Identity", desc: "Provide your employee code and fill in your mobile number, date of birth and residential address. You can optionally add a recent photo. This confirms you are a registered employee.", items: ["Employee code", "Mobile number", "Date of birth", "Home address", "Photo (optional)"], color: "bg-brand-600", light: "bg-brand-50 dark:bg-brand-900/20", tc: "text-brand-600 dark:text-brand-400", border: "border-brand-100 dark:border-brand-800" },
                 { icon: Mail,     num: "02", title: "Verify Your Email",    desc: "We will send a one-time password (OTP) to your registered company email address. Enter the OTP in the form to confirm your identity and proceed to the next step.", items: ["Company email address", "4-digit OTP from inbox"], color: "bg-violet-500", light: "bg-violet-50 dark:bg-violet-900/20", tc: "text-violet-600 dark:text-violet-400", border: "border-violet-100 dark:border-violet-800" },
@@ -240,12 +240,12 @@ export default function WelcomePopup({ onDismiss, onSetup }) {
               ))}
             </div>
           </div>
-          <div className="flex-shrink-0 px-12 py-5 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
+          <div className="flex-shrink-0 px-5 py-4 sm:px-12 sm:py-5 border-t border-gray-100 dark:border-gray-800 flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-4">
               <Dots active={1} />
               <button onClick={() => setStep(0)} className="text-sm text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 font-medium transition-colors">← Back</button>
             </div>
-            <button onClick={onSetup} className="flex items-center gap-2 px-8 py-3.5 bg-brand-600 hover:bg-brand-700 text-white rounded-2xl font-semibold text-sm transition-colors shadow-lg shadow-brand-600/20">
+            <button onClick={onSetup} className="flex items-center gap-2 px-4 py-2.5 sm:px-8 sm:py-3.5 bg-brand-600 hover:bg-brand-700 text-white rounded-2xl font-semibold text-xs sm:text-sm transition-colors shadow-lg shadow-brand-600/20">
               Get Started — Set Password
             </button>
           </div>

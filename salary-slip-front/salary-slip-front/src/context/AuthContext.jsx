@@ -1,12 +1,16 @@
 import { createContext, useContext, useEffect, useState } from "react";
+import toast from "react-hot-toast";
 import { authApi } from "../utils/api";
 import { resolveCompanyId } from "../config/companyConfig";
 
 const AuthContext = createContext(null);
 const STORAGE_KEY = "auth_user";
 
-function getUserRole(value) {
-  if (Number(value) === 0 || String(value).toLowerCase() === "admin") {
+function getUserRole(value, type) {
+  if (type === "agent" || Number(value) === 4) {
+    return "agent";
+  }
+  if (Number(value) === 0 || Number(value) === 1 || Number(value) === 2 || String(value).toLowerCase() === "admin") {
     return "admin";
   }
   return "employee";
@@ -16,17 +20,16 @@ function loadUserFromStorage() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     return raw ? JSON.parse(raw) : null;
-  } catch {
+  } catch (error) {
     return null;
   }
 }
 
 function saveUserToStorage(user) {
-  try {
-    if (user) localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
-    else localStorage.removeItem(STORAGE_KEY);
-  } catch {
-    // Ignore storage write failures so auth still works in restricted browsers.
+  if (user) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
+  } else {
+    localStorage.removeItem(STORAGE_KEY);
   }
 }
 
@@ -38,6 +41,8 @@ function buildAuthUser(apiUser, fallbackUser = {}, loginData = {}) {
     apiUser?.type ??
     fallbackUser?.role ??
     "employee";
+
+  const rawType = apiUser?.type ?? fallbackUser?.type;
 
   const companyId = resolveCompanyId(
     apiUser?.companyId,
@@ -52,11 +57,11 @@ function buildAuthUser(apiUser, fallbackUser = {}, loginData = {}) {
     ...fallbackUser,
     ...(apiUser && typeof apiUser === "object" ? apiUser : {}),
     id: apiUser?.id || fallbackUser?.id || fallbackUser?.email || "user",
-    role: getUserRole(rawRole),
+    role: getUserRole(rawRole, rawType),
     name: apiUser?.name || fallbackUser?.name || fallbackUser?.email || "User",
     email: apiUser?.email || fallbackUser?.email || "",
     accessToken:
-      loginData?.access_token || fallbackUser?.accessToken || fallbackUser?.token,
+      loginData?.access_token || loginData?.token || fallbackUser?.accessToken || fallbackUser?.token,
     tokenType:
       loginData?.token_type || fallbackUser?.tokenType || "bearer",
     expiresIn: loginData?.expires_in || fallbackUser?.expiresIn,
@@ -74,6 +79,7 @@ function buildAuthUser(apiUser, fallbackUser = {}, loginData = {}) {
       fallbackUser?.companyName ||
       fallbackUser?.company_name ||
       "",
+    rawRole: Number(rawRole),
   };
 }
 
@@ -123,6 +129,24 @@ export function AuthProvider({ children }) {
     return () => {
       ignore = true;
     };
+  }, []);
+
+  // apiRequest (utils/api.js) dispatches this whenever an authenticated
+  // request comes back 401 — the token expired or was revoked server-side.
+  // Nothing else was clearing the stale session, so the app just kept
+  // showing generic error toasts forever instead of returning to /login.
+  useEffect(() => {
+    function handleUnauthorized() {
+      setUser((prev) => {
+        if (!prev) return prev;
+        toast.error("Your session has expired. Please log in again.");
+        return null;
+      });
+      saveUserToStorage(null);
+    }
+
+    window.addEventListener("auth:unauthorized", handleUnauthorized);
+    return () => window.removeEventListener("auth:unauthorized", handleUnauthorized);
   }, []);
 
   const login = async (email, password, company_code) => {

@@ -76,19 +76,21 @@ export default function AdminDashboard() {
         const rawDepts =
           dashData.department_distribution || dashData.department || [];
         setDepartmentHeadcountData(
-          rawDepts.map((d) =>
-            typeof d === "string"
-              ? { dept: d, count: 0, salary: 0 }
-              : {
-                  dept: d.department,
-                  count: d.total_employees,
-                  salary: d.total_net_payable,
-                },
-          ),
+          rawDepts
+            .filter((d) => (typeof d === "string" ? d : d.department))
+            .map((d) =>
+              typeof d === "string"
+                ? { dept: d, count: 0, salary: 0 }
+                : {
+                    dept: d.department,
+                    count: d.total_employees,
+                    salary: d.total_net_payable,
+                  },
+            ),
         );
 
         // Process Recent Slips for the table
-        const slips = dashData.salary_slip || [];
+        const slips = (dashData.salary_slip || []).filter(item => item.emp_name);
 
         const mappedEmps = slips.map((item) => {
           const name = item.emp_name || "—";
@@ -262,7 +264,7 @@ export default function AdminDashboard() {
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
         <StatCard
           title="Total Employees"
-          value={dashboardStats?.total_employee || "—"}
+          value={dashboardStats?.total_employee ?? "—"}
           icon={<Users size={22} />}
           color="blue"
           // change={5}
@@ -270,7 +272,7 @@ export default function AdminDashboard() {
         />
         <StatCard
           title="Active Employees"
-          value={dashboardStats?.active_employee || "—"}
+          value={dashboardStats?.active_employee ?? "—"}
           icon={<Users size={22} />}
           color="green"
           // subtitle="currently active"
@@ -278,7 +280,7 @@ export default function AdminDashboard() {
         <StatCard
           title="Total Salary Paid"
           value={
-            dashboardStats?.total_salary_paid
+            dashboardStats?.total_salary_paid != null
               ? fmt(dashboardStats.total_salary_paid)
               : "—"
           }

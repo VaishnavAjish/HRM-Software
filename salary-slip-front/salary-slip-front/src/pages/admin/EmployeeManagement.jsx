@@ -41,6 +41,7 @@ import { useCompany } from "../../context/CompanyContext";
 import { getCompanyConfig } from "../../config/companyConfig";
 import { useTheme } from "../../context/ThemeContext";
 import useGridHeaderContextMenu from "../../hooks/useGridHeaderContextMenu";
+import useIsMobile from "../../hooks/useIsMobile";
 
 import { SkeletonTable } from "../../components/ui/Skeleton";
 import Badge from "../../components/ui/Badge";
@@ -76,6 +77,7 @@ const emptyForm = {
   empCode: "",
   email: "",
   password: "",
+  companyId: "",
   unit: "",
   status: "Active",
   loginRole: "employee",
@@ -223,9 +225,13 @@ function mapEmployee(item) {
   const loginRole =
     roleValue === "0"
       ? "superadmin"
-      : roleValue === "2"
-        ? "manager"
-        : "employee";
+      : roleValue === "1"
+        ? "master"
+        : roleValue === "2"
+          ? "manager"
+          : roleValue === "4" || item.type === "agent"
+            ? "agent"
+            : "employee";
 
   return {
     id: item.id,
@@ -239,6 +245,7 @@ function mapEmployee(item) {
     department: item.department ?? "",
     status: isActive ? "Active" : "Inactive",
     loginRole,
+    agentCompany: item.company_code === "nidhi-impex,silverstar" || item.company_code === "all" ? "" : item.company_code,
     avatar,
     accountName: item.account_name ?? "",
     accountNo: item.account_no ?? "",
@@ -279,6 +286,7 @@ export default function EmployeeManagement() {
   const { activeUnit, companyId, companyScope, isAllCompanies, scopeKey } =
     useCompany();
   const { dark } = useTheme();
+  const isMobile = useIsMobile();
 
   const gridRef = useRef(null);
   const gridContainerRef = useRef(null);
@@ -329,8 +337,11 @@ export default function EmployeeManagement() {
   const [amUploading, setAmUploading] = useState(false);
   const [amPreview, setAmPreview] = useState(null);
 
-  const formCompanyId =
-    modal === "edit" ? selected?.companyId || companyId : companyId;
+  // The company a new/edited employee belongs to is now chosen right in the
+  // form (see the Company field in AddEditEmployeeModal) rather than only
+  // coming from the sidebar's company scope, so unit options must follow
+  // whatever is currently selected in the form, not just the outer scope.
+  const formCompanyId = form.companyId || companyId;
   const unitOptions = useMemo(
     () => getCompanyConfig(formCompanyId)?.units || [],
     [formCompanyId],
@@ -477,19 +488,15 @@ export default function EmployeeManagement() {
   ]);
 
   const openAdd = useCallback(() => {
-    if (isAllCompanies) {
-      toast.error("Select one company before adding a new employee.");
-      return;
-    }
-
     setForm({
       ...emptyForm,
+      companyId: isAllCompanies ? "" : companyId,
       unit: activeUnit || "",
     });
     setSelected(null);
     setShowPassword(false);
     setModal("add");
-  }, [activeUnit, isAllCompanies]);
+  }, [activeUnit, companyId, isAllCompanies]);
 
   const openEdit = useCallback(
     async (emp) => {
@@ -595,7 +602,12 @@ export default function EmployeeManagement() {
   }, []);
 
   const handleSave = async () => {
-    if (unitOptions.length > 0 && !form.unit) {
+    if (form.loginRole !== "agent" && !form.companyId) {
+      toast.error("Select a company");
+      return;
+    }
+
+    if (unitOptions.length > 0 && !form.unit && form.loginRole !== "master" && form.loginRole !== "superadmin" && form.loginRole !== "agent") {
       toast.error("Select unit");
       return;
     }
@@ -635,11 +647,19 @@ export default function EmployeeManagement() {
           role:
             form.loginRole === "superadmin"
               ? "0"
-              : form.loginRole === "manager"
-                ? "2"
-                : "1",
+              : form.loginRole === "master"
+                ? "1"
+                : form.loginRole === "manager"
+                  ? "2"
+                  : form.loginRole === "agent"
+                    ? "4"
+                    : "3",
+          type: form.loginRole === "agent" ? "agent" : null,
           status: form.status === "Active" ? "0" : "1",
-          unit: form.unit || null,
+          unit: form.loginRole === "master" || form.loginRole === "superadmin" || form.loginRole === "agent" ? null : (form.unit || null),
+          company_code: form.loginRole === "agent" && currentUser?.rawRole === 0
+            ? (form.agentCompany || "all")
+            : (form.companyId || undefined),
           department: form.department || null,
           designation: form.designation || null,
           gender: form.gender || null,
@@ -698,11 +718,19 @@ export default function EmployeeManagement() {
         role:
           form.loginRole === "superadmin"
             ? "0"
-            : form.loginRole === "manager"
-              ? "2"
-              : "1",
+            : form.loginRole === "master"
+              ? "1"
+              : form.loginRole === "manager"
+                ? "2"
+                : form.loginRole === "agent"
+                  ? "4"
+                  : "3",
+        type: form.loginRole === "agent" ? "agent" : null,
         status: form.status === "Active" ? "0" : "1",
-        unit: form.unit || null,
+        unit: form.loginRole === "master" || form.loginRole === "superadmin" || form.loginRole === "agent" ? null : (form.unit || null),
+        company_code: form.loginRole === "agent" && currentUser?.rawRole === 0 
+          ? (form.agentCompany || "all")
+          : undefined,
         department: form.department || null,
         designation: form.designation || null,
         gender: form.gender || null,
@@ -880,6 +908,14 @@ export default function EmployeeManagement() {
 
     if (!allowed.includes(file.type) && !/\.(xlsx|xls)$/i.test(file.name)) {
       toast.error("Only Excel files (.xlsx, .xls) are allowed.");
+      return;
+    }
+
+    // The xlsx parser has a known ReDoS/prototype-pollution advisory with no
+    // upstream fix (only mitigation is limiting what it's asked to parse) —
+    // capping the input size keeps a crafted file from hanging the tab.
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("File is too large. Please upload a file under 10 MB.");
       return;
     }
 
@@ -1149,13 +1185,64 @@ export default function EmployeeManagement() {
     [],
   );
 
-  const columnDefs = useMemo(
-    () => [
+  const columnDefs = useMemo(() => {
+    if (isMobile) {
+      return [
+        {
+          headerName: "Employee Record",
+          field: "mobileDetails",
+          flex: 1,
+          cellRenderer: ({ data: emp }) => {
+            if (!emp) return null;
+            return (
+              <div className="flex flex-col justify-center py-2 gap-2 h-full w-full">
+                <div className="flex justify-between items-center w-full pr-2 gap-2">
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <span className="font-semibold text-gray-900 dark:text-white truncate text-sm block">
+                      {emp.name}
+                    </span>
+                    {emp.loginRole === "superadmin" && <Crown size={12} className="text-purple-600 shrink-0" />}
+                  </div>
+                </div>
+                <div className="flex items-center justify-between gap-2 w-full pr-2">
+                  <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                    <button
+                      onClick={() => openView(emp)}
+                      className="flex min-w-0 flex-1 justify-center items-center gap-1.5 rounded-lg bg-brand-50 px-2 py-2 text-xs font-semibold text-brand-600 transition hover:bg-brand-100 min-h-[36px]"
+                    >
+                      <Eye size={13} />
+                      View
+                    </button>
+                    <button
+                      onClick={() => openEdit(emp)}
+                      className="flex min-w-0 flex-1 justify-center items-center gap-1.5 rounded-lg bg-yellow-50 px-2 py-2 text-xs font-semibold text-yellow-600 transition hover:bg-yellow-100 min-h-[36px]"
+                    >
+                      <Edit2 size={13} />
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => openDelete(emp)}
+                      className="flex min-w-0 flex-1 justify-center items-center gap-1.5 rounded-lg bg-red-50 px-2 py-2 text-xs font-semibold text-red-600 transition hover:bg-red-100 min-h-[36px]"
+                    >
+                      <Trash2 size={13} />
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          },
+        },
+      ];
+    }
+
+    return [
       {
         headerName: "Emp Code",
         field: "empCode",
         minWidth: 140,
         flex: 1,
+        hide: isMobile,
         filter: "agTextColumnFilter",
         cellClass:
           "employee-ag-cell font-mono text-gray-600 dark:text-gray-300",
@@ -1187,10 +1274,11 @@ export default function EmployeeManagement() {
         field: "gender",
         minWidth: 130,
         flex: 1,
+        hide: isMobile,
         filter: "agTextColumnFilter",
         cellRenderer: ({ value }) => (
           <div className="flex h-full w-full items-center gap-2 overflow-hidden">
-            <User size={14} className="text-brand-500 flex-shrink-0" />
+            <User size={14} className="text-gray-900 dark:text-white flex-shrink-0" />
             <span className="text-sm text-gray-600 dark:text-gray-300 truncate">
               {value || "-"}
             </span>
@@ -1202,6 +1290,7 @@ export default function EmployeeManagement() {
         field: "email",
         minWidth: 160,
         flex: 1,
+        hide: isMobile,
         cellStyle: { overflow: "hidden" },
         valueGetter: ({ data }) => data?.email || "-",
         filter: "agTextColumnFilter",
@@ -1223,13 +1312,14 @@ export default function EmployeeManagement() {
         field: "mobileNo",
         minWidth: 150,
         flex: 1,
+        hide: isMobile,
         filter: "agTextColumnFilter",
         cellRenderer: ({ data: emp }) => {
           if (!emp) return null;
 
           return (
             <div className="flex h-full w-full items-center gap-2 overflow-hidden">
-              <Phone size={14} className="text-green-500 flex-shrink-0" />
+              <Phone size={14} className="text-gray-900 dark:text-white flex-shrink-0" />
               <span className="text-sm text-gray-600 dark:text-gray-300 truncate">
                 {emp.mobileNo || "-"}
               </span>
@@ -1242,11 +1332,12 @@ export default function EmployeeManagement() {
         field: "dob",
         minWidth: 130,
         flex: 1,
+        hide: isMobile,
         filter: "agTextColumnFilter",
         valueFormatter: ({ value }) => formatDisplayDate(value) || "-",
         cellRenderer: ({ value }) => (
           <div className="flex h-full w-full items-center gap-2 overflow-hidden">
-            <Calendar size={14} className="text-amber-500 flex-shrink-0" />
+            <Calendar size={14} className="text-gray-900 dark:text-white flex-shrink-0" />
             <span className="text-sm text-gray-600 dark:text-gray-300 truncate">
               {formatDisplayDate(value) || "-"}
             </span>
@@ -1258,6 +1349,7 @@ export default function EmployeeManagement() {
         field: "address",
         minWidth: 220,
         flex: 1.2,
+        hide: isMobile,
         filter: "agTextColumnFilter",
         cellStyle: { overflow: "hidden" },
         cellRenderer: ({ value }) => (
@@ -1265,7 +1357,7 @@ export default function EmployeeManagement() {
             className="flex h-full w-full items-center gap-2 overflow-hidden"
             title={value || ""}
           >
-            <MapPin size={14} className="text-rose-500 flex-shrink-0" />
+            <MapPin size={14} className="text-gray-900 dark:text-white flex-shrink-0" />
             <span className="text-sm text-gray-600 dark:text-gray-300 truncate">
               {value || "-"}
             </span>
@@ -1277,10 +1369,11 @@ export default function EmployeeManagement() {
         field: "department",
         minWidth: 150,
         flex: 1,
+        hide: isMobile,
         filter: "agTextColumnFilter",
         cellRenderer: ({ value }) => (
           <div className="flex h-full w-full items-center gap-2 overflow-hidden">
-            <Building2 size={14} className="text-violet-500 flex-shrink-0" />
+            <Building2 size={14} className="text-gray-900 dark:text-white flex-shrink-0" />
             <span className="text-sm text-gray-600 dark:text-gray-300 truncate">
               {value || "-"}
             </span>
@@ -1292,10 +1385,11 @@ export default function EmployeeManagement() {
         field: "designation",
         minWidth: 150,
         flex: 1,
+        hide: isMobile,
         filter: "agTextColumnFilter",
         cellRenderer: ({ value }) => (
           <div className="flex h-full w-full items-center gap-2 overflow-hidden">
-            <Briefcase size={14} className="text-orange-500 flex-shrink-0" />
+            <Briefcase size={14} className="text-gray-900 dark:text-white flex-shrink-0" />
             <span className="text-sm text-gray-600 dark:text-gray-300 truncate">
               {value || "-"}
             </span>
@@ -1307,10 +1401,11 @@ export default function EmployeeManagement() {
         field: "city",
         minWidth: 130,
         flex: 1,
+        hide: isMobile,
         filter: "agTextColumnFilter",
         cellRenderer: ({ value }) => (
           <div className="flex h-full w-full items-center gap-2 overflow-hidden">
-            <MapPin size={14} className="text-rose-500 flex-shrink-0" />
+            <MapPin size={14} className="text-gray-900 dark:text-white flex-shrink-0" />
             <span className="text-sm text-gray-600 dark:text-gray-300 truncate">
               {value || "-"}
             </span>
@@ -1322,10 +1417,11 @@ export default function EmployeeManagement() {
         field: "district",
         minWidth: 130,
         flex: 1,
+        hide: isMobile,
         filter: "agTextColumnFilter",
         cellRenderer: ({ value }) => (
           <div className="flex h-full w-full items-center gap-2 overflow-hidden">
-            <MapPinned size={14} className="text-rose-500 flex-shrink-0" />
+            <MapPinned size={14} className="text-gray-900 dark:text-white flex-shrink-0" />
             <span className="text-sm text-gray-600 dark:text-gray-300 truncate">
               {value || "-"}
             </span>
@@ -1337,10 +1433,11 @@ export default function EmployeeManagement() {
         field: "state",
         minWidth: 130,
         flex: 1,
+        hide: isMobile,
         filter: "agTextColumnFilter",
         cellRenderer: ({ value }) => (
           <div className="flex h-full w-full items-center gap-2 overflow-hidden">
-            <Globe size={14} className="text-teal-500 flex-shrink-0" />
+            <Globe size={14} className="text-gray-900 dark:text-white flex-shrink-0" />
             <span className="text-sm text-gray-600 dark:text-gray-300 truncate">
               {value || "-"}
             </span>
@@ -1352,6 +1449,7 @@ export default function EmployeeManagement() {
         field: "pin",
         minWidth: 110,
         flex: 1,
+        hide: isMobile,
         filter: "agTextColumnFilter",
         cellClass:
           "employee-ag-cell font-mono text-gray-600 dark:text-gray-300",
@@ -1361,10 +1459,11 @@ export default function EmployeeManagement() {
         field: "aadharCardNo",
         minWidth: 160,
         flex: 1,
+        hide: isMobile,
         filter: "agTextColumnFilter",
         cellRenderer: ({ value }) => (
           <div className="flex h-full w-full items-center gap-2 overflow-hidden">
-            <Scan size={14} className="text-indigo-500 flex-shrink-0" />
+            <Scan size={14} className="text-gray-900 dark:text-white flex-shrink-0" />
             <span className="text-sm font-mono text-gray-600 dark:text-gray-300 truncate">
               {value || "-"}
             </span>
@@ -1376,10 +1475,11 @@ export default function EmployeeManagement() {
         field: "panCardNo",
         minWidth: 150,
         flex: 1,
+        hide: isMobile,
         filter: "agTextColumnFilter",
         cellRenderer: ({ value }) => (
           <div className="flex h-full w-full items-center gap-2 overflow-hidden">
-            <IdCard size={14} className="text-indigo-500 flex-shrink-0" />
+            <IdCard size={14} className="text-gray-900 dark:text-white flex-shrink-0" />
             <span className="text-sm font-mono text-gray-600 dark:text-gray-300 truncate">
               {value || "-"}
             </span>
@@ -1391,10 +1491,11 @@ export default function EmployeeManagement() {
         field: "bankName",
         minWidth: 150,
         flex: 1,
+        hide: isMobile,
         filter: "agTextColumnFilter",
         cellRenderer: ({ value }) => (
           <div className="flex h-full w-full items-center gap-2 overflow-hidden">
-            <Landmark size={14} className="text-blue-500 flex-shrink-0" />
+            <Landmark size={14} className="text-gray-900 dark:text-white flex-shrink-0" />
             <span className="text-sm text-gray-600 dark:text-gray-300 truncate">
               {value || "-"}
             </span>
@@ -1406,10 +1507,11 @@ export default function EmployeeManagement() {
         field: "bankIfscCode",
         minWidth: 150,
         flex: 1,
+        hide: isMobile,
         filter: "agTextColumnFilter",
         cellRenderer: ({ value }) => (
           <div className="flex h-full w-full items-center gap-2 overflow-hidden">
-            <KeyRound size={14} className="text-blue-500 flex-shrink-0" />
+            <KeyRound size={14} className="text-gray-900 dark:text-white flex-shrink-0" />
             <span className="text-sm font-mono text-gray-600 dark:text-gray-300 truncate">
               {value || "-"}
             </span>
@@ -1421,10 +1523,11 @@ export default function EmployeeManagement() {
         field: "bankAccountNo",
         minWidth: 160,
         flex: 1,
+        hide: isMobile,
         filter: "agTextColumnFilter",
         cellRenderer: ({ value }) => (
           <div className="flex h-full w-full items-center gap-2 overflow-hidden">
-            <Wallet size={14} className="text-blue-500 flex-shrink-0" />
+            <Wallet size={14} className="text-gray-900 dark:text-white flex-shrink-0" />
             <span className="text-sm font-mono text-gray-600 dark:text-gray-300 truncate">
               {value || "-"}
             </span>
@@ -1436,10 +1539,11 @@ export default function EmployeeManagement() {
         field: "pfNo",
         minWidth: 130,
         flex: 1,
+        hide: isMobile,
         filter: "agTextColumnFilter",
         cellRenderer: ({ value }) => (
           <div className="flex h-full w-full items-center gap-2 overflow-hidden">
-            <ShieldCheck size={14} className="text-green-600 flex-shrink-0" />
+            <ShieldCheck size={14} className="text-gray-900 dark:text-white flex-shrink-0" />
             <span className="text-sm font-mono text-gray-600 dark:text-gray-300 truncate">
               {value || "-"}
             </span>
@@ -1451,10 +1555,11 @@ export default function EmployeeManagement() {
         field: "esiNo",
         minWidth: 130,
         flex: 1,
+        hide: isMobile,
         filter: "agTextColumnFilter",
         cellRenderer: ({ value }) => (
           <div className="flex h-full w-full items-center gap-2 overflow-hidden">
-            <HeartPulse size={14} className="text-red-400 flex-shrink-0" />
+            <HeartPulse size={14} className="text-gray-900 dark:text-white flex-shrink-0" />
             <span className="text-sm font-mono text-gray-600 dark:text-gray-300 truncate">
               {value || "-"}
             </span>
@@ -1466,11 +1571,12 @@ export default function EmployeeManagement() {
         field: "joiningDate",
         minWidth: 140,
         flex: 1,
+        hide: isMobile,
         filter: "agTextColumnFilter",
         valueFormatter: ({ value }) => formatDisplayDate(value) || "-",
         cellRenderer: ({ value }) => (
           <div className="flex h-full w-full items-center gap-2 overflow-hidden">
-            <Calendar size={14} className="text-emerald-500 flex-shrink-0" />
+            <Calendar size={14} className="text-gray-900 dark:text-white flex-shrink-0" />
             <span className="text-sm text-gray-600 dark:text-gray-300 truncate">
               {formatDisplayDate(value) || "-"}
             </span>
@@ -1482,11 +1588,12 @@ export default function EmployeeManagement() {
         field: "resignationDate",
         minWidth: 150,
         flex: 1,
+        hide: isMobile,
         filter: "agTextColumnFilter",
         valueFormatter: ({ value }) => formatDisplayDate(value) || "-",
         cellRenderer: ({ value }) => (
           <div className="flex h-full w-full items-center gap-2 overflow-hidden">
-            <CalendarOff size={14} className="text-red-500 flex-shrink-0" />
+            <CalendarOff size={14} className="text-gray-900 dark:text-white flex-shrink-0" />
             <span className="text-sm text-gray-600 dark:text-gray-300 truncate">
               {formatDisplayDate(value) || "-"}
             </span>
@@ -1498,6 +1605,7 @@ export default function EmployeeManagement() {
         field: "companyLabel",
         minWidth: 150,
         flex: 1,
+        hide: isMobile,
         filter: false,
         cellRenderer: ({ data: emp }) =>
           emp ? <Badge variant="blue">{emp.companyLabel}</Badge> : null,
@@ -1507,6 +1615,7 @@ export default function EmployeeManagement() {
         field: "unit",
         minWidth: 140,
         flex: 1,
+        hide: isMobile,
         filter: "agTextColumnFilter",
         cellRenderer: ({ value }) => (
           <Badge variant="gray">{value || "-"}</Badge>
@@ -1517,6 +1626,7 @@ export default function EmployeeManagement() {
         field: "loginRole",
         minWidth: 160,
         flex: 1,
+        hide: isMobile,
         filter: "agTextColumnFilter",
         filterValueGetter: ({ data }) =>
           data?.loginRole === "superadmin" ? "Super Admin" : "Employee",
@@ -1544,6 +1654,7 @@ export default function EmployeeManagement() {
         field: "status",
         minWidth: 160,
         flex: 1,
+        hide: isMobile,
         filter: "agTextColumnFilter",
         cellRenderer: ({ data: emp }) =>
           emp ? (
@@ -1556,7 +1667,7 @@ export default function EmployeeManagement() {
         headerName: "Actions",
         field: "actions",
         pinned: "right",
-        minWidth: 160,
+        minWidth: 120,
         maxWidth: 170,
         sortable: false,
         filter: false,
@@ -1593,9 +1704,8 @@ export default function EmployeeManagement() {
           );
         },
       },
-    ],
-    [openDelete, openEdit, openView],
-  );
+    ];
+  }, [openDelete, openEdit, openView, isMobile]);
 
   if (initialLoading) {
     return (
@@ -1615,7 +1725,7 @@ export default function EmployeeManagement() {
 
         <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
           <div className="border-b border-gray-100 p-5 dark:border-gray-700">
-            <div className="grid grid-cols-6 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4">
               {[...Array(6)].map((_, index) => (
                 <div key={index} className="skeleton h-4 rounded" />
               ))}
@@ -1724,11 +1834,12 @@ export default function EmployeeManagement() {
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden shadow-sm">
         <div
           ref={gridContainerRef}
-          className={`employee-ag-grid ${
+          className={`employee-ag-grid w-full ${
             dark ? "ag-theme-alpine-dark" : "ag-theme-alpine"
           } ${headerFrozen ? "grid-header-frozen" : ""}`}
         >
           <AgGridReact
+            key={isMobile ? "mobile" : "desktop"}
             ref={gridRef}
             rowData={employees}
             columnDefs={columnDefs}
@@ -1737,7 +1848,7 @@ export default function EmployeeManagement() {
             getRowId={(params) => String(params.data.id)}
             maintainColumnOrder={true}
             domLayout="autoHeight"
-            rowHeight={64}
+            rowHeight={isMobile ? 84 : 64}
             headerHeight={48}
             popupParent={document.body}
             suppressCellFocus

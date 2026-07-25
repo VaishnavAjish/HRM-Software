@@ -28,7 +28,7 @@ export default function Dropdown({
 
       {open && (
         <div
-          className={`absolute z-20 mt-2 w-64 rounded-2xl border border-gray-100 bg-white p-2 shadow-xl dark:border-gray-700 dark:bg-gray-800 ${
+          className={`absolute z-20 mt-2 w-64 max-w-[calc(100vw-1.5rem)] rounded-2xl border border-gray-100 bg-white p-2 shadow-xl dark:border-gray-700 dark:bg-gray-800 ${
             align === "right" ? "right-0" : "left-0"
           }`}
         >

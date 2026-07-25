@@ -29,6 +29,7 @@ const NIDHI_IMPEX = {
     sheetName: "Nidhi Salary",
     headers: [
       "Month",
+      "Year",
       "Employee Code",
       "Employee Name",
       "Resignation Date",
@@ -79,6 +80,7 @@ const SILVER_STAR = {
     sheetName: "Silver Star Salary",
     headers: [
       "Month",
+      "Year",
       "Employee Code",
       "Employee Name",
       "Resignation Date",

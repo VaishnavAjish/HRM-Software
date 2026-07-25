@@ -59,7 +59,7 @@ function NidhiPayslipLayout({ data, className }) {
       style={{ fontFamily: "Arial, sans-serif" }}
     >
       <div className="border-[2px] border-black px-5 py-5 sm:px-7 sm:py-7">
-        <header className="grid grid-cols-[96px_1fr_96px] items-center gap-2 border-b-[2px] border-black pb-4">
+        <div className="grid grid-cols-[96px_1fr_96px] items-center gap-2 border-b-[2px] border-black pb-4">
           <div className="flex h-[78px] items-center justify-start overflow-hidden">
             <CompanyLogo company={data.company} large />
           </div>
@@ -83,7 +83,7 @@ function NidhiPayslipLayout({ data, className }) {
             </p>
           </div>
           <div />
-        </header>
+        </div>
 
         <section className="mt-4 border-[2px] border-black">
           <table className="w-full border-collapse text-[12px] leading-tight sm:text-[13px]">
@@ -316,7 +316,7 @@ function SilverPayslipLayout({ data, className }) {
       style={{ fontFamily: "Arial, sans-serif" }}
     >
       <div className="border border-black px-4 py-5 sm:px-6 sm:py-6">
-        <header className="grid grid-cols-[180px_1fr_180px] items-center gap-2 border-b border-black pb-4">
+        <div className="grid grid-cols-[180px_1fr_180px] items-center gap-2 border-b border-black pb-4">
           <div className="flex h-[82px] items-center justify-start overflow-hidden">
             <CompanyLogo company={data.company} large />
           </div>
@@ -340,7 +340,7 @@ function SilverPayslipLayout({ data, className }) {
             </p>
           </div>
           <div />
-        </header>
+        </div>
 
         <section className="mt-4 border border-black">
           <table className="w-full border-collapse text-[12px] leading-tight sm:text-[13px]">

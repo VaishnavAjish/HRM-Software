@@ -74,6 +74,19 @@
   --page-bg:    #f5fbff;
 }
 
+/* ─────────────────────────────────────────────────────────
+   Dark mode overrides for CSS custom properties
+   ───────────────────────────────────────────────────────── */
+
+.dark,
+.dark [data-theme="indigo"],
+.dark [data-theme="amber"],
+.dark [data-theme="rose"],
+.dark [data-theme="sky"] {
+  --page-bg: #111827;
+  --sidebar-bg: #0a0b14;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -131,6 +144,15 @@ body {
 }
 .dark ::-webkit-scrollbar-thumb {
   background: #475569;
+}
+
+/* Hide scrollbar utility */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
 .employee-ag-grid,
@@ -328,19 +350,42 @@ html, body {
   width: 100%;
 }
 
+/* Safe area inset custom properties.
+   Capacitor's SystemBars plugin injects these same --safe-area-inset-* names
+   as inline styles on <html> (Android WebView's env(safe-area-inset-*) is
+   unreliable pre-Chromium-140), so the env() below is only the fallback used
+   before that JS runs (or in a plain browser/iOS PWA with no Capacitor). */
+:root {
+  --safe-area-inset-top: env(safe-area-inset-top, 0px);
+  --safe-area-inset-right: env(safe-area-inset-right, 0px);
+  --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-inset-left: env(safe-area-inset-left, 0px);
+}
+
 /* Safe area inset adjustments for devices with notches / home indicators */
 header {
-  padding-top: env(safe-area-inset-top, 0px) !important;
-  height: calc(4rem + env(safe-area-inset-top, 0px)) !important;
+  padding-top: var(--safe-area-inset-top, 0px) !important;
+  height: calc(4rem + var(--safe-area-inset-top, 0px)) !important;
 }
 
 aside {
-  padding-top: env(safe-area-inset-top, 0px) !important;
-  padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+  padding-top: var(--safe-area-inset-top, 0px) !important;
+  padding-bottom: var(--safe-area-inset-bottom, 0px) !important;
 }
 
 main {
-  padding-bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px)) !important;
+  padding-bottom: calc(1.5rem + var(--safe-area-inset-bottom, 0px)) !important;
+}
+
+/* Full-screen modal/drawer overlays render as plain <div>s (not <header>/<aside>),
+   so they need their own safe-area clearance to avoid sitting under the status bar. */
+.modal-overlay {
+  padding-top: calc(1rem + var(--safe-area-inset-top, 0px)) !important;
+  padding-bottom: calc(1rem + var(--safe-area-inset-bottom, 0px)) !important;
+}
+
+.safe-top-bar {
+  padding-top: calc(0.5rem + var(--safe-area-inset-top, 0px)) !important;
 }
 
 /* Modal and layout overrides on mobile screens */
@@ -375,10 +420,8 @@ main {
     padding: 6px 12px !important;
   }
 
-  /* Compact grid paddings and heights for mobile */
   .employee-ag-grid, .salary-ag-grid {
     min-height: 350px !important;
-    max-height: 60vh !important;
   }
   
   .ag-theme-alpine, .ag-theme-alpine-dark {

@@ -28,6 +28,10 @@ import EmployeeDashboard from "./pages/employee/Dashboard";
 import Payslips from "./pages/employee/Payslips";
 import EmployeeForm16 from "./pages/employee/Form16";
 import Profile from "./pages/employee/Profile";
+import EmployeeAppointment from "./pages/employee/EmployeeAppointment";
+
+// Agent pages
+import AgentDashboard from "./pages/agent/AgentDashboard";
 
 function RouteLoader() {
   return (
@@ -50,9 +54,8 @@ function ProtectedRoute({ children, requiredRole }) {
   }
 
   if (requiredRole && user.role !== requiredRole) {
-    return (
-      <Navigate to={user.role === "admin" ? "/admin" : "/employee"} replace />
-    );
+    const fallbackPath = user.role === "admin" ? "/admin" : (user.role === "agent" ? "/agent" : "/employee");
+    return <Navigate to={fallbackPath} replace />;
   }
   return children;
 }
@@ -68,7 +71,7 @@ function AppRoutes() {
           initializing ? (
             <RouteLoader />
           ) : isAuthenticated ? (
-            <Navigate to={user.role === "admin" ? "/admin" : "/employee"} />
+            <Navigate to={user.role === "admin" ? "/admin" : (user.role === "agent" ? "/agent" : "/employee")} />
           ) : (
             <Login />
           )
@@ -83,7 +86,9 @@ function AppRoutes() {
               isAuthenticated
                 ? user.role === "admin"
                   ? "/admin"
-                  : "/employee"
+                  : user.role === "agent"
+                    ? "/agent"
+                    : "/employee"
                 : "/login"
             }
             replace
@@ -123,6 +128,21 @@ function AppRoutes() {
         <Route path="payslips" element={<Payslips />} />
         <Route path="form16" element={<EmployeeForm16 />} />
         <Route path="profile" element={<Profile />} />
+        <Route path="appointment" element={<EmployeeAppointment />} />
+      </Route>
+
+      {/* Agent routes */}
+      <Route
+        path="/agent"
+        element={
+          <ProtectedRoute requiredRole="agent">
+            <AppLayout />
+          </ProtectedRoute>
+        }
+      >
+        <Route index element={<AgentDashboard />} />
+        <Route path="trial-forms" element={<TrialForm />} />
+        <Route path="appointments" element={<Appointments />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/login" replace />} />

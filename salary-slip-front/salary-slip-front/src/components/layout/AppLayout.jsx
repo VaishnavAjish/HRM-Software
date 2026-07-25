@@ -18,46 +18,49 @@ const pageTitles = {
   "/employee/payslips": "Payslips",
   "/employee/attendance": "Attendance",
   "/employee/profile": "Profile",
+  "/agent": "Agent Portal",
+  "/agent/trial-forms": "Trial Form",
+  "/agent/appointments": "Appointment Form",
 };
 
-const SIDEBAR_WIDTH_KEY = "salaryms_sidebar_width";
-const MIN_SIDEBAR_WIDTH = 240;
-const MAX_SIDEBAR_WIDTH = 380;
-const DEFAULT_SIDEBAR_WIDTH = MAX_SIDEBAR_WIDTH;
+const SIDEBAR_WIDTH = 280;
 
 export default function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sidebarWidth, setSidebarWidth] = useState(() => {
-    const storedValue = localStorage.getItem(SIDEBAR_WIDTH_KEY);
-    const storedWidth = storedValue ? Number(storedValue) : NaN;
-    return Number.isFinite(storedWidth)
-      ? Math.min(Math.max(storedWidth, MIN_SIDEBAR_WIDTH), MAX_SIDEBAR_WIDTH)
-      : DEFAULT_SIDEBAR_WIDTH;
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    return localStorage.getItem("salaryms_sidebar_collapsed") === "true";
   });
+  
   const location = useLocation();
   const title = pageTitles[location.pathname] || "Dashboard";
 
   useEffect(() => {
-    localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidth));
-  }, [sidebarWidth]);
+    localStorage.setItem("salaryms_sidebar_collapsed", String(isCollapsed));
+  }, [isCollapsed]);
+
+  const activeWidth = isCollapsed ? 0 : SIDEBAR_WIDTH;
 
   return (
     <div
-      className="flex h-screen overflow-hidden dark:bg-gray-900"
-      style={{ backgroundColor: "var(--page-bg, #f9fafb)" }}
+      className="flex h-screen overflow-hidden bg-gray-50 dark:bg-gray-900"
     >
       <Sidebar
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
-        width={sidebarWidth}
-        onWidthChange={setSidebarWidth}
+        width={SIDEBAR_WIDTH}
+        isCollapsed={isCollapsed}
+        onCollapse={() => setIsCollapsed(!isCollapsed)}
       />
       <div
-        className="flex-1 flex flex-col min-w-0 lg:ml-[var(--sidebar-width)]"
-        style={{ "--sidebar-width": `${sidebarWidth}px` }}
+        className={`flex-1 flex flex-col min-w-0 transition-all duration-300 lg:ml-[var(--sidebar-width)] bg-gray-50 dark:bg-gray-900`}
+        style={{ "--sidebar-width": `${isCollapsed ? 80 : SIDEBAR_WIDTH}px` }}
       >
-        <Header onMenuClick={() => setSidebarOpen(true)} title={title} />
-        <main className="flex-1 overflow-y-auto p-4 md:p-6">
+        <Header 
+          onMenuClick={() => isCollapsed ? setIsCollapsed(false) : setSidebarOpen(true)} 
+          title={title} 
+          isCollapsed={isCollapsed} 
+        />
+        <main className="flex-1 overflow-y-auto p-4 md:p-6 bg-gray-50 dark:bg-gray-900">
           <Outlet />
         </main>
       </div>

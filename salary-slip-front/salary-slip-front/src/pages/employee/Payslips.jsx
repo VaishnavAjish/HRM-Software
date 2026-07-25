@@ -5,12 +5,14 @@ import Badge from "../../components/ui/Badge";
 import PayslipDocument from "../../components/payslip/PayslipDocument";
 import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";
+import useIsMobile from "../../hooks/useIsMobile";
 import {
   formatCurrency,
   formatDate,
 } from "../../utils/payslipUtils";
 import { salaryApi } from "../../utils/api";
 import { exportNodeToPdf } from "../../utils/pdfUtils";
+
 
 const MONTH_NAMES = [
   "January",
@@ -94,6 +96,7 @@ export default function Payslips() {
   const payslipRef = useRef(null);
   const [pdfLoading, setPdfLoading] = useState(false);
   const { user } = useAuth();
+  const isMobile = useIsMobile(768);
 
   const employee = {
     name: user?.name,
@@ -119,14 +122,14 @@ export default function Payslips() {
           user?.tokenType,
           page,
           15,
-          {},
+          { emp_code: user?.empCode ?? user?.emp_code },
           companyId,
         );
         if (cancelled) return;
-        const pagination = res?.data.salarySlipData;
-        const mapped = (pagination?.data ?? []).map(mapSlip);
+        const pagination = res?.pagination;
+        const mapped = (res?.data ?? []).map(mapSlip);
         setPayslips((prev) => (isFirst ? mapped : [...prev, ...mapped]));
-        setHasMore(!!pagination?.next_page_url);
+        setHasMore(!!pagination && pagination.current_page < pagination.last_page);
         if (isFirst && mapped.length > 0) setSelected(mapped[0]);
       } catch (err) {
         if (!cancelled) toast.error(err.message || "Failed to load payslips");
@@ -301,50 +304,70 @@ export default function Payslips() {
 
           <div className="max-h-[70vh] overflow-y-auto divide-y divide-gray-50 dark:divide-gray-700">
             {payslips.map((payslip) => (
-              <button
-                key={payslip.id}
-                onClick={() => setSelected(payslip)}
-                className={`flex w-full items-center gap-3 border-l-2 px-4 py-3.5 text-left transition-all ${
-                  selected?.id === payslip.id
-                    ? "border-blue-600 bg-blue-50 dark:bg-blue-900/20"
-                    : "border-transparent hover:bg-gray-50 dark:hover:bg-gray-700/50"
-                }`}
-              >
-                <div
-                  className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl ${
+              <div key={payslip.id}>
+                <button
+                  onClick={() => setSelected(payslip)}
+                  className={`flex w-full items-center gap-3 border-l-2 px-4 py-3.5 text-left transition-all ${
                     selected?.id === payslip.id
-                      ? "bg-blue-100 dark:bg-blue-900/40"
-                      : "bg-gray-100 dark:bg-gray-700"
+                      ? "border-blue-600 bg-blue-50 dark:bg-blue-900/20"
+                      : "border-transparent hover:bg-gray-50 dark:hover:bg-gray-700/50"
                   }`}
                 >
-                  <FileText
-                    size={15}
-                    className={
+                  <div
+                    className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl ${
                       selected?.id === payslip.id
-                        ? "text-blue-600"
-                        : "text-gray-500 dark:text-gray-400"
-                    }
-                  />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p
-                    className={`truncate text-sm font-semibold ${
-                      selected?.id === payslip.id
-                        ? "text-blue-700 dark:text-blue-400"
-                        : "text-gray-800 dark:text-gray-200"
+                        ? "bg-blue-100 dark:bg-blue-900/40"
+                        : "bg-gray-100 dark:bg-gray-700"
                     }`}
                   >
-                    {payslip.month}
-                  </p>
-                  <p className="mt-0.5 text-xs text-gray-400">
-                    {formatCurrency(payslip.amount)}
-                  </p>
-                </div>
-                <Badge variant={payslip.status === "Paid" ? "green" : "yellow"}>
-                  {payslip.status}
-                </Badge>
-              </button>
+                    <FileText
+                      size={15}
+                      className={
+                        selected?.id === payslip.id
+                          ? "text-blue-600"
+                          : "text-gray-500 dark:text-gray-400"
+                      }
+                    />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p
+                      className={`truncate text-sm font-semibold ${
+                        selected?.id === payslip.id
+                          ? "text-blue-700 dark:text-blue-400"
+                          : "text-gray-800 dark:text-gray-200"
+                      }`}
+                    >
+                      {payslip.month}
+                    </p>
+                    <p className="mt-0.5 text-xs text-gray-400">
+                      {formatCurrency(payslip.amount)}
+                    </p>
+                  </div>
+                  <Badge variant={payslip.status === "Paid" ? "green" : "yellow"}>
+                    {payslip.status}
+                  </Badge>
+                </button>
+
+                {/* Mobile inline download — shown only when this row is selected */}
+                {isMobile && selected?.id === payslip.id && (
+                  <div className="px-4 pb-3">
+                    <button
+                      onClick={handleDownload}
+                      disabled={detailLoading || !detail || pdfLoading}
+                      className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-blue-600/25 transition-colors hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      {pdfLoading ? (
+                        <Loader2 size={15} className="animate-spin" />
+                      ) : (
+                        <Download size={15} />
+                      )}
+                      {pdfLoading ? "Generating PDF…" : `Download ${payslip.month} Payslip`}
+                    </button>
+                  </div>
+                )}
+              </div>
             ))}
+
 
             {/* Sentinel triggers next page load when scrolled into view */}
             <div ref={sentinelRef} className="h-px" />
@@ -370,7 +393,7 @@ export default function Payslips() {
           </div>
         </div>
 
-        {selected && (
+        {selected && !isMobile && (
           <div className="overflow-hidden rounded-2xl border border-gray-200 shadow-sm dark:border-gray-700">
             {detailLoading ? (
               <div className="skeleton h-[600px] w-full" />
@@ -393,8 +416,8 @@ export default function Payslips() {
               </div>
             ) : null}
 
-            <div className="flex items-center justify-between gap-4 border-t border-gray-200 bg-gray-50 px-6 py-4 dark:border-gray-700 dark:bg-gray-800">
-              <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-4 border-t border-gray-200 bg-gray-50 px-6 py-4 dark:border-gray-700 dark:bg-gray-800">
+              <div className="flex min-w-0 items-center gap-3">
                 <div
                   className={`flex h-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg border border-gray-200 bg-white p-1 text-xs font-bold text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 ${
                     company?.id === "silver-star" ? "w-20" : "w-10"
@@ -412,8 +435,8 @@ export default function Payslips() {
                     company?.initials
                   )}
                 </div>
-                <div>
-                  <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">
                     {(detail ?? selected).name}
                   </p>
                   <p className="mt-0.5 text-[11px] font-medium uppercase tracking-[0.18em] text-gray-400">
@@ -438,6 +461,22 @@ export default function Payslips() {
                 {pdfLoading ? "Generating…" : "Download PDF"}
               </button>
             </div>
+          </div>
+        )}
+
+        {/* Hidden off-screen payslip renderer on mobile — needed so PDF export still works */}
+        {isMobile && detail && (
+          <div
+            ref={payslipRef}
+            aria-hidden="true"
+            style={{ position: "absolute", left: "-9999px", top: 0, width: "794px", pointerEvents: "none", zIndex: -1 }}
+          >
+            <PayslipDocument
+              emp={{}}
+              payslip={detail}
+              companyId={detail?.company_code || companyId}
+              className="!shadow-none"
+            />
           </div>
         )}
       </div>

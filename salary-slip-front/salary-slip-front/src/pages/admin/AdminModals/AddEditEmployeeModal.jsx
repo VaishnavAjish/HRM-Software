@@ -19,6 +19,8 @@ import {
 import Button from "../../../components/ui/Button";
 import { salaryApi } from "../../../utils/api";
 import { useAuth } from "../../../context/AuthContext";
+import { useCompany } from "../../../context/CompanyContext";
+import { COMPANY_OPTIONS } from "../../../config/companyConfig";
 import { formatDateInputValue, PasswordStrength } from "./EmployeeHelpers";
 
 const SECTIONS = [
@@ -84,6 +86,7 @@ export default function AddEditEmployeeModal({
   setIsDeptModalOpen,
 }) {
   const { user } = useAuth();
+  const { isAllCompanies } = useCompany();
   const isOpen = modal === "add" || modal === "edit";
   const [activeSection, setActiveSection] = useState(SECTIONS[0].key);
   const contentRef = useRef(null);
@@ -153,6 +156,12 @@ export default function AddEditEmployeeModal({
         key === "mobileNo" ? e.target.value.replace(/\D/g, "") : e.target.value,
     }));
 
+  // Changing company invalidates whatever unit was picked for the old one
+  // (each company has its own unit list), so clear it rather than leaving a
+  // stale/invalid unit silently selected.
+  const updateCompany = (e) =>
+    setForm((prev) => ({ ...prev, companyId: e.target.value, unit: "" }));
+
   const scrollToSection = (key) => {
     setActiveSection(key);
     sectionRefs.current[key]?.scrollIntoView({
@@ -187,7 +196,7 @@ export default function AddEditEmployeeModal({
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+    <div className="modal-overlay fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
       <div
         className="absolute inset-0"
         onClick={() => !saveLoading && setModal(null)}
@@ -227,9 +236,8 @@ export default function AddEditEmployeeModal({
           </button>
         </div>
 
-        {/* Body: sidebar + scrollable content */}
-        <div className="flex min-h-0 flex-1">
-          <div className="w-72 flex-shrink-0 space-y-2 overflow-y-auto border-r border-gray-200 p-4 dark:border-white/10">
+        <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+          <div className="w-full md:w-72 flex-shrink-0 overflow-x-auto scrollbar-hide border-b md:border-b-0 md:border-r border-gray-200 p-4 dark:border-white/10 flex flex-row md:flex-col gap-2">
             {SECTIONS.map(({ key, label, subtitle, icon: Icon }) => {
               const active = activeSection === key;
               return (
@@ -237,7 +245,7 @@ export default function AddEditEmployeeModal({
                   key={key}
                   type="button"
                   onClick={() => scrollToSection(key)}
-                  className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${
+                  className={`flex w-auto md:w-full flex-shrink-0 items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${
                     active
                       ? "bg-brand-600 text-white shadow-md shadow-brand-600/20"
                       : "text-gray-600 hover:bg-gray-100 dark:text-slate-300 dark:hover:bg-white/5"
@@ -389,12 +397,32 @@ export default function AddEditEmployeeModal({
                   placeholder: "e.g. Senior Executive",
                 })}
 
+                {form.loginRole !== "agent" && (
+                  <div>
+                    <Label required>Company</Label>
+                    <select
+                      value={form.companyId || ""}
+                      onChange={updateCompany}
+                      disabled={!isAllCompanies}
+                      className={`${fieldCls} ${!isAllCompanies ? "opacity-50 cursor-not-allowed bg-gray-100 dark:bg-gray-800" : ""}`}
+                    >
+                      <option value="">Select Company</option>
+                      {COMPANY_OPTIONS.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
                 <div>
                   <Label>Working Unit</Label>
                   <select
                     value={form.unit || ""}
                     onChange={update("unit")}
-                    className={fieldCls}
+                    disabled={form.loginRole === "master" || form.loginRole === "superadmin" || form.loginRole === "agent"}
+                    className={`${fieldCls} ${(form.loginRole === "master" || form.loginRole === "superadmin" || form.loginRole === "agent") ? "opacity-50 cursor-not-allowed bg-gray-100 dark:bg-gray-800" : ""}`}
                   >
                     <option value="">Select Unit</option>
                     {unitOptions.map((unit) => (
@@ -414,9 +442,28 @@ export default function AddEditEmployeeModal({
                   >
                     <option value="employee">Employee</option>
                     <option value="manager">Manager</option>
-                    <option value="superadmin">Super Admin</option>
+                    <option value="master">Master</option>
+                    {user?.rawRole === 0 && (
+                      <option value="superadmin">Super Admin</option>
+                    )}
+                    <option value="agent">Agent</option>
                   </select>
                 </div>
+
+                {form.loginRole === "agent" && user?.rawRole === 0 && (
+                  <div>
+                    <Label>Assign Company</Label>
+                    <select
+                      value={form.agentCompany || ""}
+                      onChange={update("agentCompany")}
+                      className={fieldCls}
+                    >
+                      <option value="">Both Companies (All)</option>
+                      <option value="nidhi-impex">Nidhi Impex</option>
+                      <option value="silverstar">Silver Star</option>
+                    </select>
+                  </div>
+                )}
 
                 <div>
                   <Label>Active Status</Label>
@@ -529,7 +576,7 @@ export default function AddEditEmployeeModal({
             services.
           </div>
 
-          <div className="ml-auto flex gap-3">
+          <div className="ml-auto flex flex-wrap justify-end gap-3">
             <Button
               variant="secondary"
               onClick={() => setModal(null)}

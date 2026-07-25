@@ -5,6 +5,7 @@ import { AgGridReact } from "ag-grid-react";
 import GridHeaderContextMenu from "../../components/ui/GridHeaderContextMenu";
 import useGridHeaderContextMenu from "../../hooks/useGridHeaderContextMenu";
 import { useTheme } from "../../context/ThemeContext";
+import useIsMobile from "../../hooks/useIsMobile";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 import {
@@ -12,6 +13,7 @@ import {
   ClipboardList,
   Download,
   Eye,
+  EyeOff,
   Loader2,
   Pencil,
   Phone,
@@ -24,6 +26,7 @@ import {
   X,
   FileText,
   Image as ImageIcon,
+  Trash2,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import Badge from "../../components/ui/Badge";
@@ -35,6 +38,7 @@ import { useCompany } from "../../context/CompanyContext";
 import { authApi } from "../../utils/api";
 import { exportNodeToPdf } from "../../utils/pdfUtils";
 import AppointmentModal from "../auth/AppointmentModal";
+import { COMPANY_OPTIONS, getCompanyUnits } from "../../config/companyConfig";
 
 const inputCls =
   "w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-brand-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white";
@@ -45,7 +49,9 @@ function firstPresent(...values) {
 
 function normalizeAppointment(item, index) {
   let displayStatus;
-  if (Number(item.checkbox) === 1) {
+  const isApproved = Boolean(item.emp_code) || Number(item.checkbox) === 1 || String(item.status) === '1' || item.status === 'Approved';
+  
+  if (isApproved) {
     displayStatus = "Approved";
   } else {
     const rawStatus = String(firstPresent(item.status, item.form_status, "0"));
@@ -102,6 +108,7 @@ function normalizeAppointment(item, index) {
       item.bank_ifsc,
     ),
     unitName: firstPresent(item.unitName, item.unit_name, item.unit),
+    agentName: firstPresent(item.agent?.name, item.agent?.email, "Admin"),
     status: displayStatus,
     salary: item.salary || "-",
     designation: item.designation || "-",
@@ -252,14 +259,12 @@ function StatusBadge({ status }) {
 }
 
 const FormRow = ({ label, value }) => (
-  <div className="flex items-end gap-2 py-1">
-    <label className="text-[13px] font-bold whitespace-nowrap w-[130px] shrink-0 text-black leading-normal">
+  <div className="flex flex-col sm:flex-row sm:items-end gap-1 sm:gap-2 py-1">
+    <label className="text-[13px] font-bold sm:whitespace-nowrap w-full sm:w-[130px] sm:shrink-0 text-black leading-normal">
       {label}
     </label>
-    <span className="font-bold text-black">:</span>
-    <span className="border-b border-black flex-grow min-h-[24px] pb-[3px] px-1 text-[13px] font-medium uppercase leading-normal overflow-visible whitespace-nowrap text-black">
-      {value || ""}
-    </span>
+    <span className="font-bold text-black hidden sm:inline">:</span>
+    <span className="text-[13px] text-black w-full break-words">{value || ""}</span>
   </div>
 );
 
@@ -285,7 +290,7 @@ function DocLightbox({ doc, onClose }) {
   if (!doc) return null;
   return createPortal(
     <div
-      className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+      className="modal-overlay fixed inset-0 z-[2000] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
       onClick={onClose}
     >
       <div
@@ -324,7 +329,7 @@ function DocumentsSection({ documents }) {
     <>
       <DocLightbox doc={lightbox} onClose={() => setLightbox(null)} />
       <div className="mt-6 border-t border-gray-200 pt-5">
-        <div className="flex items-center gap-2 mb-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 mb-4">
           <FileText size={15} className="text-brand-600" />
           <h3 className="text-sm font-bold text-gray-800">
             Uploaded Documents
@@ -385,11 +390,130 @@ function DocumentsSection({ documents }) {
   );
 }
 
+const DetailItem = ({ label, value }) => (
+  <div className="flex flex-col gap-1 px-4 py-3 bg-gray-50 dark:bg-gray-700/40 rounded-xl border border-gray-100/50 dark:border-gray-700/30">
+    <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">{label}</span>
+    <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">{value || "—"}</span>
+  </div>
+);
+
+const FamilyCard = ({ member, index }) => (
+  <div className="flex flex-col gap-2.5 p-4 bg-gray-50 dark:bg-gray-700/40 rounded-xl border border-gray-100 dark:border-gray-700/50">
+    <div className="flex justify-between items-center border-b border-gray-100 dark:border-gray-700 pb-1.5">
+      <span className="text-[10px] font-bold text-gray-400 uppercase">Member #{index + 1}</span>
+      {member.relation && <Badge variant="gray" className="capitalize">{member.relation}</Badge>}
+    </div>
+    <div className="grid grid-cols-2 gap-3">
+      <div>
+        <p className="text-[9px] text-gray-400 font-bold uppercase">Name</p>
+        <p className="text-xs font-bold text-gray-800 dark:text-gray-200 capitalize">{member.name?.toLowerCase() || "—"}</p>
+      </div>
+      <div>
+        <p className="text-[9px] text-gray-400 font-bold uppercase">Occupation</p>
+        <p className="text-xs font-bold text-gray-800 dark:text-gray-200 capitalize">{member.occupation || "—"}</p>
+      </div>
+      <div>
+        <p className="text-[9px] text-gray-400 font-bold uppercase">D.O.B.</p>
+        <p className="text-xs font-bold text-gray-800 dark:text-gray-200">{formatDate(member.dob)}</p>
+      </div>
+      <div>
+        <p className="text-[9px] text-gray-400 font-bold uppercase">Mobile</p>
+        <p className="text-xs font-bold text-gray-800 dark:text-gray-200">{member.mobile || "—"}</p>
+      </div>
+    </div>
+  </div>
+);
+
+const ResponsiveDetailsForm = ({ data }) => {
+  const activeMembers = Array.isArray(data.members) ? data.members.filter(m => m.name) : [];
+  
+  return (
+    <div className="space-y-6">
+      {/* Top Profile Card */}
+      <div className="flex flex-col sm:flex-row items-center gap-5 p-5 bg-gray-50 dark:bg-gray-800/40 rounded-2xl border border-gray-100 dark:border-gray-800">
+        <div className="w-24 h-32 rounded-xl border border-gray-200 dark:border-gray-700 flex items-center justify-center bg-gray-100 dark:bg-gray-800 overflow-hidden flex-shrink-0">
+          {data.photo ? (
+            <img src={data.photo} alt="Profile" className="w-full h-full object-cover" />
+          ) : (
+            <span className="text-xs font-bold text-gray-400">NO PHOTO</span>
+          )}
+        </div>
+        <div className="text-center sm:text-left min-w-0 flex-1">
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white capitalize">{data.fullName?.toLowerCase()}</h2>
+          <p className="text-sm font-semibold text-brand-600 dark:text-brand-400 mt-1">{data.designation} · {data.department}</p>
+          <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mt-3">
+            <Badge variant="gray">Code: {data.empCode || "N/A"}</Badge>
+            <Badge variant="gray">Punching: {data.punchingNo || "N/A"}</Badge>
+            <Badge variant="gray">Unit: {data.unitName || "N/A"}</Badge>
+            <Badge variant={data.agentName === "Admin" ? "gray" : "blue"}>
+              Added By: {data.agentName || "N/A"}
+            </Badge>
+          </div>
+        </div>
+      </div>
+
+      {/* Grid of details */}
+      <div>
+        <h3 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">Employment & Personal Details</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+          <DetailItem label="Joining Date" value={formatDate(data.joiningDate)} />
+          <DetailItem label="Manager Name" value={data.managerName} />
+          <DetailItem label="Salary" value={data.salary} />
+          <DetailItem label="Emp. Mobile" value={data.empMobile} />
+          <DetailItem label="Emp. Whatsapp" value={data.empWhatsapp} />
+          <DetailItem label="Email" value={data.email} />
+          <DetailItem label="Birth Date" value={formatDate(data.dob)} />
+          <DetailItem label="Birth Place" value={data.birthPlace} />
+          <DetailItem label="Gender" value={data.gender} />
+          <DetailItem label="Cast" value={data.cast} />
+          <DetailItem label="Marital Status" value={data.maritalStatus} />
+          <DetailItem label="Blood Group" value={data.bloodGroup} />
+          <DetailItem label="Reference Name" value={data.refName} />
+          <DetailItem label="Reference Mobile" value={data.refMobile} />
+          <DetailItem label="Aadhar Card No" value={data.aadharNo} />
+          <DetailItem label="PAN Card No" value={data.panNo} />
+          <DetailItem label="Bank Name" value={data.bankName} />
+          <DetailItem label="Bank Account No" value={data.accountNo} />
+          <DetailItem label="Bank IFSC Code" value={data.ifscCode} />
+          <DetailItem label="Education" value={data.education} />
+        </div>
+      </div>
+
+      {/* Address */}
+      <div>
+        <h3 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">Residential Address</h3>
+        <div className="p-4 bg-gray-50 dark:bg-gray-700/40 rounded-xl border border-gray-100 dark:border-gray-850">
+          <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">{data.address || "N/A"}</p>
+          <div className="flex flex-wrap gap-x-6 gap-y-2 mt-2.5 text-xs text-gray-400 font-medium">
+            <span>Village: {data.village || "—"}</span>
+            <span>Taluka: {data.taluka || "—"}</span>
+            <span>District: {data.district || "—"}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Family Members */}
+      <div>
+        <h3 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">Family Members</h3>
+        {activeMembers.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {activeMembers.map((m, i) => (
+              <FamilyCard key={i} member={m} index={i} />
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-gray-400 italic">No family members registered.</p>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const PrintableForm = ({ data, formRef }) => (
   <div
     ref={formRef}
     data-appointment-print-form
-    className="bg-white p-6 text-black border border-dotted border-gray-600 mx-auto w-full max-w-[850px] shadow-sm"
+    className="bg-white p-6 text-black border border-dotted border-gray-600 mx-auto w-full min-w-[720px] max-w-[850px] shadow-sm"
   >
     <div className="text-center mb-0">
       <h1 className="inline-block text-xl font-black tracking-widest uppercase text-black">
@@ -398,8 +522,8 @@ const PrintableForm = ({ data, formRef }) => (
     </div>
     <div className="border-t-2 border-black mt-2 mb-5" />
 
-    <div className="grid grid-cols-12 gap-6 items-start">
-      <div className="col-span-5 flex flex-col items-center">
+    <div className="flex flex-col md:grid md:grid-cols-12 gap-6 items-start">
+      <div className="md:col-span-5 flex flex-col items-center">
         <div className="w-44 h-56 border border-gray-400 flex items-center justify-center bg-gray-50 overflow-hidden">
           {data.photo ? (
             <img
@@ -414,7 +538,7 @@ const PrintableForm = ({ data, formRef }) => (
           )}
         </div>
       </div>
-      <div className="col-span-7 space-y-3">
+      <div className="md:col-span-7 space-y-3 w-full">
         <FormRow label="Emp. Code" value={data.empCode} />
         <FormRow label="Joining Date" value={formatDate(data.joiningDate)} />
         <FormRow label="Department" value={data.department} />
@@ -427,32 +551,32 @@ const PrintableForm = ({ data, formRef }) => (
     </div>
 
     <div className="mt-4 space-y-2.5">
-      <div className="flex items-center gap-2">
-        <label className="font-bold w-[130px] shrink-0 text-[13px] text-black">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+        <label className="font-bold w-full sm:w-[130px] sm:shrink-0 text-[13px] text-black">
           Punching No
         </label>
-        <span className="font-bold text-black">:</span>
-        <span className="border-b border-black w-48 min-h-[24px] pb-[3px] px-1 text-[13px] font-medium leading-normal text-black">
+        <span className="font-bold text-black hidden sm:inline">:</span>
+        <span className="text-[13px] text-black w-full">
           {data.punchingNo}
         </span>
       </div>
-      <div className="flex items-start gap-2">
-        <label className="font-bold w-[130px] shrink-0 pt-1 text-[13px] text-black">
+      <div className="flex flex-col sm:flex-row items-start gap-1 sm:gap-2">
+        <label className="font-bold w-full sm:w-[130px] sm:shrink-0 pt-1 text-[13px] text-black">
           Name
         </label>
-        <span className="font-bold pt-1 text-black">:</span>
-        <div className="flex-grow border-b border-black text-[13px] font-bold uppercase py-1 text-black">
+        <span className="font-bold pt-1 text-black hidden sm:inline">:</span>
+        <div className="flex-grow text-[13px] font-bold uppercase py-1 text-black">
           {data.fullName}
         </div>
       </div>
       <FormRow label="Email" value={data.email} />
       <FormRow label="Resident Add" value={data.address} />
-      <div className="grid grid-cols-3 gap-6 w-full">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 w-full">
         <FormInline label="Village" value={data.village} />
         <FormInline label="Taluka" value={data.taluka} />
         <FormInline label="District" value={data.district} />
       </div>
-      <div className="grid grid-cols-2 gap-x-8 gap-y-1.5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-1.5">
         <FormRow label="Birth Date" value={formatDate(data.dob)} />
         <FormRow label="Birth Place" value={data.birthPlace} />
         <FormRow label="Gender" value={data.gender} />
@@ -470,8 +594,11 @@ const PrintableForm = ({ data, formRef }) => (
       </div>
     </div>
 
-    <div className="mt-4">
-      <table className="w-full border-collapse border border-black text-[13px] text-black">
+    <div
+      className="mt-4 overflow-x-auto pb-4"
+      style={{ breakInside: "avoid", pageBreakInside: "avoid" }}
+    >
+      <table className="w-full border-collapse border border-black text-[13px] min-w-[600px] text-black">
         <thead>
           <tr className="font-bold bg-gray-50">
             <th className="border border-black p-1 w-12 text-center">Sr No</th>
@@ -509,45 +636,291 @@ const PrintableForm = ({ data, formRef }) => (
       </table>
     </div>
 
-    <div className="mt-6 grid grid-cols-3 gap-8 font-bold text-[13px] text-black">
-      <div>
-        <p className="mb-1">Check By, Manager</p>
-        <div className="border-b border-black w-full h-8" />
+    {/* Kept as one unit so a near-fit page never strands the unit/signature
+        line alone on a second, otherwise-blank sheet. */}
+    <div style={{ breakInside: "avoid", pageBreakInside: "avoid" }}>
+      <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-6 sm:gap-8 font-bold text-[13px] text-black">
+        <div>
+          <p className="mb-1">Check By, Manager</p>
+          <div className="border-b border-black w-full h-8" />
+        </div>
+        <div className="text-center">
+          <p className="mb-1">Confirm By,</p>
+          <div className="border-b border-black w-full h-8" />
+          <p className="mt-1 font-normal">(Ketanbhai)</p>
+        </div>
+        <div className="text-center">
+          <p className="mb-1">Auth. By,</p>
+          <div className="border-b border-black w-full h-8" />
+          <p className="mt-1 font-normal">HR Dept</p>
+        </div>
       </div>
-      <div className="text-center">
-        <p className="mb-1">Confirm By,</p>
-        <div className="border-b border-black w-full h-8" />
-        <p className="mt-1 font-normal">(Ketanbhai)</p>
-      </div>
-      <div className="text-center">
-        <p className="mb-1">Auth. By,</p>
-        <div className="border-b border-black w-full h-8" />
-        <p className="mt-1 font-normal">HR Dept</p>
-      </div>
-    </div>
 
-    <div className="mt-6 flex justify-between items-end gap-10">
-      <div className="flex gap-2 items-end flex-1">
-        <span className="font-bold whitespace-nowrap uppercase text-[12px] text-black">
-          UNIT NAME :
-        </span>
-        <span className="border-b border-black flex-grow min-h-[26px] pb-[3px] text-[13px] font-bold uppercase px-1">
-          {data.unitName}
-        </span>
-      </div>
-      <div className="flex gap-2 items-end flex-1">
-        <span className="font-bold whitespace-nowrap uppercase text-[12px] text-black">
-          Emp. Signature :
-        </span>
-        <span className="border-b border-black flex-grow min-h-[26px] pb-[3px] text-[13px] font-bold uppercase px-1">
-          {data.signature}
-        </span>
+      <div className="mt-6 flex justify-between items-end gap-10">
+        <div className="flex gap-2 items-end flex-1">
+          <span className="font-bold whitespace-nowrap uppercase text-[12px] text-black">
+            UNIT NAME :
+          </span>
+          <span className="border-b border-black flex-grow min-h-[26px] pb-[3px] text-[13px] font-bold uppercase px-1">
+            {data.unitName}
+          </span>
+        </div>
+        <div className="flex gap-2 items-end flex-1">
+          <span className="font-bold whitespace-nowrap uppercase text-[12px] text-black">
+            Emp. Signature :
+          </span>
+          <span className="border-b border-black flex-grow min-h-[26px] pb-[3px] text-[13px] font-bold uppercase px-1">
+            {data.signature}
+          </span>
+        </div>
       </div>
     </div>
   </div>
 );
 
+function CreateCandidateModal({ isOpen, onClose, onSuccess }) {
+  const { user } = useAuth();
+  const { companyOptions } = useCompany();
+  const [formData, setFormData] = useState({ name: "", email: "", mobile_number: "", password: "", company_code: "", unit: "" });
+  const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [agents, setAgents] = useState([]);
+  const [agentsLoading, setAgentsLoading] = useState(false);
+  const [editingAgentId, setEditingAgentId] = useState(null);
+
+  const fetchAgents = () => {
+    setAgentsLoading(true);
+    authApi.getAgents(user?.accessToken, user?.tokenType)
+      .then(res => setAgents(res.data || []))
+      .catch(() => toast.error("Failed to load agents"))
+      .finally(() => setAgentsLoading(false));
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      fetchAgents();
+      setEditingAgentId(null);
+      setFormData({ name: "", email: "", mobile_number: "", password: "", company_code: "", unit: "" });
+    }
+  }, [isOpen, user]);
+
+  const availableUnits = formData.company_code ? getCompanyUnits(formData.company_code) : [];
+
+  const handleEditAgent = (agent) => {
+    setEditingAgentId(agent.id);
+    setFormData({
+      name: agent.name || "",
+      email: agent.email || "",
+      mobile_number: agent.mobile_number || "",
+      password: "",
+      company_code: agent.company_code || "",
+      unit: agent.unit || "",
+    });
+  };
+
+  const handleDeleteAgent = async (id) => {
+    if (!window.confirm("Are you sure you want to delete this agent?")) return;
+    try {
+      await authApi.deleteAgent(id, user?.accessToken, user?.tokenType);
+      toast.success("Agent deleted successfully");
+      fetchAgents();
+      if (editingAgentId === id) {
+        setEditingAgentId(null);
+        setFormData({ name: "", email: "", mobile_number: "", password: "", company_code: "", unit: "" });
+      }
+    } catch (error) {
+      toast.error(error.message || "Failed to delete agent");
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!formData.name || !formData.email || !formData.mobile_number || (!editingAgentId && !formData.password) || !formData.company_code) {
+      return toast.error("All required fields must be filled");
+    }
+
+    const exists = agents.some(a => 
+      a.id !== editingAgentId && 
+      (a.email === formData.email || a.mobile_number === formData.mobile_number)
+    );
+    if (exists) {
+        return toast.error("An agent with this email or mobile number already exists.");
+    }
+
+    setLoading(true);
+    try {
+      if (editingAgentId) {
+        await authApi.updateAgent(editingAgentId, formData, user?.accessToken, user?.tokenType);
+        toast.success("Agent account updated successfully");
+      } else {
+        await authApi.createCandidateAccount(formData, user?.accessToken, user?.tokenType);
+        toast.success("Candidate account created successfully");
+      }
+      
+      setFormData({ name: "", email: "", mobile_number: "", password: "", company_code: "", unit: "" });
+      setEditingAgentId(null);
+      fetchAgents();
+      
+      onSuccess();
+    } catch (error) {
+      toast.error(error.message || "Failed to save account");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title={editingAgentId ? "Edit Candidate Account" : "Create Candidate Account"} size="xl">
+      <div className="flex flex-col md:flex-row gap-6">
+        <form onSubmit={handleSubmit} className="flex-1 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Name <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              className={inputCls}
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              placeholder="John Doe"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Email <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="email"
+              className={inputCls}
+              value={formData.email}
+              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              placeholder="john@example.com"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Mobile Number <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              className={inputCls}
+              value={formData.mobile_number}
+              onChange={(e) => setFormData({ ...formData, mobile_number: e.target.value })}
+              placeholder="9876543210"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Password {editingAgentId ? "" : <span className="text-red-500">*</span>}
+            </label>
+            <div className="relative">
+              <input
+                type={showPassword ? "text" : "password"}
+                className={inputCls}
+                value={formData.password}
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                placeholder={editingAgentId ? "Leave blank to keep unchanged" : "Min. 6 characters"}
+                required={!editingAgentId}
+                minLength={6}
+              />
+              <button
+                type="button"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                onClick={() => setShowPassword(!showPassword)}
+              >
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Company <span className="text-red-500">*</span>
+            </label>
+            <select
+              className={inputCls}
+              value={formData.company_code}
+              onChange={(e) => setFormData({ ...formData, company_code: e.target.value, unit: "" })}
+              required
+            >
+              <option value="">Select Company</option>
+              {companyOptions.map((company) => (
+                <option key={company.id} value={company.id}>{company.label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Branch (leave blank for all branches)
+            </label>
+            <select
+              className={inputCls}
+              value={formData.unit}
+              onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
+              disabled={!formData.company_code}
+            >
+              <option value="">Select Branch</option>
+              {availableUnits.map((u) => (
+                <option key={u} value={u}>{u}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-wrap justify-end gap-3 pt-4 border-t border-gray-100 dark:border-gray-700">
+            {editingAgentId && (
+              <Button variant="outline" onClick={() => {
+                setEditingAgentId(null);
+                setFormData({ name: "", email: "", mobile_number: "", password: "", company_code: "", unit: "" });
+              }} type="button">Cancel Edit</Button>
+            )}
+            <Button variant="secondary" onClick={onClose} type="button">Close</Button>
+            <Button variant="primary" type="submit" disabled={loading} icon={loading ? <Loader2 className="animate-spin" size={16} /> : null}>
+              {loading ? "Saving..." : (editingAgentId ? "Update Account" : "Create Account")}
+            </Button>
+          </div>
+        </form>
+
+        <div className="w-full md:w-72 border-t md:border-t-0 md:border-l border-gray-100 dark:border-gray-700 pt-4 md:pt-0 md:pl-6 flex flex-col">
+          <h4 className="font-bold text-sm text-gray-800 dark:text-gray-200 mb-3 pb-2 border-b border-gray-100 dark:border-gray-700">Existing Agents</h4>
+          <div className="flex-1 overflow-y-auto max-h-[50vh] pr-2 space-y-3">
+            {agentsLoading ? (
+              <div className="flex justify-center py-4"><Loader2 className="animate-spin text-gray-400" size={20} /></div>
+            ) : agents.length === 0 ? (
+              <p className="text-xs text-gray-400 text-center py-4">No agents found</p>
+            ) : (
+              agents.map(agent => (
+                <div key={agent.id} className={`p-3 rounded-xl border relative group transition-colors ${editingAgentId === agent.id ? "bg-blue-50/50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800" : "bg-gray-50 dark:bg-gray-700/40 border-gray-100 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-500"}`}>
+                  <div className="flex justify-between items-start gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-sm text-gray-900 dark:text-gray-100 truncate">{agent.name}</p>
+                      <p className="text-xs text-gray-500 mt-0.5 truncate">{agent.email}</p>
+                      <p className="text-xs text-gray-500">{agent.mobile_number}</p>
+                    </div>
+                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                      <button type="button" onClick={() => handleEditAgent(agent)} className="p-1.5 text-blue-600 hover:bg-blue-100 dark:text-blue-400 dark:hover:bg-blue-900/50 rounded-lg" title="Edit">
+                        <Pencil size={14} />
+                      </button>
+                      <button type="button" onClick={() => handleDeleteAgent(agent.id)} className="p-1.5 text-red-600 hover:bg-red-100 dark:text-red-400 dark:hover:bg-red-900/50 rounded-lg" title="Delete">
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+                  {agent.company_code && <Badge variant="gray" className="mt-2 text-[10px] block w-fit">{agent.company_code} - {agent.unit}</Badge>}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 export default function Appointments() {
+  const isMobile = useIsMobile();
   const { user } = useAuth();
   const { companyScope, scopeKey } = useCompany();
   const [loading, setLoading] = useState(false);
@@ -556,6 +929,7 @@ export default function Appointments() {
   const [appointments, setAppointments] = useState([]);
   const [selected, setSelected] = useState(null);
   const [gridLightbox, setGridLightbox] = useState(null);
+  const [createAccountOpen, setCreateAccountOpen] = useState(false);
   const [addFormOpen, setAddFormOpen] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
   const [search, setSearch] = useState("");
@@ -751,7 +1125,12 @@ export default function Appointments() {
               -webkit-print-color-adjust: exact;
             }
             [data-appointment-print-form] {
-              zoom: 0.84;
+              /* 0.84 still overflowed a single A4 page for most real
+                 submissions (longer address/family-member rows push it
+                 past one sheet), stranding the unit/signature line alone
+                 on a second, otherwise-blank page. 0.72 leaves enough
+                 headroom to fit reliably on one page. */
+              zoom: 0.72;
               width: 850px !important;
               max-width: none !important;
               box-shadow: none !important;
@@ -849,8 +1228,95 @@ export default function Appointments() {
     }
   };
 
-  const columnDefs = useMemo(
-    () => [
+  const columnDefs = useMemo(() => {
+    if (isMobile) {
+      return [
+        {
+          headerName: "Appointment Record",
+          field: "mobileDetails",
+          flex: 1,
+          cellRenderer: ({ data }) => {
+            if (!data) return null;
+            return (
+              <div className="flex flex-col justify-center py-2 gap-2 h-full w-full">
+                <div className="flex justify-between items-center w-full pr-2 gap-2">
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <div className="h-7 w-7 rounded-lg overflow-hidden bg-slate-100 border border-slate-200 dark:border-gray-600 flex-shrink-0">
+                      <img
+                        src={data.photo}
+                        alt=""
+                        className="h-full w-full object-cover"
+                        onError={(e) => {
+                          e.target.src =
+                            "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100";
+                        }}
+                      />
+                    </div>
+                    <span className="min-w-0 flex-1 truncate font-semibold text-sm text-gray-900 dark:text-white capitalize">
+                      {data.fullName?.toLowerCase()}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between gap-2 w-full pr-2">
+                  <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                    <button
+                      onClick={() => setSelected(data)}
+                      className="flex min-w-0 flex-1 justify-center items-center gap-1.5 rounded-lg bg-brand-50 px-2 py-2 text-xs font-semibold text-brand-600 transition hover:bg-brand-100 min-h-[36px]"
+                    >
+                      <Eye size={13} />
+                      View
+                    </button>
+                    {user?.role !== 'agent' && (
+                      <>
+                        <button
+                          onClick={() => handleStatusUpdate(data.id, true)}
+                          disabled={
+                            Boolean(statusLoading[data.id]) || data.status === "Approved"
+                          }
+                          className={`flex min-w-0 flex-1 justify-center items-center gap-1.5 rounded-lg px-2 py-2 text-xs font-semibold transition min-h-[36px] ${
+                            data.status === "Approved"
+                              ? "bg-green-600 text-white cursor-default"
+                              : "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 hover:bg-green-100 disabled:opacity-50"
+                          }`}
+                        >
+                          {statusLoading[data.id] === "Approved" ? (
+                            <Loader2 size={13} className="animate-spin" />
+                          ) : (
+                            <CheckCircle2 size={13} />
+                          )}
+                          Approve
+                        </button>
+                        <button
+                          onClick={() => handleStatusUpdate(data.id, false)}
+                          disabled={
+                            Boolean(statusLoading[data.id]) || data.status === "Rejected"
+                          }
+                          className={`flex min-w-0 flex-1 justify-center items-center gap-1.5 rounded-lg px-2 py-2 text-xs font-semibold transition min-h-[36px] ${
+                            data.status === "Rejected"
+                              ? "bg-red-600 text-white cursor-default"
+                              : "bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 hover:bg-red-100 disabled:opacity-50"
+                          }`}
+                        >
+                          {statusLoading[data.id] === "Rejected" ? (
+                            <Loader2 size={13} className="animate-spin" />
+                          ) : (
+                            <XCircle size={13} />
+                          )}
+                          Reject
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  <StatusBadge status={data.status} />
+                </div>
+              </div>
+            );
+          },
+        },
+      ];
+    }
+
+    return [
       {
         headerName: "Employee",
         field: "fullName",
@@ -952,6 +1418,16 @@ export default function Appointments() {
         width: 110,
         cellRenderer: ({ value }) => (
           <Badge variant="gray">{value || "—"}</Badge>
+        ),
+      },
+      {
+        headerName: "Added By",
+        field: "agentName",
+        minWidth: 140,
+        cellRenderer: ({ value }) => (
+          <Badge variant={value === "Admin" ? "gray" : "blue"}>
+            {value || "—"}
+          </Badge>
         ),
       },
       {
@@ -1086,7 +1562,7 @@ export default function Appointments() {
       },
       {
         headerName: "Family Members",
-        field: "members",
+        field: "members", valueFormatter: () => "Data",
         minWidth: 320,
         autoHeight: true,
         wrapText: true,
@@ -1095,8 +1571,8 @@ export default function Appointments() {
       },
       {
         headerName: "Aadhar Image",
-        field: "documents",
         colId: "adharImage",
+        valueGetter: () => "",
         width: 110,
         sortable: false,
         filter: false,
@@ -1110,8 +1586,8 @@ export default function Appointments() {
       },
       {
         headerName: "PAN Image",
-        field: "documents",
         colId: "panImage",
+        valueGetter: () => "",
         width: 110,
         sortable: false,
         filter: false,
@@ -1125,8 +1601,8 @@ export default function Appointments() {
       },
       {
         headerName: "Cheque Image",
-        field: "documents",
         colId: "chequeImage",
+        valueGetter: () => "",
         width: 110,
         sortable: false,
         filter: false,
@@ -1163,7 +1639,7 @@ export default function Appointments() {
         headerName: "Actions",
         field: "id",
         pinned: "right",
-        width: 270,
+        width: user?.role === 'agent' ? 100 : 270,
         sortable: false,
         filter: false,
         cellRenderer: ({ data }) => (
@@ -1176,48 +1652,51 @@ export default function Appointments() {
             >
               View
             </Button>
-            <button
-              onClick={() => handleStatusUpdate(data.id, true)}
-              disabled={
-                Boolean(statusLoading[data.id]) || data.status === "Approved"
-              }
-              className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold transition ${
-                data.status === "Approved"
-                  ? "bg-green-600 text-white cursor-default"
-                  : "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 hover:bg-green-100 disabled:opacity-50"
-              }`}
-            >
-              {statusLoading[data.id] === "Approved" ? (
-                <Loader2 size={11} className="animate-spin" />
-              ) : (
-                <CheckCircle2 size={11} />
-              )}
-              Approve
-            </button>
-            <button
-              onClick={() => handleStatusUpdate(data.id, false)}
-              disabled={
-                Boolean(statusLoading[data.id]) || data.status === "Rejected"
-              }
-              className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold transition ${
-                data.status === "Rejected"
-                  ? "bg-red-600 text-white cursor-default"
-                  : "bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 hover:bg-red-100 disabled:opacity-50"
-              }`}
-            >
-              {statusLoading[data.id] === "Rejected" ? (
-                <Loader2 size={11} className="animate-spin" />
-              ) : (
-                <XCircle size={11} />
-              )}
-              Reject
-            </button>
+            {user?.role !== 'agent' && (
+              <>
+                <button
+                  onClick={() => handleStatusUpdate(data.id, true)}
+                  disabled={
+                    Boolean(statusLoading[data.id]) || data.status === "Approved"
+                  }
+                  className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold transition ${
+                    data.status === "Approved"
+                      ? "bg-green-600 text-white cursor-default"
+                      : "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 hover:bg-green-100 disabled:opacity-50"
+                  }`}
+                >
+                  {statusLoading[data.id] === "Approved" ? (
+                    <Loader2 size={11} className="animate-spin" />
+                  ) : (
+                    <CheckCircle2 size={11} />
+                  )}
+                  Approve
+                </button>
+                <button
+                  onClick={() => handleStatusUpdate(data.id, false)}
+                  disabled={
+                    Boolean(statusLoading[data.id]) || data.status === "Rejected"
+                  }
+                  className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold transition ${
+                    data.status === "Rejected"
+                      ? "bg-red-600 text-white cursor-default"
+                      : "bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 hover:bg-red-100 disabled:opacity-50"
+                  }`}
+                >
+                  {statusLoading[data.id] === "Rejected" ? (
+                    <Loader2 size={11} className="animate-spin" />
+                  ) : (
+                    <XCircle size={11} />
+                  )}
+                  Reject
+                </button>
+              </>
+            )}
           </div>
         ),
       },
-    ],
-    [statusLoading, handleStatusUpdate, setGridLightbox],
-  );
+    ];
+  }, [statusLoading, handleStatusUpdate, setGridLightbox, isMobile, user?.role]);
 
   const defaultColDef = useMemo(
     () => ({
@@ -1244,11 +1723,22 @@ export default function Appointments() {
               Appointment Forms
             </h1>
             <p className="text-xs text-gray-400">
-              Review, approve or reject submitted appointment forms
+              {user?.role === 'agent' 
+                ? "View and create appointment forms" 
+                : "Review, approve or reject submitted appointment forms"}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {user?.role !== 'agent' && (
+            <Button
+              variant="outline"
+              onClick={() => setCreateAccountOpen(true)}
+              icon={<Plus size={14} />}
+            >
+              Create Account
+            </Button>
+          )}
           <Button
             variant="primary"
             onClick={() => setAddFormOpen(true)}
@@ -1330,13 +1820,14 @@ export default function Appointments() {
             className={`salary-ag-grid ${dark ? "ag-theme-alpine-dark" : "ag-theme-alpine"} ${headerFrozen ? "grid-header-frozen" : ""}`}
           >
             <AgGridReact
+              key={isMobile ? "mobile" : "desktop"}
               ref={gridRef}
               rowData={filtered}
               columnDefs={columnDefs}
               defaultColDef={defaultColDef}
               getRowId={(params) => String(params.data.id)}
               domLayout="autoHeight"
-              rowHeight={58}
+              rowHeight={isMobile ? 84 : 58}
               headerHeight={48}
               popupParent={document.body}
               enableCellTextSelection
@@ -1362,7 +1853,7 @@ export default function Appointments() {
         isOpen={Boolean(selected)}
         onClose={() => setSelected(null)}
         title={
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2">
             <span>Appointment Details</span>
             {selected && <StatusBadge status={selected.status} />}
             {selected &&
@@ -1380,50 +1871,54 @@ export default function Appointments() {
         size="xl"
         footer={
           selected && (
-            <div className="flex flex-wrap justify-between items-center gap-3">
+            <div className="flex flex-wrap justify-between items-center gap-3 w-full">
               {/* Status actions — left side */}
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => handleStatusUpdate(selected.id, true)}
-                  disabled={
-                    Boolean(statusLoading[selected.id]) ||
-                    selected.status === "Approved"
-                  }
-                  className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-semibold transition shadow-sm ${
-                    selected.status === "Approved"
-                      ? "bg-green-600 text-white cursor-default"
-                      : "bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
-                  }`}
-                >
-                  {statusLoading[selected.id] === "Approved" ? (
-                    <Loader2 size={14} className="animate-spin" />
-                  ) : (
-                    <CheckCircle2 size={14} />
-                  )}
-                  Approve
-                </button>
-                <button
-                  onClick={() => handleStatusUpdate(selected.id, false)}
-                  disabled={
-                    Boolean(statusLoading[selected.id]) ||
-                    selected.status === "Rejected"
-                  }
-                  className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-semibold transition shadow-sm ${
-                    selected.status === "Rejected"
-                      ? "bg-red-600 text-white cursor-default"
-                      : "bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
-                  }`}
-                >
-                  {statusLoading[selected.id] === "Rejected" ? (
-                    <Loader2 size={14} className="animate-spin" />
-                  ) : (
-                    <XCircle size={14} />
-                  )}
-                  Reject
-                </button>
+              <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                {user?.role !== 'agent' && (
+                  <>
+                    <button
+                      onClick={() => handleStatusUpdate(selected.id, true)}
+                      disabled={
+                        Boolean(statusLoading[selected.id]) ||
+                        selected.status === "Approved"
+                      }
+                      className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-semibold transition shadow-sm ${
+                        selected.status === "Approved"
+                          ? "bg-green-600 text-white cursor-default"
+                          : "bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
+                      }`}
+                    >
+                      {statusLoading[selected.id] === "Approved" ? (
+                        <Loader2 size={14} className="animate-spin" />
+                      ) : (
+                        <CheckCircle2 size={14} />
+                      )}
+                      Approve
+                    </button>
+                    <button
+                      onClick={() => handleStatusUpdate(selected.id, false)}
+                      disabled={
+                        Boolean(statusLoading[selected.id]) ||
+                        selected.status === "Rejected"
+                      }
+                      className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-semibold transition shadow-sm ${
+                        selected.status === "Rejected"
+                          ? "bg-red-600 text-white cursor-default"
+                          : "bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+                      }`}
+                    >
+                      {statusLoading[selected.id] === "Rejected" ? (
+                        <Loader2 size={14} className="animate-spin" />
+                      ) : (
+                        <XCircle size={14} />
+                      )}
+                      Reject
+                    </button>
+                  </>
+                )}
               </div>
               {/* Document actions — right side */}
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto sm:justify-end">
                 <Button variant="secondary" onClick={() => setSelected(null)}>
                   Close
                 </Button>
@@ -1463,11 +1958,36 @@ export default function Appointments() {
       >
         {selected && (
           <>
-            <PrintableForm data={selected} formRef={formRef} />
+            {/* Hidden Printable Form used purely for PDF/Print generation */}
+            <div className="hidden" aria-hidden="true">
+              <PrintableForm data={selected} formRef={formRef} />
+            </div>
+
+            {/* PC View: PrintableForm */}
+            <div className="hidden md:flex justify-center overflow-x-auto bg-gray-50 dark:bg-gray-900 rounded-xl p-4 border border-gray-200 dark:border-gray-800">
+              <div className="scale-[0.85] sm:scale-[0.95] md:scale-100 origin-top flex items-center justify-center min-w-[max-content] pb-4">
+                <PrintableForm data={selected} />
+              </div>
+            </div>
+
+            {/* Mobile View: Beautiful, responsive dashboard layout details form */}
+            <div className="block md:hidden">
+              <ResponsiveDetailsForm data={selected} />
+            </div>
+
             <DocumentsSection documents={selected.documents} />
           </>
         )}
       </Modal>
+
+      <CreateCandidateModal
+        isOpen={createAccountOpen}
+        onClose={() => setCreateAccountOpen(false)}
+        onSuccess={() => {
+          setCreateAccountOpen(false);
+          loadAppointments();
+        }}
+      />
 
       <AppointmentModal
         isOpen={addFormOpen}

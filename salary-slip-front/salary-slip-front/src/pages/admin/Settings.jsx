@@ -59,7 +59,7 @@ function AddUserModal({ onClose, onAdd, existingCodes }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div className="modal-overlay fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md animate-in">
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-700">
           <div>
@@ -92,7 +92,7 @@ function AddUserModal({ onClose, onAdd, existingCodes }) {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">
                 Emp Code *
@@ -348,7 +348,7 @@ export default function Settings() {
       {activeTab === "users" && (
         <div className="space-y-4">
           {/* Stats cards */}
-          <div className="grid grid-cols-3 xl:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             {[
               {
                 label: "Total Users",

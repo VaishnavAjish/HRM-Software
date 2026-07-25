@@ -9,6 +9,8 @@ import { getCompanyConfig } from "../../config/companyConfig";
 import { downloadForm16PDF } from "../../utils/exportUtils";
 import { buildForm16DocumentData } from "../../utils/form16Utils";
 import { salaryApi } from "../../utils/api";
+import Modal from "../../components/ui/Modal";
+import useIsMobile from "../../hooks/useIsMobile";
 
 const FY_OPTIONS = [
   { value: "2024-25", label: "FY 2024-25 (AY 2025-26)" },
@@ -56,9 +58,11 @@ export default function AdminForm16() {
   const [hasMore, setHasMore] = useState(false);
   const [fy, setFy] = useState("2024-25");
   const [search, setSearch] = useState("");
+  const [previewOpen, setPreviewOpen] = useState(false);
   const sentinelRef = useRef(null);
   const { user } = useAuth();
   const { companyScope, scopeKey } = useCompany();
+  const isMobile = useIsMobile();
 
   // Fetch triggered whenever page changes
   useEffect(() => {
@@ -78,10 +82,10 @@ export default function AdminForm16() {
           companyScope,
         );
         if (cancelled) return;
-        const pagination = res?.data?.salarySlipData;
-        const mapped = (pagination?.data ?? []).map(mapEmployee);
+        const pagination = res?.pagination;
+        const mapped = (res?.data ?? []).map(mapEmployee);
         setEmployees((prev) => (isFirst ? mapped : [...prev, ...mapped]));
-        setHasMore(!!pagination?.next_page_url);
+        setHasMore(!!pagination && pagination.current_page < pagination.last_page);
         if (isFirst && mapped.length > 0) setSelected(mapped[0]);
       } catch (err) {
         if (!cancelled) toast.error(err.message || "Failed to load employees");
@@ -214,12 +218,12 @@ export default function AdminForm16() {
             </p>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
+          <div className="relative w-full sm:w-auto">
             <select
               value={fy}
               onChange={(event) => setFy(event.target.value)}
-              className={selectCls}
+              className={`${selectCls} w-full`}
             >
               {FY_OPTIONS.map((item) => (
                 <option key={item.value} value={item.value}>
@@ -235,7 +239,7 @@ export default function AdminForm16() {
           <button
             onClick={handleBulkDownload}
             disabled={employees.length === 0}
-            className="flex items-center gap-2 rounded-lg bg-gray-700 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-gray-800 disabled:opacity-50 dark:bg-gray-700 dark:hover:bg-gray-600"
+            className="flex justify-center items-center gap-2 rounded-lg bg-gray-700 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-gray-800 disabled:opacity-50 dark:bg-gray-700 dark:hover:bg-gray-600 w-full sm:w-auto"
           >
             <Download size={14} />
             Bulk Download All
@@ -243,7 +247,7 @@ export default function AdminForm16() {
           <button
             onClick={handleDownload}
             disabled={!selected}
-            className="flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-brand-600/30 transition-colors hover:bg-brand-700 disabled:opacity-50"
+            className="flex justify-center items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-brand-600/30 transition-colors hover:bg-brand-700 disabled:opacity-50 w-full sm:w-auto"
           >
             <Download size={14} />
             Download for {selected?.name?.split(" ")[0] ?? "…"}
@@ -260,11 +264,16 @@ export default function AdminForm16() {
               placeholder="Search employee..."
             />
           </div>
-          <div className="max-h-[620px] overflow-y-auto divide-y divide-gray-50 dark:divide-gray-700">
+          <div className="h-[calc(100vh-280px)] xl:h-auto xl:max-h-[620px] overflow-y-auto divide-y divide-gray-50 dark:divide-gray-700">
             {filtered.map((emp) => (
               <button
                 key={emp.id}
-                onClick={() => setSelected(emp)}
+                onClick={() => {
+                  setSelected(emp);
+                  if (isMobile) {
+                    setPreviewOpen(true);
+                  }
+                }}
                 className={`flex w-full items-center gap-3 border-l-2 px-4 py-3 text-left transition-all ${
                   selected?.id === emp.id
                     ? "border-brand-600 bg-brand-50 dark:bg-brand-900/20"
@@ -299,7 +308,6 @@ export default function AdminForm16() {
               </button>
             ))}
 
-            {/* Sentinel triggers next page load when scrolled into view */}
             <div ref={sentinelRef} className="h-px" />
 
             {loadingMore && (
@@ -323,12 +331,45 @@ export default function AdminForm16() {
           </div>
         </div>
 
-        {data && (
-          <div className="rounded-3xl border border-gray-200 bg-neutral-300 px-3 py-5 shadow-sm dark:border-gray-700 sm:px-5 sm:py-6">
+        {!isMobile && data && (
+          <div className="rounded-3xl border border-gray-200 bg-neutral-300 px-3 py-5 shadow-sm dark:border-gray-700 sm:px-5 sm:py-6 overflow-x-auto">
             <Form16Document data={data} />
           </div>
         )}
       </div>
+
+      {isMobile && (
+        <Modal
+          isOpen={previewOpen}
+          onClose={() => setPreviewOpen(false)}
+          title="Form 16 Preview"
+          size="xl"
+          noPadding
+          footer={
+            <div className="flex items-center justify-between gap-4 w-full">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">
+                  {selected?.name}
+                </p>
+                <p className="mt-0.5 text-xs text-gray-400 truncate">
+                  #{selected?.empCode} | {selected?.designation} | {fyLabel}
+                </p>
+              </div>
+              <button
+                onClick={handleDownload}
+                className="flex items-center gap-2 rounded-xl bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-brand-600/25 transition-colors hover:bg-brand-700 shrink-0"
+              >
+                <Download size={15} />
+                Download PDF
+              </button>
+            </div>
+          }
+        >
+          <div className="overflow-x-auto bg-neutral-300 px-3 py-4 sm:px-6 sm:py-6">
+            {data && <Form16Document data={data} />}
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

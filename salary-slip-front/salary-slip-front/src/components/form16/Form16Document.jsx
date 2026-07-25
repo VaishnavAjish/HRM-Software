@@ -6,7 +6,7 @@ import {
 function DocPage({ children, footer, title }) {
   return (
     <section
-      className="mx-auto w-full max-w-[960px] bg-white px-8 py-7 text-black shadow-[0_22px_50px_rgba(15,23,42,0.12)]"
+      className="mx-auto w-full min-w-[760px] max-w-[960px] bg-white px-8 py-7 text-black shadow-[0_22px_50px_rgba(15,23,42,0.12)]"
       style={{ fontFamily: '"Times New Roman", serif' }}
       aria-label={title}
     >

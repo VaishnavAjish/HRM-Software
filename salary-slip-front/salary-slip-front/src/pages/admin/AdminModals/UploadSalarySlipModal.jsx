@@ -22,6 +22,12 @@ export default function UploadSalarySlipModal({
   uploading,
   selectedFile,
   uploadCompany,
+  needsCompanySelect = false,
+  companyOptions = [],
+  uploadCompanyId,
+  setUploadCompanyId,
+  uploadUnit,
+  setUploadUnit,
   dragOver,
   setDragOver,
   handleDrop,
@@ -33,7 +39,10 @@ export default function UploadSalarySlipModal({
 }) {
   const [showFullPreview, setShowFullPreview] = useState(false);
 
-  const canProceed = Boolean(selectedFile) && !uploading;
+  const canProceed =
+    Boolean(selectedFile) &&
+    !uploading &&
+    (!needsCompanySelect || Boolean(uploadCompanyId));
 
   const currentStep = selectedFile ? 2 : 1;
 
@@ -50,9 +59,9 @@ export default function UploadSalarySlipModal({
       noPadding
       noHeader
       footer={
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           {/* left info */}
-          <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500">
+          <div className="flex flex-wrap items-center gap-2 text-xs text-gray-400 dark:text-gray-500">
             {preview ? (
               <>
                 <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-brand-50 dark:bg-brand-900/20 text-brand-600 dark:text-brand-400 font-medium">
@@ -70,7 +79,7 @@ export default function UploadSalarySlipModal({
           </div>
 
           {/* right buttons */}
-          <div className="flex gap-2.5">
+          <div className="flex flex-wrap gap-2.5">
             {showFullPreview ? (
               <>
                 <button
@@ -155,13 +164,45 @@ export default function UploadSalarySlipModal({
               <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">
                 {showFullPreview
                   ? "Review all rows before uploading"
-                  : `Import ${uploadCompany?.label} payroll data from Excel`}
+                  : needsCompanySelect
+                    ? "Choose which company this payroll data belongs to"
+                    : `Import ${uploadCompany?.label} payroll data from Excel`}
               </p>
-              {!showFullPreview && (
-                <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-                  Allowed units: {uploadCompany?.units?.join(", ") || "N.A."}
-                </p>
-              )}
+              {!showFullPreview &&
+                (needsCompanySelect ? (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <select
+                      value={uploadCompanyId || ""}
+                      onChange={(e) => setUploadCompanyId(e.target.value)}
+                      className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-700 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200"
+                    >
+                      <option value="">Select Company</option>
+                      {companyOptions.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.label}
+                        </option>
+                      ))}
+                    </select>
+                    {uploadCompanyId && uploadCompany?.units?.length > 0 && (
+                      <select
+                        value={uploadUnit || ""}
+                        onChange={(e) => setUploadUnit(e.target.value)}
+                        className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-700 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200"
+                      >
+                        <option value="">All Units</option>
+                        {uploadCompany.units.map((u) => (
+                          <option key={u} value={u}>
+                            {u}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                ) : (
+                  <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                    Allowed units: {uploadCompany?.units?.join(", ") || "N.A."}
+                  </p>
+                ))}
             </div>
           </div>
           <button

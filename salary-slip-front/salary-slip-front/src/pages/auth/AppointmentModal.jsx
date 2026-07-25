@@ -15,6 +15,7 @@ import { authApi } from "../../utils/api";
 import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";
 import { getCompanyUnits, COMPANY_OPTIONS } from "../../config/companyConfig";
+import useIsMobile from "../../hooks/useIsMobile";
 
 const DOC_FIELDS = [
   { key: "adhar_image", label: "Aadhar Card" },
@@ -22,19 +23,91 @@ const DOC_FIELDS = [
   { key: "check_image", label: "Cheque" },
 ];
 
+const getBlankFormData = (companyCode = "") => ({
+  photo: null,
+  emp_code: "",
+  joining_date: new Date().toISOString().split("T")[0],
+  department: "",
+  designation: "",
+  manager_name: "",
+  salary: "",
+  mobile_number: "",
+  emp_whatsapp_no: "",
+  punching_no: "",
+  name: { first: "", mid: "", surname: "" },
+  email: "",
+  address: "",
+  village: "",
+  taluka: "",
+  district: "",
+  dob: "",
+  birth_place: "",
+  gender: "",
+  cast: "",
+  marital_status: "",
+  blood_group: "",
+  reference_name: "",
+  reference_mobile_no: "",
+  aadhar_card_no: "",
+  bank_name: "",
+  pan_card_no: "",
+  bank_ifsc_code: "",
+  education: "",
+  bank_account_no: "",
+  company_code: companyCode,
+  unit: "",
+  emp_signature: "",
+  members: Array(4).fill({
+    name: "",
+    relation: "",
+    dob: "",
+    mobile: "",
+    occupation: "",
+  }),
+});
+
+const getBlankDocuments = () => ({
+  adhar_image: null,
+  pan_image: null,
+  check_image: null,
+});
+
+const getBlankDocPreviews = () => ({
+  adhar_image: "",
+  pan_image: "",
+  check_image: "",
+});
+
+const MobileCard = ({ title, children, isMobile }) => {
+  if (!isMobile) return <>{children}</>;
+  return (
+    <div className="border border-gray-200 rounded-xl p-4 bg-gray-50 flex flex-col gap-4 shadow-sm mb-5">
+      {title && (
+        <div className="border-b border-gray-200 pb-2 mb-1">
+          <h3 className="text-[15px] font-bold text-gray-800">{title}</h3>
+        </div>
+      )}
+      {children}
+    </div>
+  );
+};
+
 const AppointmentModal = ({
   isOpen,
   onClose,
   initialData = null,
+  isPrefillFromTrial = false,
   onSuccess,
 }) => {
   const { user } = useAuth();
   const { companyId, isAllCompanies } = useCompany();
   const getTodayDate = () => new Date().toISOString().split("T")[0];
 
-  const isEditMode = Boolean(initialData);
+  const isEditMode = Boolean(initialData?.id) && !isPrefillFromTrial;
   const originalSnapshot = useRef(null);
+  const isAgent = user?.role === "agent";
 
+  const isMobile = useIsMobile();
   const [step, setStep] = useState(1);
 
   const [selectedCompanyId, setSelectedCompanyId] = useState(
@@ -45,70 +118,20 @@ const AppointmentModal = ({
     ? getCompanyUnits(selectedCompanyId)
     : [];
 
-  const [formData, setFormData] = useState({
-    photo: null,
-    emp_code: "",
-    joining_date: getTodayDate(),
-    department: "",
-    designation: "",
-    manager_name: "",
-    salary: "",
-    mobile_number: "",
-    emp_whatsapp_no: "",
-    punching_no: "",
-    name: { first: "", mid: "", surname: "" },
-    email: "",
-    address: "",
-    village: "",
-    taluka: "",
-    district: "",
-    dob: "",
-    birth_place: "",
-    gender: "",
-    cast: "",
-    marital_status: "",
-    blood_group: "",
-    reference_name: "",
-    reference_mobile_no: "",
-    aadhar_card_no: "",
-    bank_name: "",
-    pan_card_no: "",
-    bank_ifsc_code: "",
-    education: "",
-    bank_account_no: "",
-    company_code: isAllCompanies ? "" : companyId,
-    unit: "",
-    emp_signature: "",
-    members: Array(4).fill({
-      name: "",
-      relation: "",
-      dob: "",
-      mobile: "",
-      occupation: "",
-    }),
-  });
+  const [formData, setFormData] = useState(() =>
+    getBlankFormData(isAllCompanies ? "" : companyId),
+  );
 
-  const [documents, setDocuments] = useState({
-    adhar_image: null,
-    pan_image: null,
-    check_image: null,
-  });
-  const [docPreviews, setDocPreviews] = useState({
-    adhar_image: "",
-    pan_image: "",
-    check_image: "",
-  });
+  const [documents, setDocuments] = useState(getBlankDocuments);
+  const [docPreviews, setDocPreviews] = useState(getBlankDocPreviews);
 
-  const [existingDocs, setExistingDocs] = useState({
-    adhar_image: null,
-    pan_image: null,
-    check_image: null,
-  });
+  const [existingDocs, setExistingDocs] = useState(getBlankDocuments);
 
   const [loading, setLoading] = useState(false);
   const [photoPreview, setPhotoPreview] = useState("");
   const [errors, setErrors] = useState({});
   const [docErrors, setDocErrors] = useState({});
+  const [showConfirmTransfer, setShowConfirmTransfer] = useState(false);
 
   const requiredFields = [
     { path: "joining_date", label: "Joining Date" },
@@ -233,11 +256,33 @@ const AppointmentModal = ({
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    // On mobile both steps render at once (no "Next" gate), so validateStep1
+    // never ran before submit — enforce it here too for new submissions.
+    if (!isEditMode && !validateStep1()) {
+      toast.error("Please fill all required fields.");
+      return;
+    }
     if (!validateStep2()) {
       toast.error("Please upload all required documents.");
       return;
     }
 
+    if (isEditMode) {
+      const snap = originalSnapshot.current || {};
+      const newEmpCode = String(formData.emp_code ?? "").trim();
+      const oldEmpCode = String(snap.emp_code ?? "").trim();
+
+      // If they are assigning an emp_code for the first time
+      if (newEmpCode && !oldEmpCode) {
+        setShowConfirmTransfer(true);
+        return;
+      }
+    }
+
+    executeSubmit();
+  };
+
+  const executeSubmit = async () => {
     setLoading(true);
     try {
       if (isEditMode) {
@@ -322,6 +367,11 @@ const AppointmentModal = ({
           name: `${formData.name.first} ${formData.name.mid} ${formData.name.surname}`
             .replace(/\s+/g, " ")
             .trim(),
+          added_by: initialData?.addedBy || null,
+          type: "appointment",
+          ...(isPrefillFromTrial && initialData?.id
+            ? { trial_form_id: initialData.id }
+            : {}),
         };
 
         const payload = new FormData();
@@ -343,7 +393,8 @@ const AppointmentModal = ({
           user?.tokenType,
         );
         toast.success(res.message);
-        onClose();
+        if (onSuccess) onSuccess();
+        else onClose(true);
       }
     } catch (error) {
       toast.error(error.message || "Failed to submit appointment form.");
@@ -356,8 +407,8 @@ const AppointmentModal = ({
     if (isOpen) {
       document.body.style.overflow = "hidden";
 
-      if (isEditMode && initialData) {
-        const raw = initialData.raw || {};
+      if (initialData && (isEditMode || isPrefillFromTrial)) {
+        const raw = initialData.raw || initialData || {};
 
         // Split "First Mid Surname" back into parts
         const nameStr = String(raw.name || "").trim();
@@ -469,11 +520,12 @@ const AppointmentModal = ({
       } else {
         const newCompanyId = isAllCompanies ? "" : companyId;
         setSelectedCompanyId(newCompanyId);
-        setFormData((prev) => ({
-          ...prev,
-          company_code: newCompanyId,
-          unit: "",
-        }));
+        setFormData(getBlankFormData(newCompanyId));
+        originalSnapshot.current = null;
+        setPhotoPreview("");
+        setDocuments(getBlankDocuments());
+        setDocPreviews(getBlankDocPreviews());
+        setExistingDocs(getBlankDocuments());
       }
     } else {
       document.body.style.overflow = "";
@@ -552,11 +604,13 @@ const AppointmentModal = ({
     ({ key }) => documents[key] || existingDocs[key],
   ).length;
 
-  return createPortal(
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm overflow-y-auto z-[1001] p-4 text-[13px]">
-      <div className="relative mx-auto my-4 w-full max-w-[850px] bg-white shadow-2xl rounded-xl overflow-hidden">
+  return (
+    <>
+    {createPortal(
+    <div className={`fixed inset-0 bg-black/60 backdrop-blur-sm overflow-y-auto z-[1001] text-[13px] ${isMobile ? "p-0" : "p-4"}`}>
+      <div className={`relative mx-auto w-full max-w-[850px] bg-white overflow-hidden ${isMobile ? "min-h-screen" : "my-4 shadow-2xl rounded-xl"}`}>
         {/* Top bar */}
-        <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100 bg-white">
+        <div className="safe-top-bar flex items-center justify-between px-4 py-2 border-b border-gray-100 bg-white">
           {isEditMode ? (
             <span className="text-xs font-bold text-brand-600 bg-brand-50 px-2.5 py-1 rounded-lg">
               Editing Appointment #{initialData?.id}
@@ -574,9 +628,9 @@ const AppointmentModal = ({
         </div>
 
         {/* ─── STEP 1: Form ─── */}
-        {step === 1 && (
-          <div className="p-8">
-            <div className="border border-dotted border-gray-600 p-6">
+        {(step === 1 || isMobile) && (
+          <div className="sm:p-8 p-3">
+            <div className="sm:border sm:border-dotted sm:border-gray-600 sm:p-6 bg-white sm:bg-transparent rounded-none">
               <div className="text-center mb-0">
                 <h1 className="inline-block text-xl font-black tracking-widest uppercase">
                   APPOINTMENT FORM
@@ -584,9 +638,10 @@ const AppointmentModal = ({
               </div>
               <div className="border-t-2 border-black mt-2 mb-6" />
 
-              <div className="grid grid-cols-12 gap-8 items-start">
+              <MobileCard title="Employee Details" isMobile={isMobile}>
+                <div className="flex flex-col md:grid md:grid-cols-12 gap-8 items-start">
                 {/* Photo */}
-                <div className="col-span-5 flex flex-col items-center">
+                <div className="md:col-span-5 flex flex-col items-center">
                   <label className="cursor-pointer group relative">
                     <input
                       type="file"
@@ -616,12 +671,13 @@ const AppointmentModal = ({
                 </div>
 
                 {/* Top Right Fields */}
-                <div className="col-span-7 space-y-3">
+                <div className="md:col-span-7 space-y-3 w-full">
                   <RowField
                     label="Emp. Code"
                     name="emp_code"
                     value={formData.emp_code}
                     onChange={handleChange}
+                    disabled={isAgent}
                   />
                   <RowField
                     label="Joining Date"
@@ -686,20 +742,22 @@ const AppointmentModal = ({
                   />
                 </div>
               </div>
+              </MobileCard>
 
-              <div className="mt-6 space-y-4">
-                {/* Punching No */}
-                <div className="flex items-center gap-2">
-                  <label className="font-bold w-[130px] shrink-0 text-[13px]">
+              <MobileCard title="Personal Information" isMobile={isMobile}>
+                <div className="mt-6 space-y-4">
+                  {/* Punching No */}
+                <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+                  <label className="font-bold w-full sm:w-[130px] sm:shrink-0 text-[13px]">
                     Punching No <span className="text-red-600">*</span>
                   </label>
-                  <span className="font-bold">:</span>
+                  <span className="font-bold hidden sm:inline">:</span>
                   <input
                     name="punching_no"
                     value={formData.punching_no}
                     onChange={handleChange}
                     inputMode="numeric"
-                    className={`border w-48 h-7 px-2 outline-none text-[13px] ${
+                    className={`border w-full sm:w-48 h-7 px-2 outline-none text-[13px] ${
                       errors.punching_no ? "border-red-500" : "border-gray-400"
                     }`}
                   />
@@ -711,12 +769,12 @@ const AppointmentModal = ({
                 </div>
 
                 {/* Name */}
-                <div className="flex items-start gap-2">
-                  <label className="font-bold w-[130px] shrink-0 pt-1 text-[13px]">
+                <div className="flex flex-col sm:flex-row items-start gap-1 sm:gap-2">
+                  <label className="font-bold w-full sm:w-[130px] sm:shrink-0 pt-1 text-[13px]">
                     Name <span className="text-red-600">*</span>
                   </label>
-                  <span className="font-bold pt-1">:</span>
-                  <div className="flex-grow grid grid-cols-3 gap-4">
+                  <span className="font-bold pt-1 hidden sm:inline">:</span>
+                  <div className="flex-grow grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <NameInput
                       label="(FIRST NAME)"
                       name="first"
@@ -760,7 +818,7 @@ const AppointmentModal = ({
                   error={errors.address}
                 />
 
-                <div className="grid grid-cols-3 gap-6 w-full">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 w-full">
                   <InlineField
                     label="Village"
                     name="village"
@@ -787,7 +845,7 @@ const AppointmentModal = ({
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-x-12 gap-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-12 gap-y-3">
                   <RowField
                     label="Birth Date"
                     name="dob"
@@ -827,6 +885,12 @@ const AppointmentModal = ({
                     value={formData.blood_group}
                     onChange={handleChange}
                   />
+                </div>
+                </div>
+              </MobileCard>
+
+              <MobileCard title="Banking & Reference Details" isMobile={isMobile}>
+                <div className="mt-0 sm:mt-6 grid grid-cols-1 sm:grid-cols-2 gap-x-12 gap-y-3">
                   <RowField
                     label="Reference Name"
                     name="reference_name"
@@ -898,117 +962,184 @@ const AppointmentModal = ({
                     maxLength={18}
                   />
                 </div>
-              </div>
+              </MobileCard>
 
               {/* Family Members Table */}
-              <div className="mt-6">
-                <table className="w-full border-collapse border border-black text-[13px]">
-                  <thead>
-                    <tr className="font-bold bg-gray-50">
-                      <th className="border border-black p-1 w-12 text-center">
-                        Sr No
-                      </th>
-                      <th className="border border-black p-1">
-                        Family Members Name
-                      </th>
-                      <th className="border border-black p-1">Relation</th>
-                      <th className="border border-black p-1">D.O.B.</th>
-                      <th className="border border-black p-1">Mobile No</th>
-                      <th className="border border-black p-1">Occupation</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+              <div className="mt-6 sm:overflow-x-auto pb-4">
+                {isMobile ? (
+                  <div className="flex flex-col gap-4">
+                    <h3 className="text-base font-bold text-gray-800">Family Members</h3>
                     {formData.members.map((member, index) => (
-                      <tr key={index} className="h-8">
-                        <td className="border border-black text-center font-bold">
-                          {index + 1}
-                        </td>
-                        <td className="border border-black px-1">
+                      <div key={index} className="border border-gray-200 rounded-xl p-4 bg-gray-50 flex flex-col gap-3 shadow-sm">
+                        <div className="font-bold text-sm text-brand-600 mb-1 flex items-center gap-2">
+                          <div className="w-5 h-5 rounded-full bg-brand-100 flex items-center justify-center text-[10px]">{index + 1}</div>
+                          Member
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs font-semibold text-gray-600">Full Name</label>
                           <input
-                            className="w-full outline-none text-[13px]"
+                            className="w-full transition-colors border border-gray-300 rounded-lg px-3 py-2 bg-white text-sm h-10 focus:border-brand-500 focus:outline-none"
                             value={member.name}
-                            onChange={(e) =>
-                              handleFamilyChange(index, "name", e.target.value)
-                            }
+                            onChange={(e) => handleFamilyChange(index, "name", e.target.value)}
+                            placeholder="Name"
                           />
-                        </td>
-                        <td className="border border-black px-1">
-                          <input
-                            className="w-full outline-none text-[13px]"
-                            value={member.relation}
-                            onChange={(e) =>
-                              handleFamilyChange(
-                                index,
-                                "relation",
-                                e.target.value,
-                              )
-                            }
-                          />
-                        </td>
-                        <td className="border border-black px-1">
-                          <input
-                            type="date"
-                            className="w-full outline-none text-[13px] bg-transparent"
-                            value={member.dob}
-                            onChange={(e) =>
-                              handleFamilyChange(index, "dob", e.target.value)
-                            }
-                          />
-                        </td>
-                        <td className="border border-black px-1">
-                          <input
-                            className="w-full outline-none text-[13px]"
-                            value={member.mobile}
-                            onChange={(e) =>
-                              handleFamilyChange(
-                                index,
-                                "mobile",
-                                e.target.value,
-                              )
-                            }
-                          />
-                        </td>
-                        <td className="border border-black px-1">
-                          <input
-                            className="w-full outline-none text-[13px]"
-                            value={member.occupation}
-                            onChange={(e) =>
-                              handleFamilyChange(
-                                index,
-                                "occupation",
-                                e.target.value,
-                              )
-                            }
-                          />
-                        </td>
-                      </tr>
+                        </div>
+                        <div className="flex gap-3">
+                          <div className="flex flex-col gap-1 flex-1">
+                            <label className="text-xs font-semibold text-gray-600">Relation</label>
+                            <input
+                              className="w-full transition-colors border border-gray-300 rounded-lg px-3 py-2 bg-white text-sm h-10 focus:border-brand-500 focus:outline-none"
+                              value={member.relation}
+                              onChange={(e) => handleFamilyChange(index, "relation", e.target.value)}
+                              placeholder="e.g. Father"
+                            />
+                          </div>
+                          <div className="flex flex-col gap-1 flex-1">
+                            <label className="text-xs font-semibold text-gray-600">Date of Birth</label>
+                            <input
+                              type="date"
+                              className="w-full transition-colors border border-gray-300 rounded-lg px-3 py-2 bg-white text-sm h-10 focus:border-brand-500 focus:outline-none"
+                              value={member.dob}
+                              onChange={(e) => handleFamilyChange(index, "dob", e.target.value)}
+                            />
+                          </div>
+                        </div>
+                        <div className="flex gap-3">
+                          <div className="flex flex-col gap-1 flex-1">
+                            <label className="text-xs font-semibold text-gray-600">Mobile No</label>
+                            <input
+                              className="w-full transition-colors border border-gray-300 rounded-lg px-3 py-2 bg-white text-sm h-10 focus:border-brand-500 focus:outline-none"
+                              value={member.mobile}
+                              onChange={(e) => handleFamilyChange(index, "mobile", e.target.value)}
+                              placeholder="Mobile Number"
+                              inputMode="numeric"
+                            />
+                          </div>
+                          <div className="flex flex-col gap-1 flex-1">
+                            <label className="text-xs font-semibold text-gray-600">Occupation</label>
+                            <input
+                              className="w-full transition-colors border border-gray-300 rounded-lg px-3 py-2 bg-white text-sm h-10 focus:border-brand-500 focus:outline-none"
+                              value={member.occupation}
+                              onChange={(e) => handleFamilyChange(index, "occupation", e.target.value)}
+                              placeholder="Occupation"
+                            />
+                          </div>
+                        </div>
+                      </div>
                     ))}
-                  </tbody>
-                </table>
+                  </div>
+                ) : (
+                  <table className="w-full border-collapse border border-black text-[13px] min-w-[600px]">
+                    <thead>
+                      <tr className="font-bold bg-gray-50">
+                        <th className="border border-black p-1 w-12 text-center">
+                          Sr No
+                        </th>
+                        <th className="border border-black p-1">
+                          Family Members Name
+                        </th>
+                        <th className="border border-black p-1">Relation</th>
+                        <th className="border border-black p-1">D.O.B.</th>
+                        <th className="border border-black p-1">Mobile No</th>
+                        <th className="border border-black p-1">Occupation</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {formData.members.map((member, index) => (
+                        <tr key={index} className="h-8">
+                          <td className="border border-black text-center font-bold">
+                            {index + 1}
+                          </td>
+                          <td className="border border-black px-1">
+                            <input
+                              className="w-full outline-none text-[13px]"
+                              value={member.name}
+                              onChange={(e) =>
+                                handleFamilyChange(index, "name", e.target.value)
+                              }
+                            />
+                          </td>
+                          <td className="border border-black px-1">
+                            <input
+                              className="w-full outline-none text-[13px]"
+                              value={member.relation}
+                              onChange={(e) =>
+                                handleFamilyChange(
+                                  index,
+                                  "relation",
+                                  e.target.value,
+                                )
+                              }
+                            />
+                          </td>
+                          <td className="border border-black px-1">
+                            <input
+                              type="date"
+                              className="w-full outline-none text-[13px] bg-transparent"
+                              value={member.dob}
+                              onChange={(e) =>
+                                handleFamilyChange(index, "dob", e.target.value)
+                              }
+                            />
+                          </td>
+                          <td className="border border-black px-1">
+                            <input
+                              className="w-full outline-none text-[13px]"
+                              value={member.mobile}
+                              onChange={(e) =>
+                                handleFamilyChange(
+                                  index,
+                                  "mobile",
+                                  e.target.value,
+                                )
+                              }
+                            />
+                          </td>
+                          <td className="border border-black px-1">
+                            <input
+                              className="w-full outline-none text-[13px]"
+                              value={member.occupation}
+                              onChange={(e) =>
+                                handleFamilyChange(
+                                  index,
+                                  "occupation",
+                                  e.target.value,
+                                )
+                              }
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
               </div>
 
               {/* Signature Row */}
-              <div className="mt-10 grid grid-cols-3 gap-12 font-bold text-[13px]">
-                <div>
-                  <p className="mb-1">Check By, Manager</p>
-                  <div className="border-b border-black w-full h-8" />
+              {!isMobile && (
+                <div className="mt-10 grid grid-cols-1 sm:grid-cols-3 gap-6 sm:gap-12 font-bold text-[13px]">
+                  <div>
+                    <p className="mb-1">Check By, Manager</p>
+                    <div className="border-b border-black w-full h-8" />
+                  </div>
+                  <div className="text-center">
+                    <p className="mb-1">Confirm By,</p>
+                    <div className="border-b border-black w-full h-8" />
+                    <p className="mt-1 font-normal">(Ketanbhai)</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="mb-1">Auth. By,</p>
+                    <div className="border-b border-black w-full h-8" />
+                    <p className="mt-1 font-normal">HR Dept</p>
+                  </div>
                 </div>
-                <div className="text-center">
-                  <p className="mb-1">Confirm By,</p>
-                  <div className="border-b border-black w-full h-8" />
-                  <p className="mt-1 font-normal">(Ketanbhai)</p>
-                </div>
-                <div className="text-center">
-                  <p className="mb-1">Auth. By,</p>
-                  <div className="border-b border-black w-full h-8" />
-                  <p className="mt-1 font-normal">HR Dept</p>
-                </div>
-              </div>
+              )}
 
-              <div className="mt-6 flex justify-between items-end gap-10">
-                <div className="flex flex-col gap-2 flex-1">
+              <MobileCard title="Company & Authorization" isMobile={isMobile}>
+                <div className="mt-0 sm:mt-6 flex flex-col md:flex-row justify-between md:items-end gap-6 md:gap-10">
+                  <div className="flex flex-col gap-4 md:gap-2 flex-1 w-full">
                   {isAllCompanies && (
-                    <div className="flex gap-2 items-center">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 w-full">
                       <span className="font-bold whitespace-nowrap uppercase">
                         Company <span className="text-red-600">*</span> :
                       </span>
@@ -1031,7 +1162,7 @@ const AppointmentModal = ({
                       )}
                     </div>
                   )}
-                  <div className="flex gap-2 items-center">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 w-full">
                     <span className="font-bold whitespace-nowrap uppercase">
                       UNIT NAME <span className="text-red-600">*</span> :
                     </span>
@@ -1054,7 +1185,7 @@ const AppointmentModal = ({
                     )}
                   </div>
                 </div>
-                <div className="flex gap-2 items-end flex-1">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 flex-1 w-full">
                   <span className="font-bold whitespace-nowrap uppercase">
                     Emp. Signature <span className="text-red-600">*</span> :
                   </span>
@@ -1071,25 +1202,29 @@ const AppointmentModal = ({
                   )}
                 </div>
               </div>
+              </MobileCard>
             </div>
 
             {/* Step 1 Footer */}
-            <div className="mt-4 flex justify-end">
-              <button
-                type="button"
-                onClick={handleNext}
-                className="inline-flex items-center gap-2 px-6 py-2.5 bg-brand-600 text-white text-sm font-semibold rounded-lg hover:bg-brand-700 transition"
-              >
-                Next : Upload Documents
-                <ChevronRight size={16} />
-              </button>
-            </div>
+            {!isMobile && (
+              <div className="mt-4 flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleNext}
+                  className="inline-flex items-center gap-2 px-6 py-2.5 bg-brand-600 text-white text-sm font-semibold rounded-lg hover:bg-brand-700 transition"
+                >
+                  Next : Upload Documents
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+            )}
           </div>
         )}
 
         {/* ─── STEP 2: Documents ─── */}
-        {step === 2 && (
-          <form onSubmit={handleSubmit} className="p-8">
+        {(step === 2 || isMobile) && (
+          <form onSubmit={handleSubmit} className="sm:p-8 p-3">
+            <MobileCard title="Upload Documents" isMobile={isMobile}>
             {/* Progress header */}
             <div className="mb-7">
               <div className="flex items-center justify-between mb-3">
@@ -1120,7 +1255,7 @@ const AppointmentModal = ({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
               {DOC_FIELDS.map(({ key, label }, index) => (
                 <DocUpload
                   key={key}
@@ -1137,15 +1272,17 @@ const AppointmentModal = ({
             </div>
 
             {/* Step 2 Footer */}
-            <div className="mt-8 flex justify-between items-center">
-              <button
-                type="button"
-                onClick={() => setStep(1)}
-                className="inline-flex items-center gap-2 px-5 py-2.5 border border-gray-300 text-gray-700 text-sm font-semibold rounded-lg hover:bg-gray-50 transition"
-              >
-                <ChevronLeft size={16} />
-                Back
-              </button>
+            <div className={`mt-8 flex ${isMobile ? "justify-end" : "justify-between"} items-center`}>
+              {!isMobile && (
+                <button
+                  type="button"
+                  onClick={() => setStep(1)}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 border border-gray-300 text-gray-700 text-sm font-semibold rounded-lg hover:bg-gray-50 transition"
+                >
+                  <ChevronLeft size={16} />
+                  Back
+                </button>
+              )}
               <div className="flex items-center gap-3">
                 <button
                   type="submit"
@@ -1166,11 +1303,57 @@ const AppointmentModal = ({
                 </button>
               </div>
             </div>
+            </MobileCard>
           </form>
         )}
       </div>
     </div>,
     document.body,
+    )}
+    {showConfirmTransfer &&
+      createPortal(
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[1002] p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-full bg-amber-50 text-amber-500 flex items-center justify-center flex-shrink-0">
+                <AlertCircle size={20} />
+              </div>
+              <h3 className="text-base font-bold text-gray-900">
+                Assign Employee Code?
+              </h3>
+            </div>
+            <p className="text-sm text-gray-600 mb-6">
+              Assigning employee code{" "}
+              <span className="font-semibold text-gray-900">
+                {formData.emp_code}
+              </span>{" "}
+              will convert this appointment into a full employee record and
+              remove it from the Appointments list. Continue?
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setShowConfirmTransfer(false)}
+                className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowConfirmTransfer(false);
+                  executeSubmit();
+                }}
+                className="px-4 py-2 rounded-lg bg-brand-600 text-white text-sm font-semibold hover:bg-brand-700 transition"
+              >
+                Yes, Convert to Employee
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
+    </>
   );
 };
 
@@ -1329,6 +1512,7 @@ const DocUpload = ({
 };
 
 // ─── Form Helpers ─────────────────────────────────────────────────────────────
+
 const RowField = ({
   label,
   required,
@@ -1339,13 +1523,14 @@ const RowField = ({
   type = "text",
   inputMode,
   maxLength,
+  disabled,
 }) => (
   <div className="w-full">
-    <div className="flex items-end gap-2 w-full">
-      <label className="text-[13px] font-bold whitespace-nowrap w-[130px] shrink-0">
+    <div className="flex flex-col sm:flex-row sm:items-center items-start gap-1 sm:gap-2 w-full">
+      <label className="text-sm font-semibold text-gray-700 sm:text-[13px] sm:font-bold sm:text-black sm:whitespace-nowrap w-full sm:w-[130px] sm:shrink-0 mb-1 sm:mb-0">
         {label} {required && <span className="text-red-600">*</span>}
       </label>
-      <span className="font-bold">:</span>
+      <span className="font-bold hidden sm:inline">:</span>
       <input
         type={type}
         name={name}
@@ -1353,27 +1538,28 @@ const RowField = ({
         onChange={onChange}
         inputMode={inputMode}
         maxLength={maxLength}
-        className={`border-b flex-grow h-5 focus:outline-none px-1 text-[13px] bg-transparent ${error ? "border-red-500" : "border-black"}`}
+        disabled={disabled}
+        className={`w-full sm:flex-grow focus:outline-none transition-colors border rounded-lg px-3 py-2 bg-gray-50 text-sm h-10 ${error ? "border-red-500 bg-red-50" : "border-gray-300 focus:border-brand-500"} sm:border-t-0 sm:border-l-0 sm:border-r-0 sm:border-b sm:rounded-none sm:px-1 sm:h-5 sm:text-[13px] ${disabled ? "bg-gray-100 cursor-not-allowed text-gray-500" : "sm:bg-transparent"} sm:border-black`}
       />
     </div>
     {error && (
-      <p className="ml-[138px] mt-1 text-[11px] text-red-600">{error}</p>
+      <p className="sm:ml-[138px] mt-1 text-[11px] text-red-600">{error}</p>
     )}
   </div>
 );
 
 const InlineField = ({ label, required, name, value, onChange, error }) => (
   <div className="min-w-0">
-    <div className="flex items-end gap-2">
-      <label className="font-bold whitespace-nowrap">
+    <div className="flex flex-col sm:flex-row sm:items-end gap-1 sm:gap-2">
+      <label className="text-sm font-semibold text-gray-700 sm:text-[13px] sm:font-bold sm:text-black whitespace-nowrap mb-1 sm:mb-0">
         {label} {required && <span className="text-red-600">*</span>}
       </label>
-      <span className="font-bold">:</span>
+      <span className="font-bold hidden sm:inline">:</span>
       <input
         name={name}
         value={value}
         onChange={onChange}
-        className={`border-b min-w-0 flex-1 h-5 outline-none px-1 bg-transparent text-[13px] ${error ? "border-red-500" : "border-black"}`}
+        className={`min-w-0 flex-1 outline-none transition-colors border rounded-lg px-3 py-2 bg-gray-50 text-sm h-10 ${error ? "border-red-500 bg-red-50" : "border-gray-300 focus:border-brand-500"} sm:border-t-0 sm:border-l-0 sm:border-r-0 sm:border-b sm:rounded-none sm:px-1 sm:h-5 sm:text-[13px] sm:bg-transparent sm:border-black`}
       />
     </div>
     {error && <p className="mt-1 text-[11px] text-red-600">{error}</p>}
@@ -1381,14 +1567,14 @@ const InlineField = ({ label, required, name, value, onChange, error }) => (
 );
 
 const NameInput = ({ label, name, value, onChange, error }) => (
-  <div className="text-center">
+  <div className="text-center sm:text-center text-left">
     <input
       name={name}
       value={value}
       onChange={onChange}
-      className={`w-full border-b h-7 text-[13px] focus:outline-none text-center bg-transparent uppercase ${error ? "border-red-500" : "border-black"}`}
+      className={`w-full transition-colors border rounded-lg px-3 py-2 bg-gray-50 text-sm h-10 ${error ? "border-red-500 bg-red-50" : "border-gray-300 focus:border-brand-500"} sm:border-t-0 sm:border-l-0 sm:border-r-0 sm:border-b sm:rounded-none sm:px-1 sm:h-7 sm:text-[13px] sm:bg-transparent sm:border-black focus:outline-none sm:text-center text-left uppercase`}
     />
-    <span className="text-[10px] text-gray-700 font-bold">{label}</span>
+    <span className="text-[10px] sm:text-[10px] text-xs text-gray-500 sm:text-gray-700 font-bold block mt-1 sm:inline-block sm:mt-0">{label}</span>
     {error && <p className="mt-1 text-[11px] text-red-600">{error}</p>}
   </div>
 );

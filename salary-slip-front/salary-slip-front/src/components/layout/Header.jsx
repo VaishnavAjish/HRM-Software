@@ -1,14 +1,13 @@
 import { Menu, Bell, Sun, Moon, Search, Download } from "lucide-react";
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
-import { useCompany } from "../../context/CompanyContext";
 import { useInstallPWA } from "../../hooks/useInstallPWA";
 import { useState } from "react";
+import CompanyScopeDropdown from "./CompanyScopeDropdown";
 
-export default function Header({ onMenuClick, title }) {
+export default function Header({ onMenuClick, title, isCollapsed }) {
   const { dark, toggle } = useTheme();
   const { user } = useAuth();
-  const { company, scopeLabel } = useCompany();
   const { canInstall, install, isIOS, showIOSGuide, dismissIOSGuide } =
     useInstallPWA();
   const [notifOpen, setNotifOpen] = useState(false);
@@ -17,7 +16,7 @@ export default function Header({ onMenuClick, title }) {
     <header className="h-16 bg-white dark:bg-gray-800 border-b-2 border-brand-600/20 dark:border-brand-600/30 flex items-center px-4 gap-4 sticky top-0 z-10">
       <button
         onClick={onMenuClick}
-        className="lg:hidden p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500"
+        className={`p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 ${isCollapsed ? "" : "lg:hidden"}`}
       >
         <Menu size={20} />
       </button>
@@ -26,12 +25,9 @@ export default function Header({ onMenuClick, title }) {
         <h1 className="text-lg font-semibold text-gray-900 dark:text-white">
           {title}
         </h1>
-        {company && (
-          <p className="text-xs text-gray-400 dark:text-gray-500">
-            {scopeLabel}
-          </p>
-        )}
       </div>
+
+      <CompanyScopeDropdown />
 
       {canInstall && (
         <button

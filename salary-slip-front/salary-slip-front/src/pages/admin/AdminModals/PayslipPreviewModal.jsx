@@ -24,9 +24,9 @@ function PayslipPreviewModal({
       size="xl"
       noPadding
       footer={
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <p className="text-sm font-semibold text-gray-900 dark:text-white">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">
               {viewModal?.name}
             </p>
 
@@ -72,7 +72,7 @@ function PayslipPreviewModal({
             ref={payslipRef}
             style={{
               display: "inline-block",
-              width: "100%",
+              minWidth: "100%",
             }}
           >
             <PayslipDocument

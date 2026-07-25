@@ -27,7 +27,7 @@ export default function Pagination({ current, total, pageSize, onChange }) {
   };
 
   return (
-    <div className="flex items-center justify-between px-1 mt-4">
+    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-1 mt-2 sm:mt-4 pb-2">
       <p className="text-sm text-gray-500 dark:text-gray-400">
         Showing{" "}
         <span className="font-medium text-gray-700 dark:text-gray-300">
@@ -38,7 +38,7 @@ export default function Pagination({ current, total, pageSize, onChange }) {
           {total}
         </span>
       </p>
-      <div className="flex items-center gap-1">
+      <div className="flex flex-wrap justify-center items-center gap-1">
         <button
           onClick={() => onChange(current - 1)}
           disabled={current === 1}

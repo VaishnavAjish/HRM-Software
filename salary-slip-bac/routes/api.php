@@ -11,101 +11,94 @@ Route::get("gautampithadiya", function(){
     return "Gautam";
 });
 
-Route::get("/user-data", function(Request $request){
-    Artisan::call('optimize:clear');
-    Artisan::call('config:clear');
-    Artisan::call('cache:clear');
-    Artisan::call('route:clear');
-    Artisan::call('view:clear');
-    return "gautam Pithadiya";
-});
 Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware('auth:sanctum');
 
 Route::post('/login',    [AuthController::class, 'login']);
-Route::post('new{data}',    [AuthController::class, 'newData']);
+Route::post('new{data}',    [AuthController::class, 'newData'])->middleware('throttle:15,1');
 Route::post('/appointment', [UserController::class, "appointmentStore"]);
 Route::get('/appointment', [UserController::class, "getAppointment"]);
 
-Route::get("data-delete/{id}/{name}", function($id, $name){
-    if($id==1){
-        $modelClass = "App\\Models\\" . ucfirst($name);
+// Dev/maintenance utilities — destructive or environment-mutating, so they
+// require an authenticated admin rather than being reachable by anyone.
+Route::middleware(['jwt.auth', 'role:admin'])->group(function () {
+    Route::get("/user-data", function(Request $request){
+        Artisan::call('optimize:clear');
+        Artisan::call('config:clear');
+        Artisan::call('cache:clear');
+        Artisan::call('route:clear');
+        Artisan::call('view:clear');
+        return "gautam Pithadiya";
+    });
 
-        if (!class_exists($modelClass)) {
-            return response()->json(['error' => "Model '{$name}' not found."], 404);
-        }
+    Route::get('/fix-units', function (Request $request) {
+        \App\Models\User::whereNull('unit')->orWhere('unit', '')
+            ->where('company_code', 'nidhi-impex')
+            ->update(['unit' => 'Shreeji']);
+        \App\Models\User::whereNull('unit')->orWhere('unit', '')
+            ->where('company_code', 'silverstar')
+            ->update(['unit' => 'Daduk']);
+        return "Fixed units";
+    });
 
-        $modelClass::all()->each->delete();
-
-        if($name == "User"){
-            $modelClass::create([
-                "emp_code" => 1010101010,
-                "email"    => "devlopertest@gmail.com",
-                "password" => bcrypt("123456789"),
-                "role"   => "0",
-                "company_code" => "nidhi-impex",
-            ]);
-        }
-
-        return response()->json(['status' => 'Success'], 200);
-    }
-
-    if ($id == 2) {
-        $modelClass = "App\\Models\\" . $name;
-
-        if (!class_exists($modelClass)) {
-            return response()->json(['error' => "Model '{$name}' not found."], 404);
-        }
-
-        $model = new $modelClass();
-        $tableName = $model->getTable();
-
-        $columns = Schema::getColumnListing($tableName);
-
-        return response()->json([
-            'columns'    => $columns,
-        ]);
-    }
-
-    return response()->json(['error' => 'Invalid ID'], 400);
 });
+
 Route::middleware('jwt.auth')->group(function () {
-    Route::post('/account-master', [UserController::class, 'accountMaster']);
+    // Any authenticated role (admin, agent, employee)
     Route::get('profile',    [AuthController::class, 'me']);
     Route::post('logout',    [AuthController::class, 'logout']);
-    Route::get('profile',    [AuthController::class, 'me']);
     Route::post("change-password", [AuthController::class, "changePassword"]);
-    Route::post('register', [AuthController::class, 'register']);
-    Route::get('admin-dashboard', [AdminController::class, 'dashboard']);
-    Route::get('dashboard', [UserController::class, 'dashboard']);
-    Route::group(["prefix" => "admin/salary-slip"], function(){
-        Route::get('import-columns', [AdminController::class, 'importColumns']);
-        Route::post('store', [AdminController::class, 'salarySlipImport']);
-        Route::get("delete", [AdminController::class, "salaryDelete"]);
+    Route::post("profile-update", [UserController::class, "updateProfile"]);
+
+    Route::middleware('role:admin')->group(function () {
+        Route::post('/account-master', [UserController::class, 'accountMaster']);
+        Route::post('register', [AuthController::class, 'register']);
+        Route::get('admin-dashboard', [AdminController::class, 'dashboard']);
+        Route::group(["prefix" => "admin/salary-slip"], function(){
+            Route::get('import-columns', [AdminController::class, 'importColumns']);
+            Route::post('store', [AdminController::class, 'salarySlipImport']);
+            Route::get("delete", [AdminController::class, "salaryDelete"]);
+        });
+        Route::group(["prefix" => "department"], function(){
+            Route::get('get', [AdminController::class, "getDepartment"]);
+            Route::post('store', [AdminController::class, 'storeDepartment']);
+        });
+        Route::group(["prefix" => "employee"], function(){
+            Route::get('get', [UserController::class, 'index']);
+            Route::get('show/{id}', [UserController::class, 'show']);
+            Route::get('import-columns', [UserController::class, 'importColumns']);
+            Route::post('store', [UserController::class, 'store']);
+            Route::put('edit/{id}', [UserController::class, 'update']);
+            Route::get('delete/{id}', [UserController::class, 'destroy']);
+            Route::post('import', [UserController::class, 'import']);
+            Route::post('import-account-detail', [UserController::class, 'importAccountDetail']);
+        });
+        Route::post('/appointment/create-account', [UserController::class, 'createAppointmentAccount']);
+        Route::get('/agents', [UserController::class, 'getAgents']);
+        Route::put('/agents/{id}', [UserController::class, 'updateAgent']);
+        Route::delete('/agents/{id}', [UserController::class, 'deleteAgent']);
+        Route::delete('/trial-form/delete/{id}', [UserController::class, 'deleteTrialForm']);
     });
-    Route::group(["prefix" => "salary-slip"], function(){
-        Route::get('get', [SalariesSlipController::class, 'index']);
-        Route::get('show/{id}', [SalariesSlipController::class, 'show']);
+
+    Route::middleware('role:admin,agent')->group(function () {
+        Route::post('/trial-form/store', [UserController::class, 'postTrialForm']);
+        Route::get('/trial-form/list', [UserController::class, 'getTrialForms']);
+        Route::post('/trial-form/update/{id}', [UserController::class, 'updateTrialForm']);
     });
-    Route::group(["prefix" => "department"], function(){
-        Route::get('get', [AdminController::class, "getDepartment"]);
-        Route::post('store', [AdminController::class, 'storeDepartment']);
+
+    // Admin manages every employee's payslips; employees view their own (SalariesSlipController scopes by role)
+    Route::middleware('role:admin,employee')->group(function () {
+        Route::group(["prefix" => "salary-slip"], function(){
+            Route::get('get', [SalariesSlipController::class, 'index']);
+            Route::get('show/{id}', [SalariesSlipController::class, 'show']);
+        });
     });
-    Route::group(["prefix" => "employee"], function(){
-        Route::get('get', [UserController::class, 'index']);
-        Route::get('show/{id}', [UserController::class, 'show']);
-        Route::get('import-columns', [UserController::class, 'importColumns']);
-        Route::post('store', [UserController::class, 'store']);
-        Route::put('edit/{id}', [UserController::class, 'update']);
-        Route::get('delete/{id}', [UserController::class, 'destroy']);
-        Route::post('import', [UserController::class, 'import']);
-        Route::post('import-account-detail', [UserController::class, 'importAccountDetail']);
-    });
-    Route::post('/appointment/update', [UserController::class, 'updateUser']);
-    Route::post("profile-update", [UserController::class, "updateUser"]);
-    Route::post('/trial-form/store', [UserController::class, 'postTrialForm']);
-    Route::get('/trial-form/list', [UserController::class, 'getTrialForms']);
-    Route::post('/trial-form/update/{id}', [UserController::class, 'updateTrialForm']);
-    Route::delete('/trial-form/delete/{id}', [UserController::class, 'deleteTrialForm']);
+
+    Route::get('dashboard', [UserController::class, 'dashboard'])->middleware('role:employee');
+
+    // Both the agent portal and the admin Appointments page use this to edit a candidate
+    Route::post('/appointment/update', [UserController::class, 'updateUser'])->middleware('role:admin,agent');
+
+    Route::get('/agent/candidates', [UserController::class, 'getAgentCandidates'])->middleware('role:agent');
 });

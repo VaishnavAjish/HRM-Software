@@ -9,8 +9,12 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "mobile:sync": "npx cap sync",
-    "mobile:build": "npm run build && npx cap sync",
-    "mobile:run:android": "npm run mobile:build && npx cap run android"
+    "mobile:build": "cross-env VITE_ENV=DEV VITE_API_BASE_URL=http://10.0.2.2:8000/api vite build && npx cap sync",
+    "mobile:run:android": "npm run mobile:build && npx cap run android",
+    "mobile:build:local": "npm run mobile:build",
+    "mobile:run:android:local": "npm run mobile:run:android",
+    "mobile:build:prod": "npm run build && npx cap sync",
+    "mobile:run:android:prod": "npm run mobile:build:prod && npx cap run android"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.2",
@@ -29,6 +33,7 @@
     "react-hot-toast": "^2.6.0",
     "react-is": "^19.2.5",
     "react-router-dom": "^7.14.2",
+    "react-to-print": "^3.3.0",
     "recharts": "^3.8.1",
     "vite-plugin-pwa": "^1.2.0",
     "xlsx": "^0.18.5"

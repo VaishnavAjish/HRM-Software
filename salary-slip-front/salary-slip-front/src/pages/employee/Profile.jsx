@@ -112,7 +112,7 @@ export default function Profile() {
           user?.accessToken,
           user?.tokenType,
         );
-        const data = res?.data || res;
+        const data = res?.data || res?.user || res;
         setProfile(data);
         setForm({
           name: data.name || "",
@@ -188,7 +188,7 @@ export default function Profile() {
         user?.accessToken,
         user?.tokenType,
       );
-      const updatedPhoto = res?.data?.photo || res?.photo;
+      const updatedPhoto = res?.data?.photo || res?.user?.photo || res?.photo;
 
       setProfile((prev) => ({
         ...prev,
@@ -263,7 +263,7 @@ export default function Profile() {
             <div className="skeleton h-24 w-full" />
             <div className="px-5 pb-5 -mt-16">
               <div className="flex items-end justify-between mb-4">
-                <div className="skeleton w-32 h-32 rounded-3xl border-[6px] border-white dark:border-gray-800" />
+                <div className="skeleton w-24 h-24 sm:w-32 sm:h-32 rounded-3xl border-[4px] sm:border-[6px] border-white dark:border-gray-800" />
               </div>
               <div className="space-y-2">
                 <div className="skeleton h-5 w-36 rounded" />
@@ -356,9 +356,9 @@ export default function Profile() {
           </div>
 
           <div className="px-5 pb-5 -mt-16">
-            <div className="flex items-end justify-between mb-4">
+            <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
               <div className="relative">
-                <div className="w-32 h-32 rounded-3xl bg-gradient-to-br from-brand-500 to-indigo-600 border-[6px] border-white dark:border-gray-800 flex items-center justify-center text-white text-4xl font-bold shadow-2xl shadow-brand-500/20 overflow-hidden">
+                <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-3xl bg-gradient-to-br from-brand-500 to-indigo-600 border-[4px] sm:border-[6px] border-white dark:border-gray-800 flex items-center justify-center text-white text-3xl sm:text-4xl font-bold shadow-2xl shadow-brand-500/20 overflow-hidden">
                   {photoPreview || emp.photo ? (
                     <img
                       src={photoPreview || getEmployeePhotoUrl(emp.photo)}
@@ -448,13 +448,13 @@ export default function Profile() {
           <div className="w-10 h-10 rounded-xl bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center flex-shrink-0">
             <Hash size={18} className="text-purple-600" />
           </div>
-          <div>
+          <div className="min-w-0 flex-1">
             <p className="text-xs text-gray-400 font-medium">Employee Code</p>
-            <p className="text-base font-bold text-gray-900 dark:text-white font-mono">
+            <p className="text-base font-bold text-gray-900 dark:text-white font-mono truncate">
               {emp.emp_code}
             </p>
           </div>
-          <div className="ml-auto">
+          <div className="ml-auto flex-shrink-0">
             <Award size={20} className="text-yellow-400" />
           </div>
         </div>

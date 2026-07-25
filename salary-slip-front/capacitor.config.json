@@ -1,0 +1,8 @@
+{
+  "appId": "com.salaryms.app",
+  "appName": "SalaryMS",
+  "webDir": "master",
+  "server": {
+    "androidScheme": "https"
+  }
+}

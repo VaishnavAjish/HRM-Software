@@ -40,6 +40,13 @@ const deptSalary = departmentHeadcount.map((d) => ({
   count: d.count,
 }));
 
+const attendanceOverview = [
+  { name: "Present", value: 82, color: "#22c55e" },
+  { name: "Leave", value: 8, color: "#f59e0b" },
+  { name: "Half Day", value: 6, color: "#3b82f6" },
+  { name: "Absent", value: 4, color: "#ef4444" },
+];
+
 export default function Reports() {
   const handleExport = (name) => {
     if (name === "Salary Report") {
@@ -263,6 +270,7 @@ export default function Reports() {
             Department Summary
           </h3>
         </div>
+        <div className="overflow-x-auto">
         <table className="w-full">
           <thead>
             <tr className="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700">
@@ -300,6 +308,7 @@ export default function Reports() {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );

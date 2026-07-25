@@ -46,21 +46,27 @@ export function CompanyProvider({ children }) {
     DEFAULT_COMPANY_ID,
   );
 
+  const isSuperAdmin = user?.rawRole === 0 && user?.type !== 'agent';
+  const isMaster = user?.rawRole === 1 && user?.type !== 'agent';
+
   useEffect(() => {
-    if (!isAdmin) {
+    if (!isSuperAdmin && !isMaster) {
       setAdminScopeKey(userCompanyId);
     }
-  }, [isAdmin, userCompanyId]);
+  }, [isSuperAdmin, isMaster, userCompanyId]);
 
   useEffect(() => {
-    if (isAdmin) {
+    if (isSuperAdmin || isMaster) {
       saveStoredScope(adminScopeKey);
     }
-  }, [adminScopeKey, isAdmin]);
+  }, [adminScopeKey, isSuperAdmin, isMaster]);
 
-  const scope = isAdmin
-    ? resolveCompanyScope(adminScopeKey, userCompanyId)
-    : resolveCompanyScope(userCompanyId, userCompanyId);
+  const rawScope = resolveCompanyScope(adminScopeKey, userCompanyId);
+  const scope = isSuperAdmin
+    ? rawScope
+    : isMaster
+      ? { ...rawScope, companyId: userCompanyId, scopeKey: rawScope.unit ? `${userCompanyId}::${rawScope.unit}` : userCompanyId }
+      : resolveCompanyScope(userCompanyId, userCompanyId);
   const companyId = scope.companyId;
 
   useEffect(() => {
@@ -68,7 +74,7 @@ export function CompanyProvider({ children }) {
     document.documentElement.dataset.theme = theme;
   }, [companyId]);
 
-  const companyIds = isAdmin ? resolveCompanyIds(companyId) : [userCompanyId];
+  const companyIds = isSuperAdmin ? resolveCompanyIds(companyId) : [userCompanyId];
   const activeUnit = scope.unit;
   const scopeKey = scope.scopeKey;
   const isAllCompanies = companyId === ALL_COMPANY_ID;
@@ -84,21 +90,23 @@ export function CompanyProvider({ children }) {
       companyIds,
       companyScope,
       company: getCompanyConfig(companyId),
-      companyOptions: isAdmin ? ADMIN_COMPANY_OPTIONS : COMPANY_OPTIONS,
+      companyOptions: isSuperAdmin ? ADMIN_COMPANY_OPTIONS : isMaster ? COMPANY_OPTIONS.filter(o => o.id === companyId) : [],
       uploadCompanyOptions: COMPANY_OPTIONS,
-      canSwitchCompany: isAdmin,
+      canSwitchCompany: isSuperAdmin || isMaster,
       activeUnit,
       hasUnitFilter: Boolean(activeUnit),
       isAllCompanies,
       scopeKey,
       scopeLabel,
       setCompanyId: (nextCompanyId) => {
-        if (!isAdmin) return;
+        if (!isSuperAdmin) return;
         setAdminScopeKey(resolveCompanyScope(nextCompanyId).scopeKey);
       },
       setCompanyScope: (nextScope) => {
-        if (!isAdmin) return;
-        setAdminScopeKey(resolveCompanyScope(nextScope, userCompanyId).scopeKey);
+        if (!isSuperAdmin && !isMaster) return;
+        const resolved = resolveCompanyScope(nextScope, userCompanyId);
+        if (isMaster && resolved.companyId !== userCompanyId) return;
+        setAdminScopeKey(resolved.scopeKey);
       },
     }),
     [
@@ -107,6 +115,8 @@ export function CompanyProvider({ children }) {
       companyIds,
       companyScope,
       isAdmin,
+      isSuperAdmin,
+      isMaster,
       isAllCompanies,
       scopeKey,
       scopeLabel,

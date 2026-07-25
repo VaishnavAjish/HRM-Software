@@ -188,7 +188,7 @@ export async function exportNodeToPdf(
       Array.from(clone.querySelectorAll("img")).map(
         (img) =>
           new Promise((resolve) => {
-            if (img.complete && img.naturalWidth > 0) resolve();
+            if (img.complete) resolve();
             else {
               img.onload = resolve;
               img.onerror = resolve;

@@ -165,7 +165,7 @@ export default function AdminProfile() {
           user?.accessToken,
           user?.tokenType,
         );
-        const data = res?.data || res;
+        const data = res?.data || res?.user || res;
         setForm({
           name: data.name || "—",
           email: data.email || "—",
@@ -210,7 +210,7 @@ export default function AdminProfile() {
         user?.accessToken,
         user?.tokenType,
       );
-      const updatedPhoto = res?.data?.photo || res?.photo;
+      const updatedPhoto = res?.data?.photo || res?.user?.photo || res?.photo;
 
       setProfile((prev) => ({
         ...prev,
@@ -286,7 +286,7 @@ export default function AdminProfile() {
             <div className="skeleton h-24 w-full" />
             <div className="px-5 pb-5 -mt-16">
               <div className="flex items-end justify-between mb-4">
-                <div className="skeleton w-32 h-32 rounded-3xl border-[6px] border-white dark:border-gray-800" />
+                <div className="skeleton w-24 h-24 sm:w-32 sm:h-32 rounded-3xl border-[4px] sm:border-[6px] border-white dark:border-gray-800" />
               </div>
               <div className="space-y-2">
                 <div className="skeleton h-5 w-32 rounded" />
@@ -384,9 +384,9 @@ export default function AdminProfile() {
           </div>
 
           <div className="px-5 pb-5 -mt-16">
-            <div className="flex items-end justify-between mb-4">
+            <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
               <div className="relative">
-                <div className="w-32 h-32 rounded-3xl bg-gradient-to-br from-brand-500 to-brand-600 border-[6px] border-white dark:border-gray-800 flex items-center justify-center text-white text-4xl font-bold shadow-2xl shadow-brand-500/20 overflow-hidden">
+                <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-3xl bg-gradient-to-br from-brand-500 to-brand-600 border-[4px] sm:border-[6px] border-white dark:border-gray-800 flex items-center justify-center text-white text-3xl sm:text-4xl font-bold shadow-2xl shadow-brand-500/20 overflow-hidden">
                   {photoPreview || form.photo ? (
                     <img
                       src={photoPreview || getEmployeePhotoUrl(form.photo)}
@@ -477,13 +477,13 @@ export default function AdminProfile() {
           <div className="w-10 h-10 rounded-xl bg-brand-100 dark:bg-brand-900/30 flex items-center justify-center flex-shrink-0">
             <Hash size={18} className="text-brand-600" />
           </div>
-          <div>
+          <div className="min-w-0 flex-1">
             <p className="text-xs text-gray-400 font-medium">Admin ID</p>
-            <p className="text-base font-bold text-gray-900 dark:text-white font-mono">
+            <p className="text-base font-bold text-gray-900 dark:text-white font-mono truncate">
               {form.emp_code}
             </p>
           </div>
-          <div className="ml-auto w-8 h-8 rounded-lg bg-yellow-100 dark:bg-yellow-900/20 flex items-center justify-center">
+          <div className="ml-auto w-8 h-8 rounded-lg bg-yellow-100 dark:bg-yellow-900/20 flex items-center justify-center flex-shrink-0">
             <Crown size={16} className="text-yellow-500" />
           </div>
         </div>
