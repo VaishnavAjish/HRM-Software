@@ -192,7 +192,7 @@ export interface IOfferDetails {
   negotiatedAt?: Date;
 }
 
-export interface ICandidate extends Document, { deletedAt?: Date; isDeleted: boolean } {
+export interface ICandidate extends Document {
   _id: Types.ObjectId;
   candidateId: string;
   jobPostingId?: Types.ObjectId;

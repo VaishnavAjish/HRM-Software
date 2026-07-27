@@ -61,7 +61,7 @@ export interface ISalaryComponentCondition {
   value: any;
 }
 
-export interface ISalaryComponent extends Document, { deletedAt?: Date; isDeleted: boolean } {
+export interface ISalaryComponent extends Document {
   _id: Types.ObjectId;
   code: string;
   name: string;

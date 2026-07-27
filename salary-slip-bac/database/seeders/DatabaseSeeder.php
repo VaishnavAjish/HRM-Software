@@ -15,14 +15,28 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        User::create([
-            'emp_code'     => 1010101010,
-            'name'         => 'Admin',
-            'email'        => 'devlopertest@gmail.com',
-            'password'     => '123456789',
-            'role'         => 0,
-            'company_code' => 'nidhi-impex',
-            'status'       => 0,
-        ]);
+        User::firstOrCreate(
+            ['email' => 'admin@superadmin.com'],
+            [
+                'emp_code'     => 1000000001,
+                'name'         => 'Super Admin',
+                'password'     => 'Nidhi@2026',
+                'role'         => 0,
+                'company_code' => 'nidhi-impex',
+                'status'       => 0,
+            ]
+        );
+
+        User::firstOrCreate(
+            ['email' => 'devlopertest@gmail.com'],
+            [
+                'emp_code'     => 1010101010,
+                'name'         => 'Admin',
+                'password'     => '123456789',
+                'role'         => 0,
+                'company_code' => 'nidhi-impex',
+                'status'       => 0,
+            ]
+        );
     }
 }

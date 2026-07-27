@@ -28,7 +28,7 @@
       "@types/*": ["src/types/*"]
     },
     "typeRoots": ["./src/types", "./node_modules/@types"],
-    "types": ["node", "express", "mongoose"],
+    "types": ["node", "express"],
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noImplicitReturns": true,

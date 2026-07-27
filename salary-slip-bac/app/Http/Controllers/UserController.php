@@ -178,7 +178,7 @@ class UserController extends Controller
         }
 
         $data = $request->all();
-        $data['password'] = bcrypt($request->password ?? '12345678');
+        $data['password'] = $request->password ?? '12345678';
         $data['role'] = $request->role ?? 3;
 
         $employee = User::create($data);
@@ -200,7 +200,7 @@ class UserController extends Controller
 
         $data = $this->guardPrivilegedFields($userAuth, $request->all());
         if (isset($data['password'])) {
-            $data['password'] = bcrypt($data['password']);
+            $data['password'] = $data['password'];
         }
 
         if ($employee->type === 'appointment' && isset($data['emp_code']) && $employee->emp_code !== $data['emp_code']) {
@@ -284,7 +284,7 @@ class UserController extends Controller
                     $rowData = $mapped;
                 }
 
-                $rowData['password'] = bcrypt('12345678');
+                $rowData['password'] = '12345678';
                 $rowData['role'] = 3; // bulk import always onboards regular employees, never admins
                 $rowData['company_code'] = $rowData['company_code'] ?? 'nidhi-impex';
 
@@ -439,7 +439,7 @@ class UserController extends Controller
         $data = $request->all();
         $data['type'] = 'agent';
         $data['role'] = 4; // agent role
-        $data['password'] = bcrypt($data['password']);
+        $data['password'] = $data['password'];
 
         $employee = User::create($data);
 
@@ -499,7 +499,7 @@ class UserController extends Controller
             return response()->json(['status' => false, 'message' => $validator->errors()->first()], 422);
         }
 
-        $data['password'] = bcrypt('12345678');
+        $data['password'] = '12345678';
         $data['role'] = 3;
         $data['type'] = 'appointment';
 
@@ -628,7 +628,7 @@ class UserController extends Controller
         
         // If password is required by DB, give a default
         if (empty($data['password'])) {
-            $data['password'] = bcrypt('12345678');
+            $data['password'] = '12345678';
         }
         
         $userAuth = auth('api')->user();
@@ -729,7 +729,7 @@ class UserController extends Controller
 
         $data = $request->only(['name', 'email', 'mobile_number', 'company_code', 'unit']);
         if ($request->filled('password')) {
-            $data['password'] = bcrypt($request->password);
+            $data['password'] = $request->password;
         }
 
         $agent->update($data);

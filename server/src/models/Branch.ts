@@ -49,7 +49,7 @@ export interface IOperatingHours {
   timezone: string;
 }
 
-export interface IBranch extends Document, { deletedAt?: Date; isDeleted: boolean } {
+export interface IBranch extends Document {
   _id: Types.ObjectId;
   code: string;
   name: string;
@@ -191,7 +191,8 @@ branchSchema.virtual('employees', {
 
 branchSchema.pre('save', async function (next) {
   if (this.isHeadOffice) {
-    const existingHeadOffice = await this.constructor.findOne({ isHeadOffice: true, _id: { $ne: this._id } });
+    const model = this.constructor as mongoose.Model<IBranch>;
+    const existingHeadOffice = await model.findOne({ isHeadOffice: true, _id: { $ne: this._id } });
     if (existingHeadOffice) {
       throw new Error('Only one head office is allowed');
     }

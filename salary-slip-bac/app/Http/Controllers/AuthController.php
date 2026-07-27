@@ -81,7 +81,7 @@ class AuthController extends Controller
         $user = User::create([
             'name'     => $request->name,
             'email'    => $request->email,
-            'password' => bcrypt($request->password),
+            'password' => $request->password,
             'role'     => $request->role ?? 1,
         ]);
 
@@ -113,7 +113,7 @@ class AuthController extends Controller
             return response()->json(['status' => false, 'message' => 'Current password is incorrect'], 422);
         }
 
-        $user->password = bcrypt($request->new_password);
+        $user->password = $request->new_password;
         $user->save();
 
         return response()->json(['status' => true, 'message' => 'Password changed successfully']);
@@ -339,7 +339,7 @@ class AuthController extends Controller
             return response()->json(['status' => false, 'message' => 'Verification expired. Please verify your employee code again.'], 422);
         }
 
-        $emp->password = bcrypt($request->password);
+        $emp->password = $request->password;
         $emp->otp = null;
         $emp->verification_token = null;
         $emp->verification_token_expires_at = null;

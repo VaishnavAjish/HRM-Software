@@ -84,7 +84,7 @@ export interface IApplicationStage {
   evaluationFormId?: Types.ObjectId;
 }
 
-export interface IJobPosting extends Document, { deletedAt?: Date; isDeleted: boolean } {
+export interface IJobPosting extends Document {
   _id: Types.ObjectId;
   jobId: string;
   title: string;

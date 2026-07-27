@@ -73,7 +73,7 @@ export interface IOvertimeRecord {
   status: 'PENDING' | 'APPROVED' | 'REJECTED';
 }
 
-export interface IAttendance extends Document, { deletedAt?: Date; isDeleted: boolean } {
+export interface IAttendance extends Document {
   _id: Types.ObjectId;
   employeeId: Types.ObjectId;
   date: Date;

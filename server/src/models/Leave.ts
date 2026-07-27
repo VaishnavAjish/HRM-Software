@@ -38,7 +38,7 @@ export interface ILeaveAttachment {
   uploadedBy: Types.ObjectId;
 }
 
-export interface ILeaveRequest extends Document, { deletedAt?: Date; isDeleted: boolean } {
+export interface ILeaveRequest extends Document {
   _id: Types.ObjectId;
   employeeId: Types.ObjectId;
   leaveTypeId: Types.ObjectId;

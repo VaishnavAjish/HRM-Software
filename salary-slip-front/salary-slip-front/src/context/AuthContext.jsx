@@ -20,7 +20,7 @@ function loadUserFromStorage() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     return raw ? JSON.parse(raw) : null;
-  } catch (error) {
+  } catch {
     return null;
   }
 }
@@ -155,12 +155,7 @@ export function AuthProvider({ children }) {
       const data = await authApi.login(email.trim(), password, company_code);
       const apiUser =
         data?.login || data?.data || data?.user || data?.employee || data;
-      const localUser = Object.values(users).find(
-        (u) =>
-          u.email?.toLowerCase() === email.trim().toLowerCase() ||
-          u.empCode?.toLowerCase() === email.trim().toLowerCase(),
-      );
-      const loggedInUser = buildAuthUser(apiUser, localUser, data);
+      const loggedInUser = buildAuthUser(apiUser, {}, data);
 
       setUser(loggedInUser);
       saveUserToStorage(loggedInUser);
@@ -176,7 +171,7 @@ export function AuthProvider({ children }) {
   };
 
   const lookupUser = (empCode) => {
-    return users[empCode.toUpperCase()] || null;
+    return null;
   };
 
   const logout = async () => {

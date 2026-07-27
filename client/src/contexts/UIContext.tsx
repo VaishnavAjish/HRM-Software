@@ -38,33 +38,37 @@ const UIContext = createContext<UIContextValue | undefined>(undefined);
 export function UIProvider({ children }: { children: React.ReactNode }) {
   const store = useUIStore();
 
+  const setOnline = store.setOnline;
+  const theme = store.theme;
+  const setResolvedTheme = store.setResolvedTheme;
+
   useEffect(() => {
-    const handleOnline = () => store.setOnline(true);
-    const handleOffline = () => store.setOnline(false);
+    const handleOnline = () => setOnline(true);
+    const handleOffline = () => setOnline(false);
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
-    store.setOnline(navigator.onLine);
+    setOnline(navigator.onLine);
 
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, [store]);
+  }, [setOnline]);
 
   useEffect(() => {
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
     const handleChange = (e: MediaQueryListEvent) => {
-      if (store.theme === 'system') {
+      if (theme === 'system') {
         const resolved = e.matches ? 'dark' : 'light';
-        store.setResolvedTheme(resolved);
+        setResolvedTheme(resolved);
       }
     };
 
     mediaQuery.addEventListener('change', handleChange);
     return () => mediaQuery.removeEventListener('change', handleChange);
-  }, [store]);
+  }, [theme, setResolvedTheme]);
 
   const value = useMemo<UIContextValue>(() => ({
     theme: store.theme,

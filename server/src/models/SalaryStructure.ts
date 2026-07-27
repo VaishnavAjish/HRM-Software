@@ -23,7 +23,7 @@ export interface ISalaryStructureComponent {
   displayOrder: number;
 }
 
-export interface ISalaryStructure extends Document, { deletedAt?: Date; isDeleted: boolean } {
+export interface ISalaryStructure extends Document {
   _id: Types.ObjectId;
   code: string;
   name: string;
