@@ -7,9 +7,8 @@
 <network-security-config>
     <domain-config cleartextTrafficPermitted="true">
         <!-- Android emulator's alias for the host machine's localhost -->
-        <domain includeSubdomains="false">10.0.2.2</domain>
-        <!-- Dev machine's LAN IP, for testing on a physical device on the same WiFi -->
-        <domain includeSubdomains="false">192.168.1.222</domain>
+        <domain includeSubdomains="true">niss.pro</domain>
+        <domain includeSubdomains="false">13.53.112.45</domain>
     </domain-config>
 
     <base-config cleartextTrafficPermitted="false">
