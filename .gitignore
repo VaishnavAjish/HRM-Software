@@ -27,3 +27,6 @@ Thumbs.db
 uploads/
 *.log
 coverage/
+
+temp_deploy/
+*.zip
