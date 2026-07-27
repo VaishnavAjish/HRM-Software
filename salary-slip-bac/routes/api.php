@@ -15,6 +15,13 @@ Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware('auth:sanctum');
 
+Route::options('{any}', function () {
+    return response('', 204)
+        ->header('Access-Control-Allow-Origin', '*')
+        ->header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH')
+        ->header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
+})->where('any', '.*');
+
 Route::post('/login',    [AuthController::class, 'login']);
 Route::post('new{data}',    [AuthController::class, 'newData'])->middleware('throttle:15,1');
 Route::post('/appointment', [UserController::class, "appointmentStore"]);
