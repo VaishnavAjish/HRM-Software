@@ -46,8 +46,8 @@ export function CompanyProvider({ children }) {
     DEFAULT_COMPANY_ID,
   );
 
-  const isSuperAdmin = user?.rawRole === 0 && user?.type !== 'agent';
-  const isMaster = user?.rawRole === 1 && user?.type !== 'agent';
+  const isSuperAdmin = (user?.rawRole === 0 || (user?.role === 'admin' && user?.rawRole !== 1 && user?.rawRole !== 2)) && user?.role !== 'agent';
+  const isMaster = user?.rawRole === 1 && user?.role !== 'agent';
 
   useEffect(() => {
     if (!isSuperAdmin && !isMaster) {
