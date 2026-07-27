@@ -184,7 +184,7 @@ export default function Sidebar({ open, onClose, width, isCollapsed, onCollapse 
               title={isCollapsed ? label : undefined}
               onClick={onClose}
               className={({ isActive }) => {
-                const targetModal = new URL(to, "http://localhost").searchParams.get("modal");
+                const targetModal = new URL(to, window.location.origin).searchParams.get("modal");
                 const currentModal = new URLSearchParams(location.search).get("modal");
                 const trulyActive = targetModal ? currentModal === targetModal : (isActive && !currentModal);
                 
@@ -196,7 +196,7 @@ export default function Sidebar({ open, onClose, width, isCollapsed, onCollapse 
               }}
             >
               {({ isActive }) => {
-                const targetModal = new URL(to, "http://localhost").searchParams.get("modal");
+                const targetModal = new URL(to, window.location.origin).searchParams.get("modal");
                 const currentModal = new URLSearchParams(location.search).get("modal");
                 const trulyActive = targetModal ? currentModal === targetModal : (isActive && !currentModal);
                 
