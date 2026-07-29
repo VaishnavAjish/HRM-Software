@@ -3,6 +3,8 @@
 *.key
 .env
 .env.*
+# Template of required variables with placeholder values only — no secrets.
+!.env.example
 
 # Dependencies
 node_modules/
