@@ -473,8 +473,14 @@ export default function AddEditEmployeeModal({
                     className={fieldCls}
                   >
                     <option>Active</option>
+                    <option>Pending</option>
                     <option>Inactive</option>
                   </select>
+                  {form.status === "Pending" && (
+                    <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
+                      This employee hasn't set their own password yet — status becomes Active automatically once they do.
+                    </p>
+                  )}
                 </div>
 
                 {input({ label: "Joining Date", key: "joiningDate", type: "date" })}

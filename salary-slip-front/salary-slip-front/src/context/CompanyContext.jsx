@@ -70,9 +70,16 @@ export function CompanyProvider({ children }) {
   const companyId = scope.companyId;
 
   useEffect(() => {
-    const theme = getCompanyConfig(companyId)?.theme ?? DEFAULT_THEME;
+    // A Super Admin actively switches company scope via the dropdown, so
+    // re-theming the whole app to match whichever company is selected reads
+    // as a jarring color flip, not a helpful cue — keep the app's own fixed
+    // theme for them. A Master is permanently tied to one company (no
+    // switcher), so their branded per-company theme stays as before.
+    const theme = isSuperAdmin
+      ? DEFAULT_THEME
+      : getCompanyConfig(companyId)?.theme ?? DEFAULT_THEME;
     document.documentElement.dataset.theme = theme;
-  }, [companyId]);
+  }, [companyId, isSuperAdmin]);
 
   const companyIds = isSuperAdmin ? resolveCompanyIds(companyId) : [userCompanyId];
   const activeUnit = scope.unit;

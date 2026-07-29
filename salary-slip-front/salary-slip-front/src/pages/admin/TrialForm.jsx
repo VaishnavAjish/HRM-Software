@@ -21,6 +21,8 @@ import {
   Trash2,
   Building2,
   XCircle,
+  TableProperties,
+  CheckCircle,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import Badge from "../../components/ui/Badge";
@@ -307,6 +309,10 @@ export default function TrialForm() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [statusLoading, setStatusLoading] = useState({});
+  const [visibleColumns, setVisibleColumns] = useState([
+    "fromNo", "name", "department", "unit", "experience", "managerName", "status", "isPrinted",
+  ]);
+  const [showColModal, setShowColModal] = useState(false);
   const formRef = useRef(null);
   const gridRef = useRef(null);
   const gridContainerRef = useRef(null);
@@ -315,7 +321,8 @@ export default function TrialForm() {
   const { headerMenu, headerFrozen, closeHeaderMenu, toggleHeaderFrozen } =
     useGridHeaderContextMenu(gridRef, gridContainerRef);
 
-  const isNidhiScope = companyId === "nidhi-impex";
+  const [activeTab, setActiveTab] = useState("nidhi-impex");
+  const isNidhiScope = companyId === "nidhi-impex" || (companyId === "all-companies" && activeTab === "nidhi-impex");
 
   const loadForms = async () => {
     if (!isNidhiScope) return;
@@ -485,12 +492,48 @@ export default function TrialForm() {
     }
   };
 
+  const allColumns = useMemo(() => [
+    { field: "fromNo", label: "Form No" },
+    { field: "name", label: "Name" },
+    { field: "department", label: "Department" },
+    { field: "unit", label: "Branch" },
+    { field: "experience", label: "Experience" },
+    { field: "managerName", label: "Manager" },
+    { field: "address", label: "Address" },
+    { field: "mobileNo1", label: "Contact" },
+    { field: "mobileNo2", label: "Mobile No 2" },
+    { field: "email", label: "Email" },
+    { field: "gender", label: "Gender" },
+    { field: "date", label: "Date" },
+    { field: "lastCompanyName", label: "Last Company Name" },
+    { field: "lastCompanyAddress", label: "Last Company Address" },
+    { field: "reasonForLeaving", label: "Reason for Leaving" },
+    { field: "hastakName", label: "Hastak Name" },
+    { field: "hastakCode", label: "Hastak Code" },
+    { field: "hastakMobileNo", label: "Hastak Mobile" },
+    { field: "contractor", label: "Contractor" },
+    { field: "akar", label: "Akar" },
+    { field: "empSignature", label: "Emp Signature" },
+    { field: "managerSignature", label: "Manager Signature" },
+    { field: "hastakSignature", label: "Hastak Signature" },
+    { field: "hrSignature", label: "HR Signature" },
+    { field: "status", label: "Status" },
+    { field: "isPrinted", label: "Print" },
+  ], []);
+
+  const toggleColumnVisibility = (field) => {
+    setVisibleColumns((prev) =>
+      prev.includes(field) ? prev.filter((f) => f !== field) : [...prev, field]
+    );
+  };
+
   const columnDefs = useMemo(
     () => [
       {
         headerName: "Form No",
         field: "fromNo",
         width: 130,
+        hide: !visibleColumns.includes("fromNo"),
         cellRenderer: ({ value }) => (
           <span className="font-mono text-sm font-semibold text-brand-700 dark:text-brand-300">
             {value || "—"}
@@ -502,6 +545,7 @@ export default function TrialForm() {
         field: "name",
         minWidth: 200,
         flex: 1.2,
+        hide: !visibleColumns.includes("name"),
         cellRenderer: ({ value }) => (
           <span className="font-semibold text-sm text-gray-900 dark:text-white capitalize">
             {value?.toLowerCase()}
@@ -512,6 +556,34 @@ export default function TrialForm() {
         headerName: "Department",
         field: "department",
         minWidth: 140,
+        hide: !visibleColumns.includes("department"),
+        cellRenderer: ({ value }) => (
+          <span className="text-sm text-gray-600 dark:text-gray-300">
+            {value || "—"}
+          </span>
+        ),
+      },
+      {
+        headerName: "Branch",
+        field: "unit",
+        width: 120,
+        hide: !visibleColumns.includes("unit"),
+        cellRenderer: ({ value }) => (
+          <Badge variant="gray">{value || "—"}</Badge>
+        ),
+      },
+      {
+        headerName: "Experience",
+        field: "experience",
+        width: 120,
+        hide: !visibleColumns.includes("experience"),
+        cellRenderer: TextCell,
+      },
+      {
+        headerName: "Manager",
+        field: "managerName",
+        minWidth: 130,
+        hide: !visibleColumns.includes("managerName"),
         cellRenderer: ({ value }) => (
           <span className="text-sm text-gray-600 dark:text-gray-300">
             {value || "—"}
@@ -522,12 +594,14 @@ export default function TrialForm() {
         headerName: "Address",
         field: "address",
         minWidth: 180,
+        hide: !visibleColumns.includes("address"),
         cellRenderer: TextCell,
       },
       {
         headerName: "Contact",
         field: "mobileNo1",
         width: 140,
+        hide: !visibleColumns.includes("mobileNo1"),
         cellRenderer: ({ value }) => (
           <span className="flex items-center gap-1.5 text-sm text-gray-700 dark:text-gray-200">
             <Phone size={12} className="text-green-500 flex-shrink-0" />
@@ -539,32 +613,28 @@ export default function TrialForm() {
         headerName: "Mobile No 2",
         field: "mobileNo2",
         width: 130,
+        hide: !visibleColumns.includes("mobileNo2"),
         cellRenderer: TextCell,
       },
       {
         headerName: "Email",
         field: "email",
         minWidth: 170,
+        hide: !visibleColumns.includes("email"),
         cellRenderer: TextCell,
       },
       {
         headerName: "Gender",
         field: "gender",
         width: 100,
+        hide: !visibleColumns.includes("gender"),
         cellRenderer: TextCell,
-      },
-      {
-        headerName: "Branch",
-        field: "unit",
-        width: 120,
-        cellRenderer: ({ value }) => (
-          <Badge variant="gray">{value || "—"}</Badge>
-        ),
       },
       {
         headerName: "Date",
         field: "date",
         width: 120,
+        hide: !visibleColumns.includes("date"),
         cellRenderer: ({ value }) => (
           <span className="text-sm text-gray-700 dark:text-gray-200">
             {formatDate(value)}
@@ -575,30 +645,28 @@ export default function TrialForm() {
         headerName: "Last Company Name",
         field: "lastCompanyName",
         minWidth: 160,
+        hide: !visibleColumns.includes("lastCompanyName"),
         cellRenderer: TextCell,
       },
       {
         headerName: "Last Company Address",
         field: "lastCompanyAddress",
         minWidth: 180,
-        cellRenderer: TextCell,
-      },
-      {
-        headerName: "Experience",
-        field: "experience",
-        width: 120,
+        hide: !visibleColumns.includes("lastCompanyAddress"),
         cellRenderer: TextCell,
       },
       {
         headerName: "Reason for Leaving",
         field: "reasonForLeaving",
         minWidth: 160,
+        hide: !visibleColumns.includes("reasonForLeaving"),
         cellRenderer: TextCell,
       },
       {
         headerName: "Hastak Name",
         field: "hastakName",
         minWidth: 140,
+        hide: !visibleColumns.includes("hastakName"),
         cellRenderer: ({ value }) => (
           <span className="text-sm text-gray-600 dark:text-gray-300">
             {value || "—"}
@@ -609,70 +677,70 @@ export default function TrialForm() {
         headerName: "Hastak Code",
         field: "hastakCode",
         width: 120,
+        hide: !visibleColumns.includes("hastakCode"),
         cellRenderer: TextCell,
       },
       {
         headerName: "Hastak Mobile",
         field: "hastakMobileNo",
         width: 140,
+        hide: !visibleColumns.includes("hastakMobileNo"),
         cellRenderer: TextCell,
       },
       {
         headerName: "Contractor",
         field: "contractor",
         minWidth: 130,
+        hide: !visibleColumns.includes("contractor"),
         cellRenderer: TextCell,
-      },
-      {
-        headerName: "Manager",
-        field: "managerName",
-        minWidth: 130,
-        cellRenderer: ({ value }) => (
-          <span className="text-sm text-gray-600 dark:text-gray-300">
-            {value || "—"}
-          </span>
-        ),
       },
       {
         headerName: "Akar",
         field: "akar",
         width: 110,
+        hide: !visibleColumns.includes("akar"),
         cellRenderer: TextCell,
       },
       {
         headerName: "Emp Signature",
         field: "empSignature",
         minWidth: 140,
+        hide: !visibleColumns.includes("empSignature"),
         cellRenderer: TextCell,
       },
       {
         headerName: "Manager Signature",
         field: "managerSignature",
         minWidth: 150,
+        hide: !visibleColumns.includes("managerSignature"),
         cellRenderer: TextCell,
       },
       {
         headerName: "Hastak Signature",
         field: "hastakSignature",
         minWidth: 150,
+        hide: !visibleColumns.includes("hastakSignature"),
         cellRenderer: TextCell,
       },
       {
         headerName: "HR Signature",
         field: "hrSignature",
         minWidth: 140,
+        hide: !visibleColumns.includes("hrSignature"),
         cellRenderer: TextCell,
       },
       {
         headerName: "Status",
         field: "status",
         width: 120,
+        hide: !visibleColumns.includes("status"),
         cellRenderer: ({ value }) => <StatusBadge status={value} />,
       },
       {
         headerName: "Print",
         field: "isPrinted",
         width: 130,
+        hide: !visibleColumns.includes("isPrinted"),
         cellRenderer: ({ value }) =>
           value ? (
             <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2.5 py-1 text-xs font-bold text-green-700 dark:bg-green-900/20 dark:text-green-400">
@@ -703,42 +771,46 @@ export default function TrialForm() {
             </Button>
             {user?.role !== 'agent' && (
               <>
-                <button
-                  onClick={() => handleStatusUpdate(data.id, true)}
-                  disabled={
-                    Boolean(statusLoading[data.id]) || data.status === "Approved"
-                  }
-                  className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold transition ${
-                    data.status === "Approved"
-                      ? "bg-green-600 text-white cursor-default"
-                      : "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 hover:bg-green-100 disabled:opacity-50"
-                  }`}
-                >
-                  {statusLoading[data.id] === "Approved" ? (
-                    <Loader2 size={11} className="animate-spin" />
-                  ) : (
-                    <CheckCircle2 size={11} />
-                  )}
-                  Approve
-                </button>
-                <button
-                  onClick={() => handleStatusUpdate(data.id, false)}
-                  disabled={
-                    Boolean(statusLoading[data.id]) || data.status === "Rejected"
-                  }
-                  className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold transition ${
-                    data.status === "Rejected"
-                      ? "bg-red-600 text-white cursor-default"
-                      : "bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 hover:bg-red-100 disabled:opacity-50"
-                  }`}
-                >
-                  {statusLoading[data.id] === "Rejected" ? (
-                    <Loader2 size={11} className="animate-spin" />
-                  ) : (
-                    <XCircle size={11} />
-                  )}
-                  Reject
-                </button>
+                {data.status !== "Rejected" && (
+                  <button
+                    onClick={() => handleStatusUpdate(data.id, true)}
+                    disabled={
+                      Boolean(statusLoading[data.id]) || data.status === "Approved"
+                    }
+                    className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold transition ${
+                      data.status === "Approved"
+                        ? "bg-green-600 text-white cursor-default"
+                        : "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 hover:bg-green-100 disabled:opacity-50"
+                    }`}
+                  >
+                    {statusLoading[data.id] === "Approved" ? (
+                      <Loader2 size={11} className="animate-spin" />
+                    ) : (
+                      <CheckCircle2 size={11} />
+                    )}
+                    Approve
+                  </button>
+                )}
+                {data.status !== "Approved" && (
+                  <button
+                    onClick={() => handleStatusUpdate(data.id, false)}
+                    disabled={
+                      Boolean(statusLoading[data.id]) || data.status === "Rejected"
+                    }
+                    className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold transition ${
+                      data.status === "Rejected"
+                        ? "bg-red-600 text-white cursor-default"
+                        : "bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 hover:bg-red-100 disabled:opacity-50"
+                    }`}
+                  >
+                    {statusLoading[data.id] === "Rejected" ? (
+                      <Loader2 size={11} className="animate-spin" />
+                    ) : (
+                      <XCircle size={11} />
+                    )}
+                    Reject
+                  </button>
+                )}
                 <button
                   onClick={() => setDeleteTarget(data)}
                   className="inline-flex items-center gap-1 rounded-lg bg-red-50 px-2.5 py-1.5 text-xs font-bold text-red-700 transition hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400"
@@ -768,7 +840,7 @@ export default function TrialForm() {
         ),
       },
     ],
-    [statusLoading, handleStatusUpdate],
+    [statusLoading, handleStatusUpdate, visibleColumns],
   );
 
   const defaultColDef = useMemo(
@@ -782,25 +854,42 @@ export default function TrialForm() {
     [],
   );
 
-  if (!isNidhiScope) {
-    return (
-      <div className="flex flex-col items-center justify-center rounded-2xl border border-gray-200 bg-white p-12 text-center shadow-sm dark:border-gray-700 dark:bg-gray-800">
-        <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-50 text-amber-500 dark:bg-amber-900/20">
-          <Building2 size={26} />
+  const renderContent = () => {
+    if (companyId === "all-companies" && activeTab === "silverstar") {
+      return (
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-gray-200 bg-white p-12 text-center shadow-sm dark:border-gray-700 dark:bg-gray-800 mt-5">
+          <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-50 text-brand-500 dark:bg-brand-900/20">
+            <Clock size={26} />
+          </div>
+          <h2 className="text-base font-bold text-gray-900 dark:text-white">
+            Coming Soon
+          </h2>
+          <p className="mt-1 max-w-sm text-sm text-gray-400">
+            Trial Forms for Silverstar are currently under development.
+          </p>
         </div>
-        <h2 className="text-base font-bold text-gray-900 dark:text-white">
-          Trial Form is available for Nidhi Impex only
-        </h2>
-        <p className="mt-1 max-w-sm text-sm text-gray-400">
-          Switch your company scope to Nidhi Impex from the sidebar to view and
-          submit trial forms.
-        </p>
-      </div>
-    );
-  }
+      );
+    }
 
-  return (
-    <div className="space-y-5">
+    if (!isNidhiScope) {
+      return (
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-gray-200 bg-white p-12 text-center shadow-sm dark:border-gray-700 dark:bg-gray-800 mt-5">
+          <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-50 text-amber-500 dark:bg-amber-900/20">
+            <Building2 size={26} />
+          </div>
+          <h2 className="text-base font-bold text-gray-900 dark:text-white">
+            Trial Form is available for Nidhi Impex only
+          </h2>
+          <p className="mt-1 max-w-sm text-sm text-gray-400">
+            Switch your company scope to Nidhi Impex from the sidebar to view and
+            submit trial forms.
+          </p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-5 mt-5">
       {/* Header */}
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div className="flex items-center gap-3">
@@ -823,6 +912,13 @@ export default function TrialForm() {
             icon={<Plus size={14} />}
           >
             New Trial Form
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => setShowColModal(true)}
+            icon={<TableProperties size={14} />}
+          >
+            Columns
           </Button>
           <Button
             variant="secondary"
@@ -1242,6 +1338,80 @@ export default function TrialForm() {
         initialData={prefillTrialData}
         isPrefillFromTrial={true}
       />
+
+      <Modal
+        isOpen={showColModal}
+        onClose={() => setShowColModal(false)}
+        title="Select Visible Columns"
+        size="lg"
+      >
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+          {allColumns.map((col) => (
+            <button
+              key={col.field}
+              onClick={() => toggleColumnVisibility(col.field)}
+              className={`flex items-center gap-3 p-3 rounded-xl border-2 text-left transition-all ${
+                visibleColumns.includes(col.field)
+                  ? "border-brand-500 bg-brand-50 dark:bg-brand-900/20"
+                  : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 bg-transparent"
+              }`}
+            >
+              <div
+                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${
+                  visibleColumns.includes(col.field)
+                    ? "border-brand-600 bg-brand-600 text-white dark:border-brand-500 dark:bg-brand-500"
+                    : "border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-800"
+                }`}
+              >
+                {visibleColumns.includes(col.field) && <CheckCircle size={14} />}
+              </div>
+              <span className={`text-sm font-medium ${
+                  visibleColumns.includes(col.field)
+                    ? "text-brand-700 dark:text-brand-300"
+                    : "text-gray-700 dark:text-gray-300"
+              }`}>
+                {col.label}
+              </span>
+            </button>
+          ))}
+        </div>
+        <div className="mt-6 flex justify-end">
+          <Button variant="primary" onClick={() => setShowColModal(false)}>
+            Apply & Close
+          </Button>
+        </div>
+      </Modal>
+    </div>
+    );
+  };
+
+  return (
+    <div>
+      {companyId === "all-companies" && (
+        <div className="inline-flex rounded-lg border border-gray-200 bg-white p-1 dark:border-gray-700 dark:bg-gray-800 shadow-sm mb-4">
+          <button
+            onClick={() => setActiveTab("nidhi-impex")}
+            className={`px-4 py-2 text-sm font-semibold rounded-md transition-all ${
+              activeTab === "nidhi-impex"
+                ? "bg-brand-50 text-brand-600 dark:bg-brand-900/20 dark:text-brand-400"
+                : "text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+            }`}
+          >
+            Nidhi Impex
+          </button>
+          <button
+            onClick={() => setActiveTab("silverstar")}
+            className={`px-4 py-2 text-sm font-semibold rounded-md transition-all ${
+              activeTab === "silverstar"
+                ? "bg-brand-50 text-brand-600 dark:bg-brand-900/20 dark:text-brand-400"
+                : "text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+            }`}
+          >
+            Silverstar
+          </button>
+        </div>
+      )}
+      {renderContent()}
     </div>
   );
 }

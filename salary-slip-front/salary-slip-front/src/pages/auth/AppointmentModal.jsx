@@ -11,7 +11,8 @@ import {
   X,
 } from "lucide-react";
 import toast from "react-hot-toast";
-import { authApi } from "../../utils/api";
+import ModernDatePicker from "../../components/ModernDatePicker";
+import { authApi, salaryApi } from "../../utils/api";
 import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";
 import { getCompanyUnits, COMPANY_OPTIONS } from "../../config/companyConfig";
@@ -21,12 +22,13 @@ const DOC_FIELDS = [
   { key: "adhar_image", label: "Aadhar Card" },
   { key: "pan_image", label: "PAN Card" },
   { key: "check_image", label: "Cheque" },
+  { key: "account_book", label: "Bank Passbook" },
 ];
 
 const getBlankFormData = (companyCode = "") => ({
   photo: null,
   emp_code: "",
-  joining_date: new Date().toISOString().split("T")[0],
+  joining_date: `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`,
   department: "",
   designation: "",
   manager_name: "",
@@ -70,12 +72,14 @@ const getBlankDocuments = () => ({
   adhar_image: null,
   pan_image: null,
   check_image: null,
+  account_book: null,
 });
 
 const getBlankDocPreviews = () => ({
   adhar_image: "",
   pan_image: "",
   check_image: "",
+  account_book: "",
 });
 
 const MobileCard = ({ title, children, isMobile }) => {
@@ -100,8 +104,36 @@ const AppointmentModal = ({
   onSuccess,
 }) => {
   const { user } = useAuth();
-  const { companyId, isAllCompanies } = useCompany();
-  const getTodayDate = () => new Date().toISOString().split("T")[0];
+  const { isAllCompanies } = useCompany();
+  const { companyId } = useCompany();
+  const [departmentsList, setDepartmentsList] = useState([]);
+  const [selectedCompanyId, setSelectedCompanyId] = useState(
+    isAllCompanies ? "" : companyId,
+  );
+
+  useEffect(() => {
+    const fetchDepartments = async () => {
+      if (!user) return;
+      try {
+        const res = await salaryApi.getDepartments(
+          user.accessToken,
+          user.tokenType,
+          selectedCompanyId || companyId
+        );
+        const departments = res?.data?.map((dept) => dept.name) || [];
+        setDepartmentsList(departments);
+      } catch (error) {
+        // Suppress expected 403s for Agents so it gracefully falls back to text input
+        // without panicking the console.
+      }
+    };
+    if (isOpen) fetchDepartments();
+  }, [isOpen, user, selectedCompanyId, companyId]);
+
+  const getTodayDate = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
 
   const isEditMode = Boolean(initialData?.id) && !isPrefillFromTrial;
   const originalSnapshot = useRef(null);
@@ -109,10 +141,6 @@ const AppointmentModal = ({
 
   const isMobile = useIsMobile();
   const [step, setStep] = useState(1);
-
-  const [selectedCompanyId, setSelectedCompanyId] = useState(
-    isAllCompanies ? "" : companyId,
-  );
 
   const unitOptions = selectedCompanyId
     ? getCompanyUnits(selectedCompanyId)
@@ -132,6 +160,9 @@ const AppointmentModal = ({
   const [errors, setErrors] = useState({});
   const [docErrors, setDocErrors] = useState({});
   const [showConfirmTransfer, setShowConfirmTransfer] = useState(false);
+  const [checkingEmpCode, setCheckingEmpCode] = useState(false);
+  const [empCodeConflict, setEmpCodeConflict] = useState(null);
+  const [isFirstEmpCodeAssignment, setIsFirstEmpCodeAssignment] = useState(true);
 
   const requiredFields = [
     { path: "joining_date", label: "Joining Date" },
@@ -267,19 +298,50 @@ const AppointmentModal = ({
       return;
     }
 
+    const empCode = String(formData.emp_code ?? "").trim();
+
     if (isEditMode) {
       const snap = originalSnapshot.current || {};
-      const newEmpCode = String(formData.emp_code ?? "").trim();
       const oldEmpCode = String(snap.emp_code ?? "").trim();
 
-      // If they are assigning an emp_code for the first time
-      if (newEmpCode && !oldEmpCode) {
-        setShowConfirmTransfer(true);
+      // Assigning an emp_code for the first time, or changing it to a
+      // different value — either way it needs the same duplicate check.
+      if (empCode && empCode !== oldEmpCode) {
+        openEmpCodeConfirm(empCode, !oldEmpCode);
         return;
       }
+    } else if (empCode) {
+      openEmpCodeConfirm(empCode, true);
+      return;
     }
 
     executeSubmit();
+  };
+
+  // Assigning an emp_code converts this record into a full employee, so
+  // before asking "are you sure?" we check whether that code is already
+  // taken — if it is, the popup shows the conflict as an error instead of a
+  // Yes/No confirmation, so a duplicate emp_code never gets created.
+  const openEmpCodeConfirm = async (empCode, isFirstAssignment) => {
+    setEmpCodeConflict(null);
+    setIsFirstEmpCodeAssignment(isFirstAssignment);
+    setShowConfirmTransfer(true);
+    setCheckingEmpCode(true);
+    try {
+      const res = await authApi.checkEmpCodeAvailability(
+        empCode,
+        initialData?.id,
+        user?.accessToken,
+        user?.tokenType,
+      );
+      if (res?.exists) {
+        setEmpCodeConflict(res.employee);
+      }
+    } catch {
+      // Fail open — the backend still enforces this on submit either way.
+    } finally {
+      setCheckingEmpCode(false);
+    }
   };
 
   const executeSubmit = async () => {
@@ -516,6 +578,7 @@ const AppointmentModal = ({
           adhar_image: initialData.documents?.adhar_image || null,
           pan_image: initialData.documents?.pan_image || null,
           check_image: initialData.documents?.check_image || null,
+          account_book: initialData.documents?.account_book || null,
         });
       } else {
         const newCompanyId = isAllCompanies ? "" : companyId;
@@ -532,6 +595,9 @@ const AppointmentModal = ({
       setStep(1);
       setErrors({});
       setDocErrors({});
+      setShowConfirmTransfer(false);
+      setEmpCodeConflict(null);
+      setCheckingEmpCode(false);
     }
     return () => {
       document.body.style.overflow = "";
@@ -543,11 +609,39 @@ const AppointmentModal = ({
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    const nextValue =
-      name === "pan_card_no" || name === "bank_ifsc_code"
-        ? value.toUpperCase()
-        : value;
-    setFormData((prev) => ({ ...prev, [name]: nextValue }));
+    let nextValue = value;
+
+    if (name === "pan_card_no" || name === "bank_ifsc_code") {
+      nextValue = value.toUpperCase();
+    }
+
+    const numericLimits = {
+      aadhar_card_no: 12,
+      mobile_number: 10,
+      emp_whatsapp_no: 10,
+      reference_mobile_no: 10,
+      bank_account_no: 18,
+      punching_no: 20,
+      salary: 10,
+    };
+
+    if (Object.keys(numericLimits).includes(name)) {
+      nextValue = value.replace(/\D/g, "");
+      if (numericLimits[name]) {
+        nextValue = nextValue.slice(0, numericLimits[name]);
+      }
+    }
+
+    if (name === "pan_card_no") nextValue = nextValue.slice(0, 10);
+    if (name === "bank_ifsc_code") nextValue = nextValue.slice(0, 11);
+
+    setFormData((prev) => {
+      const newData = { ...prev, [name]: nextValue };
+      if (name === "salary") {
+        newData.gross_salary = nextValue;
+      }
+      return newData;
+    });
     clearError(name);
   };
 
@@ -576,7 +670,11 @@ const AppointmentModal = ({
 
   const handleFamilyChange = (index, field, value) => {
     const updatedFamily = [...formData.members];
-    updatedFamily[index] = { ...updatedFamily[index], [field]: value };
+    let nextValue = value;
+    if (field === "mobile") {
+      nextValue = value.replace(/\D/g, "").slice(0, 10);
+    }
+    updatedFamily[index] = { ...updatedFamily[index], [field]: nextValue };
     setFormData((prev) => ({ ...prev, members: updatedFamily }));
   };
 
@@ -688,14 +786,27 @@ const AppointmentModal = ({
                     error={errors.joining_date}
                     type="date"
                   />
-                  <RowField
-                    label="Department"
-                    name="department"
-                    value={formData.department}
-                    onChange={handleChange}
-                    required
-                    error={errors.department}
-                  />
+                  {departmentsList.length > 0 ? (
+                    <RowField
+                      label="Department"
+                      name="department"
+                      value={formData.department}
+                      onChange={handleChange}
+                      required
+                      error={errors.department}
+                      type="select"
+                      options={departmentsList}
+                    />
+                  ) : (
+                    <RowField
+                      label="Department"
+                      name="department"
+                      value={formData.department}
+                      onChange={handleChange}
+                      required
+                      error={errors.department}
+                    />
+                  )}
                   <RowField
                     label="Designation"
                     name="designation"
@@ -866,6 +977,8 @@ const AppointmentModal = ({
                     name="gender"
                     value={formData.gender}
                     onChange={handleChange}
+                    type="select"
+                    options={["MALE", "FEMALE", "OTHER"]}
                   />
                   <RowField
                     label="Cast"
@@ -878,6 +991,8 @@ const AppointmentModal = ({
                     name="marital_status"
                     value={formData.marital_status}
                     onChange={handleChange}
+                    type="select"
+                    options={["MARRIED", "UNMARRIED"]}
                   />
                   <RowField
                     label="Blood Group"
@@ -965,7 +1080,7 @@ const AppointmentModal = ({
               </MobileCard>
 
               {/* Family Members Table */}
-              <div className="mt-6 sm:overflow-x-auto pb-4">
+              <div className="mt-6 sm:overflow-visible overflow-visible pb-4">
                 {isMobile ? (
                   <div className="flex flex-col gap-4">
                     <h3 className="text-base font-bold text-gray-800">Family Members</h3>
@@ -996,8 +1111,7 @@ const AppointmentModal = ({
                           </div>
                           <div className="flex flex-col gap-1 flex-1">
                             <label className="text-xs font-semibold text-gray-600">Date of Birth</label>
-                            <input
-                              type="date"
+                            <ModernDatePicker
                               className="w-full transition-colors border border-gray-300 rounded-lg px-3 py-2 bg-white text-sm h-10 focus:border-brand-500 focus:outline-none"
                               value={member.dob}
                               onChange={(e) => handleFamilyChange(index, "dob", e.target.value)}
@@ -1073,9 +1187,8 @@ const AppointmentModal = ({
                             />
                           </td>
                           <td className="border border-black px-1">
-                            <input
-                              type="date"
-                              className="w-full outline-none text-[13px] bg-transparent"
+                            <ModernDatePicker
+                              className="w-full outline-none text-[13px] bg-transparent min-h-0 h-6 px-1"
                               value={member.dob}
                               onChange={(e) =>
                                 handleFamilyChange(index, "dob", e.target.value)
@@ -1241,7 +1354,7 @@ const AppointmentModal = ({
                     {uploadedCount}
                     <span className="text-sm text-gray-400 font-semibold">
                       {" "}
-                      / 3
+                      / {DOC_FIELDS.length}
                     </span>
                   </p>
                   <p className="text-[11px] text-gray-400 mt-0.5">uploaded</p>
@@ -1250,7 +1363,7 @@ const AppointmentModal = ({
               <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
                 <div
                   className="h-full bg-brand-500 rounded-full transition-all duration-500"
-                  style={{ width: `${(uploadedCount / 3) * 100}%` }}
+                  style={{ width: `${(uploadedCount / DOC_FIELDS.length) * 100}%` }}
                 />
               </div>
             </div>
@@ -1314,41 +1427,97 @@ const AppointmentModal = ({
       createPortal(
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[1002] p-4">
           <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-10 h-10 rounded-full bg-amber-50 text-amber-500 flex items-center justify-center flex-shrink-0">
-                <AlertCircle size={20} />
+            {checkingEmpCode ? (
+              <div className="flex flex-col items-center py-4 gap-3">
+                <span className="w-8 h-8 border-2 border-gray-200 border-t-brand-600 rounded-full animate-spin" />
+                <p className="text-sm text-gray-500">Checking employee code…</p>
               </div>
-              <h3 className="text-base font-bold text-gray-900">
-                Assign Employee Code?
-              </h3>
-            </div>
-            <p className="text-sm text-gray-600 mb-6">
-              Assigning employee code{" "}
-              <span className="font-semibold text-gray-900">
-                {formData.emp_code}
-              </span>{" "}
-              will convert this appointment into a full employee record and
-              remove it from the Appointments list. Continue?
-            </p>
-            <div className="flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setShowConfirmTransfer(false)}
-                className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowConfirmTransfer(false);
-                  executeSubmit();
-                }}
-                className="px-4 py-2 rounded-lg bg-brand-600 text-white text-sm font-semibold hover:bg-brand-700 transition"
-              >
-                Yes, Convert to Employee
-              </button>
-            </div>
+            ) : empCodeConflict ? (
+              <>
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-10 h-10 rounded-full bg-red-50 text-red-500 flex items-center justify-center flex-shrink-0">
+                    <AlertCircle size={20} />
+                  </div>
+                  <h3 className="text-base font-bold text-gray-900">
+                    Employee Code Already In Use
+                  </h3>
+                </div>
+                <p className="text-sm text-gray-600 mb-6">
+                  Employee code{" "}
+                  <span className="font-semibold text-gray-900">
+                    {formData.emp_code}
+                  </span>{" "}
+                  is already assigned to{" "}
+                  <span className="font-semibold text-gray-900">
+                    {empCodeConflict.name}
+                  </span>
+                  . Please use a different employee code.
+                </p>
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmTransfer(false)}
+                    className="px-4 py-2 rounded-lg bg-gray-100 text-sm font-semibold text-gray-700 hover:bg-gray-200 transition"
+                  >
+                    OK
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-10 h-10 rounded-full bg-amber-50 text-amber-500 flex items-center justify-center flex-shrink-0">
+                    <AlertCircle size={20} />
+                  </div>
+                  <h3 className="text-base font-bold text-gray-900">
+                    {isFirstEmpCodeAssignment
+                      ? "Assign Employee Code?"
+                      : "Change Employee Code?"}
+                  </h3>
+                </div>
+                <p className="text-sm text-gray-600 mb-6">
+                  {!isFirstEmpCodeAssignment ? (
+                    <>
+                      Changing the employee code to{" "}
+                      <span className="font-semibold text-gray-900">
+                        {formData.emp_code}
+                      </span>
+                      . Continue?
+                    </>
+                  ) : (
+                    <>
+                      Assigning employee code{" "}
+                      <span className="font-semibold text-gray-900">
+                        {formData.emp_code}
+                      </span>{" "}
+                      will convert this appointment into a full employee record and
+                      remove it from the Appointments list. Continue?
+                    </>
+                  )}
+                </p>
+                <div className="flex justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmTransfer(false)}
+                    className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowConfirmTransfer(false);
+                      executeSubmit();
+                    }}
+                    className="px-4 py-2 rounded-lg bg-brand-600 text-white text-sm font-semibold hover:bg-brand-700 transition"
+                  >
+                    {isFirstEmpCodeAssignment
+                      ? "Yes, Convert to Employee"
+                      : "Yes, Change Code"}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>,
         document.body,
@@ -1521,6 +1690,7 @@ const RowField = ({
   onChange,
   error,
   type = "text",
+  options = [],
   inputMode,
   maxLength,
   disabled,
@@ -1531,16 +1701,41 @@ const RowField = ({
         {label} {required && <span className="text-red-600">*</span>}
       </label>
       <span className="font-bold hidden sm:inline">:</span>
-      <input
-        type={type}
-        name={name}
-        value={value}
-        onChange={onChange}
-        inputMode={inputMode}
-        maxLength={maxLength}
-        disabled={disabled}
-        className={`w-full sm:flex-grow focus:outline-none transition-colors border rounded-lg px-3 py-2 bg-gray-50 text-sm h-10 ${error ? "border-red-500 bg-red-50" : "border-gray-300 focus:border-brand-500"} sm:border-t-0 sm:border-l-0 sm:border-r-0 sm:border-b sm:rounded-none sm:px-1 sm:h-5 sm:text-[13px] ${disabled ? "bg-gray-100 cursor-not-allowed text-gray-500" : "sm:bg-transparent"} sm:border-black`}
-      />
+      {type === "date" ? (
+        <ModernDatePicker
+          name={name}
+          value={value}
+          onChange={onChange}
+          disabled={disabled}
+          className={`w-full sm:flex-grow focus:outline-none transition-colors border rounded-lg px-3 py-2 bg-gray-50 text-sm h-10 ${error ? "border-red-500 bg-red-50" : "border-gray-300 focus:border-brand-500"} sm:border-t-0 sm:border-l-0 sm:border-r-0 sm:border-b sm:rounded-none sm:px-1 sm:h-5 sm:text-[13px] ${disabled ? "bg-gray-100 cursor-not-allowed text-gray-500" : "sm:bg-transparent"} sm:border-black`}
+        />
+      ) : type === "select" ? (
+        <select
+          name={name}
+          value={value}
+          onChange={onChange}
+          disabled={disabled}
+          className={`w-full sm:flex-grow focus:outline-none transition-colors border rounded-lg px-3 py-2 bg-gray-50 text-sm h-10 ${error ? "border-red-500 bg-red-50" : "border-gray-300 focus:border-brand-500"} sm:border-t-0 sm:border-l-0 sm:border-r-0 sm:border-b sm:rounded-none sm:px-1 sm:h-7 sm:py-0 sm:text-[13px] ${disabled ? "bg-gray-100 cursor-not-allowed text-gray-500" : "sm:bg-transparent"} sm:border-black`}
+        >
+          <option value="">Select {label}</option>
+          {options.map((opt) => (
+            <option key={opt.value || opt} value={opt.value || opt}>
+              {opt.label || opt}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <input
+          type={type}
+          name={name}
+          value={value}
+          onChange={onChange}
+          inputMode={inputMode}
+          maxLength={maxLength}
+          disabled={disabled}
+          className={`w-full sm:flex-grow focus:outline-none transition-colors border rounded-lg px-3 py-2 bg-gray-50 text-sm h-10 ${error ? "border-red-500 bg-red-50" : "border-gray-300 focus:border-brand-500"} sm:border-t-0 sm:border-l-0 sm:border-r-0 sm:border-b sm:rounded-none sm:px-1 sm:h-5 sm:text-[13px] ${disabled ? "bg-gray-100 cursor-not-allowed text-gray-500" : "sm:bg-transparent"} sm:border-black`}
+        />
+      )}
     </div>
     {error && (
       <p className="sm:ml-[138px] mt-1 text-[11px] text-red-600">{error}</p>

@@ -18,7 +18,7 @@ function getUserRole(value, type) {
 
 function loadUserFromStorage() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = sessionStorage.getItem(STORAGE_KEY);
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
@@ -27,9 +27,9 @@ function loadUserFromStorage() {
 
 function saveUserToStorage(user) {
   if (user) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(user));
   } else {
-    localStorage.removeItem(STORAGE_KEY);
+    sessionStorage.removeItem(STORAGE_KEY);
   }
 }
 
@@ -210,6 +210,14 @@ export function AuthProvider({ children }) {
     }
   };
 
+  const updateCurrentUser = (updates) => {
+    if (user) {
+      const updated = { ...user, ...updates };
+      setUser(updated);
+      saveUserToStorage(updated);
+    }
+  };
+
   const addUser = (userData) => {
     setUsers((prev) => ({ ...prev, [userData.empCode]: { ...userData } }));
   };
@@ -233,6 +241,7 @@ export function AuthProvider({ children }) {
         initializing,
         isAuthenticated: Boolean(user?.accessToken),
         updateUserRole,
+        updateCurrentUser,
         addUser,
         removeUser,
         lookupUser,

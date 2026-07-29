@@ -205,8 +205,9 @@ export const salaryApi = {
     });
   },
 
-  getDepartments(accessToken, tokenType = "Bearer") {
-    return apiRequest("/department/get", {
+  getDepartments(accessToken, tokenType = "Bearer", companyCode = null) {
+    const query = (companyCode && companyCode !== "all-companies") ? `?company_code=${companyCode}` : "";
+    return apiRequest(`/department/get${query}`, {
       headers: accessToken
         ? { Authorization: `${tokenType} ${accessToken}` }
         : {},
@@ -220,6 +221,25 @@ export const salaryApi = {
         ? { Authorization: `${tokenType} ${accessToken}` }
         : {},
       body: JSON.stringify(payload),
+    });
+  },
+
+  updateDepartment(id, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/department/update/${id}`, {
+      method: "PUT",
+      headers: accessToken
+        ? { Authorization: `${tokenType} ${accessToken}` }
+        : {},
+      body: JSON.stringify(payload),
+    });
+  },
+
+  deleteDepartment(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/department/delete/${id}`, {
+      method: "DELETE",
+      headers: accessToken
+        ? { Authorization: `${tokenType} ${accessToken}` }
+        : {},
     });
   },
 
@@ -317,6 +337,235 @@ export const salaryApi = {
         : {},
     });
   },
+
+  // Recent-uploads history + pass/fail report, shared by the salary-slip,
+  // employee, and account-master bulk-upload flows (type distinguishes them).
+  getUploadBatches(type, accessToken, tokenType = "Bearer", companyId, page = 1, limit = 15) {
+    const params = new URLSearchParams({ page, limit, ...buildCompanyQuery(companyId) });
+    return apiRequest(`/upload-batches/${type}?${params}`, {
+      headers: accessToken ? { Authorization: `${tokenType} ${accessToken}` } : {},
+    });
+  },
+
+  getUploadBatch(type, id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/upload-batches/${type}/${id}`, {
+      headers: accessToken ? { Authorization: `${tokenType} ${accessToken}` } : {},
+    });
+  },
+
+  deleteUploadBatch(type, id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/upload-batches/${type}/${id}`, {
+      method: "DELETE",
+      headers: accessToken ? { Authorization: `${tokenType} ${accessToken}` } : {},
+    });
+  },
+
+  getAttendanceGrid(accessToken, tokenType = "Bearer", { companyId, unit, month, year } = {}) {
+    const params = new URLSearchParams({
+      company_code: resolveWriteCompanyId(companyId),
+      month,
+      year,
+    });
+    if (unit) params.set("unit", unit);
+    return apiRequest(`/attendance/grid?${params}`, {
+      headers: accessToken ? { Authorization: `${tokenType} ${accessToken}` } : {},
+    });
+  },
+
+  updateAttendanceCell(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest("/attendance/cell", {
+      method: "POST",
+      headers: accessToken ? { Authorization: `${tokenType} ${accessToken}` } : {},
+      body: JSON.stringify(payload),
+    });
+  },
+
+  importAttendance(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest("/attendance/import", {
+      method: "POST",
+      headers: accessToken ? { Authorization: `${tokenType} ${accessToken}` } : {},
+      body: JSON.stringify(payload),
+    });
+  },
+
+  getShifts(accessToken, tokenType = "Bearer", { companyId, unit } = {}) {
+    const params = new URLSearchParams();
+    if (companyId) params.set("company_code", resolveWriteCompanyId(companyId));
+    if (unit) params.set("unit", unit);
+    const query = params.toString() ? `?${params}` : "";
+    return apiRequest(`/shifts/get${query}`, {
+      headers: accessToken ? { Authorization: `${tokenType} ${accessToken}` } : {},
+    });
+  },
+
+  createShift(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest("/shifts/store", {
+      method: "POST",
+      headers: accessToken ? { Authorization: `${tokenType} ${accessToken}` } : {},
+      body: JSON.stringify(payload),
+    });
+  },
+
+  updateShift(id, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/shifts/update/${id}`, {
+      method: "PUT",
+      headers: accessToken ? { Authorization: `${tokenType} ${accessToken}` } : {},
+      body: JSON.stringify(payload),
+    });
+  },
+
+  deleteShift(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/shifts/delete/${id}`, {
+      method: "DELETE",
+      headers: accessToken ? { Authorization: `${tokenType} ${accessToken}` } : {},
+    });
+  },
+
+  assignShift(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest("/shifts/assign", {
+      method: "POST",
+      headers: accessToken ? { Authorization: `${tokenType} ${accessToken}` } : {},
+      body: JSON.stringify(payload),
+    });
+  },
+};
+
+export const roleApi = {
+  getRoles(accessToken, tokenType = "Bearer") {
+    return apiRequest("/roles/get", {
+      headers: accessToken
+        ? { Authorization: `${tokenType} ${accessToken}` }
+        : {},
+    });
+  },
+
+  getPermissionGroups(accessToken, tokenType = "Bearer") {
+    return apiRequest("/roles/permissions", {
+      headers: accessToken
+        ? { Authorization: `${tokenType} ${accessToken}` }
+        : {},
+    });
+  },
+
+  getRole(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/roles/show/${id}`, {
+      headers: accessToken
+        ? { Authorization: `${tokenType} ${accessToken}` }
+        : {},
+    });
+  },
+
+  storeRole(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest("/roles/store", {
+      method: "POST",
+      headers: accessToken
+        ? { Authorization: `${tokenType} ${accessToken}` }
+        : {},
+      body: JSON.stringify(payload),
+    });
+  },
+
+  updateRole(id, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/roles/update/${id}`, {
+      method: "PUT",
+      headers: accessToken
+        ? { Authorization: `${tokenType} ${accessToken}` }
+        : {},
+      body: JSON.stringify(payload),
+    });
+  },
+
+  deleteRole(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/roles/delete/${id}`, {
+      method: "DELETE",
+      headers: accessToken
+        ? { Authorization: `${tokenType} ${accessToken}` }
+        : {},
+    });
+  },
+
+  getMatrix(accessToken, tokenType = "Bearer") {
+    return apiRequest("/roles/matrix", {
+      headers: accessToken
+        ? { Authorization: `${tokenType} ${accessToken}` }
+        : {},
+    });
+  },
+
+  updateMatrix(roleId, permissionIds, accessToken, tokenType = "Bearer") {
+    return apiRequest("/roles/matrix", {
+      method: "PUT",
+      headers: accessToken
+        ? { Authorization: `${tokenType} ${accessToken}` }
+        : {},
+      body: JSON.stringify({ role_id: roleId, permission_ids: permissionIds }),
+    });
+  },
+};
+
+function authHeaders(accessToken, tokenType) {
+  return accessToken ? { Authorization: `${tokenType} ${accessToken}` } : {};
+}
+
+export const rbacApi = {
+  getDashboard(accessToken, tokenType = "Bearer") {
+    return apiRequest("/rbac/dashboard", { headers: authHeaders(accessToken, tokenType) });
+  },
+
+  getAuditLogs(accessToken, tokenType = "Bearer", page = 1, limit = 25, filters = {}) {
+    const params = new URLSearchParams({ page, limit, ...filters });
+    return apiRequest(`/rbac/audit-logs?${params}`, { headers: authHeaders(accessToken, tokenType) });
+  },
+
+  getSettings(accessToken, tokenType = "Bearer", group = "rbac") {
+    return apiRequest(`/rbac/settings?group=${group}`, { headers: authHeaders(accessToken, tokenType) });
+  },
+
+  updateSettings(settings, accessToken, tokenType = "Bearer", group = "rbac") {
+    return apiRequest(`/rbac/settings?group=${group}`, {
+      method: "PUT",
+      headers: authHeaders(accessToken, tokenType),
+      body: JSON.stringify({ settings }),
+    });
+  },
+
+  getUserRoles(accessToken, tokenType = "Bearer", page = 1, limit = 15, search = "", roleFilter = "") {
+    const params = new URLSearchParams({
+      page,
+      limit,
+      ...(search ? { search } : {}),
+      ...(roleFilter ? { role: roleFilter } : {}),
+    });
+    return apiRequest(`/rbac/user-roles?${params}`, { headers: authHeaders(accessToken, tokenType) });
+  },
+
+  getDimensionRoles(dimension, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/rbac/permission-dimensions/${dimension}/roles`, {
+      headers: authHeaders(accessToken, tokenType),
+    });
+  },
+
+  getDimension(dimension, accessToken, tokenType = "Bearer", roleId) {
+    const params = roleId ? `?role_id=${roleId}` : "";
+    return apiRequest(`/rbac/permission-dimensions/${dimension}${params}`, {
+      headers: authHeaders(accessToken, tokenType),
+    });
+  },
+
+  storeDimension(dimension, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/rbac/permission-dimensions/${dimension}`, {
+      method: "POST",
+      headers: authHeaders(accessToken, tokenType),
+      body: JSON.stringify(payload),
+    });
+  },
+
+  removeDimension(dimension, id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/rbac/permission-dimensions/${dimension}/${id}`, {
+      method: "DELETE",
+      headers: authHeaders(accessToken, tokenType),
+    });
+  },
 };
 
 export const authApi = {
@@ -349,6 +598,12 @@ export const authApi = {
             Authorization: `${tokenType} ${accessToken}`,
           }
         : {},
+    });
+  },
+
+  checkEmpCode(empCode) {
+    return apiRequest(`/check-emp-code/${empCode}`, {
+      method: "GET",
     });
   },
 
@@ -471,6 +726,27 @@ export const authApi = {
     });
   },
 
+  importEmployeeRows(
+    rows,
+    accessToken,
+    tokenType = "Bearer",
+    companyId,
+    unit,
+  ) {
+    const scope = resolveCompanyScope(companyId);
+    return apiRequest("/employee/import", {
+      method: "POST",
+      headers: accessToken
+        ? { Authorization: `${tokenType} ${accessToken}` }
+        : {},
+      body: JSON.stringify({
+        rows,
+        company_code: resolveWriteCompanyId(scope.companyId),
+        unit: unit || scope.unit || "",
+      }),
+    });
+  },
+
   updateProfile(payload, accessToken, tokenType = "Bearer") {
     const headers = accessToken
       ? { Authorization: `${tokenType} ${accessToken}` }
@@ -576,6 +852,16 @@ export const authApi = {
         ? { Authorization: `${tokenType} ${accessToken}` }
         : {},
       body: isForm ? payload : JSON.stringify(payload),
+    });
+  },
+
+  checkEmpCodeAvailability(empCode, excludeId, accessToken, tokenType = "Bearer") {
+    const params = new URLSearchParams({ emp_code: empCode });
+    if (excludeId) params.set("exclude_id", excludeId);
+    return apiRequest(`/appointment/check-emp-code?${params}`, {
+      headers: accessToken
+        ? { Authorization: `${tokenType} ${accessToken}` }
+        : {},
     });
   },
 

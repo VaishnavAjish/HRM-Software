@@ -7,8 +7,9 @@ import { useAuth } from "../../context/AuthContext";
 const pageTitles = {
   "/admin": "Dashboard",
   "/admin/employees": "Employee Management",
-  "/admin/salary": "Salary Management",
+  "/admin/salary": "HRMS",
   "/admin/attendance": "Attendance",
+  "/admin/attendance/shift": "Shift",
   "/admin/trial-form": "Trial Form",
   "/admin/reports": "Reports",
   "/admin/settings": "Settings",
@@ -42,7 +43,7 @@ export default function AppLayout() {
 
   return (
     <div
-      className="flex h-screen overflow-hidden bg-gray-50 dark:bg-gray-900"
+      className="flex h-screen overflow-hidden bg-gray-50 dark:bg-[var(--sidebar-bg)]"
     >
       <Sidebar
         open={sidebarOpen}
@@ -52,7 +53,7 @@ export default function AppLayout() {
         onCollapse={() => setIsCollapsed(!isCollapsed)}
       />
       <div
-        className={`flex-1 flex flex-col min-w-0 transition-all duration-300 lg:ml-[var(--sidebar-width)] bg-gray-50 dark:bg-gray-900`}
+        className={`flex-1 flex flex-col min-w-0 transition-all duration-300 lg:ml-[var(--sidebar-width)] bg-gray-50 dark:bg-[var(--sidebar-bg)]`}
         style={{ "--sidebar-width": `${isCollapsed ? 80 : SIDEBAR_WIDTH}px` }}
       >
         <Header 
@@ -60,7 +61,7 @@ export default function AppLayout() {
           title={title} 
           isCollapsed={isCollapsed} 
         />
-        <main className="flex-1 overflow-y-auto p-4 md:p-6 bg-gray-50 dark:bg-gray-900">
+        <main className="flex-1 overflow-y-auto p-4 md:p-6 bg-gray-50 dark:bg-[var(--sidebar-bg)]">
           <Outlet />
         </main>
       </div>

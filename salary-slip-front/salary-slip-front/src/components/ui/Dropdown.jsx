@@ -5,6 +5,7 @@ export default function Dropdown({
   items = [],
   align = "right",
   label = "Options",
+  closeOnClick = true,
 }) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef(null);
@@ -38,14 +39,14 @@ export default function Dropdown({
             </p>
           )}
 
-          <div className="flex flex-col">
+          <div className="flex flex-col max-h-[60vh] overflow-y-auto">
             {items.map((item) => (
               <button
                 key={item.label}
                 type="button"
-                onClick={() => {
-                  setOpen(false);
-                  item.onClick?.();
+                onClick={(e) => {
+                  if (closeOnClick) setOpen(false);
+                  item.onClick?.(e);
                 }}
                 className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold transition hover:bg-gray-50 dark:hover:bg-gray-700/60"
               >

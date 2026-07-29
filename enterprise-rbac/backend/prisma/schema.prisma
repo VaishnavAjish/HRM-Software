@@ -1,0 +1,389 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------
+// ORGANIZATION HIERARCHY
+// ---------------------------------------------------------
+
+model Company {
+  id        String   @id @default(uuid())
+  name      String
+  code      String   @unique
+  currency  String   @default("USD")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  branches  Branch[]
+  users     User[]
+}
+
+model Branch {
+  id        String   @id @default(uuid())
+  companyId String
+  name      String
+  code      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company   Company    @relation(fields: [companyId], references: [id])
+  locations Location[]
+  users     User[]
+}
+
+model Location {
+  id        String   @id @default(uuid())
+  branchId  String
+  name      String
+  type      String   // Factory, Warehouse, Office
+  country   String?
+  state     String?
+  city      String?
+  address   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  branch    Branch   @relation(fields: [branchId], references: [id])
+  users     User[]
+}
+
+model Department {
+  id        String   @id @default(uuid())
+  name      String
+  code      String   @unique
+  headId    String?  // Reference to User
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  teams     Team[]
+  users     User[]
+}
+
+model Team {
+  id           String     @id @default(uuid())
+  departmentId String
+  name         String
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  department   Department @relation(fields: [departmentId], references: [id])
+  users        User[]
+}
+
+model Designation {
+  id        String   @id @default(uuid())
+  title     String
+  level     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users     User[]
+}
+
+// ---------------------------------------------------------
+// USERS & ROLES
+// ---------------------------------------------------------
+
+model User {
+  id              String    @id @default(uuid())
+  empId           String?   @unique
+  empCode         String?   @unique
+  fullName        String
+  username        String    @unique
+  email           String    @unique
+  phone           String?
+  passwordHash    String
+  avatarUrl       String?
+  status          String    @default("ACTIVE") // ACTIVE, INACTIVE, SUSPENDED
+  joiningDate     DateTime?
+  terminationDate DateTime?
+  
+  // Organization Relations
+  managerId       String?
+  manager         User?     @relation("UserManager", fields: [managerId], references: [id])
+  subordinates    User[]    @relation("UserManager")
+
+  designationId   String?
+  departmentId    String?
+  teamId          String?
+  companyId       String?
+  branchId        String?
+  locationId      String?
+  
+  designation     Designation? @relation(fields: [designationId], references: [id])
+  department      Department?  @relation(fields: [departmentId], references: [id])
+  team            Team?        @relation(fields: [teamId], references: [id])
+  company         Company?     @relation(fields: [companyId], references: [id])
+  branch          Branch?      @relation(fields: [branchId], references: [id])
+  location        Location?    @relation(fields: [locationId], references: [id])
+
+  // Preferences & Security
+  timezone        String    @default("UTC")
+  language        String    @default("en")
+  empType         String?   // Full-Time, Contract, etc.
+  mfaEnabled      Boolean   @default(false)
+  mfaSecret       String?
+  failedAttempts  Int       @default(0)
+  lockedUntil     DateTime?
+  lastLogin       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // RBAC Relations
+  roles           UserRole[]
+  permissions     UserPermission[] // Explicit overrides
+
+  // Logs & Sessions
+  sessions        Session[]
+  loginHistory    LoginHistory[]
+  auditLogs       AuditLog[]
+
+  @@index([departmentId])
+  @@index([companyId])
+  @@index([branchId])
+  @@index([locationId])
+  @@index([status])
+}
+
+model Role {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  isSystem    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users       UserRole[]
+  permissions RolePermission[]
+  
+  // FGAC mapping
+  pagePermissions   PagePermission[]
+  actionPermissions ActionPermission[]
+  tablePermissions  TablePermission[]
+  columnPermissions ColumnPermission[]
+  rowPolicies       RowSecurityPolicy[]
+  reportPermissions ReportPermission[]
+  apiPermissions    ApiPermission[]
+}
+
+model UserRole {
+  userId String
+  roleId String
+
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+}
+
+// ---------------------------------------------------------
+// PERMISSIONS CORE
+// ---------------------------------------------------------
+
+model PermissionGroup {
+  id          String       @id @default(uuid())
+  name        String       @unique
+  description String?
+  
+  permissions Permission[]
+}
+
+model Permission {
+  id          String   @id @default(uuid())
+  name        String   @unique // e.g., 'users.read', 'invoices.create'
+  resource    String   
+  action      String   
+  description String?
+  groupId     String?
+
+  group       PermissionGroup? @relation(fields: [groupId], references: [id])
+  
+  roles       RolePermission[]
+  users       UserPermission[]
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+model UserPermission {
+  userId       String
+  permissionId String
+  isRevoked    Boolean @default(false) // If true, explicitly denies a permission granted by a role
+
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([userId, permissionId])
+}
+
+// ---------------------------------------------------------
+// FINE-GRAINED ACCESS CONTROL (FGAC)
+// ---------------------------------------------------------
+
+model PagePermission {
+  id          String @id @default(uuid())
+  roleId      String
+  pageId      String // e.g., 'user_management', 'dashboard'
+  accessLevel String // e.g., 'NO_ACCESS', 'READ', 'WRITE', 'FULL'
+
+  role        Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, pageId])
+}
+
+model ActionPermission {
+  id          String @id @default(uuid())
+  roleId      String
+  actionId    String // e.g., 'btn_approve_invoice'
+  isAllowed   Boolean @default(false)
+
+  role        Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, actionId])
+}
+
+model TablePermission {
+  id          String @id @default(uuid())
+  roleId      String
+  tableName   String
+  accessLevel String // e.g., 'HIDDEN', 'READ_ONLY', 'EDITABLE'
+
+  role        Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, tableName])
+}
+
+model ColumnPermission {
+  id          String @id @default(uuid())
+  roleId      String
+  tableName   String
+  columnName  String
+  visibility  String // 'HIDDEN', 'VISIBLE', 'MASKED'
+  isEditable  Boolean @default(false)
+
+  role        Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, tableName, columnName])
+}
+
+model RowSecurityPolicy {
+  id                String @id @default(uuid())
+  roleId            String
+  resource          String
+  sqlFilter         String? // e.g., 'department = {user.departmentId}'
+  dynamicExpression String?
+
+  role              Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, resource])
+}
+
+model ReportPermission {
+  id          String  @id @default(uuid())
+  roleId      String
+  reportId    String
+  canView     Boolean @default(false)
+  canExport   Boolean @default(false)
+
+  role        Role    @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, reportId])
+}
+
+model ApiPermission {
+  id          String  @id @default(uuid())
+  roleId      String
+  endpoint    String  // e.g., '/api/v1/users'
+  method      String  // e.g., 'GET', 'POST', '*'
+  isAllowed   Boolean @default(true)
+
+  role        Role    @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, endpoint, method])
+}
+
+// ---------------------------------------------------------
+// APPROVAL MATRIX
+// ---------------------------------------------------------
+
+model ApprovalLevel {
+  id             String  @id @default(uuid())
+  name           String
+  hierarchyLevel Int
+  
+  matrices       ApprovalMatrix[]
+}
+
+model ApprovalMatrix {
+  id               String  @id @default(uuid())
+  workflowType     String  // e.g., 'PURCHASE_ORDER', 'LEAVE_REQUEST'
+  departmentId     String?
+  locationId       String?
+  amountThreshold  Float?
+  levelId          String
+  approverRoleId   String?
+  approverUserId   String?
+
+  level            ApprovalLevel @relation(fields: [levelId], references: [id])
+}
+
+// ---------------------------------------------------------
+// SECURITY & AUDITING
+// ---------------------------------------------------------
+
+model Session {
+  id           String   @id @default(uuid())
+  userId       String
+  refreshToken String   @unique
+  ipAddress    String?
+  userAgent    String?
+  deviceInfo   String?
+  expiresAt    DateTime
+  isRevoked    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model LoginHistory {
+  id         String   @id @default(uuid())
+  userId     String
+  ipAddress  String?
+  userAgent  String?
+  status     String   // SUCCESS, FAILED, LOCKED
+  timestamp  DateTime @default(now())
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, timestamp])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?
+  action     String   // CREATE, UPDATE, DELETE
+  resource   String   // Table name
+  resourceId String
+  oldValues  Json?
+  newValues  Json?
+  ipAddress  String?
+  timestamp  DateTime @default(now())
+
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([resource, resourceId])
+  @@index([timestamp])
+}

@@ -1,6 +1,6 @@
 /* global __APP_LABEL__ */
 const APP_LABEL =
-  typeof __APP_LABEL__ !== "undefined" ? __APP_LABEL__ : "Master Admin";
+  typeof __APP_LABEL__ !== "undefined" ? __APP_LABEL__ : "Build better workplaces";
 
 import { useState } from "react";
 import {
@@ -62,7 +62,7 @@ export default function WelcomePopup({ onDismiss, onSetup }) {
               <div className="w-12 h-12 sm:w-[72px] sm:h-[72px] rounded-2xl bg-white/20 border border-white/25 flex items-center justify-center flex-shrink-0 shadow-xl"><ClipboardList size={32} className="text-white" /></div>
               <div>
                 <h2 className="text-lg sm:text-3xl font-bold text-white leading-tight">Welcome to {APP_LABEL}</h2>
-                <p className="text-xs sm:text-base text-white/70 mt-1 sm:mt-1.5">Complete HR & salary management — here's what you can control</p>
+                <p className="text-xs sm:text-base text-white/70 mt-1 sm:mt-1.5">Complete HRMS — here's what you can control</p>
               </div>
             </div>
           </div>
@@ -215,7 +215,7 @@ export default function WelcomePopup({ onDismiss, onSetup }) {
             <p className="text-[11px] font-bold uppercase tracking-widest text-gray-400 mb-5 flex-shrink-0">3 quick steps</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 flex-1 overflow-y-auto pb-4 pr-2">
               {[
-                { icon: Camera,   num: "01", title: "Verify Your Identity", desc: "Provide your employee code and fill in your mobile number, date of birth and residential address. You can optionally add a recent photo. This confirms you are a registered employee.", items: ["Employee code", "Mobile number", "Date of birth", "Home address", "Photo (optional)"], color: "bg-brand-600", light: "bg-brand-50 dark:bg-brand-900/20", tc: "text-brand-600 dark:text-brand-400", border: "border-brand-100 dark:border-brand-800" },
+                { icon: Camera,   num: "01", title: "Verify Your Identity", desc: "Provide your employee code and fill in your mobile number and residential address. You can optionally add a recent photo. This confirms you are a registered employee.", items: ["Employee code", "Mobile number", "Home address", "Photo (optional)"], color: "bg-brand-600", light: "bg-brand-50 dark:bg-brand-900/20", tc: "text-brand-600 dark:text-brand-400", border: "border-brand-100 dark:border-brand-800" },
                 { icon: Mail,     num: "02", title: "Verify Your Email",    desc: "We will send a one-time password (OTP) to your registered company email address. Enter the OTP in the form to confirm your identity and proceed to the next step.", items: ["Company email address", "4-digit OTP from inbox"], color: "bg-violet-500", light: "bg-violet-50 dark:bg-violet-900/20", tc: "text-violet-600 dark:text-violet-400", border: "border-violet-100 dark:border-violet-800" },
                 { icon: KeyRound, num: "03", title: "Set Your Password",    desc: "Create a strong, secure password that you will use for every future login. Your password must meet the minimum security requirements listed below.", items: ["Minimum 6 characters", "At least one uppercase letter", "One number & one symbol"], color: "bg-emerald-500", light: "bg-emerald-50 dark:bg-emerald-900/20", tc: "text-emerald-600 dark:text-emerald-400", border: "border-emerald-100 dark:border-emerald-800" },
               ].map(({ icon: Icon, num, title, desc, items, color, light, tc, border }) => (

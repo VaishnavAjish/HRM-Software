@@ -3,11 +3,11 @@
   "version": "1.0.0",
   "description": "Root package.json to manage frontend and backend",
   "scripts": {
-    "dev:client": "cd client && npm run dev",
-    "dev:server": "cd server && npm run dev",
-    "dev": "npm run dev:client",
-    "build:client": "cd client && npm run build",
-    "build:server": "cd server && npm run build",
+    "dev:client": "cd salary-slip-front/salary-slip-front && npm run dev",
+    "dev:server": "cd salary-slip-bac && php artisan serve --host=192.168.1.53 --port=8000",
+    "dev": "npx concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "build:client": "cd salary-slip-front/salary-slip-front && npm run build",
+    "build:server": "cd salary-slip-bac && php artisan optimize:clear",
     "test:php": "cd salary-slip-bac && php vendor/bin/phpunit"
   },
   "author": "",

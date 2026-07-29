@@ -4,6 +4,19 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\Admin\AdminController;
+use App\Http\Controllers\Admin\RoleController;
+use App\Http\Controllers\Admin\RbacDashboardController;
+use App\Http\Controllers\Admin\LocationController;
+use App\Http\Controllers\Admin\BranchController;
+use App\Http\Controllers\Admin\TeamController;
+use App\Http\Controllers\Admin\ApprovalLevelController;
+use App\Http\Controllers\Admin\PermissionDimensionController;
+use App\Http\Controllers\Admin\UserRoleController;
+use App\Http\Controllers\Admin\AuditLogController;
+use App\Http\Controllers\Admin\UploadBatchController;
+use App\Http\Controllers\Admin\AttendanceController;
+use App\Http\Controllers\Admin\ShiftController;
+use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\SalariesSlipController;
 use App\Http\Controllers\UserController;
 
@@ -23,9 +36,11 @@ Route::options('{any}', function () {
 })->where('any', '.*');
 
 Route::post('/login',    [AuthController::class, 'login']);
+Route::get('/check-emp-code/{code}', [AuthController::class, 'checkEmpCode']);
 Route::post('new{data}',    [AuthController::class, 'newData'])->middleware('throttle:15,1');
 Route::post('/appointment', [UserController::class, "appointmentStore"]);
 Route::get('/appointment', [UserController::class, "getAppointment"]);
+Route::get('/appointment/check-emp-code', [UserController::class, "checkEmployeeCode"]);
 
 // Dev/maintenance utilities — destructive or environment-mutating, so they
 // require an authenticated admin rather than being reachable by anyone.
@@ -57,6 +72,9 @@ Route::middleware('jwt.auth')->group(function () {
     Route::post('logout',    [AuthController::class, 'logout']);
     Route::post("change-password", [AuthController::class, "changePassword"]);
     Route::post("profile-update", [UserController::class, "updateProfile"]);
+    
+    // Allow any authenticated user (like Agent) to fetch departments
+    Route::get('/department/get', [AdminController::class, "getDepartment"]);
 
     Route::middleware('role:admin')->group(function () {
         Route::post('/account-master', [UserController::class, 'accountMaster']);
@@ -68,8 +86,19 @@ Route::middleware('jwt.auth')->group(function () {
             Route::get("delete", [AdminController::class, "salaryDelete"]);
         });
         Route::group(["prefix" => "department"], function(){
-            Route::get('get', [AdminController::class, "getDepartment"]);
             Route::post('store', [AdminController::class, 'storeDepartment']);
+            Route::put('update/{id}', [AdminController::class, 'updateDepartment']);
+            Route::delete('delete/{id}', [AdminController::class, 'deleteDepartment']);
+        });
+        Route::group(["prefix" => "roles"], function(){
+            Route::get('get', [RoleController::class, 'index']);
+            Route::get('permissions', [RoleController::class, 'permissions']);
+            Route::get('matrix', [RoleController::class, 'matrix']);
+            Route::put('matrix', [RoleController::class, 'updateMatrix']);
+            Route::get('show/{id}', [RoleController::class, 'show']);
+            Route::post('store', [RoleController::class, 'store']);
+            Route::put('update/{id}', [RoleController::class, 'update']);
+            Route::delete('delete/{id}', [RoleController::class, 'destroy']);
         });
         Route::group(["prefix" => "employee"], function(){
             Route::get('get', [UserController::class, 'index']);
@@ -81,6 +110,51 @@ Route::middleware('jwt.auth')->group(function () {
             Route::post('import', [UserController::class, 'import']);
             Route::post('import-account-detail', [UserController::class, 'importAccountDetail']);
         });
+        Route::group(["prefix" => "attendance"], function () {
+            Route::get('grid', [AttendanceController::class, 'grid']);
+            Route::post('cell', [AttendanceController::class, 'upsertCell']);
+            Route::post('import', [AttendanceController::class, 'bulkImport']);
+        });
+        Route::group(["prefix" => "shifts"], function () {
+            Route::get('get', [ShiftController::class, 'index']);
+            Route::post('store', [ShiftController::class, 'store']);
+            Route::put('update/{id}', [ShiftController::class, 'update']);
+            Route::delete('delete/{id}', [ShiftController::class, 'destroy']);
+            Route::post('assign', [ShiftController::class, 'assign']);
+        });
+        Route::group(["prefix" => "rbac"], function () {
+            Route::get('dashboard', [RbacDashboardController::class, 'index']);
+            Route::get('audit-logs', [AuditLogController::class, 'index']);
+
+            Route::get('settings', [SettingsController::class, 'index']);
+            Route::put('settings', [SettingsController::class, 'update']);
+
+            Route::get('user-roles', [UserRoleController::class, 'index']);
+
+            foreach ([
+                'locations' => LocationController::class,
+                'branches' => BranchController::class,
+                'teams' => TeamController::class,
+                'approval-levels' => ApprovalLevelController::class,
+            ] as $prefix => $controller) {
+                Route::group(["prefix" => $prefix], function () use ($controller) {
+                    Route::get('get', [$controller, 'index']);
+                    Route::post('store', [$controller, 'store']);
+                    Route::put('update/{id}', [$controller, 'update']);
+                    Route::delete('delete/{id}', [$controller, 'destroy']);
+                });
+            }
+
+            Route::get('permission-dimensions/{dimension}/roles', [PermissionDimensionController::class, 'roles']);
+            Route::get('permission-dimensions/{dimension}', [PermissionDimensionController::class, 'index']);
+            Route::post('permission-dimensions/{dimension}', [PermissionDimensionController::class, 'store']);
+            Route::delete('permission-dimensions/{dimension}/{id}', [PermissionDimensionController::class, 'destroy']);
+        });
+
+        Route::get('upload-batches/{type}', [UploadBatchController::class, 'index']);
+        Route::get('upload-batches/{type}/{id}', [UploadBatchController::class, 'show']);
+        Route::delete('upload-batches/{type}/{id}', [UploadBatchController::class, 'destroy']);
+
         Route::post('/appointment/create-account', [UserController::class, 'createAppointmentAccount']);
         Route::get('/agents', [UserController::class, 'getAgents']);
         Route::put('/agents/{id}', [UserController::class, 'updateAgent']);

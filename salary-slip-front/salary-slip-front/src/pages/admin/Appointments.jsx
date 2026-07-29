@@ -27,6 +27,8 @@ import {
   FileText,
   Image as ImageIcon,
   Trash2,
+  TableProperties,
+  CheckCircle,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import Badge from "../../components/ui/Badge";
@@ -934,6 +936,11 @@ export default function Appointments() {
   const [editTarget, setEditTarget] = useState(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
+  const [visibleColumns, setVisibleColumns] = useState([
+    "fullName", "empCode", "designation", "department", "joiningDate",
+    "managerName", "unitName", "agentName", "status", "isPrinted",
+  ]);
+  const [showColModal, setShowColModal] = useState(false);
   const formRef = useRef(null);
   const gridRef = useRef(null);
   const gridContainerRef = useRef(null);
@@ -1179,9 +1186,46 @@ export default function Appointments() {
     }
   };
 
+  const revertEmpCodeCell = (id, oldValue) => {
+    setAppointments((prev) =>
+      prev.map((a) => (a.id === id ? { ...a, empCode: oldValue } : a)),
+    );
+  };
+
   const handleEmpCodeUpdate = async ({ data, oldValue, newValue }) => {
     const trimmed = String(newValue ?? "").trim();
     if (trimmed === String(oldValue ?? "").trim()) return;
+
+    // Same guard as the Appointment Form modal — check for a conflicting
+    // emp_code and ask for confirmation before committing, instead of
+    // silently submitting and surfacing a raw 422 from the backend.
+    if (trimmed) {
+      try {
+        const check = await authApi.checkEmpCodeAvailability(
+          trimmed,
+          data.id,
+          user?.accessToken,
+          user?.tokenType,
+        );
+        if (check?.exists) {
+          toast.error(
+            `Employee code '${trimmed}' is already assigned to ${check.employee?.name || "another employee"}`,
+          );
+          revertEmpCodeCell(data.id, oldValue);
+          return;
+        }
+      } catch {
+        // Fail open — the backend still enforces this on submit either way.
+      }
+
+      const confirmMessage = oldValue
+        ? `Change employee code to '${trimmed}'?`
+        : `Assign employee code '${trimmed}'? This will convert this appointment into a full employee record and remove it from the Appointments list.`;
+      if (!window.confirm(confirmMessage)) {
+        revertEmpCodeCell(data.id, oldValue);
+        return;
+      }
+    }
 
     setAppointments((prev) =>
       prev.map((a) => (a.id === data.id ? { ...a, empCode: trimmed } : a)),
@@ -1194,9 +1238,7 @@ export default function Appointments() {
       await authApi.updateAppointment(payload, user?.accessToken, user?.tokenType);
       toast.success("Employee code updated");
     } catch (err) {
-      setAppointments((prev) =>
-        prev.map((a) => (a.id === data.id ? { ...a, empCode: oldValue } : a)),
-      );
+      revertEmpCodeCell(data.id, oldValue);
       toast.error(err.message || "Failed to update employee code");
     }
   };
@@ -1226,6 +1268,53 @@ export default function Appointments() {
         return n;
       });
     }
+  };
+
+  const allColumns = useMemo(() => [
+    { field: "fullName", label: "Employee" },
+    { field: "empCode", label: "Emp Code" },
+    { field: "designation", label: "Designation" },
+    { field: "department", label: "Department" },
+    { field: "salary", label: "Salary" },
+    { field: "joiningDate", label: "Joining Date" },
+    { field: "empMobile", label: "Contact" },
+    { field: "empWhatsapp", label: "Whatsapp" },
+    { field: "email", label: "Email" },
+    { field: "unitName", label: "Branch" },
+    { field: "agentName", label: "Added By" },
+    { field: "managerName", label: "Manager" },
+    { field: "punchingNo", label: "Punching No" },
+    { field: "address", label: "Address" },
+    { field: "village", label: "Village" },
+    { field: "taluka", label: "Taluka" },
+    { field: "district", label: "District" },
+    { field: "dob", label: "Birth Date" },
+    { field: "birthPlace", label: "Birth Place" },
+    { field: "gender", label: "Gender" },
+    { field: "cast", label: "Cast" },
+    { field: "maritalStatus", label: "Marital Status" },
+    { field: "bloodGroup", label: "Blood Group" },
+    { field: "refName", label: "Reference Name" },
+    { field: "refMobile", label: "Reference Mobile" },
+    { field: "aadharNo", label: "Aadhar No" },
+    { field: "panNo", label: "PAN No" },
+    { field: "bankName", label: "Bank Name" },
+    { field: "accountNo", label: "Account No" },
+    { field: "ifscCode", label: "IFSC Code" },
+    { field: "education", label: "Education" },
+    { field: "signature", label: "Signature" },
+    { field: "members", label: "Family Members" },
+    { field: "adharImage", label: "Aadhar Image" },
+    { field: "panImage", label: "PAN Image" },
+    { field: "chequeImage", label: "Cheque Image" },
+    { field: "status", label: "Status" },
+    { field: "isPrinted", label: "Print" },
+  ], []);
+
+  const toggleColumnVisibility = (field) => {
+    setVisibleColumns((prev) =>
+      prev.includes(field) ? prev.filter((f) => f !== field) : [...prev, field]
+    );
   };
 
   const columnDefs = useMemo(() => {
@@ -1322,6 +1411,7 @@ export default function Appointments() {
         field: "fullName",
         minWidth: 200,
         flex: 1.3,
+        hide: !visibleColumns.includes("fullName"),
         cellStyle: { overflow: "hidden" },
         cellRenderer: ({ data }) => (
           <div className="flex h-full min-w-0 items-center gap-3 overflow-hidden">
@@ -1347,6 +1437,7 @@ export default function Appointments() {
         field: "empCode",
         minWidth: 110,
         editable: true,
+        hide: !visibleColumns.includes("empCode"),
         cellRenderer: ({ value }) =>
           value ? (
             <span className="font-mono text-sm font-semibold text-brand-700 dark:text-brand-300">
@@ -1360,12 +1451,14 @@ export default function Appointments() {
         headerName: "Designation",
         field: "designation",
         minWidth: 130,
+        hide: !visibleColumns.includes("designation"),
         cellRenderer: TextCell,
       },
       {
         headerName: "Department",
         field: "department",
         minWidth: 120,
+        hide: !visibleColumns.includes("department"),
         cellRenderer: ({ value }) => (
           <span className="text-sm text-gray-600 dark:text-gray-300">
             {value || "—"}
@@ -1376,12 +1469,14 @@ export default function Appointments() {
         headerName: "Salary",
         field: "salary",
         width: 110,
+        hide: !visibleColumns.includes("salary"),
         cellRenderer: TextCell,
       },
       {
         headerName: "Joining",
         field: "joiningDate",
         width: 140,
+        hide: !visibleColumns.includes("joiningDate"),
         cellRenderer: ({ value }) => (
           <span className="flex items-center gap-1.5 text-sm text-gray-700 dark:text-gray-200">
             <Calendar size={12} className="text-amber-500 flex-shrink-0" />
@@ -1390,9 +1485,21 @@ export default function Appointments() {
         ),
       },
       {
+        headerName: "Manager",
+        field: "managerName",
+        minWidth: 130,
+        hide: !visibleColumns.includes("managerName"),
+        cellRenderer: ({ value }) => (
+          <span className="text-sm text-gray-600 dark:text-gray-300">
+            {value || "—"}
+          </span>
+        ),
+      },
+      {
         headerName: "Contact",
         field: "empMobile",
         width: 140,
+        hide: !visibleColumns.includes("empMobile"),
         cellRenderer: ({ value }) => (
           <span className="flex items-center gap-1.5 text-sm text-gray-700 dark:text-gray-200">
             <Phone size={12} className="text-green-500 flex-shrink-0" />
@@ -1404,18 +1511,21 @@ export default function Appointments() {
         headerName: "Whatsapp",
         field: "empWhatsapp",
         width: 130,
+        hide: !visibleColumns.includes("empWhatsapp"),
         cellRenderer: TextCell,
       },
       {
         headerName: "Email",
         field: "email",
         minWidth: 170,
+        hide: !visibleColumns.includes("email"),
         cellRenderer: TextCell,
       },
       {
         headerName: "Unit",
         field: "unitName",
         width: 110,
+        hide: !visibleColumns.includes("unitName"),
         cellRenderer: ({ value }) => (
           <Badge variant="gray">{value || "—"}</Badge>
         ),
@@ -1424,6 +1534,7 @@ export default function Appointments() {
         headerName: "Added By",
         field: "agentName",
         minWidth: 140,
+        hide: !visibleColumns.includes("agentName"),
         cellRenderer: ({ value }) => (
           <Badge variant={value === "Admin" ? "gray" : "blue"}>
             {value || "—"}
@@ -1431,133 +1542,143 @@ export default function Appointments() {
         ),
       },
       {
-        headerName: "Manager",
-        field: "managerName",
-        minWidth: 130,
-        cellRenderer: ({ value }) => (
-          <span className="text-sm text-gray-600 dark:text-gray-300">
-            {value || "—"}
-          </span>
-        ),
-      },
-      {
         headerName: "Punching No",
         field: "punchingNo",
         width: 120,
+        hide: !visibleColumns.includes("punchingNo"),
         cellRenderer: TextCell,
       },
       {
         headerName: "Address",
         field: "address",
         minWidth: 180,
+        hide: !visibleColumns.includes("address"),
         cellRenderer: TextCell,
       },
       {
         headerName: "Village",
         field: "village",
         minWidth: 120,
+        hide: !visibleColumns.includes("village"),
         cellRenderer: TextCell,
       },
       {
         headerName: "Taluka",
         field: "taluka",
         minWidth: 120,
+        hide: !visibleColumns.includes("taluka"),
         cellRenderer: TextCell,
       },
       {
         headerName: "District",
         field: "district",
         minWidth: 120,
+        hide: !visibleColumns.includes("district"),
         cellRenderer: TextCell,
       },
       {
         headerName: "Birth Date",
         field: "dob",
         width: 130,
+        hide: !visibleColumns.includes("dob"),
         cellRenderer: DateCell,
       },
       {
         headerName: "Birth Place",
         field: "birthPlace",
         minWidth: 130,
+        hide: !visibleColumns.includes("birthPlace"),
         cellRenderer: TextCell,
       },
       {
         headerName: "Gender",
         field: "gender",
         width: 100,
+        hide: !visibleColumns.includes("gender"),
         cellRenderer: TextCell,
       },
       {
         headerName: "Cast",
         field: "cast",
         width: 110,
+        hide: !visibleColumns.includes("cast"),
         cellRenderer: TextCell,
       },
       {
         headerName: "Marital Status",
         field: "maritalStatus",
         width: 130,
+        hide: !visibleColumns.includes("maritalStatus"),
         cellRenderer: TextCell,
       },
       {
         headerName: "Blood Group",
         field: "bloodGroup",
         width: 110,
+        hide: !visibleColumns.includes("bloodGroup"),
         cellRenderer: TextCell,
       },
       {
         headerName: "Reference Name",
         field: "refName",
         minWidth: 140,
+        hide: !visibleColumns.includes("refName"),
         cellRenderer: TextCell,
       },
       {
         headerName: "Reference Mobile",
         field: "refMobile",
         width: 140,
+        hide: !visibleColumns.includes("refMobile"),
         cellRenderer: TextCell,
       },
       {
         headerName: "Aadhar No",
         field: "aadharNo",
         width: 140,
+        hide: !visibleColumns.includes("aadharNo"),
         cellRenderer: TextCell,
       },
       {
         headerName: "PAN No",
         field: "panNo",
         width: 120,
+        hide: !visibleColumns.includes("panNo"),
         cellRenderer: TextCell,
       },
       {
         headerName: "Bank Name",
         field: "bankName",
         minWidth: 140,
+        hide: !visibleColumns.includes("bankName"),
         cellRenderer: TextCell,
       },
       {
         headerName: "Account No",
         field: "accountNo",
         width: 150,
+        hide: !visibleColumns.includes("accountNo"),
         cellRenderer: TextCell,
       },
       {
         headerName: "IFSC Code",
         field: "ifscCode",
         width: 120,
+        hide: !visibleColumns.includes("ifscCode"),
         cellRenderer: TextCell,
       },
       {
         headerName: "Education",
         field: "education",
         minWidth: 130,
+        hide: !visibleColumns.includes("education"),
         cellRenderer: TextCell,
       },
       {
         headerName: "Signature",
         field: "signature",
         minWidth: 130,
+        hide: !visibleColumns.includes("signature"),
         cellRenderer: TextCell,
       },
       {
@@ -1566,6 +1687,7 @@ export default function Appointments() {
         minWidth: 320,
         autoHeight: true,
         wrapText: true,
+        hide: !visibleColumns.includes("members"),
         cellStyle: { whiteSpace: "normal", overflow: "visible" },
         cellRenderer: FamilyMembersCell,
       },
@@ -1576,6 +1698,7 @@ export default function Appointments() {
         width: 110,
         sortable: false,
         filter: false,
+        hide: !visibleColumns.includes("adharImage"),
         cellRenderer: ({ data }) => (
           <DocThumb
             url={data.documents?.adhar_image}
@@ -1591,6 +1714,7 @@ export default function Appointments() {
         width: 110,
         sortable: false,
         filter: false,
+        hide: !visibleColumns.includes("panImage"),
         cellRenderer: ({ data }) => (
           <DocThumb
             url={data.documents?.pan_image}
@@ -1606,6 +1730,7 @@ export default function Appointments() {
         width: 110,
         sortable: false,
         filter: false,
+        hide: !visibleColumns.includes("chequeImage"),
         cellRenderer: ({ data }) => (
           <DocThumb
             url={data.documents?.check_image}
@@ -1618,12 +1743,14 @@ export default function Appointments() {
         headerName: "Status",
         field: "status",
         width: 120,
+        hide: !visibleColumns.includes("status"),
         cellRenderer: ({ value }) => <StatusBadge status={value} />,
       },
       {
         headerName: "Print",
         field: "isPrinted",
         width: 130,
+        hide: !visibleColumns.includes("isPrinted"),
         cellRenderer: ({ value }) =>
           value ? (
             <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2.5 py-1 text-xs font-bold text-green-700 dark:bg-green-900/20 dark:text-green-400">
@@ -1696,7 +1823,7 @@ export default function Appointments() {
         ),
       },
     ];
-  }, [statusLoading, handleStatusUpdate, setGridLightbox, isMobile, user?.role]);
+  }, [statusLoading, handleStatusUpdate, setGridLightbox, isMobile, user?.role, visibleColumns]);
 
   const defaultColDef = useMemo(
     () => ({
@@ -1745,6 +1872,13 @@ export default function Appointments() {
             icon={<Plus size={14} />}
           >
             New Appointment
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => setShowColModal(true)}
+            icon={<TableProperties size={14} />}
+          >
+            Columns
           </Button>
           <Button
             variant="secondary"
@@ -2006,6 +2140,49 @@ export default function Appointments() {
           loadAppointments();
         }}
       />
+
+      <Modal
+        isOpen={showColModal}
+        onClose={() => setShowColModal(false)}
+        title="Select Visible Columns"
+        size="lg"
+      >
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+          {allColumns.map((col) => (
+            <button
+              key={col.field}
+              onClick={() => toggleColumnVisibility(col.field)}
+              className={`flex items-center gap-3 p-3 rounded-xl border-2 text-left transition-all ${
+                visibleColumns.includes(col.field)
+                  ? "border-brand-500 bg-brand-50 dark:bg-brand-900/20"
+                  : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 bg-transparent"
+              }`}
+            >
+              <div
+                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${
+                  visibleColumns.includes(col.field)
+                    ? "border-brand-600 bg-brand-600 text-white dark:border-brand-500 dark:bg-brand-500"
+                    : "border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-800"
+                }`}
+              >
+                {visibleColumns.includes(col.field) && <CheckCircle size={14} />}
+              </div>
+              <span className={`text-sm font-medium ${
+                  visibleColumns.includes(col.field)
+                    ? "text-brand-700 dark:text-brand-300"
+                    : "text-gray-700 dark:text-gray-300"
+              }`}>
+                {col.label}
+              </span>
+            </button>
+          ))}
+        </div>
+        <div className="mt-6 flex justify-end">
+          <Button variant="primary" onClick={() => setShowColModal(false)}>
+            Apply & Close
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 }

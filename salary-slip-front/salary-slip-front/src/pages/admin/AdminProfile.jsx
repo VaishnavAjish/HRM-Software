@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import ModernDatePicker from "../../components/ModernDatePicker";
 import {
   PasswordStrength,
   isPasswordValid,
@@ -45,7 +46,7 @@ const adminPermissions = [
     bg: "bg-brand-50 dark:bg-brand-900/20",
   },
   {
-    label: "Salary Management",
+    label: "HRMS",
     desc: "Process and view all salary data",
     icon: DollarSign,
     color: "text-green-500",
@@ -552,8 +553,7 @@ export default function AdminProfile() {
               value={form.dob ? new Date(form.dob).toLocaleDateString() : "—"}
               editing={editing}
               editNode={
-                <input
-                  type="date"
+                <ModernDatePicker
                   value={formatDateInputValue(form.dob)}
                   onChange={(e) => set("dob", e.target.value)}
                   className="mt-0.5 w-full text-sm bg-transparent border-b border-brand-400 text-gray-900 dark:text-white focus:outline-none py-0.5"
@@ -578,44 +578,6 @@ export default function AdminProfile() {
           </div>
         </div>
 
-        {/* Admin permissions */}
-        <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-100 dark:border-gray-700">
-            <Shield size={16} className="text-brand-600" />
-            <h3 className="font-semibold text-gray-900 dark:text-white">
-              Admin Permissions
-            </h3>
-            <span className="ml-auto text-xs font-semibold px-2 py-0.5 rounded-full bg-brand-100 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400">
-              Full Access
-            </span>
-          </div>
-          <div className="p-5 grid sm:grid-cols-2 gap-3">
-            {adminPermissions.map(({ label, desc, icon: Icon, color, bg }) => (
-              <div
-                key={label}
-                className="flex items-start gap-3 p-3 rounded-xl border border-gray-100 dark:border-gray-700 hover:border-brand-200 dark:hover:border-brand-700/50 hover:bg-brand-50/30 dark:hover:bg-brand-900/10 transition-colors"
-              >
-                <div
-                  className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 ${bg}`}
-                >
-                  <Icon size={15} className={color} />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">
-                    {label}
-                  </p>
-                  <p className="text-xs text-gray-400 mt-0.5 leading-snug">
-                    {desc}
-                  </p>
-                </div>
-                <CheckCircle2
-                  size={14}
-                  className="text-green-500 flex-shrink-0 mt-0.5 ml-auto"
-                />
-              </div>
-            ))}
-          </div>
-        </div>
 
         {/* Change password */}
         <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700">

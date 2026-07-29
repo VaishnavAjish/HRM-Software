@@ -12,15 +12,6 @@ import {
   BookOpen,
 } from "lucide-react";
 import Badge from "../../components/ui/Badge";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from "recharts";
 import { Link } from "react-router-dom";
 import toast from "react-hot-toast";
 
@@ -78,23 +69,29 @@ export default function EmployeeDashboard() {
     hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
 
   // ── Top-level fields from API ─────────────────────────────────────
-  const empName = dashData?.employee_name || user?.name || "—";
-  const empCode = dashData?.employee_code || user?.empCode || "—";
-  const mainDept = dashData?.main_department || "—";
-  const department = dashData?.department || "—";
-  const netSalary = Number(dashData?.net_salary ?? 0);
-  const unit = dashData?.unit || "â€”";
-  const totalDeduct = Number(dashData?.total_deduct ?? 0);
-  const bookSalary = Number(dashData?.total_book_salary ?? 0);
+  const backendUser = dashData?.user || user;
+  const slipList = dashData?.recent_slips || dashData?.salary_list || [];
+  const latestSlip = slipList[0] || {};
+
+  const empName = latestSlip.emp_name || backendUser?.name || "—";
+  const empCode = latestSlip.emp_code || backendUser?.emp_code || user?.empCode || "—";
+  const mainDept = latestSlip.main_department || backendUser?.main_department || "—";
+  const department = latestSlip.department || backendUser?.department || "—";
+  
+  // Try to use latest slip values, fallback to 0
+  const netSalary = Number(latestSlip.net_payable ?? latestSlip.net_salary ?? 0);
+  const unit = backendUser?.unit || latestSlip.unit || "—";
+  const totalDeduct = Number(latestSlip.total_deduct ?? latestSlip.total_deduction ?? 0);
+  const bookSalary = Number(latestSlip.book_salary ?? 0);
 
   // ── salary_list — deduplicate by month+year (keep first = newest) ─
   const salaryMap = new Map();
-  (dashData?.salary_list ?? []).forEach((s) => {
+  slipList.forEach((s) => {
     const key = `${s.year}-${s.month}`;
     if (!salaryMap.has(key)) salaryMap.set(key, s);
   });
 
-  const designation = dashData?.salary_list?.[0]?.designation || "—";
+  const designation = latestSlip.designation || backendUser?.designation || "—";
 
   // Chart: reverse so oldest month is on the left
   const chartData = [...salaryMap.values()].reverse().map((s) => ({
@@ -147,8 +144,11 @@ export default function EmployeeDashboard() {
         <p className="text-brand-100 text-sm font-medium">{greeting} 👋</p>
         <h2 className="text-2xl font-bold mt-1">{empName}</h2>
         <p className="text-brand-200 text-sm mt-1">
-          {designation} &middot; {mainDept} &rsaquo; {department} &middot; #
-          {empCode}
+          {[
+            designation !== "—" ? designation : null,
+            [mainDept, department].filter(d => d && d !== "—").join(" › ") || null,
+            empCode !== "—" ? `Emp. Code: #${empCode}` : null
+          ].filter(Boolean).join(" · ") || "—"}
         </p>
         <p className="text-brand-100 text-xs mt-1">Unit: {unit}</p>
         <p className="text-brand-100 text-xs mt-2 uppercase tracking-[0.22em]">
@@ -211,28 +211,30 @@ export default function EmployeeDashboard() {
             <TrendingUp size={18} className="text-brand-600" />
           </div>
           {chartData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis
-                  dataKey="month"
-                  tick={{ fontSize: 12, fill: "#94a3b8" }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <YAxis
-                  tickFormatter={(v) => "₹" + (v / 1000).toFixed(0) + "K"}
-                  tick={{ fontSize: 11, fill: "#94a3b8" }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <Tooltip
-                  formatter={(v) => [fmt(v), "Net Payable"]}
-                  contentStyle={{ borderRadius: "10px", fontSize: 12 }}
-                />
-                <Bar dataKey="salary" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            <div className="max-h-64 overflow-y-auto pr-2 space-y-3">
+              {[...chartData].reverse().map((data, idx) => (
+                <div key={idx} className="flex items-center justify-between p-3.5 bg-gray-50 dark:bg-gray-700/30 rounded-xl border border-gray-100 dark:border-gray-700">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-xl bg-brand-100 dark:bg-brand-900/40 text-brand-600 flex items-center justify-center font-bold text-sm tracking-wide">
+                      {data.month.split(" ")[0]}
+                    </div>
+                    <div>
+                      <p className="font-semibold text-gray-900 dark:text-white text-sm">
+                        {data.month}
+                      </p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                        Net Payable Salary
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-bold text-gray-900 dark:text-white text-base">
+                      {fmt(data.salary)}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
           ) : (
             <div className="h-48 flex items-center justify-center text-sm text-gray-400">
               No salary history available

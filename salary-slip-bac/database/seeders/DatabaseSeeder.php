@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Models\Role;
 use App\Models\User;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
@@ -38,5 +39,25 @@ class DatabaseSeeder extends Seeder
                 'status'       => 0,
             ]
         );
+
+        // ── NISS Super Admin ───────────────────────────────────
+        $nissSuperAdmin = User::firstOrCreate(
+            ['email' => 'admin@niss.pro'],
+            [
+                'emp_code'     => 1000000002,
+                'name'         => 'NISS Super Admin',
+                'password'     => 'Admin@niss123',
+                'role'         => 0,
+                'company_code' => 'nidhi-impex',
+                'status'       => 0,
+            ]
+        );
+
+        // Assign the RBAC "Super Admin" role (created by RbacSeeder)
+        $this->call(RbacSeeder::class);
+        $superAdminRole = Role::where('name', 'Super Admin')->first();
+        if ($superAdminRole && !$nissSuperAdmin->roles()->where('role_id', $superAdminRole->id)->exists()) {
+            $nissSuperAdmin->roles()->attach($superAdminRole->id);
+        }
     }
 }

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import ModernDatePicker from "../../components/ModernDatePicker";
 import {
   PasswordStrength,
   isPasswordValid,
@@ -43,7 +44,7 @@ function InfoRow({
   editNode,
 }) {
   return (
-    <div className="flex items-center gap-3 py-3 border-b border-gray-50 dark:border-gray-700/50 last:border-0">
+    <div className="flex items-center gap-3 py-2">
       <div
         className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${iconBg}`}
       >
@@ -77,7 +78,7 @@ function StatCard({ label, value, sub, color }) {
 
 export default function Profile() {
   const [loading, setLoading] = useState(true);
-  const { user } = useAuth();
+  const { user, updateCurrentUser } = useAuth();
   const [profile, setProfile] = useState(null);
 
   // Map the new API structure to a consistent object
@@ -94,6 +95,10 @@ export default function Profile() {
     dob: profile?.dob || "",
     address: profile?.address || "",
     photo: profile?.photo || "",
+    gender: profile?.gender || "",
+    department: profile?.department || "",
+    designation: profile?.designation || "",
+    joining_date: profile?.joining_date || "",
   };
 
   const [editing, setEditing] = useState(false);
@@ -103,6 +108,21 @@ export default function Profile() {
     phone: "",
     dob: "",
     address: "",
+    city: "",
+    district: "",
+    state: "",
+    pin: "",
+    aadhar_card_no: "",
+    pan_card_no: "",
+    bank_name: "",
+    bank_ifsc_code: "",
+    bank_account_no: "",
+    pf_no: "",
+    esi_no: "",
+    gender: "",
+    department: "",
+    designation: "",
+    joining_date: "",
   });
 
   useEffect(() => {
@@ -120,6 +140,21 @@ export default function Profile() {
           phone: data.mobile_number || "", // Use mobile_number from API
           dob: data.dob || "",
           address: data.address || "",
+          city: data.city || "",
+          district: data.district || "",
+          state: data.state || "",
+          pin: data.pin || "",
+          aadhar_card_no: data.aadhar_card_no || "",
+          pan_card_no: data.pan_card_no || "",
+          bank_name: data.bank_name || "",
+          bank_ifsc_code: data.bank_ifsc_code || "",
+          bank_account_no: data.bank_account_no || "",
+          pf_no: data.pf_no || "",
+          esi_no: data.esi_no || "",
+          gender: data.gender || "",
+          department: data.department || "",
+          designation: data.designation || "",
+          joining_date: data.joining_date || "",
         });
       } catch (err) {
         toast.error(err.message || "Failed to load profile details");
@@ -180,6 +215,21 @@ export default function Profile() {
         mobile_number: form.phone,
         dob: form.dob,
         address: form.address,
+        city: form.city,
+        district: form.district,
+        state: form.state,
+        pin: form.pin,
+        aadhar_card_no: form.aadhar_card_no,
+        pan_card_no: form.pan_card_no,
+        bank_name: form.bank_name,
+        bank_ifsc_code: form.bank_ifsc_code,
+        bank_account_no: form.bank_account_no,
+        pf_no: form.pf_no,
+        esi_no: form.esi_no,
+        gender: form.gender,
+        department: form.department,
+        designation: form.designation,
+        joining_date: form.joining_date,
       };
       if (photoFile) payload.photo = photoFile;
 
@@ -197,8 +247,31 @@ export default function Profile() {
         mobile_number: form.phone,
         dob: form.dob,
         address: form.address,
+        city: form.city,
+        district: form.district,
+        state: form.state,
+        pin: form.pin,
+        aadhar_card_no: form.aadhar_card_no,
+        pan_card_no: form.pan_card_no,
+        bank_name: form.bank_name,
+        bank_ifsc_code: form.bank_ifsc_code,
+        bank_account_no: form.bank_account_no,
+        pf_no: form.pf_no,
+        esi_no: form.esi_no,
+        gender: form.gender,
+        department: form.department,
+        designation: form.designation,
+        joining_date: form.joining_date,
         photo: updatedPhoto || prev?.photo,
       }));
+
+      if (updateCurrentUser) {
+        updateCurrentUser({
+          ...form,
+          photo: updatedPhoto || profile?.photo
+        });
+      }
+
       if (photoFile) clearPendingPhoto();
       toast.success("Profile updated successfully");
     } catch (err) {
@@ -216,6 +289,17 @@ export default function Profile() {
       phone: profile?.mobile_number || "",
       dob: profile?.dob || "",
       address: profile?.address || "",
+      city: profile?.city || "",
+      district: profile?.district || "",
+      state: profile?.state || "",
+      pin: profile?.pin || "",
+      aadhar_card_no: profile?.aadhar_card_no || "",
+      pan_card_no: profile?.pan_card_no || "",
+      bank_name: profile?.bank_name || "",
+      bank_ifsc_code: profile?.bank_ifsc_code || "",
+      bank_account_no: profile?.bank_account_no || "",
+      pf_no: profile?.pf_no || "",
+      esi_no: profile?.esi_no || "",
     });
     setEditing(false);
   };
@@ -298,7 +382,7 @@ export default function Profile() {
               <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700">
                 <div className={`skeleton h-4 ${card.title} rounded`} />
               </div>
-              <div className="px-5">
+              <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
                 {[...Array(card.rows)].map((_, index) => (
                   <div
                     key={index}
@@ -338,7 +422,38 @@ export default function Profile() {
     );
 
   return (
-    <div className="grid lg:grid-cols-[320px_1fr] gap-5 items-start">
+    <div className="space-y-4">
+      {user?.role === 'employee' && !emp.aadhar_card_no && (
+        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 px-4 py-3 rounded-xl flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <CheckCircle className="text-amber-500" size={18} />
+            <p className="text-sm font-medium">
+              Please complete your profile details and hit Save to unlock all features.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Top Actions */}
+      <div className="flex justify-end">
+        {!editing ? (
+          <button
+            onClick={() => setEditing(true)}
+            className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-brand-600 dark:text-brand-400 bg-white dark:bg-gray-800 border border-brand-200 dark:border-brand-700 rounded-xl hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-colors shadow-sm"
+          >
+            <Edit2 size={16} /> Edit Profile
+          </button>
+        ) : (
+          <button
+            onClick={handleCancel}
+            className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-gray-500 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors shadow-sm"
+          >
+            <X size={16} /> Cancel
+          </button>
+        )}
+      </div>
+
+      <div className="grid lg:grid-cols-[320px_1fr] gap-5 items-start">
       {/* ══ LEFT COLUMN — Profile card ══ */}
       <div className="space-y-4 lg:sticky">
         {/* Avatar card */}
@@ -391,30 +506,6 @@ export default function Profile() {
                   </>
                 )}
               </div>
-
-              {!editing ? (
-                <button
-                  onClick={() => setEditing(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-brand-600 dark:text-brand-400 border border-brand-200 dark:border-brand-700 rounded-lg hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-colors"
-                >
-                  <Edit2 size={12} /> Edit
-                </button>
-              ) : (
-                <div className="flex gap-1.5">
-                  <button
-                    onClick={handleCancel}
-                    className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-gray-500 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                  >
-                    <X size={12} /> Cancel
-                  </button>
-                  <button
-                    onClick={handleSave}
-                    className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-lg transition-colors shadow-sm"
-                  >
-                    <Save size={12} /> Save
-                  </button>
-                </div>
-              )}
             </div>
 
             {editing ? (
@@ -477,7 +568,7 @@ export default function Profile() {
               </span>
             )}
           </div>
-          <div className="px-5">
+          <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
             <InfoRow
               icon={Mail}
               iconBg="bg-brand-50 dark:bg-brand-900/20"
@@ -502,63 +593,15 @@ export default function Profile() {
               editing={editing}
               editNode={
                 <input
+                  maxLength={10}
                   value={form.phone}
-                  onChange={(e) => set("phone", e.target.value)}
+                  onChange={(e) => set("phone", e.target.value.replace(/\D/g, ""))}
                   className="mt-0.5 w-full text-sm bg-transparent border-b border-brand-400 text-gray-900 dark:text-white focus:outline-none py-0.5"
                 />
               }
             />
           </div>
         </div>
-
-        {/* Bank Details */}
-        {/* <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700">
-            <div className="flex items-center gap-2">
-              <CreditCard size={16} className="text-brand-600" />
-              <h3 className="font-semibold text-gray-900 dark:text-white">
-                Bank Details
-              </h3>
-            </div>
-            {editing && (
-              <span className="text-xs text-brand-500 font-medium">
-                Editing…
-              </span>
-            )}
-          </div>
-          <div className="px-5">
-            <InfoRow
-              icon={User}
-              iconBg="bg-indigo-50 dark:bg-indigo-900/20"
-              iconColor="text-indigo-600"
-              label="Account Name"
-              value={form.accountName || "—"}
-              editing={editing}
-              editNode={
-                <input
-                  value={form.accountName}
-                  onChange={(e) => set("accountName", e.target.value)}
-                  className="mt-0.5 w-full text-sm bg-transparent border-b border-brand-400 text-gray-900 dark:text-white focus:outline-none py-0.5"
-                />
-              }
-            />
-            <InfoRow
-              icon={CreditCard}
-              iconBg="bg-orange-50 dark:bg-orange-900/20"
-              iconColor="text-orange-600"
-              label="Account Number"
-              value={form.accountNo || "—"}
-              editing={editing}
-              editNode={
-                <input
-                  value={form.accountNo}
-                  onChange={(e) => set("accountNo", e.target.value)}
-                  className="mt-0.5 w-full text-sm bg-transparent border-b border-brand-400 text-gray-900 dark:text-white focus:outline-none py-0.5"
-                />
-              }
-            />
-          </div>
-        </div> */}
 
         {/* Employment details */}
         <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700">
@@ -568,7 +611,7 @@ export default function Profile() {
               Employment Details
             </h3>
           </div>
-          <div className="px-5">
+          <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
             <InfoRow
               icon={Hash}
               iconBg="bg-brand-50 dark:bg-brand-900/20"
@@ -591,10 +634,74 @@ export default function Profile() {
               value={emp.dob ? new Date(emp.dob).toLocaleDateString() : "—"}
               editing={editing}
               editNode={
-                <input
-                  type="date"
+                <ModernDatePicker
                   value={formatDateInputValue(form.dob)}
                   onChange={(e) => set("dob", e.target.value)}
+                  className="mt-0.5 w-full text-sm bg-transparent border-b border-brand-400 text-gray-900 dark:text-white focus:outline-none py-0.5"
+                />
+              }
+            />
+            <InfoRow
+              icon={User}
+              iconBg="bg-pink-50 dark:bg-pink-900/20"
+              iconColor="text-pink-600"
+              label="Gender"
+              value={emp.gender || "—"}
+              editing={editing}
+              editNode={
+                <select
+                  value={form.gender}
+                  onChange={(e) => set("gender", e.target.value)}
+                  className="mt-0.5 w-full text-sm bg-transparent border-b border-brand-400 text-gray-900 dark:text-white focus:outline-none py-0.5"
+                >
+                  <option value="">Select Gender</option>
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                  <option value="Other">Other</option>
+                </select>
+              }
+            />
+            <InfoRow
+              icon={Building2}
+              iconBg="bg-blue-50 dark:bg-blue-900/20"
+              iconColor="text-blue-600"
+              label="Department"
+              value={emp.department || "—"}
+              editing={editing}
+              editNode={
+                <input
+                  value={form.department}
+                  onChange={(e) => set("department", e.target.value)}
+                  className="mt-0.5 w-full text-sm bg-transparent border-b border-brand-400 text-gray-900 dark:text-white focus:outline-none py-0.5"
+                />
+              }
+            />
+            <InfoRow
+              icon={Award}
+              iconBg="bg-emerald-50 dark:bg-emerald-900/20"
+              iconColor="text-emerald-600"
+              label="Designation"
+              value={emp.designation || "—"}
+              editing={editing}
+              editNode={
+                <input
+                  value={form.designation}
+                  onChange={(e) => set("designation", e.target.value)}
+                  className="mt-0.5 w-full text-sm bg-transparent border-b border-brand-400 text-gray-900 dark:text-white focus:outline-none py-0.5"
+                />
+              }
+            />
+            <InfoRow
+              icon={Calendar}
+              iconBg="bg-teal-50 dark:bg-teal-900/20"
+              iconColor="text-teal-600"
+              label="Joining Date"
+              value={emp.joining_date ? new Date(emp.joining_date).toLocaleDateString() : "—"}
+              editing={editing}
+              editNode={
+                <ModernDatePicker
+                  value={formatDateInputValue(form.joining_date)}
+                  onChange={(e) => set("joining_date", e.target.value)}
                   className="mt-0.5 w-full text-sm bg-transparent border-b border-brand-400 text-gray-900 dark:text-white focus:outline-none py-0.5"
                 />
               }
@@ -603,7 +710,7 @@ export default function Profile() {
               icon={Home}
               iconBg="bg-purple-50 dark:bg-purple-900/20"
               iconColor="text-purple-600"
-              label="Residential Address"
+              label="Full Address"
               value={emp.address || "—"}
               editing={editing}
               editNode={
@@ -614,7 +721,201 @@ export default function Profile() {
                 />
               }
             />
+            <InfoRow
+              icon={Home}
+              iconBg="bg-purple-50 dark:bg-purple-900/20"
+              iconColor="text-purple-600"
+              label="City"
+              value={emp.city || "—"}
+              editing={editing}
+              editNode={
+                <input
+                  value={form.city}
+                  onChange={(e) => set("city", e.target.value)}
+                  className="mt-0.5 w-full text-sm bg-transparent border-b border-brand-400 text-gray-900 dark:text-white focus:outline-none py-0.5"
+                />
+              }
+            />
+            <InfoRow
+              icon={MapPin}
+              iconBg="bg-purple-50 dark:bg-purple-900/20"
+              iconColor="text-purple-600"
+              label="District"
+              value={emp.district || "—"}
+              editing={editing}
+              editNode={
+                <input
+                  value={form.district}
+                  onChange={(e) => set("district", e.target.value)}
+                  className="mt-0.5 w-full text-sm bg-transparent border-b border-brand-400 text-gray-900 dark:text-white focus:outline-none py-0.5"
+                />
+              }
+            />
+            <InfoRow
+              icon={MapPin}
+              iconBg="bg-purple-50 dark:bg-purple-900/20"
+              iconColor="text-purple-600"
+              label="State"
+              value={emp.state || "—"}
+              editing={editing}
+              editNode={
+                <input
+                  value={form.state}
+                  onChange={(e) => set("state", e.target.value)}
+                  className="mt-0.5 w-full text-sm bg-transparent border-b border-brand-400 text-gray-900 dark:text-white focus:outline-none py-0.5"
+                />
+              }
+            />
+            <InfoRow
+              icon={Hash}
+              iconBg="bg-purple-50 dark:bg-purple-900/20"
+              iconColor="text-purple-600"
+              label="PIN Code"
+              value={emp.pin || "—"}
+              editing={editing}
+              editNode={
+                <input
+                  maxLength={6}
+                  value={form.pin}
+                  onChange={(e) => set("pin", e.target.value.replace(/\D/g, ""))}
+                  className="mt-0.5 w-full text-sm bg-transparent border-b border-brand-400 text-gray-900 dark:text-white focus:outline-none py-0.5"
+                />
+              }
+            />
           </div>
+        </div>
+
+        {/* Identity & Bank Details */}
+        <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700">
+          <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-100 dark:border-gray-700">
+            <CreditCard size={16} className="text-brand-600" />
+            <h3 className="font-semibold text-gray-900 dark:text-white">
+              Identity & Bank Details
+            </h3>
+          </div>
+          <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+            <InfoRow
+              icon={User}
+              iconBg="bg-blue-50 dark:bg-blue-900/20"
+              iconColor="text-blue-600"
+              label="Aadhar Card No"
+              value={emp.aadhar_card_no || "—"}
+              editing={editing}
+              editNode={
+                <input
+                  maxLength={12}
+                  value={form.aadhar_card_no}
+                  onChange={(e) => set("aadhar_card_no", e.target.value.replace(/\D/g, ""))}
+                  className="mt-0.5 w-full text-sm bg-transparent border-b border-brand-400 text-gray-900 dark:text-white focus:outline-none py-0.5"
+                />
+              }
+            />
+            <InfoRow
+              icon={CreditCard}
+              iconBg="bg-blue-50 dark:bg-blue-900/20"
+              iconColor="text-blue-600"
+              label="PAN Card No"
+              value={emp.pan_card_no || "—"}
+              editing={editing}
+              editNode={
+                <input
+                  maxLength={10}
+                  value={form.pan_card_no}
+                  onChange={(e) => set("pan_card_no", e.target.value.toUpperCase())}
+                  className="mt-0.5 w-full text-sm bg-transparent border-b border-brand-400 text-gray-900 dark:text-white focus:outline-none py-0.5"
+                />
+              }
+            />
+            <InfoRow
+              icon={Building2}
+              iconBg="bg-indigo-50 dark:bg-indigo-900/20"
+              iconColor="text-indigo-600"
+              label="Bank Name"
+              value={emp.bank_name || "—"}
+              editing={editing}
+              editNode={
+                <input
+                  value={form.bank_name}
+                  onChange={(e) => set("bank_name", e.target.value)}
+                  className="mt-0.5 w-full text-sm bg-transparent border-b border-brand-400 text-gray-900 dark:text-white focus:outline-none py-0.5"
+                />
+              }
+            />
+            <InfoRow
+              icon={Hash}
+              iconBg="bg-indigo-50 dark:bg-indigo-900/20"
+              iconColor="text-indigo-600"
+              label="Bank IFSC Code"
+              value={emp.bank_ifsc_code || "—"}
+              editing={editing}
+              editNode={
+                <input
+                  maxLength={11}
+                  value={form.bank_ifsc_code}
+                  onChange={(e) => set("bank_ifsc_code", e.target.value.toUpperCase())}
+                  className="mt-0.5 w-full text-sm bg-transparent border-b border-brand-400 text-gray-900 dark:text-white focus:outline-none py-0.5"
+                />
+              }
+            />
+            <InfoRow
+              icon={Hash}
+              iconBg="bg-indigo-50 dark:bg-indigo-900/20"
+              iconColor="text-indigo-600"
+              label="Bank Account No"
+              value={emp.bank_account_no || "—"}
+              editing={editing}
+              editNode={
+                <input
+                  maxLength={20}
+                  value={form.bank_account_no}
+                  onChange={(e) => set("bank_account_no", e.target.value.replace(/\D/g, ""))}
+                  className="mt-0.5 w-full text-sm bg-transparent border-b border-brand-400 text-gray-900 dark:text-white focus:outline-none py-0.5"
+                />
+              }
+            />
+            <InfoRow
+              icon={Hash}
+              iconBg="bg-cyan-50 dark:bg-cyan-900/20"
+              iconColor="text-cyan-600"
+              label="PF Account No"
+              value={emp.pf_no || "—"}
+              editing={editing}
+              editNode={
+                <input
+                  maxLength={22}
+                  value={form.pf_no}
+                  onChange={(e) => set("pf_no", e.target.value.replace(/\D/g, ""))}
+                  className="mt-0.5 w-full text-sm bg-transparent border-b border-brand-400 text-gray-900 dark:text-white focus:outline-none py-0.5"
+                />
+              }
+            />
+            <InfoRow
+              icon={Hash}
+              iconBg="bg-cyan-50 dark:bg-cyan-900/20"
+              iconColor="text-cyan-600"
+              label="ESI ID No"
+              value={emp.esi_no || "—"}
+              editing={editing}
+              editNode={
+                <input
+                  maxLength={17}
+                  value={form.esi_no}
+                  onChange={(e) => set("esi_no", e.target.value.replace(/\D/g, ""))}
+                  className="mt-0.5 w-full text-sm bg-transparent border-b border-brand-400 text-gray-900 dark:text-white focus:outline-none py-0.5"
+                />
+              }
+            />
+          </div>
+          {editing && (
+            <div className="px-5 pb-5 flex justify-end gap-3 border-t border-gray-100 dark:border-gray-700 pt-4">
+              <button
+                onClick={handleSave}
+                className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-xl transition-colors shadow-sm shadow-brand-600/30"
+              >
+                <Save size={16} /> Save
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Security — change password */}
@@ -671,6 +972,7 @@ export default function Profile() {
           </div>
         </div>
       </div>
+    </div>
     </div>
   );
 }

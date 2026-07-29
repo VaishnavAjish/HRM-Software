@@ -17,19 +17,19 @@ const COMPANY_MODE = ["nidhi-impex", "silver-star"].includes(gitBranch)
 
 const APP_TITLE =
   gitBranch === "nidhi-impex"
-    ? "Nidhi Impex – Salary Management"
+    ? "Nidhi Impex – HRMS"
     : gitBranch === "silver-star"
-      ? "Silver Star – Salary Management"
-      : "Master Admin – Salary Management";
+      ? "Silver Star – HRMS"
+      : "Build better workplaces – HRMS";
 
 const APP_LABEL =
   gitBranch === "nidhi-impex"
     ? "Nidhi Impex"
     : gitBranch === "silver-star"
       ? "Silver Star"
-      : "Master Admin";
+      : "Build better workplaces";
 
-// amber = Nidhi Impex | sky = Silver Star | indigo = Master Admin
+// amber = Nidhi Impex | sky = Silver Star | indigo = Build better workplaces
 const APP_COLOR =
   gitBranch === "nidhi-impex"
     ? "amber"
@@ -74,9 +74,9 @@ export default defineConfig(({ mode }) => {
         // Web App Manifest
         manifest: {
           name: APP_TITLE,
-          short_name: "SalaryMgmt",
+          short_name: "HRMS",
           description:
-            "Employee Payroll & Salary Management System by Nidhi Impex",
+            "Employee Payroll & HR Management System by Nidhi Impex",
           theme_color: "#1d4ed8",
           background_color: "#f8fafc",
           display: "standalone",

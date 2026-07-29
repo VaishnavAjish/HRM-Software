@@ -1,21 +1,13 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
-  Plus,
   Edit2,
   Trash2,
   Eye,
-  EyeOff,
   Download,
   Crown,
   Mail,
-  Hash,
-  Upload,
-  FileSpreadsheet,
-  X,
-  CloudUpload,
   CheckCircle,
   TableProperties,
-  HardDrive,
   Phone,
   Calendar,
   CalendarOff,
@@ -24,7 +16,6 @@ import {
   Globe,
   Loader2,
   Building2,
-  Table2,
   User,
   Briefcase,
   IdCard,
@@ -34,27 +25,26 @@ import {
   Wallet,
   ShieldCheck,
   HeartPulse,
-  ChevronDown,
+  Search,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";
+import { useSearchParams } from "react-router-dom";
 import { getCompanyConfig } from "../../config/companyConfig";
 import { useTheme } from "../../context/ThemeContext";
+import { validateEmployeeForm } from "../../utils/validation";
 import useGridHeaderContextMenu from "../../hooks/useGridHeaderContextMenu";
 import useIsMobile from "../../hooks/useIsMobile";
 
 import { SkeletonTable } from "../../components/ui/Skeleton";
 import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
-import Dropdown from "../../components/ui/Dropdown";
 import Modal from "../../components/ui/Modal";
 import Pagination from "../../components/ui/Pagination";
 import GridHeaderContextMenu from "../../components/ui/GridHeaderContextMenu";
 import toast from "react-hot-toast";
 import { downloadExcel } from "../../utils/exportUtils";
-import { salaryApi, authApi } from "../../utils/api";
-import { baseUrl } from "../../utils/url";
-import * as XLSX from "xlsx";
+import { salaryApi } from "../../utils/api";
 
 import { AllCommunityModule, ModuleRegistry } from "ag-grid-community";
 import { AgGridReact } from "ag-grid-react";
@@ -62,8 +52,6 @@ import AddEditEmployeeModal from "./AdminModals/AddEditEmployeeModal";
 import DeleteEmployeeModal from "./AdminModals/DeleteEmployeeModal";
 import AddNewDepartment from "./AdminModals/AddNewDepartment";
 import EmployeeDetailsModal from "./AdminModals/EmployeeDetailsModal";
-import EmployeeImportModal from "./AdminModals/EmployeeImportModal";
-import AccountMasterUploadModal from "./AdminModals/AccountMasterUploadModal";
 import {
   EmployeeAvatar,
   formatDisplayDate,
@@ -119,95 +107,18 @@ const selectCls =
 const inputCls =
   "w-full px-3 py-2 text-sm bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500";
 
-function normalizeImportToken(value) {
-  return String(value || "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-}
-
-function sanitizeEmployeeImportColumns(columns = []) {
-  const seenKeys = new Set();
-
-  return columns.reduce((acc, column) => {
-    const key = String(column?.key || "").trim();
-    const label = String(column?.label || "").trim();
-
-    if (!key || !label || seenKeys.has(key)) {
-      return acc;
-    }
-
-    seenKeys.add(key);
-    acc.push({
-      key,
-      label,
-      required: Boolean(column?.required),
-      aliases: Array.isArray(column?.aliases)
-        ? column.aliases
-            .map((alias) => String(alias || "").trim())
-            .filter(Boolean)
-        : [],
-    });
-
-    return acc;
-  }, []);
-}
-
-function getEmployeeImportMatchTokens(field) {
-  return [field?.key, field?.label, ...(field?.aliases || [])]
-    .map((token) => normalizeImportToken(token))
-    .filter(Boolean);
-}
-
-function suggestEmployeeImportField(header, importFields = []) {
-  const normalized = normalizeImportToken(header);
-
-  if (!normalized) return "";
-
-  for (const field of importFields) {
-    const matchedAlias = getEmployeeImportMatchTokens(field).find(
-      (normalizedAlias) =>
-        normalized === normalizedAlias ||
-        normalized.includes(normalizedAlias) ||
-        normalizedAlias.includes(normalized),
-    );
-
-    if (matchedAlias) {
-      return field.key;
-    }
-  }
-
-  return "";
-}
-
-function buildEmployeeImportMappings(headers = [], importFields = []) {
-  if (!Array.isArray(headers) || importFields.length === 0) {
-    return {};
-  }
-
-  const usedFields = new Set();
-
-  return headers.reduce((acc, header, index) => {
-    const suggested = suggestEmployeeImportField(header, importFields);
-    const mappingKey = String(index);
-
-    if (suggested && !usedFields.has(suggested)) {
-      acc[mappingKey] = suggested;
-      usedFields.add(suggested);
-      return acc;
-    }
-
-    acc[mappingKey] = "";
-    return acc;
-  }, {});
-}
-
-function formatEmployeeImportFieldLabel(field) {
-  return `${field.label} (${field.key})`;
-}
-
 function firstPresent(...values) {
   return values.find((value) => value !== undefined && value !== null) ?? "";
+}
+
+// Mirrors mapEmployee()'s reverse: Active -> 0, Pending -> 2, else Inactive -> 1.
+// A plain "Active"-vs-else ternary here would silently collapse a Pending
+// employee into Inactive on every unrelated edit, since the status dropdown
+// previously had no way to represent "Pending" at all.
+function statusToCode(status) {
+  if (status === "Active") return "0";
+  if (status === "Pending") return "2";
+  return "1";
 }
 
 function mapEmployee(item) {
@@ -221,6 +132,7 @@ function mapEmployee(item) {
     .toUpperCase();
 
   const isActive = String(item.status) === "0";
+  const isPending = String(item.status) === "2";
   const roleValue = String(item.role);
   const loginRole =
     roleValue === "0"
@@ -243,7 +155,7 @@ function mapEmployee(item) {
     companyLabel: getCompanyConfig(item.company_code)?.label || "-",
     unit: item.unit ?? "",
     department: item.department ?? "",
-    status: isActive ? "Active" : "Inactive",
+    status: isPending ? "Pending" : isActive ? "Active" : "Inactive",
     loginRole,
     agentCompany: item.company_code === "nidhi-impex,silverstar" || item.company_code === "all" ? "" : item.company_code,
     avatar,
@@ -290,12 +202,52 @@ export default function EmployeeManagement() {
 
   const gridRef = useRef(null);
   const gridContainerRef = useRef(null);
-  const fileInputRef = useRef(null);
   const { headerMenu, headerFrozen, closeHeaderMenu, toggleHeaderFrozen } =
     useGridHeaderContextMenu(gridRef, gridContainerRef);
 
   const [initialLoading, setInitialLoading] = useState(true);
   const [tableLoading, setTableLoading] = useState(false);
+
+  const allColumns = useMemo(() => [
+    { field: "empCode", label: "Emp Code" },
+    { field: "name", label: "Name" },
+    { field: "gender", label: "Gender" },
+    { field: "email", label: "Email" },
+    { field: "mobileNo", label: "Mobile" },
+    { field: "dob", label: "DOB" },
+    { field: "address", label: "Address" },
+    { field: "department", label: "Department" },
+    { field: "designation", label: "Designation" },
+    { field: "city", label: "City" },
+    { field: "district", label: "District" },
+    { field: "state", label: "State" },
+    { field: "pin", label: "PIN" },
+    { field: "aadharCardNo", label: "Aadhar Card No" },
+    { field: "panCardNo", label: "PAN Card No" },
+    { field: "bankName", label: "Bank Name" },
+    { field: "bankIfscCode", label: "Bank IFSC Code" },
+    { field: "bankAccountNo", label: "Bank Account No" },
+    { field: "pfNo", label: "PF No" },
+    { field: "esiNo", label: "ESI No" },
+    { field: "joiningDate", label: "Joining Date" },
+    { field: "resignationDate", label: "Resignation Date" },
+    { field: "companyLabel", label: "Company" },
+    { field: "unit", label: "Unit" },
+    { field: "loginRole", label: "Role" },
+    { field: "status", label: "Status" },
+  ], []);
+
+  const [visibleColumns, setVisibleColumns] = useState([
+    "empCode", "name", "department", "designation", "companyLabel", "unit", "loginRole", "status"
+  ]);
+  const [showColModal, setShowColModal] = useState(false);
+
+  const toggleColumnVisibility = (field) => {
+    setVisibleColumns(prev => {
+      const newVisible = prev.includes(field) ? prev.filter(f => f !== field) : [...prev, field];
+      return newVisible;
+    });
+  };
 
   const [employees, setEmployees] = useState([]);
   const [apiPage, setApiPage] = useState(1);
@@ -309,8 +261,32 @@ export default function EmployeeManagement() {
   const [gridFilterModel, setGridFilterModel] = useState({});
   const [refreshKey, setRefreshKey] = useState(0);
 
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedStatus, setSelectedStatus] = useState("");
+
+  const mergedFilters = useMemo(() => {
+    const filters = { ...apiFilter };
+    if (searchQuery.trim()) {
+      filters.search = searchQuery.trim();
+    }
+    if (selectedStatus) {
+      filters.status = selectedStatus;
+    }
+    return filters;
+  }, [apiFilter, searchQuery, selectedStatus]);
+
   const [exportLoading, setExportLoading] = useState(false);
-  const [modal, setModal] = useState(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [modal, setModal] = useState(searchParams.get("modal") || null);
+
+  useEffect(() => {
+    const urlModal = searchParams.get("modal");
+    if (urlModal && urlModal === "add") {
+      setModal("add");
+      searchParams.delete("modal");
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
   const [selected, setSelected] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [viewLoading, setViewLoading] = useState(false);
@@ -322,21 +298,6 @@ export default function EmployeeManagement() {
   const [isDeptModalOpen, setIsDeptModalOpen] = useState(false);
   const [newDeptName, setNewDeptName] = useState("");
 
-  const [uploadOpen, setUploadOpen] = useState(false);
-  const [selectedFile, setSelectedFile] = useState(null);
-  const [dragOver, setDragOver] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [preview, setPreview] = useState(null);
-  const [columnMappings, setColumnMappings] = useState({});
-  const [employeeImportColumns, setEmployeeImportColumns] = useState([]);
-  const [importColumnsLoading, setImportColumnsLoading] = useState(false);
-
-  const amFileInputRef = useRef(null);
-  const [amUploadOpen, setAmUploadOpen] = useState(false);
-  const [amSelectedFile, setAmSelectedFile] = useState(null);
-  const [amUploading, setAmUploading] = useState(false);
-  const [amPreview, setAmPreview] = useState(null);
-
   // The company a new/edited employee belongs to is now chosen right in the
   // form (see the Company field in AddEditEmployeeModal) rather than only
   // coming from the sidebar's company scope, so unit options must follow
@@ -345,30 +306,6 @@ export default function EmployeeManagement() {
   const unitOptions = useMemo(
     () => getCompanyConfig(formCompanyId)?.units || [],
     [formCompanyId],
-  );
-  const fileHeaders = useMemo(
-    () =>
-      (preview?.headers || []).map((header, index) => ({
-        id: String(index),
-        index,
-        label: String(header || "").trim() || `Column ${index + 1}`,
-      })),
-    [preview],
-  );
-  const mappedFieldCount = useMemo(
-    () => Object.values(columnMappings).filter(Boolean).length,
-    [columnMappings],
-  );
-  const requiredEmployeeImportFields = useMemo(
-    () => employeeImportColumns.filter((field) => field.required),
-    [employeeImportColumns],
-  );
-  const missingRequiredImportFields = useMemo(
-    () =>
-      requiredEmployeeImportFields.filter(
-        (field) => !Object.values(columnMappings).includes(field.key),
-      ),
-    [columnMappings, requiredEmployeeImportFields],
   );
 
   useEffect(() => {
@@ -383,7 +320,7 @@ export default function EmployeeManagement() {
           currentUser?.tokenType,
           apiPage,
           perPage,
-          apiFilter,
+          mergedFilters,
           companyScope,
         );
 
@@ -418,7 +355,7 @@ export default function EmployeeManagement() {
   }, [
     apiPage,
     perPage,
-    apiFilter,
+    mergedFilters,
     refreshKey,
     companyScope,
     currentUser?.accessToken,
@@ -426,66 +363,19 @@ export default function EmployeeManagement() {
     scopeKey,
   ]);
 
+  const isFirstScopeRender = useRef(true);
   useEffect(() => {
+    if (isFirstScopeRender.current) {
+      isFirstScopeRender.current = false;
+      return;
+    }
     setApiPage(1);
     setModal(null);
   }, [scopeKey]);
 
-  useEffect(() => {
-    if (!preview?.headers?.length || employeeImportColumns.length === 0) {
-      return;
-    }
-
-    setColumnMappings((prev) => {
-      if (Object.keys(prev).length > 0) {
-        return prev;
-      }
-
-      return buildEmployeeImportMappings(
-        preview.headers,
-        employeeImportColumns,
-      );
-    });
-  }, [employeeImportColumns, preview]);
-
   const refetchEmployees = useCallback(() => {
     setRefreshKey((prev) => prev + 1);
   }, []);
-
-  const openImportModal = useCallback(async () => {
-    if (isAllCompanies) {
-      toast.error("Select one company before importing employees.");
-      return;
-    }
-
-    setUploadOpen(true);
-
-    if (employeeImportColumns.length > 0 || importColumnsLoading) {
-      return;
-    }
-
-    setImportColumnsLoading(true);
-
-    try {
-      const res = await salaryApi.getEmployeeImportColumns(
-        currentUser?.accessToken,
-        currentUser?.tokenType,
-      );
-      setEmployeeImportColumns(
-        sanitizeEmployeeImportColumns(res?.data?.columns || []),
-      );
-    } catch (err) {
-      toast.error(err.message || "Failed to load database columns");
-    } finally {
-      setImportColumnsLoading(false);
-    }
-  }, [
-    currentUser?.accessToken,
-    currentUser?.tokenType,
-    employeeImportColumns.length,
-    importColumnsLoading,
-    isAllCompanies,
-  ]);
 
   const openAdd = useCallback(() => {
     setForm({
@@ -612,6 +502,12 @@ export default function EmployeeManagement() {
       return;
     }
 
+    const validationErrors = validateEmployeeForm(form);
+    if (validationErrors.length > 0) {
+      toast.error(validationErrors[0]);
+      return;
+    }
+
     const mobileNo = (form.mobileNo || "").trim();
     const address = (form.address || "").trim();
 
@@ -655,7 +551,7 @@ export default function EmployeeManagement() {
                     ? "4"
                     : "3",
           type: form.loginRole === "agent" ? "agent" : null,
-          status: form.status === "Active" ? "0" : "1",
+          status: statusToCode(form.status),
           unit: form.loginRole === "master" || form.loginRole === "superadmin" || form.loginRole === "agent" ? null : (form.unit || null),
           company_code: form.loginRole === "agent" && currentUser?.rawRole === 0
             ? (form.agentCompany || "all")
@@ -726,7 +622,7 @@ export default function EmployeeManagement() {
                   ? "4"
                   : "3",
         type: form.loginRole === "agent" ? "agent" : null,
-        status: form.status === "Active" ? "0" : "1",
+        status: statusToCode(form.status),
         unit: form.loginRole === "master" || form.loginRole === "superadmin" || form.loginRole === "agent" ? null : (form.unit || null),
         company_code: form.loginRole === "agent" && currentUser?.rawRole === 0 
           ? (form.agentCompany || "all")
@@ -859,312 +755,6 @@ export default function EmployeeManagement() {
     }
   };
 
-  function parseExcelPreview(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-
-      reader.onload = (e) => {
-        try {
-          const wb = XLSX.read(new Uint8Array(e.target.result), {
-            type: "array",
-          });
-
-          const sheetName = wb.SheetNames[0];
-
-          const allRows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {
-            header: 1,
-            defval: "",
-          });
-
-          const [headerRow = [], ...dataRows] = allRows;
-
-          resolve({
-            sheetName,
-            headers: headerRow.map(String),
-            rows: dataRows.slice(0, 6),
-            totalRows: dataRows.length,
-          });
-        } catch {
-          reject(
-            new Error(
-              "Could not read file. Make sure it is a valid Excel file.",
-            ),
-          );
-        }
-      };
-
-      reader.onerror = () => reject(new Error("Failed to read file."));
-      reader.readAsArrayBuffer(file);
-    });
-  }
-
-  async function validateAndSet(file) {
-    if (!file) return;
-
-    const allowed = [
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "application/vnd.ms-excel",
-    ];
-
-    if (!allowed.includes(file.type) && !/\.(xlsx|xls)$/i.test(file.name)) {
-      toast.error("Only Excel files (.xlsx, .xls) are allowed.");
-      return;
-    }
-
-    // The xlsx parser has a known ReDoS/prototype-pollution advisory with no
-    // upstream fix (only mitigation is limiting what it's asked to parse) —
-    // capping the input size keeps a crafted file from hanging the tab.
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error("File is too large. Please upload a file under 10 MB.");
-      return;
-    }
-
-    setSelectedFile(file);
-
-    try {
-      const data = await parseExcelPreview(file);
-      setPreview(data);
-      setColumnMappings(
-        buildEmployeeImportMappings(data.headers, employeeImportColumns),
-      );
-    } catch (err) {
-      toast.error(err.message);
-      setSelectedFile(null);
-      setPreview(null);
-      setColumnMappings({});
-    }
-  }
-
-  function updateColumnMapping(columnId, nextValue) {
-    setColumnMappings((prev) => {
-      const next = { ...prev };
-
-      if (nextValue) {
-        Object.keys(next).forEach((key) => {
-          if (key !== columnId && next[key] === nextValue) {
-            next[key] = "";
-          }
-        });
-      }
-
-      next[columnId] = nextValue;
-      return next;
-    });
-  }
-
-  function handleFileChange(e) {
-    const file = e.target.files?.[0];
-    if (file) validateAndSet(file);
-  }
-
-  function handleDrop(e) {
-    e.preventDefault();
-    setDragOver(false);
-
-    const file = e.dataTransfer.files?.[0];
-    if (file) validateAndSet(file);
-  }
-
-  function resetUpload() {
-    setSelectedFile(null);
-    setPreview(null);
-    setColumnMappings({});
-    setUploadOpen(false);
-
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
-  }
-
-  function clearFile(e) {
-    e?.stopPropagation();
-
-    setSelectedFile(null);
-    setPreview(null);
-    setColumnMappings({});
-
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
-  }
-
-  async function handleUpload() {
-    if (!selectedFile) return;
-    if (importColumnsLoading || employeeImportColumns.length === 0) {
-      toast.error("Database columns are still loading. Please wait a moment.");
-      return;
-    }
-    if (missingRequiredImportFields.length > 0) {
-      toast.error(
-        `Map required columns: ${missingRequiredImportFields.map((field) => field.label).join(", ")}`,
-      );
-      return;
-    }
-
-    setUploading(true);
-
-    try {
-      await authApi.importEmployees(
-        selectedFile,
-        currentUser?.accessToken,
-        currentUser?.tokenType,
-        companyScope,
-        columnMappings,
-      );
-
-      toast.success("Employees imported successfully!");
-      resetUpload();
-      setApiPage(1);
-      refetchEmployees();
-    } catch (err) {
-      toast.error(err.message || "Import failed. Please try again.");
-    } finally {
-      setUploading(false);
-    }
-  }
-
-  function fmtFileSize(bytes) {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  }
-
-  function amParseExcelPreview(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        try {
-          const wb = XLSX.read(new Uint8Array(e.target.result), {
-            type: "array",
-          });
-          const sheetName = wb.SheetNames[0];
-          const allRows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {
-            header: 1,
-            defval: "",
-          });
-          const [headerRow = [], ...dataRows] = allRows;
-          resolve({
-            sheetName,
-            headers: headerRow.map(String),
-            rows: dataRows,
-            totalRows: dataRows.length,
-          });
-        } catch {
-          reject(
-            new Error(
-              "Could not read file. Make sure it is a valid Excel file.",
-            ),
-          );
-        }
-      };
-      reader.onerror = () => reject(new Error("Failed to read file."));
-      reader.readAsArrayBuffer(file);
-    });
-  }
-
-  async function amValidateAndSet(file) {
-    if (!file) return;
-    const allowed = [
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "application/vnd.ms-excel",
-    ];
-    if (!allowed.includes(file.type) && !/\.(xlsx|xls)$/i.test(file.name)) {
-      toast.error("Only Excel files (.xlsx, .xls) are allowed.");
-      return;
-    }
-    setAmSelectedFile(file);
-    try {
-      const data = await amParseExcelPreview(file);
-      setAmPreview(data);
-    } catch (err) {
-      toast.error(err.message);
-      setAmSelectedFile(null);
-      setAmPreview(null);
-    }
-  }
-
-  function amHandleFileChange(e) {
-    const file = e.target.files?.[0];
-    if (file) amValidateAndSet(file);
-  }
-
-  function amResetUpload() {
-    setAmSelectedFile(null);
-    setAmPreview(null);
-    setAmUploadOpen(false);
-    if (amFileInputRef.current) amFileInputRef.current.value = "";
-  }
-
-  function amClearFile(e) {
-    e?.stopPropagation();
-    setAmSelectedFile(null);
-    setAmPreview(null);
-    if (amFileInputRef.current) amFileInputRef.current.value = "";
-  }
-
-  function openAmUpload() {
-    if (isAllCompanies) {
-      toast.error("Select one company before uploading account master.");
-      return;
-    }
-    if (unitOptions.length > 0 && !activeUnit) {
-      toast.error("Select a branch from the sidebar before uploading account master.");
-      return;
-    }
-    setAmUploadOpen(true);
-  }
-
-  async function amHandleUpload() {
-    if (!amSelectedFile) return;
-
-    setAmUploading(true);
-    try {
-      await salaryApi.uploadAccountMaster(
-        amSelectedFile,
-        currentUser?.accessToken,
-        currentUser?.tokenType,
-        { companyId, unit: activeUnit },
-      );
-      toast.success("Account master uploaded successfully!");
-      amResetUpload();
-    } catch (err) {
-      toast.error(err.message || "Upload failed. Please try again.");
-    } finally {
-      setAmUploading(false);
-    }
-  }
-
-  function downloadAccountMasterTemplate() {
-    const headers = [
-      "Code",
-      "Employee Name",
-      "Gender",
-      "PAN",
-      "Address",
-      "City",
-      "PIN",
-      "District",
-      "State",
-      "Mobile",
-      "PF No.",
-      "ESI No.",
-      "Bank Name",
-      "IFSC",
-      "A/c Number",
-      "Aadhar Number",
-      "Branch",
-      "Department",
-      "Designation",
-      "Date of Joining",
-      "DOB",
-      "Resignation Date",
-    ];
-    const ws = XLSX.utils.aoa_to_sheet([headers]);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Account Master");
-    XLSX.writeFile(wb, "account_master_template.xlsx");
-  }
-
   const defaultColDef = useMemo(
     () => ({
       sortable: true,
@@ -1240,18 +830,18 @@ export default function EmployeeManagement() {
       {
         headerName: "Emp Code",
         field: "empCode",
-        minWidth: 140,
-        flex: 1,
-        hide: isMobile,
+        minWidth: 110,
+        flex: 0,
+        hide: isMobile || !visibleColumns.includes("empCode"),
         filter: "agTextColumnFilter",
         cellClass:
           "employee-ag-cell font-mono text-gray-600 dark:text-gray-300",
-      },
+       maxWidth: 140,},
       {
         headerName: "Name",
-        field: "name",
-        minWidth: 160,
-        flex: 1,
+        field: "name", hide: isMobile || !visibleColumns.includes("name"),
+        minWidth: 180,
+        flex: 2,
         cellStyle: { overflow: "hidden" },
         valueGetter: ({ data }) => data?.name || data?.displayName || "-",
         filter: "agTextColumnFilter",
@@ -1274,7 +864,7 @@ export default function EmployeeManagement() {
         field: "gender",
         minWidth: 130,
         flex: 1,
-        hide: isMobile,
+        hide: isMobile || !visibleColumns.includes("gender"),
         filter: "agTextColumnFilter",
         cellRenderer: ({ value }) => (
           <div className="flex h-full w-full items-center gap-2 overflow-hidden">
@@ -1290,7 +880,7 @@ export default function EmployeeManagement() {
         field: "email",
         minWidth: 160,
         flex: 1,
-        hide: isMobile,
+        hide: isMobile || !visibleColumns.includes("email"),
         cellStyle: { overflow: "hidden" },
         valueGetter: ({ data }) => data?.email || "-",
         filter: "agTextColumnFilter",
@@ -1312,7 +902,7 @@ export default function EmployeeManagement() {
         field: "mobileNo",
         minWidth: 150,
         flex: 1,
-        hide: isMobile,
+        hide: isMobile || !visibleColumns.includes("mobileNo"),
         filter: "agTextColumnFilter",
         cellRenderer: ({ data: emp }) => {
           if (!emp) return null;
@@ -1332,7 +922,7 @@ export default function EmployeeManagement() {
         field: "dob",
         minWidth: 130,
         flex: 1,
-        hide: isMobile,
+        hide: isMobile || !visibleColumns.includes("dob"),
         filter: "agTextColumnFilter",
         valueFormatter: ({ value }) => formatDisplayDate(value) || "-",
         cellRenderer: ({ value }) => (
@@ -1349,7 +939,7 @@ export default function EmployeeManagement() {
         field: "address",
         minWidth: 220,
         flex: 1.2,
-        hide: isMobile,
+        hide: isMobile || !visibleColumns.includes("address"),
         filter: "agTextColumnFilter",
         cellStyle: { overflow: "hidden" },
         cellRenderer: ({ value }) => (
@@ -1367,9 +957,9 @@ export default function EmployeeManagement() {
       {
         headerName: "Department",
         field: "department",
-        minWidth: 150,
-        flex: 1,
-        hide: isMobile,
+        minWidth: 140,
+        flex: 1.5,
+        hide: isMobile || !visibleColumns.includes("department"),
         filter: "agTextColumnFilter",
         cellRenderer: ({ value }) => (
           <div className="flex h-full w-full items-center gap-2 overflow-hidden">
@@ -1383,9 +973,9 @@ export default function EmployeeManagement() {
       {
         headerName: "Designation",
         field: "designation",
-        minWidth: 150,
-        flex: 1,
-        hide: isMobile,
+        minWidth: 140,
+        flex: 1.5,
+        hide: isMobile || !visibleColumns.includes("designation"),
         filter: "agTextColumnFilter",
         cellRenderer: ({ value }) => (
           <div className="flex h-full w-full items-center gap-2 overflow-hidden">
@@ -1401,7 +991,7 @@ export default function EmployeeManagement() {
         field: "city",
         minWidth: 130,
         flex: 1,
-        hide: isMobile,
+        hide: isMobile || !visibleColumns.includes("city"),
         filter: "agTextColumnFilter",
         cellRenderer: ({ value }) => (
           <div className="flex h-full w-full items-center gap-2 overflow-hidden">
@@ -1417,7 +1007,7 @@ export default function EmployeeManagement() {
         field: "district",
         minWidth: 130,
         flex: 1,
-        hide: isMobile,
+        hide: isMobile || !visibleColumns.includes("district"),
         filter: "agTextColumnFilter",
         cellRenderer: ({ value }) => (
           <div className="flex h-full w-full items-center gap-2 overflow-hidden">
@@ -1433,7 +1023,7 @@ export default function EmployeeManagement() {
         field: "state",
         minWidth: 130,
         flex: 1,
-        hide: isMobile,
+        hide: isMobile || !visibleColumns.includes("state"),
         filter: "agTextColumnFilter",
         cellRenderer: ({ value }) => (
           <div className="flex h-full w-full items-center gap-2 overflow-hidden">
@@ -1449,7 +1039,7 @@ export default function EmployeeManagement() {
         field: "pin",
         minWidth: 110,
         flex: 1,
-        hide: isMobile,
+        hide: isMobile || !visibleColumns.includes("pin"),
         filter: "agTextColumnFilter",
         cellClass:
           "employee-ag-cell font-mono text-gray-600 dark:text-gray-300",
@@ -1459,7 +1049,7 @@ export default function EmployeeManagement() {
         field: "aadharCardNo",
         minWidth: 160,
         flex: 1,
-        hide: isMobile,
+        hide: isMobile || !visibleColumns.includes("aadharCardNo"),
         filter: "agTextColumnFilter",
         cellRenderer: ({ value }) => (
           <div className="flex h-full w-full items-center gap-2 overflow-hidden">
@@ -1475,7 +1065,7 @@ export default function EmployeeManagement() {
         field: "panCardNo",
         minWidth: 150,
         flex: 1,
-        hide: isMobile,
+        hide: isMobile || !visibleColumns.includes("panCardNo"),
         filter: "agTextColumnFilter",
         cellRenderer: ({ value }) => (
           <div className="flex h-full w-full items-center gap-2 overflow-hidden">
@@ -1491,7 +1081,7 @@ export default function EmployeeManagement() {
         field: "bankName",
         minWidth: 150,
         flex: 1,
-        hide: isMobile,
+        hide: isMobile || !visibleColumns.includes("bankName"),
         filter: "agTextColumnFilter",
         cellRenderer: ({ value }) => (
           <div className="flex h-full w-full items-center gap-2 overflow-hidden">
@@ -1507,7 +1097,7 @@ export default function EmployeeManagement() {
         field: "bankIfscCode",
         minWidth: 150,
         flex: 1,
-        hide: isMobile,
+        hide: isMobile || !visibleColumns.includes("bankIfscCode"),
         filter: "agTextColumnFilter",
         cellRenderer: ({ value }) => (
           <div className="flex h-full w-full items-center gap-2 overflow-hidden">
@@ -1523,7 +1113,7 @@ export default function EmployeeManagement() {
         field: "bankAccountNo",
         minWidth: 160,
         flex: 1,
-        hide: isMobile,
+        hide: isMobile || !visibleColumns.includes("bankAccountNo"),
         filter: "agTextColumnFilter",
         cellRenderer: ({ value }) => (
           <div className="flex h-full w-full items-center gap-2 overflow-hidden">
@@ -1539,7 +1129,7 @@ export default function EmployeeManagement() {
         field: "pfNo",
         minWidth: 130,
         flex: 1,
-        hide: isMobile,
+        hide: isMobile || !visibleColumns.includes("pfNo"),
         filter: "agTextColumnFilter",
         cellRenderer: ({ value }) => (
           <div className="flex h-full w-full items-center gap-2 overflow-hidden">
@@ -1555,7 +1145,7 @@ export default function EmployeeManagement() {
         field: "esiNo",
         minWidth: 130,
         flex: 1,
-        hide: isMobile,
+        hide: isMobile || !visibleColumns.includes("esiNo"),
         filter: "agTextColumnFilter",
         cellRenderer: ({ value }) => (
           <div className="flex h-full w-full items-center gap-2 overflow-hidden">
@@ -1571,7 +1161,7 @@ export default function EmployeeManagement() {
         field: "joiningDate",
         minWidth: 140,
         flex: 1,
-        hide: isMobile,
+        hide: isMobile || !visibleColumns.includes("joiningDate"),
         filter: "agTextColumnFilter",
         valueFormatter: ({ value }) => formatDisplayDate(value) || "-",
         cellRenderer: ({ value }) => (
@@ -1588,7 +1178,7 @@ export default function EmployeeManagement() {
         field: "resignationDate",
         minWidth: 150,
         flex: 1,
-        hide: isMobile,
+        hide: isMobile || !visibleColumns.includes("resignationDate"),
         filter: "agTextColumnFilter",
         valueFormatter: ({ value }) => formatDisplayDate(value) || "-",
         cellRenderer: ({ value }) => (
@@ -1603,9 +1193,9 @@ export default function EmployeeManagement() {
       {
         headerName: "Company",
         field: "companyLabel",
-        minWidth: 150,
-        flex: 1,
-        hide: isMobile,
+        minWidth: 140,
+        flex: 1.5,
+        hide: isMobile || !visibleColumns.includes("companyLabel"),
         filter: false,
         cellRenderer: ({ data: emp }) =>
           emp ? <Badge variant="blue">{emp.companyLabel}</Badge> : null,
@@ -1615,7 +1205,7 @@ export default function EmployeeManagement() {
         field: "unit",
         minWidth: 140,
         flex: 1,
-        hide: isMobile,
+        hide: isMobile || !visibleColumns.includes("unit"),
         filter: "agTextColumnFilter",
         cellRenderer: ({ value }) => (
           <Badge variant="gray">{value || "-"}</Badge>
@@ -1624,9 +1214,10 @@ export default function EmployeeManagement() {
       {
         headerName: "Role",
         field: "loginRole",
-        minWidth: 160,
-        flex: 1,
-        hide: isMobile,
+        minWidth: 120,
+        maxWidth: 140,
+        flex: 0,
+        hide: isMobile || !visibleColumns.includes("loginRole"),
         filter: "agTextColumnFilter",
         filterValueGetter: ({ data }) =>
           data?.loginRole === "superadmin" ? "Super Admin" : "Employee",
@@ -1654,11 +1245,11 @@ export default function EmployeeManagement() {
         field: "status",
         minWidth: 160,
         flex: 1,
-        hide: isMobile,
+        hide: isMobile || !visibleColumns.includes("status"),
         filter: "agTextColumnFilter",
         cellRenderer: ({ data: emp }) =>
           emp ? (
-            <Badge variant={emp.status === "Active" ? "green" : "gray"}>
+            <Badge variant={emp.status === "Active" ? "green" : emp.status === "Pending" ? "yellow" : "gray"}>
               {emp.status}
             </Badge>
           ) : null,
@@ -1667,8 +1258,9 @@ export default function EmployeeManagement() {
         headerName: "Actions",
         field: "actions",
         pinned: "right",
-        minWidth: 120,
-        maxWidth: 170,
+        minWidth: 130,
+        maxWidth: 130,
+        flex: 0,
         sortable: false,
         filter: false,
         suppressHeaderFilterButton: true,
@@ -1676,36 +1268,36 @@ export default function EmployeeManagement() {
           if (!emp) return null;
 
           return (
-            <div className="flex h-full items-center gap-1.5">
+            <div className="flex h-full items-center justify-center gap-1.5">
               <button
                 onClick={() => openView(emp)}
-                className="flex items-center gap-1.5 rounded-lg bg-brand-50 px-2.5 py-1.5 text-xs font-medium text-brand-600 transition hover:bg-brand-100 dark:bg-brand-900/20 dark:hover:bg-brand-900/40"
+                className="flex items-center justify-center rounded-lg bg-brand-50 p-2 text-brand-600 transition hover:bg-brand-100 dark:bg-brand-900/20 dark:hover:bg-brand-900/40"
                 title="View"
               >
-                <Eye size={12} />
+                <Eye size={14} />
               </button>
 
               <button
                 onClick={() => openEdit(emp)}
-                className="flex items-center gap-1.5 rounded-lg bg-yellow-50 px-2.5 py-1.5 text-xs font-medium text-yellow-600 transition hover:bg-yellow-100 dark:bg-yellow-900/20 dark:hover:bg-yellow-900/40"
+                className="flex items-center justify-center rounded-lg bg-yellow-50 p-2 text-yellow-600 transition hover:bg-yellow-100 dark:bg-yellow-900/20 dark:hover:bg-yellow-900/40"
                 title="Edit"
               >
-                <Edit2 size={12} />
+                <Edit2 size={14} />
               </button>
 
               <button
                 onClick={() => openDelete(emp)}
-                className="flex items-center gap-1.5 rounded-lg bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-600 transition hover:bg-red-100 dark:bg-red-900/20"
+                className="flex items-center justify-center rounded-lg bg-red-50 p-2 text-red-600 transition hover:bg-red-100 dark:bg-red-900/20"
                 title="Delete"
               >
-                <Trash2 size={12} />
+                <Trash2 size={14} />
               </button>
             </div>
           );
         },
       },
     ];
-  }, [openDelete, openEdit, openView, isMobile]);
+  }, [openDelete, openEdit, openView, isMobile, visibleColumns]);
 
   if (initialLoading) {
     return (
@@ -1749,41 +1341,41 @@ export default function EmployeeManagement() {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
-        <div className="flex flex-wrap gap-2 ml-auto items-center">
-          <Dropdown
-            items={[
-              {
-                label: "Download CSV Template",
-                icon: <Table2 size={15} />,
-                iconBg: "bg-brand-50 dark:bg-brand-900/20",
-                iconColor: "text-brand-600 dark:text-brand-400",
-                onClick: downloadAccountMasterTemplate,
-              },
-              {
-                label: "Upload Account Master",
-                icon: <CloudUpload size={15} />,
-                iconBg: "bg-amber-50 dark:bg-amber-900/20",
-                iconColor: "text-amber-600 dark:text-amber-400",
-                labelColor: "text-amber-700 dark:text-amber-400",
-                onClick: openAmUpload,
-              },
-            ]}
-            trigger={({ open, toggle }) => (
-              <Button variant="secondary" onClick={toggle} icon={<Upload size={16} />}>
-                Import Data
-                <ChevronDown
-                  size={14}
-                  className={`transition-transform ${open ? "rotate-180" : ""}`}
-                />
-              </Button>
-            )}
-          />
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between w-full">
+        {/* Left Side: Search & Filter */}
+        <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+          {/* Search Bar */}
+          <div className="relative w-full sm:w-60">
+            <input
+              type="text"
+              placeholder="Search employee..."
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setApiPage(1);
+              }}
+              className="w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2 pl-9 text-sm text-gray-900 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-500/20 dark:border-white/10 dark:bg-[#0b0f1a] dark:text-white"
+            />
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400 dark:text-gray-500" />
+          </div>
 
-          <Button onClick={openAdd} icon={<Plus size={16} />}>
-            Add Employee
-          </Button>
+          {/* Status Dropdown */}
+          <select
+            value={selectedStatus}
+            onChange={(e) => {
+              setSelectedStatus(e.target.value);
+              setApiPage(1);
+            }}
+            className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 outline-none dark:border-white/10 dark:bg-[#0b0f1a] dark:text-white"
+          >
+            <option value="">All Status</option>
+            <option value="Active">Active</option>
+            <option value="Inactive">Inactive</option>
+          </select>
+        </div>
 
+        {/* Right Side: Actions */}
+        <div className="ml-auto flex flex-wrap items-center gap-2 w-full sm:w-auto sm:justify-end">
           <Button
             variant="secondary"
             onClick={handleExport}
@@ -1797,6 +1389,14 @@ export default function EmployeeManagement() {
             }
           >
             {exportLoading ? "Exporting..." : "Export CSV"}
+          </Button>
+
+          <Button
+            variant="secondary"
+            onClick={() => setShowColModal(true)}
+            icon={<TableProperties size={16} />}
+          >
+            Columns
           </Button>
 
           <Button
@@ -1926,46 +1526,48 @@ export default function EmployeeManagement() {
         inputCls={inputCls}
       />
 
-      <EmployeeImportModal
-        uploadOpen={uploadOpen}
-        resetUpload={resetUpload}
-        preview={preview}
-        uploading={uploading}
-        selectedFile={selectedFile}
-        importColumnsLoading={importColumnsLoading}
-        employeeImportColumns={employeeImportColumns}
-        missingRequiredImportFields={missingRequiredImportFields}
-        handleUpload={handleUpload}
-        dragOver={dragOver}
-        setDragOver={setDragOver}
-        handleDrop={handleDrop}
-        fileInputRef={fileInputRef}
-        handleFileChange={handleFileChange}
-        fmtFileSize={fmtFileSize}
-        clearFile={clearFile}
-        fileHeaders={fileHeaders}
-        mappedFieldCount={mappedFieldCount}
-        requiredEmployeeImportFields={requiredEmployeeImportFields}
-        columnMappings={columnMappings}
-        updateColumnMapping={updateColumnMapping}
-        selectCls={selectCls}
-        formatEmployeeImportFieldLabel={formatEmployeeImportFieldLabel}
-      />
-
-      <AccountMasterUploadModal
-        uploadOpen={amUploadOpen}
-        resetUpload={amResetUpload}
-        uploading={amUploading}
-        selectedFile={amSelectedFile}
-        preview={amPreview}
-        uploadCompany={getCompanyConfig(companyId)}
-        uploadUnit={activeUnit}
-        fileInputRef={amFileInputRef}
-        handleFileChange={amHandleFileChange}
-        clearFile={amClearFile}
-        fmtFileSize={fmtFileSize}
-        handleUpload={amHandleUpload}
-      />
+      <Modal
+        isOpen={showColModal}
+        onClose={() => setShowColModal(false)}
+        title="Select Visible Columns"
+        size="lg"
+      >
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+          {allColumns.map((col) => (
+            <button
+              key={col.field}
+              onClick={() => toggleColumnVisibility(col.field)}
+              className={`flex items-center gap-3 p-3 rounded-xl border-2 text-left transition-all ${
+                visibleColumns.includes(col.field)
+                  ? "border-brand-500 bg-brand-50 dark:bg-brand-900/20"
+                  : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 bg-transparent"
+              }`}
+            >
+              <div
+                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${
+                  visibleColumns.includes(col.field)
+                    ? "border-brand-600 bg-brand-600 text-white dark:border-brand-500 dark:bg-brand-500"
+                    : "border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-800"
+                }`}
+              >
+                {visibleColumns.includes(col.field) && <CheckCircle size={14} />}
+              </div>
+              <span className={`text-sm font-medium ${
+                  visibleColumns.includes(col.field)
+                    ? "text-brand-700 dark:text-brand-300"
+                    : "text-gray-700 dark:text-gray-300"
+              }`}>
+                {col.label}
+              </span>
+            </button>
+          ))}
+        </div>
+        <div className="mt-6 flex justify-end">
+          <Button variant="primary" onClick={() => setShowColModal(false)}>
+            Apply & Close
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 }

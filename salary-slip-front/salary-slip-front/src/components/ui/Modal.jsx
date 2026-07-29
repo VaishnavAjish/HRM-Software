@@ -27,6 +27,7 @@ export default function Modal({
     md: "max-w-lg",
     lg: "max-w-2xl",
     xl: "max-w-4xl",
+    full: "max-w-[calc(100vw_-_2.5rem)]",
   };
 
   return createPortal(
@@ -36,7 +37,7 @@ export default function Modal({
         onClick={onClose}
       />
       <div
-        className={`relative bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full ${sizes[size]} max-h-[90vh] flex flex-col`}
+        className={`relative bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full ${sizes[size]} max-h-[90vh] flex flex-col overflow-hidden`}
       >
         {/* Header */}
         {!noHeader && (

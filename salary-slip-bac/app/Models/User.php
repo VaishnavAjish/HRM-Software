@@ -21,7 +21,7 @@ class User extends Authenticatable implements JWTSubject
         'added_by', 'trial_form_id',
         'last_company_address', 'experience', 'reason_for_leaving', 'hastak_name',
         'hastak_code', 'hastak_mobile', 'contractor', 'manager_signature',
-        'hastak_signature', 'hr_signature', 'akar'
+        'hastak_signature', 'hr_signature', 'akar', 'shift_id'
     ];
 
     protected $hidden = ['password', 'remember_token'];
@@ -47,5 +47,15 @@ class User extends Authenticatable implements JWTSubject
     public function addedBy()
     {
         return $this->belongsTo(User::class, 'added_by');
+    }
+
+    public function shift()
+    {
+        return $this->belongsTo(Shift::class, 'shift_id');
+    }
+
+    public function roles()
+    {
+        return $this->belongsToMany(Role::class, 'user_roles');
     }
 }

@@ -4,9 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Models\User;
 use App\Models\SalarySlip;
+use App\Models\UploadBatch;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 use Maatwebsite\Excel\Facades\Excel;
 
 class UserController extends Controller
@@ -30,6 +32,10 @@ class UserController extends Controller
     // salary, bank/tax details — none of that should be self-service.
     private const SELF_PROFILE_FIELDS = [
         'name', 'email', 'mobile_number', 'dob', 'address', 'photo',
+        'city', 'district', 'state', 'pin',
+        'aadhar_card_no', 'pan_card_no', 'bank_name', 'bank_ifsc_code', 
+        'bank_account_no', 'pf_no', 'esi_no',
+        'gender', 'department', 'designation', 'joining_date'
     ];
 
     private const PHOTO_UPLOAD_RULES = [
@@ -92,7 +98,7 @@ class UserController extends Controller
             ->update(['unit' => 'Daduk']);
 
         $query = User::where('is_deleted', 0)
-            ->where('role', '!=', 0)
+            ->whereNotIn('role', [0, 1, 2])
             ->where(function ($q) {
                 $q->whereNull('type')
                   ->orWhereNotIn('type', ['appointment', 'agent']);
@@ -165,10 +171,26 @@ class UserController extends Controller
 
     public function store(Request $request)
     {
+        // Creating an Admin (1) or Super Admin (0) account is a privilege
+        // escalation — only an existing Super Admin may do it, and since
+        // these accounts log in with email + password directly (no emp_code
+        // self-claim flow), both must be supplied up front. Everyone else
+        // hitting this endpoint is onboarding a regular employee/agent, which
+        // stays unrestricted.
+        $requestedRole = $request->input('role');
+        $isPrivileged = in_array((int) $requestedRole, [0, 1], true);
+        if ($isPrivileged) {
+            $actingUser = auth('api')->user();
+            if (!$actingUser || (int) $actingUser->role !== 0) {
+                return response()->json(['status' => false, 'message' => 'Only a Super Admin can create Admin/Super Admin accounts'], 403);
+            }
+        }
+
         $validator = Validator::make($request->all(), [
             'name'     => 'required',
-            'email'    => 'nullable|email|unique:users',
-            'emp_code' => 'required|unique:users',
+            'email'    => $isPrivileged ? 'required|email|unique:users' : 'nullable|email|unique:users',
+            'password' => $isPrivileged ? 'required|min:6' : 'nullable',
+            'emp_code' => 'nullable|unique:users',
             'company_code' => 'required',
             'unit'     => in_array($request->input('role'), [0, 1, 4, '0', '1', '4'], true) ? 'nullable' : 'required',
         ]);
@@ -180,6 +202,7 @@ class UserController extends Controller
         $data = $request->all();
         $data['password'] = $request->password ?? '12345678';
         $data['role'] = $request->role ?? 3;
+        $data['emp_code'] = $request->emp_code ?: strtoupper(Str::random(8));
 
         $employee = User::create($data);
 
@@ -223,7 +246,7 @@ class UserController extends Controller
             return response()->json(['status' => false, 'message' => 'Employee not found'], 404);
         }
 
-        $employee->update(['is_deleted' => 1]);
+        $employee->delete();
 
         return response()->json(['status' => true, 'message' => 'Employee deleted']);
     }
@@ -251,54 +274,234 @@ class UserController extends Controller
 
     public function importColumns()
     {
+        // 'aliases' back the frontend's auto-suggest, matching an uploaded
+        // sheet's header text to a database field on first inspection.
         $columns = [
-            'name', 'email', 'emp_code', 'mobile_number', 'dob', 'department',
-            'designation', 'salary', 'joining_date', 'gender', 'bank_name',
-            'bank_account_no', 'bank_ifsc_code', 'aadhar_card_no', 'pan_card_no',
-            'pf_no', 'esi_no', 'unit', 'company_code',
+            ['key' => 'emp_code', 'label' => 'Employee Code', 'required' => true, 'aliases' => ['code', 'employee code', 'emp code']],
+            ['key' => 'name', 'label' => 'Full Name', 'required' => false, 'aliases' => ['employee name', 'full name']],
+            ['key' => 'email', 'label' => 'Email', 'required' => false, 'aliases' => ['email address']],
+            ['key' => 'mobile_number', 'label' => 'Mobile Number', 'required' => false, 'aliases' => ['mobile', 'phone']],
+            ['key' => 'dob', 'label' => 'Date of Birth', 'required' => false, 'aliases' => ['date of birth', 'birth date']],
+            ['key' => 'department', 'label' => 'Department', 'required' => false, 'aliases' => []],
+            ['key' => 'designation', 'label' => 'Designation', 'required' => false, 'aliases' => []],
+            ['key' => 'salary', 'label' => 'Salary', 'required' => false, 'aliases' => []],
+            ['key' => 'joining_date', 'label' => 'Joining Date', 'required' => false, 'aliases' => ['date of joining']],
+            ['key' => 'gender', 'label' => 'Gender', 'required' => false, 'aliases' => []],
+            ['key' => 'bank_name', 'label' => 'Bank Name', 'required' => false, 'aliases' => []],
+            ['key' => 'bank_account_no', 'label' => 'Bank Account No', 'required' => false, 'aliases' => ['account number', 'a/c number']],
+            ['key' => 'bank_ifsc_code', 'label' => 'Bank IFSC Code', 'required' => false, 'aliases' => ['ifsc']],
+            ['key' => 'aadhar_card_no', 'label' => 'Aadhar Card No', 'required' => false, 'aliases' => ['aadhar', 'aadhar number']],
+            ['key' => 'pan_card_no', 'label' => 'PAN Card No', 'required' => false, 'aliases' => ['pan']],
+            ['key' => 'pf_no', 'label' => 'PF Number', 'required' => false, 'aliases' => ['pf no.']],
+            ['key' => 'esi_no', 'label' => 'ESI Number', 'required' => false, 'aliases' => ['esi no.']],
+            ['key' => 'unit', 'label' => 'Branch/Unit', 'required' => false, 'aliases' => ['branch']],
+            ['key' => 'company_code', 'label' => 'Company', 'required' => false, 'aliases' => ['company', 'company name', 'company code']],
         ];
 
         return response()->json(['status' => true, 'data' => $columns]);
     }
 
+    // Bulk import rows can fail on a raw DB constraint (duplicate email,
+    // duplicate emp_code, etc). Surfacing $e->getMessage() straight to the
+    // upload report leaks the full SQL statement and bound params, so this
+    // maps the common constraint violations to a message an admin can act on.
+    private function friendlyImportError(\Throwable $e): string
+    {
+        $msg = $e->getMessage();
+        if (stripos($msg, 'users.email') !== false || (stripos($msg, 'email') !== false && stripos($msg, 'unique') !== false)) {
+            return 'Email address is already used by another employee';
+        }
+        if (stripos($msg, 'emp_code') !== false) {
+            return 'Employee code already exists';
+        }
+        if (stripos($msg, 'Integrity constraint violation') !== false || stripos($msg, 'UNIQUE constraint failed') !== false) {
+            return 'This row conflicts with an existing record';
+        }
+        return 'Could not save this row due to a database error';
+    }
+
     public function import(Request $request)
     {
-        $request->validate(['file' => 'required|file']);
-
         $imported = 0;
-        $file = $request->file('file');
-        $mapping = $request->mapping ? json_decode($request->mapping, true) : [];
+        $skipped = [];
+        $rowReports = [];
+        $companyCode = $request->company_code ?: null;
+        $unit = $request->unit ?: null;
 
-        try {
-            $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($file->getPathname());
-            $rows = $spreadsheet->getActiveSheet()->toArray();
-            $header = array_shift($rows);
+        if ($request->has('rows')) {
+            $rowsData = $request->input('rows', []);
+            if (is_string($rowsData)) {
+                $rowsData = json_decode($rowsData, true) ?? [];
+            }
+            if (!is_array($rowsData)) {
+                $rowsData = [];
+            }
 
-            foreach ($rows as $row) {
-                $rowData = array_combine($header, $row);
-                if ($mapping) {
-                    $mapped = [];
-                    foreach ($mapping as $dbField => $excelCol) {
-                        $mapped[$dbField] = $rowData[$excelCol] ?? null;
-                    }
-                    $rowData = $mapped;
+            foreach ($rowsData as $rowIndex => $rowData) {
+                $excelRowNum = $rowIndex + 2;
+
+                $rowData['role'] = 3;
+                $rowData['company_code'] = $rowData['company_code'] ?? $companyCode ?? 'nidhi-impex';
+                if ($unit && empty($rowData['unit'])) {
+                    $rowData['unit'] = $unit;
                 }
 
-                $rowData['password'] = '12345678';
-                $rowData['role'] = 3; // bulk import always onboards regular employees, never admins
-                $rowData['company_code'] = $rowData['company_code'] ?? 'nidhi-impex';
+                $empCode = trim((string) ($rowData['emp_code'] ?? ''));
+                if ($empCode === '') {
+                    $reason = 'Missing employee code';
+                    $skipped[] = "Row {$excelRowNum}: {$reason}";
+                    $rowReports[] = ['row_number' => $excelRowNum, 'status' => 'failed', 'reason' => $reason, 'row_data' => $rowData];
+                    continue;
+                }
+                $rowData['emp_code'] = $empCode;
 
-                User::updateOrCreate(
-                    ['emp_code' => $rowData['emp_code']],
-                    $rowData
-                );
-                $imported++;
+                $existing = User::where('emp_code', $empCode)->where('company_code', $rowData['company_code'])->where('is_deleted', 0)->exists();
+                if ($existing) {
+                    $reason = "Employee code '{$empCode}' already exists in the system";
+                    $skipped[] = "Row {$excelRowNum}: {$reason}";
+                    $rowReports[] = ['row_number' => $excelRowNum, 'status' => 'failed', 'reason' => $reason, 'row_data' => $rowData];
+                    continue;
+                }
+
+                $email = trim((string) ($rowData['email'] ?? ''));
+                if ($email !== '' && User::where('email', $email)->where('is_deleted', 0)->exists()) {
+                    $reason = "Email '{$email}' is already used by another employee";
+                    $skipped[] = "Row {$excelRowNum}: {$reason}";
+                    $rowReports[] = ['row_number' => $excelRowNum, 'status' => 'failed', 'reason' => $reason, 'row_data' => $rowData];
+                    continue;
+                }
+
+                $providedPassword = $rowData['password'] ?? '';
+                $rowData['password'] = $providedPassword !== '' ? $providedPassword : '12345678';
+                $rowData['status'] = 2;
+
+                try {
+                    User::create($rowData);
+                    $imported++;
+                    $rowReports[] = ['row_number' => $excelRowNum, 'status' => 'passed', 'reason' => null, 'row_data' => $rowData];
+                } catch (\Throwable $rowError) {
+                    $reason = $this->friendlyImportError($rowError);
+                    $skipped[] = "Row {$excelRowNum}: {$reason}";
+                    $rowReports[] = ['row_number' => $excelRowNum, 'status' => 'failed', 'reason' => $reason, 'row_data' => $rowData];
+                }
             }
-        } catch (\Exception $e) {
-            return response()->json(['status' => false, 'message' => 'Import failed: ' . $e->getMessage()], 500);
+
+            $fileName = 'json-import-' . now()->format('Ymd_His') . '.json';
+        } else {
+            $request->validate(['file' => 'required|file']);
+
+            $file = $request->file('file');
+            $mapping = $request->mapping ? json_decode($request->mapping, true) : [];
+
+            try {
+                $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($file->getPathname());
+                $rows = $spreadsheet->getActiveSheet()->toArray();
+                $header = array_shift($rows);
+
+                foreach ($rows as $rowIndex => $row) {
+                    if (!array_filter($row, fn ($v) => $v !== null && $v !== '')) {
+                        continue;
+                    }
+
+                    $excelRowNum = $rowIndex + 2;
+
+                    $row = array_slice(array_pad($row, count($header), null), 0, count($header));
+                    $rowData = array_combine($header, $row);
+                    if ($mapping) {
+                        $mapped = [];
+                        foreach ($mapping as $dbField => $excelCol) {
+                            $mapped[$dbField] = $rowData[$excelCol] ?? null;
+                        }
+                        $rowData = $mapped;
+                    }
+
+                    $rowData['role'] = 3;
+                    $rowData['company_code'] = $rowData['company_code'] ?? $companyCode ?? 'nidhi-impex';
+                    if ($unit && empty($rowData['unit'])) {
+                        $rowData['unit'] = $unit;
+                    }
+
+                    $empCode = trim((string) ($rowData['emp_code'] ?? ''));
+                    if ($empCode === '') {
+                        $reason = 'Missing employee code';
+                        $skipped[] = "Row {$excelRowNum}: {$reason}";
+                        $rowReports[] = ['row_number' => $excelRowNum, 'status' => 'failed', 'reason' => $reason, 'row_data' => $rowData];
+                        continue;
+                    }
+
+                    $rowData['emp_code'] = $empCode;
+
+                    if (!User::where('emp_code', $empCode)->where('is_deleted', 0)->exists()) {
+                        $providedPassword = $rowData['password'] ?? '';
+                        $rowData['password'] = $providedPassword !== '' ? $providedPassword : '12345678';
+                        $rowData['status'] = 2;
+                    } else {
+                        unset($rowData['password'], $rowData['status']);
+                    }
+
+                    $existing = User::where('emp_code', $empCode)->where('company_code', $rowData['company_code'] ?? 'nidhi-impex')->where('is_deleted', 0)->exists();
+                    if ($existing) {
+                        $reason = "Employee code '{$empCode}' already exists in the system";
+                        $skipped[] = "Row {$excelRowNum}: {$reason}";
+                        $rowReports[] = ['row_number' => $excelRowNum, 'status' => 'failed', 'reason' => $reason, 'row_data' => $rowData];
+                        continue;
+                    }
+
+                    $email = trim((string) ($rowData['email'] ?? ''));
+                    if ($email !== '' && User::where('email', $email)->where('is_deleted', 0)->exists()) {
+                        $reason = "Email '{$email}' is already used by another employee";
+                        $skipped[] = "Row {$excelRowNum}: {$reason}";
+                        $rowReports[] = ['row_number' => $excelRowNum, 'status' => 'failed', 'reason' => $reason, 'row_data' => $rowData];
+                        continue;
+                    }
+
+                    try {
+                        User::create($rowData);
+                        $imported++;
+                        $rowReports[] = ['row_number' => $excelRowNum, 'status' => 'passed', 'reason' => null, 'row_data' => $rowData];
+                    } catch (\Throwable $rowError) {
+                        $reason = $this->friendlyImportError($rowError);
+                        $skipped[] = "Row {$excelRowNum}: {$reason}";
+                        $rowReports[] = ['row_number' => $excelRowNum, 'status' => 'failed', 'reason' => $reason, 'row_data' => $rowData];
+                    }
+                }
+            } catch (\Throwable $e) {
+                return response()->json(['status' => false, 'message' => 'Import failed: ' . $e->getMessage()], 500);
+            }
+
+            $fileName = $file->getClientOriginalName();
         }
 
-        return response()->json(['status' => true, 'message' => "$imported employees imported"]);
+        $batchId = null;
+        try {
+            $batch = UploadBatch::create([
+                'type' => 'employee',
+                'company_code' => $companyCode,
+                'unit' => $unit,
+                'file_name' => $fileName,
+                'total_rows' => count($rowReports),
+                'success_count' => $imported,
+                'failed_count' => count($skipped),
+                'uploaded_by' => auth('api')->id(),
+            ]);
+            $batch->rows()->createMany($rowReports);
+            $batchId = $batch->id;
+        } catch (\Throwable $e) {
+            \Log::error('Failed to record employee import batch: ' . $e->getMessage());
+        }
+
+        $message = "$imported employees imported";
+        if ($skipped) {
+            $message .= '; ' . count($skipped) . ' row(s) skipped';
+        }
+
+        return response()->json([
+            'status' => true,
+            'message' => $message,
+            'imported' => $imported,
+            'skipped' => $skipped,
+            'batch_id' => $batchId,
+        ]);
     }
 
     public function importAccountDetail(Request $request)
@@ -360,8 +563,24 @@ class UserController extends Controller
             if (!$this->inManagedScope($userAuth, $employee)) {
                 return response()->json(['status' => false, 'message' => 'Employee not found'], 404);
             }
-            if ($employee->type === 'appointment' && isset($data['emp_code']) && $employee->emp_code !== $data['emp_code']) {
-                $data['type'] = null;
+            $newEmpCode = isset($data['emp_code']) ? trim((string) $data['emp_code']) : null;
+            if ($newEmpCode && $employee->emp_code !== $newEmpCode) {
+                // Assigning an emp_code onto this record (typically converting
+                // an appointment into a full employee) — without this check a
+                // code already held by someone else silently becomes a second
+                // row with the same emp_code instead of being rejected.
+                $conflict = User::where('emp_code', $newEmpCode)
+                    ->where('id', '!=', $employee->id)
+                    ->first();
+                if ($conflict) {
+                    return response()->json([
+                        'status' => false,
+                        'message' => "Employee code '{$newEmpCode}' is already assigned to {$conflict->name}",
+                    ], 422);
+                }
+                if ($employee->type === 'appointment') {
+                    $data['type'] = null;
+                }
             }
             $employee->update($data);
             return response()->json(['status' => true, 'message' => 'Employee updated', 'user' => $employee->fresh()]);
@@ -444,6 +663,38 @@ class UserController extends Controller
         $employee = User::create($data);
 
         return response()->json(['status' => true, 'message' => 'Agent account created successfully.', 'data' => $employee]);
+    }
+
+    // Lets the Appointment Form ask "is this emp_code already taken?" before
+    // the user commits, instead of only finding out after a failed submit.
+    // exclude_id skips the appointment's own record when re-checking a code
+    // that's already assigned to itself.
+    public function checkEmployeeCode(Request $request)
+    {
+        $empCode = trim((string) $request->query('emp_code', ''));
+        if ($empCode === '') {
+            return response()->json(['status' => true, 'exists' => false]);
+        }
+
+        $query = User::where('emp_code', $empCode);
+        if ($request->query('exclude_id')) {
+            $query->where('id', '!=', $request->query('exclude_id'));
+        }
+        $employee = $query->first();
+
+        if (!$employee) {
+            return response()->json(['status' => true, 'exists' => false]);
+        }
+
+        return response()->json([
+            'status' => true,
+            'exists' => true,
+            'employee' => [
+                'id' => $employee->id,
+                'name' => $employee->name,
+                'company_code' => $employee->company_code,
+            ],
+        ]);
     }
 
     public function appointmentStore(Request $request)
@@ -591,41 +842,97 @@ class UserController extends Controller
         $company_code = $request->company_code ?? 'nidhi-impex';
         $unit = $request->unit;
         $imported = 0;
+        $skipped = [];
+        $rowReports = [];
 
         try {
             $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($request->file('file')->getPathname());
             $rows = $spreadsheet->getActiveSheet()->toArray();
             $header = array_shift($rows);
 
-            foreach ($rows as $row) {
+            foreach ($rows as $rowIndex => $row) {
+                if (!array_filter($row, fn ($v) => $v !== null && $v !== '')) {
+                    continue; // blank row
+                }
+
+                $excelRowNum = $rowIndex + 2; // +1 for header, +1 for 1-index
+                $row = array_slice(array_pad($row, count($header), null), 0, count($header));
                 $rowData = array_combine($header, $row);
-                if (isset($rowData['emp_code'])) {
-                    $updateData = [
-                        'bank_name'       => $rowData['bank_name'] ?? null,
-                        'bank_account_no' => $rowData['bank_account_no'] ?? null,
-                        'bank_ifsc_code'  => $rowData['bank_ifsc_code'] ?? null,
-                    ];
-                    $query = User::where('emp_code', $rowData['emp_code'])
-                        ->where('company_code', $company_code);
-                    if ($unit) {
-                        $query->where('unit', $unit);
-                    }
-                    $query->update($updateData);
+
+                if (empty($rowData['emp_code'])) {
+                    $reason = 'Missing employee code';
+                    $skipped[] = "Row {$excelRowNum}: {$reason}";
+                    $rowReports[] = ['row_number' => $excelRowNum, 'status' => 'failed', 'reason' => $reason, 'row_data' => $rowData];
+                    continue;
+                }
+
+                $updateData = [
+                    'bank_name'       => $rowData['bank_name'] ?? null,
+                    'bank_account_no' => $rowData['bank_account_no'] ?? null,
+                    'bank_ifsc_code'  => $rowData['bank_ifsc_code'] ?? null,
+                ];
+                $query = User::where('emp_code', $rowData['emp_code'])
+                    ->where('company_code', $company_code);
+                if ($unit) {
+                    $query->where('unit', $unit);
+                }
+                $affected = $query->update($updateData);
+
+                if ($affected > 0) {
                     $imported++;
+                    $rowReports[] = ['row_number' => $excelRowNum, 'status' => 'passed', 'reason' => null, 'row_data' => $rowData];
+                } else {
+                    $reason = 'No matching employee found for this company/unit';
+                    $skipped[] = "Row {$excelRowNum}: {$reason}";
+                    $rowReports[] = ['row_number' => $excelRowNum, 'status' => 'failed', 'reason' => $reason, 'row_data' => $rowData];
                 }
             }
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             return response()->json(['status' => false, 'message' => 'Import failed: ' . $e->getMessage()], 500);
         }
 
-        return response()->json(['status' => true, 'message' => "$imported records updated"]);
+        $batchId = null;
+        try {
+            $batch = UploadBatch::create([
+                'type' => 'account-master',
+                'company_code' => $company_code,
+                'unit' => $unit ?: null,
+                'file_name' => $request->file('file')->getClientOriginalName(),
+                'total_rows' => count($rowReports),
+                'success_count' => $imported,
+                'failed_count' => count($skipped),
+                'uploaded_by' => auth('api')->id(),
+            ]);
+            $batch->rows()->createMany($rowReports);
+            $batchId = $batch->id;
+        } catch (\Throwable $e) {
+            \Log::error('Failed to record account-master import batch: ' . $e->getMessage());
+        }
+
+        $message = "$imported records updated";
+        if ($skipped) {
+            $message .= '; ' . count($skipped) . ' row(s) skipped';
+        }
+
+        return response()->json([
+            'status' => true,
+            'message' => $message,
+            'imported' => $imported,
+            'skipped' => $skipped,
+            'batch_id' => $batchId,
+        ]);
     }
 
     public function postTrialForm(Request $request)
     {
         $data = $request->all();
         $data['type'] = 'trial';
-        
+        // The users.role column defaults to 1 (Admin) at the DB level, and a
+        // public trial-form submission never carries a role of its own — so
+        // without this every trial submission silently became an Admin
+        // account instead of a regular (role 3) candidate record.
+        $data['role'] = 3;
+
         // If password is required by DB, give a default
         if (empty($data['password'])) {
             $data['password'] = '12345678';

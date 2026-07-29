@@ -1,12 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, FileSpreadsheet, X } from "lucide-react";
+import ModernDatePicker from "../../components/ModernDatePicker";
 import toast from "react-hot-toast";
 import { authApi } from "../../utils/api";
 import { useAuth } from "../../context/AuthContext";
 import { getCompanyUnits } from "../../config/companyConfig";
 
-const getTodayDate = () => new Date().toISOString().split("T")[0];
+const getTodayDate = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
 
 const EMPTY_FORM = {
   form_no: "",
@@ -176,7 +180,22 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    let nextValue = value;
+
+    const numericLimits = {
+      mobile_number: 10,
+      mobile_no_2: 10,
+      hastak_mobile: 10,
+    };
+
+    if (Object.keys(numericLimits).includes(name)) {
+      nextValue = value.replace(/\D/g, "");
+      if (numericLimits[name]) {
+        nextValue = nextValue.slice(0, numericLimits[name]);
+      }
+    }
+
+    setFormData((prev) => ({ ...prev, [name]: nextValue }));
     clearError(name);
   };
 
@@ -330,17 +349,20 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
             {/* Date & Form No row */}
             <div className="mb-5 flex flex-wrap items-center justify-end gap-3 sm:gap-8">
               <div className="flex items-center gap-2">
-                <span className="text-[12px] font-bold uppercase">Date :</span>
-                <input
-                  type="date"
-                  name="trial_date"
-                  value={formData.trial_date}
-                  onChange={handleChange}
-                  className="rounded border-b border-black bg-transparent px-1 text-[12px] font-semibold outline-none focus:bg-brand-50/70"
-                />
+                <span className="text-[12px] font-bold uppercase whitespace-nowrap flex-shrink-0">Date :</span>
+                <div className="w-32">
+                  <ModernDatePicker
+                    value={formData.trial_date}
+                    onChange={(e) => {
+                      const event = { target: { name: "trial_date", value: e.target.value } };
+                      handleChange(event);
+                    }}
+                    className="rounded border-b border-black bg-transparent px-1 text-[12px] font-semibold outline-none focus:bg-brand-50/70 w-full"
+                  />
+                </div>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-[12px] font-bold uppercase">Form No :</span>
+                <span className="text-[12px] font-bold uppercase whitespace-nowrap flex-shrink-0">Form No :</span>
                 <input
                   name="form_no"
                   value={formData.form_no}

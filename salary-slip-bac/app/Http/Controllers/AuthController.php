@@ -38,6 +38,10 @@ class AuthController extends Controller
             return response()->json(['status' => false, 'message' => 'Account is deactivated'], 403);
         }
 
+        if ((int) $user->status === 2) {
+            return response()->json(['status' => false, 'message' => 'Please complete registration (verify your employee code and set a password) before logging in'], 403);
+        }
+
         return response()->json([
             'status'      => true,
             'message'     => 'Login successful',
@@ -119,6 +123,20 @@ class AuthController extends Controller
         return response()->json(['status' => true, 'message' => 'Password changed successfully']);
     }
 
+    public function checkEmpCode($code)
+    {
+        $emp = User::where('emp_code', $code)->first();
+        if ($emp) {
+            return response()->json([
+                'status' => true,
+                'company_code' => $emp->company_code,
+                'unit' => $emp->unit
+            ]);
+        }
+        return response()->json(['status' => false, 'message' => 'Not found'], 404);
+    }
+
+
     public function newData(Request $request)
     {
         $type = $request->type;
@@ -185,7 +203,6 @@ class AuthController extends Controller
         $validator = Validator::make($request->all(), [
             'emp_code' => 'required',
             'mobile_number' => 'required',
-            'dob' => 'required|date',
             'photo' => 'nullable|image|mimes:jpeg,jpg,png,webp|max:5120',
         ]);
 
@@ -214,17 +231,10 @@ class AuthController extends Controller
         }
 
         $submittedMobile = preg_replace('/\D/', '', (string) $request->mobile_number);
-        $submittedDob = date('Y-m-d', strtotime($request->dob));
 
         if (!empty($emp->mobile_number)) {
             $onFileMobile = preg_replace('/\D/', '', (string) $emp->mobile_number);
             if ($onFileMobile !== $submittedMobile) {
-                return response()->json(['status' => false, 'message' => 'Details do not match our records'], 422);
-            }
-        }
-        if (!empty($emp->dob)) {
-            $onFileDob = date('Y-m-d', strtotime($emp->dob));
-            if ($onFileDob !== $submittedDob) {
                 return response()->json(['status' => false, 'message' => 'Details do not match our records'], 422);
             }
         }
@@ -234,9 +244,6 @@ class AuthController extends Controller
         // against these values.
         if (empty($emp->mobile_number)) {
             $emp->mobile_number = $request->mobile_number;
-        }
-        if (empty($emp->dob)) {
-            $emp->dob = $request->dob;
         }
         if (empty($emp->address) && $request->filled('address')) {
             $emp->address = $request->address;
@@ -343,6 +350,13 @@ class AuthController extends Controller
         $emp->otp = null;
         $emp->verification_token = null;
         $emp->verification_token_expires_at = null;
+        // Completing this flow *is* registration for a bulk-imported
+        // employee — flip them from Pending (2) to Active now that they
+        // have their own password. Leave an already-Active/Locked account
+        // (0/1) alone; this only ever moves someone out of Pending.
+        if ((int) $emp->status === 2) {
+            $emp->status = 0;
+        }
         $emp->save();
 
         return response()->json(['status' => true, 'message' => 'Password reset successfully']);

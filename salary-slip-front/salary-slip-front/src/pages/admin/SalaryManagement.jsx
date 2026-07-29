@@ -5,16 +5,16 @@ import {
   DollarSign,
   Loader2,
   Trash2,
-  Upload,
-  CloudUpload,
-  Table2,
-  ChevronDown,
+  Search,
+  TableProperties,
+  CheckCircle,
+  Eye,
 } from "lucide-react";
+
+const YEARS = ["2024", "2025", "2026", "2027", "2028", "2029", "2030"];
 import toast from "react-hot-toast";
-import * as XLSX from "xlsx";
 import { StatCard } from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
-import Dropdown from "../../components/ui/Dropdown";
 import Badge from "../../components/ui/Badge";
 import Pagination from "../../components/ui/Pagination";
 import Modal from "../../components/ui/Modal";
@@ -23,17 +23,16 @@ import { SkeletonTable } from "../../components/ui/Skeleton";
 import { downloadCSV } from "../../utils/exportUtils";
 import { formatCurrency } from "../../utils/payslipUtils";
 import { exportNodeToPdf } from "../../utils/pdfUtils";
-import { getCompanyConfig, COMPANY_OPTIONS } from "../../config/companyConfig";
 import { salaryApi } from "../../utils/api";
 import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";
 import { useTheme } from "../../context/ThemeContext";
 import useGridHeaderContextMenu from "../../hooks/useGridHeaderContextMenu";
 import useIsMobile from "../../hooks/useIsMobile";
+
 import { AllCommunityModule, ModuleRegistry } from "ag-grid-community";
 import { AgGridReact } from "ag-grid-react";
 import PayslipPreviewModal from "./AdminModals/PayslipPreviewModal";
-import UploadSalarySlipModal from "./AdminModals/UploadSalarySlipModal";
 import DeleteSalarySlipModal from "./AdminModals/DeleteSalarySlipModal";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
@@ -51,6 +50,31 @@ const MONTHS = [
   "October",
   "November",
   "December",
+];
+
+const ALL_SALARY_COLUMNS = [
+  { field: "month", label: "Month" },
+  { field: "empCode", label: "Employee Code" },
+  { field: "name", label: "Employee Name" },
+  { field: "resignationDate", label: "Resignation Date" },
+  { field: "workingDays", label: "Working Days" },
+  { field: "presentDays", label: "Present Days" },
+  { field: "leave", label: "Leave" },
+  { field: "salary", label: "Salary" },
+  { field: "basic", label: "Basic Salary" },
+  { field: "hra", label: "HRA" },
+  { field: "da", label: "DA" },
+  { field: "conAl", label: "CON.AL" },
+  { field: "comm", label: "COMM" },
+  { field: "other", label: "OTHER" },
+  { field: "grossSalary", label: "Gross Salary" },
+  { field: "pf", label: "PF" },
+  { field: "esi", label: "ESI" },
+  { field: "pt", label: "PT" },
+  { field: "tds", label: "TDS" },
+  { field: "advance", label: "Advance" },
+  { field: "totalDeduct", label: "Total Deduction" },
+  { field: "netSalary", label: "Net Salary" },
 ];
 
 function firstPresent(...values) {
@@ -128,10 +152,8 @@ function mapRecord(item) {
 export default function SalaryManagement() {
   const { user } = useAuth();
   const {
-    activeUnit,
     companyId,
     companyScope,
-    isAllCompanies,
     scopeKey,
     scopeLabel,
   } = useCompany();
@@ -140,7 +162,6 @@ export default function SalaryManagement() {
   const gridRef = useRef(null);
   const gridContainerRef = useRef(null);
   const payslipRef = useRef(null);
-  const uploadFileInputRef = useRef(null);
   const { headerMenu, headerFrozen, closeHeaderMenu, toggleHeaderFrozen } =
     useGridHeaderContextMenu(gridRef, gridContainerRef);
 
@@ -158,6 +179,44 @@ export default function SalaryManagement() {
   const [apiFilter, setApiFilter] = useState({});
   const [gridFilterModel, setGridFilterModel] = useState({});
 
+  const [visibleColumns, setVisibleColumns] = useState([
+    "month",
+    "empCode",
+    "name",
+    "workingDays",
+    "presentDays",
+    "leave",
+    "salary",
+    "totalDeduct",
+  ]);
+  const [showColModal, setShowColModal] = useState(false);
+
+  const toggleColumnVisibility = (field) => {
+    setVisibleColumns((prev) =>
+      prev.includes(field)
+        ? prev.filter((f) => f !== field)
+        : [...prev, field]
+    );
+  };
+
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedMonth, setSelectedMonth] = useState("");
+  const [selectedYear, setSelectedYear] = useState("");
+
+  const mergedFilters = useMemo(() => {
+    const filters = { ...apiFilter };
+    if (searchQuery.trim()) {
+      filters.search = searchQuery.trim();
+    }
+    if (selectedMonth) {
+      filters.month = selectedMonth;
+    }
+    if (selectedYear) {
+      filters.year = selectedYear;
+    }
+    return filters;
+  }, [apiFilter, searchQuery, selectedMonth, selectedYear]);
+
   const [exportLoading, setExportLoading] = useState(false);
   const [viewModal, setViewModal] = useState(null);
   const [detail, setDetail] = useState(null);
@@ -167,18 +226,7 @@ export default function SalaryManagement() {
   const [deleteRecord, setDeleteRecord] = useState(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
-  const [uploadOpen, setUploadOpen] = useState(false);
-  const [uploadSelectedFile, setUploadSelectedFile] = useState(null);
-  const [uploadDragOver, setUploadDragOver] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [uploadPreview, setUploadPreview] = useState(null);
-  const [templateLoading, setTemplateLoading] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-
-  // Which company/unit an upload posts to — picked in the modal itself when
-  // the sidebar scope is "All Companies", otherwise just mirrors that scope.
-  const [uploadCompanyId, setUploadCompanyId] = useState("");
-  const [uploadUnit, setUploadUnit] = useState("");
 
   const refetchSalarySlips = useCallback(() => {
     setRefreshKey((prev) => prev + 1);
@@ -196,7 +244,7 @@ export default function SalaryManagement() {
           user?.tokenType,
           apiPage,
           perPage,
-          apiFilter,
+          mergedFilters,
           companyScope,
         );
 
@@ -235,7 +283,7 @@ export default function SalaryManagement() {
   }, [
     apiPage,
     perPage,
-    apiFilter,
+    mergedFilters,
     refreshKey,
     companyScope,
     user?.accessToken,
@@ -244,9 +292,17 @@ export default function SalaryManagement() {
   ]);
 
   useEffect(() => {
-    setApiPage(1);
-    setViewModal(null);
-    setDetail(null);
+    let active = true;
+    setTimeout(() => {
+      if (active) {
+        setApiPage(1);
+        setViewModal(null);
+        setDetail(null);
+      }
+    }, 0);
+    return () => {
+      active = false;
+    };
   }, [scopeKey]);
 
   useEffect(() => {
@@ -440,7 +496,7 @@ export default function SalaryManagement() {
       const res = await salaryApi.getAllSlips(
         user?.accessToken,
         user?.tokenType,
-        apiFilter,
+        mergedFilters,
         companyScope,
       );
 
@@ -483,187 +539,13 @@ export default function SalaryManagement() {
     } finally {
       setExportLoading(false);
     }
-  }, [companyScope, scopeKey, user?.accessToken, user?.tokenType, apiFilter]);
+  }, [companyScope, user, mergedFilters]);
 
-  function uploadParseExcelPreview(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        try {
-          const wb = XLSX.read(new Uint8Array(e.target.result), {
-            type: "array",
-          });
-          const sheetName = wb.SheetNames[0];
-          const allRows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {
-            header: 1,
-            defval: "",
-          });
-          const [headerRow = [], ...dataRows] = allRows;
-          resolve({
-            sheetName,
-            headers: headerRow.map(String),
-            rows: dataRows,
-            totalRows: dataRows.length,
-          });
-        } catch {
-          reject(
-            new Error(
-              "Could not read file. Make sure it is a valid Excel file.",
-            ),
-          );
-        }
-      };
-      reader.onerror = () => reject(new Error("Failed to read file."));
-      reader.readAsArrayBuffer(file);
-    });
-  }
 
-  async function uploadValidateAndSet(file) {
-    if (!file) return;
-    const allowed = [
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "application/vnd.ms-excel",
-    ];
-    if (!allowed.includes(file.type) && !/\.(xlsx|xls)$/i.test(file.name)) {
-      toast.error("Only Excel files (.xlsx, .xls) are allowed.");
-      return;
-    }
-    // The xlsx parser has a known ReDoS/prototype-pollution advisory with no
-    // upstream fix (only mitigation is limiting what it's asked to parse) —
-    // capping the input size keeps a crafted file from hanging the tab.
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error("File is too large. Please upload a file under 10 MB.");
-      return;
-    }
-    setUploadSelectedFile(file);
-    try {
-      const data = await uploadParseExcelPreview(file);
-      setUploadPreview(data);
-    } catch (err) {
-      toast.error(err.message);
-      setUploadSelectedFile(null);
-      setUploadPreview(null);
-    }
-  }
-
-  function handleUploadFileChange(e) {
-    const file = e.target.files?.[0];
-    if (file) uploadValidateAndSet(file);
-  }
-
-  function handleUploadDrop(e) {
-    e.preventDefault();
-    setUploadDragOver(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file) uploadValidateAndSet(file);
-  }
-
-  function resetUpload() {
-    setUploadSelectedFile(null);
-    setUploadPreview(null);
-    setUploadOpen(false);
-    if (uploadFileInputRef.current) uploadFileInputRef.current.value = "";
-  }
-
-  function clearUploadFile(e) {
-    e?.stopPropagation();
-    setUploadSelectedFile(null);
-    setUploadPreview(null);
-    if (uploadFileInputRef.current) uploadFileInputRef.current.value = "";
-  }
-
-  function openUploadModal() {
-    // When scoped to one company already, keep the existing behavior of
-    // uploading straight into it; otherwise let the modal's own Company/Unit
-    // fields decide where the slip goes.
-    setUploadCompanyId(isAllCompanies ? "" : companyId);
-    setUploadUnit(isAllCompanies ? "" : activeUnit || "");
-    setUploadOpen(true);
-  }
-
-  async function handleSalarySlipUpload() {
-    if (!uploadSelectedFile) return;
-    if (!uploadCompanyId) {
-      toast.error("Select a company.");
-      return;
-    }
-
-    setUploading(true);
-    try {
-      const res = await salaryApi.uploadSalarySlip(
-        uploadSelectedFile,
-        user?.accessToken,
-        user?.tokenType,
-        uploadCompanyId,
-        uploadUnit,
-      );
-      const skipped = res?.skipped ?? [];
-      if (skipped.length > 0) {
-        toast.error(
-          `${res.imported} row(s) imported, ${skipped.length} skipped:\n${skipped.slice(0, 5).join("\n")}`,
-          { duration: 8000 },
-        );
-      } else {
-        toast.success(res?.message || "Salary slip uploaded successfully!");
-      }
-      resetUpload();
-      refetchSalarySlips();
-    } catch (err) {
-      toast.error(err.message || "Upload failed. Please try again.");
-    } finally {
-      setUploading(false);
-    }
-  }
-
-  async function downloadSalarySlipTemplate() {
-    if (isAllCompanies) {
-      toast.error("Select one company before downloading a template.");
-      return;
-    }
-
-    const template = getCompanyConfig(companyId)?.salaryUploadTemplate;
-    const headers = template?.headers ?? [];
-    const codeCol = headers.indexOf("Employee Code");
-    const nameCol = headers.indexOf("Employee Name");
-
-    let rows = [];
-    if (codeCol !== -1 || nameCol !== -1) {
-      setTemplateLoading(true);
-      try {
-        const res = await salaryApi.getAllEmployees(
-          user?.accessToken,
-          user?.tokenType,
-          {},
-          { companyId, unit: companyScope?.unit },
-        );
-        const employees = res?.data?.users?.data ?? res?.data?.users ?? [];
-        rows = employees.map((emp) => {
-          const row = Array(headers.length).fill("");
-          if (codeCol !== -1) row[codeCol] = emp.emp_code ?? "";
-          if (nameCol !== -1) row[nameCol] = emp.name ?? "";
-          return row;
-        });
-      } catch (err) {
-        toast.error(err.message || "Failed to load employees for template");
-      } finally {
-        setTemplateLoading(false);
-      }
-    }
-
-    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, template?.sheetName || "Salary Slip");
-    XLSX.writeFile(wb, template?.fileName || "salary_slip_template.xlsx");
-  }
-
-  function fmtUploadFileSize(bytes) {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  }
 
   const defaultColDef = useMemo(
     () => ({
+      flex: 1,
       sortable: true,
       filter: "agTextColumnFilter",
       resizable: true,
@@ -719,7 +601,7 @@ export default function SalaryManagement() {
                       onClick={() => setViewModal(record)}
                       className="flex min-w-0 flex-1 justify-center items-center gap-1.5 rounded-lg bg-brand-50 px-2 py-2 text-xs font-semibold text-brand-600 transition hover:bg-brand-100 min-h-[36px]"
                     >
-                      <Download size={13} />
+                      <Eye size={13} />
                       View
                     </button>
                     {record.status === "Pending" && (
@@ -754,11 +636,12 @@ export default function SalaryManagement() {
         minWidth: isMobile ? 110 : 140,
         cellRenderer: ({ value }) => <Badge variant="gray">{value}</Badge>,
         filter: "agTextColumnFilter",
+        hide: isMobile || !visibleColumns.includes("month"),
       },
       {
         headerName: "Employee Code",
         field: "empCode",
-        hide: isMobile,
+        hide: isMobile || !visibleColumns.includes("empCode"),
         valueFormatter: ({ value }) => `${value ?? ""}`,
         cellClass: "salary-ag-cell font-mono text-gray-500 dark:text-gray-400",
         filter: "agTextColumnFilter",
@@ -774,11 +657,12 @@ export default function SalaryManagement() {
           whiteSpace: "nowrap",
         },
         filter: "agTextColumnFilter",
+        hide: isMobile || !visibleColumns.includes("name"),
       },
       {
         headerName: "Resignation Date",
         field: "resignationDate",
-        hide: isMobile,
+        hide: isMobile || !visibleColumns.includes("resignationDate"),
         filter: "agTextColumnFilter",
         valueFormatter: ({ value }) => value || "-",
         cellClass: "salary-ag-cell text-gray-600 dark:text-gray-300",
@@ -786,7 +670,7 @@ export default function SalaryManagement() {
       {
         headerName: "Working Days",
         field: "workingDays",
-        hide: isMobile,
+        hide: isMobile || !visibleColumns.includes("workingDays"),
         filter: "agNumberColumnFilter",
         cellRenderer: ({ value }) => (
           <Badge
@@ -799,7 +683,7 @@ export default function SalaryManagement() {
       {
         headerName: "Present Days",
         field: "presentDays",
-        hide: isMobile,
+        hide: isMobile || !visibleColumns.includes("presentDays"),
         filter: "agNumberColumnFilter",
         cellRenderer: ({ value }) => (
           <Badge
@@ -812,7 +696,7 @@ export default function SalaryManagement() {
       {
         headerName: "Leave",
         field: "leave",
-        hide: isMobile,
+        hide: isMobile || !visibleColumns.includes("leave"),
         filter: "agNumberColumnFilter",
         cellRenderer: ({ value }) => (
           <Badge
@@ -822,17 +706,17 @@ export default function SalaryManagement() {
           </Badge>
         ),
       },
-      currencyColumn("salary", "Salary", { hide: isMobile }),
-      currencyColumn("basic", "Basic Salary", { hide: isMobile }),
-      currencyColumn("hra", "HRA", { hide: isMobile }),
-      currencyColumn("da", "DA", { hide: isMobile }),
-      currencyColumn("conAl", "CON.AL", { hide: isMobile }),
-      currencyColumn("comm", "COMM", { hide: isMobile }),
-      currencyColumn("other", "OTHER", { hide: isMobile }),
+      currencyColumn("salary", "Salary", { hide: isMobile || !visibleColumns.includes("salary") }),
+      currencyColumn("basic", "Basic Salary", { hide: isMobile || !visibleColumns.includes("basic") }),
+      currencyColumn("hra", "HRA", { hide: isMobile || !visibleColumns.includes("hra") }),
+      currencyColumn("da", "DA", { hide: isMobile || !visibleColumns.includes("da") }),
+      currencyColumn("conAl", "CON.AL", { hide: isMobile || !visibleColumns.includes("conAl") }),
+      currencyColumn("comm", "COMM", { hide: isMobile || !visibleColumns.includes("comm") }),
+      currencyColumn("other", "OTHER", { hide: isMobile || !visibleColumns.includes("other") }),
       {
         headerName: "Gross Salary",
         field: "grossSalary",
-        hide: isMobile,
+        hide: isMobile || !visibleColumns.includes("grossSalary"),
         filter: "agNumberColumnFilter",
         valueFormatter: ({ value }) => formatCurrency(Number(value ?? 0)),
         cellRenderer: ({ value }) => (
@@ -840,29 +724,29 @@ export default function SalaryManagement() {
         ),
       },
       currencyColumn("pf", "PF", {
-        hide: isMobile,
+        hide: isMobile || !visibleColumns.includes("pf"),
         cellClass: "salary-ag-cell text-red-500",
       }),
       currencyColumn("esi", "ESI", {
-        hide: isMobile,
+        hide: isMobile || !visibleColumns.includes("esi"),
         cellClass: "salary-ag-cell text-red-500",
       }),
       currencyColumn("pt", "PT", {
-        hide: isMobile,
+        hide: isMobile || !visibleColumns.includes("pt"),
         cellClass: "salary-ag-cell text-red-500",
       }),
       currencyColumn("tds", "TDS", {
-        hide: isMobile,
+        hide: isMobile || !visibleColumns.includes("tds"),
         cellClass: "salary-ag-cell text-red-500",
       }),
       currencyColumn("advance", "Advance", {
-        hide: isMobile,
+        hide: isMobile || !visibleColumns.includes("advance"),
         cellClass: "salary-ag-cell text-red-500",
       }),
       {
         headerName: "Total Deduction",
         field: "totalDeduct",
-        hide: isMobile,
+        hide: isMobile || !visibleColumns.includes("totalDeduct"),
         filter: "agNumberColumnFilter",
         valueFormatter: ({ value }) => formatCurrency(Number(value ?? 0)),
         cellRenderer: ({ value }) => (
@@ -872,7 +756,7 @@ export default function SalaryManagement() {
       {
         headerName: "Net Salary",
         field: "netSalary",
-        hide: isMobile,
+        hide: isMobile || !visibleColumns.includes("netSalary"),
         filter: "agNumberColumnFilter",
         valueFormatter: ({ value }) => formatCurrency(Number(value ?? 0)),
         cellRenderer: ({ value }) => (
@@ -895,11 +779,10 @@ export default function SalaryManagement() {
             <div className="flex h-full items-center gap-1.5">
               <button
                 onClick={() => setViewModal(record)}
-                className="flex items-center gap-1.5 rounded-lg bg-brand-50 px-2.5 py-1.5 text-xs font-medium text-brand-600 transition hover:bg-brand-100 dark:bg-brand-900/20 dark:hover:bg-brand-900/40"
+                className="flex items-center justify-center gap-1.5 rounded-lg bg-brand-50 px-2.5 py-1.5 text-xs font-medium text-brand-600 transition hover:bg-brand-100 dark:bg-brand-900/20 dark:hover:bg-brand-900/40"
                 title="View"
               >
-                <Download size={12} />
-                <span className="hidden sm:inline">View</span>
+                <Eye size={14} />
               </button>
 
               {record.status === "Pending" && (
@@ -913,17 +796,17 @@ export default function SalaryManagement() {
 
               <button
                 onClick={() => setDeleteRecord(record)}
-                className="flex items-center gap-1.5 rounded-lg bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-600 transition hover:bg-red-100 dark:bg-red-900/20"
+                className="flex items-center justify-center gap-1.5 rounded-lg bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-600 transition hover:bg-red-100 dark:bg-red-900/20"
                 title="Delete"
               >
-                <Trash2 size={12} />
+                <Trash2 size={14} />
               </button>
             </div>
           );
         },
       },
     ];
-  }, [currencyColumn, markPaid, isMobile]);
+  }, [currencyColumn, markPaid, isMobile, visibleColumns]);
 
   if (initialLoading) {
     return (
@@ -994,42 +877,64 @@ export default function SalaryManagement() {
         />
       </div>
 
-      <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
-        <div className="ml-auto flex flex-wrap items-center gap-2">
-          <Dropdown
-            items={[
-              {
-                label: templateLoading
-                  ? "Preparing..."
-                  : "Download CSV Template",
-                icon: templateLoading ? (
-                  <Loader2 size={15} className="animate-spin" />
-                ) : (
-                  <Table2 size={15} />
-                ),
-                iconBg: "bg-brand-50 dark:bg-brand-900/20",
-                iconColor: "text-brand-600 dark:text-brand-400",
-                onClick: downloadSalarySlipTemplate,
-              },
-              {
-                label: "Upload Salary Slip",
-                icon: <CloudUpload size={15} />,
-                iconBg: "bg-amber-50 dark:bg-amber-900/20",
-                iconColor: "text-amber-600 dark:text-amber-400",
-                labelColor: "text-amber-700 dark:text-amber-400",
-                onClick: openUploadModal,
-              },
-            ]}
-            trigger={({ open, toggle }) => (
-              <Button variant="secondary" onClick={toggle} icon={<Upload size={16} />}>
-                Import Data
-                <ChevronDown
-                  size={14}
-                  className={`transition-transform ${open ? "rotate-180" : ""}`}
-                />
-              </Button>
-            )}
-          />
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center w-full">
+        {/* Left Side: Search & dropdown filters */}
+        <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+          {/* Search Bar */}
+          <div className="relative w-full sm:w-60">
+            <input
+              type="text"
+              placeholder="Search employee..."
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setApiPage(1);
+              }}
+              className="w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2 pl-9 text-sm text-gray-900 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-500/20 dark:border-white/10 dark:bg-[#0b0f1a] dark:text-white"
+            />
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400 dark:text-gray-500" />
+          </div>
+
+          {/* Month Selector */}
+          <select
+            value={selectedMonth}
+            onChange={(e) => {
+              setSelectedMonth(e.target.value);
+              setApiPage(1);
+            }}
+            className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 outline-none dark:border-white/10 dark:bg-[#0b0f1a] dark:text-white"
+          >
+            <option value="">All Months</option>
+            {MONTHS.map((m, idx) => (
+              <option key={idx} value={String(idx + 1)}>{m}</option>
+            ))}
+          </select>
+
+          {/* Year Selector */}
+          <select
+            value={selectedYear}
+            onChange={(e) => {
+              setSelectedYear(e.target.value);
+              setApiPage(1);
+            }}
+            className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 outline-none dark:border-white/10 dark:bg-[#0b0f1a] dark:text-white"
+          >
+            <option value="">All Years</option>
+            {YEARS.map((y) => (
+              <option key={y} value={y}>{y}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Right Side: Actions */}
+        <div className="ml-auto flex flex-wrap items-center gap-2 w-full sm:w-auto sm:justify-end">
+          <Button
+            variant="secondary"
+            onClick={() => setShowColModal(true)}
+            icon={<TableProperties size={16} />}
+          >
+            Columns
+          </Button>
 
           <Button
             variant="secondary"
@@ -1083,11 +988,8 @@ export default function SalaryManagement() {
               }
             }}
             onFilterChanged={handleFilterChanged}
-            autoSizeStrategy={
-              isMobile ? undefined : { type: "fitCellContents" }
-            }
             domLayout="autoHeight"
-            rowHeight={isMobile ? 88 : 58}
+            rowHeight={isMobile ? 84 : 64}
             headerHeight={48}
             popupParent={document.body}
             suppressCellFocus
@@ -1127,31 +1029,7 @@ export default function SalaryManagement() {
         companyId={companyId}
       />
 
-      <UploadSalarySlipModal
-        uploadOpen={uploadOpen}
-        resetUpload={resetUpload}
-        preview={uploadPreview}
-        uploading={uploading}
-        selectedFile={uploadSelectedFile}
-        uploadCompany={getCompanyConfig(uploadCompanyId)}
-        needsCompanySelect={isAllCompanies}
-        companyOptions={COMPANY_OPTIONS}
-        uploadCompanyId={uploadCompanyId}
-        setUploadCompanyId={(nextCompanyId) => {
-          setUploadCompanyId(nextCompanyId);
-          setUploadUnit("");
-        }}
-        uploadUnit={uploadUnit}
-        setUploadUnit={setUploadUnit}
-        dragOver={uploadDragOver}
-        setDragOver={setUploadDragOver}
-        handleDrop={handleUploadDrop}
-        fileInputRef={uploadFileInputRef}
-        handleFileChange={handleUploadFileChange}
-        clearFile={clearUploadFile}
-        fmtFileSize={fmtUploadFileSize}
-        handleUpload={handleSalarySlipUpload}
-      />
+
 
       <DeleteSalarySlipModal
         isOpen={!!deleteRecord}
@@ -1160,6 +1038,49 @@ export default function SalaryManagement() {
         handleDelete={handleDeleteSlip}
         deleteLoading={deleteLoading}
       />
+
+      <Modal
+        isOpen={showColModal}
+        onClose={() => setShowColModal(false)}
+        title="Select Visible Columns"
+        size="lg"
+      >
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+          {ALL_SALARY_COLUMNS.map((col) => (
+            <button
+              key={col.field}
+              onClick={() => toggleColumnVisibility(col.field)}
+              className={`flex items-center gap-3 p-3 rounded-xl border-2 text-left transition-all ${
+                visibleColumns.includes(col.field)
+                  ? "border-brand-500 bg-brand-50 dark:bg-brand-900/20"
+                  : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 bg-transparent"
+              }`}
+            >
+              <div
+                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${
+                  visibleColumns.includes(col.field)
+                    ? "border-brand-600 bg-brand-600 text-white dark:border-brand-500 dark:bg-brand-500"
+                    : "border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-800"
+                }`}
+              >
+                {visibleColumns.includes(col.field) && <CheckCircle size={14} />}
+              </div>
+              <span className={`text-sm font-medium ${
+                  visibleColumns.includes(col.field)
+                    ? "text-brand-700 dark:text-brand-300"
+                    : "text-gray-700 dark:text-gray-300"
+              }`}>
+                {col.label}
+              </span>
+            </button>
+          ))}
+        </div>
+        <div className="mt-6 flex justify-end">
+          <Button variant="primary" onClick={() => setShowColModal(false)}>
+            Apply & Close
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 }

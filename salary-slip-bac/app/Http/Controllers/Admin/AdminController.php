@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Department;
 use App\Models\SalarySlip;
+use App\Models\UploadBatch;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Maatwebsite\Excel\Facades\Excel;
@@ -87,12 +88,15 @@ class AdminController extends Controller
             ->take(12)
             ->get();
 
+        $allDepartments = \App\Models\Department::pluck('name')->toArray();
+
         $departmentHeadcount = (clone $userQuery)
             ->selectRaw('department, COUNT(*) as total_employees')
             ->whereNotNull('department')
             ->where('department', '!=', '')
             ->groupBy('department')
-            ->get();
+            ->get()
+            ->keyBy('department');
 
         $departmentSalary = (clone $slipQuery)
             ->selectRaw('department, SUM(net_payable) as total_net_payable')
@@ -102,11 +106,15 @@ class AdminController extends Controller
             ->get()
             ->keyBy('department');
 
-        $departmentDistribution = $departmentHeadcount->map(function ($dept) use ($departmentSalary) {
-            $salaryData = $departmentSalary->get($dept->department);
+        $usedDepartments = $departmentHeadcount->keys()->merge($departmentSalary->keys())->toArray();
+        $allDeptsMerged = array_unique(array_merge($allDepartments, $usedDepartments));
+
+        $departmentDistribution = collect($allDeptsMerged)->map(function ($deptName) use ($departmentHeadcount, $departmentSalary) {
+            $headcount = $departmentHeadcount->get($deptName);
+            $salaryData = $departmentSalary->get($deptName);
             return [
-                'department' => $dept->department,
-                'total_employees' => $dept->total_employees,
+                'department' => $deptName,
+                'total_employees' => $headcount ? $headcount->total_employees : 0,
                 'total_net_payable' => $salaryData ? $salaryData->total_net_payable : 0,
             ];
         })->values();
@@ -285,6 +293,9 @@ class AdminController extends Controller
         $mapping = $request->mapping ? json_decode($request->mapping, true) : [];
         $imported = 0;
         $skipped = [];
+        $rowReports = [];
+        $batchMonth = null;
+        $batchYear = null;
 
         try {
             $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($request->file('salary_slip')->getPathname());
@@ -310,7 +321,10 @@ class AdminController extends Controller
 
                 $canonical = [];
                 if ($mapping) {
-                    $rawByHeader = array_combine($header, $row);
+                    // Guard against ragged rows (fewer/more cells than the
+                    // header) — array_combine() throws on a length mismatch.
+                    $paddedRow = array_slice(array_pad($row, count($header), null), 0, count($header));
+                    $rawByHeader = array_combine($header, $paddedRow);
                     foreach ($mapping as $dbField => $excelCol) {
                         $canonical[$dbField] = $rawByHeader[$excelCol] ?? null;
                     }
@@ -324,7 +338,14 @@ class AdminController extends Controller
 
                 $empCodeRaw = trim((string) ($canonical['emp_code'] ?? ''));
                 if ($empCodeRaw === '' || !is_numeric($empCodeRaw)) {
-                    $skipped[] = "Row {$excelRowNum}: missing or non-numeric employee code";
+                    $reason = 'Missing or non-numeric employee code';
+                    $skipped[] = "Row {$excelRowNum}: {$reason}";
+                    $rowReports[] = [
+                        'row_number' => $excelRowNum,
+                        'status' => 'failed',
+                        'reason' => $reason,
+                        'row_data' => $canonical,
+                    ];
                     continue;
                 }
 
@@ -333,9 +354,18 @@ class AdminController extends Controller
                     $canonical['year'] ?? null,
                 );
                 if (!$monthNum) {
-                    $skipped[] = "Row {$excelRowNum}: unrecognized month value";
+                    $reason = 'Unrecognized month value';
+                    $skipped[] = "Row {$excelRowNum}: {$reason}";
+                    $rowReports[] = [
+                        'row_number' => $excelRowNum,
+                        'status' => 'failed',
+                        'reason' => $reason,
+                        'row_data' => $canonical,
+                    ];
                     continue;
                 }
+                $batchMonth ??= (string) $monthNum;
+                $batchYear ??= $year;
 
                 $resignationDate = null;
                 if (!empty($canonical['resignation_date'])) {
@@ -346,57 +376,130 @@ class AdminController extends Controller
                     }
                 }
 
-                $totalDeduction = self::numOrNull($canonical['total_deduction'] ?? null);
-                $netSalary = self::numOrNull($canonical['net_salary'] ?? null);
+                // Fill in name/department/designation from the employee's own
+                // record when the sheet doesn't carry them — otherwise a
+                // minimal upload (just code + salary) leaves slips with a
+                // blank department, which breaks anything that groups by it.
+                $employee = User::where('emp_code', (int) $empCodeRaw)
+                    ->where('company_code', $company_code)
+                    ->first();
+
+                $basic = self::numOrNull($canonical['basic'] ?? null) ?? 0;
+                $hra = self::numOrNull($canonical['hra'] ?? null) ?? 0;
+                $da = self::numOrNull($canonical['da'] ?? null) ?? 0;
+                $convA = self::numOrNull($canonical['conv_a'] ?? null) ?? 0;
+                $comm = self::numOrNull($canonical['comm'] ?? null) ?? 0;
+                $other = self::numOrNull($canonical['other'] ?? null) ?? 0;
+                $salary = self::numOrNull($canonical['salary'] ?? null) ?? 0;
+                $componentGross = $basic + $hra + $da + $convA + $comm + $other;
+                // Prefer the sum of earning components; fall back to a flat
+                // "Salary" figure for sheets that only give one number.
+                $grossSalary = $componentGross > 0
+                    ? $componentGross
+                    : (self::numOrNull($canonical['gross_salary'] ?? null) ?? $salary);
+
+                $pf = self::numOrNull($canonical['pf'] ?? null) ?? 0;
+                $esi = self::numOrNull($canonical['esi'] ?? null) ?? 0;
+                $pt = self::numOrNull($canonical['pt'] ?? null) ?? 0;
+                $tds = self::numOrNull($canonical['tds'] ?? null) ?? 0;
+                $lwf = self::numOrNull($canonical['lwf'] ?? null) ?? 0;
+                $advance = self::numOrNull($canonical['advance'] ?? null) ?? 0;
+                $componentDeduction = $pf + $esi + $pt + $tds + $lwf + $advance;
+                // Same idea: sum the deduction components; only trust a
+                // sheet-supplied total when no components were given at all.
+                $totalDeduction = $componentDeduction > 0
+                    ? $componentDeduction
+                    : (self::numOrNull($canonical['total_deduction'] ?? null) ?? 0);
+
+                // Net salary is always gross minus deductions — never taken
+                // as a raw column — so it can't drift out of sync with them.
+                $netSalary = $grossSalary - $totalDeduction;
 
                 $insertData = [
                     'company_code' => $company_code,
-                    'unit' => $unit ?: null,
+                    'unit' => $unit ?: ($employee->unit ?? null),
                     'month' => (string) $monthNum,
                     'year' => $year,
                     'emp_code' => (int) $empCodeRaw,
-                    'emp_name' => $canonical['emp_name'] ?? null,
-                    'department' => $canonical['department'] ?? null,
+                    'emp_name' => $canonical['emp_name'] ?? $employee->name ?? null,
+                    'department' => $canonical['department'] ?? $employee->department ?? null,
                     'main_department' => $canonical['main_department'] ?? null,
-                    'designation' => $canonical['designation'] ?? null,
+                    'designation' => $canonical['designation'] ?? $employee->designation ?? null,
                     'resignation_date' => $resignationDate,
                     'working_days' => self::numOrNull($canonical['working_days'] ?? null),
                     'present_days' => self::numOrNull($canonical['present_days'] ?? null),
                     'leave' => self::numOrNull($canonical['leave'] ?? null) ?? 0,
-                    'salary' => self::numOrNull($canonical['salary'] ?? null),
-                    'basic' => self::numOrNull($canonical['basic'] ?? null) ?? 0,
-                    'hra' => self::numOrNull($canonical['hra'] ?? null) ?? 0,
-                    'da' => self::numOrNull($canonical['da'] ?? null) ?? 0,
-                    'conv_a' => self::numOrNull($canonical['conv_a'] ?? null) ?? 0,
-                    'comm' => self::numOrNull($canonical['comm'] ?? null),
-                    'other' => self::numOrNull($canonical['other'] ?? null),
-                    'gross_salary' => self::numOrNull($canonical['gross_salary'] ?? null) ?? 0,
-                    'pf' => self::numOrNull($canonical['pf'] ?? null) ?? 0,
+                    'salary' => $salary,
+                    'basic' => $basic,
+                    'hra' => $hra,
+                    'da' => $da,
+                    'conv_a' => $convA,
+                    'comm' => $comm,
+                    'other' => $other,
+                    'gross_salary' => $grossSalary,
+                    'pf' => $pf,
                     'pf_uan' => $canonical['pf_uan'] ?? null,
-                    'esi' => self::numOrNull($canonical['esi'] ?? null) ?? 0,
+                    'esi' => $esi,
                     'esi_no' => $canonical['esi_no'] ?? null,
-                    'pt' => self::numOrNull($canonical['pt'] ?? null) ?? 0,
-                    'tds' => self::numOrNull($canonical['tds'] ?? null) ?? 0,
-                    'lwf' => self::numOrNull($canonical['lwf'] ?? null) ?? 0,
-                    'advance' => self::numOrNull($canonical['advance'] ?? null) ?? 0,
+                    'pt' => $pt,
+                    'tds' => $tds,
+                    'lwf' => $lwf,
+                    'advance' => $advance,
                     'total_deduction' => $totalDeduction,
-                    'total_deduct' => $totalDeduction ?? 0, // legacy mirror column read by dashboard/reports
+                    'total_deduct' => $totalDeduction, // legacy mirror column read by dashboard/reports
                     'net_salary' => $netSalary,
-                    'net_payable' => $netSalary ?? 0, // legacy mirror column read by dashboard/reports
+                    'net_payable' => $netSalary, // legacy mirror column read by dashboard/reports
                     'account_no' => $canonical['account_no'] ?? null,
                     'account_name' => $canonical['account_name'] ?? null,
                     'bank_ifsc' => $canonical['bank_ifsc'] ?? null,
                     'mobile_no' => $canonical['mobile_no'] ?? null,
                 ];
 
-                SalarySlip::create($insertData);
+                // Keyed on employee + month + year (not unit — an employee
+                // can only have one slip per month) so re-uploading the same
+                // month updates that slip instead of creating a duplicate.
+                $slip = SalarySlip::updateOrCreate(
+                    [
+                        'company_code' => $company_code,
+                        'emp_code' => (int) $empCodeRaw,
+                        'month' => (string) $monthNum,
+                        'year' => $year,
+                    ],
+                    $insertData
+                );
                 $imported++;
+                $rowReports[] = [
+                    'row_number' => $excelRowNum,
+                    'status' => 'passed',
+                    'reason' => $slip->wasRecentlyCreated ? null : 'Updated existing slip for this month',
+                    'row_data' => $insertData,
+                ];
             }
 
             \DB::commit();
         } catch (\Throwable $e) {
             \DB::rollBack();
             return response()->json(['status' => false, 'message' => 'Import failed: ' . $e->getMessage()], 500);
+        }
+
+        $batchId = null;
+        try {
+            $batch = UploadBatch::create([
+                'type' => 'salary',
+                'company_code' => $company_code,
+                'unit' => $unit ?: null,
+                'month' => $batchMonth,
+                'year' => $batchYear,
+                'file_name' => $request->file('salary_slip')->getClientOriginalName(),
+                'total_rows' => count($rowReports),
+                'success_count' => $imported,
+                'failed_count' => count($skipped),
+                'uploaded_by' => $userAuth?->id,
+            ]);
+            $batch->rows()->createMany($rowReports);
+            $batchId = $batch->id;
+        } catch (\Throwable $e) {
+            \Log::error('Failed to record salary import batch: ' . $e->getMessage());
         }
 
         $message = "$imported salary slips imported";
@@ -409,6 +512,7 @@ class AdminController extends Controller
             'message' => $message,
             'imported' => $imported,
             'skipped' => $skipped,
+            'batch_id' => $batchId,
         ]);
     }
 
@@ -460,5 +564,32 @@ class AdminController extends Controller
         $department = Department::create(['name' => $request->name]);
 
         return response()->json(['status' => true, 'message' => 'Department created', 'data' => $department]);
+    }
+
+    public function updateDepartment(Request $request, $id)
+    {
+        $request->validate(['name' => 'required']);
+
+        $department = Department::find($id);
+        if (!$department) {
+            return response()->json(['status' => false, 'message' => 'Department not found'], 404);
+        }
+
+        $department->name = $request->name;
+        $department->save();
+
+        return response()->json(['status' => true, 'message' => 'Department updated', 'data' => $department]);
+    }
+
+    public function deleteDepartment($id)
+    {
+        $department = Department::find($id);
+        if (!$department) {
+            return response()->json(['status' => false, 'message' => 'Department not found'], 404);
+        }
+
+        $department->delete();
+
+        return response()->json(['status' => true, 'message' => 'Department deleted']);
     }
 }

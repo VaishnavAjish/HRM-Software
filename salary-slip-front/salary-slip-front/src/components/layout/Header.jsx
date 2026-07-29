@@ -1,4 +1,4 @@
-import { Menu, Bell, Sun, Moon, Search, Download } from "lucide-react";
+import { Menu, Bell, Sun, Moon, Search, Download, LogOut } from "lucide-react";
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
 import { useInstallPWA } from "../../hooks/useInstallPWA";
@@ -7,10 +7,11 @@ import CompanyScopeDropdown from "./CompanyScopeDropdown";
 
 export default function Header({ onMenuClick, title, isCollapsed }) {
   const { dark, toggle } = useTheme();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const { canInstall, install, isIOS, showIOSGuide, dismissIOSGuide } =
     useInstallPWA();
   const [notifOpen, setNotifOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
 
   return (
     <header className="h-16 bg-white dark:bg-gray-800 border-b-2 border-brand-600/20 dark:border-brand-600/30 flex items-center px-4 gap-4 sticky top-0 z-10">
@@ -82,13 +83,47 @@ export default function Header({ onMenuClick, title, isCollapsed }) {
         {dark ? <Sun size={18} /> : <Moon size={18} />}
       </button>
 
-      <div className="w-8 h-8 rounded-full bg-brand-600 flex items-center justify-center text-white text-xs font-bold cursor-pointer">
-        {user?.name
-          ?.split(" ")
-          .map((n) => n[0])
-          .join("")
-          .toUpperCase()
-          .slice(0, 2)}
+      <div className="relative">
+        <button
+          onClick={() => setProfileOpen(!profileOpen)}
+          className="w-8 h-8 rounded-full bg-brand-600 flex items-center justify-center text-white text-xs font-bold cursor-pointer border-2 border-transparent hover:border-brand-400 focus:outline-none transition-all"
+        >
+          {user?.name
+            ?.split(" ")
+            .map((n) => n[0])
+            .join("")
+            .toUpperCase()
+            .slice(0, 2) || "U"}
+        </button>
+
+        {profileOpen && (
+          <>
+            <div
+              className="fixed inset-0 z-40"
+              onClick={() => setProfileOpen(false)}
+            />
+            <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 py-2 z-50">
+              <div className="px-4 py-2 border-b border-gray-100 dark:border-gray-700 mb-2">
+                <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">
+                  {user?.name || "User"}
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                  {user?.email || ""}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setProfileOpen(false);
+                  if (logout) logout();
+                }}
+                className="w-full text-left px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2 transition-colors"
+              >
+                <LogOut size={16} />
+                Log out
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </header>
   );

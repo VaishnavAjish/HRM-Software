@@ -1,67 +1,166 @@
-import { Clock3, FileText, ShieldCheck } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Download, FileText, Loader2, ChevronDown } from "lucide-react";
+import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";
+import { getCompanyConfig } from "../../config/companyConfig";
+import { salaryApi } from "../../utils/api";
+import { downloadForm16PDF } from "../../utils/exportUtils";
+import { buildForm16DocumentData } from "../../utils/form16Utils";
+import Form16Document from "../../components/form16/Form16Document";
+import toast from "react-hot-toast";
+
+const FY_OPTIONS = [
+  { value: "2024-25", label: "FY 2024-25 (AY 2025-26)" },
+  { value: "2023-24", label: "FY 2023-24 (AY 2024-25)" },
+  { value: "2022-23", label: "FY 2022-23 (AY 2023-24)" },
+];
+
+const selectCls =
+  "appearance-none rounded-lg border border-gray-200 bg-white py-2 pl-3 pr-8 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300";
+
+function mapEmployee(item) {
+  const allowances =
+    Number(item.da ?? 0) +
+    Number(item.hra ?? 0) +
+    Number(item.wa ?? 0) +
+    Number(item.conv_a ?? 0) +
+    Number(item.edu_a ?? 0) +
+    Number(item.med_a ?? 0) +
+    Number(item.mob_a ?? 0) +
+    Number(item.owa ?? 0) +
+    Number(item.ppa ?? 0) +
+    Number(item.pda ?? 0);
+
+  return {
+    id: item.id,
+    name: item.emp_name ?? item.name ?? "",
+    empCode: String(item.emp_code ?? ""),
+    companyLabel: getCompanyConfig(item.company_code)?.label || "",
+    unit: item.unit ?? "",
+    role: item.designation ?? "",
+    designation: item.designation ?? "",
+    department: item.department ?? "",
+    basicSalary: Number(item.basic ?? 0),
+    allowances,
+    bonus: Number(item.product_incentive ?? 0),
+  };
+}
 
 export default function Form16() {
-  const { company } = useCompany();
+  const { user } = useAuth();
+  const { companyId } = useCompany();
+  const [loading, setLoading] = useState(true);
+  const [employee, setEmployee] = useState(null);
+  const [fy, setFy] = useState("2024-25");
+
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchForm16Data() {
+      setLoading(true);
+      try {
+        const res = await salaryApi.getEmployeeDashboard(
+          user?.accessToken,
+          user?.tokenType,
+          companyId
+        );
+        if (!cancelled) {
+          const dashData = res?.data ?? res ?? {};
+          const slipList = dashData?.recent_slips || dashData?.salary_list || [];
+          const latestSlip = slipList[0];
+          
+          if (latestSlip) {
+            setEmployee(mapEmployee(latestSlip));
+          } else {
+            // fallback if no slips
+            setEmployee(mapEmployee({ ...dashData?.user, company_code: companyId }));
+          }
+        }
+      } catch (err) {
+        if (!cancelled) toast.error("Failed to load Form 16 data");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    
+    if (user?.accessToken) fetchForm16Data();
+    return () => {
+      cancelled = true;
+    };
+  }, [user, companyId]);
+
+  const data = employee ? buildForm16DocumentData(employee, fy) : null;
+  const fyLabel = FY_OPTIONS.find((item) => item.value === fy)?.label || fy;
+
+  const handleDownload = () => {
+    if (!employee || !data) return;
+    downloadForm16PDF({ emp: employee, fy, data });
+    toast.success(`Form 16 downloaded for ${fyLabel}`);
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="animate-spin text-brand-600" size={32} />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-600 shadow-sm shadow-brand-600/30">
-          <FileText size={18} className="text-white" />
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-600 shadow-sm shadow-brand-600/30">
+            <FileText size={18} className="text-white" />
+          </div>
+          <div>
+            <h1 className="text-lg font-bold text-gray-900 dark:text-white">
+              Form 16
+            </h1>
+            <p className="text-xs text-gray-400">
+              Preview and download your tax documents
+            </p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-lg font-bold text-gray-900 dark:text-white">
-            Form 16
-          </h1>
-          <p className="text-xs text-gray-400">
-            This section will be enabled after final tax document setup
-          </p>
+        
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <select
+              value={fy}
+              onChange={(e) => setFy(e.target.value)}
+              className={selectCls}
+            >
+              {FY_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
+              <ChevronDown size={14} className="text-gray-400" />
+            </div>
+          </div>
+          <button
+            onClick={handleDownload}
+            disabled={!data}
+            className="flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-brand-600/30 hover:bg-brand-700 disabled:opacity-50 transition-colors"
+          >
+            <Download size={16} /> Download PDF
+          </button>
         </div>
       </div>
 
-      <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800 sm:p-8">
-        <div className="mx-auto max-w-2xl text-center">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-brand-50 text-brand-600 dark:bg-brand-900/20 dark:text-brand-400">
-            <Clock3 size={28} />
-          </div>
-
-          <h2 className="mt-5 text-2xl font-bold text-gray-900 dark:text-white">
-            Form 16 Coming Soon
-          </h2>
-
-          <p className="mt-3 text-sm leading-6 text-gray-500 dark:text-gray-400">
-            Your Form 16 download is not ready yet for{" "}
-            <span className="font-semibold text-gray-700 dark:text-gray-200">
-              {company?.label || "your company"}
-            </span>
-            . We will enable this page after the final tax document flow is
-            completed.
-          </p>
-
-          <div className="mt-6 rounded-2xl border border-dashed border-brand-200 bg-brand-50/70 px-5 py-4 text-left dark:border-brand-800 dark:bg-brand-900/10">
-            <div className="flex items-start gap-3">
-              <ShieldCheck
-                size={18}
-                className="mt-0.5 flex-shrink-0 text-brand-600 dark:text-brand-400"
-              />
-              <div>
-                <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                  What will be available here later
-                </p>
-                <ul className="mt-2 space-y-1 text-sm text-gray-600 dark:text-gray-300">
-                  <li>Financial year wise Form 16 preview</li>
-                  <li>PDF download in the final format</li>
-                  <li>Company-specific document details</li>
-                </ul>
-              </div>
+      <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+        {data ? (
+          <div className="overflow-x-auto rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800/50">
+            <div className="min-w-fit rounded-xl bg-white shadow-sm ring-1 ring-black/5">
+              <Form16Document data={data} />
             </div>
           </div>
-
-          <p className="mt-6 text-xs text-gray-400">
-            If you need this urgently, please contact your admin team.
-          </p>
-        </div>
+        ) : (
+          <div className="flex h-48 items-center justify-center text-sm text-gray-400">
+            No salary data available to generate Form 16.
+          </div>
+        )}
       </div>
     </div>
   );

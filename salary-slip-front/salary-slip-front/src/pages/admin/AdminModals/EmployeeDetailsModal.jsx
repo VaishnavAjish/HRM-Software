@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 
 import Button from "../../../components/ui/Button";
+import ModernDatePicker from "../../../components/ModernDatePicker";
 import {
   EmployeeAvatar,
   formatDateInputValue,
@@ -54,14 +55,21 @@ function Field({ label, value, type = "text", className = "" }) {
   return (
     <div className={className}>
       <Label>{label}</Label>
-      <input
-        type={type}
-        readOnly
-        tabIndex={-1}
-        value={type === "date" ? formatDateInputValue(value) : value || ""}
-        placeholder="Not provided"
-        className={`${fieldCls} cursor-default`}
-      />
+      {type === "date" ? (
+        <ModernDatePicker
+          value={formatDateInputValue(value) || ""}
+          disabled={true}
+          className={fieldCls}
+        />
+      ) : (
+        <input
+          type={type}
+          readOnly
+          tabIndex={-1}
+          value={value || "—"}
+          className={fieldCls}
+        />
+      )}
     </div>
   );
 }

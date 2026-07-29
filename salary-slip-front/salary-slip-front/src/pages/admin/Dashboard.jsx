@@ -4,7 +4,7 @@ import {
   Users,
   DollarSign,
   ArrowUpRight,
-  Building2,
+  Plus,
   Calendar,
 } from "lucide-react";
 import { StatCard } from "../../components/ui/Card";
@@ -14,6 +14,8 @@ import { useCompany } from "../../context/CompanyContext";
 import { getCompanyConfig } from "../../config/companyConfig";
 import { salaryApi } from "../../utils/api";
 import toast from "react-hot-toast";
+import ManageDepartmentsModal from "./AdminModals/ManageDepartmentsModal";
+import { MonthYearPicker } from "../../components/ui/MonthYearPicker";
 
 const fmt = (n) =>
   n === null || n === undefined ? "—" : "₹" + Number(n).toLocaleString("en-IN");
@@ -45,6 +47,7 @@ export default function AdminDashboard() {
   const [dashboardStats, setDashboardStats] = useState(null);
   const [fromMonth, setFromMonth] = useState("");
   const [toMonth, setToMonth] = useState("");
+  const [isManageDeptModalOpen, setIsManageDeptModalOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -217,12 +220,11 @@ export default function AdminDashboard() {
           <label className="sr-only" htmlFor="dashboard-from-month">
             From month
           </label>
-          <input
-            id="dashboard-from-month"
-            type="month"
+          <MonthYearPicker
             value={fromMonth}
-            onChange={(event) => setFromMonth(event.target.value)}
-            max={toMonth || undefined}
+            onChange={setFromMonth}
+            max={toMonth}
+            placeholder="From month"
             className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500 sm:min-w-44 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
           />
           <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">
@@ -231,12 +233,11 @@ export default function AdminDashboard() {
           <label className="sr-only" htmlFor="dashboard-to-month">
             To month
           </label>
-          <input
-            id="dashboard-to-month"
-            type="month"
+          <MonthYearPicker
             value={toMonth}
-            onChange={(event) => setToMonth(event.target.value)}
-            min={fromMonth || undefined}
+            onChange={setToMonth}
+            min={fromMonth}
+            placeholder="To month"
             className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500 sm:min-w-44 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
           />
           {hasDateFilter && (
@@ -302,9 +303,13 @@ export default function AdminDashboard() {
                 Workforce distribution
               </p>
             </div>
-            <div className="p-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-900/25 text-indigo-600 dark:text-indigo-300">
-              <Building2 size={19} />
-            </div>
+            <button
+              onClick={() => setIsManageDeptModalOpen(true)}
+              className="p-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-900/25 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors cursor-pointer"
+              title="Manage Departments"
+            >
+              <Plus size={19} />
+            </button>
           </div>
 
           <div className="flex items-center justify-between rounded-xl bg-indigo-50 dark:bg-indigo-900/20 px-4 py-3 mb-4">
@@ -435,6 +440,11 @@ export default function AdminDashboard() {
           </div>
         </div>
       </div>
+
+      <ManageDepartmentsModal 
+        isOpen={isManageDeptModalOpen} 
+        onClose={() => setIsManageDeptModalOpen(false)} 
+      />
     </div>
   );
 }

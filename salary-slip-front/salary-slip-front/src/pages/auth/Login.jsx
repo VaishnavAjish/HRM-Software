@@ -1,8 +1,9 @@
 /* global __APP_LABEL__ */
 const APP_LABEL =
-  typeof __APP_LABEL__ !== "undefined" ? __APP_LABEL__ : "Master Admin";
+  typeof __APP_LABEL__ !== "undefined" ? __APP_LABEL__ : "Build better workplaces";
 
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
+import ModernDatePicker from "../../components/ModernDatePicker";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import {
@@ -27,6 +28,7 @@ import {
   Camera,
   HelpCircle,
   X,
+  Image as ImageIcon,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { authApi } from "../../utils/api";
@@ -44,7 +46,7 @@ function StepBar({ step }) {
         const active = step === idx;
         return (
           <div key={label} className="flex items-center">
-            <div className="flex flex-col items-center">
+            <div className="flex flex-col items-center relative w-16 sm:w-24">
               <div
                 className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300
                 ${done ? "bg-green-500 text-white shadow-sm shadow-green-500/40" : ""}
@@ -54,7 +56,7 @@ function StepBar({ step }) {
                 {done ? <CheckCircle2 size={15} /> : idx}
               </div>
               <span
-                className={`text-xs mt-1.5 font-medium whitespace-nowrap
+                className={`text-[10px] sm:text-xs mt-1.5 font-medium text-center leading-tight
                 ${active ? "text-brand-600 dark:text-brand-400" : done ? "text-green-500" : "text-gray-400"}`}
               >
                 {label}
@@ -62,7 +64,7 @@ function StepBar({ step }) {
             </div>
             {i < steps.length - 1 && (
               <div
-                className={`w-12 h-0.5 mx-1 mb-4 rounded-full transition-all duration-500
+                className={`w-6 sm:w-12 h-0.5 mx-0 sm:mx-1 mb-6 sm:mb-4 rounded-full transition-all duration-500
                 ${step > idx ? "bg-green-400" : "bg-gray-200 dark:bg-gray-700"}`}
               />
             )}
@@ -156,6 +158,11 @@ export default function Login() {
   // Step 1
   const [fCompanyId, setFCompanyId] = useState("");
   const [fUnit, setFUnit] = useState("");
+  const [isAutoDetected, setIsAutoDetected] = useState(false);
+  const [verifyOtp, setVerifyOtp] = useState("");
+  const [showPhotoOpts, setShowPhotoOpts] = useState(false);
+  const cameraInputRef = useRef(null);
+  const galleryInputRef = useRef(null);
   const [fCode, setFCode] = useState("");
   const [fPhoto, setFPhoto] = useState(null);
   const [fPhotoPreview, setFPhotoPreview] = useState("");
@@ -182,6 +189,31 @@ export default function Login() {
   const [showConf, setShowConf] = useState(false);
   const [pwdErr, setPwdErr] = useState("");
   const [pwdLoading, setPwdLoading] = useState(false);
+
+  useEffect(() => {
+    if (mode !== "forgot") return;
+    const val = fCode.trim();
+    if (!val || COMPANY_OPTIONS.some(c => val.startsWith(c.initials))) return;
+
+    setIsAutoDetected(false); // Reset while typing/fetching
+
+    const timer = setTimeout(async () => {
+      try {
+        const res = await authApi.checkEmpCode(val);
+        if (res && res.company_code) {
+          setFCompanyId(res.company_code);
+          if (res.unit) setFUnit(res.unit);
+          setIsAutoDetected(true);
+        } else {
+          setIsAutoDetected(false);
+        }
+      } catch (err) {
+        setIsAutoDetected(false);
+      }
+    }, 500); // Wait 500ms after the user stops typing
+
+    return () => clearTimeout(timer);
+  }, [fCode, mode]);
 
   const updateIdentityPhoto = (file) => {
     if (fPhotoPreviewRef.current) {
@@ -246,11 +278,6 @@ export default function Login() {
       return;
     }
 
-    if (!fDob) {
-      toast.error("Select date of birth");
-      return;
-    }
-
     if (!fAddress.trim()) {
       toast.error("Enter residential address");
       return;
@@ -265,7 +292,6 @@ export default function Login() {
         {
           photo: fPhoto,
           mob_num: fMobNum.trim(),
-          dob: fDob,
           address: fAddress.trim(),
         },
       );
@@ -278,7 +304,6 @@ export default function Login() {
         unit: apiUser?.unit || fUnit,
         photo: apiUser?.photo || fPhoto,
         mob_num: apiUser?.mob_num || fMobNum.trim(),
-        dob: apiUser?.dob || fDob,
         address: apiUser?.address || fAddress.trim(),
       };
 
@@ -502,7 +527,6 @@ export default function Login() {
     fUnit &&
     fCode.trim() &&
     fMobNum.trim() &&
-    fDob &&
     fAddress.trim() &&
     !s1Loading;
 
@@ -522,7 +546,7 @@ export default function Login() {
               {APP_LABEL}
             </p>
             <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">
-              Salary management portal
+              HRMS portal
             </p>
           </div>
         )}
@@ -654,38 +678,136 @@ export default function Login() {
                 </div>
 
                 <div className="mt-7 flex justify-center">
-                  <label className="relative block cursor-pointer group">
-                    <span className="w-36 h-36 rounded-full bg-slate-100 dark:bg-gray-700 border-4 border-white dark:border-gray-800 shadow-xl flex items-center justify-center overflow-hidden">
-                      {fPhotoPreview ? (
-                        <img
-                          src={fPhotoPreview}
-                          alt="Employee preview"
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <span className="flex flex-col items-center gap-1 text-gray-400">
-                          <Camera size={40} />
-                          <span className="text-[11px] font-bold uppercase">
-                            Photo
+                  <div className="relative">
+                    <div 
+                      className="relative block cursor-pointer group"
+                      onClick={() => setShowPhotoOpts(!showPhotoOpts)}
+                    >
+                      <span className="w-28 h-28 sm:w-36 sm:h-36 rounded-full bg-slate-100 dark:bg-gray-700 border-4 border-white dark:border-gray-800 shadow-xl flex items-center justify-center overflow-hidden">
+                        {fPhotoPreview ? (
+                          <img
+                            src={fPhotoPreview}
+                            alt="Employee preview"
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <span className="flex flex-col items-center gap-1 text-gray-400">
+                            <Camera size={40} />
+                            <span className="text-[11px] font-bold uppercase">
+                              Photo
+                            </span>
                           </span>
-                        </span>
-                      )}
-                    </span>
-                    <span className="absolute right-0 bottom-2 w-9 h-9 rounded-full bg-brand-600 text-white border-2 border-white dark:border-gray-800 shadow-lg flex items-center justify-center transition-colors group-hover:bg-brand-700">
-                      <Plus size={20} />
-                    </span>
+                        )}
+                      </span>
+                      <span className="absolute right-0 bottom-1 sm:bottom-2 w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-brand-600 text-white border-2 border-white dark:border-gray-800 shadow-lg flex items-center justify-center transition-colors group-hover:bg-brand-700">
+                        <Plus size={18} className="sm:w-5 sm:h-5" />
+                      </span>
+                    </div>
+
+                    {showPhotoOpts && (
+                      <>
+                        <div 
+                          className="fixed inset-0 z-40"
+                          onClick={() => setShowPhotoOpts(false)}
+                        />
+                        <div className="absolute top-[105%] left-1/2 -translate-x-1/2 z-50 w-48 bg-white dark:bg-gray-800 rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.1)] dark:shadow-[0_10px_40px_rgba(0,0,0,0.5)] border border-gray-100 dark:border-gray-700 overflow-hidden py-1.5 animate-in fade-in slide-in-from-top-2 duration-200">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowPhotoOpts(false);
+                              cameraInputRef.current?.click();
+                            }}
+                            className="w-full px-4 py-2.5 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 hover:text-brand-600 dark:hover:text-brand-400 flex items-center gap-2.5 transition-colors"
+                          >
+                            <Camera size={16} /> Take Photo
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowPhotoOpts(false);
+                              galleryInputRef.current?.click();
+                            }}
+                            className="w-full px-4 py-2.5 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 hover:text-brand-600 dark:hover:text-brand-400 flex items-center gap-2.5 transition-colors"
+                          >
+                            <ImageIcon size={16} /> Choose from Gallery
+                          </button>
+                        </div>
+                      </>
+                    )}
+
                     <input
                       type="file"
                       accept="image/*"
+                      capture="environment"
+                      ref={cameraInputRef}
                       onChange={(e) =>
                         updateIdentityPhoto(e.target.files?.[0] || null)
                       }
                       className="sr-only"
                     />
-                  </label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      ref={galleryInputRef}
+                      onChange={(e) =>
+                        updateIdentityPhoto(e.target.files?.[0] || null)
+                      }
+                      className="sr-only"
+                    />
+                  </div>
                 </div>
 
                 <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className={identityLabelCls}>Employee Code</label>
+                    <div className="relative">
+                      <User size={16} className={identityIconCls} />
+                      <input
+                        value={fCode}
+                        onChange={(e) => {
+                          const val = e.target.value.toUpperCase();
+                          setFCode(val);
+                          const matchedCompany = COMPANY_OPTIONS.find(c => val.startsWith(c.initials));
+                          if (matchedCompany) {
+                            if (fCompanyId !== matchedCompany.id) {
+                              setFCompanyId(matchedCompany.id);
+                              setFUnit("");
+                            }
+                            const afterInit = val.slice(matchedCompany.initials.length).replace(/[^A-Z]/g, '');
+                            if (afterInit) {
+                              const matchedBranch = matchedCompany.units.find(u => u.toUpperCase().startsWith(afterInit));
+                              if (matchedBranch) setFUnit(matchedBranch);
+                            }
+                            setIsAutoDetected(true);
+                          } else {
+                            setIsAutoDetected(false);
+                          }
+                        }}
+                        onKeyDown={(e) => e.key === "Enter" && handleStep1()}
+                        placeholder="e.g. NI8526 or 7195"
+                        autoFocus
+                        className={identityInputCls}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className={identityLabelCls}>Mobile No.</label>
+                    <div className="relative">
+                      <Phone size={16} className={identityIconCls} />
+                      <input
+                        value={fMobNum}
+                        onChange={(e) => {
+                          const val = e.target.value.replace(/\D/g, "");
+                          if (val.length <= 10) setFMobNum(val);
+                        }}
+                        inputMode="tel"
+                        placeholder="9876543210"
+                        className={identityInputCls}
+                      />
+                    </div>
+                  </div>
+
                   <div>
                     <label className={identityLabelCls}>Company</label>
                     <div className="relative">
@@ -701,7 +823,10 @@ export default function Login() {
                           setOtp("    ");
                           setOtpErr("");
                         }}
-                        className={`${identityInputCls} appearance-none`}
+                        disabled={isAutoDetected}
+                        className={`${identityInputCls} appearance-none ${
+                          isAutoDetected ? "opacity-60 cursor-not-allowed bg-gray-50 dark:bg-gray-800" : ""
+                        }`}
                       >
                         <option value="">Select Company</option>
                         {COMPANY_OPTIONS.map((company) => (
@@ -726,9 +851,9 @@ export default function Login() {
                           setOtp("    ");
                           setOtpErr("");
                         }}
-                        disabled={!fCompanyId}
+                        disabled={!fCompanyId || isAutoDetected}
                         className={`${identityInputCls} appearance-none ${
-                          !fCompanyId ? " opacity-60 cursor-not-allowed" : ""
+                          !fCompanyId || isAutoDetected ? "opacity-60 cursor-not-allowed bg-gray-50 dark:bg-gray-800" : ""
                         }`}
                       >
                         <option value="">Select Branch</option>
@@ -740,47 +865,7 @@ export default function Login() {
                       </select>
                     </div>
                   </div>
-                  <div>
-                    <label className={identityLabelCls}>Employee Code</label>
-                    <div className="relative">
-                      <User size={16} className={identityIconCls} />
-                      <input
-                        value={fCode}
-                        onChange={(e) => setFCode(e.target.value.toUpperCase())}
-                        onKeyDown={(e) => e.key === "Enter" && handleStep1()}
-                        placeholder="e.g. 8526"
-                        autoFocus
-                        className={identityInputCls}
-                      />
-                    </div>
-                  </div>
 
-                  <div>
-                    <label className={identityLabelCls}>Mobile No.</label>
-                    <div className="relative">
-                      <Phone size={16} className={identityIconCls} />
-                      <input
-                        value={fMobNum}
-                        onChange={(e) => setFMobNum(e.target.value)}
-                        inputMode="tel"
-                        placeholder="9876543210"
-                        className={identityInputCls}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="sm:col-span-2">
-                    <label className={identityLabelCls}>Date of Birth</label>
-                    <div className="relative">
-                      <Calendar size={16} className={identityIconCls} />
-                      <input
-                        type="date"
-                        value={fDob}
-                        onChange={(e) => setFDob(e.target.value)}
-                        className={identityInputCls}
-                      />
-                    </div>
-                  </div>
 
                   <div className="sm:col-span-2">
                     <label className={identityLabelCls}>
