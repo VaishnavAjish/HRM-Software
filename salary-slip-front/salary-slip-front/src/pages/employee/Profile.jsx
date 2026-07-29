@@ -103,6 +103,7 @@ export default function Profile() {
   };
 
   const [editing, setEditing] = useState(false);
+  const [activeStep, setActiveStep] = useState(1);
   const [form, setForm] = useState({
     name: "",
     email: "",
@@ -283,6 +284,7 @@ export default function Profile() {
       setLoading(false);
     }
     setEditing(false);
+    setActiveStep(1);
   };
   const handleCancel = () => {
     clearPendingPhoto();
@@ -305,6 +307,7 @@ export default function Profile() {
       esi_no: profile?.esi_no || "",
     });
     setEditing(false);
+    setActiveStep(1);
   };
 
   const handlePasswordUpdate = async () => {
@@ -548,6 +551,30 @@ export default function Profile() {
 
       {/* ══ RIGHT COLUMN — Details ══ */}
       <div className="space-y-4">
+        
+        {/* Stepper Tabs */}
+        <div className="flex bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-2 overflow-x-auto gap-2">
+          {[
+            { id: 1, label: "1. Basic Details" },
+            { id: 2, label: "2. Address Details" },
+            { id: 3, label: "3. Identity & Bank" },
+          ].map(step => (
+            <button
+              key={step.id}
+              onClick={() => setActiveStep(step.id)}
+              className={`px-4 py-2.5 text-sm font-semibold rounded-xl flex-1 text-center whitespace-nowrap transition-colors ${
+                activeStep === step.id
+                  ? "bg-brand-50 text-brand-700 dark:bg-brand-900/30 dark:text-brand-400"
+                  : "text-gray-500 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-700"
+              }`}
+            >
+              {step.label}
+            </button>
+          ))}
+        </div>
+
+        {activeStep === 1 && (
+          <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
         {/* Contact information */}
         <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700">
           <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700">
@@ -686,6 +713,33 @@ export default function Profile() {
                 />
               }
             />
+          </div>
+        </div>
+        
+        {editing && (
+          <div className="flex justify-end pt-2">
+            <button
+              onClick={() => setActiveStep(2)}
+              className="px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm"
+            >
+              Next Step
+            </button>
+          </div>
+        )}
+        </div>
+        )}
+
+        {activeStep === 2 && (
+          <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+        {/* Address & Additional Details */}
+        <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700">
+          <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-100 dark:border-gray-700">
+            <MapPin size={16} className="text-brand-600" />
+            <h3 className="font-semibold text-gray-900 dark:text-white">
+              Address & Additional Details
+            </h3>
+          </div>
+          <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
             <InfoRow
               icon={Calendar}
               iconBg="bg-teal-50 dark:bg-teal-900/20"
@@ -779,7 +833,28 @@ export default function Profile() {
             />
           </div>
         </div>
+        
+        {editing && (
+          <div className="flex justify-between pt-2">
+            <button
+              onClick={() => setActiveStep(1)}
+              className="px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 text-sm font-semibold rounded-xl transition-colors"
+            >
+              Previous
+            </button>
+            <button
+              onClick={() => setActiveStep(3)}
+              className="px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm"
+            >
+              Next Step
+            </button>
+          </div>
+        )}
+        </div>
+        )}
 
+        {activeStep === 3 && (
+          <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
         {/* Identity & Bank Details */}
         <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700">
           <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-100 dark:border-gray-700">
@@ -902,16 +977,25 @@ export default function Profile() {
             />
           </div>
           {editing && (
-            <div className="px-5 pb-5 flex justify-end gap-3 border-t border-gray-100 dark:border-gray-700 pt-4">
+            <div className="px-5 pb-5 flex justify-between gap-3 border-t border-gray-100 dark:border-gray-700 pt-4">
+              <button
+                onClick={() => setActiveStep(2)}
+                className="px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 text-sm font-semibold rounded-xl transition-colors"
+              >
+                Previous
+              </button>
               <button
                 onClick={handleSave}
-                className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-xl transition-colors shadow-sm shadow-brand-600/30"
+                className="flex items-center gap-1.5 px-6 py-2.5 text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-xl transition-colors shadow-sm shadow-brand-600/30"
               >
-                <Save size={16} /> Save
+                <Save size={16} /> Save Profile
               </button>
             </div>
           )}
         </div>
+        </div>
+        )}
+
 
       </div>
     </div>

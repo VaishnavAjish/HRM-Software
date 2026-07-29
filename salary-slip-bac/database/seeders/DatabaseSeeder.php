@@ -28,7 +28,11 @@ class DatabaseSeeder extends Seeder
             [
                 'emp_code'     => 1000000002,
                 'name'         => 'NISS Super Admin',
-                'password'     => 'Admin@niss123',
+                // Only used when the account does not exist yet; an existing
+                // password is never overwritten. Set SEED_SUPER_ADMIN_PASSWORD
+                // in .env so a fresh install does not start with a password
+                // that is published in this repository's history.
+                'password'     => env('SEED_SUPER_ADMIN_PASSWORD', 'Admin@niss123'),
                 'role'         => 0,
                 'company_code' => 'nidhi-impex',
                 'status'       => 0,

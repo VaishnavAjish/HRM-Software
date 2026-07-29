@@ -99,9 +99,19 @@ return [
     | systems in place to revoke the token if necessary.
     | Notice: If you set this to null you should remove 'exp' element from 'required_claims' list.
     |
+    | This was previously null (never-expiring tokens) so the Capacitor mobile
+    | app would keep users signed in. That kept sessions alive but made a
+    | leaked token valid forever, and with no 'exp' claim tymon's Blacklist
+    | falls back to addForever() — entries that a `cache:clear` would wipe,
+    | silently re-validating every token ever "logged out".
+    |
+    | 30 days keeps the mobile app signed in across normal use while still
+    | bounding the damage. Override with JWT_TTL in .env if you need a
+    | different window; keep 'exp' in required_claims whenever this is not null.
+    |
     */
 
-    'ttl' => env('JWT_TTL', null),
+    'ttl' => env('JWT_TTL', 43200), // 30 days, in minutes
 
     /*
     |--------------------------------------------------------------------------
@@ -120,7 +130,8 @@ return [
     |
     */
 
-    'refresh_ttl' => env('JWT_REFRESH_TTL', 20160),
+    // Must be >= ttl, otherwise a still-valid token can no longer be refreshed.
+    'refresh_ttl' => env('JWT_REFRESH_TTL', 86400), // 60 days, in minutes
 
     /*
     |--------------------------------------------------------------------------
@@ -147,6 +158,7 @@ return [
     'required_claims' => [
         'iss',
         'iat',
+        'exp', // required again now that 'ttl' is not null
         'nbf',
         'sub',
         'jti',
