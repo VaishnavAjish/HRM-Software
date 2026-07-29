@@ -245,50 +245,44 @@ export default function RbacDashboard() {
         </div>
       )}
 
-      {!loading && stats && (isVisible("dashboard.show_users_by_role_chart") || isVisible("dashboard.show_users_by_department_chart")) && (
+      {!loading && stats && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {isVisible("dashboard.show_users_by_role_chart") && (
-            <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5">
-              <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-4">Users by Role</h3>
-              <ResponsiveContainer width="100%" height={240}>
-                <BarChart data={stats.usersByRole}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.2} />
-                  <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-                  <Tooltip />
-                  <Bar dataKey="count" fill="#6366f1" radius={[6, 6, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-
-          {isVisible("dashboard.show_users_by_department_chart") && (
-            <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5">
-              <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-4">Users by Department</h3>
-              {stats.usersByDepartment?.length ? (
-                <ResponsiveContainer width="100%" height={240}>
-                  <PieChart>
-                    <Pie
-                      data={stats.usersByDepartment}
-                      dataKey="count"
-                      nameKey="name"
-                      cx="50%"
-                      cy="50%"
-                      outerRadius={80}
-                      label
+          <div className="col-span-1 lg:col-span-2">
+            <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-6 shadow-sm">
+              <div className="mb-6">
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Main Dashboard Configuration</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                  Customize the widgets and charts that appear on the main Admin Dashboard. Changes are saved automatically.
+                </p>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {Object.entries(MAIN_DASHBOARD_LABELS).map(([key, label]) => (
+                  <div key={key} className="flex items-start justify-between gap-4 p-4 rounded-xl border border-gray-100 dark:border-gray-700/50 bg-gray-50/50 dark:bg-gray-800/50">
+                    <div>
+                      <span className="text-sm font-semibold text-gray-800 dark:text-gray-200 block">{label}</span>
+                      <span className="text-xs text-gray-500 dark:text-gray-400 mt-1 block">
+                        Toggle to {isVisible(key) ? "hide" : "show"} this widget
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => toggleMainDashboardSetting(key)}
+                      disabled={savingWidget === key}
+                      className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors ${
+                        isVisible(key) ? "bg-brand-600" : "bg-gray-300 dark:bg-gray-600"
+                      } ${savingWidget === key ? "opacity-50 cursor-not-allowed" : ""}`}
                     >
-                      {stats.usersByDepartment.map((_, i) => (
-                        <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                  </PieChart>
-                </ResponsiveContainer>
-              ) : (
-                <p className="text-sm text-gray-500 dark:text-gray-400 py-10 text-center">No department data yet.</p>
-              )}
+                      <span
+                        className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                          isVisible(key) ? "translate-x-5" : "translate-x-0.5"
+                        }`}
+                      />
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
-          )}
+          </div>
+
         </div>
       )}
 
@@ -351,12 +345,12 @@ export default function RbacDashboard() {
                   </span>
                   <button
                     onClick={() => toggleDraft(setting.key)}
-                    className={`relative h-6 w-11 rounded-full transition-colors ${
+                    className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors ${
                       setting.value === "true" ? "bg-brand-600" : "bg-gray-300 dark:bg-gray-600"
                     }`}
                   >
                     <span
-                      className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                      className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
                         setting.value === "true" ? "translate-x-5" : "translate-x-0.5"
                       }`}
                     />
@@ -366,35 +360,7 @@ export default function RbacDashboard() {
             </div>
           </div>
 
-          <div className="pt-4 border-t border-gray-100 dark:border-gray-700">
-            <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-3">
-              Main Dashboard Widgets
-            </h4>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
-              Choose which widgets show on the main Admin Dashboard.
-            </p>
-            <div className="space-y-3">
-              {draftMainDashboard.map((setting) => (
-                <div key={setting.key} className="flex items-center justify-between gap-4">
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-200">
-                    {MAIN_DASHBOARD_LABELS[setting.key] || setting.key}
-                  </span>
-                  <button
-                    onClick={() => toggleDraft(setting.key, "main_dashboard")}
-                    className={`relative h-6 w-11 rounded-full transition-colors ${
-                      setting.value === "true" ? "bg-brand-600" : "bg-gray-300 dark:bg-gray-600"
-                    }`}
-                  >
-                    <span
-                      className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
-                        setting.value === "true" ? "translate-x-5" : "translate-x-0.5"
-                      }`}
-                    />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
+
 
           <div className="pt-4 border-t border-gray-100 dark:border-gray-700">
             <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-3">
@@ -409,12 +375,12 @@ export default function RbacDashboard() {
                     {meta.type === "boolean" ? (
                       <button
                         onClick={() => toggleSecurity(setting.key)}
-                        className={`relative h-6 w-11 rounded-full transition-colors ${
+                        className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors ${
                           setting.value === "true" ? "bg-brand-600" : "bg-gray-300 dark:bg-gray-600"
                         }`}
                       >
                         <span
-                          className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                          className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
                             setting.value === "true" ? "translate-x-5" : "translate-x-0.5"
                           }`}
                         />
