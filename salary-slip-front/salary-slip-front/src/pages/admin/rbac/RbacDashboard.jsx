@@ -81,18 +81,23 @@ export default function RbacDashboard() {
   const [saving, setSaving] = useState(false);
 
   const loadSettings = () => {
-    rbacApi
-      .getSettings(user?.accessToken, user?.tokenType, "dashboard")
-      .then((res) => {
-        if (res.status) {
-          const map = {};
-          (res.data || []).forEach((s) => {
-            map[s.key] = s.value !== "false";
-          });
-          setSettings(map);
-        }
-      })
-      .catch(() => {});
+    Promise.all([
+      rbacApi.getSettings(user?.accessToken, user?.tokenType, "dashboard").catch(() => ({ status: false })),
+      rbacApi.getSettings(user?.accessToken, user?.tokenType, "main_dashboard").catch(() => ({ status: false })),
+    ]).then(([dashRes, mainDashRes]) => {
+      const map = {};
+      if (dashRes.status) {
+        (dashRes.data || []).forEach((s) => {
+          map[s.key] = s.value !== "false";
+        });
+      }
+      if (mainDashRes.status) {
+        (mainDashRes.data || []).forEach((s) => {
+          map[s.key] = s.value !== "false";
+        });
+      }
+      setSettings(map);
+    });
   };
 
   useEffect(() => {
@@ -139,6 +144,31 @@ export default function RbacDashboard() {
 
   const updateSecurity = (key, value) => {
     setDraftSecurity((prev) => prev.map((s) => (s.key === key ? { ...s, value } : s)));
+  };
+
+  const [savingWidget, setSavingWidget] = useState(null);
+
+  const toggleMainDashboardSetting = async (key) => {
+    const currentValue = isVisible(key);
+    const newValue = !currentValue;
+    
+    // Optimistic UI update
+    setSettings(prev => ({ ...prev, [key]: newValue }));
+    setSavingWidget(key);
+
+    try {
+      const payload = [{ key, value: newValue ? "true" : "false" }];
+      const res = await rbacApi.updateSettings(payload, user?.accessToken, user?.tokenType, "main_dashboard");
+      if (!res.status) {
+        setSettings(prev => ({ ...prev, [key]: currentValue }));
+        toast.error("Failed to update widget setting");
+      }
+    } catch (err) {
+      setSettings(prev => ({ ...prev, [key]: currentValue }));
+      toast.error("Failed to update widget setting");
+    } finally {
+      setSavingWidget(null);
+    }
   };
 
   const toggleSecurity = (key) => {
