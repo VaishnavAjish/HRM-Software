@@ -17,6 +17,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";
 import { getCompanyUnits, COMPANY_OPTIONS } from "../../config/companyConfig";
 import useIsMobile from "../../hooks/useIsMobile";
+import usePhotoCapture from "../../hooks/usePhotoCapture";
 
 const DOC_FIELDS = [
   { key: "adhar_image", label: "Aadhar Card" },
@@ -653,14 +654,18 @@ const AppointmentModal = ({
     clearError("unit");
   };
 
-  const handlePhotoChange = (e) => {
-    const file = e.target.files[0];
+  const handlePhotoChange = (file) => {
     if (!file) return;
     setFormData((prev) => ({ ...prev, photo: file }));
     const reader = new FileReader();
     reader.onloadend = () => setPhotoPreview(reader.result);
     reader.readAsDataURL(file);
   };
+
+  // Camera-only capture — no gallery/file-picker path.
+  const { requestCapture, cameraModal } = usePhotoCapture({
+    onCapture: handlePhotoChange,
+  });
 
   const handleNameChange = (e) => {
     const { name, value } = e.target;
@@ -740,14 +745,11 @@ const AppointmentModal = ({
                 <div className="flex flex-col md:grid md:grid-cols-12 gap-8 items-start">
                 {/* Photo */}
                 <div className="md:col-span-5 flex flex-col items-center">
-                  <label className="cursor-pointer group relative">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      capture="user"
-                      onChange={handlePhotoChange}
-                      className="hidden"
-                    />
+                  <div
+                    className="cursor-pointer group relative"
+                    onClick={requestCapture}
+                  >
+                    {cameraModal}
                     <div className="w-48 h-56 border border-gray-400 flex items-center justify-center bg-gray-50 overflow-hidden">
                       {photoPreview ? (
                         <img
@@ -758,15 +760,15 @@ const AppointmentModal = ({
                       ) : (
                         <div className="text-center">
                           <p className="font-bold text-gray-400 group-hover:text-brand-500">
-                            CLICK TO ADD PHOTO
+                            TAP TO TAKE PHOTO
                           </p>
                         </div>
                       )}
                     </div>
                     <p className="text-[10px] text-gray-400 mt-1 text-center">
-                      (Click box to change image)
+                      (Click box to take photo)
                     </p>
-                  </label>
+                  </div>
                 </div>
 
                 {/* Top Right Fields */}

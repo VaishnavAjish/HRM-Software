@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import ModernDatePicker from "../../components/ModernDatePicker";
 import {
   PasswordStrength,
@@ -33,6 +33,7 @@ import {
 import { useAuth } from "../../context/AuthContext";
 import { authApi } from "../../utils/api";
 import toast from "react-hot-toast";
+import usePhotoCapture from "../../hooks/usePhotoCapture";
 
 const inputCls =
   "w-full px-3 py-2.5 text-sm bg-gray-50 dark:bg-gray-700/60 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition";
@@ -121,7 +122,6 @@ export default function AdminProfile() {
   const [profile, setProfile] = useState(null);
   const [photoFile, setPhotoFile] = useState(null);
   const [photoPreview, setPhotoPreview] = useState("");
-  const photoInputRef = useRef(null);
   const [passwords, setPasswords] = useState({
     current: "",
     next: "",
@@ -143,12 +143,16 @@ export default function AdminProfile() {
     setPhotoPreview(URL.createObjectURL(file));
   };
 
+  // Camera-only capture — no gallery/file-picker path.
+  const { requestCapture, cameraModal } = usePhotoCapture({
+    onCapture: handlePhotoChange,
+  });
+
   const clearPendingPhoto = () => {
     if (photoPreview) URL.revokeObjectURL(photoPreview);
 
     setPhotoFile(null);
     setPhotoPreview("");
-    if (photoInputRef.current) photoInputRef.current.value = "";
   };
 
   const initials =
@@ -402,22 +406,13 @@ export default function AdminProfile() {
                   <>
                     <button
                       type="button"
-                      onClick={() => photoInputRef.current?.click()}
+                      onClick={requestCapture}
                       className="absolute -bottom-1 -right-1 w-8 h-8 bg-brand-600 hover:bg-brand-700 rounded-full flex items-center justify-center text-white transition-colors shadow-lg border-2 border-white dark:border-gray-800"
                       title="Change photo"
                     >
                       <Camera size={14} />
                     </button>
-                    <input
-                      ref={photoInputRef}
-                      type="file"
-                      accept="image/*"
-                      capture="user"
-                      className="sr-only"
-                      onChange={(e) =>
-                        handlePhotoChange(e.target.files?.[0] || null)
-                      }
-                    />
+                    {cameraModal}
                   </>
                 )}
               </div>

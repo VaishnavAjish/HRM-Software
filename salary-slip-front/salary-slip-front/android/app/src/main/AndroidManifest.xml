@@ -39,4 +39,20 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Camera-only photo capture. No storage/media permissions are declared on
+         purpose: photos are captured straight to app-private cache, never read
+         from the gallery. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+
+    <!-- Required on Android 11+ (API 30). Without it, package-visibility rules
+         make resolveActivity(ACTION_IMAGE_CAPTURE) return null, so Capacitor's
+         WebChromeClient silently falls back to the gallery/file picker
+         ("Media capture intent could not be launched"). targetSdk here is 36. -->
+    <queries>
+        <intent>
+            <action android:name="android.media.action.IMAGE_CAPTURE" />
+        </intent>
+    </queries>
 </manifest>

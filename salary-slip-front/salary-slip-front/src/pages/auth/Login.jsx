@@ -33,6 +33,7 @@ import toast from "react-hot-toast";
 import { authApi } from "../../utils/api";
 import { COMPANY_OPTIONS, getCompanyUnits } from "../../config/companyConfig";
 import WelcomePopup from "./WelcomePopup";
+import usePhotoCapture from "../../hooks/usePhotoCapture";
 
 /* ─── Step indicator ─── */
 function StepBar({ step }) {
@@ -159,7 +160,6 @@ export default function Login() {
   const [fUnit, setFUnit] = useState("");
   const [isAutoDetected, setIsAutoDetected] = useState(false);
   const [verifyOtp, setVerifyOtp] = useState("");
-  const cameraInputRef = useRef(null);
   const [fCode, setFCode] = useState("");
   const [fPhoto, setFPhoto] = useState(null);
   const [fPhotoPreview, setFPhotoPreview] = useState("");
@@ -222,6 +222,11 @@ export default function Login() {
     setFPhoto(file);
     setFPhotoPreview(previewUrl);
   };
+
+  // Camera-only capture — no gallery/file-picker path.
+  const { requestCapture, cameraModal } = usePhotoCapture({
+    onCapture: updateIdentityPhoto,
+  });
 
   /* ── Normal login handler ── */
   const handleLogin = async (e) => {
@@ -678,7 +683,7 @@ export default function Login() {
                   <div className="relative">
                     <div
                       className="relative block cursor-pointer group"
-                      onClick={() => cameraInputRef.current?.click()}
+                      onClick={requestCapture}
                     >
                       <span className="w-28 h-28 sm:w-36 sm:h-36 rounded-full bg-slate-100 dark:bg-gray-700 border-4 border-white dark:border-gray-800 shadow-xl flex items-center justify-center overflow-hidden">
                         {fPhotoPreview ? (
@@ -701,18 +706,7 @@ export default function Login() {
                       </span>
                     </div>
 
-                    {/* Camera only — `capture` makes Android open the camera
-                        directly instead of the gallery/file picker. */}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      capture="user"
-                      ref={cameraInputRef}
-                      onChange={(e) =>
-                        updateIdentityPhoto(e.target.files?.[0] || null)
-                      }
-                      className="sr-only"
-                    />
+                    {cameraModal}
                   </div>
                 </div>
 
