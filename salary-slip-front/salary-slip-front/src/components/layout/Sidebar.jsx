@@ -24,7 +24,6 @@ import {
   GripVertical,
   Plus,
   ChevronLeft,
-  Shield,
   ShieldCheck,
   Calendar,
   ChevronDown,
@@ -42,7 +41,6 @@ function getAdminNav(companyId, user, isAllCompanies) {
 
   const nav = [
     ...(hasAccess("dashboard") ? [{ to: "/admin", label: "Dashboard", icon: LayoutDashboard, end: true }] : []),
-    ...(rawRole === 0 ? [{ to: "/admin/admins", label: "Admin", icon: Shield }] : []),
     ...(hasAccess("employees") ? [{
       label: "Employees",
       icon: Users,

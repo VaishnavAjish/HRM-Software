@@ -174,7 +174,6 @@ const AppointmentModal = ({
     { path: "salary", label: "Salary" },
     { path: "mobile_number", label: "Emp. Mobile No" },
     { path: "emp_whatsapp_no", label: "Emp. Whatsapp No" },
-    { path: "punching_no", label: "Punching No" },
     { path: "name.first", label: "First Name" },
     { path: "name.mid", label: "Mid Name" },
     { path: "name.surname", label: "Surname" },
@@ -184,8 +183,8 @@ const AppointmentModal = ({
     { path: "taluka", label: "Taluka" },
     { path: "district", label: "District" },
     { path: "dob", label: "Birth Date" },
-    { path: "reference_name", label: "Reference Name" },
-    { path: "reference_mobile_no", label: "Reference Mobile" },
+    { path: "gender", label: "Gender" },
+    { path: "marital_status", label: "Marital Status" },
     { path: "aadhar_card_no", label: "Aadhar Card No" },
     { path: "bank_name", label: "Bank Name" },
     { path: "pan_card_no", label: "PAN Card No" },
@@ -193,7 +192,6 @@ const AppointmentModal = ({
     { path: "bank_account_no", label: "Bank Account No" },
     ...(isAllCompanies ? [{ path: "company_code", label: "Company" }] : []),
     { path: "unit", label: "Unit Name" },
-    { path: "emp_signature", label: "Emp. Signature" },
   ];
 
   const fieldValidators = [
@@ -866,7 +864,7 @@ const AppointmentModal = ({
                   {/* Punching No */}
                 <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
                   <label className="font-bold w-full sm:w-[130px] sm:shrink-0 text-[13px]">
-                    Punching No <span className="text-red-600">*</span>
+                    Punching No
                   </label>
                   <span className="font-bold hidden sm:inline">:</span>
                   <input
@@ -983,6 +981,8 @@ const AppointmentModal = ({
                     name="gender"
                     value={formData.gender}
                     onChange={handleChange}
+                    required
+                    error={errors.gender}
                     type="select"
                     options={["MALE", "FEMALE", "OTHER"]}
                   />
@@ -997,6 +997,8 @@ const AppointmentModal = ({
                     name="marital_status"
                     value={formData.marital_status}
                     onChange={handleChange}
+                    required
+                    error={errors.marital_status}
                     type="select"
                     options={["MARRIED", "UNMARRIED"]}
                   />
@@ -1017,7 +1019,6 @@ const AppointmentModal = ({
                     name="reference_name"
                     value={formData.reference_name}
                     onChange={handleChange}
-                    required
                     error={errors.reference_name}
                   />
                   <RowField
@@ -1025,7 +1026,6 @@ const AppointmentModal = ({
                     name="reference_mobile_no"
                     value={formData.reference_mobile_no}
                     onChange={handleChange}
-                    required
                     error={errors.reference_mobile_no}
                     inputMode="numeric"
                     maxLength={10}
@@ -1306,7 +1306,7 @@ const AppointmentModal = ({
                 </div>
                 <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 flex-1 w-full">
                   <span className="font-bold whitespace-nowrap uppercase">
-                    Emp. Signature <span className="text-red-600">*</span> :
+                    Emp. Signature :
                   </span>
                   <input
                     name="emp_signature"

@@ -5,7 +5,9 @@ namespace App\Http\Controllers;
 use App\Models\User;
 use App\Models\SalarySlip;
 use App\Models\UploadBatch;
+use App\Exceptions\DocumentException;
 use App\Services\DocumentStorageService;
+use App\Services\Documents\DocumentService;
 use App\Support\DocumentType;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -120,11 +122,23 @@ class UserController extends Controller
             $documentType = DocumentType::LEGACY_FIELD_MAP[$field] ?? 'OTHER';
 
             try {
-                // Routed through the same service as the /documents endpoint so
-                // these legacy per-column fields get the standard generated
-                // name, versioning, folder layout and metadata row.
-                $document = DocumentStorageService::store($file, $owner, $documentType, $uploadedBy);
-                $stored[$field] = $document->storage_path;
+                if (config('documents.provider') === 's3') {
+                    // Photos and ID documents go to the private S3 bucket with
+                    // versioning, checksums and an audit trail. The column keeps
+                    // the object key; User::photo_url presigns it for display.
+                    $version = DocumentService::make()->upload(
+                        $file,
+                        $owner ?? $request->user(),
+                        $documentType,
+                        $uploadedBy
+                    );
+                    $stored[$field] = $version->s3_object_key;
+                } else {
+                    $document = DocumentStorageService::store($file, $owner, $documentType, $uploadedBy);
+                    $stored[$field] = $document->storage_path;
+                }
+            } catch (DocumentException $e) {
+                throw ValidationException::withMessages([$field => $e->getMessage()]);
             } catch (RuntimeException $e) {
                 throw ValidationException::withMessages([$field => $e->getMessage()]);
             }

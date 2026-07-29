@@ -575,59 +575,7 @@ export default function AdminProfile() {
         </div>
 
 
-        {/* Change password */}
-        <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-100 dark:border-gray-700">
-            <Key size={16} className="text-brand-600" />
-            <h3 className="font-semibold text-gray-900 dark:text-white">
-              Change Password
-            </h3>
-          </div>
-          <div className="p-5">
-            <div className="grid sm:grid-cols-3 gap-4">
-              {[
-                { key: "current", label: "Current Password" },
-                { key: "next", label: "New Password" },
-                { key: "confirm", label: "Confirm Password" },
-              ].map(({ key, label }) => (
-                <div key={key}>
-                  <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">
-                    {label}
-                  </label>
-                  <div className="relative">
-                    <input
-                      type={showPwd[key] ? "text" : "password"}
-                      value={passwords[key]}
-                      onChange={(e) => setPwd(key, e.target.value)}
-                      placeholder="••••••••"
-                      className={inputCls + " pr-9"}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => toggleShow(key)}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
-                    >
-                      {showPwd[key] ? <EyeOff size={15} /> : <Eye size={15} />}
-                    </button>
-                  </div>
-                  {key === "next" && (
-                    <PasswordStrength password={passwords.next} isEdit />
-                  )}
-                </div>
-              ))}
-            </div>
-            <div className="flex justify-end mt-4">
-              <button
-                onClick={handlePasswordUpdate}
-                disabled={pwdLoading}
-                className="flex items-center gap-2 px-5 py-2.5 bg-brand-600 hover:bg-brand-700 disabled:opacity-60 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm shadow-brand-600/30"
-              >
-                <Key size={14} />
-                {pwdLoading ? "Updating…" : "Update Password"}
-              </button>
-            </div>
-          </div>
-        </div>
+
       </div>
     </div>
   );

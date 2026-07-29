@@ -97,6 +97,26 @@ class ObjectKeyBuilder
         return self::assertSafe(self::QUARANTINE_PREFIX . '/' . ltrim($objectKey, '/'));
     }
 
+    /**
+     * True when a stored value is one of our S3 object keys rather than a
+     * legacy local path ("uploads/photos/…") or an already-absolute URL.
+     */
+    public static function looksLikeObjectKey(?string $value): bool
+    {
+        if (!$value || preg_match('#^(https?:)?//#i', $value) || str_starts_with($value, 'data:')) {
+            return false;
+        }
+
+        foreach (self::OWNER_PREFIXES as $prefix) {
+            if (str_starts_with($value, $prefix . '/')) {
+                return true;
+            }
+        }
+
+        return str_starts_with($value, self::ARCHIVE_PREFIX . '/')
+            || str_starts_with($value, self::TEMP_PREFIX . '/');
+    }
+
     /** Final gate — nothing reaches S3 without passing this. */
     public static function assertSafe(string $key): string
     {

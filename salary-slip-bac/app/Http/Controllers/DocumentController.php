@@ -88,12 +88,41 @@ class DocumentController extends Controller
             : DocumentType::normalise($request->document_type);
 
         try {
-            $document = DocumentStorageService::store(
-                $request->file('file'),
-                $owner,
-                $type,
-                optional(auth('api')->user())->id
-            );
+            if (config('documents.provider') === 's3') {
+                // Same S3 pipeline as /v1/documents, mapped back onto this
+                // endpoint's original response shape so existing callers keep
+                // working while everything lands in the bucket.
+                $version = \App\Services\Documents\DocumentService::make()->upload(
+                    $request->file('file'),
+                    $owner,
+                    $type,
+                    optional(auth('api')->user())->id,
+                    $request->header('Idempotency-Key')
+                );
+
+                $document = (object) [
+                    'id'             => $version->id,
+                    'user_id'        => $owner->id,
+                    'emp_code'       => $owner->emp_code,
+                    'document_type'  => $type,
+                    'original_name'  => $version->original_file_name,
+                    'generated_name' => $version->generated_file_name,
+                    'version'        => $version->version,
+                    'size'           => $version->file_size,
+                    'mime_type'      => $version->mime_type,
+                    'checksum'       => $version->checksum,
+                    'storage_path'   => null, // private object — no direct path
+                ];
+            } else {
+                $document = DocumentStorageService::store(
+                    $request->file('file'),
+                    $owner,
+                    $type,
+                    optional(auth('api')->user())->id
+                );
+            }
+        } catch (\App\Exceptions\DocumentException $e) {
+            return response()->json(['status' => false, 'message' => $e->getMessage()], $e->status);
         } catch (RuntimeException $e) {
             return response()->json(['status' => false, 'message' => $e->getMessage()], 422);
         }

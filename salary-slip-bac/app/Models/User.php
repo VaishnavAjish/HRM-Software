@@ -58,4 +58,63 @@ class User extends Authenticatable implements JWTSubject
     {
         return $this->belongsToMany(Role::class, 'user_roles');
     }
+
+    /**
+     * Columns holding an uploaded file path/key.
+     *
+     * When documents live in S3 the object is private, so the stored value is
+     * an object key that cannot be rendered directly. These accessors swap it
+     * for a short-lived presigned URL on read. Signing is a local HMAC — no
+     * AWS round trip — so doing it per row in a listing is cheap.
+     *
+     * Only reads are affected: Eloquent accessors do not intercept writes, so
+     * the raw key is what gets persisted.
+     */
+    private function resolveStoredFile(?string $value): ?string
+    {
+        if (!$value || !\App\Support\ObjectKeyBuilder::looksLikeObjectKey($value)) {
+            return $value;
+        }
+
+        if (config('documents.provider') !== 's3') {
+            return $value;
+        }
+
+        // Send the real content type so the browser renders an <img> inline
+        // instead of treating it as an opaque download.
+        $extension = strtolower(pathinfo($value, PATHINFO_EXTENSION));
+        $mime = array_search($extension, (array) config('documents.mime_extension_map', []), true)
+            ?: 'application/octet-stream';
+
+        try {
+            return \App\Services\Documents\DocumentService::provider()->viewUrl(
+                $value,
+                (int) config('documents.view_url_ttl'),
+                $mime
+            );
+        } catch (\Throwable) {
+            // Never let a storage hiccup break a user listing.
+            return null;
+        }
+    }
+
+    public function getPhotoAttribute($value)
+    {
+        return $this->resolveStoredFile($value);
+    }
+
+    public function getAdharImageAttribute($value)
+    {
+        return $this->resolveStoredFile($value);
+    }
+
+    public function getPanImageAttribute($value)
+    {
+        return $this->resolveStoredFile($value);
+    }
+
+    public function getCheckImageAttribute($value)
+    {
+        return $this->resolveStoredFile($value);
+    }
 }
