@@ -18,6 +18,7 @@ import { useCompany } from "../../context/CompanyContext";
 import { getCompanyUnits, COMPANY_OPTIONS } from "../../config/companyConfig";
 import useIsMobile from "../../hooks/useIsMobile";
 import usePhotoCapture from "../../hooks/usePhotoCapture";
+import { getEmployeePhotoUrl } from "../admin/AdminModals/EmployeeHelpers";
 
 const DOC_FIELDS = [
   { key: "adhar_image", label: "Aadhar Card" },
@@ -1550,8 +1551,12 @@ const DocUpload = ({
   onChange,
   onRemove,
 }) => {
-  const uploaded = Boolean(file || existingUrl);
-  const displayPreview = preview || existingUrl || "";
+  // `preview` is a local object URL from a just-picked file; `existingUrl` is a
+  // stored relative path that needs base-URL resolution (and is blanked if it
+  // is a legacy server-local temp path).
+  const existingSrc = getEmployeePhotoUrl(existingUrl);
+  const uploaded = Boolean(file || existingSrc);
+  const displayPreview = preview || existingSrc || "";
 
   return (
     <div

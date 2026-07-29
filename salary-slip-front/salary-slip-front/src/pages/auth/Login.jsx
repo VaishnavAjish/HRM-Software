@@ -75,9 +75,36 @@ function StepBar({ step }) {
   );
 }
 
+// Per-box animation delay (ms) used below for the staggered wave/drop effect.
+// The error timer in handleVerifyOtp adds this in so the last box's animation
+// is never cut off before it finishes.
+const OTP_BOX_STAGGER_MS = 90;
+
+/* ── Correct-OTP dial sequence. These mirror the animation durations in
+      index.css (.otp-slot-gather / .otp-orbit-spinning / .otp-check-burst),
+      so the phase timers below never cut an animation short. ── */
+const OTP_GATHER_MS = 600; // row → 12/3/6/9 o'clock
+const OTP_SPIN_MS = 1200; // full orbit around the dial
+const OTP_ORBIT_MS = OTP_GATHER_MS + OTP_SPIN_MS;
+const OTP_CHECK_MS = 950; // digits fade + checkmark burst, then redirect
+
+const OTP_BOX_SIZE = 56; // w-14
+const OTP_ROW_PITCH = OTP_BOX_SIZE + 12; // box + gap-3
+const OTP_DIAL_RADIUS = 70;
+const OTP_STAGE_HEIGHT = OTP_DIAL_RADIUS * 2 + OTP_BOX_SIZE + 16;
+
+// The four digits land at 12, 3, 6 and 9 o'clock, in that order.
+const OTP_CLOCK_POSITIONS = [
+  { x: 0, y: -OTP_DIAL_RADIUS },
+  { x: OTP_DIAL_RADIUS, y: 0 },
+  { x: 0, y: OTP_DIAL_RADIUS },
+  { x: -OTP_DIAL_RADIUS, y: 0 },
+];
+
 /* ─── 4-box OTP Input ─── */
-function OtpInput({ value, onChange }) {
+function OtpInput({ value, onChange, status = "idle" }) {
   const refs = useRef([]);
+  const disabled = status !== "idle";
 
   const handleChange = (e, i) => {
     const digit = e.target.value.replace(/\D/, "").slice(-1);
@@ -106,25 +133,99 @@ function OtpInput({ value, onChange }) {
     e.preventDefault();
   };
 
+  const boxAnimClass =
+    status === "verifying"
+      ? "otp-box-verifying"
+      : status === "error"
+        ? "otp-box-drop"
+        : "";
+
+  const boxStateClass =
+    status === "error"
+      ? "border-red-400 dark:border-red-500"
+      : "border-gray-200 dark:border-gray-600";
+
+  // Once the OTP checks out the row breaks apart into a clock dial: the digits
+  // swing out to 12/3/6/9, orbit together, then dissolve into the checkmark.
+  const onDial = status === "orbit" || status === "success";
+
   return (
-    <div className="flex gap-3 justify-center my-2">
-      {[0, 1, 2, 3].map((i) => {
-        const ch = (value || "    ")[i];
-        return (
-          <input
-            key={i}
-            ref={(el) => (refs.current[i] = el)}
-            type="text"
-            inputMode="numeric"
-            maxLength={1}
-            value={ch === " " || !ch ? "" : ch}
-            onChange={(e) => handleChange(e, i)}
-            onKeyDown={(e) => handleKey(e, i)}
-            onPaste={handlePaste}
-            className="w-14 h-14 text-center text-2xl font-bold bg-gray-50 dark:bg-gray-700 border-2 border-gray-200 dark:border-gray-600 rounded-xl text-gray-900 dark:text-white focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 dark:focus:ring-brand-900/40 transition-all"
-          />
-        );
-      })}
+    <div
+      className="otp-stage"
+      style={{ minHeight: onDial ? OTP_STAGE_HEIGHT : OTP_BOX_SIZE + 16 }}
+    >
+      {onDial ? (
+        <>
+          <div
+            className={`otp-orbit ${status === "orbit" ? "otp-orbit-spinning" : ""}`}
+          >
+            {[0, 1, 2, 3].map((i) => {
+              const pos = OTP_CLOCK_POSITIONS[i];
+              const ch = (value || "    ")[i];
+              return (
+                <div
+                  key={i}
+                  className={`otp-slot ${status === "orbit" ? "otp-slot-gather" : ""}`}
+                  style={{
+                    "--otp-row-x": `${(i - 1.5) * OTP_ROW_PITCH}px`,
+                    "--otp-clock-x": `${pos.x}px`,
+                    "--otp-clock-y": `${pos.y}px`,
+                    // The gather animation holds this position via `forwards`;
+                    // once it's done the inline transform keeps them parked.
+                    ...(status === "success"
+                      ? { transform: `translate(${pos.x}px, ${pos.y}px)` }
+                      : {}),
+                  }}
+                >
+                  <div
+                    className={
+                      status === "orbit" ? "otp-digit-upright" : "otp-digit-fade"
+                    }
+                  >
+                    <div className="w-14 h-14 flex items-center justify-center text-2xl font-bold rounded-xl border-2 border-brand-500 bg-brand-50 dark:bg-brand-900/30 text-brand-700 dark:text-brand-300 shadow-sm shadow-brand-500/30">
+                      {ch === " " ? "" : ch}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {status === "success" && (
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div className="otp-check-ring absolute w-20 h-20 rounded-full bg-green-400" />
+              <div className="otp-check-burst">
+                <CheckCircle2 size={64} className="text-green-500" />
+              </div>
+            </div>
+          )}
+        </>
+      ) : (
+        <div
+          className="flex gap-3 justify-center my-2"
+          style={{ perspective: "600px" }}
+        >
+          {[0, 1, 2, 3].map((i) => {
+            const ch = (value || "    ")[i];
+            return (
+              <input
+                key={i}
+                ref={(el) => (refs.current[i] = el)}
+                type="text"
+                inputMode="numeric"
+                maxLength={1}
+                value={ch === " " || !ch ? "" : ch}
+                onChange={(e) => handleChange(e, i)}
+                onKeyDown={(e) => handleKey(e, i)}
+                onPaste={handlePaste}
+                disabled={disabled}
+                style={{ animationDelay: `${i * OTP_BOX_STAGGER_MS}ms` }}
+                className={`w-14 h-14 text-center text-2xl font-bold bg-gray-50 dark:bg-gray-700 border-2 rounded-xl text-gray-900 dark:text-white focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 dark:focus:ring-brand-900/40 transition-all disabled:cursor-not-allowed ${boxStateClass} ${boxAnimClass}`}
+              />
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -159,6 +260,17 @@ export default function Login() {
   const [otpErr, setOtpErr] = useState("");
   const [sendLoading, setSendLoading] = useState(false);
   const [otpVerifyLoading, setOtpVerifyLoading] = useState(false);
+  // 'idle' | 'verifying' | 'orbit' | 'success' | 'error'
+  const [otpAnim, setOtpAnim] = useState("idle");
+
+  // Pending phase timers for the OTP animation, so leaving the flow mid-way
+  // can't land the user on step 2 after they've already backed out.
+  const otpTimers = useRef([]);
+  const clearOtpTimers = () => {
+    otpTimers.current.forEach(clearTimeout);
+    otpTimers.current = [];
+  };
+  useEffect(() => clearOtpTimers, []);
 
   // Step 2 (formerly Step 3)
   const [newPass, setNewPass] = useState("");
@@ -169,12 +281,14 @@ export default function Login() {
   const [pwdLoading, setPwdLoading] = useState(false);
 
   const enterForgot = () => {
+    clearOtpTimers();
     setMode("forgot");
     setStep(1);
     setEmailInput("");
     setOtpSent(false);
     setOtp("    ");
     setOtpErr("");
+    setOtpAnim("idle");
     setNewPass("");
     setConfPass("");
     setPwdErr("");
@@ -289,6 +403,7 @@ export default function Login() {
       await authApi.verifyEmail(emailInput.trim());
       setOtp("    ");
       setOtpVerifyLoading(false);
+      setOtpAnim("idle");
       setOtpSent(true);
       setOtpErr("");
       toast.success(`OTP sent to ${emailInput}`);
@@ -308,18 +423,42 @@ export default function Login() {
     }
 
     setOtpVerifyLoading(true);
+    setOtpErr("");
+    setOtpAnim("verifying");
     try {
       await authApi.verifyEmailOtp(emailInput.trim(), entered);
-      setOtpErr("");
-      setNewPass("");
-      setConfPass("");
-      setPwdErr("");
-      setStep(2);
+
+      // Phase 1 — digits swing out to 12/3/6/9 and orbit the dial.
+      setOtpAnim("orbit");
+      otpTimers.current.push(
+        setTimeout(() => {
+          // Phase 2 — digits dissolve, checkmark bursts in.
+          setOtpAnim("success");
+          otpTimers.current.push(
+            setTimeout(() => {
+              // Phase 3 — only now move on to the password step.
+              setNewPass("");
+              setConfPass("");
+              setPwdErr("");
+              setOtpAnim("idle");
+              setOtpVerifyLoading(false);
+              setStep(2);
+            }, OTP_CHECK_MS),
+          );
+        }, OTP_ORBIT_MS),
+      );
     } catch (error) {
       setOtpErr(error.message || "Incorrect OTP. Please try again.");
-      setOtp("    ");
-    } finally {
-      setOtpVerifyLoading(false);
+      setOtpAnim("error");
+      // Wait for the last (most-delayed) box's otp-drop (0.5s) to fully
+      // finish falling, plus a small buffer, before clearing the boxes.
+      otpTimers.current.push(
+        setTimeout(() => {
+          setOtp("    ");
+          setOtpAnim("idle");
+          setOtpVerifyLoading(false);
+        }, 3 * OTP_BOX_STAGGER_MS + 500 + 100),
+      );
     }
   };
 
@@ -504,7 +643,12 @@ export default function Login() {
         {mode === "forgot" && (
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-100 dark:border-gray-700 border-t-4 border-t-brand-600 p-8">
             <button
-              onClick={() => setMode("login")}
+              onClick={() => {
+                clearOtpTimers();
+                setOtpAnim("idle");
+                setOtpVerifyLoading(false);
+                setMode("login");
+              }}
               className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 mb-5 transition-colors"
             >
               <ArrowLeft size={15} /> Back to Login
@@ -570,9 +714,11 @@ export default function Login() {
                         </p>
                         <button
                           onClick={() => {
+                            clearOtpTimers();
                             setOtpSent(false);
                             setOtp("    ");
                             setOtpVerifyLoading(false);
+                            setOtpAnim("idle");
                             setEmailInput("");
                           }}
                           className="text-xs text-brand-500 hover:underline"
@@ -590,7 +736,7 @@ export default function Login() {
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3 text-center">
                           Enter 4-digit OTP
                         </label>
-                        <OtpInput value={otp} onChange={setOtp} />
+                        <OtpInput value={otp} onChange={setOtp} status={otpAnim} />
                       </div>
 
                       {otpErr && (
@@ -610,9 +756,17 @@ export default function Login() {
                         disabled={
                           otp.replace(/\s/g, "").length < 4 || otpVerifyLoading
                         }
-                        className="w-full py-2.5 bg-brand-600 hover:bg-brand-700 disabled:bg-brand-400 text-white rounded-xl font-semibold text-sm transition-colors flex items-center justify-center gap-2 shadow-sm shadow-brand-600/20"
+                        className={`w-full py-2.5 text-white rounded-xl font-semibold text-sm transition-colors flex items-center justify-center gap-2 shadow-sm ${
+                          otpAnim === "orbit" || otpAnim === "success"
+                            ? "bg-green-600 disabled:bg-green-600 shadow-green-600/20"
+                            : "bg-brand-600 hover:bg-brand-700 disabled:bg-brand-400 shadow-brand-600/20"
+                        }`}
                       >
-                        {otpVerifyLoading ? (
+                        {otpAnim === "orbit" || otpAnim === "success" ? (
+                          <>
+                            <CheckCircle2 size={16} /> Verified
+                          </>
+                        ) : otpVerifyLoading ? (
                           <>
                             <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                             Verifying...
@@ -626,7 +780,8 @@ export default function Login() {
 
                       <button
                         onClick={handleSendOtp}
-                        className="w-full py-1.5 text-sm text-gray-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
+                        disabled={otpVerifyLoading}
+                        className="w-full py-1.5 text-sm text-gray-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Didn't receive it? Resend OTP
                       </button>

@@ -21,6 +21,7 @@ import {
   Award,
   Clock,
   CheckCircle,
+  AlertCircle,
   Eye,
   EyeOff,
   CreditCard,
@@ -28,7 +29,7 @@ import {
   Home,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext"; // Corrected import path
-import { authApi } from "../../utils/api";
+import { authApi, salaryApi } from "../../utils/api";
 import toast from "react-hot-toast";
 import usePhotoCapture from "../../hooks/usePhotoCapture";
 
@@ -127,6 +128,20 @@ export default function Profile() {
     joining_date: "",
   });
 
+  const [departmentsList, setDepartmentsList] = useState([]);
+
+  useEffect(() => {
+    async function fetchDepartments() {
+      try {
+        const res = await salaryApi.getDepartments(user?.accessToken, user?.tokenType);
+        setDepartmentsList(res?.data?.map(d => d.name) || []);
+      } catch (e) {
+        console.error("Failed to fetch departments", e);
+      }
+    }
+    if (user?.accessToken) fetchDepartments();
+  }, [user]);
+
   useEffect(() => {
     async function fetchProfile() {
       try {
@@ -209,6 +224,17 @@ export default function Profile() {
   const toggleShow = (k) => setShowPwd((p) => ({ ...p, [k]: !p[k] }));
 
   const handleSave = async () => {
+    if (form.pan_card_no && !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/i.test(form.pan_card_no)) {
+      toast.error("Invalid PAN Card format. (e.g., ABCDE1234F)");
+      setActiveStep(3);
+      return;
+    }
+    if (form.bank_ifsc_code && !/^[A-Z]{4}0[A-Z0-9]{6}$/i.test(form.bank_ifsc_code)) {
+      toast.error("Invalid Bank IFSC format. (e.g., SBIN0001234)");
+      setActiveStep(3);
+      return;
+    }
+
     setLoading(true); // Use a loading state for the save operation
     try {
       const payload = {
@@ -433,7 +459,7 @@ export default function Profile() {
   const completionFields = [
     "name", "email", "phone", "dob", "address", "city", "district", "state", "pin",
     "aadhar_card_no", "pan_card_no", "bank_name", "bank_ifsc_code", "bank_account_no",
-    "pf_no", "esi_no", "gender", "department", "designation", "joining_date"
+    "gender", "department", "designation", "joining_date"
   ];
 
   const calculateCompletion = () => {
@@ -450,6 +476,17 @@ export default function Profile() {
 
   return (
     <div className="space-y-4">
+      {completionPercentage < 100 && (
+        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 px-4 py-3 rounded-xl flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="text-amber-500" size={18} />
+            <p className="text-sm font-medium">
+              Please complete your profile details and hit Save to unlock all features.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Profile Completion & Top Actions */}
       <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 relative overflow-hidden">
         {/* Background progress indicator effect */}
@@ -768,11 +805,16 @@ export default function Profile() {
               value={emp.department || "—"}
               editing={editing}
               editNode={
-                <input
+                <select
                   value={form.department}
                   onChange={(e) => set("department", e.target.value)}
                   className="mt-0.5 w-full text-sm bg-transparent border-b border-brand-400 text-gray-900 dark:text-white focus:outline-none py-0.5"
-                />
+                >
+                  <option value="">Select Department</option>
+                  {departmentsList.map(dept => (
+                    <option key={dept} value={dept}>{dept}</option>
+                  ))}
+                </select>
               }
             />
             <InfoRow

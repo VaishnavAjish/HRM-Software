@@ -6,6 +6,7 @@ import GridHeaderContextMenu from "../../components/ui/GridHeaderContextMenu";
 import useGridHeaderContextMenu from "../../hooks/useGridHeaderContextMenu";
 import { useTheme } from "../../context/ThemeContext";
 import useIsMobile from "../../hooks/useIsMobile";
+import { getEmployeePhotoUrl } from "./AdminModals/EmployeeHelpers";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 import {
@@ -221,19 +222,25 @@ const FamilyMembersCell = ({ value }) => {
 };
 
 function DocThumb({ url, label, onPreview }) {
+  // Documents are stored as relative paths like "uploads/documents/x.jpg", so
+  // they need the same base-URL resolution as photos. Rendering the raw value
+  // resolved it against the current route instead, and a legacy temp path
+  // ("C:\…\phpXXXX.tmp") became a blocked file:/// request.
+  const src = getEmployeePhotoUrl(url);
+
   return (
     <button
       type="button"
-      onClick={() => url && onPreview({ url, label })}
-      disabled={!url}
+      onClick={() => src && onPreview({ url: src, label })}
+      disabled={!src}
       className={`flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg border transition ${
-        url
+        src
           ? "cursor-pointer border-gray-200 hover:border-brand-400 dark:border-gray-600"
           : "cursor-default border-dashed border-gray-200 dark:border-gray-700"
       }`}
     >
-      {url ? (
-        <img src={url} alt={label} className="h-full w-full object-cover" />
+      {src ? (
+        <img src={src} alt={label} className="h-full w-full object-cover" />
       ) : (
         <ImageIcon size={16} className="text-gray-300 dark:text-gray-600" />
       )}

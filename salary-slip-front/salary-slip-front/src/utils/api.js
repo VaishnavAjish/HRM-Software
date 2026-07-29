@@ -584,6 +584,152 @@ export const rbacApi = {
   },
 };
 
+export const documentApi = {
+  // Catalogue for the Document Type selector, grouped by category.
+  getTypes(accessToken, tokenType = "Bearer") {
+    return apiRequest("/documents/types", { headers: authHeaders(accessToken, tokenType) });
+  },
+
+  // Filename the server WOULD generate — shown before the user confirms.
+  // The server recomputes it on upload, so this is display-only.
+  previewName({ userId, documentType, fileName }, accessToken, tokenType = "Bearer") {
+    return apiRequest("/documents/preview-name", {
+      method: "POST",
+      headers: authHeaders(accessToken, tokenType),
+      body: JSON.stringify({
+        user_id: userId ?? null,
+        document_type: documentType,
+        file_name: fileName,
+      }),
+    });
+  },
+
+  upload({ userId, documentType, file }, accessToken, tokenType = "Bearer") {
+    const formData = new FormData();
+    if (userId) formData.append("user_id", userId);
+    formData.append("document_type", documentType);
+    formData.append("file", file);
+
+    return apiRequest("/documents", {
+      method: "POST",
+      headers: authHeaders(accessToken, tokenType),
+      body: formData,
+    });
+  },
+
+  // filters: search, user_id, emp_code, document_type, category, version, from, to, all_versions
+  search(filters = {}, accessToken, tokenType = "Bearer") {
+    const params = new URLSearchParams(
+      Object.entries(filters).filter(([, v]) => v !== undefined && v !== null && v !== ""),
+    );
+    return apiRequest(`/documents?${params}`, { headers: authHeaders(accessToken, tokenType) });
+  },
+
+  remove(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/documents/${id}`, {
+      method: "DELETE",
+      headers: authHeaders(accessToken, tokenType),
+    });
+  },
+};
+
+/**
+ * S3-backed document API (v1).
+ *
+ * Presigned URLs returned here are short-lived and must never be persisted —
+ * no localStorage, no cache, no redux. Request a fresh one per view/download.
+ */
+export const documentV1Api = {
+  getTypes(accessToken, tokenType = "Bearer") {
+    return apiRequest("/v1/documents/types", { headers: authHeaders(accessToken, tokenType) });
+  },
+
+  health(accessToken, tokenType = "Bearer") {
+    return apiRequest("/v1/documents/health", { headers: authHeaders(accessToken, tokenType) });
+  },
+
+  // filters: page, pageSize, search, employeeId, documentType, status,
+  //          from, to, sortBy, sortOrder, includeDeleted
+  list(filters = {}, accessToken, tokenType = "Bearer") {
+    const params = new URLSearchParams(
+      Object.entries(filters).filter(([, v]) => v !== undefined && v !== null && v !== ""),
+    );
+    return apiRequest(`/v1/documents?${params}`, { headers: authHeaders(accessToken, tokenType) });
+  },
+
+  get(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/documents/${id}`, { headers: authHeaders(accessToken, tokenType) });
+  },
+
+  versions(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/documents/${id}/versions`, { headers: authHeaders(accessToken, tokenType) });
+  },
+
+  // idempotencyKey makes a retried upload return the original version instead
+  // of creating a duplicate one.
+  upload({ file, documentType, employeeId, description, idempotencyKey }, accessToken, tokenType = "Bearer") {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("documentType", documentType);
+    if (employeeId) formData.append("employeeId", employeeId);
+    if (description) formData.append("description", description);
+
+    return apiRequest("/v1/documents/upload", {
+      method: "POST",
+      headers: {
+        ...authHeaders(accessToken, tokenType),
+        ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
+      },
+      body: formData,
+    });
+  },
+
+  replace({ id, file, idempotencyKey }, accessToken, tokenType = "Bearer") {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    return apiRequest(`/v1/documents/${id}/replace`, {
+      method: "POST",
+      headers: {
+        ...authHeaders(accessToken, tokenType),
+        ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
+      },
+      body: formData,
+    });
+  },
+
+  // Always fetched fresh at the moment of use — never stored.
+  viewUrl(id, versionId, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/documents/${id}/view-url`, {
+      method: "POST",
+      headers: authHeaders(accessToken, tokenType),
+      body: JSON.stringify({ versionId: versionId ?? null }),
+    });
+  },
+
+  downloadUrl(id, versionId, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/documents/${id}/download-url`, {
+      method: "POST",
+      headers: authHeaders(accessToken, tokenType),
+      body: JSON.stringify({ versionId: versionId ?? null }),
+    });
+  },
+
+  remove(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/documents/${id}`, {
+      method: "DELETE",
+      headers: authHeaders(accessToken, tokenType),
+    });
+  },
+
+  restore(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/documents/${id}/restore`, {
+      method: "POST",
+      headers: authHeaders(accessToken, tokenType),
+    });
+  },
+};
+
 export const authApi = {
   register(payload, accessToken, tokenType = "Bearer") {
     return apiRequest("/register", {

@@ -75,7 +75,7 @@ function ProtectedRoute({ children, requiredRole }) {
     const fields = [
       "name", "email", "phone", "dob", "address", "city", "district", "state", "pin",
       "aadhar_card_no", "pan_card_no", "bank_name", "bank_ifsc_code", "bank_account_no",
-      "pf_no", "esi_no", "gender", "department", "designation", "joining_date"
+      "gender", "department", "designation", "joining_date"
     ];
     const source = {
       ...user,

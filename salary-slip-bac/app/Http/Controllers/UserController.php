@@ -5,11 +5,15 @@ namespace App\Http\Controllers;
 use App\Models\User;
 use App\Models\SalarySlip;
 use App\Models\UploadBatch;
+use App\Services\DocumentStorageService;
+use App\Support\DocumentType;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Maatwebsite\Excel\Facades\Excel;
+use RuntimeException;
 
 class UserController extends Controller
 {
@@ -41,6 +45,93 @@ class UserController extends Controller
     private const PHOTO_UPLOAD_RULES = [
         'photo' => 'nullable|image|mimes:jpeg,jpg,png,webp|max:5120',
     ];
+
+    // Scanned ID documents — unlike photo these may also be PDFs.
+    private const DOCUMENT_UPLOAD_RULES = [
+        'adhar_image' => 'nullable|file|mimes:jpeg,jpg,png,webp,pdf|max:5120',
+        'pan_image'   => 'nullable|file|mimes:jpeg,jpg,png,webp,pdf|max:5120',
+        'check_image' => 'nullable|file|mimes:jpeg,jpg,png,webp,pdf|max:5120',
+    ];
+
+    // Every request field that arrives as an uploaded file. These must never
+    // reach a mass-assignment array as raw input — see storeUploadedFiles().
+    private const FILE_UPLOAD_FIELDS = ['photo', 'adhar_image', 'pan_image', 'check_image'];
+
+    /**
+     * Who the uploaded documents belong to.
+     *
+     * On a brand-new appointment the users row does not exist yet, so fall back
+     * to an unsaved User carrying the submitted emp_code/name. That is enough
+     * for the filename and folder to be correct; the metadata row simply has a
+     * null user_id and is still findable by emp_code.
+     */
+    private function resolveDocumentOwner(Request $request): User
+    {
+        if ($request->filled('id') && ($found = User::find($request->input('id')))) {
+            return $found;
+        }
+
+        if ($request->filled('emp_code') && ($found = User::where('emp_code', $request->input('emp_code'))->first())) {
+            return $found;
+        }
+
+        // The appointment form posts name as {first, mid, surname}.
+        $name = $request->input('name');
+
+        if (is_string($name) && str_starts_with(trim($name), '{')) {
+            $name = json_decode($name, true) ?: $name;
+        }
+
+        if (is_array($name)) {
+            $name = trim(implode(' ', array_filter([$name['first'] ?? null, $name['mid'] ?? null, $name['surname'] ?? null])));
+        }
+
+        return new User([
+            'emp_code' => $request->input('emp_code'),
+            'name'     => $name ?: null,
+        ]);
+    }
+
+    /**
+     * Move uploaded photo/document files out of PHP's temp directory and return
+     * the relative paths to persist, keyed by field name.
+     *
+     * Without this the UploadedFile instance is mass-assigned straight into the
+     * model, where it stringifies to PHP's temp path (…/Temp/phpXXXX.tmp). That
+     * path is written to the database and later rendered by the browser as
+     * `file:///…`, which Chrome refuses to load ("Not allowed to load local
+     * resource") — and the temp file is deleted when the request ends anyway,
+     * so the upload is lost either way.
+     *
+     * $allowedFields is the caller's field allowlist, so a file cannot be
+     * stored for a field that endpoint would not otherwise let you write.
+     */
+    private function storeUploadedFiles(Request $request, array $allowedFields, ?User $owner = null): array
+    {
+        $stored = [];
+        $uploadedBy = optional(auth('api')->user())->id;
+
+        foreach (array_intersect(self::FILE_UPLOAD_FIELDS, $allowedFields) as $field) {
+            if (!$request->hasFile($field)) {
+                continue;
+            }
+
+            $file = $request->file($field);
+            $documentType = DocumentType::LEGACY_FIELD_MAP[$field] ?? 'OTHER';
+
+            try {
+                // Routed through the same service as the /documents endpoint so
+                // these legacy per-column fields get the standard generated
+                // name, versioning, folder layout and metadata row.
+                $document = DocumentStorageService::store($file, $owner, $documentType, $uploadedBy);
+                $stored[$field] = $document->storage_path;
+            } catch (RuntimeException $e) {
+                throw ValidationException::withMessages([$field => $e->getMessage()]);
+            }
+        }
+
+        return $stored;
+    }
 
     /**
      * True if $userAuth (a rawRole 1 "master" or 2 "manager") is allowed to
@@ -563,16 +654,16 @@ class UserController extends Controller
      */
     public function updateUser(Request $request)
     {
-        $request->validate(self::PHOTO_UPLOAD_RULES);
+        $request->validate(array_merge(self::PHOTO_UPLOAD_RULES, self::DOCUMENT_UPLOAD_RULES));
 
-        $data = array_intersect_key($request->except(['_token', 'photo']), array_flip(self::APPOINTMENT_FIELDS));
+        // Every file field is excluded from the raw input and re-added below as
+        // a stored path, so no UploadedFile can be mass-assigned as a temp path.
+        $data = array_intersect_key(
+            $request->except(array_merge(['_token'], self::FILE_UPLOAD_FIELDS)),
+            array_flip(self::APPOINTMENT_FIELDS)
+        );
 
-        if ($request->hasFile('photo')) {
-            $photo = $request->file('photo');
-            $filename = time() . '_' . $photo->hashName();
-            $photo->move(public_path('uploads/photos'), $filename);
-            $data['photo'] = 'uploads/photos/' . $filename;
-        }
+        $data = array_merge($data, $this->storeUploadedFiles($request, self::APPOINTMENT_FIELDS, $this->resolveDocumentOwner($request)));
 
         $userAuth = auth('api')->user();
 
@@ -657,14 +748,14 @@ class UserController extends Controller
 
         $request->validate($rules);
 
-        $data = array_intersect_key($request->except(['_token', 'photo']), array_flip(self::SELF_PROFILE_FIELDS));
+        $data = array_intersect_key(
+            $request->except(array_merge(['_token'], self::FILE_UPLOAD_FIELDS)),
+            array_flip(self::SELF_PROFILE_FIELDS)
+        );
 
-        if ($request->hasFile('photo')) {
-            $photo = $request->file('photo');
-            $filename = time() . '_' . $photo->hashName();
-            $photo->move(public_path('uploads/photos'), $filename);
-            $data['photo'] = 'uploads/photos/' . $filename;
-        }
+        // SELF_PROFILE_FIELDS only permits 'photo', so an employee cannot write
+        // their own ID-document fields through this endpoint.
+        $data = array_merge($data, $this->storeUploadedFiles($request, self::SELF_PROFILE_FIELDS, $user));
 
         // If the employee is currently pending, mark them as active once they update their profile
         if ((int)$user->status === 2) {
@@ -735,7 +826,12 @@ class UserController extends Controller
 
     public function appointmentStore(Request $request)
     {
-        $raw = $request->all();
+        $request->validate(array_merge(self::PHOTO_UPLOAD_RULES, self::DOCUMENT_UPLOAD_RULES));
+
+        // File fields are dropped from the raw input here and re-added as stored
+        // paths below; otherwise the UploadedFile objects are mass-assigned and
+        // land in the database as PHP temp paths.
+        $raw = $request->except(self::FILE_UPLOAD_FIELDS);
         $empCode = $raw['emp_code'] ?? null;
         $addedBy = $raw['added_by'] ?? null;
         $trialFormId = $raw['trial_form_id'] ?? null;
@@ -745,6 +841,7 @@ class UserController extends Controller
         // fields below — role/is_deleted/type/password/etc are only ever set
         // by this method itself, never taken from client input.
         $data = array_intersect_key($raw, array_flip(self::APPOINTMENT_FIELDS));
+        $data = array_merge($data, $this->storeUploadedFiles($request, self::APPOINTMENT_FIELDS, $this->resolveDocumentOwner($request)));
 
         // Resolve the source trial form once. Converting it into an appointment
         // creates a brand-new users row, and users.email has a hard uniqueness

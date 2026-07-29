@@ -11,6 +11,15 @@ export function getEmployeePhotoUrl(photo) {
     return photoValue;
   }
 
+  // A server-local filesystem path is never servable to the browser. Chrome
+  // parses a leading drive letter as a URL scheme and rewrites "C:\…" to
+  // file:///C:/…, then refuses to load it ("Not allowed to load local
+  // resource"). Older rows hold PHP temp upload paths like
+  // C:\…\Temp\phpXXXX.tmp; render them as "no image" rather than a broken one.
+  if (/^[a-z]:[\\/]/i.test(photoValue) || photoValue.startsWith("\\\\") || /^file:/i.test(photoValue)) {
+    return "";
+  }
+
   return `${baseUrl}/storage/${photoValue.replace(/^\/+/, "")}`;
 }
 

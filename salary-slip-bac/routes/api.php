@@ -16,6 +16,8 @@ use App\Http\Controllers\Admin\AuditLogController;
 use App\Http\Controllers\Admin\UploadBatchController;
 use App\Http\Controllers\Admin\AttendanceController;
 use App\Http\Controllers\Admin\ShiftController;
+use App\Http\Controllers\DocumentController;
+use App\Http\Controllers\Api\V1\DocumentController as V1DocumentController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\SalariesSlipController;
 use App\Http\Controllers\UserController;
@@ -73,6 +75,41 @@ Route::middleware('jwt.auth')->group(function () {
     Route::post("change-password", [AuthController::class, "changePassword"]);
     Route::post("profile-update", [UserController::class, "updateProfile"]);
     Route::get('my-permissions', [PermissionDimensionController::class, 'myPermissions']);
+
+    // Legacy document endpoints (local storage, flat document_uploads table).
+    // Superseded by /v1/documents below — kept only so existing clients keep
+    // working until they are migrated.
+    Route::group(['prefix' => 'documents'], function () {
+        Route::get('types', [DocumentController::class, 'types']);
+        Route::post('preview-name', [DocumentController::class, 'previewName']);
+        Route::post('/', [DocumentController::class, 'store']);
+        Route::get('/', [DocumentController::class, 'index']);
+        Route::delete('{id}', [DocumentController::class, 'destroy'])->middleware('role:admin');
+    });
+
+    // S3-backed document API. Every endpoint enforces RBAC and record-level
+    // scope internally; URL issuance is rate limited because each call mints a
+    // presigned credential.
+    Route::group(['prefix' => 'v1/documents'], function () {
+        Route::get('types',  [V1DocumentController::class, 'types']);
+        Route::get('health', [V1DocumentController::class, 'health']);
+        Route::get('/',      [V1DocumentController::class, 'index']);
+        Route::get('{id}',   [V1DocumentController::class, 'show'])->whereNumber('id');
+        Route::get('{id}/versions', [V1DocumentController::class, 'versions'])->whereNumber('id');
+
+        Route::middleware('throttle:30,1')->group(function () {
+            Route::post('upload', [V1DocumentController::class, 'store']);
+            Route::post('{id}/replace', [V1DocumentController::class, 'replace'])->whereNumber('id');
+        });
+
+        Route::middleware('throttle:60,1')->group(function () {
+            Route::post('{id}/view-url', [V1DocumentController::class, 'viewUrl'])->whereNumber('id');
+            Route::post('{id}/download-url', [V1DocumentController::class, 'downloadUrl'])->whereNumber('id');
+        });
+
+        Route::delete('{id}', [V1DocumentController::class, 'destroy'])->whereNumber('id');
+        Route::post('{id}/restore', [V1DocumentController::class, 'restore'])->whereNumber('id');
+    });
     
     // Allow any authenticated user (like Agent) to fetch departments
     Route::get('/department/get', [AdminController::class, "getDepartment"]);
