@@ -412,6 +412,7 @@ export default function AdminProfile() {
                       ref={photoInputRef}
                       type="file"
                       accept="image/*"
+                      capture="user"
                       className="sr-only"
                       onChange={(e) =>
                         handlePhotoChange(e.target.files?.[0] || null)

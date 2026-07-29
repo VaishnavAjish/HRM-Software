@@ -744,6 +744,7 @@ const AppointmentModal = ({
                     <input
                       type="file"
                       accept="image/*"
+                      capture="user"
                       onChange={handlePhotoChange}
                       className="hidden"
                     />

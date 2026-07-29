@@ -28,7 +28,6 @@ import {
   Camera,
   HelpCircle,
   X,
-  Image as ImageIcon,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { authApi } from "../../utils/api";
@@ -160,9 +159,7 @@ export default function Login() {
   const [fUnit, setFUnit] = useState("");
   const [isAutoDetected, setIsAutoDetected] = useState(false);
   const [verifyOtp, setVerifyOtp] = useState("");
-  const [showPhotoOpts, setShowPhotoOpts] = useState(false);
   const cameraInputRef = useRef(null);
-  const galleryInputRef = useRef(null);
   const [fCode, setFCode] = useState("");
   const [fPhoto, setFPhoto] = useState(null);
   const [fPhotoPreview, setFPhotoPreview] = useState("");
@@ -679,9 +676,9 @@ export default function Login() {
 
                 <div className="mt-7 flex justify-center">
                   <div className="relative">
-                    <div 
+                    <div
                       className="relative block cursor-pointer group"
-                      onClick={() => setShowPhotoOpts(!showPhotoOpts)}
+                      onClick={() => cameraInputRef.current?.click()}
                     >
                       <span className="w-28 h-28 sm:w-36 sm:h-36 rounded-full bg-slate-100 dark:bg-gray-700 border-4 border-white dark:border-gray-800 shadow-xl flex items-center justify-center overflow-hidden">
                         {fPhotoPreview ? (
@@ -704,51 +701,13 @@ export default function Login() {
                       </span>
                     </div>
 
-                    {showPhotoOpts && (
-                      <>
-                        <div 
-                          className="fixed inset-0 z-40"
-                          onClick={() => setShowPhotoOpts(false)}
-                        />
-                        <div className="absolute top-[105%] left-1/2 -translate-x-1/2 z-50 w-48 bg-white dark:bg-gray-800 rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.1)] dark:shadow-[0_10px_40px_rgba(0,0,0,0.5)] border border-gray-100 dark:border-gray-700 overflow-hidden py-1.5 animate-in fade-in slide-in-from-top-2 duration-200">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setShowPhotoOpts(false);
-                              cameraInputRef.current?.click();
-                            }}
-                            className="w-full px-4 py-2.5 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 hover:text-brand-600 dark:hover:text-brand-400 flex items-center gap-2.5 transition-colors"
-                          >
-                            <Camera size={16} /> Take Photo
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setShowPhotoOpts(false);
-                              galleryInputRef.current?.click();
-                            }}
-                            className="w-full px-4 py-2.5 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 hover:text-brand-600 dark:hover:text-brand-400 flex items-center gap-2.5 transition-colors"
-                          >
-                            <ImageIcon size={16} /> Choose from Gallery
-                          </button>
-                        </div>
-                      </>
-                    )}
-
+                    {/* Camera only — `capture` makes Android open the camera
+                        directly instead of the gallery/file picker. */}
                     <input
                       type="file"
                       accept="image/*"
-                      capture="environment"
+                      capture="user"
                       ref={cameraInputRef}
-                      onChange={(e) =>
-                        updateIdentityPhoto(e.target.files?.[0] || null)
-                      }
-                      className="sr-only"
-                    />
-                    <input
-                      type="file"
-                      accept="image/*"
-                      ref={galleryInputRef}
                       onChange={(e) =>
                         updateIdentityPhoto(e.target.files?.[0] || null)
                       }
