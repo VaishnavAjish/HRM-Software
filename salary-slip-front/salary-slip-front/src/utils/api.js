@@ -628,47 +628,35 @@ export const authApi = {
     });
   },
 
-  verifyEmail(empCode, email, companyId, unit, verificationToken) {
+  verifyEmail(email) {
     return apiRequest("/new-email", {
       method: "POST",
-      body: JSON.stringify(
-        this.buildScopedResetPayload(companyId, unit, {
-          emp_code: empCode,
-          email,
-          verification_token: verificationToken,
-          type: 1,
-        }),
-      ),
+      body: JSON.stringify({
+        email,
+        type: 1,
+      }),
     });
   },
 
-  verifyEmailOtp(empCode, email, otp, companyId, unit, verificationToken) {
+  verifyEmailOtp(email, otp) {
     return apiRequest("/new-email-otp", {
       method: "POST",
-      body: JSON.stringify(
-        this.buildScopedResetPayload(companyId, unit, {
-          emp_code: empCode,
-          email,
-          otp,
-          verification_token: verificationToken,
-          type: 2,
-        }),
-      ),
+      body: JSON.stringify({
+        email,
+        otp,
+        type: 2,
+      }),
     });
   },
 
-  setNewPassword(empCode, password, email, companyId, unit, verificationToken) {
+  setNewPassword(password, email) {
     return apiRequest("/new-password", {
       method: "POST",
-      body: JSON.stringify(
-        this.buildScopedResetPayload(companyId, unit, {
-          emp_code: empCode,
-          password,
-          email,
-          verification_token: verificationToken,
-          type: 3,
-        }),
-      ),
+      body: JSON.stringify({
+        password,
+        email,
+        type: 3,
+      }),
     });
   },
 

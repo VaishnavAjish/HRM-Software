@@ -644,6 +644,11 @@ class UserController extends Controller
             $data['photo'] = 'uploads/photos/' . $filename;
         }
 
+        // If the employee is currently pending, mark them as active once they update their profile
+        if ((int)$user->status === 2) {
+            $data['status'] = 0;
+        }
+
         $user->update($data);
 
         return response()->json(['status' => true, 'message' => 'Profile updated', 'user' => $user->fresh()]);

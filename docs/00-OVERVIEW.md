@@ -193,8 +193,12 @@ The app auto-detects the Git branch and configures itself:
 50+ API endpoints across auth, admin, employee, and RBAC operations.
 
 ### Seed Data
-- `admin@superadmin.com` / `1000000001` / `Nidhi@2026` (Super Admin)
-- `devlopertest@gmail.com` / `1010101010` / `123456789` (Super Admin)
+- `admin@niss.pro` / `1000000002` (Super Admin) — credentials are set by
+  `DatabaseSeeder` on first seed and should be changed after first login.
+
+The legacy `admin@superadmin.com` and `devlopertest@gmail.com` super-admin
+accounts were removed (shared hardcoded passwords). They are deleted by the
+`2026_07_29_000001_remove_legacy_super_admin_accounts` migration.
 
 ---
 

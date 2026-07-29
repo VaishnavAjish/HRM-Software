@@ -303,25 +303,32 @@ The largest controller with comprehensive employee management:
 ## Seed Data
 
 ### DatabaseSeeder.php
-```php
-User::create([
-    'name' => 'Super Admin',
-    'email' => 'admin@superadmin.com',
-    'emp_code' => '1000000001',
-    'password' => Hash::make('Nidhi@2026'),
-    'role' => 0,  // Super Admin
-    'status' => 0, // Active
-]);
+Seeds a single super admin and re-asserts its role on every run:
 
-User::create([
-    'name' => 'Developer Test',
-    'email' => 'devlopertest@gmail.com',
-    'emp_code' => '1010101010',
-    'password' => Hash::make('123456789'),
-    'role' => 0, // Super Admin
-    'status' => 0, // Active
-]);
+```php
+$nissSuperAdmin = User::firstOrCreate(
+    ['email' => 'admin@niss.pro'],
+    [
+        'emp_code'     => 1000000002,
+        'name'         => 'NISS Super Admin',
+        'password'     => '<set in DatabaseSeeder>',
+        'role'         => 0,  // Super Admin
+        'company_code' => 'nidhi-impex',
+        'status'       => 0,  // Active
+    ]
+);
+
+// Re-asserted every run so an account edited down to a lower role,
+// deactivated or soft-deleted is repaired. `password` is excluded
+// because it is cast to `hashed` and would reset a changed password.
+$nissSuperAdmin->fill(['role' => 0, 'status' => 0, 'is_deleted' => 0])->save();
+$nissSuperAdmin->roles()->syncWithoutDetaching([$superAdminRole->id]);
 ```
+
+> The former `admin@superadmin.com` and `devlopertest@gmail.com` super admins
+> were removed — both shipped with shared hardcoded passwords. The
+> `2026_07_29_000001_remove_legacy_super_admin_accounts` migration deletes any
+> existing rows, and the seeder no longer recreates them.
 
 ### RbacSeeder.php
 Seeds 2 System roles:

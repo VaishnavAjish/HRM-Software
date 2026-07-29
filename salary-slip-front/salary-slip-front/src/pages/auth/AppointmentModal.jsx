@@ -606,6 +606,19 @@ const AppointmentModal = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
+  const handlePhotoChange = (file) => {
+    if (!file) return;
+    setFormData((prev) => ({ ...prev, photo: file }));
+    const reader = new FileReader();
+    reader.onloadend = () => setPhotoPreview(reader.result);
+    reader.readAsDataURL(file);
+  };
+
+  // Camera-only capture — no gallery/file-picker path.
+  const { requestCapture, cameraModal } = usePhotoCapture({
+    onCapture: handlePhotoChange,
+  });
+
   if (!isOpen) return null;
 
   const handleChange = (e) => {
@@ -654,18 +667,7 @@ const AppointmentModal = ({
     clearError("unit");
   };
 
-  const handlePhotoChange = (file) => {
-    if (!file) return;
-    setFormData((prev) => ({ ...prev, photo: file }));
-    const reader = new FileReader();
-    reader.onloadend = () => setPhotoPreview(reader.result);
-    reader.readAsDataURL(file);
-  };
 
-  // Camera-only capture — no gallery/file-picker path.
-  const { requestCapture, cameraModal } = usePhotoCapture({
-    onCapture: handlePhotoChange,
-  });
 
   const handleNameChange = (e) => {
     const { name, value } = e.target;

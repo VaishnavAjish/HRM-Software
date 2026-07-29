@@ -1256,19 +1256,17 @@ export default function EmployeeManagement() {
       },
       {
         headerName: "Actions",
-        field: "actions",
+        minWidth: 160,
+        flex: 1,
         pinned: "right",
-        minWidth: 130,
-        maxWidth: 130,
-        flex: 0,
         sortable: false,
         filter: false,
         suppressHeaderFilterButton: true,
         cellRenderer: ({ data: emp }) => {
           if (!emp) return null;
-
           return (
-            <div className="flex h-full items-center justify-center gap-1.5">
+            <div className="flex h-full w-full items-center gap-1.5 overflow-hidden justify-end">
+
               <button
                 onClick={() => openView(emp)}
                 className="flex items-center justify-center rounded-lg bg-brand-50 p-2 text-brand-600 transition hover:bg-brand-100 dark:bg-brand-900/20 dark:hover:bg-brand-900/40"
@@ -1359,19 +1357,28 @@ export default function EmployeeManagement() {
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400 dark:text-gray-500" />
           </div>
 
-          {/* Status Dropdown */}
-          <select
-            value={selectedStatus}
-            onChange={(e) => {
-              setSelectedStatus(e.target.value);
-              setApiPage(1);
-            }}
-            className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 outline-none dark:border-white/10 dark:bg-[#0b0f1a] dark:text-white"
-          >
-            <option value="">All Status</option>
-            <option value="Active">Active</option>
-            <option value="Inactive">Inactive</option>
-          </select>
+          {/* Status Tabs */}
+          <div className="flex bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
+            {["All", "Active", "Inactive"].map((tab) => {
+              const val = tab === "All" ? "" : tab;
+              return (
+                <button
+                  key={tab}
+                  onClick={() => {
+                    setSelectedStatus(val);
+                    setApiPage(1);
+                  }}
+                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                    selectedStatus === val
+                      ? "bg-white dark:bg-gray-700 shadow text-gray-900 dark:text-white"
+                      : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                  }`}
+                >
+                  {tab}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* Right Side: Actions */}
@@ -1525,6 +1532,7 @@ export default function EmployeeManagement() {
         setForm={setForm}
         inputCls={inputCls}
       />
+
 
       <Modal
         isOpen={showColModal}

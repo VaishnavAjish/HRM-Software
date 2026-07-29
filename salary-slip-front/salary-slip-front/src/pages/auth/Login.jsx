@@ -37,7 +37,7 @@ import usePhotoCapture from "../../hooks/usePhotoCapture";
 
 /* ─── Step indicator ─── */
 function StepBar({ step }) {
-  const steps = ["Emp Code", "Verify Email", "Set Password"];
+  const steps = ["Verify Email", "Set Password"];
   return (
     <div className="flex items-center justify-center mb-7">
       {steps.map((label, i) => {
@@ -46,7 +46,7 @@ function StepBar({ step }) {
         const active = step === idx;
         return (
           <div key={label} className="flex items-center">
-            <div className="flex flex-col items-center relative w-16 sm:w-24">
+            <div className="flex flex-col items-center relative w-20 sm:w-28">
               <div
                 className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300
                 ${done ? "bg-green-500 text-white shadow-sm shadow-green-500/40" : ""}
@@ -64,7 +64,7 @@ function StepBar({ step }) {
             </div>
             {i < steps.length - 1 && (
               <div
-                className={`w-6 sm:w-12 h-0.5 mx-0 sm:mx-1 mb-6 sm:mb-4 rounded-full transition-all duration-500
+                className={`w-10 sm:w-16 h-0.5 mx-1 mb-6 sm:mb-4 rounded-full transition-all duration-500
                 ${step > idx ? "bg-green-400" : "bg-gray-200 dark:bg-gray-700"}`}
               />
             )}
@@ -155,23 +155,7 @@ export default function Login() {
   /* ── Appointment ── */
   // (Removed showAppointment state)
 
-  // Step 1
-  const [fCompanyId, setFCompanyId] = useState("");
-  const [fUnit, setFUnit] = useState("");
-  const [isAutoDetected, setIsAutoDetected] = useState(false);
-  const [verifyOtp, setVerifyOtp] = useState("");
-  const [fCode, setFCode] = useState("");
-  const [fPhoto, setFPhoto] = useState(null);
-  const [fPhotoPreview, setFPhotoPreview] = useState("");
-  const fPhotoPreviewRef = useRef("");
-  const [fMobNum, setFMobNum] = useState("");
-  const [fDob, setFDob] = useState("");
-  const [fAddress, setFAddress] = useState("");
-  const [foundUser, setFoundUser] = useState(null);
-  const [s1Loading, setS1Loading] = useState(false);
-  const [verificationToken, setVerificationToken] = useState("");
-
-  // Step 2 — email + OTP
+  // Step 1 — email + OTP (formerly Step 2)
   const [emailInput, setEmailInput] = useState("");
   const [otpSent, setOtpSent] = useState(false);
   const [otp, setOtp] = useState("    ");
@@ -179,7 +163,7 @@ export default function Login() {
   const [sendLoading, setSendLoading] = useState(false);
   const [otpVerifyLoading, setOtpVerifyLoading] = useState(false);
 
-  // Step 3
+  // Step 2 (formerly Step 3)
   const [newPass, setNewPass] = useState("");
   const [confPass, setConfPass] = useState("");
   const [showNew, setShowNew] = useState(false);
@@ -187,46 +171,17 @@ export default function Login() {
   const [pwdErr, setPwdErr] = useState("");
   const [pwdLoading, setPwdLoading] = useState(false);
 
-  useEffect(() => {
-    if (mode !== "forgot") return;
-    const val = fCode.trim();
-    if (!val || COMPANY_OPTIONS.some(c => val.startsWith(c.initials))) return;
-
-    setIsAutoDetected(false); // Reset while typing/fetching
-
-    const timer = setTimeout(async () => {
-      try {
-        const res = await authApi.checkEmpCode(val);
-        if (res && res.company_code) {
-          setFCompanyId(res.company_code);
-          if (res.unit) setFUnit(res.unit);
-          setIsAutoDetected(true);
-        } else {
-          setIsAutoDetected(false);
-        }
-      } catch (err) {
-        setIsAutoDetected(false);
-      }
-    }, 500); // Wait 500ms after the user stops typing
-
-    return () => clearTimeout(timer);
-  }, [fCode, mode]);
-
-  const updateIdentityPhoto = (file) => {
-    if (fPhotoPreviewRef.current) {
-      URL.revokeObjectURL(fPhotoPreviewRef.current);
-    }
-
-    const previewUrl = file ? URL.createObjectURL(file) : "";
-    fPhotoPreviewRef.current = previewUrl;
-    setFPhoto(file);
-    setFPhotoPreview(previewUrl);
+  const enterForgot = () => {
+    setMode("forgot");
+    setStep(1);
+    setEmailInput("");
+    setOtpSent(false);
+    setOtp("    ");
+    setOtpErr("");
+    setNewPass("");
+    setConfPass("");
+    setPwdErr("");
   };
-
-  // Camera-only capture — no gallery/file-picker path.
-  const { requestCapture, cameraModal } = usePhotoCapture({
-    onCapture: updateIdentityPhoto,
-  });
 
   /* ── Normal login handler ── */
   const handleLogin = async (e) => {
@@ -325,28 +280,16 @@ export default function Login() {
     }
   };
 
-  /* ── Step 2a: send OTP to email ── */
+  /* ── Step 1: send OTP to email ── */
   const handleSendOtp = async () => {
     if (!emailInput.trim() || !emailInput.includes("@")) {
       toast.error("Enter a valid email address");
       return;
     }
 
-    const empCodeValue =
-      foundUser?.empCode || foundUser?.emp_code || fCode.trim().toUpperCase();
-    const companyCode =
-      foundUser?.companyId || foundUser?.company_code || fCompanyId;
-    const unit = foundUser?.unit || fUnit;
-
     setSendLoading(true);
     try {
-      await authApi.verifyEmail(
-        empCodeValue,
-        emailInput.trim(),
-        companyCode,
-        unit,
-        verificationToken,
-      );
+      await authApi.verifyEmail(emailInput.trim());
       setOtp("    ");
       setOtpVerifyLoading(false);
       setOtpSent(true);
@@ -359,7 +302,7 @@ export default function Login() {
     }
   };
 
-  /* ── Step 2b: verify OTP → go to step 3 ── */
+  /* ── Step 1 (OTP verification) → go to step 2 ── */
   const handleVerifyOtp = async () => {
     const entered = otp.replace(/\s/g, "");
     if (entered.length < 4) {
@@ -367,27 +310,14 @@ export default function Login() {
       return;
     }
 
-    const empCodeValue =
-      foundUser?.empCode || foundUser?.emp_code || fCode.trim().toUpperCase();
-    const companyCode =
-      foundUser?.companyId || foundUser?.company_code || fCompanyId;
-    const unit = foundUser?.unit || fUnit;
-
     setOtpVerifyLoading(true);
     try {
-      await authApi.verifyEmailOtp(
-        empCodeValue,
-        emailInput.trim(),
-        entered,
-        companyCode,
-        unit,
-        verificationToken,
-      );
+      await authApi.verifyEmailOtp(emailInput.trim(), entered);
       setOtpErr("");
       setNewPass("");
       setConfPass("");
       setPwdErr("");
-      setStep(3);
+      setStep(2);
     } catch (error) {
       setOtpErr(error.message || "Incorrect OTP. Please try again.");
       setOtp("    ");
@@ -396,7 +326,7 @@ export default function Login() {
     }
   };
 
-  /* ── Step 3: set new password ── */
+  /* ── Step 2: set new password ── */
   const handleSetPassword = async () => {
     const passwordRegex =
       /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{6,}$/;
@@ -418,41 +348,19 @@ export default function Login() {
       return;
     }
 
-    const empCodeValue =
-      foundUser?.empCode || foundUser?.emp_code || fCode.trim().toUpperCase();
-    const companyCode =
-      foundUser?.companyId || foundUser?.company_code || fCompanyId;
-    const unit = foundUser?.unit || fUnit;
-
     setPwdErr("");
     setPwdLoading(true);
 
     try {
-      await authApi.setNewPassword(
-        empCodeValue,
-        newPass,
-        emailInput.trim(),
-        companyCode,
-        unit,
-        verificationToken,
-      );
+      await authApi.setNewPassword(newPass, emailInput.trim());
       toast.success("Password updated! You can now log in.");
 
       setMode("login");
-      setEmpCode(empCodeValue);
+      setEmpCode(emailInput.trim());
       setPassword("");
 
       // reset forgot state
       setStep(1);
-      setFCompanyId("");
-      setFUnit("");
-      setFCode("");
-      updateIdentityPhoto(null);
-      setFMobNum("");
-      setFDob("");
-      setFAddress("");
-      setFoundUser(null);
-      setVerificationToken("");
       setEmailInput("");
       setOtpSent(false);
       setOtp("    ");
@@ -470,36 +378,6 @@ export default function Login() {
     }
   };
 
-  const enterForgot = () => {
-    setStep(1);
-    setFCompanyId("");
-    setFUnit("");
-    setFCode("");
-    updateIdentityPhoto(null);
-    setFMobNum("");
-    setFDob("");
-    setFAddress("");
-    setFoundUser(null);
-    setVerificationToken("");
-    setEmailInput("");
-    setOtpSent(false);
-    setOtp("    ");
-    setOtpVerifyLoading(false);
-    setPwdLoading(false);
-    setMode("forgot");
-  };
-
-  const handleGuideSetup = () => {
-    localStorage.setItem("loginGuideShown", "1");
-    setShowGuide(false);
-    enterForgot();
-  };
-
-  const handleGuideClose = () => {
-    localStorage.setItem("loginGuideShown", "1");
-    setShowGuide(false);
-  };
-
   const pwdStrength = () => {
     if (newPass.length === 0) return null;
     if (newPass.length < 6)
@@ -511,26 +389,21 @@ export default function Login() {
     return { w: "100%", color: "bg-green-500", label: "Strong" };
   };
   const strength = pwdStrength();
-  const forgotUnitOptions = fCompanyId ? getCompanyUnits(fCompanyId) : [];
-  const forgotCompanyLabel =
-    COMPANY_OPTIONS.find((company) => company.id === fCompanyId)?.label || "";
 
   /* ─── shared input style ─── */
   const inCls =
     "w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500 text-sm transition";
-  const identityInputCls =
-    "w-full h-12 pl-10 pr-4 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500 text-sm transition";
-  const identityLabelCls =
-    "block text-[11px] font-bold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-1.5";
-  const identityIconCls =
-    "absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none";
-  const canVerifyIdentity =
-    fCompanyId &&
-    fUnit &&
-    fCode.trim() &&
-    fMobNum.trim() &&
-    fAddress.trim() &&
-    !s1Loading;
+
+  const handleGuideSetup = () => {
+    localStorage.setItem("loginGuideShown", "1");
+    setShowGuide(false);
+    enterForgot();
+  };
+
+  const handleGuideClose = () => {
+    localStorage.setItem("loginGuideShown", "1");
+    setShowGuide(false);
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-brand-100 via-white to-brand-50 dark:from-gray-900 dark:via-gray-900 dark:to-gray-800 flex items-center justify-center p-4">
@@ -639,13 +512,13 @@ export default function Login() {
               <div className="mt-5 pt-5 border-t border-gray-100 dark:border-gray-700 space-y-3 text-center">
                 <div>
                   <p className="text-xs text-gray-400 mb-2">
-                    New employee? No password yet?
+                    Forgot your password?
                   </p>
                   <button
                     onClick={enterForgot}
                     className="inline-flex items-center gap-1.5 text-sm font-semibold text-brand-600 dark:text-brand-400 hover:underline"
                   >
-                    <UserCheck size={15} /> Set Password with Employee Code{" "}
+                    <UserCheck size={15} /> Reset Password{" "}
                     <ChevronRight size={14} />
                   </button>
                 </div>
@@ -667,220 +540,22 @@ export default function Login() {
 
             <StepBar step={step} />
 
-            {/* ── STEP 1: Emp Code ── */}
+            {/* ── STEP 1: Verify Email ── */}
             {step === 1 && (
-              <div>
+              <div className="animate-in fade-in slide-in-from-right-4 duration-300">
                 <div className="text-center">
+                  <div className="inline-flex items-center justify-center w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-full mb-4">
+                    <Mail size={24} className="text-blue-600 dark:text-blue-400" />
+                  </div>
                   <h2 className="text-2xl font-bold text-gray-950 dark:text-white">
-                    Verify Your Identity
+                    Verify Email
                   </h2>
-                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-                    Please provide your official details to proceed
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-2 max-w-sm mx-auto">
+                    Enter your registered email address to receive a one-time password
                   </p>
                 </div>
 
-                <div className="mt-7 flex justify-center">
-                  <div className="relative">
-                    <div
-                      className="relative block cursor-pointer group"
-                      onClick={requestCapture}
-                    >
-                      <span className="w-28 h-28 sm:w-36 sm:h-36 rounded-full bg-slate-100 dark:bg-gray-700 border-4 border-white dark:border-gray-800 shadow-xl flex items-center justify-center overflow-hidden">
-                        {fPhotoPreview ? (
-                          <img
-                            src={fPhotoPreview}
-                            alt="Employee preview"
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <span className="flex flex-col items-center gap-1 text-gray-400">
-                            <Camera size={40} />
-                            <span className="text-[11px] font-bold uppercase">
-                              Photo
-                            </span>
-                          </span>
-                        )}
-                      </span>
-                      <span className="absolute right-0 bottom-1 sm:bottom-2 w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-brand-600 text-white border-2 border-white dark:border-gray-800 shadow-lg flex items-center justify-center transition-colors group-hover:bg-brand-700">
-                        <Plus size={18} className="sm:w-5 sm:h-5" />
-                      </span>
-                    </div>
-
-                    {cameraModal}
-                  </div>
-                </div>
-
-                <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className={identityLabelCls}>Employee Code</label>
-                    <div className="relative">
-                      <User size={16} className={identityIconCls} />
-                      <input
-                        value={fCode}
-                        onChange={(e) => {
-                          const val = e.target.value.toUpperCase();
-                          setFCode(val);
-                          const matchedCompany = COMPANY_OPTIONS.find(c => val.startsWith(c.initials));
-                          if (matchedCompany) {
-                            if (fCompanyId !== matchedCompany.id) {
-                              setFCompanyId(matchedCompany.id);
-                              setFUnit("");
-                            }
-                            const afterInit = val.slice(matchedCompany.initials.length).replace(/[^A-Z]/g, '');
-                            if (afterInit) {
-                              const matchedBranch = matchedCompany.units.find(u => u.toUpperCase().startsWith(afterInit));
-                              if (matchedBranch) setFUnit(matchedBranch);
-                            }
-                            setIsAutoDetected(true);
-                          } else {
-                            setIsAutoDetected(false);
-                          }
-                        }}
-                        onKeyDown={(e) => e.key === "Enter" && handleStep1()}
-                        placeholder="e.g. NI8526 or 7195"
-                        autoFocus
-                        className={identityInputCls}
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className={identityLabelCls}>Mobile No.</label>
-                    <div className="relative">
-                      <Phone size={16} className={identityIconCls} />
-                      <input
-                        value={fMobNum}
-                        onChange={(e) => {
-                          const val = e.target.value.replace(/\D/g, "");
-                          if (val.length <= 10) setFMobNum(val);
-                        }}
-                        inputMode="tel"
-                        placeholder="9876543210"
-                        className={identityInputCls}
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className={identityLabelCls}>Company</label>
-                    <div className="relative">
-                      <Building2 size={16} className={identityIconCls} />
-                      <select
-                        value={fCompanyId}
-                        onChange={(e) => {
-                          setFCompanyId(e.target.value);
-                          setFUnit("");
-                          setFoundUser(null);
-                          setEmailInput("");
-                          setOtpSent(false);
-                          setOtp("    ");
-                          setOtpErr("");
-                        }}
-                        disabled={isAutoDetected}
-                        className={`${identityInputCls} appearance-none ${
-                          isAutoDetected ? "opacity-60 cursor-not-allowed bg-gray-50 dark:bg-gray-800" : ""
-                        }`}
-                      >
-                        <option value="">Select Company</option>
-                        {COMPANY_OPTIONS.map((company) => (
-                          <option key={company.id} value={company.id}>
-                            {company.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                  <div>
-                    <label className={identityLabelCls}>Branch</label>
-                    <div className="relative">
-                      <MapPin size={16} className={identityIconCls} />
-                      <select
-                        value={fUnit}
-                        onChange={(e) => {
-                          setFUnit(e.target.value);
-                          setFoundUser(null);
-                          setEmailInput("");
-                          setOtpSent(false);
-                          setOtp("    ");
-                          setOtpErr("");
-                        }}
-                        disabled={!fCompanyId || isAutoDetected}
-                        className={`${identityInputCls} appearance-none ${
-                          !fCompanyId || isAutoDetected ? "opacity-60 cursor-not-allowed bg-gray-50 dark:bg-gray-800" : ""
-                        }`}
-                      >
-                        <option value="">Select Branch</option>
-                        {forgotUnitOptions.map((unit) => (
-                          <option key={unit} value={unit}>
-                            {unit}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-
-                  <div className="sm:col-span-2">
-                    <label className={identityLabelCls}>
-                      Residential Address
-                    </label>
-                    <div className="relative">
-                      <Home
-                        size={16}
-                        className="absolute left-3.5 top-4 text-gray-400 pointer-events-none"
-                      />
-                      <textarea
-                        value={fAddress}
-                        onChange={(e) => setFAddress(e.target.value)}
-                        placeholder="House no, Street name, City, Pincode"
-                        rows={3}
-                        className="w-full min-h-20 pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500 text-sm resize-none transition"
-                      />
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={handleStep1}
-                    disabled={!canVerifyIdentity}
-                    className="sm:col-span-2 w-full mt-3 py-3.5 bg-brand-600 hover:bg-brand-700 disabled:bg-brand-400 text-white rounded-xl font-semibold text-sm transition-colors flex items-center justify-center gap-2 shadow-lg shadow-brand-600/25"
-                  >
-                    {s1Loading ? (
-                      <>
-                        <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                        Checking...
-                      </>
-                    ) : (
-                      <>
-                        Verify & Continue <ChevronRight size={16} />
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* ── STEP 2: Email + OTP ── */}
-            {step === 2 && (
-              <div>
-                <div className="flex items-center gap-2.5 mb-1">
-                  <div className="w-9 h-9 rounded-xl bg-brand-100 dark:bg-brand-900/30 flex items-center justify-center">
-                    <Mail size={18} className="text-brand-600" />
-                  </div>
-                  <div>
-                    <h2 className="text-base font-semibold text-gray-900 dark:text-white">
-                      Verify Email
-                    </h2>
-                    <p className="text-xs text-gray-400">
-                      Enter your registered email to receive OTP
-                    </p>
-                  </div>
-                </div>
-
-                <div className="mt-5 space-y-4">
-                  <div className="rounded-xl border border-brand-100 bg-brand-50/80 px-4 py-3 text-xs text-brand-700 dark:border-brand-900/40 dark:bg-brand-900/10 dark:text-brand-200">
-                    {forgotCompanyLabel} / {foundUser?.unit || fUnit} /{" "}
-                    {foundUser?.empCode || foundUser?.emp_code || fCode}
-                  </div>
+                <div className="mt-7 space-y-4">
                   {/* Email input + Send OTP */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
@@ -989,28 +664,22 @@ export default function Login() {
               </div>
             )}
 
-            {/* ── STEP 3: Set Password ── */}
-            {step === 3 && (
-              <div>
-                <div className="flex items-center gap-2.5 mb-1">
-                  <div className="w-9 h-9 rounded-xl bg-brand-100 dark:bg-brand-900/30 flex items-center justify-center">
-                    <KeyRound size={18} className="text-brand-600" />
+            {/* ── STEP 2: Set New Password ── */}
+            {step === 2 && (
+              <div className="animate-in fade-in slide-in-from-right-4 duration-300">
+                <div className="text-center mb-6">
+                  <div className="inline-flex items-center justify-center w-12 h-12 bg-green-100 dark:bg-green-900/30 rounded-full mb-4">
+                    <KeyRound size={24} className="text-green-600 dark:text-green-400" />
                   </div>
-                  <div>
-                    <h2 className="text-base font-semibold text-gray-900 dark:text-white">
-                      Set New Password
-                    </h2>
-                    <p className="text-xs text-gray-400">
-                      Choose a strong password for your account
-                    </p>
-                  </div>
+                  <h2 className="text-2xl font-bold text-gray-950 dark:text-white">
+                    Set New Password
+                  </h2>
+                  <p className="text-xs text-gray-400 mt-2">
+                    Choose a strong password for your account
+                  </p>
                 </div>
 
                 <div className="mt-5 space-y-4">
-                  <div className="rounded-xl border border-brand-100 bg-brand-50/80 px-4 py-3 text-xs text-brand-700 dark:border-brand-900/40 dark:bg-brand-900/10 dark:text-brand-200">
-                    {forgotCompanyLabel} / {foundUser?.unit || fUnit} /{" "}
-                    {foundUser?.empCode || foundUser?.emp_code || fCode}
-                  </div>
                   {[
                     {
                       label: "New Password",

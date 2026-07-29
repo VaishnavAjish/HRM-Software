@@ -271,38 +271,35 @@ class AuthController extends Controller
         ]);
     }
 
+    private function findUserByEmail(Request $request): ?User
+    {
+        return User::where('email', $request->email)->first();
+    }
+
     private function sendPasswordResetOtp(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'emp_code' => 'required',
             'email' => 'required|email',
-            'verification_token' => 'required',
         ]);
 
         if ($validator->fails()) {
             return response()->json(['status' => false, 'message' => $validator->errors()->first()], 422);
         }
 
-        $emp = $this->findVerifiedEmployee($request);
+        $emp = $this->findUserByEmail($request);
         if (!$emp) {
-            return response()->json(['status' => false, 'message' => 'Verification expired. Please verify your employee code again.'], 422);
+            return response()->json(['status' => false, 'message' => 'Email not found in our records.'], 404);
         }
 
-        $emailTaken = User::where('email', $request->email)->where('id', '!=', $emp->id)->exists();
-        if ($emailTaken) {
-            return response()->json(['status' => false, 'message' => 'This email is already associated with another account'], 422);
-        }
-
-        $otp = (string) random_int(1000, 9999); // 4 digits — matches the OtpInput UI's 4-box entry
+        $otp = (string) random_int(1000, 9999);
 
         try {
-            Mail::to($request->email)->send(new PortalOtpMail($otp, $emp->name ?? 'there'));
+            Mail::to($emp->email)->send(new PortalOtpMail($otp, $emp->name ?? 'there'));
         } catch (\Throwable $e) {
             Log::error('Failed to send OTP email: ' . $e->getMessage());
             return response()->json(['status' => false, 'message' => 'Could not send OTP email. Please try again later.'], 500);
         }
 
-        $emp->email = $request->email;
         $emp->otp = $otp;
         $emp->save();
 
@@ -312,16 +309,15 @@ class AuthController extends Controller
     private function verifyPasswordResetOtp(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'emp_code' => 'required',
+            'email' => 'required|email',
             'otp' => 'required',
-            'verification_token' => 'required',
         ]);
 
         if ($validator->fails()) {
             return response()->json(['status' => false, 'message' => $validator->errors()->first()], 422);
         }
 
-        $emp = $this->findVerifiedEmployee($request);
+        $emp = $this->findUserByEmail($request);
         if (!$emp || !$emp->otp || (string) $emp->otp !== (string) $request->otp) {
             return response()->json(['status' => false, 'message' => 'Invalid OTP'], 422);
         }
@@ -332,28 +328,21 @@ class AuthController extends Controller
     private function setNewPasswordAfterVerification(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'emp_code' => 'required',
+            'email' => 'required|email',
             'password' => 'required|min:6',
-            'verification_token' => 'required',
         ]);
 
         if ($validator->fails()) {
             return response()->json(['status' => false, 'message' => $validator->errors()->first()], 422);
         }
 
-        $emp = $this->findVerifiedEmployee($request);
+        $emp = $this->findUserByEmail($request);
         if (!$emp || !$emp->otp) {
-            return response()->json(['status' => false, 'message' => 'Verification expired. Please verify your employee code again.'], 422);
+            return response()->json(['status' => false, 'message' => 'Verification expired. Please request a new OTP.'], 422);
         }
 
         $emp->password = $request->password;
         $emp->otp = null;
-        $emp->verification_token = null;
-        $emp->verification_token_expires_at = null;
-        // Completing this flow *is* registration for a bulk-imported
-        // employee — flip them from Pending (2) to Active now that they
-        // have their own password. Leave an already-Active/Locked account
-        // (0/1) alone; this only ever moves someone out of Pending.
         if ((int) $emp->status === 2) {
             $emp->status = 0;
         }

@@ -5,7 +5,7 @@ import * as XLSX from "xlsx";
 import {
   User, MapPin, Briefcase, CreditCard, Lock, LockKeyhole, Shield, Eye, EyeOff, Plus, Check,
   Building2, CloudUpload, Upload, FileSpreadsheet, X, Hash,
-  Layers, TableProperties, HardDrive, Download, ChevronLeft, ChevronRight,
+  Layers, TableProperties, HardDrive, Download, ChevronLeft, ChevronRight, Users
 } from "lucide-react";
 import Button from "../../components/ui/Button";
 import { salaryApi, authApi } from "../../utils/api";
@@ -23,6 +23,7 @@ import AddNewDepartment from "./AdminModals/AddNewDepartment";
 import UploadBatchPanel from "../../components/admin/UploadBatchPanel";
 import BulkEmployeeValidation from "../../components/admin/BulkEmployeeValidation";
 import ModernDatePicker from "../../components/ModernDatePicker";
+import PendingEmployeesTab from "../../components/admin/PendingEmployeesTab";
 
 // ─── Bulk-import helpers (column auto-matching) ───
 function normalizeImportToken(value) {
@@ -636,6 +637,7 @@ export default function AddEmployeePage() {
       <div className="inline-flex self-start gap-1 rounded-xl border border-gray-200 bg-white p-1 dark:border-white/10 dark:bg-[#0b0f1a]">
         {[
           { key: "single", label: "Single Employee", icon: User },
+          { key: "pending", label: "Pending Employees", icon: Users },
           { key: "bulk", label: "Bulk Upload", icon: CloudUpload },
         ].map(({ key, label, icon: Icon }) => (
           <button
@@ -668,7 +670,9 @@ export default function AddEmployeePage() {
         )}
 
         {/* Right Column */}
-        {mode === "single" ? (
+        {mode === "pending" ? (
+          <PendingEmployeesTab />
+        ) : mode === "single" ? (
           <div className="flex-1 flex flex-col bg-white dark:bg-[#0b0f1a] rounded-2xl border border-gray-200 dark:border-white/10 shadow-sm overflow-hidden min-h-[70vh]">
             <div className="flex items-start justify-between gap-4 border-b border-gray-200 px-6 py-5 dark:border-white/10 shrink-0">
               <div className="flex items-start gap-3">

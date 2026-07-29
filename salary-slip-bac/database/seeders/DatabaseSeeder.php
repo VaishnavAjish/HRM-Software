@@ -16,29 +16,11 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        User::firstOrCreate(
-            ['email' => 'admin@superadmin.com'],
-            [
-                'emp_code'     => 1000000001,
-                'name'         => 'Super Admin',
-                'password'     => 'Nidhi@2026',
-                'role'         => 0,
-                'company_code' => 'nidhi-impex',
-                'status'       => 0,
-            ]
-        );
-
-        User::firstOrCreate(
-            ['email' => 'devlopertest@gmail.com'],
-            [
-                'emp_code'     => 1010101010,
-                'name'         => 'Admin',
-                'password'     => '123456789',
-                'role'         => 0,
-                'company_code' => 'nidhi-impex',
-                'status'       => 0,
-            ]
-        );
+        // The legacy admin@superadmin.com and devlopertest@gmail.com super-admin
+        // accounts were removed: they shipped with shared, hardcoded passwords.
+        // admin@niss.pro below is the only seeded super admin. Existing rows are
+        // deleted by the 2026_07_29_000001_remove_legacy_super_admin_accounts
+        // migration — do not reintroduce them here.
 
         // ── NISS Super Admin ───────────────────────────────────
         $nissSuperAdmin = User::firstOrCreate(
@@ -53,11 +35,25 @@ class DatabaseSeeder extends Seeder
             ]
         );
 
+        // firstOrCreate only applies those defaults when the row is new, so an
+        // account that predates this seeder (or was later edited down to a
+        // lower role, deactivated, or soft-deleted) would keep its old values
+        // and stay invisible. Re-assert the super-admin state on every run.
+        //
+        // `password` is deliberately excluded: it is cast to `hashed`, so
+        // re-assigning it here would reset a password changed in production.
+        $nissSuperAdmin->fill([
+            'role'       => 0, // 0 = Super Admin (see users table migration)
+            'status'     => 0,
+            'is_deleted' => 0,
+        ])->save();
+
         // Assign the RBAC "Super Admin" role (created by RbacSeeder)
         $this->call(RbacSeeder::class);
         $superAdminRole = Role::where('name', 'Super Admin')->first();
-        if ($superAdminRole && !$nissSuperAdmin->roles()->where('role_id', $superAdminRole->id)->exists()) {
-            $nissSuperAdmin->roles()->attach($superAdminRole->id);
+        if ($superAdminRole) {
+            // Idempotent, and won't strip any other roles already attached.
+            $nissSuperAdmin->roles()->syncWithoutDetaching([$superAdminRole->id]);
         }
     }
 }
