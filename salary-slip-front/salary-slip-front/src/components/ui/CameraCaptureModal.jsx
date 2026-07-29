@@ -113,7 +113,14 @@ export default function CameraCaptureModal({ open, onCapture, onClose, front = t
   };
 
   return (
-    <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/80 p-4">
+    // Clicks are contained here on purpose. Callers commonly render this modal
+    // inside the very "Add Photo" element that opens it, and without this a
+    // click on Close would bubble back into that handler and re-open the modal
+    // before it could shut — leaving a full-screen overlay swallowing the page.
+    <div
+      className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/80 p-4"
+      onClick={(e) => e.stopPropagation()}
+    >
       <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-gray-800">
         <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-gray-700">
           <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">

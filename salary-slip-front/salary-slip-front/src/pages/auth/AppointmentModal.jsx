@@ -746,11 +746,13 @@ const AppointmentModal = ({
                 <div className="flex flex-col md:grid md:grid-cols-12 gap-8 items-start">
                 {/* Photo */}
                 <div className="md:col-span-5 flex flex-col items-center">
+                  {/* The camera modal is a full-screen overlay and must NOT be
+                      a child of this click target — its own clicks would bubble
+                      back into requestCapture and immediately re-open it. */}
                   <div
                     className="cursor-pointer group relative"
                     onClick={requestCapture}
                   >
-                    {cameraModal}
                     <div className="w-48 h-56 border border-gray-400 flex items-center justify-center bg-gray-50 overflow-hidden">
                       {photoPreview ? (
                         <img
@@ -770,6 +772,7 @@ const AppointmentModal = ({
                       (Click box to take photo)
                     </p>
                   </div>
+                  {cameraModal}
                 </div>
 
                 {/* Top Right Fields */}
