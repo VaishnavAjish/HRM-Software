@@ -652,8 +652,10 @@ function CreateCandidateModal({ isOpen, onClose, onSuccess }) {
               type="text"
               className={inputCls}
               value={formData.mobile_number}
-              onChange={(e) => setFormData({ ...formData, mobile_number: e.target.value })}
+              onChange={(e) => setFormData({ ...formData, mobile_number: e.target.value.replace(/\D/g, "").slice(0, 10) })}
               placeholder="9876543210"
+              maxLength={10}
+              inputMode="numeric"
               required
             />
           </div>
@@ -751,7 +753,13 @@ function CreateCandidateModal({ isOpen, onClose, onSuccess }) {
                       </button>
                     </div>
                   </div>
-                  {agent.company_code && <Badge variant="gray" className="mt-2 text-[10px] block w-fit">{agent.company_code} - {agent.unit}</Badge>}
+                  {agent.company_code && (
+                    <Badge variant="gray" className="mt-2 text-[10px] block w-fit">
+                      {agent.company_code === 'all-companies' 
+                        ? 'All Companies' 
+                        : `${agent.company_code}${agent.unit ? ` - ${agent.unit}` : ''}`}
+                    </Badge>
+                  )}
                 </div>
               ))
             )}

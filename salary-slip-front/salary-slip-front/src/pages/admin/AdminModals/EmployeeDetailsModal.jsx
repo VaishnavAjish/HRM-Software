@@ -11,9 +11,11 @@ import {
   Shield,
   ShieldCheck,
   Clock,
+  FileText,
 } from "lucide-react";
 
 import Button from "../../../components/ui/Button";
+import EmployeeDocuments from "../../../components/documents/EmployeeDocuments";
 import ModernDatePicker from "../../../components/ModernDatePicker";
 import {
   EmployeeAvatar,
@@ -26,6 +28,7 @@ const TABS = [
   { key: "employment", label: "Employment Details", icon: Briefcase },
   { key: "address", label: "Address & Location", icon: MapPin },
   { key: "financials", label: "Financials & Identity", icon: CreditCard },
+  { key: "documents", label: "Documents", icon: FileText },
 ];
 
 const fieldCls =
@@ -324,6 +327,13 @@ export default function EmployeeDetailsModal({
                     <Field label="ESI ID No" value={selected.esiNo} />
                   </Section>
                 </>
+              )}
+
+              {activeTab === "documents" && (
+                <EmployeeDocuments
+                  employeeId={selected.id}
+                  employeeLabel={selected.name}
+                />
               )}
             </div>
           </div>

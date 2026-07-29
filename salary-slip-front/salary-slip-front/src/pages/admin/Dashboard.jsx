@@ -340,10 +340,10 @@ export default function AdminDashboard() {
             <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-5">
               <div>
                 <h3 className="text-lg font-bold text-gray-900 dark:text-white">
-                  Recent Batches
+                  Salary Details
                 </h3>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-                  Latest salary upload batches
+                  Last three months
                 </p>
               </div>
               <Link
@@ -355,67 +355,52 @@ export default function AdminDashboard() {
             </div>
 
             <div className="overflow-hidden rounded-xl border border-gray-100 dark:border-gray-700">
-              <div className="hidden md:grid grid-cols-[1fr_0.8fr_0.8fr_0.8fr] gap-4 bg-gray-50/80 dark:bg-gray-700/50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                <span>Batch ID</span>
-                <span>Period</span>
-                <span>Status</span>
-                <span className="text-right">Date</span>
+              <div className="hidden md:grid grid-cols-[1fr_1fr_1fr_1fr] gap-4 bg-gray-50/80 dark:bg-gray-700/50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                <span>Month</span>
+                <span>Year</span>
+                <span>Total Net</span>
+                <span className="text-right">Total Gross</span>
               </div>
 
               <div className="divide-y divide-gray-100 dark:divide-gray-700">
-                {recentBatches.length === 0 && (
+                {(!dashboardStats?.monthly_stats || dashboardStats.monthly_stats.length === 0) && (
                   <p className="text-center py-8 text-sm text-gray-400">
-                    No batches found
+                    No salary details found
                   </p>
                 )}
-                {recentBatches.map((batch) => {
-                  return (
-                    <div
-                      key={batch.id}
-                      className="grid grid-cols-1 md:grid-cols-[1fr_0.8fr_0.8fr_0.8fr] gap-3 md:gap-4 px-4 py-3.5 hover:bg-gray-50 dark:hover:bg-gray-700/40 transition"
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">
-                            {batch.batchId}
-                          </p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                            {batch.companyLabel} · {batch.unit}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex md:items-center">
-                        <span className="inline-flex w-fit items-center rounded-full bg-indigo-50 dark:bg-indigo-900/25 px-2.5 py-1 text-xs font-semibold text-indigo-700 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-800/50">
-                          {batch.month} {batch.year}
-                        </span>
-                      </div>
-
-                      <div className="flex md:items-center">
-                        <span
-                          className={`inline-flex w-fit items-center rounded-full px-2.5 py-1 text-xs font-semibold ${
-                            batch.status === "Processed"
-                              ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-800/50"
-                              : batch.status === "Failed"
-                              ? "bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400 border border-red-100 dark:border-red-800/50"
-                              : "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border border-amber-100 dark:border-amber-800/50"
-                          }`}
-                        >
-                          {batch.status}
-                        </span>
-                      </div>
-
-                      <div className="flex items-center justify-between md:justify-end gap-3">
-                        <span className="md:hidden text-xs font-medium text-gray-400">
-                          Date
-                        </span>
-                        <span className="text-sm font-bold text-gray-900 dark:text-white">
-                          {batch.date}
-                        </span>
-                      </div>
+                {(dashboardStats?.monthly_stats || []).slice(0, 3).map((stat, idx) => (
+                  <div
+                    key={idx}
+                    className="grid grid-cols-1 md:grid-cols-[1fr_1fr_1fr_1fr] gap-3 md:gap-4 px-4 py-3.5 hover:bg-gray-50 dark:hover:bg-gray-700/40 transition"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">
+                        {new Date(0, Number(stat.month) - 1).toLocaleString('default', { month: 'long' })}
+                      </p>
                     </div>
-                  );
-                })}
+                    
+                    <div className="flex md:items-center">
+                      <p className="text-sm font-medium text-gray-900 dark:text-white">
+                        {stat.year}
+                      </p>
+                    </div>
+
+                    <div className="flex md:items-center">
+                      <span className="inline-flex w-fit items-center rounded-full bg-emerald-50 dark:bg-emerald-900/25 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:text-emerald-300 border border-emerald-100 dark:border-emerald-800/50">
+                        {fmt(stat.total_net)}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between md:justify-end gap-3">
+                      <span className="md:hidden text-xs font-medium text-gray-400">
+                        Total Gross
+                      </span>
+                      <span className="text-sm font-bold text-gray-900 dark:text-white">
+                        {fmt(stat.total_gross || stat.total_net)}
+                      </span>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
@@ -518,9 +503,7 @@ export default function AdminDashboard() {
                     <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 truncate group-hover:text-indigo-700 dark:group-hover:text-indigo-300 transition">
                       {dept?.dept}
                     </p>
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      {fmt(dept?.salary)}
-                    </p>
+
                   </div>
 
                   <span className="text-xs font-bold text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-800 shadow-sm border border-gray-100 dark:border-gray-700 px-2.5 py-1 rounded-full flex-shrink-0">

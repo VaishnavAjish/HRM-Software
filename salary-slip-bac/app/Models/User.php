@@ -16,7 +16,7 @@ class User extends Authenticatable implements JWTSubject
         'reference_name', 'reference_mobile_no', 'aadhar_card_no', 'pan_card_no',
         'bank_name', 'bank_ifsc_code', 'bank_account_no', 'education', 'emp_signature',
         'resignation_date', 'city', 'pin', 'state', 'pf_no', 'esi_no', 'branch',
-        'print', 'checkbox', 'processed', 'check_image', 'pan_image', 'adhar_image', 'type',
+        'print', 'checkbox', 'processed', 'check_image', 'pan_image', 'adhar_image', 'account_book', 'type',
         'designation', 'form_no', 'trial_date', 'mobile_no_2', 'last_company_name',
         'added_by', 'trial_form_id',
         'last_company_address', 'experience', 'reason_for_leaving', 'hastak_name',
@@ -114,6 +114,11 @@ class User extends Authenticatable implements JWTSubject
     }
 
     public function getCheckImageAttribute($value)
+    {
+        return $this->resolveStoredFile($value);
+    }
+
+    public function getAccountBookAttribute($value)
     {
         return $this->resolveStoredFile($value);
     }

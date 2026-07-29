@@ -30,7 +30,7 @@ class UserController extends Controller
         'marital_status', 'blood_group', 'reference_name', 'reference_mobile_no',
         'aadhar_card_no', 'bank_name', 'pan_card_no', 'bank_ifsc_code', 'education',
         'bank_account_no', 'company_code', 'unit', 'emp_signature', 'members',
-        'photo', 'adhar_image', 'pan_image', 'check_image',
+        'photo', 'adhar_image', 'pan_image', 'check_image', 'account_book',
     ];
 
     // Fields a logged-in user may change on their own profile via /profile-update.
@@ -52,12 +52,13 @@ class UserController extends Controller
     private const DOCUMENT_UPLOAD_RULES = [
         'adhar_image' => 'nullable|file|mimes:jpeg,jpg,png,webp,pdf|max:5120',
         'pan_image'   => 'nullable|file|mimes:jpeg,jpg,png,webp,pdf|max:5120',
-        'check_image' => 'nullable|file|mimes:jpeg,jpg,png,webp,pdf|max:5120',
+        'check_image'  => 'nullable|file|mimes:jpeg,jpg,png,webp,pdf|max:5120',
+        'account_book' => 'nullable|file|mimes:jpeg,jpg,png,webp,pdf|max:5120',
     ];
 
     // Every request field that arrives as an uploaded file. These must never
     // reach a mass-assignment array as raw input — see storeUploadedFiles().
-    private const FILE_UPLOAD_FIELDS = ['photo', 'adhar_image', 'pan_image', 'check_image'];
+    private const FILE_UPLOAD_FIELDS = ['photo', 'adhar_image', 'pan_image', 'check_image', 'account_book'];
 
     /**
      * Who the uploaded documents belong to.
