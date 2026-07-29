@@ -578,8 +578,17 @@ class UserController extends Controller
                         'message' => "Employee code '{$newEmpCode}' is already assigned to {$conflict->name}",
                     ], 422);
                 }
-                if ($employee->type === 'appointment') {
+                if ($employee->type === 'appointment' || $employee->type === 'pending_employee') {
                     $data['type'] = null;
+                }
+            }
+            if ($request->has('checkbox')) {
+                $data['checkbox'] = $request->checkbox;
+                if ($request->checkbox == 1 && $employee->type === 'appointment') {
+                    $data['type'] = 'pending_employee';
+                    $data['status'] = 2; // Pending status
+                } elseif ($request->checkbox == 0 && ($employee->type === 'pending_employee' || $employee->type === 'appointment')) {
+                    $data['type'] = 'appointment';
                 }
             }
             $employee->update($data);

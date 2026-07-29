@@ -1253,11 +1253,15 @@ export default function Appointments() {
         user?.accessToken,
         user?.tokenType,
       );
-      setAppointments((prev) =>
-        prev.map((a) => (a.id === id ? { ...a, status: label } : a)),
-      );
-      if (selected?.id === id)
-        setSelected((prev) => ({ ...prev, status: label }));
+      if (approve) {
+        setAppointments((prev) => prev.filter((a) => a.id !== id));
+        if (selected?.id === id) setSelected(null);
+      } else {
+        setAppointments((prev) =>
+          prev.map((a) => (a.id === id ? { ...a, status: label } : a)),
+        );
+        if (selected?.id === id) setSelected((prev) => ({ ...prev, status: label }));
+      }
       toast.success(`Appointment ${label.toLowerCase()} successfully`);
     } catch (err) {
       toast.error(err.message || "Failed to update status");

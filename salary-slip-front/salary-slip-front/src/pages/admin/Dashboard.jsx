@@ -29,7 +29,6 @@ import {
   PieChart,
   Pie,
   Cell,
-  Legend
 } from "recharts";
 
 const PIE_COLORS = ["#6366f1", "#22c55e", "#f59e0b", "#ef4444", "#0ea5e9", "#a855f7"];
@@ -428,37 +427,57 @@ export default function AdminDashboard() {
           {/* Department Headcount Chart */}
           {isVisible("main_dashboard.show_department_chart") && (
             <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6 shadow-sm">
-                <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-6">Workforce Distribution</h3>
-                <div className="h-64 w-full">
-                {deptChartData.length > 0 ? (
-                    <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                        <Pie
-                        data={deptChartData}
-                        cx="50%"
-                        cy="45%"
-                        innerRadius={60}
-                        outerRadius={80}
-                        paddingAngle={5}
-                        dataKey="value"
-                        >
-                        {deptChartData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Workforce Distribution</h3>
+                {deptChartData.length > 0 ? (() => {
+                  // Take top 6 by value, group rest as "Others"
+                  const sorted = [...deptChartData].sort((a, b) => b.value - a.value);
+                  const top6 = sorted.slice(0, 6);
+                  const othersTotal = sorted.slice(6).reduce((s, d) => s + d.value, 0);
+                  const pieData = othersTotal > 0 ? [...top6, { name: "Others", value: othersTotal }] : top6;
+                  const colors = [...PIE_COLORS, "#64748b"];
+                  return (
+                    <>
+                      <div style={{ height: 220, width: "100%" }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={pieData}
+                              cx="50%"
+                              cy="50%"
+                              innerRadius={60}
+                              outerRadius={85}
+                              paddingAngle={4}
+                              dataKey="value"
+                            >
+                              {pieData.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />
+                              ))}
+                            </Pie>
+                            <Tooltip
+                              contentStyle={{ borderRadius: "12px", border: "none", boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)" }}
+                              formatter={(value, name) => [value + " emp", name]}
+                            />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+                      {/* Custom legend outside chart */}
+                      <div className="grid grid-cols-2 gap-1.5 mt-3">
+                        {pieData.map((entry, index) => (
+                          <div key={entry.name} className="flex items-center gap-2 min-w-0">
+                            <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: colors[index % colors.length] }} />
+                            <span className="text-xs text-gray-600 dark:text-gray-400 truncate">{entry.name}</span>
+                            <span className="text-xs font-semibold text-gray-800 dark:text-gray-200 ml-auto">{entry.value}</span>
+                          </div>
                         ))}
-                        </Pie>
-                        <Tooltip 
-                            contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                            formatter={(value) => [value, "Employees"]}
-                        />
-                        <Legend verticalAlign="bottom" height={36} iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }}/>
-                    </PieChart>
-                    </ResponsiveContainer>
-                ) : (
-                    <div className="flex items-center justify-center h-full text-sm text-gray-400">No department data</div>
+                      </div>
+                    </>
+                  );
+                })() : (
+                    <div className="flex items-center justify-center h-48 text-sm text-gray-400">No department data</div>
                 )}
-                </div>
             </div>
           )}
+
 
           {/* Department List */}
           <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6 shadow-sm flex flex-col">
