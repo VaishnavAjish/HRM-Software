@@ -202,6 +202,8 @@ export default function SalaryManagement() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedMonth, setSelectedMonth] = useState("");
   const [selectedYear, setSelectedYear] = useState("");
+  const [selectedDepartment, setSelectedDepartment] = useState("");
+  const [departments, setDepartments] = useState([]);
 
   const mergedFilters = useMemo(() => {
     const filters = { ...apiFilter };
@@ -214,8 +216,11 @@ export default function SalaryManagement() {
     if (selectedYear) {
       filters.year = selectedYear;
     }
+    if (selectedDepartment) {
+      filters.department = selectedDepartment;
+    }
     return filters;
-  }, [apiFilter, searchQuery, selectedMonth, selectedYear]);
+  }, [apiFilter, searchQuery, selectedMonth, selectedYear, selectedDepartment]);
 
   const [exportLoading, setExportLoading] = useState(false);
   const [viewModal, setViewModal] = useState(null);
@@ -231,6 +236,23 @@ export default function SalaryManagement() {
   const refetchSalarySlips = useCallback(() => {
     setRefreshKey((prev) => prev + 1);
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadDepts() {
+      try {
+        const res = await salaryApi.getDepartments(user?.accessToken, user?.tokenType, companyScope.companyId);
+        if (!cancelled && res?.data) {
+          setDepartments(res.data);
+        }
+      } catch (err) {}
+    }
+    loadDepts();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.accessToken, user?.tokenType, companyScope.companyId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -894,6 +916,21 @@ export default function SalaryManagement() {
             />
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400 dark:text-gray-500" />
           </div>
+
+          {/* Department Selector */}
+          <select
+            value={selectedDepartment}
+            onChange={(e) => {
+              setSelectedDepartment(e.target.value);
+              setApiPage(1);
+            }}
+            className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 outline-none dark:border-white/10 dark:bg-[#0b0f1a] dark:text-white"
+          >
+            <option value="">All Departments</option>
+            {departments.map((d) => (
+              <option key={d.id} value={d.name}>{d.name}</option>
+            ))}
+          </select>
 
           {/* Month Selector */}
           <select

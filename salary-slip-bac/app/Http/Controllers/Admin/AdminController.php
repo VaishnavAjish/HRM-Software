@@ -80,6 +80,19 @@ class AdminController extends Controller
 
         $recentSlips = (clone $slipQuery)->orderBy('id', 'desc')->take(10)->get();
 
+        $batchQuery = \App\Models\UploadBatch::query();
+        if ($userAuth && (int) $userAuth->role === 1) {
+            $batchQuery->where('company_code', $userAuth->company_code);
+        } elseif ($userAuth && (int) $userAuth->role === 2) {
+            $batchQuery->where('company_code', $userAuth->company_code)->where('unit', $userAuth->unit);
+        } elseif ($request->company_code) {
+            $batchQuery->whereIn('company_code', explode(',', $request->company_code));
+        }
+        if ($request->unit) {
+            $batchQuery->where('unit', $request->unit);
+        }
+        $recentBatches = $batchQuery->orderBy('id', 'desc')->take(5)->get();
+
         $monthlyStats = (clone $slipQuery)
             ->selectRaw('month, year, COUNT(*) as count, SUM(net_payable) as total_net')
             ->groupBy('year', 'month')
@@ -127,6 +140,7 @@ class AdminController extends Controller
                 'total_slips'     => $totalSlips,
                 'total_salary_paid' => $totalSalaryPaid,
                 'salary_slip'    => $recentSlips,
+                'recent_batches' => $recentBatches,
                 'monthly_stats'   => $monthlyStats,
                 'department_distribution' => $departmentDistribution,
             ],

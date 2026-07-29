@@ -13,18 +13,6 @@ import { ThemeProvider } from "./context/ThemeContext";
 import Login from "./pages/auth/Login";
 import AppLayout from "./components/layout/AppLayout";
 import AddEmployeePage from "./pages/admin/AddEmployeePage";
-import ModernDatePicker from "./components/ModernDatePicker";
-import { useState as __useState } from "react";
-
-function __DebugDatePicker() {
-  const [v, setV] = __useState("");
-  return (
-    <div style={{ padding: 40, maxWidth: 360 }}>
-      <p>value: {v || "(empty)"}</p>
-      <ModernDatePicker name="dob" value={v} onChange={(e) => setV(e.target.value)} />
-    </div>
-  );
-}
 
 // Admin pages
 import AdminDashboard from "./pages/admin/Dashboard";
@@ -38,6 +26,7 @@ import Appointments from "./pages/admin/Appointments";
 import TrialForm from "./pages/admin/TrialForm";
 import Reports from "./pages/admin/Reports";
 import AdminForm16 from "./pages/admin/Form16";
+import TdsCalculation from "./pages/admin/TdsCalculation";
 import AdminProfile from "./pages/admin/AdminProfile";
 import Settings from "./pages/admin/Settings";
 
@@ -154,6 +143,7 @@ function AppRoutes() {
         <Route path="rbac/audit-logs" element={<AuditLogs />} />
 
         <Route path="trial-form" element={<TrialForm />} />
+        <Route path="tds/calculation" element={<TdsCalculation />} />
         <Route path="form16" element={<AdminForm16 />} />
         <Route path="reports" element={<Reports />} />
         <Route path="profile" element={<AdminProfile />} />
@@ -188,8 +178,6 @@ function AppRoutes() {
         <Route path="trial-forms" element={<TrialForm />} />
         <Route path="appointments" element={<Appointments />} />
       </Route>
-
-      <Route path="/debug-datepicker" element={<__DebugDatePicker />} />
 
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>

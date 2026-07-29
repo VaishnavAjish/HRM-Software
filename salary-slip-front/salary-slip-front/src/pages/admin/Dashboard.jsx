@@ -6,16 +6,33 @@ import {
   ArrowUpRight,
   Plus,
   Calendar,
+  Building2,
+  Clock
 } from "lucide-react";
 import { StatCard } from "../../components/ui/Card";
 import { SkeletonTable } from "../../components/ui/Skeleton";
 import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";
 import { getCompanyConfig } from "../../config/companyConfig";
-import { salaryApi } from "../../utils/api";
+import { salaryApi, rbacApi } from "../../utils/api";
 import toast from "react-hot-toast";
 import ManageDepartmentsModal from "./AdminModals/ManageDepartmentsModal";
 import { MonthYearPicker } from "../../components/ui/MonthYearPicker";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  Legend
+} from "recharts";
+
+const PIE_COLORS = ["#6366f1", "#22c55e", "#f59e0b", "#ef4444", "#0ea5e9", "#a855f7"];
 
 const fmt = (n) =>
   n === null || n === undefined ? "—" : "₹" + Number(n).toLocaleString("en-IN");
@@ -24,7 +41,6 @@ function toMonthYear(value) {
   if (!/^\d{4}-\d{2}$/.test(value || "")) {
     return "";
   }
-
   const [year, month] = value.split("-");
   return `${month}/${year}`;
 }
@@ -42,12 +58,13 @@ export default function AdminDashboard() {
   const { companyId, companyScope, scopeKey, scopeLabel } = useCompany();
   const [loading, setLoading] = useState(false);
 
-  const [employeesData, setEmployeesData] = useState([]);
+  const [recentBatchesData, setRecentBatchesData] = useState([]);
   const [departmentHeadcountData, setDepartmentHeadcountData] = useState([]);
   const [dashboardStats, setDashboardStats] = useState(null);
   const [fromMonth, setFromMonth] = useState("");
   const [toMonth, setToMonth] = useState("");
   const [isManageDeptModalOpen, setIsManageDeptModalOpen] = useState(false);
+  const [settings, setSettings] = useState({});
 
   useEffect(() => {
     let cancelled = false;
@@ -64,14 +81,25 @@ export default function AdminDashboard() {
           toMonth,
         );
 
-        const dashRes = await salaryApi.getAdminDashboard(
-          user?.accessToken,
-          user?.tokenType,
-          companyScope,
-          dashboardDateFilter,
-        );
+        const [dashRes, settingsRes] = await Promise.all([
+          salaryApi.getAdminDashboard(
+            user?.accessToken,
+            user?.tokenType,
+            companyScope,
+            dashboardDateFilter,
+          ),
+          rbacApi.getSettings(user?.accessToken, user?.tokenType, "main_dashboard").catch(() => ({ status: false }))
+        ]);
 
         if (cancelled) return;
+
+        if (settingsRes.status) {
+          const map = {};
+          (settingsRes.data || []).forEach((s) => {
+            map[s.key] = s.value !== "false";
+          });
+          setSettings(map);
+        }
 
         // Process Dashboard Stats
         const dashData = dashRes?.data || {};
@@ -92,32 +120,24 @@ export default function AdminDashboard() {
             ),
         );
 
-        // Process Recent Slips for the table
-        const slips = (dashData.salary_slip || []).filter(item => item.emp_name);
+        // Process Recent Batches for the table
+        const batches = (dashData.recent_batches || []);
 
-        const mappedEmps = slips.map((item) => {
-          const name = item.emp_name || "—";
-          const avatar = name
-            .split(" ")
-            .map((n) => n[0])
-            .join("")
-            .toUpperCase()
-            .slice(0, 2);
+        const mappedBatches = batches.map((item) => {
           return {
             id: item.id,
-            name,
-            role: item.designation || "—",
-            department: item.department || "—",
-            status: "Active",
-            avatar,
+            batchId: item.batch_id || `BATCH-${item.id}`,
+            month: item.month || "-",
+            year: item.year || "-",
+            status: item.status == 1 ? "Processed" : item.status == 2 ? "Failed" : "Pending",
+            date: item.created_at ? new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' }).format(new Date(item.created_at)) : "-",
             unit: item.unit || "-",
             companyLabel:
               getCompanyConfig(item.company_code || companyId)?.label || "-",
-            net_payable: Number(item.net_payable ?? 0),
           };
         });
 
-        setEmployeesData(mappedEmps);
+        setRecentBatchesData(mappedBatches);
       } catch (err) {
         if (!cancelled)
           toast.error(err.message || "Failed to load dashboard data");
@@ -132,10 +152,40 @@ export default function AdminDashboard() {
     };
   }, [companyId, companyScope, fromMonth, scopeKey, toMonth, user]);
 
-  const recentEmployees = employeesData.slice(0, 5);
+  const recentBatches = recentBatchesData.slice(0, 5);
   const totalDepartments = departmentHeadcountData.length || 0;
   const hasDateFilter = Boolean(fromMonth || toMonth);
   const invalidDateRange = Boolean(fromMonth && toMonth && fromMonth > toMonth);
+
+  const isVisible = (key, defaultVal = true) => {
+    return settings[key] !== undefined ? settings[key] : defaultVal;
+  };
+
+  const todayStr = new Intl.DateTimeFormat('en-GB', {
+    day: 'numeric', month: 'short', year: 'numeric'
+  }).format(new Date());
+
+  let lastMonthSalary = 0;
+  let chartData = [];
+  if (dashboardStats?.monthly_stats && Array.isArray(dashboardStats.monthly_stats)) {
+    // Backend returns descending (newest first). Let's pick the first one for "Last Month".
+    if (dashboardStats.monthly_stats.length > 0) {
+      lastMonthSalary = Number(dashboardStats.monthly_stats[0].total_net || 0);
+    }
+    // For chart, reverse it so it goes oldest -> newest
+    chartData = [...dashboardStats.monthly_stats].reverse().map(s => ({
+      name: `${s.month}/${String(s.year).slice(2)}`,
+      salary: Number(s.total_net) || 0
+    }));
+  } else {
+      // Fallback if no monthlyStats
+      lastMonthSalary = Number(dashboardStats?.total_salary_paid || 0);
+  }
+
+  const deptChartData = departmentHeadcountData.map(d => ({
+    name: d.dept,
+    value: Number(d.count)
+  }));
 
   if (loading)
     return (
@@ -153,8 +203,8 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-          {[...Array(3)].map((_, index) => (
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+          {[...Array(4)].map((_, index) => (
             <div
               key={index}
               className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800"
@@ -212,230 +262,253 @@ export default function AdminDashboard() {
             Overview of payroll &amp; workforce for {scopeLabel}
           </p>
         </div>
-        <div className="flex flex-col gap-2 rounded-xl border border-gray-200 bg-white p-2 shadow-sm sm:flex-row sm:flex-wrap sm:items-center dark:border-gray-700 dark:bg-gray-800">
-          <div className="flex items-center gap-2 px-1 text-sm font-semibold text-gray-600 dark:text-gray-300">
-            <Calendar size={16} className="text-brand-600" />
-            Date Range
-          </div>
-          <label className="sr-only" htmlFor="dashboard-from-month">
-            From month
-          </label>
-          <MonthYearPicker
-            value={fromMonth}
-            onChange={setFromMonth}
-            max={toMonth}
-            placeholder="From month"
-            className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500 sm:min-w-44 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
-          />
-          <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">
-            to
-          </span>
-          <label className="sr-only" htmlFor="dashboard-to-month">
-            To month
-          </label>
-          <MonthYearPicker
-            value={toMonth}
-            onChange={setToMonth}
-            min={fromMonth}
-            placeholder="To month"
-            className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500 sm:min-w-44 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
-          />
-          {hasDateFilter && (
-            <button
-              type="button"
-              onClick={() => {
-                setFromMonth("");
-                setToMonth("");
-              }}
-              className="rounded-lg px-3 py-2 text-sm font-semibold text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 dark:text-gray-300 dark:hover:bg-gray-700"
-            >
-              Clear
-            </button>
-          )}
-        </div>
       </div>
 
-      {invalidDateRange && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-700 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-300">
-          Select a valid date range. The start month must be before the end
-          month.
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-        <StatCard
-          title="Total Employees"
-          value={dashboardStats?.total_employee ?? "—"}
-          icon={<Users size={22} />}
-          color="blue"
-          // change={5}
-          // subtitle="vs last month"
-        />
-        <StatCard
-          title="Active Employees"
-          value={dashboardStats?.active_employee ?? "—"}
-          icon={<Users size={22} />}
-          color="green"
-          // subtitle="currently active"
-        />
-        <StatCard
-          title="Total Salary Paid"
-          value={
-            dashboardStats?.total_salary_paid != null
-              ? fmt(dashboardStats.total_salary_paid)
-              : "—"
-          }
-          icon={<DollarSign size={22} />}
-          color="purple"
-          // change={3.2}
-          // subtitle="April 2025"
-        />
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+        {isVisible("main_dashboard.show_current_date") && (
+          <StatCard
+            title="Today's Date"
+            value={todayStr}
+            icon={<Clock size={22} />}
+            color="indigo"
+          />
+        )}
+        {isVisible("main_dashboard.show_employee_count") && (
+          <StatCard
+            title="Total Employees"
+            value={dashboardStats?.total_employee ?? "—"}
+            icon={<Users size={22} />}
+            color="blue"
+          />
+        )}
+        {isVisible("main_dashboard.show_departments") && (
+          <StatCard
+            title="Departments"
+            value={totalDepartments}
+            icon={<Building2 size={22} />}
+            color="green"
+          />
+        )}
+        {isVisible("main_dashboard.show_total_salary") && (
+          <StatCard
+            title="Latest Monthly Salary"
+            value={
+              lastMonthSalary
+                ? fmt(lastMonthSalary)
+                : "—"
+            }
+            icon={<DollarSign size={22} />}
+            color="purple"
+          />
+        )}
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5 flex flex-col">
-          <div className="flex items-start justify-between gap-3 mb-4">
-            <div>
-              <h3 className="font-semibold text-gray-900 dark:text-white">
-                By Department
-              </h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-                Workforce distribution
-              </p>
-            </div>
-            <button
-              onClick={() => setIsManageDeptModalOpen(true)}
-              className="p-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-900/25 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors cursor-pointer"
-              title="Manage Departments"
-            >
-              <Plus size={19} />
-            </button>
-          </div>
-
-          <div className="flex items-center justify-between rounded-xl bg-indigo-50 dark:bg-indigo-900/20 px-4 py-3 mb-4">
-            <span className="text-sm font-medium text-indigo-700 dark:text-indigo-300">
-              Total Departments
-            </span>
-            <span className="text-2xl font-bold text-indigo-700 dark:text-indigo-300">
-              {totalDepartments}
-            </span>
-          </div>
-
-          <div className="space-y-2 overflow-y-auto max-h-72 pr-1 pb-2">
-            {departmentHeadcountData.length === 0 && (
-              <p className="text-center py-6 text-sm text-gray-400">
-                No department data available
-              </p>
-            )}
-            {departmentHeadcountData.map((dept, idx) => (
-              <div
-                key={dept?.dept}
-                className="flex items-center gap-3 rounded-lg px-3 py-2.5 bg-gray-50 dark:bg-gray-700/40 hover:bg-indigo-50 dark:hover:bg-indigo-900/15 transition group"
-              >
-                <span className="w-6 h-6 rounded-md bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300 text-xs font-bold flex items-center justify-center flex-shrink-0">
-                  {idx + 1}
-                </span>
-
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 truncate group-hover:text-indigo-700 dark:group-hover:text-indigo-300 transition">
-                    {dept?.dept}
-                  </p>
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-                    {fmt(dept?.salary)}
-                  </p>
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        
+        {/* Left Column: Charts */}
+        <div className="xl:col-span-2 space-y-6">
+            
+          {/* Salary Trend Chart */}
+          {isVisible("main_dashboard.show_salary_trend_chart") && (
+            <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6 shadow-sm">
+                <div className="mb-6">
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Salary Trend</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Total net payable over the last year</p>
                 </div>
+                <div className="h-72 w-full text-sm">
+                {chartData.length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={chartData} margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#6b7280', fontSize: 12}} dy={10} />
+                        <YAxis axisLine={false} tickLine={false} tick={{fill: '#6b7280', fontSize: 12}} tickFormatter={(val) => `₹${(val/1000).toFixed(0)}k`} />
+                        <Tooltip 
+                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)' }}
+                        formatter={(value) => [`₹${Number(value).toLocaleString("en-IN")}`, "Total Paid"]}
+                        />
+                        <Line type="monotone" dataKey="salary" stroke="#6366f1" strokeWidth={3} dot={{r: 4, strokeWidth: 2, fill: '#fff'}} activeDot={{r: 6}} />
+                    </LineChart>
+                    </ResponsiveContainer>
+                ) : (
+                    <div className="flex items-center justify-center h-full text-sm text-gray-400">No chart data available</div>
+                )}
+                </div>
+            </div>
+          )}
 
-                <span className="text-xs font-bold text-indigo-600 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/40 px-2 py-0.5 rounded-full flex-shrink-0">
-                  {dept?.count} emp
-                </span>
+          {/* Recent Batches Table */}
+          <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6 shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-5">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+                  Recent Batches
+                </h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                  Latest salary upload batches
+                </p>
               </div>
-            ))}
+              <Link
+                to="/admin/salary/upload"
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 transition shadow-sm"
+              >
+                Upload <ArrowUpRight size={16} />
+              </Link>
+            </div>
+
+            <div className="overflow-hidden rounded-xl border border-gray-100 dark:border-gray-700">
+              <div className="hidden md:grid grid-cols-[1fr_0.8fr_0.8fr_0.8fr] gap-4 bg-gray-50/80 dark:bg-gray-700/50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                <span>Batch ID</span>
+                <span>Period</span>
+                <span>Status</span>
+                <span className="text-right">Date</span>
+              </div>
+
+              <div className="divide-y divide-gray-100 dark:divide-gray-700">
+                {recentBatches.length === 0 && (
+                  <p className="text-center py-8 text-sm text-gray-400">
+                    No batches found
+                  </p>
+                )}
+                {recentBatches.map((batch) => {
+                  return (
+                    <div
+                      key={batch.id}
+                      className="grid grid-cols-1 md:grid-cols-[1fr_0.8fr_0.8fr_0.8fr] gap-3 md:gap-4 px-4 py-3.5 hover:bg-gray-50 dark:hover:bg-gray-700/40 transition"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">
+                            {batch.batchId}
+                          </p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                            {batch.companyLabel} · {batch.unit}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex md:items-center">
+                        <span className="inline-flex w-fit items-center rounded-full bg-indigo-50 dark:bg-indigo-900/25 px-2.5 py-1 text-xs font-semibold text-indigo-700 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-800/50">
+                          {batch.month} {batch.year}
+                        </span>
+                      </div>
+
+                      <div className="flex md:items-center">
+                        <span
+                          className={`inline-flex w-fit items-center rounded-full px-2.5 py-1 text-xs font-semibold ${
+                            batch.status === "Processed"
+                              ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-800/50"
+                              : batch.status === "Failed"
+                              ? "bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400 border border-red-100 dark:border-red-800/50"
+                              : "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border border-amber-100 dark:border-amber-800/50"
+                          }`}
+                        >
+                          {batch.status}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between md:justify-end gap-3">
+                        <span className="md:hidden text-xs font-medium text-gray-400">
+                          Date
+                        </span>
+                        <span className="text-sm font-bold text-gray-900 dark:text-white">
+                          {batch.date}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         </div>
 
-        <div className="xl:col-span-2 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-5">
-            <div>
-              <h3 className="font-semibold text-gray-900 dark:text-white">
-                Recent Employees
-              </h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-                Latest employee records added to payroll
-              </p>
+        {/* Right Column: Widgets */}
+        <div className="space-y-6">
+            
+          {/* Department Headcount Chart */}
+          {isVisible("main_dashboard.show_department_chart") && (
+            <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6 shadow-sm">
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-6">Workforce Distribution</h3>
+                <div className="h-64 w-full">
+                {deptChartData.length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                        <Pie
+                        data={deptChartData}
+                        cx="50%"
+                        cy="45%"
+                        innerRadius={60}
+                        outerRadius={80}
+                        paddingAngle={5}
+                        dataKey="value"
+                        >
+                        {deptChartData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                        ))}
+                        </Pie>
+                        <Tooltip 
+                            contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                            formatter={(value) => [value, "Employees"]}
+                        />
+                        <Legend verticalAlign="bottom" height={36} iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }}/>
+                    </PieChart>
+                    </ResponsiveContainer>
+                ) : (
+                    <div className="flex items-center justify-center h-full text-sm text-gray-400">No department data</div>
+                )}
+                </div>
             </div>
-            <Link
-              to="/admin/salary"
-              className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-brand-600 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-700 transition"
-            >
-              View all <ArrowUpRight size={14} />
-            </Link>
-          </div>
+          )}
 
-          <div className="overflow-hidden rounded-xl border border-gray-100 dark:border-gray-700">
-            <div className="hidden md:grid grid-cols-[1.5fr_1fr_0.8fr_0.9fr] gap-4 bg-gray-50 dark:bg-gray-700/50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
-              <span>Employee</span>
-              <span>Department</span>
-              <span>Status</span>
-              <span className="text-right">Net Salary</span>
+          {/* Department List */}
+          <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6 shadow-sm flex flex-col">
+            <div className="flex items-start justify-between gap-3 mb-6">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+                  Departments
+                </h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                  Detailed distribution
+                </p>
+              </div>
+              <button
+                onClick={() => setIsManageDeptModalOpen(true)}
+                className="p-2.5 rounded-xl bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors cursor-pointer border border-gray-200 dark:border-gray-600"
+                title="Manage Departments"
+              >
+                <Plus size={18} />
+              </button>
             </div>
 
-            <div className="divide-y divide-gray-100 dark:divide-gray-700">
-              {recentEmployees.length === 0 && (
-                <p className="text-center py-8 text-sm text-gray-400">
-                  No records found
+            <div className="space-y-2 overflow-y-auto max-h-[400px] pr-1 pb-2">
+              {departmentHeadcountData.length === 0 && (
+                <p className="text-center py-6 text-sm text-gray-400">
+                  No department data available
                 </p>
               )}
-              {recentEmployees.map((emp) => {
-                const netSalary = emp.net_payable;
+              {departmentHeadcountData.map((dept, idx) => (
+                <div
+                  key={dept?.dept}
+                  className="flex items-center gap-3 rounded-xl px-3 py-3 bg-gray-50/50 dark:bg-gray-700/20 hover:bg-indigo-50 dark:hover:bg-indigo-900/15 transition group border border-transparent hover:border-indigo-100 dark:hover:border-indigo-800/50"
+                >
+                  <span className="w-8 h-8 rounded-lg bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 text-sm font-bold flex items-center justify-center flex-shrink-0">
+                    {idx + 1}
+                  </span>
 
-                return (
-                  <div
-                    key={emp.id}
-                    className="grid grid-cols-1 md:grid-cols-[1.5fr_1fr_0.8fr_0.9fr] gap-3 md:gap-4 px-4 py-3 hover:bg-gray-100 dark:hover:bg-gray-700/40 transition"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-10 h-10 rounded-xl bg-brand-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                        {emp.avatar}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">
-                          {emp.name}
-                        </p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                          {emp.role} · {emp.companyLabel} · {emp.unit}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="flex md:items-center">
-                      <span className="inline-flex w-fit items-center rounded-full bg-indigo-50 dark:bg-indigo-900/25 px-2.5 py-1 text-xs font-semibold text-indigo-700 dark:text-indigo-300">
-                        {emp.department || "—"}
-                      </span>
-                    </div>
-
-                    <div className="flex md:items-center">
-                      <span
-                        className={`inline-flex w-fit items-center rounded-full px-2.5 py-1 text-xs font-semibold ${
-                          emp.status === "Active"
-                            ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
-                            : "bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400"
-                        }`}
-                      >
-                        {emp.status}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between md:justify-end gap-3">
-                      <span className="md:hidden text-xs font-medium text-gray-400">
-                        Net Salary
-                      </span>
-                      <span className="text-sm font-bold text-gray-900 dark:text-white">
-                        {fmt(netSalary)}
-                      </span>
-                    </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 truncate group-hover:text-indigo-700 dark:group-hover:text-indigo-300 transition">
+                      {dept?.dept}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      {fmt(dept?.salary)}
+                    </p>
                   </div>
-                );
-              })}
+
+                  <span className="text-xs font-bold text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-800 shadow-sm border border-gray-100 dark:border-gray-700 px-2.5 py-1 rounded-full flex-shrink-0">
+                    {dept?.count} emp
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
         </div>

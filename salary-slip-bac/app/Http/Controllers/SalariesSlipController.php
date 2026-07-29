@@ -43,6 +43,9 @@ class SalariesSlipController extends Controller
         if ($request->year) {
             $query->where('year', $request->year);
         }
+        if ($request->department) {
+            $query->where('department', $request->department);
+        }
         if ($request->search) {
             $query->where(function ($q) use ($request) {
                 $q->where('emp_name', 'like', "%{$request->search}%")

@@ -149,16 +149,29 @@ export default function Form16() {
         </div>
       </div>
 
-      <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+      <div className="rounded-xl border border-gray-200 bg-white p-10 shadow-sm dark:border-gray-700 dark:bg-gray-800 text-center flex flex-col items-center justify-center">
         {data ? (
-          <div className="overflow-x-auto rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800/50">
-            <div className="min-w-fit rounded-xl bg-white shadow-sm ring-1 ring-black/5">
-              <Form16Document data={data} />
+          <>
+            <div className="mb-4 rounded-full bg-brand-50 p-4 dark:bg-brand-500/10 text-brand-600 dark:text-brand-400">
+              <FileText size={48} />
             </div>
-          </div>
+            <h3 className="mb-2 text-xl font-bold text-gray-900 dark:text-white">
+              Form 16 is Ready
+            </h3>
+            <p className="mb-6 text-sm text-gray-500 dark:text-gray-400 max-w-sm">
+              Your tax documents for {fyLabel} have been generated. Click below to download your Form 16 PDF.
+            </p>
+            <button
+              onClick={handleDownload}
+              className="flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-6 py-3 text-base font-semibold text-white shadow-sm hover:bg-brand-700 transition-colors"
+            >
+              <Download size={20} /> Download Form 16 PDF
+            </button>
+          </>
         ) : (
-          <div className="flex h-48 items-center justify-center text-sm text-gray-400">
-            No salary data available to generate Form 16.
+          <div className="flex flex-col items-center justify-center text-sm text-gray-400 py-10">
+            <FileText size={48} className="mb-4 text-gray-300 dark:text-gray-600" />
+            <p>No salary data available to generate Form 16.</p>
           </div>
         )}
       </div>

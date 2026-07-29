@@ -58,18 +58,26 @@ function getAdminNav(companyId, rawRole, isAllCompanies) {
         { to: "/admin/attendance/shift", label: "Shift" }
       ]
     },
-    { to: "/admin/appointments", label: "Appointments", icon: ClipboardList },
+    {
+      label: "Appointments",
+      icon: ClipboardList,
+      subItems: [
+        { to: "/admin/appointments", label: "Appointment Form" },
+        ...(companyId === "nidhi-impex" || isAllCompanies
+          ? [{ to: "/admin/trial-form", label: "Trial Form" }]
+          : []),
+      ]
+    },
   ];
 
-  if (companyId === "nidhi-impex" || isAllCompanies) {
-    nav.push({
-      to: "/admin/trial-form",
-      label: "Trial Form",
-      icon: FileSpreadsheet,
-    });
-  }
-
-  nav.push({ to: "/admin/form16", label: "Form 16", icon: Receipt });
+  nav.push({
+    label: "TDS",
+    icon: Receipt,
+    subItems: [
+      { to: "/admin/tds/calculation", label: "TDS Calculation" },
+      { to: "/admin/form16", label: "Form 16" },
+    ]
+  });
 
   if (rawRole === 0) {
     nav.push({

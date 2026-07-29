@@ -60,6 +60,15 @@ const SECURITY_LABELS = {
   "rbac.max_failed_login_attempts": { label: "Max Failed Login Attempts", type: "number" },
 };
 
+const MAIN_DASHBOARD_LABELS = {
+  "main_dashboard.show_current_date": "Show Current Date",
+  "main_dashboard.show_total_salary": "Show Last Month Salary Paid",
+  "main_dashboard.show_employee_count": "Show Employee Count",
+  "main_dashboard.show_departments": "Show Departments Breakdown",
+  "main_dashboard.show_salary_trend_chart": "Show Salary Trend Chart",
+  "main_dashboard.show_department_chart": "Show Department Chart",
+};
+
 export default function RbacDashboard() {
   const { user } = useAuth();
   const [stats, setStats] = useState(null);
@@ -68,6 +77,7 @@ export default function RbacDashboard() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [draftSettings, setDraftSettings] = useState([]);
   const [draftSecurity, setDraftSecurity] = useState([]);
+  const [draftMainDashboard, setDraftMainDashboard] = useState([]);
   const [saving, setSaving] = useState(false);
 
   const loadSettings = () => {
@@ -101,22 +111,30 @@ export default function RbacDashboard() {
 
   const openSettings = async () => {
     try {
-      const [dashboardRes, securityRes] = await Promise.all([
+      const [dashboardRes, securityRes, mainDashboardRes] = await Promise.all([
         rbacApi.getSettings(user?.accessToken, user?.tokenType, "dashboard"),
         rbacApi.getSettings(user?.accessToken, user?.tokenType, "rbac"),
+        rbacApi.getSettings(user?.accessToken, user?.tokenType, "main_dashboard"),
       ]);
       if (dashboardRes.status) setDraftSettings(dashboardRes.data || []);
       if (securityRes.status) setDraftSecurity(securityRes.data || []);
+      if (mainDashboardRes.status) setDraftMainDashboard(mainDashboardRes.data || []);
       setSettingsOpen(true);
     } catch (err) {
       toast.error(err.message || "Failed to load settings");
     }
   };
 
-  const toggleDraft = (key) => {
-    setDraftSettings((prev) =>
-      prev.map((s) => (s.key === key ? { ...s, value: s.value === "true" ? "false" : "true" } : s)),
-    );
+  const toggleDraft = (key, group = "dashboard") => {
+    if (group === "main_dashboard") {
+      setDraftMainDashboard((prev) =>
+        prev.map((s) => (s.key === key ? { ...s, value: s.value === "true" ? "false" : "true" } : s)),
+      );
+    } else {
+      setDraftSettings((prev) =>
+        prev.map((s) => (s.key === key ? { ...s, value: s.value === "true" ? "false" : "true" } : s)),
+      );
+    }
   };
 
   const updateSecurity = (key, value) => {
@@ -132,16 +150,17 @@ export default function RbacDashboard() {
   const saveSettings = async () => {
     setSaving(true);
     try {
-      const [dashboardRes, securityRes] = await Promise.all([
+      const [dashboardRes, securityRes, mainDashboardRes] = await Promise.all([
         rbacApi.updateSettings(draftSettings, user?.accessToken, user?.tokenType, "dashboard"),
         rbacApi.updateSettings(draftSecurity, user?.accessToken, user?.tokenType, "rbac"),
+        rbacApi.updateSettings(draftMainDashboard, user?.accessToken, user?.tokenType, "main_dashboard"),
       ]);
-      if (dashboardRes.status && securityRes.status) {
+      if (dashboardRes.status && securityRes.status && mainDashboardRes.status) {
         toast.success("Settings saved");
         setSettingsOpen(false);
         loadSettings();
       } else {
-        toast.error(dashboardRes.message || securityRes.message || "Failed to save settings");
+        toast.error("Failed to save settings");
       }
     } catch (err) {
       toast.error(err.message || "Failed to save settings");
@@ -302,6 +321,36 @@ export default function RbacDashboard() {
                   </span>
                   <button
                     onClick={() => toggleDraft(setting.key)}
+                    className={`relative h-6 w-11 rounded-full transition-colors ${
+                      setting.value === "true" ? "bg-brand-600" : "bg-gray-300 dark:bg-gray-600"
+                    }`}
+                  >
+                    <span
+                      className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                        setting.value === "true" ? "translate-x-5" : "translate-x-0.5"
+                      }`}
+                    />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="pt-4 border-t border-gray-100 dark:border-gray-700">
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-3">
+              Main Dashboard Widgets
+            </h4>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+              Choose which widgets show on the main Admin Dashboard.
+            </p>
+            <div className="space-y-3">
+              {draftMainDashboard.map((setting) => (
+                <div key={setting.key} className="flex items-center justify-between gap-4">
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                    {MAIN_DASHBOARD_LABELS[setting.key] || setting.key}
+                  </span>
+                  <button
+                    onClick={() => toggleDraft(setting.key, "main_dashboard")}
                     className={`relative h-6 w-11 rounded-full transition-colors ${
                       setting.value === "true" ? "bg-brand-600" : "bg-gray-300 dark:bg-gray-600"
                     }`}
