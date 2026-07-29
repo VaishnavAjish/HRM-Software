@@ -383,11 +383,19 @@ export default function TrialForm() {
       return;
     }
 
-    const appStyles = Array.from(
-      document.querySelectorAll('link[rel="stylesheet"], style'),
-    )
-      .map((node) => node.outerHTML)
-      .join("\n");
+    let cssText = "";
+    try {
+      for (const sheet of document.styleSheets) {
+        try {
+          for (const rule of sheet.cssRules) {
+            cssText += rule.cssText + "\n";
+          }
+        } catch (e) {
+          // Ignore stylesheet access errors (e.g. CORS)
+        }
+      }
+    } catch (e) {}
+    const appStyles = `<style>${cssText}</style>`;
 
     win.document.write(
       `<!DOCTYPE html><html><head>

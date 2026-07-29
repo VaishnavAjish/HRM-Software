@@ -72,6 +72,7 @@ Route::middleware('jwt.auth')->group(function () {
     Route::post('logout',    [AuthController::class, 'logout']);
     Route::post("change-password", [AuthController::class, "changePassword"]);
     Route::post("profile-update", [UserController::class, "updateProfile"]);
+    Route::get('my-permissions', [PermissionDimensionController::class, 'myPermissions']);
     
     // Allow any authenticated user (like Agent) to fetch departments
     Route::get('/department/get', [AdminController::class, "getDepartment"]);

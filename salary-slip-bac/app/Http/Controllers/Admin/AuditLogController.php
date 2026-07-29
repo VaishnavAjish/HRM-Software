@@ -12,7 +12,21 @@ class AuditLogController extends Controller
     {
         $perPage = (int) $request->query('limit', 25);
 
-        $logs = AuditLog::with('user:id,name,email')
+        $logs = AuditLog::with('user:id,name,email,role')
+            ->where(function($query) {
+                $query->whereIn('module', [
+                    'Roles',
+                    'Permission Matrix',
+                    'User Role Assignment',
+                    'User Access Level',
+                    'Page Permissions',
+                    'Menu Permissions',
+                    'Module Permissions',
+                    'Action Permissions'
+                ])
+                ->orWhere('module', 'like', '%Permissions')
+                ->orWhere('module', 'like', '%Matrix');
+            })
             ->when($request->query('module'), fn($q, $m) => $q->where('module', $m))
             ->when($request->query('action'), fn($q, $a) => $q->where('action', $a))
             ->orderByDesc('created_at')

@@ -196,23 +196,168 @@ export default function AgentDashboard() {
     setSelectedForPrint(normalizedData);
     
     // Give react time to render the PrintableForm in the hidden div
-    setTimeout(async () => {
+    setTimeout(() => {
       if (!formRef.current) {
         setPdfLoading(false);
-        toast.error("Failed to generate PDF");
+        toast.error("Failed to load layout");
         return;
       }
-      try {
-        const nameString = typeof normalizedData.name === "string" ? normalizedData.name : (typeof normalizedData.fullName === "string" ? normalizedData.fullName : "Unknown");
-        const fileName = `${normalizedData.type === 'trial' ? 'TrialForm' : 'Appointment'}_${nameString.replace(/\s+/g, "_")}.pdf`;
-        await exportNodeToPdf(formRef.current, fileName, { fitToOnePage: true });
-        toast.success("Form downloaded successfully");
-      } catch (err) {
-        console.error("PDF Error:", err);
-        toast.error("Failed to generate PDF: " + err.message);
-      } finally {
+
+      const win = window.open("", "_blank", "width=1000,height=750");
+      if (!win) {
+        toast.error("Please allow pop-ups to print the form");
         setPdfLoading(false);
         setSelectedForPrint(null);
+        return;
+      }
+
+      // Build one page per existing document (same as admin)
+      const DOC_PRINT_FIELDS = [
+        { key: "adhar_image", label: "Aadhar Card" },
+        { key: "pan_image", label: "PAN Card" },
+        { key: "check_image", label: "Cheque" },
+      ];
+      const docPages = DOC_PRINT_FIELDS.filter(
+        ({ key }) => normalizedData?.documents?.[key]
+      )
+        .map(
+          ({ key, label }) => `
+          <div class="doc-page">
+            <div class="doc-page-header">
+              <span class="doc-page-title">${label}</span>
+              <span class="doc-page-name">${normalizedData?.fullName || normalizedData?.name || ""}</span>
+            </div>
+            <div class="doc-page-body">
+              <img src="${normalizedData.documents[key]}" alt="${label}" />
+            </div>
+            <div class="doc-page-footer">${label} — ${normalizedData?.fullName || normalizedData?.name || ""}</div>
+          </div>
+        `
+        )
+        .join("");
+
+      let cssText = "";
+      try {
+        for (const sheet of document.styleSheets) {
+          try {
+            for (const rule of sheet.cssRules) {
+              cssText += rule.cssText + "\n";
+            }
+          } catch (e) {
+            // Ignore stylesheet access errors (e.g. CORS)
+          }
+        }
+      } catch (e) {}
+      const appStyles = `<style>${cssText}</style>`;
+
+      const pageTitle = normalizedData.type === 'trial' ? 'Trial Form' : 'Appointment';
+      const nameString = typeof normalizedData.name === "string" ? normalizedData.name : (typeof normalizedData.fullName === "string" ? normalizedData.fullName : "Unknown");
+
+      win.document.write(
+        `<!DOCTYPE html><html><head>
+          <base href="${document.baseURI}">
+          ${appStyles}
+          <title>${pageTitle} – ${nameString}</title>
+          <style>
+            *, *::before, *::after { box-sizing: border-box; }
+            html, body { margin: 0; padding: 0; background: white; font-family: sans-serif; }
+            [data-appointment-print-form], [data-trial-print-form] { box-shadow: none !important; }
+
+            /* Document pages */
+            .doc-page {
+              display: flex;
+              flex-direction: column;
+              width: 100%;
+              min-height: 100vh;
+              padding: 10mm 12mm;
+              page-break-before: always;
+            }
+            .doc-page-header {
+              display: flex;
+              align-items: center;
+              justify-content: space-between;
+              padding-bottom: 8px;
+              border-bottom: 2px solid #000;
+              margin-bottom: 16px;
+            }
+            .doc-page-title {
+              font-size: 16px;
+              font-weight: 800;
+              text-transform: uppercase;
+              letter-spacing: 1.5px;
+              color: #000;
+            }
+            .doc-page-name {
+              font-size: 12px;
+              font-weight: 600;
+              color: #555;
+              text-transform: uppercase;
+            }
+            .doc-page-body {
+              flex: 1;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+            }
+            .doc-page-body img {
+              max-width: 100%;
+              max-height: 220mm;
+              object-fit: contain;
+            }
+            .doc-page-footer {
+              margin-top: 12px;
+              text-align: center;
+              font-size: 10px;
+              color: #888;
+              border-top: 1px solid #ddd;
+              padding-top: 6px;
+            }
+
+            @media print {
+              @page { size: A4 portrait; margin: 4mm; }
+              html, body {
+                margin: 0 !important;
+                padding: 0 !important;
+                print-color-adjust: exact;
+                -webkit-print-color-adjust: exact;
+              }
+              [data-appointment-print-form], [data-trial-print-form] {
+                zoom: 0.72;
+                width: 850px !important;
+                max-width: none !important;
+                box-shadow: none !important;
+                border: 1px dotted #555 !important;
+              }
+              .doc-page { padding: 8mm 10mm; }
+              .doc-page-body img { max-height: 240mm; }
+            }
+          </style>
+        </head><body>${formRef.current.outerHTML}${docPages}</body></html>`
+      );
+      win.document.close();
+
+      const printWhenReady = async () => {
+        await win.document.fonts?.ready;
+        await Promise.all(
+          Array.from(win.document.images).map((image) =>
+            image.complete
+              ? Promise.resolve()
+              : new Promise((resolve) => {
+                  image.onload = resolve;
+                  image.onerror = resolve;
+                })
+          )
+        );
+        win.focus();
+        win.print();
+        setPdfLoading(false);
+        setSelectedForPrint(null);
+      };
+
+      if (win.document.readyState === "complete") {
+        printWhenReady();
+      } else {
+        win.addEventListener("load", printWhenReady, { once: true });
       }
     }, 500);
   };

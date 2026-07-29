@@ -32,7 +32,7 @@ import {
 import toast from "react-hot-toast";
 import { authApi } from "../../utils/api";
 import { COMPANY_OPTIONS, getCompanyUnits } from "../../config/companyConfig";
-import WelcomePopup from "./WelcomePopup";
+
 import usePhotoCapture from "../../hooks/usePhotoCapture";
 
 /* ─── Step indicator ─── */
@@ -137,10 +137,7 @@ export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  /* ── Guide popup ── */
-  const [showGuide, setShowGuide] = useState(
-    () => !localStorage.getItem("loginGuideShown"),
-  );
+
 
   /* ── Normal login ── */
   const [empCode, setEmpCode] = useState("");
@@ -394,21 +391,11 @@ export default function Login() {
   const inCls =
     "w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500 text-sm transition";
 
-  const handleGuideSetup = () => {
-    localStorage.setItem("loginGuideShown", "1");
-    setShowGuide(false);
-    enterForgot();
-  };
 
-  const handleGuideClose = () => {
-    localStorage.setItem("loginGuideShown", "1");
-    setShowGuide(false);
-  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-brand-100 via-white to-brand-50 dark:from-gray-900 dark:via-gray-900 dark:to-gray-800 flex items-center justify-center p-4">
-      {/* Welcome popup — first visit only */}
-      {showGuide && <WelcomePopup onDismiss={handleGuideClose} onSetup={handleGuideSetup} />}
+
 
       <div className={`w-full ${mode === "forgot" ? "max-w-lg" : "max-w-md"}`}>
         {/* Logo */}
@@ -452,12 +439,12 @@ export default function Login() {
               <form onSubmit={handleLogin} className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                    Email Address
+                    Email Address or Employee Code
                   </label>
                   <input
                     value={empCode}
                     onChange={(e) => setEmpCode(e.target.value)}
-                    placeholder="Enter your registered email"
+                    placeholder="Enter your email or employee code"
                     required
                     className={inCls}
                   />
@@ -508,22 +495,7 @@ export default function Login() {
                 </button>
               </form>
 
-              {/* Bottom links */}
-              <div className="mt-5 pt-5 border-t border-gray-100 dark:border-gray-700 space-y-3 text-center">
-                <div>
-                  <p className="text-xs text-gray-400 mb-2">
-                    Forgot your password?
-                  </p>
-                  <button
-                    onClick={enterForgot}
-                    className="inline-flex items-center gap-1.5 text-sm font-semibold text-brand-600 dark:text-brand-400 hover:underline"
-                  >
-                    <UserCheck size={15} /> Reset Password{" "}
-                    <ChevronRight size={14} />
-                  </button>
-                </div>
 
-              </div>
             </div>
           </>
         )}

@@ -30,54 +30,66 @@ import {
   ChevronDown,
 } from "lucide-react";
 
-function getAdminNav(companyId, rawRole, isAllCompanies) {
+function getAdminNav(companyId, user, isAllCompanies) {
+  const rawRole = user?.rawRole;
+  const permissions = user?.permissions;
+
+  const hasAccess = (key) => {
+    if (rawRole === 0) return true;
+    if (!permissions) return true; // Default to true if not set (permissive model)
+    return permissions[key] !== "no_access";
+  };
+
   const nav = [
-    { to: "/admin", label: "Dashboard", icon: LayoutDashboard, end: true },
+    ...(hasAccess("dashboard") ? [{ to: "/admin", label: "Dashboard", icon: LayoutDashboard, end: true }] : []),
     ...(rawRole === 0 ? [{ to: "/admin/admins", label: "Admin", icon: Shield }] : []),
-    {
+    ...(hasAccess("employees") ? [{
       label: "Employees",
       icon: Users,
       subItems: [
         { to: "/admin/employees", label: "View Employees" },
         { to: "/admin/employees/add", label: "Add Employee" }
       ]
-    },
-    {
+    }] : []),
+    ...(hasAccess("salary") ? [{
       label: "Salary",
       icon: DollarSign,
       subItems: [
         { to: "/admin/salary", label: "Month & Batch Details" },
         { to: "/admin/salary/upload", label: "Salary Upload" }
       ]
-    },
-    {
+    }] : []),
+    ...(hasAccess("attendance") ? [{
       label: "Attendance",
       icon: Calendar,
       subItems: [
         { to: "/admin/attendance", label: "View Attendance" },
         { to: "/admin/attendance/shift", label: "Shift" }
       ]
-    },
-    {
+    }] : []),
+    ...(hasAccess("appointments") || (hasAccess("trial_form") && (companyId === "nidhi-impex" || isAllCompanies)) ? [{
       label: "Appointments",
       icon: ClipboardList,
       subItems: [
-        { to: "/admin/appointments", label: "Appointment Form" },
-        ...(companyId === "nidhi-impex" || isAllCompanies
+        ...(hasAccess("appointments") ? [{ to: "/admin/appointments", label: "Appointment Form" }] : []),
+        ...((hasAccess("trial_form") && (companyId === "nidhi-impex" || isAllCompanies))
           ? [{ to: "/admin/trial-form", label: "Trial Form" }]
           : []),
       ]
-    },
+    }] : []),
   ];
 
-  nav.push({
-    label: "TDS",
-    icon: Receipt,
-    subItems: [
-      { to: "/admin/tds/calculation", label: "TDS Calculation" },
-      { to: "/admin/form16", label: "Form 16" },
-    ]
-  });
+  const tdsSubItems = [
+    ...(hasAccess("tds") ? [{ to: "/admin/tds/calculation", label: "TDS Calculation" }] : []),
+    ...(hasAccess("form16") ? [{ to: "/admin/form16", label: "Form 16" }] : []),
+  ];
+  if (tdsSubItems.length > 0) {
+    nav.push({
+      label: "TDS",
+      icon: Receipt,
+      subItems: tdsSubItems
+    });
+  }
 
   if (rawRole === 0) {
     nav.push({
@@ -138,19 +150,62 @@ export default function Sidebar({ open, onClose, width, isCollapsed, onCollapse 
   
   let nav = [];
   if (user?.role === "admin") {
-    nav = getAdminNav(companyId, user?.rawRole, isAllCompanies);
+    nav = getAdminNav(companyId, user, isAllCompanies);
   } else if (user?.role === "agent") {
-    nav = agentNav.filter(item => {
+    const baseNav = agentNav.filter(item => {
       if (!item.company) return true;
       if (user?.company_code === 'all-companies') return true;
       if (user?.company_code?.includes(item.company)) return true;
       return false;
     });
+
+    const keyMap = {
+      "/agent": "agent_dashboard",
+      "/agent/trial-forms": "agent_trial_form",
+      "/agent/appointments": "agent_appointment_form",
+    };
+
+    nav = baseNav.filter(item => {
+      const key = keyMap[item.to];
+      if (!key) return true;
+      if (!user?.permissions) return true;
+      return user.permissions[key] !== "no_access";
+    });
   } else {
-    const isProfileComplete = Boolean(user?.aadhar_card_no);
-    nav = isProfileComplete 
+    const fields = [
+      "name", "email", "phone", "dob", "address", "city", "district", "state", "pin",
+      "aadhar_card_no", "pan_card_no", "bank_name", "bank_ifsc_code", "bank_account_no",
+      "pf_no", "esi_no", "gender", "department", "designation", "joining_date"
+    ];
+    const source = {
+      ...user,
+      phone: user?.mobile_number || user?.mobile_no || user?.phone
+    };
+    let filled = 0;
+    fields.forEach(f => {
+      if (source[f] !== undefined && source[f] !== null && String(source[f]).trim() !== "") {
+        filled++;
+      }
+    });
+    const isProfileComplete = (filled === fields.length);
+    const baseNav = isProfileComplete 
       ? employeeNav 
       : employeeNav.filter(item => item.to === "/employee/profile");
+
+    const keyMap = {
+      "/employee": "employee_dashboard",
+      "/employee/payslips": "employee_payslips",
+      "/employee/form16": "employee_form16",
+      "/employee/profile": "employee_profile",
+      "/employee/appointment": "employee_appointment",
+    };
+
+    nav = baseNav.filter(item => {
+      const key = keyMap[item.to];
+      if (!key) return true;
+      if (!user?.permissions) return true;
+      return user.permissions[key] !== "no_access";
+    });
   }
   
   const handleLogout = async () => {

@@ -17,7 +17,7 @@ class AuthController extends Controller
     public function login(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'email'    => 'required|email',
+            'email'    => 'required',
             'password' => 'required',
         ]);
 
@@ -25,7 +25,15 @@ class AuthController extends Controller
             return response()->json(['status' => false, 'message' => $validator->errors()->first()], 422);
         }
 
-        $credentials = $request->only('email', 'password');
+        $loginInput = trim((string) $request->input('email'));
+        $password = $request->input('password');
+
+        $field = filter_var($loginInput, FILTER_VALIDATE_EMAIL) ? 'email' : 'emp_code';
+
+        $credentials = [
+            $field => $loginInput,
+            'password' => $password,
+        ];
 
         if (!$token = JWTAuth::attempt($credentials)) {
             return response()->json(['status' => false, 'message' => 'Invalid credentials'], 401);
@@ -39,7 +47,8 @@ class AuthController extends Controller
         }
 
         if ((int) $user->status === 2) {
-            return response()->json(['status' => false, 'message' => 'Please complete registration (verify your employee code and set a password) before logging in'], 403);
+            $user->status = 0;
+            $user->save();
         }
 
         return response()->json([
@@ -83,10 +92,11 @@ class AuthController extends Controller
         }
 
         $user = User::create([
-            'name'     => $request->name,
-            'email'    => $request->email,
-            'password' => $request->password,
-            'role'     => $request->role ?? 1,
+            'name'         => $request->name,
+            'email'        => $request->email,
+            'password'     => $request->password,
+            'role'         => $request->role ?? 1,
+            'company_code' => $request->company_code,
         ]);
 
         $token = JWTAuth::fromUser($user);

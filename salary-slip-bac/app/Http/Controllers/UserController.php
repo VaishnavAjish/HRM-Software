@@ -97,12 +97,24 @@ class UserController extends Controller
             ->where('company_code', 'silverstar')
             ->update(['unit' => 'Daduk']);
 
+        $status = $request->status;
         $query = User::where('is_deleted', 0)
-            ->whereNotIn('role', [0, 1, 2])
-            ->where(function ($q) {
-                $q->whereNull('type')
-                  ->orWhereNotIn('type', ['appointment', 'agent']);
-            });
+            ->whereNotIn('role', [0, 1, 2]);
+
+        if ($status !== null && (int)$status === 2) {
+            $query->where('type', 'pending_employee')
+                ->where('status', 2);
+        } else {
+            $query->whereNotNull('emp_code')
+                ->where('emp_code', '!=', '')
+                ->where(function ($q) {
+                    $q->whereNull('type')
+                      ->orWhereNotIn('type', ['appointment', 'agent', 'pending_employee']);
+                });
+            if ($status !== null) {
+                $query->where('status', $status);
+            }
+        }
 
         $userAuth = auth('api')->user();
         if ($userAuth && (int) $userAuth->role === 1) {
@@ -115,9 +127,6 @@ class UserController extends Controller
         }
         if ($request->unit) {
             $query->where('unit', $request->unit);
-        }
-        if ($request->status !== null) {
-            $query->where('status', $request->status);
         }
         if ($request->search) {
             $query->where(function ($q) use ($request) {
@@ -226,8 +235,21 @@ class UserController extends Controller
             $data['password'] = $data['password'];
         }
 
-        if ($employee->type === 'appointment' && isset($data['emp_code']) && $employee->emp_code !== $data['emp_code']) {
-            $data['type'] = null;
+        $newEmpCode = isset($data['emp_code']) ? trim((string) $data['emp_code']) : null;
+        if ($newEmpCode && $employee->emp_code !== $newEmpCode) {
+            $conflict = User::where('emp_code', $newEmpCode)
+                ->where('id', '!=', $employee->id)
+                ->where('is_deleted', 0)
+                ->first();
+            if ($conflict) {
+                return response()->json([
+                    'status' => false,
+                    'message' => "Employee code '{$newEmpCode}' is already assigned to {$conflict->name}",
+                ], 422);
+            }
+            if ($employee->type === 'appointment' || $employee->type === 'pending_employee') {
+                $data['type'] = null;
+            }
         }
 
         $employee->update($data);

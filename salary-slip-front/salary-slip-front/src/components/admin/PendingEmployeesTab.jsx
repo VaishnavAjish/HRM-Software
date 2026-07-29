@@ -41,7 +41,7 @@ export default function PendingEmployeesTab() {
       const res = await salaryApi.getAllEmployees(
         currentUser?.accessToken,
         currentUser?.tokenType,
-        "?status=2&limit=1000",
+        { status: "2", limit: 1000 },
         companyScope
       );
       let data = res?.data?.users?.data ?? res?.data?.users ?? [];
@@ -77,7 +77,7 @@ export default function PendingEmployeesTab() {
           password: form.password,
           email: form.email,
           type: null,
-          status: 2 // Keep pending until details fully filled by employee
+          status: 0 // Active status for direct login access
         },
         currentUser?.accessToken,
         currentUser?.tokenType,

@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
-import { Search, Lock, Unlock, Trash2, ShieldAlert } from "lucide-react";
+import { Search, Lock, Unlock, Trash2, ShieldAlert, Plus } from "lucide-react";
 import toast from "react-hot-toast";
 import Badge from "../../../components/ui/Badge";
 import Button from "../../../components/ui/Button";
-import { rbacApi, salaryApi } from "../../../utils/api";
+import Modal from "../../../components/ui/Modal";
+import { rbacApi, salaryApi, authApi } from "../../../utils/api";
 import { useAuth } from "../../../context/AuthContext";
 
 // The only four roles this system has.
@@ -15,19 +15,32 @@ function levelOf(role) {
   return n in LEVEL_LABEL ? n : 3;
 }
 
+import { useEffect, useState } from "react";
+
 export default function RbacUsers() {
   const { user } = useAuth();
   const [users, setUsers] = useState([]);
   const [meta, setMeta] = useState({ page: 1, totalPages: 1 });
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [addForm, setAddForm] = useState({
+    name: "",
+    email: "",
+    password: "",
+    role: "1",
+    company: "nidhi-impex",
+    agentCompanies: { "nidhi-impex": true, "silver-star": false }
+  });
+  const [addLoading, setAddLoading] = useState(false);
 
   const fetchUsers = async (page = 1) => {
     setLoading(true);
     try {
-      const res = await rbacApi.getUserRoles(user?.accessToken, user?.tokenType, page, 15, search);
+      const res = await rbacApi.getUserRoles(user?.accessToken, user?.tokenType, page, 15, search, "1,3,4");
       if (res.status) {
-        setUsers(res.data || []);
+        const filtered = (res.data || []).filter((u) => Number(u.role) !== 0);
+        setUsers(filtered);
         setMeta(res.meta || { page: 1, totalPages: 1 });
       }
     } catch (err) {
@@ -81,6 +94,63 @@ export default function RbacUsers() {
     }
   };
 
+  const handleAddUser = async (e) => {
+    e.preventDefault();
+    if (!addForm.name.trim() || !addForm.email.trim() || !addForm.password.trim()) {
+      toast.error("All fields are required");
+      return;
+    }
+
+    let selectedCompany = "";
+    if (Number(addForm.role) === 1) {
+      selectedCompany = addForm.company;
+    } else if (Number(addForm.role) === 4) {
+      const selected = [];
+      if (addForm.agentCompanies["nidhi-impex"]) selected.push("nidhi-impex");
+      if (addForm.agentCompanies["silver-star"]) selected.push("silver-star");
+      
+      if (selected.length === 0) {
+        toast.error("Please select at least one company for the Agent");
+        return;
+      }
+      selectedCompany = selected.join(",");
+    }
+
+    setAddLoading(true);
+    try {
+      const res = await authApi.register(
+        {
+          name: addForm.name,
+          email: addForm.email,
+          password: addForm.password,
+          role: Number(addForm.role),
+          company_code: selectedCompany,
+        },
+        user?.accessToken,
+        user?.tokenType
+      );
+      if (res.status) {
+        toast.success("User created successfully");
+        setShowAddModal(false);
+        setAddForm({
+          name: "",
+          email: "",
+          password: "",
+          role: "1",
+          company: "nidhi-impex",
+          agentCompanies: { "nidhi-impex": true, "silver-star": false }
+        });
+        fetchUsers(1);
+      } else {
+        toast.error(res.message || "Failed to create user");
+      }
+    } catch (err) {
+      toast.error(err.message || "Failed to create user");
+    } finally {
+      setAddLoading(false);
+    }
+  };
+
   if (user?.rawRole !== 0) {
     return (
       <div className="flex flex-col items-center justify-center py-24 text-center">
@@ -92,11 +162,16 @@ export default function RbacUsers() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">Users</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-          Every user in the system and their role. Admin levels are set from the Role Permission Matrix.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">Users</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+            Every user in the system and their role. Admin levels are set from the Role Permission Matrix.
+          </p>
+        </div>
+        <Button onClick={() => setShowAddModal(true)} icon={<Plus size={16} />}>
+          Add User
+        </Button>
       </div>
 
       <form onSubmit={handleSearch} className="flex gap-2">
@@ -210,6 +285,140 @@ export default function RbacUsers() {
           </div>
         )}
       </div>
+
+      <Modal
+        isOpen={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        title="Add New Admin/Agent User"
+        size="md"
+      >
+        <form onSubmit={handleAddUser} className="space-y-4">
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Full Name
+            </label>
+            <input
+              type="text"
+              required
+              value={addForm.name}
+              onChange={(e) => setAddForm({ ...addForm, name: e.target.value })}
+              className="w-full px-3 py-2 text-sm bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white outline-none focus:border-brand-500"
+              placeholder="e.g. John Doe"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Email ID (Login ID)
+            </label>
+            <input
+              type="email"
+              required
+              value={addForm.email}
+              onChange={(e) => setAddForm({ ...addForm, email: e.target.value })}
+              className="w-full px-3 py-2 text-sm bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white outline-none focus:border-brand-500"
+              placeholder="e.g. john@company.com"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Password
+            </label>
+            <input
+              type="password"
+              required
+              value={addForm.password}
+              onChange={(e) => setAddForm({ ...addForm, password: e.target.value })}
+              className="w-full px-3 py-2 text-sm bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white outline-none focus:border-brand-500"
+              placeholder="Min 6 characters"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Role Type
+            </label>
+            <select
+              value={addForm.role}
+              onChange={(e) => setAddForm({ ...addForm, role: e.target.value })}
+              className="w-full px-3 py-2 text-sm bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white outline-none focus:border-brand-500"
+            >
+              <option value="1">Admin</option>
+              <option value="4">Agent</option>
+            </select>
+          </div>
+
+          {Number(addForm.role) === 1 && (
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Company Access
+              </label>
+              <select
+                value={addForm.company}
+                onChange={(e) => setAddForm({ ...addForm, company: e.target.value })}
+                className="w-full px-3 py-2 text-sm bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white outline-none focus:border-brand-500"
+              >
+                <option value="nidhi-impex">Nidhi Impex</option>
+                <option value="silver-star">Silver Star</option>
+              </select>
+            </div>
+          )}
+
+          {Number(addForm.role) === 4 && (
+            <div>
+              <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Company Access (Select one or both)
+              </label>
+              <div className="flex gap-6 mt-1">
+                <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={addForm.agentCompanies["nidhi-impex"]}
+                    onChange={(e) =>
+                      setAddForm({
+                        ...addForm,
+                        agentCompanies: {
+                          ...addForm.agentCompanies,
+                          "nidhi-impex": e.target.checked,
+                        },
+                      })
+                    }
+                    className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                  />
+                  Nidhi Impex
+                </label>
+                <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={addForm.agentCompanies["silver-star"]}
+                    onChange={(e) =>
+                      setAddForm({
+                        ...addForm,
+                        agentCompanies: {
+                          ...addForm.agentCompanies,
+                          "silver-star": e.target.checked,
+                        },
+                      })
+                    }
+                    className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                  />
+                  Silver Star
+                </label>
+              </div>
+            </div>
+          )}
+
+          <div className="flex justify-end gap-3 pt-4 border-t border-gray-100 dark:border-gray-700 mt-6">
+            <Button type="button" variant="secondary" onClick={() => setShowAddModal(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={addLoading}>
+              {addLoading ? "Creating..." : "Create User"}
+            </Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

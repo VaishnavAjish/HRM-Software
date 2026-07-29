@@ -305,6 +305,10 @@ export default function Profile() {
       bank_account_no: profile?.bank_account_no || "",
       pf_no: profile?.pf_no || "",
       esi_no: profile?.esi_no || "",
+      gender: profile?.gender || "",
+      department: profile?.department || "",
+      designation: profile?.designation || "",
+      joining_date: profile?.joining_date || "",
     });
     setEditing(false);
     setActiveStep(1);
@@ -425,43 +429,116 @@ export default function Profile() {
           </div>
         </div>
       </div>
-    );
+    );  // Calculate Profile Completion Percentage
+  const completionFields = [
+    "name", "email", "phone", "dob", "address", "city", "district", "state", "pin",
+    "aadhar_card_no", "pan_card_no", "bank_name", "bank_ifsc_code", "bank_account_no",
+    "pf_no", "esi_no", "gender", "department", "designation", "joining_date"
+  ];
+
+  const calculateCompletion = () => {
+    let filled = 0;
+    const source = editing ? form : { ...emp, phone: emp.mobile_number || emp.mobile_no || emp.phone };
+    completionFields.forEach(field => {
+      if (source[field] && String(source[field]).trim() !== "") {
+        filled++;
+      }
+    });
+    return Math.round((filled / completionFields.length) * 100);
+  };
+  const completionPercentage = calculateCompletion();
 
   return (
     <div className="space-y-4">
-      {user?.role === 'employee' && !emp.aadhar_card_no && (
-        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 px-4 py-3 rounded-xl flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <CheckCircle className="text-amber-500" size={18} />
-            <p className="text-sm font-medium">
-              Please complete your profile details and hit Save to unlock all features.
+      {/* Profile Completion & Top Actions */}
+      <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 relative overflow-hidden">
+        {/* Background progress indicator effect */}
+        <div 
+          className="absolute left-0 top-0 bottom-0 bg-brand-50/50 dark:bg-brand-900/10 transition-all duration-1000 ease-out" 
+          style={{ width: `${completionPercentage}%` }} 
+        />
+        
+        <div className="flex items-center gap-4 w-full sm:w-auto relative">
+          <div className="relative w-14 h-14 flex items-center justify-center flex-shrink-0 bg-white dark:bg-gray-800 rounded-full shadow-sm">
+            <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+              <path
+                className="text-gray-100 dark:text-gray-700"
+                strokeWidth="3.5"
+                stroke="currentColor"
+                fill="none"
+                d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+              />
+              <path
+                className={`${completionPercentage === 100 ? 'text-green-500' : 'text-brand-500'} transition-all duration-1000 ease-out`}
+                strokeDasharray={`${completionPercentage}, 100`}
+                strokeWidth="3.5"
+                strokeDashoffset="0"
+                strokeLinecap="round"
+                stroke="currentColor"
+                fill="none"
+                d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+              />
+            </svg>
+            <span className={`absolute text-xs font-bold ${completionPercentage === 100 ? 'text-green-600 dark:text-green-400' : 'text-brand-600 dark:text-brand-400'}`}>
+              {completionPercentage}%
+            </span>
+          </div>
+          <div>
+            <h3 className="text-base font-bold text-gray-900 dark:text-white">Profile Completion</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+              {completionPercentage === 100 
+                ? "Your profile is fully complete! Excellent job." 
+                : "Complete your profile to unlock all features."}
             </p>
           </div>
         </div>
-      )}
 
-      {/* Top Actions */}
-      <div className="flex justify-end">
-        {!editing ? (
-          <button
-            onClick={() => setEditing(true)}
-            className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-brand-600 dark:text-brand-400 bg-white dark:bg-gray-800 border border-brand-200 dark:border-brand-700 rounded-xl hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-colors shadow-sm"
-          >
-            <Edit2 size={16} /> Edit Profile
-          </button>
-        ) : (
-          <button
-            onClick={handleCancel}
-            className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-gray-500 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors shadow-sm"
-          >
-            <X size={16} /> Cancel
-          </button>
-        )}
+        <div className="flex-shrink-0 w-full sm:w-auto flex justify-end relative">
+          {!editing ? (
+            <button
+              onClick={() => {
+                setForm({
+                  name: profile?.name || "",
+                  email: profile?.email || "",
+                  phone: profile?.mobile_number || "",
+                  dob: profile?.dob || "",
+                  address: profile?.address || "",
+                  city: profile?.city || "",
+                  district: profile?.district || "",
+                  state: profile?.state || "",
+                  pin: profile?.pin || "",
+                  aadhar_card_no: profile?.aadhar_card_no || "",
+                  pan_card_no: profile?.pan_card_no || "",
+                  bank_name: profile?.bank_name || "",
+                  bank_ifsc_code: profile?.bank_ifsc_code || "",
+                  bank_account_no: profile?.bank_account_no || "",
+                  pf_no: profile?.pf_no || "",
+                  esi_no: profile?.esi_no || "",
+                  gender: profile?.gender || "",
+                  department: profile?.department || "",
+                  designation: profile?.designation || "",
+                  joining_date: profile?.joining_date || "",
+                });
+                setEditing(true);
+              }}
+              className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-brand-600 dark:text-brand-400 bg-white dark:bg-gray-800 border border-brand-200 dark:border-brand-700 rounded-xl hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-colors shadow-sm"
+            >
+              <Edit2 size={16} /> Edit Profile
+            </button>
+          ) : (
+            <button
+              onClick={handleCancel}
+              className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-gray-500 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors shadow-sm"
+            >
+              <X size={16} /> Cancel
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="grid lg:grid-cols-[320px_1fr] gap-5 items-start">
       {/* ══ LEFT COLUMN — Profile card ══ */}
-      <div className="space-y-4 lg:sticky">
+      <div className="space-y-4 lg:sticky min-w-0">
         {/* Avatar card */}
         <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
           {/* Banner */}
@@ -513,7 +590,7 @@ export default function Profile() {
                 className="text-lg font-bold w-full bg-transparent border-b-2 border-brand-500 text-gray-900 dark:text-white focus:outline-none mb-1"
               />
             ) : (
-              <h2 className="text-lg font-bold text-gray-900 dark:text-white">
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white truncate">
                 {form.name}
               </h2>
             )}
@@ -526,7 +603,7 @@ export default function Profile() {
                 <CheckCircle size={10} /> {emp.status}
               </span>
               <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-brand-100 dark:bg-brand-900/30 text-brand-700 dark:text-brand-400">
-                <Building2 size={10} /> {emp.department || "—"}
+                <Building2 size={10} /> <span className="truncate max-w-[120px]">{emp.department || "—"}</span>
               </span>
             </div>
           </div>
@@ -550,10 +627,10 @@ export default function Profile() {
       </div>
 
       {/* ══ RIGHT COLUMN — Details ══ */}
-      <div className="space-y-4">
+      <div className="space-y-4 min-w-0">
         
         {/* Stepper Tabs */}
-        <div className="flex bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-2 overflow-x-auto gap-2">
+        <div className="flex flex-wrap bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-2 gap-2">
           {[
             { id: 1, label: "1. Basic Details" },
             { id: 2, label: "2. Address Details" },

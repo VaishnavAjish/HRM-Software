@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { authApi } from "../utils/api";
+import { authApi, roleApi, rbacApi } from "../utils/api";
 import { resolveCompanyId } from "../config/companyConfig";
 
 const AuthContext = createContext(null);
@@ -83,6 +83,28 @@ function buildAuthUser(apiUser, fallbackUser = {}, loginData = {}) {
   };
 }
 
+async function loadPermissionsForUser(builtUser) {
+  if (!builtUser?.accessToken) return builtUser;
+  if (builtUser.rawRole === 0) {
+    // Super Admin gets all access
+    return { ...builtUser, permissions: null }; 
+  }
+
+  try {
+    const res = await rbacApi.getMyPermissions(builtUser.accessToken, builtUser.tokenType);
+    if (res.status) {
+      const perms = {};
+      (res.data || []).forEach((row) => {
+        perms[row.key_name] = row.value; // e.g. "view_only", "no_access", "read_write"
+      });
+      return { ...builtUser, permissions: perms };
+    }
+  } catch (err) {
+    console.error("Failed to load user permissions", err);
+  }
+  return { ...builtUser, permissions: {} }; // Empty object means default permissions
+}
+
 export function AuthProvider({ children }) {
   const [users, setUsers] = useState({});
   const [user, setUser] = useState(null);
@@ -108,7 +130,8 @@ export function AuthProvider({ children }) {
         );
         const apiUser =
           data?.data || data?.user || data?.employee || data?.profile || data;
-        const restoredUser = buildAuthUser(apiUser, storedUser);
+        let restoredUser = buildAuthUser(apiUser, storedUser);
+        restoredUser = await loadPermissionsForUser(restoredUser);
 
         if (!ignore) {
           setUser(restoredUser);
@@ -155,7 +178,8 @@ export function AuthProvider({ children }) {
       const data = await authApi.login(email.trim(), password, company_code);
       const apiUser =
         data?.login || data?.data || data?.user || data?.employee || data;
-      const loggedInUser = buildAuthUser(apiUser, {}, data);
+      let loggedInUser = buildAuthUser(apiUser, {}, data);
+      loggedInUser = await loadPermissionsForUser(loggedInUser);
 
       setUser(loggedInUser);
       saveUserToStorage(loggedInUser);

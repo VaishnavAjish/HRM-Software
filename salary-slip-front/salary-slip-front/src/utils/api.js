@@ -126,7 +126,13 @@ export const salaryApi = {
       ([key, value]) => {
         if (!value) return;
         if (key === "status") {
-          params.set("status", value === "Active" ? "0" : "1");
+          if (value === "Active" || value === "0") {
+            params.set("status", "0");
+          } else if (value === "Pending" || value === "2") {
+            params.set("status", "2");
+          } else {
+            params.set("status", "1");
+          }
         } else {
           params.set(key, value);
         }
@@ -145,7 +151,13 @@ export const salaryApi = {
       ([key, value]) => {
         if (!value) return;
         if (key === "status") {
-          params.set("status", value === "Active" ? "0" : "1");
+          if (value === "Active" || value === "0") {
+            params.set("status", "0");
+          } else if (value === "Pending" || value === "2") {
+            params.set("status", "2");
+          } else {
+            params.set("status", "1");
+          }
         } else {
           params.set(key, value);
         }
@@ -508,6 +520,10 @@ function authHeaders(accessToken, tokenType) {
 }
 
 export const rbacApi = {
+  getMyPermissions(accessToken, tokenType = "Bearer") {
+    return apiRequest("/my-permissions", { headers: authHeaders(accessToken, tokenType) });
+  },
+
   getDashboard(accessToken, tokenType = "Bearer") {
     return apiRequest("/rbac/dashboard", { headers: authHeaders(accessToken, tokenType) });
   },
@@ -569,6 +585,14 @@ export const rbacApi = {
 };
 
 export const authApi = {
+  register(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest("/register", {
+      method: "POST",
+      headers: accessToken ? { Authorization: `${tokenType} ${accessToken}` } : {},
+      body: JSON.stringify(payload),
+    });
+  },
+
   login(email, password, company_code) {
     return apiRequest("/login", {
       method: "POST",

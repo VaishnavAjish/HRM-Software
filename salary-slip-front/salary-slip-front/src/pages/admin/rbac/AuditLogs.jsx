@@ -7,8 +7,13 @@ import { useAuth } from "../../../context/AuthContext";
 
 const ACTION_TONE = { CREATE: "green", UPDATE: "yellow", DELETE: "red", ASSIGN: "blue", REVOKE: "gray" };
 
-// Every module string any AuditLogger::log() call site in the backend uses —
-// fixed here so the filter works regardless of what's on the current page.
+const LEVEL_LABEL = { 0: "Super Admin", 1: "Admin", 3: "Employee", 4: "Agent" };
+function levelOf(role) {
+  const n = Number(role);
+  return n in LEVEL_LABEL ? n : 3;
+}
+
+// Only show RBAC modules in the filter dropdown
 const MODULES = [
   "Roles",
   "Permission Matrix",
@@ -18,16 +23,6 @@ const MODULES = [
   "Menu Permissions",
   "Module Permissions",
   "Action Permissions",
-  "Row Permissions",
-  "Field Permissions",
-  "Location Permissions",
-  "Warehouse Permissions",
-  "Branch Permissions",
-  "Location",
-  "Branch",
-  "Team",
-  "Approval Level",
-  "Settings",
 ];
 
 function diffLines(oldValue, newValue) {
@@ -169,7 +164,22 @@ export default function AuditLogs() {
                           <Badge variant={ACTION_TONE[log.action] || "gray"}>{log.action}</Badge>
                         </td>
                         <td className="px-4 py-3 text-gray-700 dark:text-gray-200">{log.module}</td>
-                        <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{log.user?.name ?? "System"}</td>
+                        <td className="px-4 py-3 text-xs text-gray-600 dark:text-gray-300">
+                          {log.user ? (
+                            <div className="space-y-0.5">
+                              <div><span className="font-semibold text-gray-500 dark:text-gray-400">ID:</span> {log.user.id}</div>
+                              <div><span className="font-semibold text-gray-500 dark:text-gray-400">Name:</span> {log.user.name}</div>
+                              <div>
+                                <span className="font-semibold text-gray-500 dark:text-gray-400">Role:</span>{" "}
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500 bg-gray-100 dark:bg-gray-700 dark:text-gray-300 px-1.5 py-0.5 rounded">
+                                  {LEVEL_LABEL[levelOf(log.user.role)] || "—"}
+                                </span>
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="italic text-gray-400">System</span>
+                          )}
+                        </td>
                         <td className="px-4 py-3 text-gray-500 dark:text-gray-400 font-mono text-xs">
                           {log.ip_address ?? "—"}
                         </td>

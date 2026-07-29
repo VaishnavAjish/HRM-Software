@@ -38,6 +38,7 @@ import { SkeletonTable } from "../../components/ui/Skeleton";
 import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";
 import { authApi } from "../../utils/api";
+import PrintableForm from "../../components/forms/PrintableForm";
 import { exportNodeToPdf } from "../../utils/pdfUtils";
 import AppointmentModal from "../auth/AppointmentModal";
 import { COMPANY_OPTIONS, getCompanyUnits } from "../../config/companyConfig";
@@ -261,12 +262,14 @@ function StatusBadge({ status }) {
 }
 
 const FormRow = ({ label, value }) => (
-  <div className="flex flex-col sm:flex-row sm:items-end gap-1 sm:gap-2 py-1">
-    <label className="text-[13px] font-bold sm:whitespace-nowrap w-full sm:w-[130px] sm:shrink-0 text-black leading-normal">
+  <div className="flex flex-row items-end gap-2 py-1">
+    <label className="text-[13px] font-bold whitespace-nowrap w-[130px] shrink-0 text-black leading-normal">
       {label}
     </label>
-    <span className="font-bold text-black hidden sm:inline">:</span>
-    <span className="text-[13px] text-black w-full break-words">{value || ""}</span>
+    <span className="font-bold text-black inline">:</span>
+    <span className="border-b border-black flex-1 min-h-[24px] pb-[3px] px-1 text-[13px] font-medium uppercase leading-normal overflow-visible whitespace-nowrap text-black">
+      {value || ""}
+    </span>
   </div>
 );
 
@@ -510,175 +513,6 @@ const ResponsiveDetailsForm = ({ data }) => {
     </div>
   );
 };
-
-const PrintableForm = ({ data, formRef }) => (
-  <div
-    ref={formRef}
-    data-appointment-print-form
-    className="bg-white p-6 text-black border border-dotted border-gray-600 mx-auto w-full min-w-[720px] max-w-[850px] shadow-sm"
-  >
-    <div className="text-center mb-0">
-      <h1 className="inline-block text-xl font-black tracking-widest uppercase text-black">
-        APPOINTMENT FORM
-      </h1>
-    </div>
-    <div className="border-t-2 border-black mt-2 mb-5" />
-
-    <div className="flex flex-col md:grid md:grid-cols-12 gap-6 items-start">
-      <div className="md:col-span-5 flex flex-col items-center">
-        <div className="w-44 h-56 border border-gray-400 flex items-center justify-center bg-gray-50 overflow-hidden">
-          {data.photo ? (
-            <img
-              src={data.photo}
-              alt="Profile"
-              className="w-full h-full object-cover"
-            />
-          ) : (
-            <div className="text-center text-[10px] text-gray-400 font-bold uppercase">
-              NO PHOTO
-            </div>
-          )}
-        </div>
-      </div>
-      <div className="md:col-span-7 space-y-3 w-full">
-        <FormRow label="Emp. Code" value={data.empCode} />
-        <FormRow label="Joining Date" value={formatDate(data.joiningDate)} />
-        <FormRow label="Department" value={data.department} />
-        <FormRow label="Designation" value={data.designation} />
-        <FormRow label="Manager Name" value={data.managerName} />
-        <FormRow label="Salary" value={data.salary} />
-        <FormRow label="Emp. Mobile No" value={data.empMobile} />
-        <FormRow label="Emp. Whatsapp No" value={data.empWhatsapp} />
-      </div>
-    </div>
-
-    <div className="mt-4 space-y-2.5">
-      <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
-        <label className="font-bold w-full sm:w-[130px] sm:shrink-0 text-[13px] text-black">
-          Punching No
-        </label>
-        <span className="font-bold text-black hidden sm:inline">:</span>
-        <span className="text-[13px] text-black w-full">
-          {data.punchingNo}
-        </span>
-      </div>
-      <div className="flex flex-col sm:flex-row items-start gap-1 sm:gap-2">
-        <label className="font-bold w-full sm:w-[130px] sm:shrink-0 pt-1 text-[13px] text-black">
-          Name
-        </label>
-        <span className="font-bold pt-1 text-black hidden sm:inline">:</span>
-        <div className="flex-grow text-[13px] font-bold uppercase py-1 text-black">
-          {data.fullName}
-        </div>
-      </div>
-      <FormRow label="Email" value={data.email} />
-      <FormRow label="Resident Add" value={data.address} />
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 w-full">
-        <FormInline label="Village" value={data.village} />
-        <FormInline label="Taluka" value={data.taluka} />
-        <FormInline label="District" value={data.district} />
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-1.5">
-        <FormRow label="Birth Date" value={formatDate(data.dob)} />
-        <FormRow label="Birth Place" value={data.birthPlace} />
-        <FormRow label="Gender" value={data.gender} />
-        <FormRow label="Cast" value={data.cast} />
-        <FormRow label="Marital Status" value={data.maritalStatus} />
-        <FormRow label="Blood Group" value={data.bloodGroup} />
-        <FormRow label="Reference Name" value={data.refName} />
-        <FormRow label="Reference Mobile" value={data.refMobile} />
-        <FormRow label="Aadhar Card No" value={data.aadharNo} />
-        <FormRow label="Bank Name" value={data.bankName} />
-        <FormRow label="PAN Card No" value={data.panNo} />
-        <FormRow label="Bank IFSC Code" value={data.ifscCode} />
-        <FormRow label="Education" value={data.education} />
-        <FormRow label="Bank Account No" value={data.accountNo} />
-      </div>
-    </div>
-
-    <div
-      className="mt-4 overflow-x-auto pb-4"
-      style={{ breakInside: "avoid", pageBreakInside: "avoid" }}
-    >
-      <table className="w-full border-collapse border border-black text-[13px] min-w-[600px] text-black">
-        <thead>
-          <tr className="font-bold bg-gray-50">
-            <th className="border border-black p-1 w-12 text-center">Sr No</th>
-            <th className="border border-black p-1">Family Members Name</th>
-            <th className="border border-black p-1">Relation</th>
-            <th className="border border-black p-1">D.O.B.</th>
-            <th className="border border-black p-1">Mobile No</th>
-            <th className="border border-black p-1">Occupation</th>
-          </tr>
-        </thead>
-        <tbody>
-          {data.members.map((member, index) => (
-            <tr key={index}>
-              <td className="border border-black px-1 py-1.5 text-center font-bold">
-                {index + 1}
-              </td>
-              <td className="border border-black px-1 py-1.5 uppercase">
-                {member.name || ""}
-              </td>
-              <td className="border border-black px-1 py-1.5 uppercase">
-                {member.relation || ""}
-              </td>
-              <td className="border border-black px-1 py-1.5 text-center">
-                {formatDate(member.dob)}
-              </td>
-              <td className="border border-black px-1 py-1.5 text-center">
-                {member.mobile || ""}
-              </td>
-              <td className="border border-black px-1 py-1.5 uppercase">
-                {member.occupation || ""}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-
-    {/* Kept as one unit so a near-fit page never strands the unit/signature
-        line alone on a second, otherwise-blank sheet. */}
-    <div style={{ breakInside: "avoid", pageBreakInside: "avoid" }}>
-      <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-6 sm:gap-8 font-bold text-[13px] text-black">
-        <div>
-          <p className="mb-1">Check By, Manager</p>
-          <div className="border-b border-black w-full h-8" />
-        </div>
-        <div className="text-center">
-          <p className="mb-1">Confirm By,</p>
-          <div className="border-b border-black w-full h-8" />
-          <p className="mt-1 font-normal">(Ketanbhai)</p>
-        </div>
-        <div className="text-center">
-          <p className="mb-1">Auth. By,</p>
-          <div className="border-b border-black w-full h-8" />
-          <p className="mt-1 font-normal">HR Dept</p>
-        </div>
-      </div>
-
-      <div className="mt-6 flex justify-between items-end gap-10">
-        <div className="flex gap-2 items-end flex-1">
-          <span className="font-bold whitespace-nowrap uppercase text-[12px] text-black">
-            UNIT NAME :
-          </span>
-          <span className="border-b border-black flex-grow min-h-[26px] pb-[3px] text-[13px] font-bold uppercase px-1">
-            {data.unitName}
-          </span>
-        </div>
-        <div className="flex gap-2 items-end flex-1">
-          <span className="font-bold whitespace-nowrap uppercase text-[12px] text-black">
-            Emp. Signature :
-          </span>
-          <span className="border-b border-black flex-grow min-h-[26px] pb-[3px] text-[13px] font-bold uppercase px-1">
-            {data.signature}
-          </span>
-        </div>
-      </div>
-    </div>
-  </div>
-);
 
 function CreateCandidateModal({ isOpen, onClose, onSuccess }) {
   const { user } = useAuth();
@@ -1057,11 +891,19 @@ export default function Appointments() {
       )
       .join("");
 
-    const appStyles = Array.from(
-      document.querySelectorAll('link[rel="stylesheet"], style'),
-    )
-      .map((node) => node.outerHTML)
-      .join("\n");
+    let cssText = "";
+    try {
+      for (const sheet of document.styleSheets) {
+        try {
+          for (const rule of sheet.cssRules) {
+            cssText += rule.cssText + "\n";
+          }
+        } catch (e) {
+          // Ignore stylesheet access errors (e.g. CORS)
+        }
+      }
+    } catch (e) {}
+    const appStyles = `<style>${cssText}</style>`;
 
     win.document.write(
       `<!DOCTYPE html><html><head>

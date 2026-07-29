@@ -72,7 +72,22 @@ function ProtectedRoute({ children, requiredRole }) {
   }
 
   if (user.role === "employee") {
-    const isProfileComplete = Boolean(user.aadhar_card_no);
+    const fields = [
+      "name", "email", "phone", "dob", "address", "city", "district", "state", "pin",
+      "aadhar_card_no", "pan_card_no", "bank_name", "bank_ifsc_code", "bank_account_no",
+      "pf_no", "esi_no", "gender", "department", "designation", "joining_date"
+    ];
+    const source = {
+      ...user,
+      phone: user.mobile_number || user.mobile_no || user.phone
+    };
+    let filled = 0;
+    fields.forEach(f => {
+      if (source[f] !== undefined && source[f] !== null && String(source[f]).trim() !== "") {
+        filled++;
+      }
+    });
+    const isProfileComplete = (filled === fields.length);
     if (!isProfileComplete && location.pathname !== "/employee/profile") {
        return <Navigate to="/employee/profile" replace />;
     }

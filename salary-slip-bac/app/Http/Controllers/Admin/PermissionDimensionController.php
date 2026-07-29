@@ -73,6 +73,27 @@ class PermissionDimensionController extends Controller
         return response()->json(['status' => true, 'message' => 'Removed']);
     }
 
+    public function myPermissions()
+    {
+        $user = auth('api')->user();
+        if (!$user) {
+            return response()->json(['status' => false, 'message' => 'Unauthenticated'], 401);
+        }
+        
+        $roleName = "User_" . $user->id . "_Permissions";
+        $role = Role::where('name', $roleName)->first();
+        
+        if (!$role) {
+            return response()->json(['status' => true, 'data' => []]);
+        }
+        
+        $items = PermissionDimension::where('role_id', $role->id)
+            ->where('dimension', 'page')
+            ->get();
+            
+        return response()->json(['status' => true, 'data' => $items]);
+    }
+
     public function roles()
     {
         return response()->json(['status' => true, 'data' => Role::orderBy('name')->get(['id', 'name', 'type'])]);

@@ -99,7 +99,18 @@ export default function ModernDatePicker({
   };
 
   const handleSelectDay = (day) => {
-    setTempDate(new Date(currentYear, currentMonth, day));
+    const selected = new Date(currentYear, currentMonth, day);
+    setTempDate(selected);
+    
+    const yyyy = selected.getFullYear();
+    const mm = String(selected.getMonth() + 1).padStart(2, '0');
+    const dd = String(selected.getDate()).padStart(2, '0');
+    const formatted = `${yyyy}-${mm}-${dd}`;
+    
+    if (onChange) {
+      onChange({ target: { name, value: formatted } });
+    }
+    setIsOpen(false);
   };
 
   const handleCancel = () => {
@@ -173,127 +184,129 @@ export default function ModernDatePicker({
       </div>
 
       {isOpen && (
-        <div className="absolute z-50 mt-2 w-[320px] bg-[#f8f7fa] dark:bg-gray-900 rounded-[28px] shadow-2xl border border-black/5 dark:border-white/10 overflow-hidden left-0 flex flex-col font-sans">
-          
-          {/* Header section */}
-          <div className="px-6 pt-5 pb-4">
-            <p className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-6 uppercase tracking-wider">
-              Select date
-            </p>
-            <div className="flex items-center justify-between">
-              <h2 className="text-3xl font-normal text-gray-900 dark:text-white tracking-tight">
-                {getShortDayName(tempDate)}, {getShortMonthName(tempDate)} {tempDate.getDate()}
-              </h2>
-              <button className="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors p-2 hover:bg-black/5 dark:hover:bg-white/10 rounded-full">
-                <Pencil size={20} strokeWidth={2} />
-              </button>
+        <div className="fixed inset-0 bg-black/40 z-[9999] flex items-center justify-center pointer-events-auto cursor-default" onClick={() => setIsOpen(false)}>
+          <div className="w-[320px] bg-[#f8f7fa] dark:bg-gray-900 rounded-[28px] shadow-2xl border border-black/5 dark:border-white/10 overflow-hidden flex flex-col font-sans" onClick={(e) => e.stopPropagation()}>
+            
+            {/* Header section */}
+            <div className="px-6 pt-5 pb-4">
+              <p className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-6 uppercase tracking-wider">
+                Select date
+              </p>
+              <div className="flex items-center justify-between">
+                <h2 className="text-3xl font-normal text-gray-900 dark:text-white tracking-tight">
+                  {getShortDayName(tempDate)}, {getShortMonthName(tempDate)} {tempDate.getDate()}
+                </h2>
+                <button className="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors p-2 hover:bg-black/5 dark:hover:bg-white/10 rounded-full">
+                  <Pencil size={20} strokeWidth={2} />
+                </button>
+              </div>
             </div>
-          </div>
-          
-          <div className="h-px bg-black/10 dark:bg-white/10 mx-6 mb-2"></div>
-          
-          {/* Calendar Controls & Grid */}
-          <div className="px-4 pb-2 relative h-[310px]">
-            {viewMode === 'calendar' && (
-              <>
-                <div className="flex items-center justify-between px-2 mb-3 mt-2">
-                  <div className="flex items-center gap-1 -ml-2">
-                    <button 
-                      onClick={() => setViewMode('month')}
-                      className="font-medium text-gray-800 dark:text-gray-200 text-[15px] outline-none cursor-pointer hover:bg-black/5 dark:hover:bg-white/10 px-2 py-1.5 rounded-md"
-                    >
-                      {MONTH_NAMES[currentMonth]}
-                    </button>
-                    <button 
-                      onClick={() => setViewMode('year')}
-                      className="font-medium text-gray-800 dark:text-gray-200 text-[15px] outline-none cursor-pointer hover:bg-black/5 dark:hover:bg-white/10 px-2 py-1.5 rounded-md"
-                    >
-                      {currentYear}
-                    </button>
-                  </div>
-                  <div className="flex items-center">
-                    <button type="button" onClick={handlePrevMonth} className="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 transition-colors">
-                      <ChevronLeft size={20} strokeWidth={2} />
-                    </button>
-                    <button type="button" onClick={handleNextMonth} className="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 transition-colors">
-                      <ChevronRight size={20} strokeWidth={2} />
-                    </button>
-                  </div>
-                </div>
-                
-                {/* Weekdays */}
-                <div className="grid grid-cols-7 place-items-center mb-1">
-                  {DAY_NAMES.map((d, i) => (
-                    <div key={i} className="text-[13px] font-medium text-gray-500 dark:text-gray-400 w-9 text-center py-2">
-                      {d}
+            
+            <div className="h-px bg-black/10 dark:bg-white/10 mx-6 mb-2"></div>
+            
+            {/* Calendar Controls & Grid */}
+            <div className="px-4 pb-2 relative h-[310px]">
+              {viewMode === 'calendar' && (
+                <>
+                  <div className="flex items-center justify-between px-2 mb-3 mt-2">
+                    <div className="flex items-center gap-1 -ml-2">
+                      <button 
+                        onClick={() => setViewMode('month')}
+                        className="font-medium text-gray-800 dark:text-gray-200 text-[15px] outline-none cursor-pointer hover:bg-black/5 dark:hover:bg-white/10 px-2 py-1.5 rounded-md"
+                      >
+                        {MONTH_NAMES[currentMonth]}
+                      </button>
+                      <button 
+                        onClick={() => setViewMode('year')}
+                        className="font-medium text-gray-800 dark:text-gray-200 text-[15px] outline-none cursor-pointer hover:bg-black/5 dark:hover:bg-white/10 px-2 py-1.5 rounded-md"
+                      >
+                        {currentYear}
+                      </button>
                     </div>
+                    <div className="flex items-center">
+                      <button type="button" onClick={handlePrevMonth} className="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 transition-colors">
+                        <ChevronLeft size={20} strokeWidth={2} />
+                      </button>
+                      <button type="button" onClick={handleNextMonth} className="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 transition-colors">
+                        <ChevronRight size={20} strokeWidth={2} />
+                      </button>
+                    </div>
+                  </div>
+                  
+                  {/* Weekdays */}
+                  <div className="grid grid-cols-7 place-items-center mb-1">
+                    {DAY_NAMES.map((d, i) => (
+                      <div key={i} className="text-[13px] font-medium text-gray-500 dark:text-gray-400 w-9 text-center py-2">
+                        {d}
+                      </div>
+                    ))}
+                  </div>
+                  
+                  {/* Days Grid */}
+                  <div className="grid grid-cols-7 place-items-center gap-y-1">
+                    {renderDays()}
+                  </div>
+                </>
+              )}
+
+              {viewMode === 'year' && (
+                <div className="h-full overflow-y-auto px-2 py-2 grid grid-cols-3 gap-2">
+                  {YEARS.map(y => (
+                    <button
+                      key={y}
+                      onClick={() => {
+                        setCurrentYear(y);
+                        setViewMode('calendar');
+                      }}
+                      className={`py-2 text-sm font-medium rounded-full transition-colors ${
+                        y === currentYear
+                          ? "bg-brand-600 text-white shadow-sm dark:bg-brand-500"
+                          : "text-gray-800 dark:text-gray-200 hover:bg-black/5 dark:hover:bg-white/10"
+                      }`}
+                    >
+                      {y}
+                    </button>
                   ))}
                 </div>
-                
-                {/* Days Grid */}
-                <div className="grid grid-cols-7 place-items-center gap-y-1">
-                  {renderDays()}
+              )}
+
+              {viewMode === 'month' && (
+                <div className="h-full px-2 py-4 grid grid-cols-3 gap-y-6 gap-x-2 content-center">
+                  {MONTH_NAMES.map((m, idx) => (
+                    <button
+                      key={m}
+                      onClick={() => {
+                        setCurrentMonth(idx);
+                        setViewMode('calendar');
+                      }}
+                      className={`py-3 text-sm font-medium rounded-full transition-colors ${
+                        idx === currentMonth
+                          ? "bg-brand-600 text-white shadow-sm dark:bg-brand-500"
+                          : "text-gray-800 dark:text-gray-200 hover:bg-black/5 dark:hover:bg-white/10"
+                      }`}
+                    >
+                      {m.substring(0, 3)}
+                    </button>
+                  ))}
                 </div>
-              </>
-            )}
-
-            {viewMode === 'year' && (
-              <div className="h-full overflow-y-auto px-2 py-2 grid grid-cols-3 gap-2">
-                {YEARS.map(y => (
-                  <button
-                    key={y}
-                    onClick={() => {
-                      setCurrentYear(y);
-                      setViewMode('calendar');
-                    }}
-                    className={`py-2 text-sm font-medium rounded-full transition-colors ${
-                      y === currentYear
-                        ? "bg-brand-600 text-white shadow-sm dark:bg-brand-500"
-                        : "text-gray-800 dark:text-gray-200 hover:bg-black/5 dark:hover:bg-white/10"
-                    }`}
-                  >
-                    {y}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {viewMode === 'month' && (
-              <div className="h-full px-2 py-4 grid grid-cols-3 gap-y-6 gap-x-2 content-center">
-                {MONTH_NAMES.map((m, idx) => (
-                  <button
-                    key={m}
-                    onClick={() => {
-                      setCurrentMonth(idx);
-                      setViewMode('calendar');
-                    }}
-                    className={`py-3 text-sm font-medium rounded-full transition-colors ${
-                      idx === currentMonth
-                        ? "bg-brand-600 text-white shadow-sm dark:bg-brand-500"
-                        : "text-gray-800 dark:text-gray-200 hover:bg-black/5 dark:hover:bg-white/10"
-                    }`}
-                  >
-                    {m.substring(0, 3)}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          
-          {/* Actions */}
-          <div className="px-6 py-4 flex items-center justify-end gap-2 mt-2">
-            <button 
-              onClick={handleCancel}
-              className="px-4 py-2 text-sm font-medium text-brand-700 dark:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-900/20 rounded-full transition-colors"
-            >
-              Cancel
-            </button>
-            <button 
-              onClick={handleOk}
-              className="px-4 py-2 text-sm font-medium text-brand-700 dark:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-900/20 rounded-full transition-colors"
-            >
-              OK
-            </button>
+              )}
+            </div>
+            
+            {/* Actions */}
+            <div className="px-6 py-4 flex items-center justify-end gap-2 mt-2">
+              <button 
+                onClick={handleCancel}
+                className="px-4 py-2 text-sm font-medium text-brand-700 dark:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-900/20 rounded-full transition-colors"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleOk}
+                className="px-4 py-2 text-sm font-medium text-brand-700 dark:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-900/20 rounded-full transition-colors"
+              >
+                OK
+              </button>
+            </div>
           </div>
         </div>
       )}
