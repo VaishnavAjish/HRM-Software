@@ -8,6 +8,11 @@ import {
 } from "./testUtils/appointmentFixtures";
 
 vi.mock("../../utils/api", () => ({
+  // AppointmentModal and TrialFormModal import this helper from utils/api to
+  // resolve the company a write belongs to. A vi.mock factory replaces the whole
+  // module, so omitting it makes the import undefined and the save throws before
+  // it reaches the API — which reads as "nothing was submitted".
+  resolveWriteCompanyId: (value) => value,
   authApi: {
     submitAppointmentForm: vi.fn(),
     updateAppointment: vi.fn(),
@@ -21,6 +26,7 @@ vi.mock("../../utils/api", () => ({
     complete: vi.fn(),
   },
   documentV1Api: {
+    getTypes: vi.fn(() => Promise.resolve({ data: { types: [] } })),
     replace: vi.fn(),
     remove: vi.fn(),
     downloadUrl: vi.fn(),

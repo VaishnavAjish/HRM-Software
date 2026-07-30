@@ -356,3 +356,51 @@ describe("Where the number must not go", () => {
     );
   });
 });
+
+/**
+ * A failed load used to be indistinguishable from an empty list.
+ *
+ * The grid rendered "No appointment forms found" with Total 0 whether the server
+ * had returned zero rows or had returned a 500, because the catch simply emptied
+ * the array. That is what made a freshly created appointment look like it had
+ * vanished — the record existed, the request had failed, and nothing on screen
+ * said so.
+ */
+describe("When the list cannot be loaded", () => {
+  it("says the load failed rather than showing an empty list", async () => {
+    authApi.getAppointmentForms.mockRejectedValue(
+      Object.assign(new Error("Server error"), { status: 500 }),
+    );
+
+    render(<Appointments />);
+
+    const alert = await screen.findByRole("alert");
+
+    expect(alert).toHaveTextContent(/Could not load appointment forms/i);
+    expect(alert).toHaveTextContent(/not an empty list/i);
+    expect(screen.queryByText("No appointment forms found")).toBeNull();
+  });
+
+  it("offers a retry that reloads the list", async () => {
+    authApi.getAppointmentForms.mockRejectedValueOnce(new Error("Server error"));
+
+    render(<Appointments />);
+    await screen.findByRole("alert");
+
+    // Second attempt succeeds.
+    authApi.getAppointmentForms.mockResolvedValue({ data: [appointmentRow] });
+    await userEvent.click(screen.getByRole("button", { name: /try again/i }));
+
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+    expect(await screen.findByText(FULL_FORMATTED)).toBeInTheDocument();
+  });
+
+  it("still shows the ordinary empty state when the server genuinely has none", async () => {
+    authApi.getAppointmentForms.mockResolvedValue({ data: [] });
+
+    render(<Appointments />);
+
+    await waitFor(() => expect(authApi.getAppointmentForms).toHaveBeenCalled());
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+});

@@ -31,8 +31,10 @@ class AdminController extends Controller
             $slipQuery->where('company_code', $userAuth->company_code)->where('unit', $userAuth->unit);
         } elseif ($request->company_code) {
             $codes = explode(',', $request->company_code);
-            $userQuery->whereIn('company_code', $codes);
-            $slipQuery->whereIn('company_code', $codes);
+            if (!in_array('all', $codes) && !in_array('all-companies', $codes)) {
+                $userQuery->whereIn('company_code', $codes);
+                $slipQuery->whereIn('company_code', $codes);
+            }
         }
         if ($request->unit) {
             $userQuery->where('unit', $request->unit);
@@ -86,7 +88,10 @@ class AdminController extends Controller
         } elseif ($userAuth && (int) $userAuth->role === 2) {
             $batchQuery->where('company_code', $userAuth->company_code)->where('unit', $userAuth->unit);
         } elseif ($request->company_code) {
-            $batchQuery->whereIn('company_code', explode(',', $request->company_code));
+            $codes = explode(',', $request->company_code);
+            if (!in_array('all', $codes) && !in_array('all-companies', $codes)) {
+                $batchQuery->whereIn('company_code', $codes);
+            }
         }
         if ($request->unit) {
             $batchQuery->where('unit', $request->unit);

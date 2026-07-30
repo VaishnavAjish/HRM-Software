@@ -32,7 +32,9 @@ class SalariesSlipController extends Controller
 
         if ($user && (int) $user->role !== 1 && (int) $user->role !== 2 && $request->company_code) {
             $codes = explode(',', $request->company_code);
-            $query->whereIn('company_code', $codes);
+            if (!in_array('all', $codes) && !in_array('all-companies', $codes)) {
+                $query->whereIn('company_code', $codes);
+            }
         }
         if ($request->unit) {
             $query->where('unit', $request->unit);

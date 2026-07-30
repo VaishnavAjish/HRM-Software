@@ -22,6 +22,7 @@ export default function RbacUsers() {
   const [users, setUsers] = useState([]);
   const [meta, setMeta] = useState({ page: 1, totalPages: 1 });
   const [search, setSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState("1,3,4"); // Default to All Accounts
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [addForm, setAddForm] = useState({
@@ -34,10 +35,10 @@ export default function RbacUsers() {
   });
   const [addLoading, setAddLoading] = useState(false);
 
-  const fetchUsers = async (page = 1) => {
+  const fetchUsers = async (page = 1, currentRoleFilter = roleFilter) => {
     setLoading(true);
     try {
-      const res = await rbacApi.getUserRoles(user?.accessToken, user?.tokenType, page, 15, search, "1,3,4");
+      const res = await rbacApi.getUserRoles(user?.accessToken, user?.tokenType, page, 15, search, currentRoleFilter);
       if (res.status) {
         const filtered = (res.data || []).filter((u) => Number(u.role) !== 0);
         setUsers(filtered);
@@ -51,9 +52,9 @@ export default function RbacUsers() {
   };
 
   useEffect(() => {
-    fetchUsers(1);
+    fetchUsers(1, roleFilter);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [roleFilter]);
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -174,8 +175,8 @@ export default function RbacUsers() {
         </Button>
       </div>
 
-      <form onSubmit={handleSearch} className="flex gap-2">
-        <div className="relative flex-1 max-w-xs">
+      <form onSubmit={handleSearch} className="flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 max-w-xs min-w-[200px]">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
             value={search}
@@ -184,6 +185,17 @@ export default function RbacUsers() {
             className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 pl-9 pr-3 py-2 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
           />
         </div>
+        <select
+          value={roleFilter}
+          onChange={(e) => setRoleFilter(e.target.value)}
+          className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 outline-none focus:border-indigo-500"
+        >
+          <option value="1,4">Admins & Agents (RBAC)</option>
+          <option value="1,3,4">All Accounts (Inc. Employees)</option>
+          <option value="1">Admins Only</option>
+          <option value="4">Agents Only</option>
+          <option value="3">Employees Only</option>
+        </select>
         <Button type="submit" variant="secondary">
           Search
         </Button>

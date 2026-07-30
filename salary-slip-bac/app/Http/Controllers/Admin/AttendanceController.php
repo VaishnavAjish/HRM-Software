@@ -52,7 +52,7 @@ class AttendanceController extends Controller
             return response()->json(['status' => false, 'message' => 'Company is required'], 422);
         }
 
-        $employees = User::where('company_code', $companyCode)
+        $employees = User::when($companyCode && !in_array($companyCode, ['all', 'all-companies']), fn($q) => $q->where('company_code', $companyCode))
             ->where('is_deleted', 0)
             ->whereNotIn('role', [0, 1, 2])
             ->where(function ($q) {
@@ -66,7 +66,7 @@ class AttendanceController extends Controller
         $start = Carbon::create((int) $request->year, (int) $request->month, 1)->startOfMonth();
         $end = $start->copy()->endOfMonth();
 
-        $records = Attendance::where('company_code', $companyCode)
+        $records = Attendance::when($companyCode && !in_array($companyCode, ['all', 'all-companies']), fn($q) => $q->where('company_code', $companyCode))
             ->when($unit, fn ($q) => $q->where('unit', $unit))
             ->whereBetween('date', [$start->toDateString(), $end->toDateString()])
             ->get(['emp_code', 'date', 'status']);

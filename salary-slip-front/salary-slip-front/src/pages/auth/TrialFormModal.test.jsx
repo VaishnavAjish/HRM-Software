@@ -3,6 +3,11 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 vi.mock("../../utils/api", () => ({
+  // AppointmentModal and TrialFormModal import this helper from utils/api to
+  // resolve the company a write belongs to. A vi.mock factory replaces the whole
+  // module, so omitting it makes the import undefined and the save throws before
+  // it reaches the API — which reads as "nothing was submitted".
+  resolveWriteCompanyId: (value) => value,
   authApi: {
     submitTrialForm: vi.fn(),
     updateTrialForm: vi.fn(),

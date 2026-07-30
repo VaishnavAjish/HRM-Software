@@ -401,7 +401,9 @@ class UserController extends Controller
             $query->where('company_code', $userAuth->company_code)->where('unit', $userAuth->unit);
         } elseif ($request->company_code) {
             $codes = explode(',', $request->company_code);
-            $query->whereIn('company_code', $codes);
+            if (!in_array('all', $codes) && !in_array('all-companies', $codes)) {
+                $query->whereIn('company_code', $codes);
+            }
         }
         if ($request->unit) {
             $query->where('unit', $request->unit);
@@ -601,7 +603,9 @@ class UserController extends Controller
 
         if ($request->company_code) {
             $codes = explode(',', $request->company_code);
-            $slips->whereIn('company_code', $codes);
+            if (!in_array('all', $codes) && !in_array('all-companies', $codes)) {
+                $slips->whereIn('company_code', $codes);
+            }
         }
 
         return response()->json([
@@ -1232,7 +1236,9 @@ class UserController extends Controller
             $query->where('company_code', $userAuth->company_code)->where('unit', $userAuth->unit);
         } elseif ($request->company_code) {
             $codes = explode(',', $request->company_code);
-            $query->whereIn('company_code', $codes);
+            if (!in_array('all', $codes) && !in_array('all-companies', $codes)) {
+                $query->whereIn('company_code', $codes);
+            }
         }
         if ($request->unit) {
             $query->where('unit', $request->unit);
@@ -1406,7 +1412,9 @@ class UserController extends Controller
             $query->where('company_code', $userAuth->company_code)->where('unit', $userAuth->unit);
         } elseif ($request->company_code) {
             $codes = explode(',', $request->company_code);
-            $query->whereIn('company_code', $codes);
+            if (!in_array('all', $codes) && !in_array('all-companies', $codes)) {
+                $query->whereIn('company_code', $codes);
+            }
         }
         if ($request->unit) {
             $query->where('unit', $request->unit);
@@ -1454,7 +1462,9 @@ class UserController extends Controller
             $query->where('company_code', $userAuth->company_code)->where('unit', $userAuth->unit);
         } elseif ($request->company_code) {
             $codes = explode(',', $request->company_code);
-            $query->whereIn('company_code', $codes);
+            if (!in_array('all', $codes) && !in_array('all-companies', $codes)) {
+                $query->whereIn('company_code', $codes);
+            }
         }
         
         $agents = $query->orderBy('id', 'desc')->get();

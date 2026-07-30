@@ -848,6 +848,8 @@ export default function Appointments() {
   const [pdfLoading, setPdfLoading] = useState(false);
   const [statusLoading, setStatusLoading] = useState({});
   const [appointments, setAppointments] = useState([]);
+  // Why the grid is empty, when it is empty because something failed.
+  const [loadError, setLoadError] = useState(null);
   const [selected, setSelected] = useState(null);
   const [gridLightbox, setGridLightbox] = useState(null);
   const [createAccountOpen, setCreateAccountOpen] = useState(false);
@@ -922,8 +924,14 @@ export default function Appointments() {
         companyScope,
       );
       setAppointments(getAppointmentRows(res));
+      setLoadError(null);
     } catch (error) {
       setAppointments([]);
+      // Held in state, not just a toast. A failed request used to render exactly
+      // like an empty result — "No appointment forms found", Total 0 — so a
+      // server-side fault was indistinguishable from having no records, and a
+      // dismissed toast left no trace of which one it had been.
+      setLoadError(error.message || "Failed to load appointment forms");
       toast.error(error.message || "Failed to load appointment forms");
     } finally {
       setLoading(false);
@@ -1897,6 +1905,29 @@ export default function Appointments() {
         ))}
       </div>
 
+      {/* The list could not be loaded — say so instead of showing an empty grid
+          that reads as "there are no appointments". */}
+      {loadError && !loading && (
+        <div
+          role="alert"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 dark:border-red-900 dark:bg-red-900/20"
+        >
+          <div className="flex items-start gap-2">
+            <XCircle size={16} className="mt-0.5 shrink-0 text-red-600" />
+            <div className="text-sm text-red-800 dark:text-red-200">
+              <p className="font-semibold">Could not load appointment forms.</p>
+              <p className="mt-0.5 text-xs">
+                {loadError} — this is a loading failure, not an empty list. Any
+                existing appointments are unaffected.
+              </p>
+            </div>
+          </div>
+          <Button variant="secondary" onClick={loadAppointments} disabled={loading}>
+            Try Again
+          </Button>
+        </div>
+      )}
+
       {/* Table */}
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
         {loading ? (
@@ -1921,7 +1952,11 @@ export default function Appointments() {
               popupParent={document.body}
               enableCellTextSelection
               animateRows
-              overlayNoRowsTemplate="<span class='text-gray-400 text-sm'>No appointment forms found</span>"
+              overlayNoRowsTemplate={
+                loadError
+                  ? "<span class='text-red-500 text-sm'>Appointment forms could not be loaded</span>"
+                  : "<span class='text-gray-400 text-sm'>No appointment forms found</span>"
+              }
             />
             <GridHeaderContextMenu
               menu={headerMenu}

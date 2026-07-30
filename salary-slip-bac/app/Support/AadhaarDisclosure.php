@@ -35,7 +35,11 @@ class AadhaarDisclosure
 
         $basis = AadhaarAccess::basisFor($actor, $target);
 
-        DocumentAudit::record(
+        // recordSafely, not record: this runs on every details page and profile
+        // load. An audit table that cannot be written must not turn a working
+        // screen into a 500 — which is exactly what happened to the Appointments
+        // page, where the list came back empty and read as "no records".
+        DocumentAudit::recordSafely(
             $action,
             null,
             null,
@@ -88,7 +92,7 @@ class AadhaarDisclosure
             return;
         }
 
-        DocumentAudit::record(
+        DocumentAudit::recordSafely(
             $action,
             null,
             null,

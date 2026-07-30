@@ -65,9 +65,41 @@ class DocumentAudit
         ]);
     }
 
+    /**
+     * Record without letting a logging failure break the caller.
+     *
+     * For a read — showing a details page, listing appointments — an audit entry
+     * that cannot be written must not take the screen down with it. record() is
+     * deliberately left able to throw, because the confidential-export path has
+     * to fail closed when it cannot be recorded; the two needs are opposite and
+     * this is the read-side half.
+     *
+     * The failure is reported so it surfaces in monitoring rather than vanishing:
+     * an audit table that has stopped accepting writes is a real problem, just not
+     * one whose correct response is a blank page.
+     */
+    public static function recordSafely(
+        string $action,
+        ?Document $document = null,
+        ?DocumentVersion $version = null,
+        array $metadata = [],
+        ?string $permission = null,
+        ?string $permissionResult = null
+    ): ?DocumentAuditLog {
+        try {
+            return self::record($action, $document, $version, $metadata, $permission, $permissionResult);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return null;
+        }
+    }
+
     public static function denied(string $permission, ?Document $document = null, array $metadata = []): void
     {
-        self::record(self::PERMISSION_DENIED, $document, null, $metadata, $permission, 'DENIED');
+        // A denial is itself a read-path event — refusing access must not turn
+        // into a 500 because the refusal could not be logged.
+        self::recordSafely(self::PERMISSION_DENIED, $document, null, $metadata, $permission, 'DENIED');
     }
 
     /** Strip anything that must never reach the audit table. */
