@@ -680,6 +680,12 @@ export const appointmentV1Api = {
    * POST, not GET: the response carries sensitive data and must not be cached,
    * prefetched or land in a history entry. The caller must keep the value in
    * component state only — never in a store, storage or the URL.
+   *
+   * No caller remains in the app. Appointment details read aadhaar_full from the
+   * details response, and Print/PDF now go through confidentialExportApi, which
+   * issues an auditable single-purpose authorization instead of a bare reveal.
+   * Kept because the route is still live and tested server-side, so removing the
+   * only client wrapper would just make it harder to reach.
    */
   revealAadhaar(appointmentId, accessToken, tokenType = "Bearer", context = "VIEW") {
     return apiRequest(`/v1/appointments/${appointmentId}/aadhaar/reveal`, {
@@ -719,6 +725,109 @@ export const appointmentV1Api = {
       },
       body: formData,
     });
+  },
+};
+
+/**
+ * Confidential (full-Aadhaar) Print and PDF export.
+ *
+ * Separate from appointmentV1Api because these are not ordinary reads: each call
+ * is an audited authorisation decision the server makes fresh, and none of them
+ * may be retried automatically, cached, or have their failures swallowed. The
+ * caller must treat any rejection as "the export did not happen".
+ *
+ * `surface` is "appointments" or "employees" — the same flow, different
+ * permission keys and different audit action names.
+ */
+export const confidentialExportApi = {
+  /**
+   * Ask for a fresh authorization. Returns the export token; throws otherwise.
+   *
+   * Nothing about the record is sent — not the Aadhaar, not the rendered
+   * document, not a claim about what the client thinks it is allowed to do. The
+   * server reads all of that from the stored row.
+   */
+  authorize(id, exportType, accessToken, tokenType = "Bearer", surface = "appointments") {
+    return apiRequest(`/v1/${surface}/${id}/aadhaar/export-authorization`, {
+      method: "POST",
+      headers: {
+        ...authHeaders(accessToken, tokenType),
+        "Content-Type": "application/json",
+        "Cache-Control": "no-store",
+      },
+      body: JSON.stringify({ exportType }),
+    });
+  },
+
+  /** The trusted print view model, bound to a PRINT authorization. */
+  printPayload(id, exportToken, accessToken, tokenType = "Bearer", surface = "appointments") {
+    return apiRequest(`/v1/${surface}/${id}/confidential-print-payload`, {
+      method: "POST",
+      headers: {
+        ...authHeaders(accessToken, tokenType),
+        "Content-Type": "application/json",
+        "Cache-Control": "no-store",
+      },
+      body: JSON.stringify({ exportToken }),
+    });
+  },
+
+  /**
+   * The server-generated PDF, as a Blob.
+   *
+   * Deliberately not routed through apiRequest: that helper parses JSON and
+   * would discard the body. A confidential PDF is generated and watermarked on
+   * the server precisely so that its bytes never depend on the DOM, so it has to
+   * arrive here as opaque bytes.
+   */
+  async downloadPdf(id, exportToken, accessToken, tokenType = "Bearer", surface = "appointments") {
+    const response = await fetch(`${baseUrl}/api/v1/${surface}/${id}/confidential-pdf`, {
+      method: "POST",
+      headers: {
+        ...authHeaders(accessToken, tokenType),
+        "Content-Type": "application/json",
+        Accept: "application/pdf",
+        "Cache-Control": "no-store",
+      },
+      body: JSON.stringify({ exportToken }),
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      // The error body is JSON even though we asked for a PDF; read the code so
+      // the caller can distinguish "not permitted" from "switched off".
+      let data = null;
+      try {
+        data = await response.json();
+      } catch {
+        // A non-JSON error body is still a failure; the status carries enough.
+      }
+
+      const error = new Error(
+        data?.error?.message || data?.message || "Confidential export was refused.",
+      );
+      error.status = response.status;
+      error.code = data?.error?.code;
+      error.data = data;
+
+      if (response.status === 401) {
+        window.dispatchEvent(new CustomEvent("auth:unauthorized"));
+      }
+
+      throw error;
+    }
+
+    const blob = await response.blob();
+
+    // A zero-byte or wrongly-typed body means something upstream failed without
+    // saying so. Refuse it rather than saving a broken "confidential" file.
+    if (!blob || blob.size === 0) {
+      const error = new Error("The confidential document came back empty.");
+      error.status = response.status;
+      throw error;
+    }
+
+    return blob;
   },
 };
 

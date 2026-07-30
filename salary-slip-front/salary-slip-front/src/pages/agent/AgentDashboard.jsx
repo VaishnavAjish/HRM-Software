@@ -8,6 +8,7 @@ import { authApi } from "../../utils/api";
 import PrintableForm from "../../components/forms/PrintableForm";
 import { PrintableTrialForm, normalizeTrialForm } from "../../components/forms/PrintableTrialForm";
 import toast from "react-hot-toast";
+import { getAadhaarDisplayValue } from "../../utils/aadhaar";
 
 export default function AgentDashboard() {
   const { user } = useAuth();
@@ -117,7 +118,7 @@ export default function AgentDashboard() {
         item.reference_mobile_no,
         item.ref_mobile,
       ),
-      aadharNo: firstPresent(item.aadharNo, item.aadhar_card_no, item.aadhar_no),
+      aadharNo: getAadhaarDisplayValue(item),
       panNo: firstPresent(item.panNo, item.pan_card_no, item.pan_no),
       bankName: firstPresent(item.bankName, item.bank_name),
       accountNo: firstPresent(

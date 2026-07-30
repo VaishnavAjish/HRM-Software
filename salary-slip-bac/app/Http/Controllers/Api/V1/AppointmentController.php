@@ -8,7 +8,7 @@ use App\Models\Document;
 use App\Models\User;
 use App\Services\Documents\DocumentAudit;
 use App\Services\Documents\DocumentAuthorizer as Auth;
-use App\Support\AadhaarAccess;
+use App\Support\AadhaarDisclosure;
 use App\Support\AadhaarReference;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -188,13 +188,15 @@ class AppointmentController extends Controller
             // toArray() hides the raw Aadhaar and appends aadhaar_masked.
             $payload = $appointment->toArray();
 
-            // aadhaar_full is added only here, only for this one record, and only
-            // for an actor holding the grant. The column stays in User::$hidden
-            // so nothing else in the app can serialise it by accident.
-            $full = $this->fullAadhaarFor($appointment, $actor, 'APPOINTMENT_FULL_AADHAAR_VIEWED');
-            if ($full !== null) {
-                $payload['aadhaar_full'] = $full;
-            }
+            // aadhaar_full is added only here and only for an actor who is allowed
+            // to reach this record. The column stays in User::$hidden so nothing
+            // else in the app can serialise it by accident.
+            $payload = AadhaarDisclosure::attach(
+                $payload,
+                $appointment,
+                $actor,
+                'APPOINTMENT_FULL_AADHAAR_VIEWED'
+            );
 
             return $this->ok([
                 'appointmentId'     => $appointment->id,
@@ -300,53 +302,16 @@ class AppointmentController extends Controller
     }
 
     /**
-     * The complete Aadhaar for an actor who is allowed it, or null.
-     *
-     * Audits exactly once per call, which is once per HTTP request — a React
-     * re-render cannot produce another entry because it does not reach here.
-     * A denied attempt is recorded too, so the absence of a grant is visible in
-     * the trail rather than silent.
-     */
-    private function fullAadhaarFor(User $appointment, ?User $actor, string $action): ?string
-    {
-        if (!AadhaarAccess::allows($actor)) {
-            return null;
-        }
-
-        $digits = AadhaarReference::normalise(
-            (string) ($appointment->getRawOriginal('aadhar_card_no') ?? '')
-        );
-
-        if (!AadhaarReference::isValid($digits)) {
-            return null;
-        }
-
-        DocumentAudit::record(
-            $action,
-            null,
-            null,
-            [
-                'appointment_id' => $appointment->id,
-                'organization_code' => $appointment->company_code,
-                // Last four only — the trail records the access, not the value.
-                'aadhaar_last4' => substr($digits, -4),
-            ],
-            AadhaarAccess::PERMISSION,
-            'ALLOWED'
-        );
-
-        return $digits;
-    }
-
-    /**
      * POST /v1/appointments/{id}/aadhaar/reveal
      *
-     * The one place a complete Aadhaar number leaves the server. Everything else
-     * — list, details, documents, PDF — sees only `aadhaar_masked`.
+     * Predates full-number display and is kept for API compatibility: the details
+     * response now carries `aadhaar_full` for any authorised caller, so a separate
+     * reveal call is no longer how the UI obtains the number. Still authorised on
+     * record scope and still audited per attempt.
      *
      * POST rather than GET so it is not casually cached, retried by a prefetch,
      * or captured in a browser history entry, and the response carries no-store
-     * headers on top of that. Every attempt is audited, allowed or not.
+     * headers on top of that.
      */
     public function revealAadhaar(Request $request, int $appointmentId)
     {
@@ -365,23 +330,10 @@ class AppointmentController extends Controller
                 default => 'APPOINTMENT_AADHAAR_REVEALED',
             };
 
-            if (!AadhaarAccess::allows($actor)) {
-                DocumentAudit::record(
-                    'APPOINTMENT_AADHAAR_REVEAL_DENIED',
-                    null,
-                    null,
-                    ['appointment_id' => $appointment->id, 'context' => $context],
-                    AadhaarAccess::PERMISSION,
-                    'DENIED'
-                );
-
-                throw new DocumentException(
-                    DocumentException::APPOINTMENT_ACCESS_DENIED,
-                    'You are not permitted to view the full Aadhaar number.',
-                    403
-                );
-            }
-
+            // No second authorisation check here. Disclosure is gated on record
+            // access, which findAuthorized above has already established and
+            // already audited as PERMISSION_DENIED when it fails — a duplicate
+            // check would be unreachable code pretending to be a control.
             $digits = AadhaarReference::normalise(
                 (string) ($appointment->getRawOriginal('aadhar_card_no') ?? '')
             );
@@ -408,7 +360,7 @@ class AppointmentController extends Controller
                     // happened, never a second copy of the number.
                     'aadhaar_last4' => substr($digits, -4),
                 ],
-                AadhaarAccess::PERMISSION,
+                'RECORD_ACCESS',
                 'ALLOWED'
             );
 

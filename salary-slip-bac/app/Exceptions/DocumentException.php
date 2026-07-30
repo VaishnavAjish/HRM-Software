@@ -40,6 +40,14 @@ class DocumentException extends RuntimeException
     public const APPOINTMENT_AADHAAR_INVALID = 'APPOINTMENT_AADHAAR_INVALID';
     public const IDEMPOTENCY_CONFLICT     = 'IDEMPOTENCY_CONFLICT';
 
+    // Confidential (full-Aadhaar) Print/PDF export. Distinct codes so the client
+    // can tell "switched off" from "not permitted" from "authorization expired"
+    // and fail closed with an accurate message for each.
+    public const AADHAAR_EXPORT_DISABLED      = 'AADHAAR_EXPORT_DISABLED';
+    public const AADHAAR_EXPORT_DENIED        = 'AADHAAR_EXPORT_DENIED';
+    public const AADHAAR_EXPORT_TOKEN_INVALID = 'AADHAAR_EXPORT_TOKEN_INVALID';
+    public const AADHAAR_EXPORT_AUDIT_FAILED  = 'AADHAAR_EXPORT_AUDIT_FAILED';
+
     public function __construct(
         public readonly string $errorCode,
         string $message,

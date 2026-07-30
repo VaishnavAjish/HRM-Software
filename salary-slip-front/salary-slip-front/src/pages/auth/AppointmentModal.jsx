@@ -17,7 +17,7 @@ import usePhotoCapture from "../../hooks/usePhotoCapture";
 import AppointmentDocumentsStep from "./AppointmentDocumentsStep";
 import { PHOTO_DOCUMENT_TYPE } from "./documentTypes";
 import { readAppointmentRouteState, STEP_DOCUMENTS } from "./appointmentRouteState";
-import { maskAadhaar, normaliseAadhaar } from "../../utils/aadhaar";
+import { formatFullAadhaar, getAadhaarDisplayValue, normaliseAadhaar } from "../../utils/aadhaar";
 
 const DOC_FIELDS = [
   { key: "adhar_image", label: "Aadhar Card" },
@@ -174,7 +174,10 @@ const AppointmentModal = ({
   // number is hidden from every API response, so there is nothing to put in the
   // input; this drives the "on file" hint and lets a blank input mean
   // "unchanged" instead of "clear it".
-  const [storedAadhaarMasked, setStoredAadhaarMasked] = useState("");
+  // Whether the record already has an Aadhaar stored, so a cleared input reads
+  // as "keep it" rather than "this is missing". The value itself now lives in
+  // formData, prefilled from the record.
+  const [aadhaarOnFile, setAadhaarOnFile] = useState(false);
 
   // Belt and braces: if anything else moves the form to step 2 without a saved
   // record, fall back to step 1 rather than showing an upload form that cannot
@@ -245,13 +248,13 @@ const AppointmentModal = ({
         if (!record?.id) throw new Error("Appointment not found.");
 
         setSavedAppointmentId(record.id);
-        // Restoring mid-flow: the record's Aadhaar is on file even though the
-        // form cannot show it, so a blank input must not read as "clear it".
-        setStoredAadhaarMasked(record.aadhaar_masked || "");
+        // Restoring mid-flow: remember that an Aadhaar is on file so a cleared
+        // input is not read as "erase it".
+        setAadhaarOnFile(Boolean(record.aadhaar_full || record.aadhaar_masked));
         setAppointmentSummary({
           appointmentNumber: res?.data?.appointmentNumber,
           name: record.name,
-          aadhaarMasked: record.aadhaar_masked,
+          aadhaarDisplay: getAadhaarDisplayValue(record),
           company: record.company_code,
           unit: record.unit,
         });
@@ -369,7 +372,7 @@ const AppointmentModal = ({
     { path: "pan_card_no", label: "PAN Card No" },
     { path: "bank_ifsc_code", label: "Bank IFSC Code" },
     { path: "bank_account_no", label: "Bank Account No" },
-    ...(isAllCompanies ? [{ path: "company_code", label: "Company" }] : []),
+    { path: "company_code", label: "Company" },
     { path: "unit", label: "Unit Name" },
   ];
 
@@ -430,7 +433,7 @@ const AppointmentModal = ({
       // A record that already has an Aadhaar on file may leave the input blank —
       // the form is never given the stored number to put back, so requiring it
       // again would block every edit. The backend keeps the existing value.
-      if (path === "aadhar_card_no" && storedAadhaarMasked) return;
+      if (path === "aadhar_card_no" && aadhaarOnFile) return;
 
       const value = getFieldValue(path);
       if (value == null || String(value).trim() === "") {
@@ -578,11 +581,11 @@ const AppointmentModal = ({
       // Survives into step 2 so the Retry control has something to send.
       setPendingPhoto(photoUploaded ? null : photoToUpload);
 
-      // A freshly typed number masks from what was just saved; otherwise the
-      // record keeps the mask it already had. Recorded so a further edit in this
-      // same session still knows an Aadhaar is on file.
-      const savedAadhaarMasked = maskAadhaar(formData.aadhar_card_no) || storedAadhaarMasked;
-      setStoredAadhaarMasked(savedAadhaarMasked);
+      // Recorded so a further edit in this same session still knows an Aadhaar
+      // is on file even if the input is cleared.
+      const savedAadhaar = formatFullAadhaar(formData.aadhar_card_no);
+      const stillOnFile = savedAadhaar !== "-" || aadhaarOnFile;
+      setAadhaarOnFile(stillOnFile);
 
       setSavePhase("opening");
       setAppointmentSummary({
@@ -590,7 +593,7 @@ const AppointmentModal = ({
         name: `${formData.name.first} ${formData.name.mid} ${formData.name.surname}`
           .replace(/\s+/g, " ")
           .trim(),
-        aadhaarMasked: savedAadhaarMasked,
+        aadhaarDisplay: savedAadhaar !== "-" ? savedAadhaar : "-",
         company: formData.company_code,
         unit: formData.unit,
       });
@@ -693,7 +696,7 @@ const AppointmentModal = ({
         // ignore
       }
 
-      const codeId = raw.company_code || "";
+      const codeId = raw.company_code || raw.companyId || (isAllCompanies ? "" : companyId);
 
       const populated = {
         photo: null,
@@ -720,10 +723,13 @@ const AppointmentModal = ({
         blood_group: raw.blood_group || "",
         reference_name: raw.reference_name || "",
         reference_mobile_no: raw.reference_mobile_no || "",
-        // Never prefilled: the API only ever returns aadhaar_masked, and putting
-        // "XXXX XXXX 9012" in the input would post the mask back as if it were
-        // the real number. Left blank, which means "unchanged".
-        aadhar_card_no: "",
+        // Prefilled with the complete stored number so it can be checked against
+        // the document without retyping. Safe to post back because it is the real
+        // value; a partial edit is still refused by validation rather than
+        // overwriting what is stored, and a cleared field means "unchanged".
+        aadhar_card_no: formatFullAadhaar(raw.aadhaar_full) !== "-"
+          ? formatFullAadhaar(raw.aadhaar_full)
+          : "",
         bank_name: raw.bank_name || "",
         pan_card_no: raw.pan_card_no || "",
         bank_ifsc_code: raw.bank_ifsc_code || "",
@@ -748,7 +754,9 @@ const AppointmentModal = ({
         // creates a brand-new record, so the number has to be entered again —
         // inheriting the trial row's mask would let the new appointment save
         // with no Aadhaar at all and land its documents in a fallback folder.
-        aadhaarMasked: isEditMode ? raw.aadhaar_masked || "" : "",
+        aadhaarOnFile: isEditMode
+          ? Boolean(raw.aadhaar_full || raw.aadhaar_masked)
+          : false,
       };
     }
 
@@ -759,7 +767,7 @@ const AppointmentModal = ({
       formData: getBlankFormData(newCompanyId),
       snapshot: null,
       photoPreview: "",
-      aadhaarMasked: "",
+      aadhaarOnFile: false,
     };
   };
 
@@ -778,7 +786,7 @@ const AppointmentModal = ({
       setFormData(next.formData);
       setPhotoPreview(next.photoPreview);
       setOriginalSnapshot(next.snapshot);
-      setStoredAadhaarMasked(next.aadhaarMasked);
+      setAadhaarOnFile(next.aadhaarOnFile);
     } else {
       setStep(1);
       setErrors({});
@@ -839,6 +847,13 @@ const AppointmentModal = ({
       if (numericLimits[name]) {
         nextValue = nextValue.slice(0, numericLimits[name]);
       }
+    }
+
+    // Regroup as it is typed, so the input reads the way the card does and matches
+    // how the number is displayed everywhere else. Validation normalises to digits,
+    // so the spaces never reach the payload.
+    if (name === "aadhar_card_no") {
+      nextValue = nextValue.replace(/(\d{4})(?=\d)/g, "$1 ").trim();
     }
 
     if (name === "pan_card_no") nextValue = nextValue.slice(0, 10);
@@ -1223,22 +1238,21 @@ const AppointmentModal = ({
                   />
                   <div>
                     <RowField
-                      label="Aadhar Card No"
+                      label="Aadhaar Card No"
                       name="aadhar_card_no"
                       value={formData.aadhar_card_no}
                       onChange={handleChange}
-                      required={!storedAadhaarMasked}
+                      required={!aadhaarOnFile}
                       error={errors.aadhar_card_no}
                       inputMode="numeric"
-                      maxLength={12}
+                      maxLength={14}
                     />
-                    {/* The stored number is never sent to the browser, so the
-                        input starts empty even in edit mode. Say so, or it reads
-                        as missing data. */}
-                    {storedAadhaarMasked && (
+                    {/* Prefilled with the complete stored number in edit mode,
+                        so there is nothing to disclose separately. */}
+                    {aadhaarOnFile && (
                       <p className="mt-1 text-[11px] text-gray-500">
-                        On file: <span className="font-semibold">{storedAadhaarMasked}</span> — leave
-                        blank to keep it, or type all 12 digits to replace it.
+                        Clearing this field keeps the number already on file. Type
+                        all 12 digits to replace it.
                       </p>
                     )}
                   </div>

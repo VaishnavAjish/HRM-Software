@@ -8,6 +8,7 @@ import PrintableForm from "../../components/forms/PrintableForm";
 import { useReactToPrint } from "react-to-print";
 import useIsMobile from "../../hooks/useIsMobile";
 import { exportNodeToPdf } from "../../utils/pdfUtils";
+import { getAadhaarDisplayValue } from "../../utils/aadhaar";
 
 function firstPresent(...values) {
   return values.find((value) => value !== undefined && value !== null && value !== "") ?? "";
@@ -87,39 +88,42 @@ export default function EmployeeAppointment() {
         }
 
         const normalizedData = {
-          empCode: firstPresent(item.empCode, item.emp_code),
-          fullName: fullName || "-",
-          department: firstPresent(item.department, item.dept),
-          managerName: firstPresent(item.managerName, item.manager_name),
-          joiningDate: firstPresent(item.joiningDate, item.joining_date),
-          empMobile: firstPresent(item.empMobile, item.mobile_number, item.emp_mobile, item.mobile_no),
-          empWhatsapp: firstPresent(item.empWhatsapp, item.emp_whatsapp_no, item.emp_whatsapp),
-          refName: firstPresent(item.refName, item.reference_name, item.ref_name),
-          refMobile: firstPresent(item.refMobile, item.reference_mobile_no, item.ref_mobile),
-          aadharNo: firstPresent(item.aadharNo, item.aadhar_card_no, item.aadhar_no),
-          panNo: firstPresent(item.panNo, item.pan_card_no, item.pan_no),
-          bankName: firstPresent(item.bankName, item.bank_name),
-          accountNo: firstPresent(item.accountNo, item.bank_account_no, item.account_no),
-          ifscCode: firstPresent(item.ifscCode, item.bank_ifsc_code, item.ifsc_code, item.bank_ifsc),
-          unitName: firstPresent(item.unitName, item.unit_name, item.unit),
-          companyCode: item.company_code || "-",
-          salary: item.salary || "-",
-          designation: item.designation || "-",
-          email: item.email || "-",
-          education: item.education || "-",
-          punchingNo: item.punching_no || "-",
-          address: item.address || "-",
-          village: item.village || "-",
-          taluka: item.taluka || "-",
-          district: item.district || "-",
-          dob: item.dob || "-",
-          birthPlace: item.birth_place || "-",
-          gender: item.gender || "-",
-          cast: item.cast || "-",
-          maritalStatus: item.marital_status || "-",
-          bloodGroup: item.blood_group || "-",
+          empCode: firstPresent(item.empCode, item.emp_code) || "",
+          fullName: fullName || "",
+          department: firstPresent(item.department, item.dept) || "",
+          managerName: firstPresent(item.managerName, item.manager_name) || "",
+          joiningDate: firstPresent(item.joiningDate, item.joining_date) || "",
+          empMobile: firstPresent(item.empMobile, item.mobile_number, item.emp_mobile, item.mobile_no) || "",
+          empWhatsapp: firstPresent(item.empWhatsapp, item.emp_whatsapp_no, item.emp_whatsapp) || "",
+          refName: firstPresent(item.refName, item.reference_name, item.ref_name) || "",
+          refMobile: firstPresent(item.refMobile, item.reference_mobile_no, item.ref_mobile) || "",
+          // The complete number: the appointment endpoints return aadhaar_full
+          // for a request that is allowed to see the record.
+          aadharNo: getAadhaarDisplayValue(item),
+          panNo: firstPresent(item.panNo, item.pan_card_no, item.pan_no) || "",
+          bankName: firstPresent(item.bankName, item.bank_name) || "",
+          accountNo: firstPresent(item.accountNo, item.bank_account_no, item.account_no) || "",
+          ifscCode: firstPresent(item.ifscCode, item.bank_ifsc_code, item.ifsc_code, item.bank_ifsc) || "",
+          unitName: firstPresent(item.unitName, item.unit_name, item.unit) || "",
+          companyId: firstPresent(item.companyId, item.company_code, item.company_name, item.company) || "",
+          companyCode: firstPresent(item.companyCode, item.company_code, item.company_name, item.company) || "",
+          salary: item.salary || "",
+          designation: item.designation || "",
+          email: item.email || "",
+          education: item.education || "",
+          punchingNo: item.punching_no || "",
+          address: item.address || "",
+          village: item.village || "",
+          taluka: item.taluka || "",
+          district: item.district || "",
+          dob: item.dob || "",
+          birthPlace: item.birth_place || "",
+          gender: item.gender || "",
+          cast: item.cast || "",
+          maritalStatus: item.marital_status || "",
+          bloodGroup: item.blood_group || "",
           photo: item.photo || null,
-          signature: item.emp_signature || "-",
+          signature: item.emp_signature || "",
           members: parsedMembers,
         };
         

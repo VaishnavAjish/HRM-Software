@@ -31,6 +31,10 @@ class DocumentAudit
     public const S3_OPERATION_FAILED  = 'S3_OPERATION_FAILED';
     public const LEGACY_MIGRATED      = 'LEGACY_MIGRATED';
 
+    /**
+     * Returns the created entry so a caller that must not proceed without an
+     * audit trail can check it and roll back. Existing callers ignore it.
+     */
     public static function record(
         string $action,
         ?Document $document = null,
@@ -38,14 +42,14 @@ class DocumentAudit
         array $metadata = [],
         ?string $permission = null,
         ?string $permissionResult = null
-    ): void {
+    ): ?DocumentAuditLog {
         $request = RequestFacade::instance();
 
         $ip = $request?->header('X-Forwarded-For')
             ? trim(explode(',', $request->header('X-Forwarded-For'))[0])
             : ($request?->header('X-Real-IP') ?? $request?->ip());
 
-        DocumentAuditLog::create([
+        return DocumentAuditLog::create([
             'document_id'         => $document?->id,
             'document_version_id' => $version?->id,
             'organization_code'   => $document?->organization_code,

@@ -251,7 +251,7 @@ export default function AppointmentDocumentsStep({
           {[
             ["Appointment No", summary.appointmentNumber],
             ["Name", summary.name],
-            ["Aadhaar", summary.aadhaarMasked],
+            ["Aadhaar", summary.aadhaarDisplay],
             ["Company", summary.company],
             ["Unit", summary.unit],
           ].map(([label, value]) => (

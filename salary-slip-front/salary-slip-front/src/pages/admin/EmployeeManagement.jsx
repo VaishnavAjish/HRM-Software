@@ -183,11 +183,12 @@ function mapEmployee(item) {
     bankName: item.bank_name ?? "",
     bankIfscCode: item.bank_ifsc_code ?? "",
     bankAccountNo: item.bank_account_no ?? "",
-    // Full when the server disclosed it for this viewer, masked otherwise. The
-    // list endpoint never returns aadhaar_full, so grid rows and exports stay
-    // masked automatically; only the single-record details fetch can carry it.
+    // The complete number. The employee list returns aadhaar_full for every row
+    // inside the caller's company and unit scope, so the grid, the details modal,
+    // the edit form and the exports all show the same value.
     aadharCardNo: getAadhaarDisplayValue(item),
     aadhaarOnFile: getAadhaarDisplayValue(item),
+    // Kept because the API still returns it; no longer rendered anywhere.
     aadhaarMasked: item.aadhaar_masked ?? "",
     hasAadhaar: hasStoredAadhaar(item),
     panCardNo: item.pan_card_no ?? "",
@@ -388,23 +389,14 @@ export default function EmployeeManagement() {
     setRefreshKey((prev) => prev + 1);
   }, []);
 
-  const openAdd = useCallback(() => {
-    setForm({
-      ...emptyForm,
-      companyId: isAllCompanies ? "" : companyId,
-      unit: activeUnit || "",
-    });
-    setSelected(null);
-    setShowPassword(false);
-    setModal("add");
-  }, [activeUnit, companyId, isAllCompanies]);
-
   const openEdit = useCallback(
     async (emp) => {
-      // aadharCardNo carries the mask for the grid and exports; the editable
-      // input must start empty so the mask can never be posted back as if it
-      // were the real number. Blank means "keep what is stored".
-      setForm({ ...emp, aadharCardNo: "", password: "" });
+      // The input is prefilled with the complete stored number, so an editor can
+      // check it against a document without retyping it. It is safe to post back
+      // because it is the real value, not a mask — and buildSafeAadhaarUpdate
+      // still refuses anything that is not exactly 12 digits, so a half-deleted
+      // field cannot overwrite what is stored.
+      setForm({ ...emp, password: "" });
       setSelected(emp);
       setShowPassword(false);
       setModal("edit");
@@ -424,7 +416,9 @@ export default function EmployeeManagement() {
         setForm((prev) => ({
           ...prev,
           ...full,
-          aadharCardNo: prev.aadharCardNo,
+          // Keep whatever the editor has already typed rather than replacing it
+          // when the fuller record arrives.
+          aadharCardNo: prev.aadharCardNo || full.aadharCardNo,
           password: "",
         }));
       } catch {

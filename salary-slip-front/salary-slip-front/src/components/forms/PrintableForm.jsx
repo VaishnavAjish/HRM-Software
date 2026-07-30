@@ -1,9 +1,8 @@
-import React from 'react';
 
 function formatDate(value) {
-  if (!value || value === "-") return "-";
+  if (!value || value === "-") return "";
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
+  if (Number.isNaN(date.getTime())) return value === "-" ? "" : value;
   return date.toLocaleDateString("en-IN", {
     day: "2-digit",
     month: "short",
@@ -507,7 +506,7 @@ const PrintableForm = ({ data, formRef }) => {
           <div className="flex flex-row items-center gap-2 w-full">
             <span className="font-bold whitespace-nowrap uppercase text-[12px] text-black">Company :</span>
             <span className="border-b border-black flex-grow px-1 min-h-[20px] pb-0.5 text-[13px] uppercase font-bold leading-none">
-              {data.companyId || ""}
+              {data.companyId || data.companyCode || data.company_code || data.companyName || data.company || ""}
             </span>
           </div>
           <div className="flex flex-row items-center gap-2 w-full">

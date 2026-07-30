@@ -421,11 +421,37 @@ class UserController extends Controller
         $perPage = $request->limit ?? 15;
         $employees = $query->orderBy('id', 'desc')->paginate($perPage);
 
+        // The employee table shows the complete Aadhaar, so the paginated rows
+        // carry it. Same reasoning as the appointment list: the query above is
+        // already company- and unit-scoped, and only the current page's rows are
+        // disclosed rather than the whole table.
+        $disclosed = 0;
+
+        $rows = collect($employees->items())->map(function (User $employee) use ($userAuth, &$disclosed) {
+            $data = $employee->attributesToArray();
+
+            $full = \App\Support\AadhaarDisclosure::fullFor($employee, $userAuth);
+
+            if ($full !== null) {
+                $data['aadhaar_full'] = $full;
+                $disclosed++;
+            }
+
+            return $data;
+        })->all();
+
+        \App\Support\AadhaarDisclosure::auditListDisclosure(
+            $userAuth,
+            $disclosed,
+            'EMPLOYEE_LIST_FULL_AADHAAR_DISCLOSED',
+            ['page' => $employees->currentPage(), 'unit' => $request->unit]
+        );
+
         return response()->json([
             'status' => true,
             'data'   => [
                 'users' => [
-                    'data'         => $employees->items(),
+                    'data'         => $rows,
                     'total'        => $employees->total(),
                     'per_page'     => $employees->perPage(),
                     'current_page' => $employees->currentPage(),
@@ -453,8 +479,9 @@ class UserController extends Controller
                 return response()->json(['status' => false, 'message' => 'Employee not found'], 404);
             }
         }
-        // Single-record details: disclose the full number to the owner, or to an
-        // actor holding the grant. Lists never come through here.
+        // Single-record details: disclose the full number to the owner or to any
+        // actor allowed to reach the record. The scope checks above have already
+        // turned an out-of-company request into a 404.
         $payload = \App\Support\AadhaarDisclosure::attach(
             $employee->toArray(),
             $employee,
@@ -1184,13 +1211,40 @@ class UserController extends Controller
             $query->where('unit', $request->unit);
         }
 
-        $appointments = $query->orderBy('id', 'desc')->get()->map(function ($item) {
+        // The Aadhaar column on this page shows the complete number, so the list
+        // has to carry it. The query above is already scoped — agents to records
+        // they created, role 1 to their company, role 2 to their company and unit —
+        // so a row reaching here is a row the caller may open individually anyway.
+        //
+        // aadhaar_full is written per row rather than appended on the model: an
+        // accessor would emit it from every serialisation in the app, including
+        // places this decision was never made about.
+        $disclosed = 0;
+
+        $appointments = $query->orderBy('id', 'desc')->get()->map(function ($item) use ($userAuth, &$disclosed) {
             $data = $item->attributesToArray();
             $data['agent'] = $item->addedBy
                 ? $item->addedBy->only(['id', 'name', 'email', 'emp_code'])
                 : null;
+
+            $full = \App\Support\AadhaarDisclosure::fullFor($item, $userAuth);
+
+            if ($full !== null) {
+                $data['aadhaar_full'] = $full;
+                $disclosed++;
+            }
+
             return $data;
         });
+
+        // One entry for the request, with a count and no values. Auditing per row
+        // would turn one page view into hundreds of inserts and bury the trail.
+        \App\Support\AadhaarDisclosure::auditListDisclosure(
+            $userAuth,
+            $disclosed,
+            'APPOINTMENT_LIST_FULL_AADHAAR_DISCLOSED',
+            ['unit' => $request->unit]
+        );
 
         return response()->json([
             'status' => true,

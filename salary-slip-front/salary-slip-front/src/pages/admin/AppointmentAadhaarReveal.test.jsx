@@ -271,26 +271,46 @@ describe("Appointment Details — unauthorised viewer", () => {
   });
 });
 
-describe("Print and PDF", () => {
-  it("prints the full number for an authorised viewer, with a confidential mark", async () => {
+/**
+ * Print and PDF while confidential export is switched off.
+ *
+ * This is the default posture in production: CONFIDENTIAL_AADHAAR_EXPORT_ENABLED
+ * is false, so no confidential option is offered at all. What matters is which way
+ * it fails — an authorised viewer still sees the complete number on screen, and an
+ * ordinary Print or PDF must fall back to the masked version rather than putting
+ * an unaudited full number on paper. Earlier this fell the other way: Print copied
+ * whatever the screen showed and audited the action afterwards, so the sheet
+ * existed whether or not the recheck succeeded.
+ */
+describe("Print and PDF — confidential export not enabled", () => {
+  it("prints the masked version rather than what is on screen", async () => {
     const write = vi.fn();
-    const openSpy = vi
-      .spyOn(window, "open")
-      .mockReturnValue({ document: { write, close: vi.fn() }, focus: vi.fn(), print: vi.fn() });
+    const openSpy = vi.spyOn(window, "open").mockReturnValue({
+      document: {
+        write,
+        close: vi.fn(),
+        readyState: "complete",
+        images: [],
+        fonts: { ready: Promise.resolve() },
+      },
+      focus: vi.fn(),
+      print: vi.fn(),
+      addEventListener: vi.fn(),
+    });
 
     await openDetails();
     await screen.findAllByText(FULL_FORMATTED);
 
     await userEvent.click(screen.getByRole("button", { name: /^print$/i }));
 
-    const printed = write.mock.calls.map(([html]) => html).join("");
-    expect(printed).toContain(FULL_FORMATTED);
-    expect(printed).toContain("Confidential");
+    await waitFor(() => expect(write).toHaveBeenCalled());
 
-    // Each print is re-authorised server-side and audited under its own action.
-    await waitFor(() =>
-      expect(appointmentV1Api.revealAadhaar).toHaveBeenCalledWith(104, "t", "Bearer", "PRINT"),
-    );
+    const printed = write.mock.calls.map(([html]) => html).join("");
+    expect(printed).toContain(MASKED);
+    expect(printed).not.toContain(FULL_FORMATTED);
+    expect(printed).not.toContain(FULL_DIGITS);
+    // A masked sheet discloses nothing beyond the list, so it needs no reveal.
+    expect(appointmentV1Api.revealAadhaar).not.toHaveBeenCalled();
 
     openSpy.mockRestore();
   });
@@ -318,7 +338,7 @@ describe("Print and PDF", () => {
     openSpy.mockRestore();
   });
 
-  it("exports a PDF containing the full number for an authorised viewer", async () => {
+  it("never rasterises a full number into a client-side PDF", async () => {
     const { exportNodeToPdf } = await import("../../utils/pdfUtils");
 
     await openDetails();
@@ -329,16 +349,17 @@ describe("Print and PDF", () => {
     await waitFor(() => expect(exportNodeToPdf).toHaveBeenCalled());
 
     const [node, fileName] = exportNodeToPdf.mock.calls[0];
-    expect(node.textContent).toContain(FULL_FORMATTED);
-    expect(node.textContent).toContain("Confidential");
-    // The number must never appear in a filename.
+
+    // The client-side path rasterises a DOM the user can edit, so it is only ever
+    // allowed to see the masked view. A full number reaches a PDF exclusively
+    // through the server-generated confidential endpoint.
+    expect(node.textContent).toContain(MASKED);
+    expect(node.textContent).not.toContain(FULL_FORMATTED);
+    expect(node.textContent).not.toContain(FULL_DIGITS);
     expect(fileName).not.toContain(FULL_DIGITS);
     expect(fileName).not.toContain("8793");
-    expect(fileName).toMatch(/Confidential\.pdf$/);
-
-    await waitFor(() =>
-      expect(appointmentV1Api.revealAadhaar).toHaveBeenCalledWith(104, "t", "Bearer", "PDF"),
-    );
+    expect(fileName).not.toMatch(/Confidential/);
+    expect(appointmentV1Api.revealAadhaar).not.toHaveBeenCalled();
   });
 
   it("exports a masked PDF for an unauthorised viewer", async () => {

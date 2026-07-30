@@ -101,9 +101,9 @@ export default function ModernDatePicker({
     if (isOpen) {
       const d = parseSafeDate(value) || new Date();
       if (!isNaN(d.getTime())) {
-        setTempDate(d);
-        setCurrentMonth(d.getMonth());
-        setCurrentYear(d.getFullYear());
+        setTempDate((prev) => (prev.getTime() !== d.getTime() ? d : prev));
+        setCurrentMonth((prev) => (prev !== d.getMonth() ? d.getMonth() : prev));
+        setCurrentYear((prev) => (prev !== d.getFullYear() ? d.getFullYear() : prev));
       }
     }
   }, [isOpen, value]);

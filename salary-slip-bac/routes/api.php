@@ -19,6 +19,8 @@ use App\Http\Controllers\Admin\ShiftController;
 use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\Api\V1\DocumentController as V1DocumentController;
 use App\Http\Controllers\Api\V1\AppointmentController as V1AppointmentController;
+use App\Http\Controllers\Api\V1\AadhaarExportController as V1AadhaarExportController;
+use App\Support\AadhaarExportAccess;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\SalariesSlipController;
 use App\Http\Controllers\UserController;
@@ -138,6 +140,41 @@ Route::middleware('jwt.auth')->group(function () {
             ->whereNumber('appointmentId')
             ->middleware('throttle:30,1');
     });
+
+    /*
+     * Confidential (full-Aadhaar) Print and PDF export.
+     *
+     * Separate from the reveal route above because they are separate decisions:
+     * reading a number on screen is gated on appointments.view_full_aadhaar,
+     * while putting it on paper or in a downloadable file needs its own grant
+     * and its own audit entry. Throttled harder than the read path — a legitimate
+     * user exports occasionally, and a script enumerating records does not.
+     *
+     * Both surfaces share one controller. Appointments and employees are rows in
+     * the same table here, so the surface is passed as a route default rather
+     * than duplicating the whole flow twice.
+     */
+    foreach ([
+        'v1/appointments' => AadhaarExportAccess::SURFACE_APPOINTMENT,
+        'v1/employees' => AadhaarExportAccess::SURFACE_EMPLOYEE,
+    ] as $prefix => $surface) {
+        Route::group(['prefix' => $prefix], function () use ($surface) {
+            Route::post('{id}/aadhaar/export-authorization', [V1AadhaarExportController::class, 'authorizeExport'])
+                ->whereNumber('id')
+                ->defaults('surface', $surface)
+                ->middleware('throttle:10,1');
+
+            Route::post('{id}/confidential-pdf', [V1AadhaarExportController::class, 'confidentialPdf'])
+                ->whereNumber('id')
+                ->defaults('surface', $surface)
+                ->middleware('throttle:10,1');
+
+            Route::post('{id}/confidential-print-payload', [V1AadhaarExportController::class, 'confidentialPrintPayload'])
+                ->whereNumber('id')
+                ->defaults('surface', $surface)
+                ->middleware('throttle:10,1');
+        });
+    }
     
     // Allow any authenticated user (like Agent) to fetch departments
     Route::get('/department/get', [AdminController::class, "getDepartment"]);

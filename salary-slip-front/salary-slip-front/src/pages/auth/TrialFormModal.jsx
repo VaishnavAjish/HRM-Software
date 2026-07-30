@@ -5,6 +5,7 @@ import ModernDatePicker from "../../components/ModernDatePicker";
 import toast from "react-hot-toast";
 import { authApi } from "../../utils/api";
 import { useAuth } from "../../context/AuthContext";
+import { useCompany } from "../../context/CompanyContext";
 import { getCompanyUnits } from "../../config/companyConfig";
 
 const getTodayDate = () => {
@@ -143,6 +144,7 @@ const SignatureField = ({ label, name, value, onChange }) => (
 // ─── Main component ───────────────────────────────────────────────────────────
 const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
   const { user } = useAuth();
+  const { companyId } = useCompany();
   const isEditMode = Boolean(initialData);
   // The record as it was when the modal opened, so the update payload can send
   // only the fields that actually changed. State rather than a ref: it is
@@ -301,7 +303,7 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
 
     setLoading(true);
     try {
-      const submitData = { ...formData, company_code: "nidhi-impex" };
+      const submitData = { ...formData, company_code: companyId || "nidhi-impex" };
 
       if (isEditMode) {
         const snap = originalSnapshot || {};

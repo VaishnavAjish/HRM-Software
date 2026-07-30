@@ -16,6 +16,7 @@ import { getCompanyConfig } from "../../config/companyConfig";
 // appointment form" is literally that form, not a lookalike.
 import AppointmentModal from "../../pages/auth/AppointmentModal";
 import TrialFormModal from "../../pages/auth/TrialFormModal";
+import { getAadhaarDisplayValue } from "../../utils/aadhaar";
 
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
@@ -93,23 +94,27 @@ export default function EmployeeMasterTable() {
   const fetchAll = async () => {
     setLoading(true);
     try {
-      const [trialRes, apptRes, pendingRes, employeeRes] = await Promise.all([
+      // Appointments are deliberately NOT fetched here. An appointment only
+      // becomes this page's business once it's approved on the Appointments
+      // page — and approval (checkbox=1, see UserController::updateUser)
+      // immediately flips its type to 'pending_employee' / status 2, which is
+      // exactly the pendingRes query below. So "approved" and "shows up here
+      // as Pending" are the same event; nothing unapproved should ever appear.
+      const [trialRes, pendingRes, employeeRes] = await Promise.all([
         authApi.getTrialForms(user?.accessToken, user?.tokenType, companyScope),
-        authApi.getAppointmentForms(user?.accessToken, user?.tokenType, companyScope),
         salaryApi.getAllEmployees(user?.accessToken, user?.tokenType, { status: "2", limit: 1000 }, companyScope),
         salaryApi.getAllEmployees(user?.accessToken, user?.tokenType, { limit: 1000 }, companyScope),
       ]);
 
       const trialRows = (trialRes?.data || []).map((r) => ({ ...r, __stage: "trial" }));
-      const apptRows = (apptRes?.data?.appointments || []).map((r) => ({ ...r, __stage: "appointment" }));
       const pendingRows = (pendingRes?.data?.users?.data ?? pendingRes?.data?.users ?? []).map((r) => ({ ...r, __stage: "pending" }));
       const employeeRows = (employeeRes?.data?.users?.data ?? employeeRes?.data?.users ?? []).map((r) => ({ ...r, __stage: "employee" }));
 
-      // The four source queries are mutually exclusive by type/status, so this
+      // The three source queries are mutually exclusive by type/status, so this
       // Map is a safety net against an id ever appearing twice, not a real
       // merge concern — last one in wins, order below doesn't matter in practice.
       const merged = new Map();
-      [...trialRows, ...apptRows, ...pendingRows, ...employeeRows].forEach((r) => merged.set(r.id, r));
+      [...trialRows, ...pendingRows, ...employeeRows].forEach((r) => merged.set(r.id, r));
       setRows(Array.from(merged.values()));
     } catch (err) {
       toast.error(err.message || "Failed to load employee master data");
@@ -124,7 +129,7 @@ export default function EmployeeMasterTable() {
   }, [companyScope]);
 
   const stageCounts = useMemo(() => {
-    const counts = { all: rows.length, trial: 0, appointment: 0, pending: 0, employee: 0 };
+    const counts = { all: rows.length, trial: 0, pending: 0, employee: 0 };
     rows.forEach((r) => { counts[r.__stage] = (counts[r.__stage] || 0) + 1; });
     return counts;
   }, [rows]);
@@ -262,7 +267,7 @@ export default function EmployeeMasterTable() {
         city: row.city || "", district: row.district || "", state: row.state || "", pin: row.pin || "",
         // Masked: this is a list. The raw column is hidden from responses, so
         // reading it directly rendered an empty column.
-        aadhar_card_no: row.aadhaar_masked || "", pan_card_no: row.pan_card_no || "",
+        aadhar_card_no: getAadhaarDisplayValue(row), pan_card_no: row.pan_card_no || "",
         bank_name: row.bank_name || "", bank_ifsc_code: row.bank_ifsc_code || "",
         bank_account_no: row.bank_account_no || "",
         joining_date: row.joining_date || "", salary: row.salary || "",
@@ -335,7 +340,8 @@ export default function EmployeeMasterTable() {
             <div>
               <h2 className="text-lg font-bold text-gray-900 dark:text-white">Employee Master</h2>
               <p className="text-xs text-gray-500 dark:text-slate-400">
-                Every trial form, appointment, pending onboarding and active employee in one place
+                Every trial form, pending onboarding and active employee in one place — appointments
+                join once approved on the Appointments page
               </p>
             </div>
           </div>
@@ -355,7 +361,6 @@ export default function EmployeeMasterTable() {
           {[
             { key: "all", label: "All" },
             { key: "trial", label: "Trial Form" },
-            { key: "appointment", label: "Appointment" },
             { key: "pending", label: "Pending" },
             { key: "employee", label: "Employee" },
           ].map(({ key, label }) => (

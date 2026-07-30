@@ -104,7 +104,10 @@ class AadhaarRevealPermissionSeederTest extends TestCase
 
         foreach ([$admin, $manager, $employee, $agent] as $actor) {
             $this->assertNull($this->dimensionFor($actor), "role {$actor->role} must not be granted");
-            $this->assertFalse(AadhaarAccess::allows($actor->fresh()));
+            // The surviving permission-driven check is audited export, not display.
+            $this->assertFalse(
+                \App\Support\AadhaarExportAccess::allows($actor->fresh(), 'APPOINTMENT', 'PDF')
+            );
         }
     }
 
@@ -122,12 +125,22 @@ class AadhaarRevealPermissionSeederTest extends TestCase
         $this->assertSame('no_access', $this->dimensionFor($superAdmin)->value);
     }
 
-    public function test_an_assigned_non_super_admin_can_reveal(): void
+    /**
+     * These grants now control audited export, not display.
+     *
+     * Displaying a complete Aadhaar is gated on record access alone, so the keys
+     * this seeder registers no longer decide what appears on a page. They still
+     * decide who may take a copy out of the application, which is the part that
+     * cannot be undone once it happens.
+     */
+    public function test_an_assigned_non_super_admin_gains_export_access(): void
     {
         $hr = $this->makeUser(1);
         $this->runSeeder();
 
-        $this->assertFalse(AadhaarAccess::allows($hr->fresh()));
+        $this->assertFalse(
+            \App\Support\AadhaarExportAccess::allows($hr->fresh(), 'APPOINTMENT', 'PDF')
+        );
 
         $role = Role::firstOrCreate(
             ['name' => 'User_'.$hr->id.'_Permissions'],
@@ -135,28 +148,51 @@ class AadhaarRevealPermissionSeederTest extends TestCase
         );
         PermissionDimension::create([
             'dimension' => 'page', 'role_id' => $role->id,
-            'key_name' => AadhaarAccess::PERMISSION, 'value' => 'view_only',
+            'key_name' => \App\Support\AadhaarExportAccess::PDF_APPOINTMENT, 'value' => 'view_only',
         ]);
 
-        $this->assertTrue(AadhaarAccess::allows($hr->fresh()));
+        $this->assertTrue(
+            \App\Support\AadhaarExportAccess::allows($hr->fresh(), 'APPOINTMENT', 'PDF')
+        );
     }
 
-    public function test_revoking_the_grant_removes_access_again(): void
+    public function test_revoking_the_grant_removes_export_access_again(): void
     {
         $hr = $this->makeUser(1);
         $role = Role::create(['name' => 'User_'.$hr->id.'_Permissions', 'type' => 'Custom']);
         $entry = PermissionDimension::create([
             'dimension' => 'page', 'role_id' => $role->id,
-            'key_name' => AadhaarAccess::PERMISSION, 'value' => 'read_write',
+            'key_name' => \App\Support\AadhaarExportAccess::PDF_APPOINTMENT, 'value' => 'read_write',
         ]);
 
-        $this->assertTrue(AadhaarAccess::allows($hr->fresh()));
+        $this->assertTrue(
+            \App\Support\AadhaarExportAccess::allows($hr->fresh(), 'APPOINTMENT', 'PDF')
+        );
 
         $entry->update(['value' => 'no_access']);
-        $this->assertFalse(AadhaarAccess::allows($hr->fresh()));
+        $this->assertFalse(
+            \App\Support\AadhaarExportAccess::allows($hr->fresh(), 'APPOINTMENT', 'PDF')
+        );
 
         $entry->delete();
-        $this->assertFalse(AadhaarAccess::allows($hr->fresh()));
+        $this->assertFalse(
+            \App\Support\AadhaarExportAccess::allows($hr->fresh(), 'APPOINTMENT', 'PDF')
+        );
+    }
+
+    /**
+     * The policy change itself, asserted so it cannot regress silently.
+     */
+    public function test_display_no_longer_depends_on_any_grant(): void
+    {
+        $hr = $this->makeUser(1);
+        $employee = $this->makeUser(3);
+
+        // No grant of any kind exists for this actor.
+        $this->assertNull($this->dimensionFor($hr));
+
+        $this->assertTrue(AadhaarAccess::allowsFor($hr->fresh(), $employee));
+        $this->assertSame('RECORD_ACCESS', AadhaarAccess::basisFor($hr->fresh(), $employee));
     }
 
     public function test_granting_the_permission_through_the_api_is_audited(): void

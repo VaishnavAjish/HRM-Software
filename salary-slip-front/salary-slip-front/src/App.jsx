@@ -45,6 +45,7 @@ import EmployeeAppointment from "./pages/employee/EmployeeAppointment";
 
 // Agent pages
 import AgentDashboard from "./pages/agent/AgentDashboard";
+import { hasStoredAadhaar } from "./utils/aadhaar";
 
 function RouteLoader() {
   return (
@@ -80,7 +81,8 @@ function ProtectedRoute({ children, requiredRole }) {
     const source = {
       ...user,
       phone: user.mobile_number || user.mobile_no || user.phone,
-      aadhar_card_no: user.aadhar_card_no || user.aadhar_no || user.aadharNo || user.aadhaar_masked || user.aadhar_masked || user.aadhaarMasked || (user.has_aadhaar ? "stored" : "")
+      // Presence only — this is a completeness percentage, not a display.
+      aadhar_card_no: hasStoredAadhaar(user) ? "stored" : ""
     };
     let filled = 0;
     fields.forEach(f => {

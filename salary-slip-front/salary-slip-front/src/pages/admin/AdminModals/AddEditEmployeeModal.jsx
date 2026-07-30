@@ -502,23 +502,18 @@ export default function AddEditEmployeeModal({
               <SectionCard icon={CreditCard} title="Identity & Bank Details" index={4}>
                 <div>
                   {input({
-                    label: "Aadhar Card No",
+                    label: "Aadhaar Card No",
                     key: "aadharCardNo",
-                    placeholder: form.hasAadhaar ? "Leave blank to keep" : "XXXX XXXX XXXX",
+                    placeholder: "1234 5678 9012",
                   })}
-                  {/* The stored number is never sent to the browser, so this
-                      input is empty even when one exists. Say so, or an editor
-                      reads it as missing and retypes it from a photocopy. */}
+                  {/* The input is prefilled with the complete stored number, so
+                      there is nothing to disclose separately. Clearing the field
+                      leaves the stored value alone rather than erasing it — see
+                      buildSafeAadhaarUpdate. */}
                   {form.hasAadhaar && (
                     <p className="mt-1 text-[11px] text-gray-500 dark:text-slate-400">
-                      On file:{" "}
-                      {/* Full for a viewer the server disclosed it to, masked
-                          otherwise. The input below stays replacement-only
-                          either way. */}
-                      <span className="font-semibold">
-                        {form.aadhaarOnFile || form.aadhaarMasked || "XXXX XXXX ••••"}
-                      </span>{" "}
-                      — enter all 12 digits only to replace it.
+                      Clearing this field keeps the number already on file. Enter
+                      all 12 digits to replace it.
                     </p>
                   )}
                 </div>

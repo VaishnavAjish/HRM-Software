@@ -7,10 +7,7 @@ import useGridHeaderContextMenu from "../../hooks/useGridHeaderContextMenu";
 import { useTheme } from "../../context/ThemeContext";
 import useIsMobile from "../../hooks/useIsMobile";
 import { getEmployeePhotoUrl } from "./AdminModals/EmployeeHelpers";
-import { maskAadhaar, aadhaarDisplayFor, normaliseAadhaar } from "../../utils/aadhaar";
-
-/** Grant required to see a complete Aadhaar number; enforced server-side too. */
-const AADHAAR_REVEAL_PERMISSION = "appointments.view_full_aadhaar";
+import { getAadhaarDisplayValue, isCompleteAadhaar } from "../../utils/aadhaar";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 import {
@@ -42,7 +39,7 @@ import Modal from "../../components/ui/Modal";
 import { SkeletonTable } from "../../components/ui/Skeleton";
 import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";
-import { authApi, appointmentV1Api } from "../../utils/api";
+import { authApi } from "../../utils/api";
 import PrintableForm from "../../components/forms/PrintableForm";
 import { exportNodeToPdf } from "../../utils/pdfUtils";
 import AppointmentModal from "../auth/AppointmentModal";
@@ -105,10 +102,11 @@ function normalizeAppointment(item, index) {
       item.reference_mobile_no,
       item.ref_mobile,
     ),
-    // Masked only. The backend hides aadhar_card_no from every response, so the
-    // raw keys are always absent here — reading them is what made this column
-    // render blank. aadhaar_masked is the appended, safe representation.
-    aadharNo: firstPresent(item.aadhaar_masked, maskAadhaar(item.aadhar_card_no)),
+    // The complete number, grouped in fours. The list endpoint returns
+    // aadhaar_full for every row inside the caller's company and unit scope, so
+    // this column shows the same value the details page does — one rule, no
+    // screen-by-screen divergence.
+    aadharNo: getAadhaarDisplayValue(item),
     panNo: firstPresent(item.panNo, item.pan_card_no, item.pan_no),
     bankName: firstPresent(item.bankName, item.bank_name),
     accountNo: firstPresent(
@@ -897,16 +895,16 @@ export default function Appointments() {
   ]);
   const [showColModal, setShowColModal] = useState(false);
 
-  /**
-   * The full Aadhaar for the open appointment, keyed by the id it belongs to.
+  /*
+   * There is no separate "revealed Aadhaar" state any more.
    *
-   * Component state only — never localStorage, sessionStorage, the URL, a
-   * global store or a persisted query cache. Keyed by id so closing the modal or
-   * switching records stops it rendering without an effect to clear it, and it
-   * cannot be shown against the wrong appointment.
+   * The list response carries aadhaar_full for every row the caller may see, so
+   * the number arrives with the row and lives in `appointments` alongside every
+   * other field. Nothing is fetched on demand, nothing is timed out, and nothing
+   * is written to localStorage, sessionStorage, IndexedDB, the URL or any
+   * analytics payload — it exists only in component state for as long as the page
+   * is mounted.
    */
-  const [fullAadhaar, setFullAadhaar] = useState({ id: null, value: "" });
-
   const formRef = useRef(null);
   const gridRef = useRef(null);
   const gridContainerRef = useRef(null);
@@ -977,109 +975,42 @@ export default function Appointments() {
   );
 
   /**
-   * The server decides. Its details response carries aadhaar_full only for an
-   * actor holding appointments.view_full_aadhaar, so the presence of that field
-   * IS the authorisation result. This flag only decides whether we bother asking
-   * and whether printed output gets a CONFIDENTIAL marking.
-   */
-  const canSeeFullAadhaar = useMemo(() => {
-    if (Number(user?.rawRole) === 0) return true;
-
-    const value = user?.permissions?.[AADHAAR_REVEAL_PERMISSION];
-
-    return value === "view_only" || value === "read_write";
-  }, [user]);
-
-  /**
-   * Fetch the full number when the details modal opens, so it is simply present
-   * rather than behind a Show button. The list response is always masked; only
-   * this per-record request can return aadhaar_full, and only when the server
-   * agrees the viewer may have it.
-   */
-  useEffect(() => {
-    const appointmentId = selected?.id;
-
-    if (!appointmentId || !canSeeFullAadhaar) return undefined;
-
-    let cancelled = false;
-
-    (async () => {
-      try {
-        const res = await appointmentV1Api.get(appointmentId, user?.accessToken, user?.tokenType);
-        if (cancelled) return;
-
-        const digits = normaliseAadhaar(res?.data?.appointment?.aadhaar_full);
-        if (digits.length === 12) setFullAadhaar({ id: appointmentId, value: digits });
-      } catch {
-        // Masked display is the fallback; nothing to tell the user about.
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [selected?.id, canSeeFullAadhaar, user?.accessToken, user?.tokenType]);
-
-  /**
-   * What Appointment Details, Print and PDF all render for Aadhaar.
+   * The one view model behind Appointment Details, Print and PDF.
    *
-   * One view model, so printed output cannot drift from the screen and cannot be
-   * assembled from whatever text happens to be in the DOM.
+   * `selected.aadharNo` already holds the formatted complete number from the list
+   * row, so screen, paper and PDF cannot disagree and none of them is assembled
+   * from whatever text happens to be in the DOM.
    */
   const detailsView = useMemo(() => {
     if (!selected) return null;
 
-    const showingFull = fullAadhaar.id === selected.id && fullAadhaar.value.length === 12;
-
     return {
       ...selected,
-      aadharNo: aadhaarDisplayFor({
-        aadhaar_full: showingFull ? fullAadhaar.value : "",
-        aadhaar_masked: selected.aadharNo,
-      }),
-      // Drives the CONFIDENTIAL banner on print/PDF.
-      containsFullAadhaar: showingFull,
+      // Marks output that carries a complete identity number. Not a permission
+      // check — anyone reading this page is already authorised — but a sheet found
+      // on a desk should say what it is.
+      containsFullAadhaar: isCompleteAadhaar(selected.aadharNo),
       printedBy: user?.name || "",
     };
-  }, [selected, fullAadhaar, user?.name]);
+  }, [selected, user?.name]);
 
   /**
-   * Re-ask the server before printing or exporting. The client cannot authorise
-   * itself: a flag like includeFullAadhaar:true proves nothing, so each action
-   * is re-checked and separately audited under its own action name.
+   * The appointment PDF, rendered from the same view model as the screen.
+   *
+   * The record reference is the filename — never the Aadhaar, which would put an
+   * identity number into download histories, chat messages and backup indexes.
    */
-  const authoriseSensitiveOutput = async (context) => {
-    if (!selected?.id || !canSeeFullAadhaar) return;
-
-    try {
-      await appointmentV1Api.revealAadhaar(
-        selected.id,
-        user?.accessToken,
-        user?.tokenType,
-        context,
-      );
-    } catch {
-      // A refusal only means this action is not audited as a full-Aadhaar one;
-      // the output still carries whatever the details response already allowed.
-    }
-  };
-
-
-
   const handleDownloadPDF = async () => {
     if (!selected || !formRef.current) return;
+
     setPdfLoading(true);
     try {
-      // Server re-authorises and audits this export before it happens.
-      if (detailsView?.containsFullAadhaar) await authoriseSensitiveOutput("PDF");
+      const reference =
+        selected.appointmentNumber || `APT-${String(selected.id).padStart(6, "0")}`;
 
-      // The Aadhaar never goes in the filename — a file listing is not a place
-      // for identity numbers.
-      const fileName = detailsView?.containsFullAadhaar
-        ? `Appointment_${selected.appointmentNumber || selected.id}_Confidential.pdf`
-        : `Appointment_${selected.fullName.replace(/\s+/g, "_")}.pdf`;
-
-      await exportNodeToPdf(formRef.current, fileName, { fitToOnePage: true });
+      await exportNodeToPdf(formRef.current, `Appointment_${reference}.pdf`, {
+        fitToOnePage: true,
+      });
       toast.success("Form downloaded successfully");
     } catch {
       toast.error("Failed to generate PDF");
@@ -1088,12 +1019,8 @@ export default function Appointments() {
     }
   };
 
-  const handlePrint = () => {
-    if (!formRef.current) return;
-
-    // Fire-and-forget: the recheck audits the action server-side. The printed
-    // content itself can only ever contain what the details response allowed.
-    if (detailsView?.containsFullAadhaar) authoriseSensitiveOutput("PRINT");
+  const openPrintWindow = (node) => {
+    if (!node) return;
 
     const win = window.open("", "_blank", "width=1000,height=750");
     if (!win) {
@@ -1227,7 +1154,7 @@ export default function Appointments() {
             .doc-page-body img { max-height: 240mm; }
           }
         </style>
-      </head><body>${formRef.current.outerHTML}${docPages}</body></html>`,
+      </head><body>${node.outerHTML}${docPages}</body></html>`,
     );
     win.document.close();
 
@@ -1264,6 +1191,20 @@ export default function Appointments() {
     } else {
       win.addEventListener("load", printWhenReady, { once: true });
     }
+  };
+
+  /**
+   * Print the appointment form.
+   *
+   * One path. The hidden form renders the same view model as the screen, so the
+   * printed sheet carries the complete number exactly as the details page shows
+   * it — there is no masked variant to choose between and no separate
+   * authorisation, because opening this record was the authorisation.
+   */
+  const handlePrint = () => {
+    if (!selected) return;
+
+    openPrintWindow(formRef.current);
   };
 
   // Memoised because the grid's column definitions close over it: as a plain
@@ -2102,14 +2043,13 @@ export default function Appointments() {
       >
         {selected && (
           <>
-            {/* Hidden Printable Form used purely for PDF/Print generation */}
+            {/* Print and PDF both copy from here, and it renders the same view
+                model as the visible form below — so paper, PDF and screen always
+                agree, and all three carry the complete number. */}
             <div className="hidden" aria-hidden="true">
               <PrintableForm data={detailsView} formRef={formRef} />
             </div>
 
-            {/* Both instances render the same view model, so what is printed or
-                exported is exactly what is on screen — no Show/Hide, and no
-                chance of the two disagreeing. */}
             <div className="hidden md:flex justify-center overflow-x-auto bg-gray-50 dark:bg-gray-900 rounded-xl p-4 border border-gray-200 dark:border-gray-800">
               <div className="scale-[0.85] sm:scale-[0.95] md:scale-100 origin-top flex items-center justify-center min-w-[max-content] pb-4">
                 <PrintableForm data={detailsView} />

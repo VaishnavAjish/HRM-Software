@@ -111,8 +111,8 @@ export default function RbacDashboard() {
       if (securityRes.status) setDraftSecurity(securityRes.data || []);
       if (mainDashboardRes.status) setDraftMainDashboard(mainDashboardRes.data || []);
       setSettingsOpen(true);
-    } catch (err) {
-      toast.error(err.message || "Failed to load settings");
+    } catch {
+      toast.error("Failed to load settings");
     }
   };
 

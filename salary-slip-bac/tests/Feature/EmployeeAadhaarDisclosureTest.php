@@ -66,13 +66,16 @@ class EmployeeAadhaarDisclosureTest extends TestCase
             ->assertJsonMissingPath('user.aadhar_card_no');
     }
 
-    public function test_self_disclosure_needs_no_permission_grant(): void
+    public function test_self_disclosure_is_recognised_as_ownership(): void
     {
         $employee = $this->makeUser(3);
+        $other = $this->makeUser(3);
 
-        $this->assertFalse(AadhaarAccess::allows($employee));
         $this->assertTrue(AadhaarAccess::allowsFor($employee, $employee));
         $this->assertSame('SELF', AadhaarAccess::basisFor($employee, $employee));
+
+        // Owning your own record grants nothing over anybody else's.
+        $this->assertFalse(AadhaarAccess::allowsFor($employee, $other));
     }
 
     public function test_one_employee_cannot_reach_another_employees_record(): void
@@ -122,17 +125,18 @@ class EmployeeAadhaarDisclosureTest extends TestCase
             ->assertJsonPath('data.aadhaar_full', '715115981345');
     }
 
-    public function test_an_admin_without_the_grant_gets_only_the_mask(): void
+    public function test_an_admin_in_the_same_company_needs_no_grant(): void
     {
         $hr = $this->makeUser(1);
         $employee = $this->makeUser(3);
 
-        $response = $this->withToken(auth('api')->login($hr))
-            ->getJson("/api/employee/show/{$employee->id}");
-
-        $response->assertOk()
-            ->assertJsonPath('data.aadhaar_masked', 'XXXX XXXX 1345')
-            ->assertJsonMissingPath('data.aadhaar_full');
+        // Previously this returned only the mask until someone was granted
+        // employees.view_full_aadhaar. Record access is now the whole rule.
+        $this->withToken(auth('api')->login($hr))
+            ->getJson("/api/employee/show/{$employee->id}")
+            ->assertOk()
+            ->assertJsonPath('data.aadhaar_full', '715115981345')
+            ->assertJsonPath('data.aadhaar_masked', 'XXXX XXXX 1345');
     }
 
     public function test_a_record_without_an_aadhaar_discloses_nothing(): void
@@ -146,7 +150,11 @@ class EmployeeAadhaarDisclosureTest extends TestCase
             ->assertJsonMissingPath('data.aadhaar_full');
     }
 
-    public function test_the_employee_list_never_carries_the_full_number(): void
+    /**
+     * The employee table shows the complete number, so the list carries it. Only
+     * the current page's rows are disclosed, and only within the caller's scope.
+     */
+    public function test_the_employee_list_carries_the_full_number_for_in_scope_rows(): void
     {
         $this->makeUser(3);
         $admin = $this->makeUser(0);
@@ -155,8 +163,51 @@ class EmployeeAadhaarDisclosureTest extends TestCase
             ->getJson('/api/employee/get');
 
         $response->assertOk();
-        $this->assertStringNotContainsString('aadhaar_full', $response->getContent());
+        $this->assertStringContainsString('715115981345', $response->getContent());
+        // The raw column is still never serialised — aadhaar_full is added
+        // deliberately, per row, by AadhaarDisclosure.
+        $this->assertStringNotContainsString('aadhar_card_no', $response->getContent());
+    }
+
+    public function test_the_employee_list_excludes_other_companies(): void
+    {
+        $this->makeUser(3);
+        $outsider = User::create([
+            'name' => 'Outsider', 'email' => 'list-outsider@test.local', 'password' => 'x',
+            'role' => 1, 'company_code' => 'silver-star', 'status' => 0, 'is_deleted' => 0,
+        ]);
+
+        $response = $this->withToken(auth('api')->login($outsider))
+            ->getJson('/api/employee/get');
+
+        $response->assertOk();
         $this->assertStringNotContainsString('715115981345', $response->getContent());
+    }
+
+    public function test_bulk_employee_list_disclosure_is_audited_once_with_a_count(): void
+    {
+        $this->makeUser(3);
+        $this->makeUser(3, '999988887777');
+        $admin = $this->makeUser(0);
+
+        $this->withToken(auth('api')->login($admin))
+            ->getJson('/api/employee/get')
+            ->assertOk();
+
+        $entry = DocumentAuditLog::where('action', 'EMPLOYEE_LIST_FULL_AADHAAR_DISCLOSED')
+            ->latest('id')
+            ->first();
+
+        $this->assertNotNull($entry);
+        $this->assertSame(2, $entry->metadata['disclosed_count']);
+        $this->assertSame(
+            1,
+            DocumentAuditLog::where('action', 'EMPLOYEE_LIST_FULL_AADHAAR_DISCLOSED')->count(),
+        );
+
+        $logged = json_encode($entry->toArray());
+        $this->assertStringNotContainsString('715115981345', $logged);
+        $this->assertStringNotContainsString('999988887777', $logged);
     }
 
     public function test_disclosure_is_audited_with_its_basis_and_no_number(): void
@@ -173,7 +224,7 @@ class EmployeeAadhaarDisclosureTest extends TestCase
         $this->assertNotNull($entry);
         $this->assertSame($admin->id, $entry->actor_user_id);
         $this->assertSame($employee->id, $entry->metadata['target_user_id']);
-        $this->assertSame('PERMISSION', $entry->metadata['basis']);
+        $this->assertSame('RECORD_ACCESS', $entry->metadata['basis']);
         $this->assertSame('1345', $entry->metadata['aadhaar_last4']);
         $this->assertStringNotContainsString('715115981345', json_encode($entry->toArray()));
     }
@@ -191,14 +242,33 @@ class EmployeeAadhaarDisclosureTest extends TestCase
         $this->assertSame('OWNERSHIP', $entry->permission);
     }
 
-    public function test_a_masked_only_view_records_no_disclosure(): void
+    public function test_a_refused_cross_company_view_records_no_disclosure(): void
+    {
+        $employee = $this->makeUser(3);
+        $outsider = User::create([
+            'name' => 'Outsider 2', 'email' => 'no-disclose@test.local', 'password' => 'x',
+            'role' => 1, 'company_code' => 'silver-star', 'status' => 0, 'is_deleted' => 0,
+        ]);
+
+        $this->withToken(auth('api')->login($outsider))
+            ->getJson("/api/employee/show/{$employee->id}")
+            ->assertStatus(404);
+
+        $this->assertSame(
+            0,
+            DocumentAuditLog::where('action', 'EMPLOYEE_FULL_AADHAAR_VIEWED')->count(),
+        );
+    }
+
+    public function test_a_record_with_no_aadhaar_records_no_disclosure(): void
     {
         $hr = $this->makeUser(1);
-        $employee = $this->makeUser(3);
+        $employee = $this->makeUser(3, '');
 
         $this->withToken(auth('api')->login($hr))
             ->getJson("/api/employee/show/{$employee->id}")
-            ->assertOk();
+            ->assertOk()
+            ->assertJsonMissingPath('data.aadhaar_full');
 
         $this->assertSame(
             0,

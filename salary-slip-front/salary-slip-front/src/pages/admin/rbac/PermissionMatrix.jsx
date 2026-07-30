@@ -48,13 +48,57 @@ const LEVEL_TONE = { 0: "purple", 1: "yellow", 3: "gray", 4: "blue" };
  * action. Listed separately so an administrator can find them by name instead
  * of having to know the internal key.
  */
+/**
+ * Viewing, printing and exporting a complete Aadhaar are three separate grants.
+ *
+ * Not pedantry: a number read on screen stops existing when the tab closes,
+ * whereas a printed sheet and a downloaded PDF leave the application permanently
+ * and cannot be recalled. Someone trusted to check a number against a document in
+ * front of them is not automatically trusted to walk out with a copy of it, so
+ * granting one here never implies the others.
+ */
 const SENSITIVE_PERMISSIONS = [
   {
     key: "appointments.view_full_aadhaar",
     label: "View Full Aadhaar Number",
     module: "Appointments",
     description:
-      "Temporarily reveal the complete Aadhaar number on an appointment. Every successful and denied attempt is audited.",
+      "Show the complete Aadhaar number on an appointment. Every successful and denied attempt is audited.",
+  },
+  {
+    key: "appointments.print_full_aadhaar",
+    label: "Print Full Aadhaar Document",
+    module: "Appointments",
+    description:
+      "Print an appointment document containing the complete Aadhaar number. Requires fresh authorization per print. Printed copies are outside application access control.",
+  },
+  {
+    key: "appointments.export_full_aadhaar_pdf",
+    label: "Download Confidential Aadhaar PDF",
+    module: "Appointments",
+    description:
+      "Download a server-generated, watermarked PDF containing the complete Aadhaar number. Downloaded files cannot be recalled or revoked.",
+  },
+  {
+    key: "employees.view_full_aadhaar",
+    label: "View Full Aadhaar Number",
+    module: "Employees",
+    description:
+      "Show the complete Aadhaar number on an employee record. Viewing your own is always permitted and needs no grant.",
+  },
+  {
+    key: "employees.print_full_aadhaar",
+    label: "Print Full Aadhaar Document",
+    module: "Employees",
+    description:
+      "Print an employee document containing the complete Aadhaar number. Printed copies are outside application access control.",
+  },
+  {
+    key: "employees.export_full_aadhaar_pdf",
+    label: "Download Confidential Aadhaar PDF",
+    module: "Employees",
+    description:
+      "Download a server-generated, watermarked PDF containing an employee's complete Aadhaar number.",
   },
 ];
 
@@ -374,6 +418,7 @@ export default function PermissionMatrix() {
               return (
                 <div
                   key={permission.key}
+                  data-testid={`sensitive-${permission.key}`}
                   className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-gray-200 dark:border-gray-700 p-3"
                 >
                   <div className="min-w-0 flex-1">
@@ -418,7 +463,14 @@ export default function PermissionMatrix() {
                 This permission exposes highly sensitive identity data. Every reveal is audited.
                 Grant it only to users with a legitimate business need.
               </p>
-              <p className="mt-2 text-xs text-gray-400">
+              {/* Six sensitive permissions now share this dialog, so it names the
+                  one being granted — "full Aadhaar" alone would not tell an
+                  administrator whether they are allowing a screen view or a
+                  downloadable file. */}
+              <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                {pendingGrant.label} · {pendingGrant.module}
+              </p>
+              <p className="mt-1 text-xs text-gray-400">
                 Granting to {selectedAdmin.name} · {pendingGrant.key}
               </p>
               <div className="mt-5 flex justify-end gap-2">

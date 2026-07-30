@@ -3,19 +3,21 @@
 namespace Tests\Feature;
 
 use App\Models\DocumentAuditLog;
-use App\Models\PermissionDimension;
-use App\Models\Role;
 use App\Models\User;
-use App\Support\AadhaarAccess;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * POST /v1/appointments/{id}/aadhaar/reveal
+ * Full-Aadhaar disclosure on the appointment surface.
  *
- * The single route that returns a complete Aadhaar number. Everywhere else the
- * column is hidden and only `aadhaar_masked` is exposed, so these tests are what
- * keep that boundary from quietly eroding.
+ * The gate is record access: reaching an appointment means seeing its Aadhaar in
+ * full, on the details endpoint and in the list. There is no separate permission
+ * and no masked variant of an authorised page.
+ *
+ * So what these tests defend is the boundary that still exists — organisation,
+ * company and unit scope. Every refusal case also asserts the number is absent
+ * from the response body, because a 403 that happens to carry the value in an
+ * error payload would satisfy a status assertion while leaking what it protects.
  */
 class AadhaarRevealTest extends TestCase
 {
@@ -23,13 +25,14 @@ class AadhaarRevealTest extends TestCase
 
     private int $seq = 0;
 
-    private function makeUser(int $role, string $company = 'nidhi-impex'): User
+    private function makeUser(int $role, string $company = 'nidhi-impex', ?string $unit = null): User
     {
         $n = ++$this->seq;
 
         return User::create([
             'name' => "Actor {$n}", 'email' => "reveal-actor-{$n}@test.local",
-            'password' => 'x', 'role' => $role, 'company_code' => $company, 'status' => 0,
+            'password' => 'x', 'role' => $role, 'company_code' => $company,
+            'unit' => $unit, 'status' => 0,
         ]);
     }
 
@@ -48,26 +51,13 @@ class AadhaarRevealTest extends TestCase
         return $appointment;
     }
 
-    /** Give a non-super-admin the explicit reveal grant. */
-    private function grantReveal(User $actor, string $value = 'view_only'): void
-    {
-        // roles.type is an enum of System|Custom — a per-user permission bucket
-        // is a Custom role.
-        $role = Role::create(['name' => 'User_'.$actor->id.'_Permissions', 'type' => 'Custom']);
-
-        PermissionDimension::create([
-            'dimension' => 'page',
-            'role_id' => $role->id,
-            'key_name' => AadhaarAccess::PERMISSION,
-            'value' => $value,
-        ]);
-    }
-
     private function reveal(User $actor, User $appointment)
     {
         return $this->withToken(auth('api')->login($actor))
             ->postJson("/api/v1/appointments/{$appointment->id}/aadhaar/reveal");
     }
+
+    // ------------------------------------------------------------- disclosure
 
     public function test_a_super_admin_can_reveal_the_number(): void
     {
@@ -75,48 +65,61 @@ class AadhaarRevealTest extends TestCase
 
         $response->assertOk()
             ->assertJsonPath('success', true)
-            ->assertJsonPath('data.aadhaarNumber', '123456788793')
-            ->assertJsonPath('data.expiresIn', 30);
+            ->assertJsonPath('data.aadhaarNumber', '123456788793');
     }
 
-    public function test_an_explicitly_granted_user_can_reveal_the_number(): void
+    public function test_a_company_admin_in_the_same_company_needs_no_grant(): void
     {
-        $hr = $this->makeUser(1);
-        $this->grantReveal($hr);
-
-        $this->reveal($hr, $this->makeAppointment())
+        // The earlier design refused this until someone was granted
+        // appointments.view_full_aadhaar. Record access is now the whole rule:
+        // this actor can already open the appointment, so withholding the number
+        // only produced a masked page next to an unmasked one.
+        $this->reveal($this->makeUser(1), $this->makeAppointment())
             ->assertOk()
             ->assertJsonPath('data.aadhaarNumber', '123456788793');
     }
 
-    public function test_a_read_write_grant_also_allows_it(): void
+    public function test_a_manager_in_the_matching_unit_sees_it(): void
     {
-        $hr = $this->makeUser(1);
-        $this->grantReveal($hr, 'read_write');
+        $manager = $this->makeUser(2, 'nidhi-impex', 'Ichapur');
 
-        $this->reveal($hr, $this->makeAppointment())->assertOk();
+        $this->reveal($manager, $this->makeAppointment())
+            ->assertOk()
+            ->assertJsonPath('data.aadhaarNumber', '123456788793');
     }
 
-    public function test_a_company_admin_without_the_grant_is_refused(): void
+    // ------------------------------------------------------------------ scope
+
+    public function test_a_cross_company_actor_is_refused(): void
     {
-        // Seniority alone must not carry this — it has to be granted.
-        $this->reveal($this->makeUser(1), $this->makeAppointment())
-            ->assertStatus(403)
+        $outsider = $this->makeUser(1, 'silver-star');
+
+        $response = $this->reveal($outsider, $this->makeAppointment('123456788793', 'nidhi-impex'));
+
+        $response->assertStatus(403)
             ->assertJsonPath('error.code', 'APPOINTMENT_ACCESS_DENIED');
+
+        $this->assertStringNotContainsString('123456788793', $response->getContent());
     }
 
-    public function test_a_no_access_grant_is_refused(): void
+    public function test_a_manager_in_another_unit_is_refused(): void
     {
-        $manager = $this->makeUser(2);
-        $this->grantReveal($manager, 'no_access');
+        // Unit scope, not seniority: same company, wrong unit.
+        $manager = $this->makeUser(2, 'nidhi-impex', 'Daduk');
 
-        $this->reveal($manager, $this->makeAppointment())->assertStatus(403);
+        $response = $this->reveal($manager, $this->makeAppointment());
+
+        $response->assertStatus(403);
+        $this->assertStringNotContainsString('123456788793', $response->getContent());
     }
 
-    public function test_the_refusal_body_never_contains_the_number(): void
+    public function test_a_plain_employee_cannot_reach_another_persons_appointment(): void
     {
-        $response = $this->reveal($this->makeUser(1), $this->makeAppointment());
+        $employee = $this->makeUser(3);
 
+        $response = $this->reveal($employee, $this->makeAppointment());
+
+        $response->assertStatus(403);
         $this->assertStringNotContainsString('123456788793', $response->getContent());
     }
 
@@ -162,6 +165,8 @@ class AadhaarRevealTest extends TestCase
         $this->assertSame('0', $response->headers->get('Expires'));
     }
 
+    // ------------------------------------------------------------------ audit
+
     public function test_a_successful_reveal_is_audited_without_the_number(): void
     {
         $actor = $this->makeUser(0);
@@ -173,7 +178,7 @@ class AadhaarRevealTest extends TestCase
 
         $this->assertNotNull($entry);
         $this->assertSame($actor->id, $entry->actor_user_id);
-        $this->assertSame(AadhaarAccess::PERMISSION, $entry->permission);
+        $this->assertSame('RECORD_ACCESS', $entry->permission);
         $this->assertSame('ALLOWED', $entry->permission_result);
         $this->assertSame($appointment->id, $entry->metadata['appointment_id']);
         $this->assertSame('8793', $entry->metadata['aadhaar_last4']);
@@ -182,78 +187,17 @@ class AadhaarRevealTest extends TestCase
         $this->assertStringNotContainsString('123456788793', json_encode($entry->toArray()));
     }
 
-    public function test_a_denied_reveal_is_audited(): void
+    public function test_a_refused_reveal_is_audited(): void
     {
-        $actor = $this->makeUser(1);
+        $outsider = $this->makeUser(1, 'silver-star');
 
-        $this->reveal($actor, $this->makeAppointment())->assertStatus(403);
+        $this->reveal($outsider, $this->makeAppointment())->assertStatus(403);
 
-        $entry = DocumentAuditLog::where('action', 'APPOINTMENT_AADHAAR_REVEAL_DENIED')
-            ->latest('id')->first();
+        $entry = DocumentAuditLog::where('permission_result', 'DENIED')->latest('id')->first();
 
         $this->assertNotNull($entry);
-        $this->assertSame($actor->id, $entry->actor_user_id);
-        $this->assertSame('DENIED', $entry->permission_result);
-        $this->assertSame(AadhaarAccess::PERMISSION, $entry->permission);
-    }
-
-    public function test_the_details_endpoint_gives_an_authorised_actor_the_full_number(): void
-    {
-        $appointment = $this->makeAppointment();
-
-        $response = $this->withToken(auth('api')->login($this->makeUser(0)))
-            ->getJson("/api/v1/appointments/{$appointment->id}");
-
-        $response->assertOk()
-            ->assertJsonPath('data.appointment.aadhaar_masked', 'XXXX XXXX 8793')
-            ->assertJsonPath('data.appointment.aadhaar_full', '123456788793')
-            // The raw column stays hidden; aadhaar_full is added explicitly.
-            ->assertJsonMissingPath('data.appointment.aadhar_card_no');
-    }
-
-    public function test_the_details_endpoint_gives_an_unauthorised_actor_only_the_mask(): void
-    {
-        $appointment = $this->makeAppointment();
-
-        $response = $this->withToken(auth('api')->login($this->makeUser(1)))
-            ->getJson("/api/v1/appointments/{$appointment->id}");
-
-        $response->assertOk()
-            ->assertJsonPath('data.appointment.aadhaar_masked', 'XXXX XXXX 8793')
-            ->assertJsonMissingPath('data.appointment.aadhaar_full')
-            ->assertJsonMissingPath('data.appointment.aadhar_card_no');
-
-        $this->assertStringNotContainsString('123456788793', $response->getContent());
-    }
-
-    public function test_viewing_the_details_audits_the_sensitive_access_once(): void
-    {
-        $actor = $this->makeUser(0);
-        $appointment = $this->makeAppointment();
-
-        $this->withToken(auth('api')->login($actor))
-            ->getJson("/api/v1/appointments/{$appointment->id}")
-            ->assertOk();
-
-        $entries = DocumentAuditLog::where('action', 'APPOINTMENT_FULL_AADHAAR_VIEWED')->get();
-
-        $this->assertCount(1, $entries);
-        $this->assertSame('8793', $entries->first()->metadata['aadhaar_last4']);
-        $this->assertStringNotContainsString('123456788793', json_encode($entries->toArray()));
-    }
-
-    public function test_an_unauthorised_view_records_no_sensitive_access_entry(): void
-    {
-        $appointment = $this->makeAppointment();
-
-        $this->withToken(auth('api')->login($this->makeUser(1)))
-            ->getJson("/api/v1/appointments/{$appointment->id}")
-            ->assertOk();
-
-        $this->assertSame(
-            0,
-            DocumentAuditLog::where('action', 'APPOINTMENT_FULL_AADHAAR_VIEWED')->count(),
-        );
+        $this->assertSame($outsider->id, $entry->actor_user_id);
+        $this->assertStringNotContainsString('123456788793', json_encode($entry->toArray()));
     }
 
     public function test_a_print_recheck_is_audited_under_its_own_action(): void
@@ -283,30 +227,137 @@ class AadhaarRevealTest extends TestCase
         );
     }
 
-    public function test_an_unauthorised_print_recheck_is_refused(): void
+    // ----------------------------------------------------- details and lists
+
+    public function test_the_details_endpoint_gives_an_authorised_actor_the_full_number(): void
     {
         $appointment = $this->makeAppointment();
 
-        // A client asking for print context does not get to skip the check.
-        $this->withToken(auth('api')->login($this->makeUser(1)))
-            ->postJson("/api/v1/appointments/{$appointment->id}/aadhaar/reveal", ['context' => 'PRINT'])
-            ->assertStatus(403);
+        $response = $this->withToken(auth('api')->login($this->makeUser(0)))
+            ->getJson("/api/v1/appointments/{$appointment->id}");
 
-        $denied = DocumentAuditLog::where('action', 'APPOINTMENT_AADHAAR_REVEAL_DENIED')->first();
-        $this->assertNotNull($denied);
-        $this->assertSame('PRINT', $denied->metadata['context']);
+        $response->assertOk()
+            ->assertJsonPath('data.appointment.aadhaar_full', '123456788793')
+            // aadhaar_masked stays for API compatibility; the raw column never
+            // appears, because aadhaar_full is added explicitly per response.
+            ->assertJsonPath('data.appointment.aadhaar_masked', 'XXXX XXXX 8793')
+            ->assertJsonMissingPath('data.appointment.aadhar_card_no');
     }
 
-    public function test_the_list_endpoint_never_carries_the_full_number(): void
+    public function test_a_cross_company_actor_gets_no_details_at_all(): void
+    {
+        $appointment = $this->makeAppointment('123456788793', 'nidhi-impex');
+        $outsider = $this->makeUser(1, 'silver-star');
+
+        $response = $this->withToken(auth('api')->login($outsider))
+            ->getJson("/api/v1/appointments/{$appointment->id}");
+
+        // Not "the masked version" — nothing.
+        $response->assertStatus(403);
+        $this->assertStringNotContainsString('123456788793', $response->getContent());
+        $this->assertStringNotContainsString('aadhaar_full', $response->getContent());
+    }
+
+    public function test_viewing_the_details_audits_the_sensitive_access_once(): void
+    {
+        $actor = $this->makeUser(0);
+        $appointment = $this->makeAppointment();
+
+        $this->withToken(auth('api')->login($actor))
+            ->getJson("/api/v1/appointments/{$appointment->id}")
+            ->assertOk();
+
+        $entries = DocumentAuditLog::where('action', 'APPOINTMENT_FULL_AADHAAR_VIEWED')->get();
+
+        $this->assertCount(1, $entries);
+        $this->assertSame('8793', $entries->first()->metadata['aadhaar_last4']);
+        $this->assertSame('RECORD_ACCESS', $entries->first()->metadata['basis']);
+        $this->assertStringNotContainsString('123456788793', json_encode($entries->toArray()));
+    }
+
+    public function test_a_refused_details_request_records_no_disclosure(): void
+    {
+        $appointment = $this->makeAppointment('123456788793', 'nidhi-impex');
+
+        $this->withToken(auth('api')->login($this->makeUser(1, 'silver-star')))
+            ->getJson("/api/v1/appointments/{$appointment->id}");
+
+        $this->assertSame(
+            0,
+            DocumentAuditLog::where('action', 'APPOINTMENT_FULL_AADHAAR_VIEWED')->count(),
+        );
+    }
+
+    /**
+     * The list now carries the full number, which is the largest change here: one
+     * request returns every Aadhaar in the caller's scope rather than one.
+     */
+    public function test_the_list_endpoint_carries_the_full_number_for_in_scope_rows(): void
     {
         $this->makeAppointment();
 
         $response = $this->withToken(auth('api')->login($this->makeUser(0)))
             ->getJson('/api/appointment');
 
+        $response->assertOk()
+            ->assertJsonPath('data.appointments.0.aadhaar_full', '123456788793');
+
+        // The raw column is still never serialised.
+        $this->assertStringNotContainsString('aadhar_card_no', $response->getContent());
+    }
+
+    public function test_the_list_excludes_other_companies_entirely(): void
+    {
+        $this->makeAppointment('123456788793', 'nidhi-impex');
+        $outsider = $this->makeUser(1, 'silver-star');
+
+        $response = $this->withToken(auth('api')->login($outsider))
+            ->getJson('/api/appointment');
+
         $response->assertOk();
-        // Lists stay masked regardless of permission.
+        // Scope is enforced in the query, so the row is never present to disclose.
         $this->assertStringNotContainsString('123456788793', $response->getContent());
-        $this->assertStringNotContainsString('aadhaar_full', $response->getContent());
+    }
+
+    public function test_bulk_list_disclosure_is_audited_with_a_count_and_no_values(): void
+    {
+        $this->makeAppointment('123456788793');
+        $this->makeAppointment('999988887777');
+
+        $this->withToken(auth('api')->login($this->makeUser(0)))
+            ->getJson('/api/appointment')
+            ->assertOk();
+
+        $entry = DocumentAuditLog::where('action', 'APPOINTMENT_LIST_FULL_AADHAAR_DISCLOSED')
+            ->latest('id')
+            ->first();
+
+        $this->assertNotNull($entry);
+        $this->assertSame(2, $entry->metadata['disclosed_count']);
+
+        // One entry per request, not per row — a 500-row page must not produce 500
+        // inserts, or the trail becomes unusable and someone switches it off.
+        $this->assertSame(
+            1,
+            DocumentAuditLog::where('action', 'APPOINTMENT_LIST_FULL_AADHAAR_DISCLOSED')->count(),
+        );
+
+        $logged = json_encode($entry->toArray());
+        $this->assertStringNotContainsString('123456788793', $logged);
+        $this->assertStringNotContainsString('999988887777', $logged);
+    }
+
+    public function test_a_list_with_nothing_to_disclose_records_nothing(): void
+    {
+        $this->makeAppointment('');
+
+        $this->withToken(auth('api')->login($this->makeUser(0)))
+            ->getJson('/api/appointment')
+            ->assertOk();
+
+        $this->assertSame(
+            0,
+            DocumentAuditLog::where('action', 'APPOINTMENT_LIST_FULL_AADHAAR_DISCLOSED')->count(),
+        );
     }
 }

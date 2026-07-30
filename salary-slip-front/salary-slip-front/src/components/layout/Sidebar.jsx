@@ -8,6 +8,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";
 import { useInstallPWA } from "../../hooks/useInstallPWA";
 import toast from "react-hot-toast";
+import { hasStoredAadhaar } from "../../utils/aadhaar";
 import {
   LayoutDashboard,
   Users,
@@ -118,7 +119,7 @@ const agentNav = [
 ];
 
 export default function Sidebar({ open, onClose, width, isCollapsed, onCollapse }) {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const location = useLocation();
   const {
     company,
@@ -171,7 +172,8 @@ export default function Sidebar({ open, onClose, width, isCollapsed, onCollapse 
     const source = {
       ...user,
       phone: user?.mobile_number || user?.mobile_no || user?.phone,
-      aadhar_card_no: user?.aadhar_card_no || user?.aadhar_no || user?.aadharNo || user?.aadhaar_masked || user?.aadhar_masked || user?.aadhaarMasked || (user?.has_aadhaar ? "stored" : "")
+      // Presence only — this is a completeness percentage, not a display.
+      aadhar_card_no: hasStoredAadhaar(user) ? "stored" : ""
     };
     let filled = 0;
     fields.forEach(f => {
@@ -200,14 +202,7 @@ export default function Sidebar({ open, onClose, width, isCollapsed, onCollapse 
     });
   }
   
-  const handleLogout = async () => {
-    const result = await logout();
-    if (result?.success) {
-      toast.success(result.message);
-    } else {
-      toast.error(result?.message || "Logout failed");
-    }
-  };
+  // handleLogout removed
 
 
   return (
