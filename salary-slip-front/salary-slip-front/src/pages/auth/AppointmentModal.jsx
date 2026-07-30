@@ -1,12 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
-  Upload,
   ChevronRight,
-  ChevronLeft,
-  Check,
   RefreshCw,
-  Trash2,
   AlertCircle,
   X,
 } from "lucide-react";
@@ -18,28 +14,7 @@ import { useCompany } from "../../context/CompanyContext";
 import { getCompanyUnits, COMPANY_OPTIONS } from "../../config/companyConfig";
 import useIsMobile from "../../hooks/useIsMobile";
 import usePhotoCapture from "../../hooks/usePhotoCapture";
-import { getEmployeePhotoUrl } from "../admin/AdminModals/EmployeeHelpers";
 import AppointmentDocumentsStep from "./AppointmentDocumentsStep";
-
-// Keep in step with the server: documents.max_file_size, itself capped by PHP's
-// upload_max_filesize. Raising this alone will not help — php.ini has to allow
-// it too, or the file never reaches the application.
-const MAX_DOC_BYTES = 2 * 1024 * 1024;
-const MAX_DOC_LABEL = "2 MB";
-const ALLOWED_DOC_TYPES = ["application/pdf", "image/jpeg", "image/png"];
-
-const formatBytes = (b) =>
-  b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.round(b / 1024)} KB`;
-
-function validateDocFile(file) {
-  if (!file) return null;
-  if (file.size === 0) return "That file is empty.";
-  if (!ALLOWED_DOC_TYPES.includes(file.type))
-    return "Only JPG, PNG or PDF files are supported.";
-  if (file.size > MAX_DOC_BYTES)
-    return `${file.name} is ${formatBytes(file.size)} — the limit is ${MAX_DOC_LABEL}. Please compress it or upload a smaller scan.`;
-  return null;
-}
 
 const DOC_FIELDS = [
   { key: "adhar_image", label: "Aadhar Card" },
@@ -89,20 +64,6 @@ const getBlankFormData = (companyCode = "") => ({
     mobile: "",
     occupation: "",
   }),
-});
-
-const getBlankDocuments = () => ({
-  adhar_image: null,
-  pan_image: null,
-  check_image: null,
-  account_book: null,
-});
-
-const getBlankDocPreviews = () => ({
-  adhar_image: "",
-  pan_image: "",
-  check_image: "",
-  account_book: "",
 });
 
 const MobileCard = ({ title, children, isMobile }) => {
@@ -178,6 +139,8 @@ const AppointmentModal = ({
   // Held back from the appointment payload and uploaded as PROFILE_PHOTO once
   // the record has an id. Kept on failure so it can be retried.
   const [pendingPhoto, setPendingPhoto] = useState(null);
+  // idle | loading | success | error — drives the rehydration spinner.
+  const [rehydrateState, setRehydrateState] = useState("idle");
 
   // Belt and braces: if anything else moves the form to step 2 without a saved
   // record, fall back to step 1 rather than showing an upload form that cannot
@@ -204,6 +167,64 @@ const AppointmentModal = ({
     }
     window.history.replaceState({}, "", url);
   };
+
+  /**
+   * Restore the workflow from ?appointmentId=&step= so a refresh mid-flow does
+   * not drop the user back onto an empty create form. Never creates a record —
+   * it only ever loads an existing one.
+   */
+  const rehydrateFromLocation = async () => {
+    if (typeof window === "undefined") return;
+
+    const params = new URLSearchParams(window.location.search);
+    const routeId = params.get("appointmentId");
+    const requestedStep = params.get("step") === "documents" ? "documents" : "details";
+
+    if (!routeId) {
+      setStep(1);
+      return;
+    }
+
+    setRehydrateState("loading");
+    try {
+      const res = await appointmentV1Api.get(routeId, user?.accessToken, user?.tokenType);
+      const record = res?.data?.appointment;
+
+      if (!record?.id) throw new Error("Appointment not found.");
+
+      setSavedAppointmentId(record.id);
+      setAppointmentSummary({
+        appointmentNumber: res?.data?.appointmentNumber,
+        name: record.name,
+        aadhaarMasked: record.aadhaar_masked,
+        company: record.company_code,
+        unit: record.unit,
+      });
+      setRehydrateState("success");
+      // Documents only open once the record actually loaded.
+      setStep(requestedStep === "documents" ? 2 : 1);
+    } catch (err) {
+      setRehydrateState("error");
+      // Do not silently fall back to create mode — that is how duplicates get
+      // made. Clear the bad params and stay on step 1.
+      syncRoute(null);
+      setStep(1);
+      toast.error(err?.message || "Appointment not found.");
+    }
+  };
+
+  // Initial load plus browser Back/Forward, since syncRoute uses replaceState.
+  useEffect(() => {
+    if (!isOpen) return undefined;
+
+    rehydrateFromLocation();
+
+    const onPop = () => rehydrateFromLocation();
+    window.addEventListener("popstate", onPop);
+
+    return () => window.removeEventListener("popstate", onPop);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
 
   const handleBackToDetails = () => {
     setStep(1);
@@ -244,15 +265,11 @@ const AppointmentModal = ({
     getBlankFormData(isAllCompanies ? "" : companyId),
   );
 
-  const [documents, setDocuments] = useState(getBlankDocuments);
-  const [docPreviews, setDocPreviews] = useState(getBlankDocPreviews);
+  // Still used by the emp-code confirmation flow and the edit-mode loader,
+  // which survive the removal of the old combined submit.
 
-  const [existingDocs, setExistingDocs] = useState(getBlankDocuments);
-
-  const [loading, setLoading] = useState(false);
   const [photoPreview, setPhotoPreview] = useState("");
   const [errors, setErrors] = useState({});
-  const [docErrors, setDocErrors] = useState({});
   const [showConfirmTransfer, setShowConfirmTransfer] = useState(false);
   const [checkingEmpCode, setCheckingEmpCode] = useState(false);
   const [empCodeConflict, setEmpCodeConflict] = useState(null);
@@ -357,8 +374,6 @@ const AppointmentModal = ({
     return Object.keys(nextErrors).length === 0;
   };
 
-  const validateStep2 = () => true;
-
   const clearError = (path) => {
     setErrors((prev) => {
       if (!prev[path]) return prev;
@@ -425,6 +440,31 @@ const AppointmentModal = ({
       return;
     }
 
+    // Assigning or changing an emp_code converts this record into a full
+    // employee, so the duplicate-code confirmation has to run first. This guard
+    // lived in the old combined submit; without it the confirmation dialog was
+    // unreachable and a clashing code went straight through to the backend.
+    const empCode = String(formData.emp_code ?? "").trim();
+
+    if (empCode) {
+      const previousEmpCode = String(originalSnapshot.current?.emp_code ?? "").trim();
+
+      if (empCode !== previousEmpCode) {
+        setSavePhase("idle");
+        openEmpCodeConfirm(empCode, !previousEmpCode);
+        return;
+      }
+    }
+
+    await proceedSaveAndNext();
+  };
+
+  /**
+   * The save itself, split out so the employee-code confirmation dialog can
+   * resume it without re-running the guard that opened the dialog.
+   */
+  const proceedSaveAndNext = async () => {
+
     setIsSaving(true);
     const wasUpdate = Boolean(savedAppointmentId);
     setSavePhase(wasUpdate ? "updating" : "creating");
@@ -475,39 +515,6 @@ const AppointmentModal = ({
     }
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    // On mobile both steps render at once (no "Next" gate), so validateStep1
-    // never ran before submit — enforce it here too for new submissions.
-    if (!isEditMode && !validateStep1()) {
-      toast.error("Please fill all required fields.");
-      return;
-    }
-    if (!validateStep2()) {
-      toast.error("Please upload all required documents.");
-      return;
-    }
-
-    const empCode = String(formData.emp_code ?? "").trim();
-
-    if (isEditMode) {
-      const snap = originalSnapshot.current || {};
-      const oldEmpCode = String(snap.emp_code ?? "").trim();
-
-      // Assigning an emp_code for the first time, or changing it to a
-      // different value — either way it needs the same duplicate check.
-      if (empCode && empCode !== oldEmpCode) {
-        openEmpCodeConfirm(empCode, !oldEmpCode);
-        return;
-      }
-    } else if (empCode) {
-      openEmpCodeConfirm(empCode, true);
-      return;
-    }
-
-    executeSubmit();
-  };
-
   // Assigning an emp_code converts this record into a full employee, so
   // before asking "are you sure?" we check whether that code is already
   // taken — if it is, the popup shows the conflict as an error instead of a
@@ -531,127 +538,6 @@ const AppointmentModal = ({
       // Fail open — the backend still enforces this on submit either way.
     } finally {
       setCheckingEmpCode(false);
-    }
-  };
-
-  const executeSubmit = async () => {
-    setLoading(true);
-    try {
-      if (isEditMode) {
-        const snap = originalSnapshot.current || {};
-        const payload = new FormData();
-        payload.append("id", initialData.id);
-
-        // Only append text fields that changed
-        const TEXT_FIELDS = [
-          "emp_code",
-          "joining_date",
-          "department",
-          "designation",
-          "manager_name",
-          "salary",
-          "mobile_number",
-          "emp_whatsapp_no",
-          "punching_no",
-          "email",
-          "address",
-          "village",
-          "taluka",
-          "district",
-          "dob",
-          "birth_place",
-          "gender",
-          "cast",
-          "marital_status",
-          "blood_group",
-          "reference_name",
-          "reference_mobile_no",
-          "aadhar_card_no",
-          "bank_name",
-          "pan_card_no",
-          "bank_ifsc_code",
-          "education",
-          "bank_account_no",
-          "company_code",
-          "unit",
-          "emp_signature",
-        ];
-        TEXT_FIELDS.forEach((key) => {
-          const curr = String(formData[key] ?? "");
-          const orig = String(snap[key] ?? "");
-          if (curr !== orig) payload.append(key, curr);
-        });
-
-        // Name
-        const currentName =
-          `${formData.name.first} ${formData.name.mid} ${formData.name.surname}`
-            .replace(/\s+/g, " ")
-            .trim();
-        if (currentName !== (snap.nameStr || ""))
-          payload.append("name", currentName);
-
-        // Members
-        const currentMembersJson = JSON.stringify(formData.members);
-        if (currentMembersJson !== snap.membersJson)
-          payload.append("members", currentMembersJson);
-
-        // Photo only if a new file was selected
-        if (formData.photo instanceof File)
-          payload.append("photo", formData.photo);
-
-        // Documents only if new files selected
-        DOC_FIELDS.forEach(({ key }) => {
-          if (documents[key] instanceof File)
-            payload.append(key, documents[key]);
-        });
-
-        const res = await authApi.updateAppointment(
-          payload,
-          user?.accessToken,
-          user?.tokenType,
-        );
-        toast.success(res.message || "Appointment updated successfully.");
-        if (onSuccess) onSuccess();
-        else onClose();
-      } else {
-        const submitData = {
-          ...formData,
-          name: `${formData.name.first} ${formData.name.mid} ${formData.name.surname}`
-            .replace(/\s+/g, " ")
-            .trim(),
-          added_by: initialData?.addedBy || null,
-          type: "appointment",
-          ...(isPrefillFromTrial && initialData?.id
-            ? { trial_form_id: initialData.id }
-            : {}),
-        };
-
-        const payload = new FormData();
-        Object.entries(submitData).forEach(([key, value]) => {
-          if (key === "members") {
-            payload.append(key, JSON.stringify(value));
-          } else if (value !== null && value !== undefined) {
-            payload.append(key, value);
-          }
-        });
-
-        DOC_FIELDS.forEach(({ key }) => {
-          if (documents[key]) payload.append(key, documents[key]);
-        });
-
-        const res = await authApi.submitAppointmentForm(
-          payload,
-          user?.accessToken,
-          user?.tokenType,
-        );
-        toast.success(res.message);
-        if (onSuccess) onSuccess();
-        else onClose(true);
-      }
-    } catch (error) {
-      toast.error(error.message || "Failed to submit appointment form.");
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -754,39 +640,17 @@ const AppointmentModal = ({
         };
 
         setPhotoPreview(initialData.photo || "");
-        setDocuments({
-          aadhar_card: null,
-          pan_card: null,
-          cheque: null,
-          account_book: null,
-        });
-        setDocPreviews({
-          aadhar_card: "",
-          pan_card: "",
-          cheque: "",
-          account_book: "",
-        });
-        setExistingDocs({
-          adhar_image: initialData.documents?.adhar_image || null,
-          pan_image: initialData.documents?.pan_image || null,
-          check_image: initialData.documents?.check_image || null,
-          account_book: initialData.documents?.account_book || null,
-        });
       } else {
         const newCompanyId = isAllCompanies ? "" : companyId;
         setSelectedCompanyId(newCompanyId);
         setFormData(getBlankFormData(newCompanyId));
         originalSnapshot.current = null;
         setPhotoPreview("");
-        setDocuments(getBlankDocuments());
-        setDocPreviews(getBlankDocPreviews());
-        setExistingDocs(getBlankDocuments());
       }
     } else {
       document.body.style.overflow = "";
       setStep(1);
       setErrors({});
-      setDocErrors({});
       setShowConfirmTransfer(false);
       setEmpCodeConflict(null);
       setCheckingEmpCode(false);
@@ -858,8 +722,6 @@ const AppointmentModal = ({
     clearError("unit");
   };
 
-
-
   const handleNameChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, name: { ...prev.name, [name]: value } }));
@@ -875,44 +737,6 @@ const AppointmentModal = ({
     updatedFamily[index] = { ...updatedFamily[index], [field]: nextValue };
     setFormData((prev) => ({ ...prev, members: updatedFamily }));
   };
-
-  const handleDocChange = (key, e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    // Reject oversized files here rather than letting the user fill in the rest
-    // of the form and fail on submit. PHP drops anything over its
-    // upload_max_filesize before the app sees it, and if the whole request
-    // exceeds post_max_size it discards every field too — which surfaces as
-    // "Update Appointment" doing nothing at all.
-    const problem = validateDocFile(file);
-    if (problem) {
-      e.target.value = "";
-      setDocErrors((prev) => ({ ...prev, [key]: problem }));
-      toast.error(problem);
-      return;
-    }
-
-    setDocuments((prev) => ({ ...prev, [key]: file }));
-    setDocErrors((prev) => {
-      const n = { ...prev };
-      delete n[key];
-      return n;
-    });
-    const reader = new FileReader();
-    reader.onloadend = () =>
-      setDocPreviews((prev) => ({ ...prev, [key]: reader.result }));
-    reader.readAsDataURL(file);
-  };
-
-  const handleDocRemove = (key) => {
-    setDocuments((prev) => ({ ...prev, [key]: null }));
-    setDocPreviews((prev) => ({ ...prev, [key]: "" }));
-  };
-
-  const uploadedCount = DOC_FIELDS.filter(
-    ({ key }) => documents[key] || existingDocs[key],
-  ).length;
 
   return (
     <>
@@ -938,7 +762,16 @@ const AppointmentModal = ({
         </div>
 
         {/* ─── STEP 1: Form ─── */}
-        {(step === 1 || isMobile) && (
+        {/* Restoring from ?appointmentId=… — showing an empty step 1 here would
+            look like a fresh create form and invite a duplicate record. */}
+        {rehydrateState === "loading" && (
+          <div className="flex items-center justify-center gap-2 p-16 text-sm text-gray-500">
+            <RefreshCw size={16} className="animate-spin" />
+            Loading appointment…
+          </div>
+        )}
+
+        {rehydrateState !== "loading" && (step === 1 || isMobile) && (
           <div className="sm:p-8 p-3">
             <div className="sm:border sm:border-dotted sm:border-gray-600 sm:p-6 bg-white sm:bg-transparent rounded-none">
               <div className="text-center mb-0">
@@ -1673,7 +1506,7 @@ const AppointmentModal = ({
                     type="button"
                     onClick={() => {
                       setShowConfirmTransfer(false);
-                      executeSubmit();
+                      proceedSaveAndNext();
                     }}
                     className="px-4 py-2 rounded-lg bg-brand-600 text-white text-sm font-semibold hover:bg-brand-700 transition"
                   >
@@ -1693,165 +1526,6 @@ const AppointmentModal = ({
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-function formatSize(bytes) {
-  if (!bytes) return "";
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-// ─── Document Upload Card ─────────────────────────────────────────────────────
-const DocUpload = ({
-  index,
-  label,
-  preview,
-  existingUrl,
-  file,
-  error,
-  onChange,
-  onRemove,
-}) => {
-  // `preview` is a local object URL from a just-picked file; `existingUrl` is a
-  // stored relative path that needs base-URL resolution (and is blanked if it
-  // is a legacy server-local temp path).
-  const existingSrc = getEmployeePhotoUrl(existingUrl);
-  const uploaded = Boolean(file || existingSrc);
-  const displayPreview = preview || existingSrc || "";
-
-  return (
-    <div
-      className={`rounded-2xl border-2 overflow-hidden transition-all duration-200 ${
-        error
-          ? "border-red-300 shadow-sm shadow-red-100"
-          : uploaded
-            ? "border-brand-300 shadow-sm shadow-brand-100"
-            : "border-gray-200 hover:border-gray-300"
-      }`}
-    >
-      {/* Card Header */}
-      <div
-        className={`px-4 py-3 flex items-center justify-between border-b ${
-          uploaded
-            ? "bg-brand-50 border-brand-100"
-            : error
-              ? "bg-red-50 border-red-100"
-              : "bg-gray-50 border-gray-100"
-        }`}
-      >
-        <div className="flex items-center gap-2.5">
-          <span
-            className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0 ${
-              uploaded ? "bg-brand-600 text-white" : "bg-gray-200 text-gray-500"
-            }`}
-          >
-            {uploaded ? <Check size={12} /> : index + 1}
-          </span>
-          <span className="text-sm font-bold text-gray-800">{label}</span>
-        </div>
-        {uploaded ? (
-          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-brand-700 bg-brand-100 px-2 py-0.5 rounded-full">
-            <Check size={10} /> Uploaded
-          </span>
-        ) : (
-          <span className="text-[11px] font-semibold text-gray-400 bg-gray-100 border border-gray-200 px-2 py-0.5 rounded-full">
-            Optional
-          </span>
-        )}
-      </div>
-
-      {/* Upload Zone */}
-      {uploaded && displayPreview ? (
-        <div className="relative h-44 bg-gray-50 group">
-          <img
-            src={displayPreview}
-            alt={label}
-            className="w-full h-full object-contain p-3"
-          />
-          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/50 transition-all duration-200 flex items-center justify-center gap-2.5 opacity-0 group-hover:opacity-100">
-            <label className="cursor-pointer inline-flex items-center gap-1.5 bg-white text-gray-800 text-xs font-semibold px-3 py-1.5 rounded-lg shadow-md hover:bg-gray-100 transition">
-              <input
-                type="file"
-                accept="image/*,application/pdf"
-                onChange={onChange}
-                className="hidden"
-              />
-              <RefreshCw size={11} /> Change
-            </label>
-            <button
-              type="button"
-              onClick={onRemove}
-              className="inline-flex items-center gap-1.5 bg-red-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg shadow-md hover:bg-red-600 transition"
-            >
-              <Trash2 size={11} /> Remove
-            </button>
-          </div>
-        </div>
-      ) : (
-        <label className="cursor-pointer block">
-          <input
-            type="file"
-            accept="image/*,application/pdf"
-            onChange={onChange}
-            className="hidden"
-          />
-          <div
-            className={`h-44 flex flex-col items-center justify-center gap-3 transition-colors ${
-              error ? "bg-red-50 hover:bg-red-100" : "bg-white hover:bg-gray-50"
-            }`}
-          >
-            <div
-              className={`w-14 h-14 rounded-2xl flex items-center justify-center ${
-                error ? "bg-red-100" : "bg-gray-100"
-              }`}
-            >
-              <Upload
-                size={22}
-                className={error ? "text-red-400" : "text-gray-400"}
-              />
-            </div>
-            <div className="text-center px-4">
-              <p className="text-sm font-semibold text-gray-600">
-                Click to upload
-              </p>
-              <p className="text-xs text-gray-400 mt-0.5">
-                JPG, PNG or PDF · max {MAX_DOC_LABEL}
-              </p>
-            </div>
-          </div>
-        </label>
-      )}
-
-      {/* Card Footer */}
-      <div
-        className={`px-4 py-2.5 border-t ${
-          error
-            ? "border-red-100 bg-red-50"
-            : uploaded
-              ? "border-brand-100 bg-brand-50/60"
-              : "border-gray-100 bg-gray-50"
-        }`}
-      >
-        {error ? (
-          <p className="text-[11px] text-red-600 font-medium flex items-center gap-1">
-            <AlertCircle size={11} /> {error}
-          </p>
-        ) : uploaded && file ? (
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] text-gray-600 font-medium truncate">
-              {file.name}
-            </span>
-            <span className="text-[11px] text-brand-600 font-bold flex-shrink-0">
-              {formatSize(file.size)}
-            </span>
-          </div>
-        ) : (
-          <p className="text-[11px] text-gray-400">No file selected</p>
-        )}
-      </div>
-    </div>
-  );
-};
-
 // ─── Form Helpers ─────────────────────────────────────────────────────────────
 
 const RowField = ({

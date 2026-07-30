@@ -38,9 +38,17 @@ class Document extends Model
         return $this->hasMany(DocumentVersion::class)->orderByDesc('version');
     }
 
+    /**
+     * The highest-numbered version, which is the current one.
+     *
+     * latestOfMany() rather than whereColumn('version', 'documents.current_version'):
+     * the latter works on a lazy load but throws "no such column
+     * documents.current_version" the moment the relation is eager loaded, because
+     * the eager-load subquery only has document_versions in scope.
+     */
     public function currentVersionRecord()
     {
-        return $this->hasOne(DocumentVersion::class)->whereColumn('version', 'documents.current_version');
+        return $this->hasOne(DocumentVersion::class)->latestOfMany('version');
     }
 
     public function owner()

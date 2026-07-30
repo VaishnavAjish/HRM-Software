@@ -42,6 +42,10 @@ import { authApi } from "../../utils/api";
 import PrintableForm from "../../components/forms/PrintableForm";
 import { exportNodeToPdf } from "../../utils/pdfUtils";
 import AppointmentModal from "../auth/AppointmentModal";
+import {
+  readAppointmentRouteState,
+  clearAppointmentRouteState,
+} from "../auth/appointmentRouteState";
 import { COMPANY_OPTIONS, getCompanyUnits } from "../../config/companyConfig";
 
 const inputCls =
@@ -823,6 +827,38 @@ export default function Appointments() {
   const [createAccountOpen, setCreateAccountOpen] = useState(false);
   const [addFormOpen, setAddFormOpen] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
+
+  /**
+   * Reopen the appointment modal when the URL carries ?appointmentId=.
+   *
+   * AppointmentModal already restores its own step from the URL, but that code
+   * cannot run unless the modal is mounted — so after a refresh the recovery
+   * never happened and the user landed back on the list. Only the id is passed;
+   * the modal fetches the record itself.
+   *
+   * Reuses editTarget rather than adding parallel modal state, so there is only
+   * ever one modal instance.
+   */
+  useEffect(() => {
+    const restoreFromUrl = () => {
+      const { appointmentId } = readAppointmentRouteState();
+
+      if (!appointmentId) return;
+
+      setEditTarget((current) =>
+        // Already showing this appointment — don't remount and refetch, which
+        // is what would turn an invalid id into a reopen loop.
+        String(current?.id ?? "") === String(appointmentId)
+          ? current
+          : { id: Number(appointmentId) || appointmentId },
+      );
+    };
+
+    restoreFromUrl();
+    window.addEventListener("popstate", restoreFromUrl);
+
+    return () => window.removeEventListener("popstate", restoreFromUrl);
+  }, []);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [visibleColumns, setVisibleColumns] = useState([
@@ -2027,6 +2063,8 @@ export default function Appointments() {
       <AppointmentModal
         isOpen={addFormOpen}
         onClose={() => {
+          // A new appointment must not inherit a previous id from the URL.
+          clearAppointmentRouteState();
           setAddFormOpen(false);
           loadAppointments();
         }}
@@ -2034,9 +2072,13 @@ export default function Appointments() {
 
       <AppointmentModal
         isOpen={Boolean(editTarget)}
-        onClose={() => setEditTarget(null)}
+        onClose={() => {
+          clearAppointmentRouteState();
+          setEditTarget(null);
+        }}
         initialData={editTarget}
         onSuccess={() => {
+          clearAppointmentRouteState();
           setEditTarget(null);
           loadAppointments();
         }}

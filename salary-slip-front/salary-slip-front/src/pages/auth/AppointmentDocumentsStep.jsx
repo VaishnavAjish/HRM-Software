@@ -64,7 +64,7 @@ export default function AppointmentDocumentsStep({
     if (!appointmentId) return;
     setListState({ loading: true, error: null });
     try {
-      const res = await documentV1Api.list({ employeeId: appointmentId, pageSize: 50 }, token, tokenType);
+      const res = await appointmentV1Api.listDocuments(appointmentId, token, tokenType);
       setDocs(res?.data?.items || []);
       setListState({ loading: false, error: null });
     } catch (err) {

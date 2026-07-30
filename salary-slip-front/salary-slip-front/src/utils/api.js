@@ -674,6 +674,15 @@ export const appointmentV1Api = {
     });
   },
 
+  // Scoped to the appointment, not the employee: one person can hold several
+  // appointments, and historical records share Aadhaar numbers, so an
+  // employee-level list would mix unrelated documents together.
+  listDocuments(appointmentId, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/appointments/${appointmentId}/documents`, {
+      headers: authHeaders(accessToken, tokenType),
+    });
+  },
+
   // Only file + documentType. The Aadhaar number is read server-side from the
   // appointment record and must never be sent from here.
   uploadDocument(appointmentId, { file, documentType, idempotencyKey }, accessToken, tokenType = "Bearer") {
