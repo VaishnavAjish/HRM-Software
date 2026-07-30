@@ -1,9 +1,6 @@
 import {
   Download,
   TrendingUp,
-  Users,
-  DollarSign,
-  Calendar,
 } from "lucide-react";
 import {
   salaryTrends,

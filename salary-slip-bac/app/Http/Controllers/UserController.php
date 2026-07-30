@@ -44,17 +44,77 @@ class UserController extends Controller
         'gender', 'department', 'designation', 'joining_date'
     ];
 
-    private const PHOTO_UPLOAD_RULES = [
-        'photo' => 'nullable|image|mimes:jpeg,jpg,png,webp|max:5120',
-    ];
+    /**
+     * Largest upload we accept, in kilobytes.
+     *
+     * Derived from documents.max_file_size but capped by PHP's own
+     * upload_max_filesize — a rule looser than php.ini is a lie, because PHP
+     * discards the file before Laravel ever validates it.
+     */
+    private function maxUploadKb(): int
+    {
+        $configured = (int) (config('documents.max_file_size') / 1024);
+        $phpLimit = (int) (self::iniBytes(ini_get('upload_max_filesize')) / 1024);
 
-    // Scanned ID documents — unlike photo these may also be PDFs.
-    private const DOCUMENT_UPLOAD_RULES = [
-        'adhar_image' => 'nullable|file|mimes:jpeg,jpg,png,webp,pdf|max:5120',
-        'pan_image'   => 'nullable|file|mimes:jpeg,jpg,png,webp,pdf|max:5120',
-        'check_image'  => 'nullable|file|mimes:jpeg,jpg,png,webp,pdf|max:5120',
-        'account_book' => 'nullable|file|mimes:jpeg,jpg,png,webp,pdf|max:5120',
-    ];
+        return $phpLimit > 0 ? min($configured, $phpLimit) : $configured;
+    }
+
+    /** "2M" / "8M" / "512K" -> bytes */
+    private static function iniBytes(?string $value): int
+    {
+        $value = trim((string) $value);
+
+        if ($value === '') {
+            return 0;
+        }
+
+        $number = (int) $value;
+
+        return match (strtolower(substr($value, -1))) {
+            'g' => $number * 1024 * 1024 * 1024,
+            'm' => $number * 1024 * 1024,
+            'k' => $number * 1024,
+            default => $number,
+        };
+    }
+
+    private function photoUploadRules(): array
+    {
+        return ['photo' => 'nullable|image|mimes:jpeg,jpg,png,webp|max:' . $this->maxUploadKb()];
+    }
+
+    /** Scanned ID documents — unlike photo these may also be PDFs. */
+    private function documentUploadRules(): array
+    {
+        $max = $this->maxUploadKb();
+        $rule = 'nullable|file|mimes:jpeg,jpg,png,webp,pdf|max:' . $max;
+
+        return [
+            'adhar_image'  => $rule,
+            'pan_image'    => $rule,
+            'check_image'  => $rule,
+            'account_book' => $rule,
+        ];
+    }
+
+    /**
+     * PHP silently discards the whole request body — every field and every file
+     * — when the upload exceeds post_max_size. Laravel then sees an empty POST
+     * and reports missing fields the user definitely filled in, which is
+     * impossible to diagnose from the UI. Detect it and say what happened.
+     */
+    private function assertPostNotTruncated(Request $request): void
+    {
+        $contentLength = (int) $request->server('CONTENT_LENGTH', 0);
+        $postMax = self::iniBytes(ini_get('post_max_size'));
+
+        if ($postMax > 0 && $contentLength > $postMax && empty($request->all()) && empty($request->allFiles())) {
+            throw ValidationException::withMessages([
+                'files' => 'The upload was too large for the server to accept (limit '
+                    . round($postMax / 1048576, 1) . ' MB in total). Please upload smaller files.',
+            ]);
+        }
+    }
 
     // Every request field that arrives as an uploaded file. These must never
     // reach a mass-assignment array as raw input — see storeUploadedFiles().
@@ -94,9 +154,16 @@ class UserController extends Controller
         // folder and, because versions are numbered per owner, make one
         // person's upload look like V2 of another's. Derive a stable per-person
         // reference from whatever identity the form did supply.
+        // Aadhaar is carried through so the folder is <Aadhaar>_<EmpCode> even on
+        // a first submission; the PENDING fallback only applies when neither
+        // identifier is available.
+        $aadhaar = $request->input('aadhar_card_no');
+        $empCode = $request->input('emp_code');
+
         return new User([
-            'emp_code' => $request->input('emp_code') ?: $this->pendingOwnerRef($request),
-            'name'     => $name ?: null,
+            'aadhar_card_no' => $aadhaar,
+            'emp_code'       => $empCode ?: ($aadhaar ? null : $this->pendingOwnerRef($request)),
+            'name'           => $name ?: null,
         ]);
     }
 
@@ -697,7 +764,8 @@ class UserController extends Controller
      */
     public function updateUser(Request $request)
     {
-        $request->validate(array_merge(self::PHOTO_UPLOAD_RULES, self::DOCUMENT_UPLOAD_RULES));
+        $this->assertPostNotTruncated($request);
+        $request->validate(array_merge($this->photoUploadRules(), $this->documentUploadRules()));
 
         // Every file field is excluded from the raw input and re-added below as
         // a stored path, so no UploadedFile can be mass-assigned as a temp path.
@@ -735,7 +803,13 @@ class UserController extends Controller
                     ], 422);
                 }
                 if ($employee->type === 'appointment' || $employee->type === 'pending_employee') {
-                    $data['type'] = null;
+                    // A code alone doesn't finish onboarding — the employee still
+                    // has no usable password, so park the record in Pending
+                    // Employees (Add Employee -> Pending) instead of promoting it
+                    // straight to a full employee. Assigning a password there is
+                    // what clears the type and activates the login.
+                    $data['type'] = 'pending_employee';
+                    $data['status'] = 2;
                 }
             }
             if ($request->has('checkbox')) {
@@ -785,7 +859,9 @@ class UserController extends Controller
             return response()->json(['status' => false, 'message' => 'Unauthenticated'], 401);
         }
 
-        $rules = array_merge(self::PHOTO_UPLOAD_RULES, [
+        $this->assertPostNotTruncated($request);
+
+        $rules = array_merge($this->photoUploadRules(), [
             'email' => ['nullable', 'email', 'unique:users,email,' . $user->id],
         ]);
 
@@ -869,7 +945,8 @@ class UserController extends Controller
 
     public function appointmentStore(Request $request)
     {
-        $request->validate(array_merge(self::PHOTO_UPLOAD_RULES, self::DOCUMENT_UPLOAD_RULES));
+        $this->assertPostNotTruncated($request);
+        $request->validate(array_merge($this->photoUploadRules(), $this->documentUploadRules()));
 
         // File fields are dropped from the raw input here and re-added as stored
         // paths below; otherwise the UploadedFile objects are mass-assigned and

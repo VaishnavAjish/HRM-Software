@@ -188,9 +188,9 @@ export default function PermissionMatrix() {
           >
             <ArrowLeft size={18} />
           </button>
-          <div>
-            <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-              {selectedAdmin.name}
+          <div className="min-w-0">
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white flex flex-wrap items-center gap-2">
+              <span className="break-words">{selectedAdmin.name}</span>
               <Badge variant={LEVEL_TONE[Number(selectedAdmin.role)]}>{LEVEL_LABEL[Number(selectedAdmin.role)]}</Badge>
             </h1>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
@@ -200,7 +200,7 @@ export default function PermissionMatrix() {
         </div>
 
         {Number(selectedAdmin.role) === 4 && (
-          <div className="p-6 bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 space-y-4">
+          <div className="p-4 sm:p-6 bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 space-y-4">
             <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
               <Building2 size={16} className="text-brand-500" />
               Company Access Config
@@ -208,7 +208,7 @@ export default function PermissionMatrix() {
             <p className="text-xs text-gray-500">
               Select which companies this Agent can access and submit trial forms for.
             </p>
-            <div className="flex gap-6">
+            <div className="flex flex-wrap gap-4 sm:gap-6">
               {[
                 { id: "nidhi-impex", label: "Nidhi Impex" },
                 { id: "silver-star", label: "Silver Star" }
@@ -264,9 +264,9 @@ export default function PermissionMatrix() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 dark:bg-gray-900/40 text-left text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
                 <tr>
-                  <th className="px-4 py-3 font-medium">Page Name</th>
-                  <th className="px-4 py-3 font-medium text-center">View</th>
-                  <th className="px-4 py-3 font-medium text-center">Edit</th>
+                  <th className="px-3 sm:px-4 py-3 font-medium">Page Name</th>
+                  <th className="px-3 sm:px-4 py-3 font-medium text-center w-16">View</th>
+                  <th className="px-3 sm:px-4 py-3 font-medium text-center w-16">Edit</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
@@ -282,8 +282,8 @@ export default function PermissionMatrix() {
                     const isBusy = saving[page.key];
                     return (
                       <tr key={page.key} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
-                        <td className="px-4 py-3 font-medium text-gray-800 dark:text-gray-100">{page.label}</td>
-                        <td className="px-4 py-3 text-center">
+                        <td className="px-3 sm:px-4 py-3 font-medium text-gray-800 dark:text-gray-100">{page.label}</td>
+                        <td className="px-3 sm:px-4 py-3 text-center">
                           <input
                             type="checkbox"
                             checked={current === "view_only" || current === "read_write"}
@@ -292,7 +292,7 @@ export default function PermissionMatrix() {
                             className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
                           />
                         </td>
-                        <td className="px-4 py-3 text-center">
+                        <td className="px-3 sm:px-4 py-3 text-center">
                           <input
                             type="checkbox"
                             checked={current === "read_write"}
@@ -313,6 +313,14 @@ export default function PermissionMatrix() {
     );
   }
 
+  // Shared by the mobile card list and the desktop table below.
+  const needle = search.toLowerCase();
+  const visibleAdmins = admins.filter(
+    (admin) =>
+      (admin.name || "").toLowerCase().includes(needle) ||
+      (admin.email || "").toLowerCase().includes(needle),
+  );
+
   return (
     <div className="space-y-6">
       <div>
@@ -325,7 +333,7 @@ export default function PermissionMatrix() {
         </p>
       </div>
 
-      <div className="relative max-w-xs">
+      <div className="relative w-full sm:max-w-xs">
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -336,7 +344,48 @@ export default function PermissionMatrix() {
       </div>
 
       <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden">
-        <div className="overflow-x-auto">
+        {loading ? (
+          <p className="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">Loading...</p>
+        ) : visibleAdmins.length === 0 ? (
+          <p className="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">No admins found.</p>
+        ) : (
+          <>
+            {/* Mobile: stacked cards, so the Manage button and email stay on-screen. */}
+            <ul className="divide-y divide-gray-100 dark:divide-gray-700 md:hidden">
+              {visibleAdmins.map((admin) => (
+                <li key={admin.id} className="px-4 py-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium text-gray-900 dark:text-white break-words">{admin.name}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 break-all">{admin.email}</p>
+                    </div>
+                    {String(admin.id) !== String(user?.id) && (
+                      <button
+                        onClick={() => deleteAdmin(admin)}
+                        disabled={deleting[admin.id]}
+                        className="flex-shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50"
+                        title="Delete"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    )}
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                    <Badge variant={LEVEL_TONE[Number(admin.role)]}>{LEVEL_LABEL[Number(admin.role)]}</Badge>
+                    <button
+                      onClick={() => openAdmin(admin)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
+                    >
+                      <Eye size={13} />
+                      <Pencil size={13} />
+                      Manage
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+
+            <div className="hidden overflow-x-auto md:block">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 dark:bg-gray-900/40 text-left text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
               <tr>
@@ -347,25 +396,8 @@ export default function PermissionMatrix() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-              {loading ? (
-                <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
-                    Loading...
-                  </td>
-                </tr>
-              ) : admins.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
-                    No admins found.
-                  </td>
-                </tr>
-              ) : (
-                admins
-                  .filter(
-                    (admin) =>
-                      (admin.name || "").toLowerCase().includes(search.toLowerCase()) ||
-                      (admin.email || "").toLowerCase().includes(search.toLowerCase())
-                  )
+              {
+                visibleAdmins
                   .map((admin) => (
                   <tr key={admin.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/40">
                     <td className="px-4 py-3">
@@ -399,10 +431,12 @@ export default function PermissionMatrix() {
                     </td>
                   </tr>
                 ))
-              )}
+              }
             </tbody>
           </table>
-        </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

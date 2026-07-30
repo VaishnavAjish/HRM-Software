@@ -39,6 +39,28 @@ return [
 
     'malware_scan_enabled' => env('DOCUMENT_MALWARE_SCAN_ENABLED', false),
 
+    // Object keys are <EmployeeID>_<AadhaarNo>/<generatedFileName>. Aadhaar is
+    // regulated personal data and the key travels into bucket listings, S3
+    // access logs, CloudTrail and every presigned URL — enable this to keep
+    // only the last four digits (EMP001_XXXX9012). Folders stay unique either
+    // way. Changing it affects future keys only; existing objects keep the key
+    // they were written with.
+    // Read by DocumentFileName::ownerReference() — keep the name in step.
+    // Superseded by the HMAC reference below — object keys no longer contain
+    // any part of the Aadhaar number beyond its last four digits. Kept only so
+    // records written before the change still resolve.
+    // false => <aadhaar>/<appointmentId>/<type>/<file>, as specified.
+    // true  => the HMAC reference replaces the number in the key, which keeps it
+    //          out of bucket listings, S3 access logs and presigned URLs while
+    //          the appointment id still separates records. Affects new keys only.
+    'mask_aadhaar_in_key' => env('DOCUMENT_MASK_AADHAAR', false),
+
+    // HMAC key behind the Aadhaar folder reference (AADHAAR_9012_a81f46c29d31).
+    // Treat as permanent data, not a rotatable credential: changing it changes
+    // every derived reference and orphans existing folders. Keep out of Git —
+    // Secrets Manager or Parameter Store in production.
+    'aadhaar_reference_secret' => env('AADHAAR_REFERENCE_SECRET'),
+
     // Extensions that must never be stored, regardless of sniffed MIME type.
     'blocked_extensions' => [
         'php', 'phtml', 'php3', 'php4', 'php5', 'php7', 'phps', 'phar', 'inc',

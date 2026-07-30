@@ -12,13 +12,34 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 import ModernDatePicker from "../../components/ModernDatePicker";
-import { authApi, salaryApi } from "../../utils/api";
+import { authApi, salaryApi, appointmentV1Api } from "../../utils/api";
 import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";
 import { getCompanyUnits, COMPANY_OPTIONS } from "../../config/companyConfig";
 import useIsMobile from "../../hooks/useIsMobile";
 import usePhotoCapture from "../../hooks/usePhotoCapture";
 import { getEmployeePhotoUrl } from "../admin/AdminModals/EmployeeHelpers";
+import AppointmentDocumentsStep from "./AppointmentDocumentsStep";
+
+// Keep in step with the server: documents.max_file_size, itself capped by PHP's
+// upload_max_filesize. Raising this alone will not help — php.ini has to allow
+// it too, or the file never reaches the application.
+const MAX_DOC_BYTES = 2 * 1024 * 1024;
+const MAX_DOC_LABEL = "2 MB";
+const ALLOWED_DOC_TYPES = ["application/pdf", "image/jpeg", "image/png"];
+
+const formatBytes = (b) =>
+  b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.round(b / 1024)} KB`;
+
+function validateDocFile(file) {
+  if (!file) return null;
+  if (file.size === 0) return "That file is empty.";
+  if (!ALLOWED_DOC_TYPES.includes(file.type))
+    return "Only JPG, PNG or PDF files are supported.";
+  if (file.size > MAX_DOC_BYTES)
+    return `${file.name} is ${formatBytes(file.size)} — the limit is ${MAX_DOC_LABEL}. Please compress it or upload a smaller scan.`;
+  return null;
+}
 
 const DOC_FIELDS = [
   { key: "adhar_image", label: "Aadhar Card" },
@@ -124,7 +145,7 @@ const AppointmentModal = ({
         );
         const departments = res?.data?.map((dept) => dept.name) || [];
         setDepartmentsList(departments);
-      } catch (error) {
+      } catch {
         // Suppress expected 403s for Agents so it gracefully falls back to text input
         // without panicking the console.
       }
@@ -143,6 +164,77 @@ const AppointmentModal = ({
 
   const isMobile = useIsMobile();
   const [step, setStep] = useState(1);
+
+  // The appointment's real database id. Step 2 is gated on this, so documents
+  // can never be uploaded against an unsaved record. Seeded from initialData so
+  // editing an existing appointment updates rather than creating a duplicate.
+  const [savedAppointmentId, setSavedAppointmentId] = useState(
+    initialData?.id && !isPrefillFromTrial ? initialData.id : null,
+  );
+  const [isSaving, setIsSaving] = useState(false);
+  // idle | validating | creating | updating | opening
+  const [savePhase, setSavePhase] = useState("idle");
+  const [appointmentSummary, setAppointmentSummary] = useState({});
+  // Held back from the appointment payload and uploaded as PROFILE_PHOTO once
+  // the record has an id. Kept on failure so it can be retried.
+  const [pendingPhoto, setPendingPhoto] = useState(null);
+
+  // Belt and braces: if anything else moves the form to step 2 without a saved
+  // record, fall back to step 1 rather than showing an upload form that cannot
+  // work. Adjusting state during render avoids a cascading re-render.
+  if (step === 2 && !savedAppointmentId) {
+    setStep(1);
+  }
+
+  /**
+   * Step state lives in the URL as well as React state so a refresh mid-flow
+   * recovers instead of dropping the user back to an empty form. This is a
+   * modal rather than a route page, so search params are used on whatever
+   * route it was opened from — no route restructuring.
+   */
+  const syncRoute = (appointmentId, which) => {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    if (appointmentId) {
+      url.searchParams.set("appointmentId", String(appointmentId));
+      url.searchParams.set("step", which);
+    } else {
+      url.searchParams.delete("appointmentId");
+      url.searchParams.delete("step");
+    }
+    window.history.replaceState({}, "", url);
+  };
+
+  const handleBackToDetails = () => {
+    setStep(1);
+    syncRoute(savedAppointmentId, "details");
+    window.scrollTo(0, 0);
+  };
+
+  const handleAppointmentCompleted = () => {
+    syncRoute(null);
+    if (onSuccess) onSuccess();
+    else onClose();
+  };
+
+  /** PROFILE_PHOTO upload, only ever after the appointment has an id. */
+  const uploadPendingPhoto = async (appointmentId) => {
+    if (!(pendingPhoto instanceof File)) return;
+    try {
+      await appointmentV1Api.uploadDocument(
+        appointmentId,
+        { file: pendingPhoto, documentType: "PHOTOGRAPH" },
+        user?.accessToken,
+        user?.tokenType,
+      );
+      setPendingPhoto(null);
+    } catch {
+      // The appointment itself is saved; keep the file for a retry from step 2.
+      toast.error(
+        "Appointment details were saved, but the profile photo upload failed. Retry from Upload Documents.",
+      );
+    }
+  };
 
   const unitOptions = selectedCompanyId
     ? getCompanyUnits(selectedCompanyId)
@@ -276,12 +368,110 @@ const AppointmentModal = ({
     });
   };
 
-  const handleNext = () => {
-    if (validateStep1()) {
-      setStep(2);
-      window.scrollTo(0, 0);
-    } else {
+  /**
+   * Persist the appointment fields (no documents) and return its database id.
+   *
+   * Documents are uploaded separately against that id, so the backend can read
+   * the Aadhaar number from the saved record instead of from form state — which
+   * was blank whenever the record had not been saved yet, producing an invalid
+   * S3 key and a failed upload.
+   */
+  const persistAppointment = async () => {
+    const fullName = `${formData.name.first} ${formData.name.mid} ${formData.name.surname}`
+      .replace(/\s+/g, " ")
+      .trim();
+
+    const payload = new FormData();
+
+    if (savedAppointmentId) {
+      payload.append("id", savedAppointmentId);
+    }
+
+    Object.entries({ ...formData, name: fullName }).forEach(([key, value]) => {
+      if (DOC_FIELDS.some((d) => d.key === key) || key === "photo") return;
+      if (key === "members") {
+        payload.append(key, JSON.stringify(value));
+      } else if (value !== null && value !== undefined) {
+        payload.append(key, value);
+      }
+    });
+
+    // The photo is deliberately NOT part of this request. It is uploaded as a
+    // PROFILE_PHOTO document once the appointment has an id, so the two
+    // operations can fail independently.
+
+    if (savedAppointmentId) {
+      const res = await authApi.updateAppointment(payload, user?.accessToken, user?.tokenType);
+      return res?.user?.id ?? res?.data?.id ?? savedAppointmentId;
+    }
+
+    payload.append("type", "appointment");
+    if (initialData?.addedBy) payload.append("added_by", initialData.addedBy);
+    if (isPrefillFromTrial && initialData?.id) payload.append("trial_form_id", initialData.id);
+
+    const res = await authApi.submitAppointmentForm(payload, user?.accessToken, user?.tokenType);
+
+    return res?.data?.id ?? null;
+  };
+
+  const handleSaveAndNext = async () => {
+    if (isSaving) return; // guards against a double click creating two records
+
+    setSavePhase("validating");
+
+    if (!validateStep1()) {
+      setSavePhase("idle");
       toast.error("Please fill all required fields.");
+      return;
+    }
+
+    setIsSaving(true);
+    const wasUpdate = Boolean(savedAppointmentId);
+    setSavePhase(wasUpdate ? "updating" : "creating");
+
+    try {
+      const id = await persistAppointment();
+
+      if (!id) {
+        throw new Error("Appointment ID was not returned by the server.");
+      }
+
+      setSavedAppointmentId(id);
+
+      // Separate operation: a photo failure must not undo the saved record.
+      if (formData.photo instanceof File) {
+        setPendingPhoto(formData.photo);
+        await uploadPendingPhoto(id);
+      }
+
+      setSavePhase("opening");
+      setAppointmentSummary({
+        appointmentNumber: `APT-${String(id).padStart(6, "0")}`,
+        name: `${formData.name.first} ${formData.name.mid} ${formData.name.surname}`
+          .replace(/\s+/g, " ")
+          .trim(),
+        aadhaarMasked: formData.aadhar_card_no
+          ? `XXXX XXXX ${String(formData.aadhar_card_no).replace(/\D/g, "").slice(-4)}`
+          : "",
+        company: formData.company_code,
+        unit: formData.unit,
+      });
+
+      setStep(2);
+      syncRoute(id, "documents");
+      window.scrollTo(0, 0);
+      toast.success(
+        wasUpdate
+          ? "Appointment details updated successfully."
+          : "Appointment details saved successfully.",
+      );
+    } catch (error) {
+      // Stay on step 1 — the documents step is useless without a saved record.
+      setStep(1);
+      toast.error(error?.message || "Unable to save appointment details.");
+    } finally {
+      setIsSaving(false);
+      setSavePhase("idle");
     }
   };
 
@@ -512,7 +702,9 @@ const AppointmentModal = ({
                 occupation: mem?.occupation || "",
               }));
           }
-        } catch (_) {}
+        } catch {
+          // ignore
+        }
 
         const codeId = raw.company_code || "";
         setSelectedCompanyId(codeId);
@@ -687,6 +879,20 @@ const AppointmentModal = ({
   const handleDocChange = (key, e) => {
     const file = e.target.files[0];
     if (!file) return;
+
+    // Reject oversized files here rather than letting the user fill in the rest
+    // of the form and fail on submit. PHP drops anything over its
+    // upload_max_filesize before the app sees it, and if the whole request
+    // exceeds post_max_size it discards every field too — which surfaces as
+    // "Update Appointment" doing nothing at all.
+    const problem = validateDocFile(file);
+    if (problem) {
+      e.target.value = "";
+      setDocErrors((prev) => ({ ...prev, [key]: problem }));
+      toast.error(problem);
+      return;
+    }
+
     setDocuments((prev) => ({ ...prev, [key]: file }));
     setDocErrors((prev) => {
       const n = { ...prev };
@@ -1332,11 +1538,28 @@ const AppointmentModal = ({
               <div className="mt-4 flex justify-end">
                 <button
                   type="button"
-                  onClick={handleNext}
-                  className="inline-flex items-center gap-2 px-6 py-2.5 bg-brand-600 text-white text-sm font-semibold rounded-lg hover:bg-brand-700 transition"
+                  onClick={handleSaveAndNext}
+                  disabled={savePhase !== "idle"}
+                  className="inline-flex items-center gap-2 px-6 py-2.5 bg-brand-600 text-white text-sm font-semibold rounded-lg hover:bg-brand-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Next : Upload Documents
-                  <ChevronRight size={16} />
+                  {savePhase !== "idle" ? (
+                    <>
+                      <RefreshCw size={16} className="animate-spin" />
+                      {{
+                        validating: "Validating...",
+                        creating: "Saving Appointment...",
+                        updating: "Saving Changes...",
+                        opening: "Opening Upload Documents...",
+                      }[savePhase]}
+                    </>
+                  ) : (
+                    <>
+                      {savedAppointmentId
+                        ? "Save Changes & Next: Upload Documents"
+                        : "Save & Next: Upload Documents"}
+                      <ChevronRight size={16} />
+                    </>
+                  )}
                 </button>
               </div>
             )}
@@ -1344,89 +1567,23 @@ const AppointmentModal = ({
         )}
 
         {/* ─── STEP 2: Documents ─── */}
-        {(step === 2 || isMobile) && (
-          <form onSubmit={handleSubmit} className="sm:p-8 p-3">
-            <MobileCard title="Upload Documents" isMobile={isMobile}>
-            {/* Progress header */}
-            <div className="mb-7">
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <h3 className="text-base font-bold text-gray-800">
-                    Upload Documents
-                  </h3>
-                  <p className="text-xs text-gray-400 mt-0.5">
-                    Upload any documents you have — all are optional
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="text-2xl font-black text-brand-600 leading-none">
-                    {uploadedCount}
-                    <span className="text-sm text-gray-400 font-semibold">
-                      {" "}
-                      / {DOC_FIELDS.length}
-                    </span>
-                  </p>
-                  <p className="text-[11px] text-gray-400 mt-0.5">uploaded</p>
-                </div>
-              </div>
-              <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-brand-500 rounded-full transition-all duration-500"
-                  style={{ width: `${(uploadedCount / DOC_FIELDS.length) * 100}%` }}
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-              {DOC_FIELDS.map(({ key, label }, index) => (
-                <DocUpload
-                  key={key}
-                  index={index}
-                  label={label}
-                  preview={docPreviews[key]}
-                  existingUrl={existingDocs[key]}
-                  file={documents[key]}
-                  error={docErrors[key]}
-                  onChange={(e) => handleDocChange(key, e)}
-                  onRemove={() => handleDocRemove(key)}
-                />
-              ))}
-            </div>
-
-            {/* Step 2 Footer */}
-            <div className={`mt-8 flex ${isMobile ? "justify-end" : "justify-between"} items-center`}>
-              {!isMobile && (
-                <button
-                  type="button"
-                  onClick={() => setStep(1)}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 border border-gray-300 text-gray-700 text-sm font-semibold rounded-lg hover:bg-gray-50 transition"
-                >
-                  <ChevronLeft size={16} />
-                  Back
-                </button>
-              )}
-              <div className="flex items-center gap-3">
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="inline-flex items-center gap-2 px-6 py-2.5 bg-brand-600 text-white text-sm font-semibold rounded-lg hover:bg-brand-700 disabled:opacity-50 transition shadow-sm shadow-brand-600/30"
-                >
-                  {loading ? (
-                    <>
-                      <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      {isEditMode ? "Updating..." : "Submitting..."}
-                    </>
-                  ) : (
-                    <>
-                      <Check size={15} />
-                      {isEditMode ? "Update Appointment" : "Submit Appointment"}
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-            </MobileCard>
-          </form>
+        {/* Gated on savedAppointmentId: uploads post to
+            /v1/appointments/{id}/documents, so without a real id there is
+            nothing to attach them to. On mobile both steps render together, so
+            the gate applies there too. */}
+        {(step === 2 || isMobile) && savedAppointmentId && (
+          <div className="sm:p-8 p-3">
+            {/* The legacy inline document grid and its combined submit were
+                removed: they posted all four documents through the appointment
+                form, which required the record to already exist. Uploads now go
+                one at a time to /v1/appointments/{id}/documents. */}
+            <AppointmentDocumentsStep
+              appointmentId={savedAppointmentId}
+              summary={appointmentSummary}
+              onBack={handleBackToDetails}
+              onComplete={handleAppointmentCompleted}
+            />
+          </div>
         )}
       </div>
     </div>,
@@ -1656,7 +1813,9 @@ const DocUpload = ({
               <p className="text-sm font-semibold text-gray-600">
                 Click to upload
               </p>
-              <p className="text-xs text-gray-400 mt-0.5">JPG, PNG or PDF</p>
+              <p className="text-xs text-gray-400 mt-0.5">
+                JPG, PNG or PDF · max {MAX_DOC_LABEL}
+              </p>
             </div>
           </div>
         </label>

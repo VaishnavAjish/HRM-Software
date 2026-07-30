@@ -190,7 +190,66 @@ export default function RbacUsers() {
       </form>
 
       <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden">
-        <div className="overflow-x-auto">
+        {loading ? (
+          <p className="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">Loading...</p>
+        ) : users.length === 0 ? (
+          <p className="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">No users found.</p>
+        ) : (
+          <>
+            {/* Mobile: stacked cards. Six columns (including two badges and an
+                action pair) can't fit a phone width without clipping. */}
+            <ul className="divide-y divide-gray-100 dark:divide-gray-700 md:hidden">
+              {users.map((u) => {
+                const isActive = u.status === "0" || u.status === 0;
+                const isPending = u.status === "2" || u.status === 2;
+                return (
+                  <li key={u.id} className="px-4 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-gray-900 dark:text-white break-words">{u.name}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 break-all">{u.email}</p>
+                      </div>
+                      <div className="flex flex-shrink-0 gap-1">
+                        <button
+                          onClick={() => toggleStatus(u)}
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-colors"
+                          title={isActive ? "Lock user" : "Unlock user"}
+                        >
+                          {isActive ? <Lock size={16} /> : <Unlock size={16} />}
+                        </button>
+                        <button
+                          onClick={() => deleteUser(u)}
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                          title="Delete user"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <Badge variant={LEVEL_TONE[levelOf(u.role)]}>{LEVEL_LABEL[levelOf(u.role)]}</Badge>
+                      <Badge variant={isActive ? "green" : isPending ? "yellow" : "red"}>
+                        {isActive ? "Active" : isPending ? "Pending" : "Inactive"}
+                      </Badge>
+                    </div>
+
+                    <dl className="mt-2 grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <dt className="font-semibold text-gray-500 dark:text-gray-400">Emp Code</dt>
+                        <dd className="text-gray-700 dark:text-gray-200">{u.emp_code || "—"}</dd>
+                      </div>
+                      <div>
+                        <dt className="font-semibold text-gray-500 dark:text-gray-400">Department</dt>
+                        <dd className="text-gray-700 dark:text-gray-200 break-words">{u.department || "—"}</dd>
+                      </div>
+                    </dl>
+                  </li>
+                );
+              })}
+            </ul>
+
+            <div className="hidden overflow-x-auto md:block">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 dark:bg-gray-900/40 text-left text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
               <tr>
@@ -203,19 +262,7 @@ export default function RbacUsers() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-              {loading ? (
-                <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
-                    Loading...
-                  </td>
-                </tr>
-              ) : users.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
-                    No users found.
-                  </td>
-                </tr>
-              ) : (
+              {
                 users.map((u) => {
                   const isActive = u.status === "0" || u.status === 0;
                   const isPending = u.status === "2" || u.status === 2;
@@ -256,10 +303,12 @@ export default function RbacUsers() {
                     </tr>
                   );
                 })
-              )}
+              }
             </tbody>
           </table>
-        </div>
+            </div>
+          </>
+        )}
 
         {meta.totalPages > 1 && (
           <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 dark:border-gray-700 text-sm text-gray-500 dark:text-gray-400">

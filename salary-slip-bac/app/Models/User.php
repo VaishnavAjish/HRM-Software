@@ -24,14 +24,61 @@ class User extends Authenticatable implements JWTSubject
         'hastak_signature', 'hr_signature', 'akar', 'shift_id'
     ];
 
-    protected $hidden = ['password', 'remember_token'];
+    /**
+     * encrypted_aadhaar_number never leaves the server: it is hidden from every
+     * array/JSON representation so it cannot escape through a model returned
+     * from a controller. Read it explicitly via $user->encrypted_aadhaar_number
+     * inside an authorised workflow, and show aadhaar_masked everywhere else.
+     */
+    protected $hidden = [
+        'password', 'remember_token',
+        'encrypted_aadhaar_number', 'aadhar_card_no',
+    ];
+
+    protected $appends = ['aadhaar_masked'];
 
     protected function casts(): array
     {
         return [
             'password' => 'hashed',
             'email_verified_at' => 'datetime',
+            // AES-256 at rest via APP_KEY; transparent on read/write.
+            'encrypted_aadhaar_number' => 'encrypted',
+            'aadhaar_extracted_at' => 'datetime',
+            'aadhaar_verified_at' => 'datetime',
         ];
+    }
+
+    /** The only Aadhaar value safe to render: "XXXX XXXX 9012". */
+    public function getAadhaarMaskedAttribute(): string
+    {
+        if ($this->aadhaar_last_four) {
+            return 'XXXX XXXX ' . $this->aadhaar_last_four;
+        }
+
+        return \App\Support\AadhaarReference::mask($this->getRawOriginal('aadhar_card_no'));
+    }
+
+    /**
+     * Store the number encrypted and derive everything the app works with.
+     * The plaintext is never returned or logged.
+     */
+    public function setAadhaarNumber(string $aadhaar, string $source = 'MANUAL'): void
+    {
+        $digits = \App\Support\AadhaarReference::normalise($aadhaar);
+
+        if (!\App\Support\AadhaarReference::isValid($digits)) {
+            throw new \RuntimeException('Invalid Aadhaar number.');
+        }
+
+        $this->forceFill([
+            'encrypted_aadhaar_number'    => $digits,
+            'aadhaar_last_four'           => substr($digits, -4),
+            'aadhaar_secure_reference'    => \App\Support\AadhaarReference::secureReference($digits),
+            'aadhaar_extraction_source'   => $source,
+            'aadhaar_extracted_at'        => now(),
+            'aadhaar_verification_status' => 'PENDING_REVIEW',
+        ])->save();
     }
 
     public function getJWTIdentifier()

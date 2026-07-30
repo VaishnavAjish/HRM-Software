@@ -3,7 +3,6 @@ const APP_LABEL =
   typeof __APP_LABEL__ !== "undefined" ? __APP_LABEL__ : "Build better workplaces";
 
 import { useRef, useState, useEffect } from "react";
-import ModernDatePicker from "../../components/ModernDatePicker";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import {
@@ -12,28 +11,15 @@ import {
   ClipboardList,
   AlertCircle,
   ArrowLeft,
-  UserCheck,
   Mail,
   KeyRound,
   CheckCircle2,
   ChevronRight,
   Send,
-  Plus,
-  Building2,
-  MapPin,
-  User,
-  Phone,
-  Calendar,
-  Home,
-  Camera,
-  HelpCircle,
-  X,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { authApi } from "../../utils/api";
-import { COMPANY_OPTIONS, getCompanyUnits } from "../../config/companyConfig";
-
-import usePhotoCapture from "../../hooks/usePhotoCapture";
+import { COMPANY_OPTIONS } from "../../config/companyConfig";
 
 /* ─── Step indicator ─── */
 function StepBar({ step }) {
@@ -234,7 +220,7 @@ function OtpInput({ value, onChange, status = "idle" }) {
    Main Login Page
 ══════════════════════════════ */
 export default function Login() {
-  const { login, loading, lookupUser } = useAuth();
+  const { login, loading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -315,79 +301,6 @@ export default function Login() {
       navigate(nextPath, { replace: true });
     } else {
       setLoginErr(result.message);
-    }
-  };
-
-  /* ── Step 1: validate emp code ── */
-  const handleStep1 = async () => {
-    if (!fCompanyId) {
-      toast.error("Select company");
-      return;
-    }
-
-    if (!fUnit) {
-      toast.error("Select branch");
-      return;
-    }
-
-    const empCodeValue = fCode.trim().toUpperCase();
-    if (!empCodeValue) {
-      toast.error("Enter employee code");
-      return;
-    }
-
-    if (!fMobNum.trim()) {
-      toast.error("Enter mobile number");
-      return;
-    }
-
-    if (!/^\d{10}$/.test(fMobNum.trim())) {
-      toast.error("Please enter a valid 10-digit mobile number");
-      return;
-    }
-
-    if (!fAddress.trim()) {
-      toast.error("Enter residential address");
-      return;
-    }
-
-    setS1Loading(true);
-    try {
-      const data = await authApi.verifyEmpCode(
-        empCodeValue,
-        fCompanyId,
-        fUnit,
-        {
-          photo: fPhoto,
-          mob_num: fMobNum.trim(),
-          address: fAddress.trim(),
-        },
-      );
-      const apiUser = data?.data || data?.user || data?.employee || data;
-      const found = {
-        ...lookupUser(empCodeValue),
-        ...(apiUser && typeof apiUser === "object" ? apiUser : {}),
-        empCode: apiUser?.empCode || apiUser?.emp_code || empCodeValue,
-        company_code: apiUser?.company_code || fCompanyId,
-        unit: apiUser?.unit || fUnit,
-        photo: apiUser?.photo || fPhoto,
-        mob_num: apiUser?.mob_num || fMobNum.trim(),
-        address: apiUser?.address || fAddress.trim(),
-      };
-
-      setFoundUser(found);
-      setVerificationToken(data?.verification_token || "");
-      setEmailInput(apiUser?.email || "");
-      setOtpSent(false);
-      setOtp("    ");
-      setOtpErr("");
-      setStep(2);
-    } catch (error) {
-      toast.error(
-        error.message || "Unable to verify employee code. Please try again.",
-      );
-    } finally {
-      setS1Loading(false);
     }
   };
 

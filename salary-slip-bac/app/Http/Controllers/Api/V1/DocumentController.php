@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Services\Documents\DocumentAudit;
 use App\Services\Documents\DocumentAuthorizer as Auth;
 use App\Services\Documents\DocumentService;
+use App\Support\AadhaarReference;
 use App\Support\DocumentType;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -81,6 +82,88 @@ class DocumentController extends Controller
                 $actor?->id,
                 $request->header('Idempotency-Key') ?: $request->input('idempotencyKey'),
                 $request->input('description')
+            );
+
+            return $this->ok($this->presentVersion($version->document, $version), 201);
+        } catch (DocumentException $e) {
+            return $this->fail($e);
+        } catch (Throwable $e) {
+            report($e);
+
+            return $this->fail(new DocumentException(
+                DocumentException::UPLOAD_FAILED, 'The upload could not be completed.', 500
+            ));
+        }
+    }
+
+    /**
+     * POST /v1/appointments/{appointmentId}/documents
+     *
+     * The Aadhaar number is read from the appointment record, never from the
+     * request — a browser-supplied number would let a caller write into another
+     * person's folder. It is used only to derive the HMAC storage reference and
+     * is not echoed back in any form.
+     */
+    public function storeForAppointment(Request $request, int $appointmentId)
+    {
+        $request->validate([
+            'file'         => 'required|file',
+            'documentType' => 'required|string',
+        ]);
+
+        try {
+            $appointment = User::find($appointmentId);
+
+            if (!$appointment) {
+                throw new DocumentException(
+                    DocumentException::APPOINTMENT_NOT_FOUND,
+                    'Appointment details were not found.',
+                    404
+                );
+            }
+
+            $actor = auth('api')->user();
+
+            if (!Auth::canAccessOwner($actor, $appointment)) {
+                DocumentAudit::denied(Auth::CREATE);
+
+                throw new DocumentException(
+                    DocumentException::APPOINTMENT_ACCESS_DENIED,
+                    'You do not have access to this appointment.',
+                    403
+                );
+            }
+
+            // Trusted source of truth: the appointment's own stored number.
+            $aadhaar = $appointment->aadhaar_secure_reference
+                ? null
+                : ($appointment->getRawOriginal('aadhar_card_no') ?? null);
+
+            if (!$appointment->aadhaar_secure_reference) {
+                if (!$aadhaar) {
+                    throw new DocumentException(
+                        DocumentException::APPOINTMENT_AADHAAR_MISSING,
+                        'A valid Aadhaar number is required in Appointment Details before uploading documents.',
+                        422
+                    );
+                }
+
+                if (!AadhaarReference::isValid($aadhaar)) {
+                    // The number itself is deliberately absent from the message.
+                    throw new DocumentException(
+                        DocumentException::APPOINTMENT_AADHAAR_INVALID,
+                        'The Aadhaar number stored in the appointment is invalid.',
+                        422
+                    );
+                }
+            }
+
+            $version = DocumentService::make()->upload(
+                $request->file('file'),
+                $appointment,
+                $request->input('documentType'),
+                $actor?->id,
+                $request->header('Idempotency-Key')
             );
 
             return $this->ok($this->presentVersion($version->document, $version), 201);

@@ -1,4 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Pencil } from 'lucide-react';
 
 const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
@@ -31,6 +32,45 @@ function getShortMonthName(date) {
   return months[date.getMonth()];
 }
 
+function parseSafeDate(dateStr) {
+  if (!dateStr) return null;
+  
+  if (dateStr instanceof Date) {
+    return isNaN(dateStr.getTime()) ? null : dateStr;
+  }
+
+  if (typeof dateStr !== 'string') {
+    const d = new Date(dateStr);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  const cleanStr = dateStr.trim();
+  if (!cleanStr) return null;
+
+  // Handle formats like YYYY-MM-DD or DD-MM-YYYY or with slashes
+  const cleanParts = cleanStr.replace(/\//g, '-').split(' ')[0].split('-');
+  if (cleanParts.length === 3) {
+    let y = parseInt(cleanParts[0], 10);
+    let m = parseInt(cleanParts[1], 10) - 1;
+    let d = parseInt(cleanParts[2], 10);
+
+    // If cleanParts[2] is 4 digits (e.g. DD-MM-YYYY), swap year and day
+    if (cleanParts[2].length === 4) {
+      y = parseInt(cleanParts[2], 10);
+      d = parseInt(cleanParts[0], 10);
+    }
+
+    if (!isNaN(y) && !isNaN(m) && !isNaN(d) && y > 1000 && m >= 0 && m <= 11 && d > 0 && d <= 31) {
+      const date = new Date(y, m, d);
+      if (!isNaN(date.getTime())) return date;
+    }
+  }
+
+  // Try standard parse
+  const parsed = new Date(dateStr);
+  return isNaN(parsed.getTime()) ? null : parsed;
+}
+
 export default function ModernDatePicker({
   name,
   value,
@@ -44,7 +84,7 @@ export default function ModernDatePicker({
   const containerRef = useRef(null);
 
   // The actual selected value that will be submitted
-  const actualDate = value ? new Date(value) : null;
+  const actualDate = parseSafeDate(value);
   
   // The temporary selected value while the picker is open
   const [tempDate, setTempDate] = useState(actualDate || new Date());
@@ -59,7 +99,7 @@ export default function ModernDatePicker({
   // When picker opens, sync tempDate and view to actual value (or today)
   useEffect(() => {
     if (isOpen) {
-      const d = value ? new Date(value) : new Date();
+      const d = parseSafeDate(value) || new Date();
       if (!isNaN(d.getTime())) {
         setTempDate(d);
         setCurrentMonth(d.getMonth());
@@ -70,7 +110,11 @@ export default function ModernDatePicker({
 
   useEffect(() => {
     function handleClickOutside(event) {
-      if (containerRef.current && !containerRef.current.contains(event.target)) {
+      if (
+        containerRef.current && 
+        !containerRef.current.contains(event.target) &&
+        !event.target.closest('[data-datepicker-portal="true"]')
+      ) {
         setIsOpen(false);
       }
     }
@@ -139,7 +183,7 @@ export default function ModernDatePicker({
     }
     
     for (let day = 1; day <= daysInMonth; day++) {
-      const isSelected = tempDate.getFullYear() === currentYear && tempDate.getMonth() === currentMonth && tempDate.getDate() === day;
+      const isSelected = actualDate && tempDate.getFullYear() === currentYear && tempDate.getMonth() === currentMonth && tempDate.getDate() === day;
       const isToday = new Date().getFullYear() === currentYear && new Date().getMonth() === currentMonth && new Date().getDate() === day;
       
       let dayClass = "w-9 h-9 flex items-center justify-center text-sm rounded-full transition-colors cursor-pointer ";
@@ -162,7 +206,7 @@ export default function ModernDatePicker({
     return days;
   };
 
-  const displayValue = value ? new Date(value).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '';
+  const displayValue = actualDate ? actualDate.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '';
 
   return (
     <div className="relative w-full" ref={containerRef}>
@@ -183,8 +227,8 @@ export default function ModernDatePicker({
         </div>
       </div>
 
-      {isOpen && (
-        <div className="fixed inset-0 bg-black/40 z-[9999] flex items-center justify-center pointer-events-auto cursor-default" onClick={() => setIsOpen(false)}>
+      {isOpen && createPortal(
+        <div data-datepicker-portal="true" className="fixed inset-0 bg-black/40 z-[99999] flex items-center justify-center pointer-events-auto cursor-default" onClick={() => setIsOpen(false)}>
           <div className="w-[320px] bg-[#f8f7fa] dark:bg-gray-900 rounded-[28px] shadow-2xl border border-black/5 dark:border-white/10 overflow-hidden flex flex-col font-sans" onClick={(e) => e.stopPropagation()}>
             
             {/* Header section */}
@@ -196,7 +240,7 @@ export default function ModernDatePicker({
                 <h2 className="text-3xl font-normal text-gray-900 dark:text-white tracking-tight">
                   {getShortDayName(tempDate)}, {getShortMonthName(tempDate)} {tempDate.getDate()}
                 </h2>
-                <button className="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors p-2 hover:bg-black/5 dark:hover:bg-white/10 rounded-full">
+                <button type="button" className="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors p-2 hover:bg-black/5 dark:hover:bg-white/10 rounded-full">
                   <Pencil size={20} strokeWidth={2} />
                 </button>
               </div>
@@ -211,12 +255,14 @@ export default function ModernDatePicker({
                   <div className="flex items-center justify-between px-2 mb-3 mt-2">
                     <div className="flex items-center gap-1 -ml-2">
                       <button 
+                        type="button"
                         onClick={() => setViewMode('month')}
                         className="font-medium text-gray-800 dark:text-gray-200 text-[15px] outline-none cursor-pointer hover:bg-black/5 dark:hover:bg-white/10 px-2 py-1.5 rounded-md"
                       >
                         {MONTH_NAMES[currentMonth]}
                       </button>
                       <button 
+                        type="button"
                         onClick={() => setViewMode('year')}
                         className="font-medium text-gray-800 dark:text-gray-200 text-[15px] outline-none cursor-pointer hover:bg-black/5 dark:hover:bg-white/10 px-2 py-1.5 rounded-md"
                       >
@@ -253,6 +299,7 @@ export default function ModernDatePicker({
                 <div className="h-full overflow-y-auto px-2 py-2 grid grid-cols-3 gap-2">
                   {YEARS.map(y => (
                     <button
+                      type="button"
                       key={y}
                       onClick={() => {
                         setCurrentYear(y);
@@ -274,6 +321,7 @@ export default function ModernDatePicker({
                 <div className="h-full px-2 py-4 grid grid-cols-3 gap-y-6 gap-x-2 content-center">
                   {MONTH_NAMES.map((m, idx) => (
                     <button
+                      type="button"
                       key={m}
                       onClick={() => {
                         setCurrentMonth(idx);
@@ -295,12 +343,14 @@ export default function ModernDatePicker({
             {/* Actions */}
             <div className="px-6 py-4 flex items-center justify-end gap-2 mt-2">
               <button 
+                type="button"
                 onClick={handleCancel}
                 className="px-4 py-2 text-sm font-medium text-brand-700 dark:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-900/20 rounded-full transition-colors"
               >
                 Cancel
               </button>
               <button 
+                type="button"
                 onClick={handleOk}
                 className="px-4 py-2 text-sm font-medium text-brand-700 dark:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-900/20 rounded-full transition-colors"
               >
@@ -308,7 +358,8 @@ export default function ModernDatePicker({
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

@@ -34,6 +34,10 @@ class DocumentException extends RuntimeException
     public const S3_TIMEOUT               = 'S3_TIMEOUT';
     public const S3_RATE_LIMITED          = 'S3_RATE_LIMITED';
     public const CONFIGURATION_INVALID    = 'DOCUMENT_CONFIGURATION_INVALID';
+    public const APPOINTMENT_NOT_FOUND    = 'APPOINTMENT_NOT_FOUND';
+    public const APPOINTMENT_ACCESS_DENIED = 'APPOINTMENT_ACCESS_DENIED';
+    public const APPOINTMENT_AADHAAR_MISSING = 'APPOINTMENT_AADHAAR_MISSING';
+    public const APPOINTMENT_AADHAAR_INVALID = 'APPOINTMENT_AADHAAR_INVALID';
     public const IDEMPOTENCY_CONFLICT     = 'IDEMPOTENCY_CONFLICT';
 
     public function __construct(

@@ -1,8 +1,6 @@
 import { useState, useEffect } from "react";
 import ModernDatePicker from "../../components/ModernDatePicker";
 import {
-  PasswordStrength,
-  isPasswordValid,
   formatDateInputValue,
   getEmployeePhotoUrl,
 } from "./AdminModals/EmployeeHelpers";
@@ -13,19 +11,9 @@ import {
   Camera,
   Mail,
   Phone,
-  Shield,
-  Eye,
-  EyeOff,
-  Users,
-  DollarSign,
-  BarChart3,
-  Settings2,
   CheckCircle2,
-  Key,
-  Activity,
   Crown,
   Hash,
-  CreditCard,
   User,
   Home,
   Calendar,
@@ -34,26 +22,6 @@ import { useAuth } from "../../context/AuthContext";
 import { authApi } from "../../utils/api";
 import toast from "react-hot-toast";
 import usePhotoCapture from "../../hooks/usePhotoCapture";
-
-const inputCls =
-  "w-full px-3 py-2.5 text-sm bg-gray-50 dark:bg-gray-700/60 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition";
-
-const adminPermissions = [
-  {
-    label: "Employee Management",
-    desc: "Add, edit, and remove employees",
-    icon: Users,
-    color: "text-brand-500",
-    bg: "bg-brand-50 dark:bg-brand-900/20",
-  },
-  {
-    label: "HRMS",
-    desc: "Process and view all salary data",
-    icon: DollarSign,
-    color: "text-green-500",
-    bg: "bg-green-50 dark:bg-green-900/20",
-  },
-];
 
 function InfoRow({
   icon: Icon,
@@ -85,26 +53,6 @@ function InfoRow({
   );
 }
 
-function QuickStat({ icon: Icon, iconBg, iconColor, label, value }) {
-  return (
-    <div className="flex items-center gap-3 bg-gray-50 dark:bg-gray-700/50 rounded-xl p-3">
-      <div
-        className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${iconBg}`}
-      >
-        <Icon size={16} className={iconColor} />
-      </div>
-      <div className="min-w-0">
-        <p className="text-lg font-bold text-gray-900 dark:text-white leading-tight">
-          {value}
-        </p>
-        <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
-          {label}
-        </p>
-      </div>
-    </div>
-  );
-}
-
 export default function AdminProfile() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -122,17 +70,6 @@ export default function AdminProfile() {
   const [profile, setProfile] = useState(null);
   const [photoFile, setPhotoFile] = useState(null);
   const [photoPreview, setPhotoPreview] = useState("");
-  const [passwords, setPasswords] = useState({
-    current: "",
-    next: "",
-    confirm: "",
-  });
-  const [showPwd, setShowPwd] = useState({
-    current: false,
-    next: false,
-    confirm: false,
-  });
-  const [pwdLoading, setPwdLoading] = useState(false);
 
   const handlePhotoChange = (file) => {
     if (!file) return;
@@ -193,8 +130,6 @@ export default function AdminProfile() {
   }, [user]);
 
   const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
-  const setPwd = (k, v) => setPasswords((p) => ({ ...p, [k]: v }));
-  const toggleShow = (k) => setShowPwd((p) => ({ ...p, [k]: !p[k] }));
 
   const handleSave = async () => {
     setLoading(true); // Use a loading state for the save operation
@@ -250,37 +185,6 @@ export default function AdminProfile() {
       photo: profile?.photo || "",
     });
     setEditing(false);
-  };
-
-  const handlePasswordUpdate = async () => {
-    if (!passwords.current || !passwords.next || !passwords.confirm) {
-      toast.error("All password fields are required");
-      return;
-    }
-    if (!isPasswordValid(passwords.next)) {
-      toast.error("Password must be 6+ chars with uppercase, lowercase, number & special character");
-      return;
-    }
-    if (passwords.next !== passwords.confirm) {
-      toast.error("New passwords do not match");
-      return;
-    }
-    setPwdLoading(true);
-    try {
-      const res = await authApi.changePassword(
-        user?.accessToken,
-        user?.tokenType,
-        passwords.current,
-        passwords.next,
-        passwords.confirm,
-      );
-      toast.success(res?.message || "Password updated successfully");
-      setPasswords({ current: "", next: "", confirm: "" });
-    } catch (err) {
-      toast.error(err.message || "Failed to update password");
-    } finally {
-      setPwdLoading(false);
-    }
   };
 
   if (loading)
@@ -573,9 +477,6 @@ export default function AdminProfile() {
             />
           </div>
         </div>
-
-
-
       </div>
     </div>
   );

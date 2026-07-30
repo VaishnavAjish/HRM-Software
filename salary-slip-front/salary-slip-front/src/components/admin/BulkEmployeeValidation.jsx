@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useCallback } from "react";
 import { CheckCircle2, XCircle, Trash2, Upload, Table2 } from "lucide-react";
 import toast from "react-hot-toast";
 import Button from "../ui/Button";
@@ -50,7 +50,6 @@ function fieldLabel(key) {
 }
 
 export default function BulkEmployeeValidation({
-  headers,
   rawRows,
   columnMappings,
   onConfirm,
@@ -67,7 +66,7 @@ export default function BulkEmployeeValidation({
   const [editing, setEditing] = useState(null);
   const editRef = useRef(null);
 
-  function validateRow(row) {
+  const validateRow = useCallback((row) => {
     const errors = [];
     const empCode = normalize(row.data.emp_code);
     if (!empCode) {
@@ -88,7 +87,7 @@ export default function BulkEmployeeValidation({
       errors.push("Duplicate email within file");
     }
     return errors;
-  }
+  }, [rows]);
 
   const validatedRows = useMemo(() => {
     const mapped = rows.filter(r => !r.deleted).map(r => ({
@@ -99,7 +98,7 @@ export default function BulkEmployeeValidation({
     const valid = mapped.filter(r => r.isValid);
     const invalid = mapped.filter(r => !r.isValid);
     return { all: [...valid, ...invalid], valid, invalid };
-  }, [rows]);
+  }, [rows, validateRow]);
 
   const headerFields = useMemo(() => {
     const keys = Object.keys(columnMappings).sort((a, b) => Number(a) - Number(b));

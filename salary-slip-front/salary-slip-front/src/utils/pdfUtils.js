@@ -77,7 +77,9 @@ async function convertImagesToBase64(clone) {
         const blob = await response.blob();
         img.src = await blobToDataUrl(blob);
         return;
-      } catch {}
+      } catch {
+        // Fallback to canvas if fetch fails
+      }
 
       // Fallback: draw to an off-screen canvas (works for same-origin)
       try {

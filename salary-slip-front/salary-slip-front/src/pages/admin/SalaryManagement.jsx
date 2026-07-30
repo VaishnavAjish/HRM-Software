@@ -245,7 +245,9 @@ export default function SalaryManagement() {
         if (!cancelled && res?.data) {
           setDepartments(res.data);
         }
-      } catch (err) {}
+      } catch {
+        // ignore
+      }
     }
     loadDepts();
 

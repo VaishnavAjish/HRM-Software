@@ -1,5 +1,3 @@
-import React from "react";
-
 import { Download, Loader2 } from "lucide-react";
 import PayslipDocument from "../../../components/payslip/PayslipDocument";
 import Modal from "../../../components/ui/Modal";

@@ -13,51 +13,6 @@ function firstPresent(...values) {
   return values.find((value) => value !== undefined && value !== null && value !== "") ?? "";
 }
 
-function formatDate(value) {
-  if (!value || value === "-") return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString("en-IN", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
-}
-
-const DetailItem = ({ label, value }) => (
-  <div className="flex flex-col gap-1 px-4 py-3 bg-gray-50 dark:bg-gray-700/40 rounded-xl border border-gray-100/50 dark:border-gray-700/30">
-    <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">{label}</span>
-    <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">{value || "—"}</span>
-  </div>
-);
-
-const FamilyCard = ({ member, index }) => (
-  <div className="flex flex-col gap-2.5 p-4 bg-gray-50 dark:bg-gray-700/40 rounded-xl border border-gray-100 dark:border-gray-700/50">
-    <div className="flex justify-between items-center border-b border-gray-100 dark:border-gray-700 pb-1.5">
-      <span className="text-[10px] font-bold text-gray-400 uppercase">Member #{index + 1}</span>
-      {member.relation && <Badge variant="gray" className="capitalize">{member.relation}</Badge>}
-    </div>
-    <div className="grid grid-cols-2 gap-3">
-      <div>
-        <p className="text-[9px] text-gray-400 font-bold uppercase">Name</p>
-        <p className="text-xs font-bold text-gray-800 dark:text-gray-200 capitalize">{member.name?.toLowerCase() || "—"}</p>
-      </div>
-      <div>
-        <p className="text-[9px] text-gray-400 font-bold uppercase">Occupation</p>
-        <p className="text-xs font-bold text-gray-800 dark:text-gray-200 capitalize">{member.occupation || "—"}</p>
-      </div>
-      <div>
-        <p className="text-[9px] text-gray-400 font-bold uppercase">D.O.B.</p>
-        <p className="text-xs font-bold text-gray-800 dark:text-gray-200">{formatDate(member.dob)}</p>
-      </div>
-      <div>
-        <p className="text-[9px] text-gray-400 font-bold uppercase">Mobile</p>
-        <p className="text-xs font-bold text-gray-800 dark:text-gray-200">{member.mobile || "—"}</p>
-      </div>
-    </div>
-  </div>
-);
-
 export default function EmployeeAppointment() {
   const { user } = useAuth();
   const isMobile = useIsMobile();
@@ -127,7 +82,9 @@ export default function EmployeeAppointment() {
           if (Array.isArray(m)) {
             parsedMembers = m.filter(mem => mem?.name);
           }
-        } catch (e) {}
+        } catch {
+          // ignore
+        }
 
         const normalizedData = {
           empCode: firstPresent(item.empCode, item.emp_code),
@@ -167,7 +124,7 @@ export default function EmployeeAppointment() {
         };
         
         setData(normalizedData);
-      } catch (err) {
+      } catch {
         toast.error("Failed to load appointment data");
       } finally {
         setLoading(false);

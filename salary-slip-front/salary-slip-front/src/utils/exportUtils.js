@@ -1752,7 +1752,7 @@ export function downloadPayslipPDF({ emp, payslip }) {
     try {
       // Attempt to add the actual logo image
       doc.addImage(COMPANY_DETAILS.logo, "PNG", x, y, size, size);
-    } catch (e) {
+    } catch {
       // Fallback to the professional placeholder if image is missing/incompatible
       doc.setFillColor(37, 99, 235); // Blue 600
       doc.roundedRect(x, y + 2, size, size, 3, 3, "F");

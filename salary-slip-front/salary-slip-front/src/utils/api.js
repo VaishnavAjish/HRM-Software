@@ -273,7 +273,7 @@ export const salaryApi = {
     });
   },
 
-  deleteSlip(id, accessToken, tokenType = "Bearer", companyId) {
+  deleteSlip(id, accessToken, tokenType = "Bearer") {
     const params = new URLSearchParams({
       id,
     });
@@ -639,6 +639,59 @@ export const documentApi = {
  * Presigned URLs returned here are short-lived and must never be persisted —
  * no localStorage, no cache, no redux. Request a fresh one per view/download.
  */
+/**
+ * Appointment Details save-first flow. The record is created/updated before any
+ * document is uploaded, so the upload step always has a real database id.
+ */
+export const appointmentV1Api = {
+  create(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest("/v1/appointments", {
+      method: "POST",
+      headers: authHeaders(accessToken, tokenType),
+      body: JSON.stringify(payload),
+    });
+  },
+
+  update(appointmentId, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/appointments/${appointmentId}`, {
+      method: "PUT",
+      headers: authHeaders(accessToken, tokenType),
+      body: JSON.stringify(payload),
+    });
+  },
+
+  // Powers refresh recovery — the form reloads itself from the saved record.
+  get(appointmentId, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/appointments/${appointmentId}`, {
+      headers: authHeaders(accessToken, tokenType),
+    });
+  },
+
+  complete(appointmentId, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/appointments/${appointmentId}/complete`, {
+      method: "POST",
+      headers: authHeaders(accessToken, tokenType),
+    });
+  },
+
+  // Only file + documentType. The Aadhaar number is read server-side from the
+  // appointment record and must never be sent from here.
+  uploadDocument(appointmentId, { file, documentType, idempotencyKey }, accessToken, tokenType = "Bearer") {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("documentType", documentType);
+
+    return apiRequest(`/v1/appointments/${appointmentId}/documents`, {
+      method: "POST",
+      headers: {
+        ...authHeaders(accessToken, tokenType),
+        ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
+      },
+      body: formData,
+    });
+  },
+};
+
 export const documentV1Api = {
   getTypes(accessToken, tokenType = "Bearer") {
     return apiRequest("/v1/documents/types", { headers: authHeaders(accessToken, tokenType) });

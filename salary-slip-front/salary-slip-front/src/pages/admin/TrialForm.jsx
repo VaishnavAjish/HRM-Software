@@ -394,7 +394,9 @@ export default function TrialForm() {
           // Ignore stylesheet access errors (e.g. CORS)
         }
       }
-    } catch (e) {}
+    } catch {
+      // ignore
+    }
     const appStyles = `<style>${cssText}</style>`;
 
     win.document.write(
@@ -441,7 +443,7 @@ export default function TrialForm() {
           user?.tokenType,
         );
         loadForms();
-      } catch (_) {
+      } catch {
         // silent — print already happened
       }
     };
@@ -848,7 +850,7 @@ export default function TrialForm() {
         ),
       },
     ],
-    [statusLoading, handleStatusUpdate, visibleColumns],
+    [statusLoading, handleStatusUpdate, visibleColumns, user?.role],
   );
 
   const defaultColDef = useMemo(

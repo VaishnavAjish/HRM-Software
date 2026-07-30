@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useCallback } from "react";
 import { CheckCircle2, XCircle, Trash2, Upload, Table2 } from "lucide-react";
 import toast from "react-hot-toast";
 import Button from "../ui/Button";
@@ -46,7 +46,7 @@ export default function BulkAttendanceValidation({
     [headers],
   );
 
-  function validateRow(row) {
+  const validateRow = useCallback((row) => {
     const errors = [];
     if (empCodeColIdx === -1) {
       errors.push("No Employee Code column found in this file");
@@ -63,7 +63,7 @@ export default function BulkAttendanceValidation({
       errors.push("Duplicate employee code within file");
     }
     return errors;
-  }
+  }, [empCodeColIdx, rows]);
 
   const validatedRows = useMemo(() => {
     const mapped = rows.filter(r => !r.deleted).map(r => ({
@@ -74,7 +74,7 @@ export default function BulkAttendanceValidation({
     const valid = mapped.filter(r => r.isValid);
     const invalid = mapped.filter(r => !r.isValid);
     return { all: [...valid, ...invalid], valid, invalid };
-  }, [rows]);
+  }, [rows, validateRow]);
 
   function openEdit(rowId, colIdx) {
     setEditing({ rowId, colIdx });

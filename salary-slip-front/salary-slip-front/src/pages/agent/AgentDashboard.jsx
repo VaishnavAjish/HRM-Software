@@ -1,12 +1,10 @@
-import React, { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
-import { ClipboardList, Plus, FileText, CheckCircle2, Clock, Printer, Download, Loader2, Eye, ArrowRightCircle } from "lucide-react";
-import Button from "../../components/ui/Button";
+import { ClipboardList, FileText, CheckCircle2, Clock, Printer, Eye, ArrowRightCircle, Loader2 } from "lucide-react";
 import AppointmentModal from "../auth/AppointmentModal";
 import TrialFormModal from "../auth/TrialFormModal";
 import { authApi } from "../../utils/api";
-import { exportNodeToPdf } from "../../utils/pdfUtils";
 import PrintableForm from "../../components/forms/PrintableForm";
 import { PrintableTrialForm, normalizeTrialForm } from "../../components/forms/PrintableTrialForm";
 import toast from "react-hot-toast";
@@ -33,7 +31,7 @@ export default function AgentDashboard() {
       if (res?.status) {
         setCandidates(res.data || []);
       }
-    } catch (err) {
+    } catch {
       toast.error("Failed to load candidates");
     } finally {
       setLoading(false);
@@ -243,11 +241,13 @@ export default function AgentDashboard() {
             for (const rule of sheet.cssRules) {
               cssText += rule.cssText + "\n";
             }
-          } catch (e) {
+          } catch {
             // Ignore stylesheet access errors (e.g. CORS)
           }
         }
-      } catch (e) {}
+      } catch {
+        // ignore
+      }
       const appStyles = `<style>${cssText}</style>`;
 
       const pageTitle = normalizedData.type === 'trial' ? 'Trial Form' : 'Appointment';

@@ -1,0 +1,1525 @@
+<title>HRMS Native Android — Clone Specification</title>
+
+<style>
+  /* ── Tokens ─────────────────────────────────────────────── */
+  :root {
+    --paper:      #f6f7f5;
+    --paper-2:    #eceee9;
+    --paper-3:    #e2e5df;
+    --ink:        #0e1418;
+    --ink-2:      #39454b;
+    --ink-3:      #63706f;
+    --rule:       #d3d8d1;
+    --rule-2:     #c0c7bf;
+    --accent:     #0b6e66;
+    --accent-2:   #0a5a53;
+    --accent-wash:#dfeae7;
+
+    --r-admin:    #0b6e66;
+    --r-emp:      #2f5d9e;
+    --r-agent:    #9a6212;
+
+    --m-get:      #1d6f5c;
+    --m-post:     #8a5a10;
+    --m-put:      #4a4396;
+    --m-del:      #9b2c2c;
+
+    --sev-crit:   #9b2c2c;
+    --sev-warn:   #8a5a10;
+    --sev-note:   #2f5d9e;
+    --sev-crit-bg:#f7e6e4;
+    --sev-warn-bg:#f7eddb;
+    --sev-note-bg:#e4ebf6;
+
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;
+
+    --sp: clamp(1rem, 0.6rem + 1.6vw, 1.9rem);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper:      #0e1418;
+      --paper-2:    #161e23;
+      --paper-3:    #1e282e;
+      --ink:        #e7ece9;
+      --ink-2:      #b0bcb9;
+      --ink-3:      #7d8b89;
+      --rule:       #26323a;
+      --rule-2:     #33424a;
+      --accent:     #2fb4a6;
+      --accent-2:   #58ccbe;
+      --accent-wash:#12312e;
+
+      --r-admin:    #2fb4a6;
+      --r-emp:      #77a8e8;
+      --r-agent:    #d9a349;
+
+      --m-get:      #4fb495;
+      --m-post:     #d9a349;
+      --m-put:      #9b93e0;
+      --m-del:      #e07a72;
+
+      --sev-crit:   #e07a72;
+      --sev-warn:   #d9a349;
+      --sev-note:   #77a8e8;
+      --sev-crit-bg:#2b1614;
+      --sev-warn-bg:#2b2113;
+      --sev-note-bg:#141f2e;
+    }
+  }
+
+  /* Viewer toggle must beat the media query in both directions */
+  :root[data-theme="dark"] {
+    --paper:#0e1418; --paper-2:#161e23; --paper-3:#1e282e;
+    --ink:#e7ece9; --ink-2:#b0bcb9; --ink-3:#7d8b89;
+    --rule:#26323a; --rule-2:#33424a;
+    --accent:#2fb4a6; --accent-2:#58ccbe; --accent-wash:#12312e;
+    --r-admin:#2fb4a6; --r-emp:#77a8e8; --r-agent:#d9a349;
+    --m-get:#4fb495; --m-post:#d9a349; --m-put:#9b93e0; --m-del:#e07a72;
+    --sev-crit:#e07a72; --sev-warn:#d9a349; --sev-note:#77a8e8;
+    --sev-crit-bg:#2b1614; --sev-warn-bg:#2b2113; --sev-note-bg:#141f2e;
+  }
+  :root[data-theme="light"] {
+    --paper:#f6f7f5; --paper-2:#eceee9; --paper-3:#e2e5df;
+    --ink:#0e1418; --ink-2:#39454b; --ink-3:#63706f;
+    --rule:#d3d8d1; --rule-2:#c0c7bf;
+    --accent:#0b6e66; --accent-2:#0a5a53; --accent-wash:#dfeae7;
+    --r-admin:#0b6e66; --r-emp:#2f5d9e; --r-agent:#9a6212;
+    --m-get:#1d6f5c; --m-post:#8a5a10; --m-put:#4a4396; --m-del:#9b2c2c;
+    --sev-crit:#9b2c2c; --sev-warn:#8a5a10; --sev-note:#2f5d9e;
+    --sev-crit-bg:#f7e6e4; --sev-warn-bg:#f7eddb; --sev-note-bg:#e4ebf6;
+  }
+
+  /* ── Base ───────────────────────────────────────────────── */
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+
+  code, .mono { font-family: var(--mono); font-variant-ligatures: none; }
+
+  /* ── Masthead ───────────────────────────────────────────── */
+  .masthead {
+    border-bottom: 1px solid var(--rule);
+    background:
+      linear-gradient(to right, var(--rule) 1px, transparent 1px) 0 0 / 28px 100%,
+      var(--paper-2);
+    padding: clamp(2.2rem, 5vw, 4rem) var(--sp) clamp(1.6rem, 3vw, 2.4rem);
+  }
+  .masthead-in { max-width: 1180px; margin: 0 auto; }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 1rem;
+  }
+
+  h1 {
+    font-size: clamp(2rem, 1.2rem + 3.6vw, 3.4rem);
+    line-height: 1.04;
+    letter-spacing: -0.028em;
+    font-weight: 800;
+    margin: 0 0 0.7rem;
+    text-wrap: balance;
+    max-width: 30ch;
+  }
+
+  .standfirst {
+    font-size: clamp(1rem, 0.95rem + 0.3vw, 1.16rem);
+    color: var(--ink-2);
+    max-width: 62ch;
+    margin: 0 0 2rem;
+    text-wrap: pretty;
+  }
+
+  .facts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 1px;
+    background: var(--rule);
+    border: 1px solid var(--rule);
+  }
+  .fact { background: var(--paper); padding: 0.85rem 1rem; }
+  .fact dt {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin: 0 0 0.25rem;
+  }
+  .fact dd {
+    margin: 0;
+    font-family: var(--mono);
+    font-size: 0.84rem;
+    color: var(--ink);
+  }
+
+  /* ── Shell ──────────────────────────────────────────────── */
+  .shell {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 0 var(--sp) 5rem;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 2.5rem;
+  }
+  @media (min-width: 1000px) {
+    .shell { grid-template-columns: 208px minmax(0, 1fr); gap: 3.2rem; align-items: start; }
+  }
+
+  /* ── TOC ────────────────────────────────────────────────── */
+  .toc { padding-top: 2.5rem; }
+  @media (min-width: 1000px) {
+    .toc { position: sticky; top: 0; max-height: 100vh; overflow-y: auto; padding-bottom: 2rem; }
+  }
+  .toc-title {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin: 0 0 0.75rem;
+    padding-bottom: 0.6rem;
+    border-bottom: 1px solid var(--rule);
+  }
+  .toc ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+  .toc li { border-bottom: 1px solid var(--rule); }
+  .toc a {
+    display: flex;
+    gap: 0.6rem;
+    padding: 0.5rem 0;
+    font-size: 0.83rem;
+    color: var(--ink-2);
+    line-height: 1.35;
+  }
+  .toc a:hover { color: var(--accent); text-decoration: none; }
+  .toc .n { font-family: var(--mono); font-size: 0.68rem; color: var(--ink-3); padding-top: 0.15rem; }
+
+  /* ── Sections ───────────────────────────────────────────── */
+  section { padding-top: 3.2rem; scroll-margin-top: 1rem; }
+  section + section { border-top: 1px solid var(--rule); }
+
+  .kicker {
+    font-family: var(--mono);
+    font-size: 0.66rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin: 0 0 0.6rem;
+  }
+
+  h2 {
+    font-size: clamp(1.4rem, 1.1rem + 1.1vw, 1.95rem);
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    font-weight: 750;
+    margin: 0 0 0.9rem;
+    text-wrap: balance;
+  }
+
+  h3 {
+    font-size: 1.06rem;
+    font-weight: 700;
+    letter-spacing: -0.008em;
+    margin: 2.2rem 0 0.7rem;
+    text-wrap: balance;
+  }
+
+  h4 {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin: 1.8rem 0 0.6rem;
+    font-weight: 600;
+  }
+
+  p, ul, ol { max-width: 68ch; }
+  p { margin: 0 0 1rem; text-wrap: pretty; }
+  ul, ol { margin: 0 0 1rem; padding-left: 1.2rem; }
+  li { margin-bottom: 0.4rem; }
+  li::marker { color: var(--ink-3); }
+  strong { font-weight: 650; }
+
+  p code, li code, td code, dd code {
+    font-size: 0.86em;
+    background: var(--paper-2);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: 0.08em 0.34em;
+    white-space: nowrap;
+  }
+
+  /* ── Tables ─────────────────────────────────────────────── */
+  .scroll {
+    overflow-x: auto;
+    border: 1px solid var(--rule);
+    margin: 0 0 1.4rem;
+    background: var(--paper);
+  }
+  table { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
+  th, td {
+    text-align: left;
+    padding: 0.55rem 0.8rem;
+    border-bottom: 1px solid var(--rule);
+    vertical-align: top;
+  }
+  thead th {
+    font-family: var(--mono);
+    font-size: 0.64rem;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    background: var(--paper-2);
+    white-space: nowrap;
+    font-weight: 600;
+    position: sticky;
+    top: 0;
+  }
+  tbody tr:last-child td { border-bottom: 0; }
+  tbody tr:hover { background: var(--paper-2); }
+  td.mono, th.mono { font-family: var(--mono); font-size: 0.79rem; }
+  .num { font-variant-numeric: tabular-nums; text-align: right; }
+  .nowrap { white-space: nowrap; }
+
+  /* ── Chips ──────────────────────────────────────────────── */
+  .chip {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 0.62rem;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    font-weight: 600;
+    padding: 0.16em 0.45em;
+    border: 1px solid currentColor;
+    border-radius: 3px;
+    white-space: nowrap;
+    line-height: 1.5;
+  }
+  .m-get  { color: var(--m-get); }
+  .m-post { color: var(--m-post); }
+  .m-put  { color: var(--m-put); }
+  .m-del  { color: var(--m-del); }
+  .r-admin { color: var(--r-admin); }
+  .r-emp   { color: var(--r-emp); }
+  .r-agent { color: var(--r-agent); }
+  .r-any   { color: var(--ink-3); }
+  .r-pub   { color: var(--sev-crit); }
+
+  /* ── Callouts ───────────────────────────────────────────── */
+  .note {
+    border-left: 3px solid var(--sev-note);
+    background: var(--sev-note-bg);
+    padding: 0.85rem 1.1rem;
+    margin: 0 0 1.4rem;
+    max-width: 68ch;
+  }
+  .note.warn { border-color: var(--sev-warn); background: var(--sev-warn-bg); }
+  .note.crit { border-color: var(--sev-crit); background: var(--sev-crit-bg); }
+  .note p:last-child { margin-bottom: 0; }
+  .note-label {
+    font-family: var(--mono);
+    font-size: 0.64rem;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    font-weight: 700;
+    color: var(--sev-note);
+    display: block;
+    margin-bottom: 0.35rem;
+  }
+  .note.warn .note-label { color: var(--sev-warn); }
+  .note.crit .note-label { color: var(--sev-crit); }
+
+  /* ── Phase list (real sequence → numbered) ──────────────── */
+  .phases { list-style: none; margin: 0; padding: 0; max-width: none; }
+  .phase {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0 1.1rem;
+    padding: 1.2rem 0;
+    border-top: 1px solid var(--rule);
+    margin: 0;
+  }
+  .phase:last-child { border-bottom: 1px solid var(--rule); }
+  .phase-n {
+    font-family: var(--mono);
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--accent);
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .phase h3 { margin: 0 0 0.35rem; font-size: 1rem; }
+  .phase p { margin: 0 0 0.5rem; font-size: 0.93rem; color: var(--ink-2); }
+  .phase-meta {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--ink-3);
+    letter-spacing: 0.04em;
+  }
+
+  /* ── Screen cards ───────────────────────────────────────── */
+  .screens {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr));
+    gap: 1px;
+    background: var(--rule);
+    border: 1px solid var(--rule);
+    margin-bottom: 1.4rem;
+  }
+  .screen { background: var(--paper); padding: 0.85rem 1rem; }
+  .screen-name { font-weight: 650; font-size: 0.92rem; margin: 0 0 0.15rem; }
+  .screen-path { font-family: var(--mono); font-size: 0.68rem; color: var(--ink-3); margin: 0 0 0.4rem; word-break: break-all; }
+  .screen-desc { font-size: 0.82rem; color: var(--ink-2); margin: 0; line-height: 1.5; }
+
+  /* ── Mermaid ────────────────────────────────────────────── */
+  pre.mermaid {
+    background: var(--paper-2);
+    border: 1px solid var(--rule);
+    padding: 1.2rem;
+    margin: 0 0 1.4rem;
+    overflow-x: auto;
+    text-align: center;
+  }
+
+  /* ── Code block ─────────────────────────────────────────── */
+  pre.code {
+    background: var(--paper-2);
+    border: 1px solid var(--rule);
+    padding: 0.9rem 1.1rem;
+    margin: 0 0 1.4rem;
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: 0.79rem;
+    line-height: 1.6;
+    color: var(--ink);
+  }
+  pre.code .c { color: var(--ink-3); }
+
+  /* ── Legend ─────────────────────────────────────────────── */
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1.2rem;
+    padding: 0.8rem 1rem;
+    border: 1px solid var(--rule);
+    background: var(--paper-2);
+    margin: 0 0 1.4rem;
+    font-size: 0.8rem;
+  }
+  .legend span { display: inline-flex; align-items: center; gap: 0.4rem; }
+
+  footer {
+    border-top: 1px solid var(--rule);
+    padding: 2rem var(--sp) 3rem;
+    color: var(--ink-3);
+    font-size: 0.82rem;
+  }
+  footer div { max-width: 1180px; margin: 0 auto; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+
+  /* ── Export toolbar ─────────────────────────────────────── */
+  .toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 1.6rem;
+  }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    font-weight: 600;
+    padding: 0.55rem 0.9rem;
+    border: 1px solid var(--rule-2);
+    background: var(--paper);
+    color: var(--ink);
+    border-radius: 3px;
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s;
+  }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn.primary { border-color: var(--accent); color: var(--accent); }
+  .btn.primary:hover { background: var(--accent-wash); }
+  .btn svg { width: 13px; height: 13px; flex-shrink: 0; }
+  .toolbar-hint {
+    font-size: 0.78rem;
+    color: var(--ink-3);
+    margin: 0.6rem 0 0;
+    max-width: 62ch;
+  }
+
+  /* ── Print / Save as PDF ────────────────────────────────── */
+  @page { margin: 14mm 12mm; }
+
+  @media print {
+    /* Force the light palette — dark tokens waste toner and lose contrast */
+    :root, :root[data-theme="dark"], :root[data-theme="light"] {
+      --paper:#fff; --paper-2:#f4f5f3; --paper-3:#eaece8;
+      --ink:#000; --ink-2:#2a3236; --ink-3:#55605f;
+      --rule:#bcc3bc; --rule-2:#a7afa7;
+      --accent:#0a5a53; --accent-2:#084640; --accent-wash:#eaf2f0;
+      --r-admin:#0a5a53; --r-emp:#274f87; --r-agent:#7d4f0e;
+      --m-get:#175c4c; --m-post:#7d4f0e; --m-put:#3e3880; --m-del:#8a2323;
+      --sev-crit:#8a2323; --sev-warn:#7d4f0e; --sev-note:#274f87;
+      --sev-crit-bg:#faf0ef; --sev-warn-bg:#faf5e9; --sev-note-bg:#eff3fa;
+    }
+
+    body { background: #fff; font-size: 10pt; line-height: 1.5; }
+
+    .toolbar, .toc, .toolbar-hint { display: none !important; }
+    .shell { grid-template-columns: 1fr !important; gap: 0; padding-bottom: 0; max-width: none; }
+    .masthead {
+      background: #fff;
+      padding: 0 0 1rem;
+      border-bottom: 2px solid var(--ink);
+    }
+    h1 { font-size: 22pt; }
+    .standfirst { font-size: 10.5pt; }
+
+    /* Keep structural units intact across page breaks */
+    section { padding-top: 1.6rem; break-inside: auto; }
+    section + section { border-top: 1px solid var(--rule); }
+    h2 { font-size: 15pt; break-after: avoid; }
+    h3 { font-size: 11pt; break-after: avoid; }
+    h4 { break-after: avoid; }
+    .note, .phase, .screen, pre.code, pre.mermaid { break-inside: avoid; }
+    tr, .fact { break-inside: avoid; }
+    thead { display: table-header-group; }
+    thead th { position: static; }
+
+    /* Tables must print in full, not clip to a scroll window */
+    .scroll { overflow: visible !important; }
+    table { font-size: 7.6pt; }
+    th, td { padding: 0.28rem 0.4rem; }
+
+    .screens { grid-template-columns: repeat(2, 1fr); }
+    a { color: var(--ink); text-decoration: none; }
+    p, ul, ol { max-width: none; }
+  }
+</style>
+
+<header class="masthead">
+  <div class="masthead-in">
+    <p class="eyebrow">Rebuild specification · derived from source</p>
+    <h1>HRMS as a native Android app</h1>
+    <p class="standfirst">
+      A complete functional and interface map of the existing Laravel + React payroll system, written so
+      the three role-based apps — admin, employee, agent — can be rebuilt natively in Android Studio
+      against the same API and the same database, with no Capacitor layer and a fresh UI.
+    </p>
+    <dl class="facts">
+      <div class="fact"><dt>Backend</dt><dd>Laravel · JWT</dd></div>
+      <div class="fact"><dt>Base URL</dt><dd>https://niss.pro/api</dd></div>
+      <div class="fact"><dt>Endpoints</dt><dd>78</dd></div>
+      <div class="fact"><dt>Roles</dt><dd>4 levels</dd></div>
+      <div class="fact"><dt>Screens</dt><dd>22 total</dd></div>
+      <div class="fact"><dt>Tenants</dt><dd>2 companies</dd></div>
+    </dl>
+
+    <div class="toolbar" data-noexport>
+      <button class="btn primary" type="button" id="dl-html">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 3v12"/><path d="m7 11 5 5 5-5"/><path d="M4 21h16"/>
+        </svg>
+        Download HTML
+      </button>
+      <button class="btn" type="button" id="dl-print">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M6 9V3h12v6"/><path d="M6 18H4v-6h16v6h-2"/><rect x="8" y="15" width="8" height="6"/>
+        </svg>
+        Save as PDF
+      </button>
+    </div>
+    <p class="toolbar-hint">
+      The HTML download is a single self-contained file — no network, no assets, works offline and keeps
+      both light and dark themes. Save as PDF prints the whole document with the sidebar removed and
+      every table expanded to full width.
+    </p>
+  </div>
+</header>
+
+<div class="shell">
+
+  <nav class="toc" aria-label="Contents">
+    <p class="toc-title">Contents</p>
+    <ol>
+      <li><a href="#scope"><span class="n">01</span><span>Scope &amp; strategy</span></a></li>
+      <li><a href="#auth"><span class="n">02</span><span>Auth &amp; session</span></a></li>
+      <li><a href="#roles"><span class="n">03</span><span>Roles &amp; permissions</span></a></li>
+      <li><a href="#tenancy"><span class="n">04</span><span>Company scoping</span></a></li>
+      <li><a href="#lifecycle"><span class="n">05</span><span>Person lifecycle</span></a></li>
+      <li><a href="#schema"><span class="n">06</span><span>Database schema</span></a></li>
+      <li><a href="#api"><span class="n">07</span><span>API reference</span></a></li>
+      <li><a href="#features"><span class="n">08</span><span>Screens by role</span></a></li>
+      <li><a href="#android"><span class="n">09</span><span>Android build guide</span></a></li>
+      <li><a href="#phases"><span class="n">10</span><span>Delivery phases</span></a></li>
+      <li><a href="#traps"><span class="n">11</span><span>Traps &amp; defects</span></a></li>
+    </ol>
+  </nav>
+
+  <main>
+
+    <!-- ════════════ 01 SCOPE ════════════ -->
+    <section id="scope">
+      <p class="kicker">01 — Scope</p>
+      <h2>What you keep, what you rebuild</h2>
+
+      <p>
+        The system today is a Laravel API with a React single-page frontend wrapped in Capacitor for
+        mobile. The database and every business rule live server-side. That means a native Android
+        client is a <strong>presentation-layer replacement only</strong> — you are not porting logic,
+        you are re-implementing screens against an API that already exists and already enforces its own
+        access rules.
+      </p>
+
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr><th>Layer</th><th>Today</th><th>In the Android build</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Database</td><td class="mono">MySQL · 24 tables</td><td>Untouched</td></tr>
+            <tr><td>Business logic</td><td class="mono">Laravel controllers</td><td>Untouched</td></tr>
+            <tr><td>Auth</td><td class="mono">tymon/jwt-auth</td><td>Untouched — consume the same JWT</td></tr>
+            <tr><td>Access control</td><td class="mono">RoleMiddleware + RBAC tables</td><td>Untouched — mirror it in the UI only</td></tr>
+            <tr><td>Client</td><td class="mono">React 18 + Tailwind</td><td><strong>Rebuild</strong> — Kotlin + Compose</td></tr>
+            <tr><td>Mobile shell</td><td class="mono">Capacitor WebView</td><td><strong>Drop entirely</strong></td></tr>
+            <tr><td>Camera</td><td class="mono">@capacitor/camera + getUserMedia</td><td><strong>Rebuild</strong> — CameraX</td></tr>
+            <tr><td>PDF / payslips</td><td class="mono">Client-side jsPDF</td><td><strong>Rebuild</strong> — see §09</td></tr>
+            <tr><td>Excel import</td><td class="mono">Client parses, posts rows</td><td>Optional — admin-desktop task</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="note">
+        <span class="note-label">Key consequence</span>
+        <p>
+          Because the API enforces role and tenancy server-side, UI permission checks in the Android app
+          are a <em>convenience</em>, never a security boundary. An employee calling the salary-slip
+          endpoint is already forced to their own <code>emp_code</code> in
+          <code>SalariesSlipController::index</code>. Build the UI gates for usability and let the server
+          be the authority.
+        </p>
+      </div>
+
+      <h3>Three apps or one?</h3>
+      <p>
+        The web app is a single build that branches on role at login. For Android you have a real choice.
+        One app with a role-switched navigation graph shares ~70% of its code (auth, networking, profile,
+        theming) and is a single Play listing. Three separate apps give each audience a smaller download
+        and a purpose-built launcher, at the cost of maintaining three shells.
+      </p>
+      <p>
+        <strong>Recommendation: one app, three navigation graphs.</strong> The employee and agent
+        surfaces are small (5 and 3 screens); splitting them out buys little and triples release work.
+        Use a single <code>:app</code> module with per-role feature modules so you can split later
+        without rewriting.
+      </p>
+    </section>
+
+    <!-- ════════════ 02 AUTH ════════════ -->
+    <section id="auth">
+      <p class="kicker">02 — Authentication</p>
+      <h2>Auth &amp; session model</h2>
+
+      <h3>Login</h3>
+      <p>
+        One endpoint, and the identifier field is deliberately loose: the parameter is named
+        <code>email</code> but the server decides what it actually is.
+      </p>
+
+      <pre class="code">POST /api/login
+{ "email": "&lt;email OR emp_code&gt;", "password": "...", "company_code": "nidhi-impex,silver-star" }
+
+<span class="c">// Server picks the column by inspecting the value:</span>
+<span class="c">// filter_var($input, FILTER_VALIDATE_EMAIL) ? 'email' : 'emp_code'</span>
+
+<span class="c">// 200 →</span>
+{ "status": true, "message": "Login successful",
+  "token": "&lt;JWT&gt;", "token_type": "Bearer", "user": { ...full user row... } }</pre>
+
+      <p>
+        Your login field must therefore accept both and never validate as email-only. All subsequent
+        calls send <code>Authorization: Bearer &lt;token&gt;</code>.
+      </p>
+
+      <h4>Login-time side effects to replicate</h4>
+      <ul>
+        <li><code>is_deleted == 1</code> → <strong>403</strong> "Account is deactivated".</li>
+        <li><code>status == 2</code> (pending) → silently flipped to <code>0</code> on first successful login.</li>
+        <li>Wrong credentials → <strong>401</strong> "Invalid credentials".</li>
+      </ul>
+
+      <h3>Session handling</h3>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>Concern</th><th>Behaviour</th><th>Android approach</th></tr></thead>
+          <tbody>
+            <tr><td>Token storage</td><td class="mono">sessionStorage (cleared on tab close)</td><td>EncryptedSharedPreferences or DataStore + Keystore</td></tr>
+            <tr><td>Refresh token</td><td><strong>None exists</strong></td><td>On 401, clear session and route to login</td></tr>
+            <tr><td>Expiry</td><td>JWT TTL only; no renewal call</td><td>OkHttp Authenticator → force logout</td></tr>
+            <tr><td>Session restore</td><td><code class="mono">GET /api/profile</code> on boot; failure = logged out</td><td>Same: validate on cold start via splash</td></tr>
+            <tr><td>Logout</td><td><code class="mono">POST /api/logout</code> invalidates server-side</td><td>Call it, then clear local store regardless of result</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="note warn">
+        <span class="note-label">No refresh flow</span>
+        <p>
+          There is no token-refresh endpoint. Whatever TTL the server is configured with is a hard
+          session ceiling, and the user is bounced to login when it lapses. If long-lived sessions matter
+          on mobile, that is a backend change — plan for it explicitly rather than discovering it in
+          testing.
+        </p>
+      </div>
+
+      <h3>Forgot password — four steps, one endpoint</h3>
+      <p>
+        This is the most unusual route in the system. Laravel registers
+        <code>POST /api/new{data}</code> as a wildcard, so <code>/new-email</code>,
+        <code>/new-email-otp</code>, <code>/new-password</code> and <code>/new-emp_code</code> all hit
+        the same handler. <strong>The URL suffix is cosmetic</strong> — dispatch happens on a
+        <code>type</code> field in the body. Rate limited to 15 requests/minute.
+      </p>
+
+      <div class="scroll">
+        <table>
+          <thead><tr><th class="nowrap">type</th><th>Purpose</th><th>Body</th><th>Effect</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">0</td><td>Verify identity</td><td class="mono">emp_code, mobile_number, company_code, unit, photo?</td><td>Cross-checks mobile on file; issues 15-min <code>verification_token</code>. Rate-limited 5/code/hr, 20/IP/hr</td></tr>
+            <tr><td class="mono">1</td><td>Send OTP</td><td class="mono">email</td><td>Emails a 4-digit OTP, stores it on <code>users.otp</code></td></tr>
+            <tr><td class="mono">2</td><td>Verify OTP</td><td class="mono">email, otp</td><td>Compares to stored value. Does not consume it</td></tr>
+            <tr><td class="mono">3</td><td>Set password</td><td class="mono">email, password</td><td>Writes new password, clears <code>otp</code>, status 2→0</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>
+        The live web UI only uses types 1 → 2 → 3 (email + OTP + new password). Type 0 exists for an
+        emp-code identity path the current UI no longer calls. Password rule enforced client-side:
+        6+ chars with upper, lower, digit and special character.
+      </p>
+
+      <div class="note crit">
+        <span class="note-label">Security defect — do not copy</span>
+        <p>
+          Step 3 only checks that <code>users.otp</code> is non-null; it never re-verifies the submitted
+          OTP, and step 2 doesn't consume or flag anything on success. Anyone who knows a target's email
+          can call type 1 then type 3 and reset that password <strong>without ever seeing the OTP</strong>.
+          The OTP also never expires and is stored in plaintext. Fix this server-side before shipping a
+          new client onto it — see §11.
+        </p>
+      </div>
+    </section>
+
+    <!-- ════════════ 03 ROLES ════════════ -->
+    <section id="roles">
+      <p class="kicker">03 — Access control</p>
+      <h2>Roles &amp; permissions</h2>
+
+      <p>
+        Access is decided by two columns on <code>users</code> that must be read together:
+        an integer <code>role</code> and a string <code>type</code>.
+      </p>
+
+      <div class="scroll">
+        <table>
+          <thead><tr><th class="nowrap">role</th><th>Meaning</th><th>Data scope</th><th>Resolves to</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">0</td><td>Super Admin</td><td>Everything, all companies</td><td><span class="chip r-admin">admin</span></td></tr>
+            <tr><td class="mono">1</td><td>Admin</td><td>Own <code>company_code</code> only</td><td><span class="chip r-admin">admin</span></td></tr>
+            <tr><td class="mono">2</td><td>Unit Admin</td><td>Own <code>company_code</code> + <code>unit</code></td><td><span class="chip r-admin">admin</span></td></tr>
+            <tr><td class="mono">3</td><td>Employee</td><td>Own records only</td><td><span class="chip r-emp">employee</span></td></tr>
+            <tr><td class="mono">4</td><td>Agent</td><td>Candidates they created</td><td><span class="chip r-agent">agent</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h4>Resolution algorithm — mirror this exactly</h4>
+      <pre class="code"><span class="c">// RoleMiddleware.php (server) and AuthContext.jsx (client) must agree</span>
+fun resolveRole(user: User): Role = when {
+    user.type == "agent" || user.role == 4        -> Role.AGENT
+    user.role in setOf(0, 1, 2)                   -> Role.ADMIN
+    else                                          -> Role.EMPLOYEE
+}</pre>
+
+      <p>
+        Note the ordering: <strong>agent is tested first</strong>. A row with
+        <code>type = "agent"</code> is an agent regardless of its integer role. Getting this order wrong
+        sends agents into the admin graph.
+      </p>
+
+      <h3>Per-user page permissions (RBAC)</h3>
+      <p>
+        On top of the coarse role, super admins can grant or revoke individual pages per user. The
+        implementation is unusual: rather than shared named roles, each user gets a private role row
+        named <code>User_{id}_Permissions</code>, and page grants are stored as
+        <code>permission_dimensions</code> rows with <code>dimension = 'page'</code>.
+      </p>
+
+      <pre class="code">GET /api/my-permissions          <span class="c">// any authenticated user</span>
+
+<span class="c">// →</span> { "status": true, "data": [ { "key_name": "salary", "value": "read_write" }, ... ] }
+
+<span class="c">// value ∈ { "no_access" | "view_only" | "read_write" }</span>
+<span class="c">// role 0 (Super Admin) bypasses entirely — treat permissions as null = allow all</span>
+<span class="c">// missing key → default ALLOW (the model is permissive, not deny-by-default)</span></pre>
+
+      <h4>Canonical page keys</h4>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>Admin</th><th>Employee</th><th>Agent</th></tr></thead>
+          <tbody>
+            <tr>
+              <td class="mono">dashboard<br>employees<br>salary<br>appointments<br>admin_management<br>trial_form<br>attendance<br>tds<br>form16<br>reports<br>rbac_dashboard<br>rbac_users<br>rbac_permission_matrix<br>rbac_audit_logs</td>
+              <td class="mono">employee_dashboard<br>employee_payslips<br>employee_form16<br>employee_profile<br>employee_appointment</td>
+              <td class="mono">agent_dashboard<br>agent_trial_form<br>agent_appointment_form</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="note">
+        <span class="note-label">Permissive by default</span>
+        <p>
+          A key absent from the response means <em>allowed</em>, not denied — the web client does
+          <code>permissions[key] !== "no_access"</code>. Replicate that polarity or you will hide
+          navigation from everyone the moment RBAC rows are missing.
+        </p>
+      </div>
+    </section>
+
+    <!-- ════════════ 04 TENANCY ════════════ -->
+    <section id="tenancy">
+      <p class="kicker">04 — Multi-tenancy</p>
+      <h2>Company &amp; unit scoping</h2>
+
+      <p>
+        Nearly every list endpoint is filtered by a two-level tenant key. Getting this wrong is the most
+        likely source of "why is this list empty" during your build.
+      </p>
+
+      <div class="scroll">
+        <table>
+          <thead><tr><th>Company</th><th class="nowrap">company_code</th><th>Units</th><th>Theme</th></tr></thead>
+          <tbody>
+            <tr><td>Nidhi Impex</td><td class="mono">nidhi-impex</td><td class="mono">Shreeji, Ichapur</td><td>Amber</td></tr>
+            <tr><td>Silver Star Diam Pvt Ltd</td><td class="mono">silver-star</td><td class="mono">Daduk, Ichapur</td><td>Sky blue</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h4>Rules that bite</h4>
+      <ul>
+        <li>
+          <code>all-companies</code> is a <strong>client-side pseudo-scope only</strong>. The server has
+          never heard of it. The web client expands it into a comma-joined list
+          (<code>company_code=nidhi-impex,silver-star</code>) before sending. You must do the same.
+        </li>
+        <li>
+          Only <strong>role 0</strong> may pick a company. Roles 1 and 2 have their scope forced from
+          their own user row server-side, so sending a different <code>company_code</code> is ignored.
+        </li>
+        <li>
+          Writes take a <em>single</em> company code, never a list. Reads accept a comma list.
+        </li>
+        <li>
+          <code>Ichapur</code> belongs to <em>both</em> companies. Unit alone never identifies a tenant —
+          always pair it with <code>company_code</code>.
+        </li>
+        <li>
+          The server normalizes loosely (<code>nidhi</code>, <code>nidhiimpex</code>,
+          <code>nidhi_impex</code> all resolve). Don't rely on it; send the canonical slug.
+        </li>
+      </ul>
+
+      <p>
+        In Compose, model this as a single app-level <code>CompanyScope(companyId, unit)</code> exposed
+        from a repository, and have every list request read from it. The web app keeps it in a React
+        context; the equivalent is one <code>StateFlow</code> that survives navigation.
+      </p>
+    </section>
+
+    <!-- ════════════ 05 LIFECYCLE ════════════ -->
+    <section id="lifecycle">
+      <p class="kicker">05 — Domain model</p>
+      <h2>How a person becomes an employee</h2>
+
+      <p>
+        This is the core domain concept and the part most likely to be misunderstood. Candidates,
+        appointments, agents and employees are <strong>all rows in the same <code>users</code>
+        table</strong>, distinguished by <code>type</code> and <code>status</code>. There is no separate
+        candidates table.
+      </p>
+
+      <pre class="mermaid">
+stateDiagram-v2
+    [*] --> Trial: Agent submits trial form
+    Trial: type = "trial"
+    Appointment: type = "appointment"
+    Pending: type = "pending_employee"
+    Employee: type = null
+    Trial --> Appointment: Converted (processed = 1)
+    [*] --> Appointment: Appointment form submitted direct
+    Appointment --> Pending: Approved (checkbox = 1)
+    Appointment --> Pending: emp_code assigned
+    Pending --> Employee: Password assigned
+    Employee --> [*]: is_deleted = 1
+      </pre>
+
+      <div class="scroll">
+        <table>
+          <thead><tr><th class="nowrap">type</th><th class="nowrap">status</th><th>Stage</th><th>Where it appears</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">trial</td><td class="mono">—</td><td>Trial form only</td><td>Trial Form list</td></tr>
+            <tr><td class="mono">appointment</td><td class="mono">—</td><td>Candidate, no code</td><td>Appointments list</td></tr>
+            <tr><td class="mono">pending_employee</td><td class="mono">2</td><td>Awaiting password</td><td>Add Employee → Pending</td></tr>
+            <tr><td class="mono">null</td><td class="mono">0</td><td>Active employee</td><td>Employees list</td></tr>
+            <tr><td class="mono">null</td><td class="mono">1</td><td>Inactive employee</td><td>Employees list (inactive)</td></tr>
+            <tr><td class="mono">agent</td><td class="mono">0</td><td>Agent account</td><td>Agents list</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h4>The filters each list applies</h4>
+      <pre class="code"><span class="c">// Employees list — GET /api/employee/get</span>
+is_deleted = 0 AND role NOT IN (0,1,2)
+  AND emp_code IS NOT NULL AND emp_code != ''
+  AND (type IS NULL OR type NOT IN ('appointment','agent','pending_employee'))
+
+<span class="c">// Pending list — GET /api/employee/get?status=2</span>
+type = 'pending_employee' AND status = 2
+
+<span class="c">// Appointments — GET /api/appointment</span>
+type = 'appointment'
+  OR (type IS NULL/'' AND emp_code IS NULL/'')   <span class="c">// legacy untyped rows</span></pre>
+
+      <div class="note warn">
+        <span class="note-label">Default password</span>
+        <p>
+          A newly submitted appointment is created with the hard-coded password
+          <code>12345678</code> and <code>role = 3</code>. Assigning an emp code does <em>not</em>
+          change it; only the Pending-Employees password step does. Every employee onboarded through
+          this flow therefore shares one known password until an admin sets a real one. Treat the
+          password step as mandatory, not optional, in your UI.
+        </p>
+      </div>
+    </section>
+
+    <!-- ════════════ 06 SCHEMA ════════════ -->
+    <section id="schema">
+      <p class="kicker">06 — Data</p>
+      <h2>Database schema</h2>
+
+      <p>
+        24 tables. You will not need DTOs for all of them — the RBAC extras (locations, branches, teams,
+        approval levels) have admin CRUD screens but no bearing on the core payroll flows.
+      </p>
+
+      <h3>users — the central table</h3>
+      <p>
+        Around 80 columns, because it stores employees, agents, candidates and trial forms in one place.
+        Group them as below when you build your model classes.
+      </p>
+
+      <div class="scroll">
+        <table>
+          <thead><tr><th>Group</th><th>Columns</th></tr></thead>
+          <tbody>
+            <tr><td>Identity &amp; auth</td><td class="mono">id, name, email (unique), password, otp, status, role, emp_code, is_deleted, verification_token, verification_token_expires_at, email_verified_at, remember_token</td></tr>
+            <tr><td>Tenancy</td><td class="mono">company_code, unit, branch</td></tr>
+            <tr><td>Classification</td><td class="mono">type, checkbox, print, processed, added_by, trial_form_id, shift_id</td></tr>
+            <tr><td>Contact</td><td class="mono">mobile_number, emp_whatsapp_no, mobile_no_2, address, village, taluka, district, city, state, pin</td></tr>
+            <tr><td>Personal</td><td class="mono">dob, birth_place, gender, cast, marital_status, blood_group, education, photo, members</td></tr>
+            <tr><td>Employment</td><td class="mono">joining_date, resignation_date, department, designation, manager_name, salary, punching_no</td></tr>
+            <tr><td>Statutory</td><td class="mono">aadhar_card_no, pan_card_no, pf_no, esi_no</td></tr>
+            <tr><td>Banking</td><td class="mono">bank_name, bank_account_no, bank_ifsc_code</td></tr>
+            <tr><td>References</td><td class="mono">reference_name, reference_mobile_no</td></tr>
+            <tr><td>Documents</td><td class="mono">adhar_image, pan_image, check_image, account_book, emp_signature</td></tr>
+            <tr><td>Trial form</td><td class="mono">form_no, trial_date, last_company_name, last_company_address, experience, reason_for_leaving, hastak_name, hastak_code, hastak_mobile, contractor, akar, manager_signature, hastak_signature, hr_signature</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>salary_slips</h3>
+      <p>
+        One row per employee per month. Two generations of columns coexist — the original
+        component-level fields and a later flatter set. Both are populated by different upload templates,
+        so your payslip renderer must tolerate either being empty.
+      </p>
+
+      <div class="scroll">
+        <table>
+          <thead><tr><th>Group</th><th>Columns</th></tr></thead>
+          <tbody>
+            <tr><td>Keys</td><td class="mono">id, month, year, emp_code, company_code, unit</td></tr>
+            <tr><td>Identity</td><td class="mono">emp_name, main_department, department, designation, resignation_date</td></tr>
+            <tr><td>Days</td><td class="mono">book_salary, paid_day, leave, working_days, present_days</td></tr>
+            <tr><td>Earnings</td><td class="mono">basic, da, hra, wa, conv_a, edu_a, owa, ppa, pda, med_a, mob_a, product_incentive, comm, other</td></tr>
+            <tr><td>Gross</td><td class="mono">gross_salary, a_gross, salary</td></tr>
+            <tr><td>Deductions</td><td class="mono">pt, pf, pf_uan, esi, esi_no, tds, lwf, advance</td></tr>
+            <tr><td>Totals</td><td class="mono">total_deduct, total_deduction, net_payable, net_salary</td></tr>
+            <tr><td>Payment</td><td class="mono">account_no, account_name, bank_ifsc, mobile_no</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Supporting tables</h3>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>Table</th><th>Purpose</th><th>Notable</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">attendances</td><td>Daily marks</td><td>Unique on <code>(emp_code, company_code, date)</code>; status ∈ present/absent/half_day/leave</td></tr>
+            <tr><td class="mono">shifts</td><td>Shift definitions</td><td>start_time, end_time, grace_minutes; scoped by company+unit</td></tr>
+            <tr><td class="mono">departments</td><td>Department names</td><td>Just <code>id, name</code></td></tr>
+            <tr><td class="mono">document_uploads</td><td>Document vault</td><td>Versioned, sha256 checksum, original vs generated name</td></tr>
+            <tr><td class="mono">upload_batches</td><td>Bulk import runs</td><td>total/success/failed counts per run</td></tr>
+            <tr><td class="mono">upload_batch_rows</td><td>Per-row outcome</td><td>passed/failed + reason + raw row JSON</td></tr>
+            <tr><td class="mono">audit_logs</td><td>RBAC change trail</td><td>action, module, old_value/new_value JSON, IP, user agent</td></tr>
+            <tr><td class="mono">roles, permissions, role_permissions, user_roles, user_permissions, permission_groups</td><td>RBAC core</td><td>Per-user private roles, see §03</td></tr>
+            <tr><td class="mono">permission_dimensions</td><td>Page grants</td><td>Unique on <code>(dimension, role_id, key_name)</code></td></tr>
+            <tr><td class="mono">locations, branches, teams, approval_levels</td><td>Org structure</td><td>CRUD screens exist; unused by payroll</td></tr>
+            <tr><td class="mono">settings</td><td>Key/value config</td><td>Grouped by <code>group</code> column</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ════════════ 07 API ════════════ -->
+    <section id="api">
+      <p class="kicker">07 — Interface</p>
+      <h2>Complete API reference</h2>
+
+      <p>
+        All paths are relative to <code>https://niss.pro/api</code>. Responses follow
+        <code>{ status: bool, message?: string, data?: … }</code>. A falsy <code>status</code> is an
+        error even on HTTP 200 — check both.
+      </p>
+
+      <div class="legend">
+        <span><span class="chip r-pub">public</span> no token</span>
+        <span><span class="chip r-any">any</span> any authenticated user</span>
+        <span><span class="chip r-admin">admin</span> role 0/1/2</span>
+        <span><span class="chip r-emp">employee</span> role 3</span>
+        <span><span class="chip r-agent">agent</span> role 4</span>
+      </div>
+
+      <h4>Authentication</h4>
+      <div class="scroll">
+        <table>
+          <thead><tr><th class="nowrap">Method</th><th>Path</th><th class="nowrap">Access</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td><span class="chip m-post">post</span></td><td class="mono">/login</td><td><span class="chip r-pub">public</span></td><td>Email or emp_code; returns JWT</td></tr>
+            <tr><td><span class="chip m-post">post</span></td><td class="mono">/logout</td><td><span class="chip r-any">any</span></td><td>Invalidates the token server-side</td></tr>
+            <tr><td><span class="chip m-get">get</span></td><td class="mono">/profile</td><td><span class="chip r-any">any</span></td><td>Current user; use for session restore</td></tr>
+            <tr><td><span class="chip m-post">post</span></td><td class="mono">/profile-update</td><td><span class="chip r-any">any</span></td><td>Self-service fields only; multipart if photo</td></tr>
+            <tr><td><span class="chip m-post">post</span></td><td class="mono">/change-password</td><td><span class="chip r-any">any</span></td><td><code>password, new_password, confirm_password</code></td></tr>
+            <tr><td><span class="chip m-post">post</span></td><td class="mono">/new{data}</td><td><span class="chip r-pub">public</span></td><td>4-step reset, dispatches on <code>type</code>. Throttle 15/min</td></tr>
+            <tr><td><span class="chip m-get">get</span></td><td class="mono">/check-emp-code/{code}</td><td><span class="chip r-pub">public</span></td><td>Returns company_code + unit if found</td></tr>
+            <tr><td><span class="chip m-post">post</span></td><td class="mono">/register</td><td><span class="chip r-admin">admin</span></td><td>Creates admin/agent users</td></tr>
+            <tr><td><span class="chip m-get">get</span></td><td class="mono">/my-permissions</td><td><span class="chip r-any">any</span></td><td>RBAC page grants</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h4>Employees</h4>
+      <div class="scroll">
+        <table>
+          <thead><tr><th class="nowrap">Method</th><th>Path</th><th class="nowrap">Access</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td><span class="chip m-get">get</span></td><td class="mono">/employee/get</td><td><span class="chip r-admin">admin</span></td><td>Query: <code>page, limit, search, status, company_code, unit, no_pagination</code></td></tr>
+            <tr><td><span class="chip m-get">get</span></td><td class="mono">/employee/show/{id}</td><td><span class="chip r-admin">admin</span></td><td>Single employee</td></tr>
+            <tr><td><span class="chip m-post">post</span></td><td class="mono">/employee/store</td><td><span class="chip r-admin">admin</span></td><td>Create</td></tr>
+            <tr><td><span class="chip m-put">put</span></td><td class="mono">/employee/edit/{id}</td><td><span class="chip r-admin">admin</span></td><td>Update — also the password-assign call</td></tr>
+            <tr><td><span class="chip m-get">get</span></td><td class="mono">/employee/delete/{id}</td><td><span class="chip r-admin">admin</span></td><td><strong>Hard delete.</strong> GET, not DELETE</td></tr>
+            <tr><td><span class="chip m-post">post</span></td><td class="mono">/employee/import</td><td><span class="chip r-admin">admin</span></td><td>Bulk: file upload or JSON rows</td></tr>
+            <tr><td><span class="chip m-get">get</span></td><td class="mono">/employee/import-columns</td><td><span class="chip r-admin">admin</span></td><td>Column map for import UI</td></tr>
+            <tr><td><span class="chip m-post">post</span></td><td class="mono">/employee/import-account-detail</td><td><span class="chip r-admin">admin</span></td><td>Bank details bulk update</td></tr>
+            <tr><td><span class="chip m-post">post</span></td><td class="mono">/account-master</td><td><span class="chip r-admin">admin</span></td><td>Account master spreadsheet</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h4>Salary</h4>
+      <div class="scroll">
+        <table>
+          <thead><tr><th class="nowrap">Method</th><th>Path</th><th class="nowrap">Access</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td><span class="chip m-get">get</span></td><td class="mono">/salary-slip/get</td><td><span class="chip r-admin">admin</span> <span class="chip r-emp">employee</span></td><td>Employees forcibly scoped to own emp_code</td></tr>
+            <tr><td><span class="chip m-get">get</span></td><td class="mono">/salary-slip/show/{id}</td><td><span class="chip r-admin">admin</span> <span class="chip r-emp">employee</span></td><td>404 (not 403) if out of scope</td></tr>
+            <tr><td><span class="chip m-post">post</span></td><td class="mono">/admin/salary-slip/store</td><td><span class="chip r-admin">admin</span></td><td>Multipart upload + column mapping</td></tr>
+            <tr><td><span class="chip m-get">get</span></td><td class="mono">/admin/salary-slip/import-columns</td><td><span class="chip r-admin">admin</span></td><td>Template columns</td></tr>
+            <tr><td><span class="chip m-get">get</span></td><td class="mono">/admin/salary-slip/delete?id=</td><td><span class="chip r-admin">admin</span></td><td>Delete via GET + query param</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h4>Attendance &amp; shifts</h4>
+      <div class="scroll">
+        <table>
+          <thead><tr><th class="nowrap">Method</th><th>Path</th><th class="nowrap">Access</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td><span class="chip m-get">get</span></td><td class="mono">/attendance/grid</td><td><span class="chip r-admin">admin</span></td><td>Requires <code>month, year, company_code</code></td></tr>
+            <tr><td><span class="chip m-post">post</span></td><td class="mono">/attendance/cell</td><td><span class="chip r-admin">admin</span></td><td>Upsert one day; empty status <strong>deletes</strong></td></tr>
+            <tr><td><span class="chip m-post">post</span></td><td class="mono">/attendance/import</td><td><span class="chip r-admin">admin</span></td><td>Bulk month import</td></tr>
+            <tr><td><span class="chip m-get">get</span></td><td class="mono">/shifts/get</td><td><span class="chip r-admin">admin</span></td><td>Scoped by company+unit</td></tr>
+            <tr><td><span class="chip m-post">post</span></td><td class="mono">/shifts/store</td><td><span class="chip r-admin">admin</span></td><td>Create shift</td></tr>
+            <tr><td><span class="chip m-put">put</span></td><td class="mono">/shifts/update/{id}</td><td><span class="chip r-admin">admin</span></td><td>Update</td></tr>
+            <tr><td><span class="chip m-del">del</span></td><td class="mono">/shifts/delete/{id}</td><td><span class="chip r-admin">admin</span></td><td>Delete</td></tr>
+            <tr><td><span class="chip m-post">post</span></td><td class="mono">/shifts/assign</td><td><span class="chip r-admin">admin</span></td><td>Assign employees to a shift</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h4>Appointments, trial forms, agents</h4>
+      <div class="scroll">
+        <table>
+          <thead><tr><th class="nowrap">Method</th><th>Path</th><th class="nowrap">Access</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td><span class="chip m-post">post</span></td><td class="mono">/appointment</td><td><span class="chip r-pub">public</span></td><td>Public job form. Sets password <code>12345678</code>, role 3</td></tr>
+            <tr><td><span class="chip m-get">get</span></td><td class="mono">/appointment</td><td><span class="chip r-pub">public</span></td><td>List of appointments</td></tr>
+            <tr><td><span class="chip m-post">post</span></td><td class="mono">/appointment/update</td><td><span class="chip r-admin">admin</span> <span class="chip r-agent">agent</span></td><td>Edit candidate; assigns emp_code, approve via <code>checkbox</code></td></tr>
+            <tr><td><span class="chip m-get">get</span></td><td class="mono">/appointment/check-emp-code</td><td><span class="chip r-pub">public</span></td><td>Conflict pre-check before assigning</td></tr>
+            <tr><td><span class="chip m-post">post</span></td><td class="mono">/appointment/create-account</td><td><span class="chip r-admin">admin</span></td><td>Creates an agent account</td></tr>
+            <tr><td><span class="chip m-post">post</span></td><td class="mono">/trial-form/store</td><td><span class="chip r-admin">admin</span> <span class="chip r-agent">agent</span></td><td>Submit trial form</td></tr>
+            <tr><td><span class="chip m-get">get</span></td><td class="mono">/trial-form/list</td><td><span class="chip r-admin">admin</span> <span class="chip r-agent">agent</span></td><td>List</td></tr>
+            <tr><td><span class="chip m-post">post</span></td><td class="mono">/trial-form/update/{id}</td><td><span class="chip r-admin">admin</span> <span class="chip r-agent">agent</span></td><td>Update (POST, not PUT)</td></tr>
+            <tr><td><span class="chip m-del">del</span></td><td class="mono">/trial-form/delete/{id}</td><td><span class="chip r-admin">admin</span></td><td>Admin only</td></tr>
+            <tr><td><span class="chip m-get">get</span></td><td class="mono">/agent/candidates</td><td><span class="chip r-agent">agent</span></td><td>Own candidates (<code>added_by = me</code>)</td></tr>
+            <tr><td><span class="chip m-get">get</span></td><td class="mono">/agents</td><td><span class="chip r-admin">admin</span></td><td>List agents</td></tr>
+            <tr><td><span class="chip m-put">put</span></td><td class="mono">/agents/{id}</td><td><span class="chip r-admin">admin</span></td><td>Update agent</td></tr>
+            <tr><td><span class="chip m-del">del</span></td><td class="mono">/agents/{id}</td><td><span class="chip r-admin">admin</span></td><td>Delete agent</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h4>Dashboards, documents, departments</h4>
+      <div class="scroll">
+        <table>
+          <thead><tr><th class="nowrap">Method</th><th>Path</th><th class="nowrap">Access</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td><span class="chip m-get">get</span></td><td class="mono">/admin-dashboard</td><td><span class="chip r-admin">admin</span></td><td>Counts + salary aggregates; accepts month/year range</td></tr>
+            <tr><td><span class="chip m-get">get</span></td><td class="mono">/dashboard</td><td><span class="chip r-emp">employee</span></td><td><code>total_slips, recent_slips[5], user</code></td></tr>
+            <tr><td><span class="chip m-get">get</span></td><td class="mono">/department/get</td><td><span class="chip r-any">any</span></td><td>Readable by agents too</td></tr>
+            <tr><td><span class="chip m-post">post</span></td><td class="mono">/department/store</td><td><span class="chip r-admin">admin</span></td><td>Create</td></tr>
+            <tr><td><span class="chip m-put">put</span></td><td class="mono">/department/update/{id}</td><td><span class="chip r-admin">admin</span></td><td>Update</td></tr>
+            <tr><td><span class="chip m-del">del</span></td><td class="mono">/department/delete/{id}</td><td><span class="chip r-admin">admin</span></td><td>Delete</td></tr>
+            <tr><td><span class="chip m-get">get</span></td><td class="mono">/documents</td><td><span class="chip r-any">any</span></td><td>List own documents</td></tr>
+            <tr><td><span class="chip m-post">post</span></td><td class="mono">/documents</td><td><span class="chip r-any">any</span></td><td>Upload</td></tr>
+            <tr><td><span class="chip m-get">get</span></td><td class="mono">/documents/types</td><td><span class="chip r-any">any</span></td><td>Document catalogue</td></tr>
+            <tr><td><span class="chip m-post">post</span></td><td class="mono">/documents/preview-name</td><td><span class="chip r-any">any</span></td><td>Preview generated filename</td></tr>
+            <tr><td><span class="chip m-del">del</span></td><td class="mono">/documents/{id}</td><td><span class="chip r-admin">admin</span></td><td>Removes file from disk</td></tr>
+            <tr><td><span class="chip m-get">get</span></td><td class="mono">/upload-batches/{type}</td><td><span class="chip r-admin">admin</span></td><td>type ∈ salary | employee | account-master</td></tr>
+            <tr><td><span class="chip m-get">get</span></td><td class="mono">/upload-batches/{type}/{id}</td><td><span class="chip r-admin">admin</span></td><td>Per-row pass/fail report</td></tr>
+            <tr><td><span class="chip m-del">del</span></td><td class="mono">/upload-batches/{type}/{id}</td><td><span class="chip r-admin">admin</span></td><td>Delete batch</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h4>RBAC administration <span class="chip r-admin">admin</span></h4>
+      <div class="scroll">
+        <table>
+          <thead><tr><th class="nowrap">Method</th><th>Path</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td><span class="chip m-get">get</span></td><td class="mono">/rbac/dashboard</td><td>RBAC summary counts</td></tr>
+            <tr><td><span class="chip m-get">get</span></td><td class="mono">/rbac/user-roles</td><td>Paged; <code>search</code>, <code>role</code> filters</td></tr>
+            <tr><td><span class="chip m-get">get</span></td><td class="mono">/rbac/audit-logs</td><td>Paged; <code>module</code>, <code>action</code> filters</td></tr>
+            <tr><td><span class="chip m-get">get</span> <span class="chip m-put">put</span></td><td class="mono">/rbac/settings?group=</td><td>Key/value settings</td></tr>
+            <tr><td><span class="chip m-get">get</span></td><td class="mono">/rbac/permission-dimensions/{dim}</td><td><code>?role_id=</code>; dim = <code>page</code> for page grants</td></tr>
+            <tr><td><span class="chip m-post">post</span></td><td class="mono">/rbac/permission-dimensions/{dim}</td><td><code>role_id, key_name, value</code></td></tr>
+            <tr><td><span class="chip m-del">del</span></td><td class="mono">/rbac/permission-dimensions/{dim}/{id}</td><td>Revoke</td></tr>
+            <tr><td><span class="chip m-get">get</span></td><td class="mono">/rbac/permission-dimensions/{dim}/roles</td><td>Roles for a dimension</td></tr>
+            <tr><td><span class="chip m-get">get</span> <span class="chip m-post">post</span> <span class="chip m-put">put</span> <span class="chip m-del">del</span></td><td class="mono">/roles/*</td><td><code>get, permissions, matrix, show/{id}, store, update/{id}, delete/{id}</code></td></tr>
+            <tr><td><span class="chip m-get">get</span> <span class="chip m-post">post</span> <span class="chip m-put">put</span> <span class="chip m-del">del</span></td><td class="mono">/rbac/{locations|branches|teams|approval-levels}/*</td><td>Uniform CRUD: <code>get, store, update/{id}, delete/{id}</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="note warn">
+        <span class="note-label">Non-REST conventions</span>
+        <p>
+          Several destructive operations use <code>GET</code>
+          (<code>/employee/delete/{id}</code>, <code>/admin/salary-slip/delete?id=</code>) and several
+          updates use <code>POST</code> where <code>PUT</code> would be expected. Don't "correct" these
+          in your Retrofit interface — match the server exactly or the calls 405.
+        </p>
+      </div>
+    </section>
+
+    <!-- ════════════ 08 FEATURES ════════════ -->
+    <section id="features">
+      <p class="kicker">08 — Surface</p>
+      <h2>Screens by role</h2>
+
+      <h3><span class="chip r-admin">admin</span> &nbsp;14 screens</h3>
+      <div class="screens">
+        <div class="screen"><p class="screen-name">Dashboard</p><p class="screen-path">/admin</p><p class="screen-desc">Headcount, salary totals, month/year range filter, charts.</p></div>
+        <div class="screen"><p class="screen-name">Employees</p><p class="screen-path">/admin/employees</p><p class="screen-desc">Paged grid, search, status filter, view/edit/delete, bulk import.</p></div>
+        <div class="screen"><p class="screen-name">Add Employee</p><p class="screen-path">/admin/employees/add</p><p class="screen-desc">Create form + <strong>Pending Employees</strong> tab where codes and passwords are assigned.</p></div>
+        <div class="screen"><p class="screen-name">Salary</p><p class="screen-path">/admin/salary</p><p class="screen-desc">Month/batch browser, payslip preview, delete slips.</p></div>
+        <div class="screen"><p class="screen-name">Salary Upload</p><p class="screen-path">/admin/salary/upload</p><p class="screen-desc">Spreadsheet upload, column mapping, validation report.</p></div>
+        <div class="screen"><p class="screen-name">Attendance</p><p class="screen-path">/admin/attendance</p><p class="screen-desc">Per-employee monthly totals + calendar drill-down.</p></div>
+        <div class="screen"><p class="screen-name">Shifts</p><p class="screen-path">/admin/attendance/shift</p><p class="screen-desc">Shift CRUD and employee assignment.</p></div>
+        <div class="screen"><p class="screen-name">Appointments</p><p class="screen-path">/admin/appointments</p><p class="screen-desc">Candidate list, approve/reject, assign emp code, printable form.</p></div>
+        <div class="screen"><p class="screen-name">Trial Form</p><p class="screen-path">/admin/trial-form</p><p class="screen-desc">Trial submissions; convert to appointment. Nidhi Impex only.</p></div>
+        <div class="screen"><p class="screen-name">TDS Calculation</p><p class="screen-path">/admin/tds/calculation</p><p class="screen-desc">Tax computation per employee per year.</p></div>
+        <div class="screen"><p class="screen-name">Form 16</p><p class="screen-path">/admin/form16</p><p class="screen-desc">Generate and export Form 16 documents.</p></div>
+        <div class="screen"><p class="screen-name">Reports</p><p class="screen-path">/admin/reports</p><p class="screen-desc">Salary and headcount exports.</p></div>
+        <div class="screen"><p class="screen-name">RBAC (4 pages)</p><p class="screen-path">/admin/rbac · /users · /permission-matrix · /audit-logs</p><p class="screen-desc">Super-admin only. User roles, per-user page grants, audit trail.</p></div>
+        <div class="screen"><p class="screen-name">Profile</p><p class="screen-path">/admin/profile</p><p class="screen-desc">Own details, photo capture, change password.</p></div>
+      </div>
+
+      <h3><span class="chip r-emp">employee</span> &nbsp;5 screens</h3>
+      <div class="screens">
+        <div class="screen"><p class="screen-name">Dashboard</p><p class="screen-path">/employee</p><p class="screen-desc">Slip count and five most recent payslips.</p></div>
+        <div class="screen"><p class="screen-name">Payslips</p><p class="screen-path">/employee/payslips</p><p class="screen-desc">Own slips by month; view and download PDF.</p></div>
+        <div class="screen"><p class="screen-name">Form 16</p><p class="screen-path">/employee/form16</p><p class="screen-desc">Own annual tax document.</p></div>
+        <div class="screen"><p class="screen-name">Profile</p><p class="screen-path">/employee/profile</p><p class="screen-desc">Edit own details, photo, documents, change password.</p></div>
+        <div class="screen"><p class="screen-name">Appointment Form</p><p class="screen-path">/employee/appointment</p><p class="screen-desc">Own appointment record, read-mostly.</p></div>
+      </div>
+
+      <div class="note crit">
+        <span class="note-label">Profile completeness gate</span>
+        <p>
+          Employees are <strong>locked to the profile screen</strong> until all 19 of these are non-empty:
+          <code class="mono">name, email, phone, dob, address, city, district, state, pin, aadhar_card_no,
+          pan_card_no, bank_name, bank_ifsc_code, bank_account_no, gender, department, designation,
+          joining_date</code>. Navigation is hidden and every route redirects to the profile. Replicate
+          this or freshly onboarded employees will see an app they can't use — and note <code>phone</code>
+          resolves from <code>mobile_number</code> / <code>mobile_no</code> / <code>phone</code>.
+        </p>
+      </div>
+
+      <h3><span class="chip r-agent">agent</span> &nbsp;3 screens</h3>
+      <div class="screens">
+        <div class="screen"><p class="screen-name">Dashboard</p><p class="screen-path">/agent</p><p class="screen-desc">Own candidates via <code>added_by</code>; trial forms hidden once processed.</p></div>
+        <div class="screen"><p class="screen-name">Trial Form</p><p class="screen-path">/agent/trial-forms</p><p class="screen-desc">Submit and edit trial forms. Gated to Nidhi Impex agents.</p></div>
+        <div class="screen"><p class="screen-name">Appointment Form</p><p class="screen-path">/agent/appointments</p><p class="screen-desc">Full multi-section candidate form with photo and document capture.</p></div>
+      </div>
+
+      <p>
+        The agent surface is the strongest argument for going native: it is a long form filled in the
+        field, on a phone, with camera capture — exactly what the WebView build handles worst. It is
+        also small enough to be your pilot.
+      </p>
+    </section>
+
+    <!-- ════════════ 09 ANDROID ════════════ -->
+    <section id="android">
+      <p class="kicker">09 — Implementation</p>
+      <h2>Android build guide</h2>
+
+      <h3>Recommended stack</h3>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>Concern</th><th>Choice</th><th>Why</th></tr></thead>
+          <tbody>
+            <tr><td>Language / UI</td><td class="mono">Kotlin + Jetpack Compose</td><td>Material 3 gives you a new visual identity for free</td></tr>
+            <tr><td>Architecture</td><td class="mono">MVVM + repositories</td><td>Maps cleanly onto the API-per-feature shape</td></tr>
+            <tr><td>Networking</td><td class="mono">Retrofit + OkHttp + Moshi/kotlinx</td><td>Interceptor injects the Bearer token</td></tr>
+            <tr><td>Async</td><td class="mono">Coroutines + Flow</td><td>StateFlow for company scope and session</td></tr>
+            <tr><td>DI</td><td class="mono">Hilt</td><td>Scoping session and scope objects</td></tr>
+            <tr><td>Navigation</td><td class="mono">Navigation Compose</td><td>One graph per role, chosen after login</td></tr>
+            <tr><td>Secure storage</td><td class="mono">EncryptedSharedPreferences</td><td>JWT must not sit in plain prefs</td></tr>
+            <tr><td>Camera</td><td class="mono">CameraX</td><td>Replaces Capacitor camera <em>and</em> fixes the HTTPS restriction</td></tr>
+            <tr><td>Images</td><td class="mono">Coil</td><td>Photos, document thumbnails</td></tr>
+            <tr><td>Offline cache</td><td class="mono">Room (later phase)</td><td>Payslips and attendance read well offline</td></tr>
+            <tr><td>PDF</td><td class="mono">PdfDocument or Android print</td><td>See below</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Module layout</h3>
+      <pre class="code">:app                    <span class="c">// nav host, role graph selection, theme</span>
+:core:network           <span class="c">// Retrofit, auth interceptor, envelope unwrapping</span>
+:core:auth              <span class="c">// login, session store, role resolution</span>
+:core:model             <span class="c">// User, SalarySlip, Attendance, CompanyScope</span>
+:core:ui                <span class="c">// design system, shared components</span>
+:core:permissions       <span class="c">// my-permissions cache + hasAccess()</span>
+:feature:employee       <span class="c">// 5 screens</span>
+:feature:agent          <span class="c">// 3 screens</span>
+:feature:admin          <span class="c">// 14 screens — split further if it grows</span></pre>
+
+      <h3>Three things that need real design work</h3>
+
+      <h4>1 · The envelope</h4>
+      <p>
+        Every response wraps its payload and can report failure with HTTP 200. Centralize this once in an
+        interceptor or a <code>Result</code> mapper rather than checking <code>status</code> at 78 call
+        sites. Also note the payload key is inconsistent across endpoints —
+        <code>data</code>, <code>user</code>, <code>login</code>, <code>employee</code> all appear. The
+        web client coalesces with <code>data?.login || data?.data || data?.user || data</code>; your
+        deserializer needs the same tolerance.
+      </p>
+
+      <h4>2 · Payslip and Form 16 rendering</h4>
+      <p>
+        These are currently generated <em>client-side</em> from raw slip rows — the layout lives in React
+        components, not on the server. You have three options, in increasing order of effort:
+        request a server-side PDF endpoint (cleanest, needs backend work); rebuild the layout in Compose
+        and print via <code>PdfDocument</code>; or render an HTML template in a headless WebView and
+        print that. If you want zero backend change, the third reuses the existing markup most directly.
+      </p>
+
+      <h4>3 · Attendance grid</h4>
+      <p>
+        The response is <code>{ employees[], attendance: { emp_code: { "YYYY-MM-DD": status } }, days_in_month }</code>
+        — a sparse nested map, not a list. A month × headcount grid is wide; on a phone prefer a
+        per-employee calendar (which the web app already falls back to) over a scrollable matrix. Cell
+        edits are single upserts, and <strong>sending an empty status deletes the record</strong> rather
+        than storing a blank.
+      </p>
+
+      <div class="note">
+        <span class="note-label">Free wins from going native</span>
+        <p>
+          Camera works without HTTPS (the WebView build cannot use <code>getUserMedia</code> over a plain
+          LAN address); real file pickers; biometric unlock over the stored JWT; push notifications for
+          payslip-published events; genuine offline reads. None of these need backend changes except push.
+        </p>
+      </div>
+    </section>
+
+    <!-- ════════════ 10 PHASES ════════════ -->
+    <section id="phases">
+      <p class="kicker">10 — Sequencing</p>
+      <h2>Delivery phases</h2>
+
+      <p>
+        Ordered so each phase ships something usable and each one de-risks the next. Phase 1 exists
+        because auth, tenancy and the response envelope are shared by everything — get them wrong and
+        every later phase inherits the mistake.
+      </p>
+
+      <ol class="phases">
+        <li class="phase">
+          <span class="phase-n">1</span>
+          <div>
+            <h3>Foundation</h3>
+            <p>
+              Login accepting email <em>or</em> emp code, secure token storage, session restore via
+              <code>/profile</code>, 401 → logout, role resolution, company scope holder, envelope
+              handling, design system.
+            </p>
+            <p class="phase-meta">Ships: nothing user-facing · Unblocks: everything</p>
+          </div>
+        </li>
+        <li class="phase">
+          <span class="phase-n">2</span>
+          <div>
+            <h3>Employee app — the MVP</h3>
+            <p>
+              Dashboard, payslip list and detail, profile with the 19-field completeness gate, change
+              password, forgot password. Smallest surface, largest audience, and it exercises the whole
+              foundation.
+            </p>
+            <p class="phase-meta">5 screens · 6 endpoints · Ships to the most users</p>
+          </div>
+        </li>
+        <li class="phase">
+          <span class="phase-n">3</span>
+          <div>
+            <h3>Agent app</h3>
+            <p>
+              Candidate list, trial form, and the full appointment form with CameraX photo and document
+              capture. This is where native pays for itself.
+            </p>
+            <p class="phase-meta">3 screens · 7 endpoints · Validates camera + long forms</p>
+          </div>
+        </li>
+        <li class="phase">
+          <span class="phase-n">4</span>
+          <div>
+            <h3>Admin core</h3>
+            <p>
+              Dashboard, employee list and detail, appointments with emp-code assignment, pending
+              employees with password assignment. The daily-driver admin loop, excluding bulk work.
+            </p>
+            <p class="phase-meta">Covers the full onboarding pipeline end to end</p>
+          </div>
+        </li>
+        <li class="phase">
+          <span class="phase-n">5</span>
+          <div>
+            <h3>Admin operations</h3>
+            <p>
+              Attendance marking, shifts, salary browsing, payslip PDF export. Attendance is a phone-first
+              task and deserves a purpose-built UI, not a ported grid.
+            </p>
+            <p class="phase-meta">Needs the PDF decision from §09 resolved</p>
+          </div>
+        </li>
+        <li class="phase">
+          <span class="phase-n">6</span>
+          <div>
+            <h3>Long tail</h3>
+            <p>
+              RBAC administration, audit trail, TDS, Form 16, reports, bulk spreadsheet upload. Reasonable
+              to leave on the web admin permanently — these are desk tasks, not phone tasks.
+            </p>
+            <p class="phase-meta">Deliberately last · consider never</p>
+          </div>
+        </li>
+      </ol>
+
+      <h3>Minimum viable clone</h3>
+      <p>
+        If you want the shortest path to something genuinely usable: <strong>phases 1 + 2</strong>. That
+        is one login screen, four employee screens, six endpoints, and it serves the largest group of
+        users in the system. Everything else is additive.
+      </p>
+    </section>
+
+    <!-- ════════════ 11 TRAPS ════════════ -->
+    <section id="traps">
+      <p class="kicker">11 — Warnings</p>
+      <h2>Traps &amp; known defects</h2>
+
+      <p>
+        Found while reading the source. The first three are security issues in the existing backend that a
+        new client will inherit — worth fixing before you point a second app at them.
+      </p>
+
+      <div class="note crit">
+        <span class="note-label">Defect · password reset bypasses OTP</span>
+        <p>
+          <code>setNewPasswordAfterVerification</code> checks only that <code>users.otp</code> is
+          non-null, and OTP verification never marks or consumes it. Knowing a target's email is enough to
+          reset their password. Fix: require the OTP again on the final step, or mark it verified and
+          consumed. The OTP is also stored in plaintext with no expiry.
+        </p>
+      </div>
+
+      <div class="note crit">
+        <span class="note-label">Defect · shared default password</span>
+        <p>
+          Every appointment-created row gets <code>12345678</code>. Because login accepts
+          <code>emp_code</code> and codes are guessable, anyone can sign in as an employee who hasn't
+          changed it. There is no forced change on first login. Consider a per-user random password
+          surfaced to the admin, plus a must-change flag.
+        </p>
+      </div>
+
+      <div class="note crit">
+        <span class="note-label">Defect · unauthenticated appointment endpoints</span>
+        <p>
+          <code>POST /appointment</code>, <code>GET /appointment</code> and
+          <code>/appointment/check-emp-code</code> require no token. The write path is guarded by an
+          allow-list so <code>role</code> and <code>password</code> can't be injected, but
+          <code>GET /appointment</code> exposes candidate PII — names, mobiles, Aadhaar and bank
+          fields — to anyone. Authenticate the read before shipping.
+        </p>
+      </div>
+
+      <div class="note warn">
+        <span class="note-label">Hard deletes</span>
+        <p>
+          The <code>User</code> model has no <code>SoftDeletes</code> trait, so
+          <code>/employee/delete/{id}</code> permanently removes the row. An
+          <code>is_deleted</code> column exists and is used for deactivation, but the delete endpoint does
+          not use it. Confirm destructively in your UI and say so plainly.
+        </p>
+      </div>
+
+      <div class="note warn">
+        <span class="note-label">Duplicated columns in salary_slips</span>
+        <p>
+          <code>total_deduct</code> vs <code>total_deduction</code>, <code>net_payable</code> vs
+          <code>net_salary</code>, <code>gross_salary</code> vs <code>a_gross</code> vs
+          <code>salary</code>. Different upload templates fill different sets. Your payslip renderer must
+          coalesce rather than trust one column.
+        </p>
+      </div>
+
+      <div class="note">
+        <span class="note-label">Quirks to expect</span>
+        <p>
+          <code>GET /api/employee/get</code> runs a blanket <code>UPDATE</code> on every call, backfilling
+          null units — a list read has write side effects. <code>salary_slips.emp_code</code> is an
+          <code>integer</code> while <code>users.emp_code</code> is a <code>string(100)</code>, so codes
+          with letters won't join. <code>Ichapur</code> belongs to both companies. The RBAC model is
+          permissive by default. Several deletes are <code>GET</code>. And
+          <code>GET /api/gautampithadiya</code> is a leftover debug route that should be removed.
+        </p>
+      </div>
+
+      <h3>Before you start</h3>
+      <ul>
+        <li>Get a staging copy of the API — you will be creating and deleting test employees.</li>
+        <li>Confirm the JWT TTL, and decide now whether you need a refresh endpoint.</li>
+        <li>Decide the payslip PDF strategy early; it shapes phase 5.</li>
+        <li>Ask for the three security fixes above as backend work in parallel with phase 1.</li>
+        <li>Check whether CORS on <code>niss.pro</code> needs changing — native clients don't send Origin the same way browsers do, and the current config is permissive but worth verifying.</li>
+      </ul>
+    </section>
+
+  </main>
+</div>
+
+<footer>
+  <div>
+    Compiled from the <span class="mono">salary-slip-bac</span> (Laravel) and
+    <span class="mono">salary-slip-front</span> (React) sources — routes, migrations, controllers,
+    middleware and page components. Endpoint and column names are quoted as they appear in the code;
+    where behaviour is non-obvious the controller is the authority.
+  </div>
+</footer>
+
+<script>
+  // Serialize the live document into one standalone file. Cloning first lets us
+  // drop the scripts and the toolbar so the saved copy is inert content only —
+  // and because mermaid has already rendered to inline SVG by the time anyone
+  // clicks, the diagrams travel with it rather than needing the library.
+  function buildStandalone() {
+    var clone = document.documentElement.cloneNode(true);
+    clone.querySelectorAll("script, [data-noexport]").forEach(function (n) {
+      n.remove();
+    });
+    // Leave the theme unpinned so the saved file still follows the reader's OS.
+    clone.removeAttribute("data-theme");
+    return "<!doctype html>\n" + clone.outerHTML;
+  }
+
+  document.getElementById("dl-html").addEventListener("click", function () {
+    var blob = new Blob([buildStandalone()], { type: "text/html;charset=utf-8" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = "hrms-android-clone-spec.html";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  });
+
+  document.getElementById("dl-print").addEventListener("click", function () {
+    window.print();
+  });
+</script>

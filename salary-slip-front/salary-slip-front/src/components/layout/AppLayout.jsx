@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
-import { useAuth } from "../../context/AuthContext";
 
 const pageTitles = {
   "/admin": "Dashboard",
@@ -38,8 +37,6 @@ export default function AppLayout() {
   useEffect(() => {
     localStorage.setItem("salaryms_sidebar_collapsed", String(isCollapsed));
   }, [isCollapsed]);
-
-  const activeWidth = isCollapsed ? 0 : SIDEBAR_WIDTH;
 
   return (
     <div

@@ -12,43 +12,37 @@ import {
   Receipt,
   Shield,
   CheckCircle2,
-  Sparkles,
-  FileText,
   ChevronRight,
-  Camera,
-  Mail,
-  KeyRound,
-  UserCheck,
 } from "lucide-react";
 import { COMPANY_OPTIONS } from "../../config/companyConfig";
 
 const IS_ADMIN_BRANCH = COMPANY_OPTIONS.length > 1;
 
+const Blobs = () => (
+  <>
+    <div className="absolute -top-14 -right-14 w-56 h-56 rounded-full bg-white/10 pointer-events-none" />
+    <div className="absolute -bottom-12 -left-12 w-48 h-48 rounded-full bg-white/8 pointer-events-none" />
+    <div className="absolute top-5 right-56 w-16 h-16 rounded-full bg-white/6 pointer-events-none" />
+  </>
+);
+
+const Dots = ({ active }) => (
+  <div className="flex gap-2 items-center">
+    <div className={`h-2.5 rounded-full transition-all ${active === 0 ? "w-7 bg-brand-600" : "w-2.5 bg-gray-200 dark:bg-gray-700"}`} />
+    <div className={`h-2.5 rounded-full transition-all ${active === 1 ? "w-7 bg-brand-600" : "w-2.5 bg-gray-200 dark:bg-gray-700"}`} />
+  </div>
+);
+
+const Shell = ({ children }) => (
+  <div className="modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/60 backdrop-blur-sm">
+    <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-6xl max-h-[90vh] h-[90vh] md:h-[78vh] flex flex-col overflow-hidden">
+      {children}
+    </div>
+  </div>
+);
+
 export default function WelcomePopup({ onDismiss, onSetup }) {
   const [step, setStep] = useState(0);
-
-  const Blobs = () => (
-    <>
-      <div className="absolute -top-14 -right-14 w-56 h-56 rounded-full bg-white/10 pointer-events-none" />
-      <div className="absolute -bottom-12 -left-12 w-48 h-48 rounded-full bg-white/8 pointer-events-none" />
-      <div className="absolute top-5 right-56 w-16 h-16 rounded-full bg-white/6 pointer-events-none" />
-    </>
-  );
-
-  const Dots = ({ active }) => (
-    <div className="flex gap-2 items-center">
-      <div className={`h-2.5 rounded-full transition-all ${active === 0 ? "w-7 bg-brand-600" : "w-2.5 bg-gray-200 dark:bg-gray-700"}`} />
-      <div className={`h-2.5 rounded-full transition-all ${active === 1 ? "w-7 bg-brand-600" : "w-2.5 bg-gray-200 dark:bg-gray-700"}`} />
-    </div>
-  );
-
-  const Shell = ({ children }) => (
-    <div className="modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/60 backdrop-blur-sm">
-      <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-6xl max-h-[90vh] h-[90vh] md:h-[78vh] flex flex-col overflow-hidden">
-        {children}
-      </div>
-    </div>
-  );
 
   /* ── ADMIN BRANCH (master) ── */
   if (IS_ADMIN_BRANCH) return (

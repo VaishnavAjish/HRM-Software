@@ -4,7 +4,6 @@ import {
   Building2,
   Loader2,
   Search,
-  CalendarDays,
   ChevronLeft,
   ChevronRight,
   Users,
@@ -12,20 +11,8 @@ import {
   XCircle,
   Clock,
   Palmtree,
-  LayoutDashboard,
   CalendarDays as CalendarIcon,
 } from "lucide-react";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip as RechartsTooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-} from "recharts";
 import Modal from "../../components/ui/Modal";
 import { salaryApi } from "../../utils/api";
 import { useAuth } from "../../context/AuthContext";
@@ -131,8 +118,6 @@ export default function AttendanceView() {
     const empData = attendanceMap[selectedEmployee.emp_code] || {};
     const stats = { present: 0, absent: 0, half_day: 0, leave: 0, unmarked: 0 };
     const today = new Date();
-    const currentYear = today.getFullYear();
-    const currentMonth = today.getMonth() + 1;
 
     for (let day = 1; day <= totalDays; day++) {
       const dateStr = `${selectedYear}-${String(selectedMonth).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
@@ -318,16 +303,16 @@ export default function AttendanceView() {
               return (
                 <div
                   key={key}
-                  className={`rounded-2xl border border-gray-200 bg-white p-5 dark:border-white/10 dark:bg-[#0b0f1a] shadow-sm flex flex-col justify-between`}
+                  className={`rounded-2xl border border-gray-200 bg-white p-4 sm:p-5 dark:border-white/10 dark:bg-[#0b0f1a] shadow-sm flex flex-col justify-between`}
                 >
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className={`flex h-9 w-9 items-center justify-center rounded-xl ${config.bgLight} ${config.text}`}>
+                  <div className="flex items-center gap-2 sm:gap-3 mb-3">
+                    <div className={`flex h-8 w-8 sm:h-9 sm:w-9 flex-shrink-0 items-center justify-center rounded-xl ${config.bgLight} ${config.text}`}>
                       <IconComp size={18} />
                     </div>
-                    <span className="text-sm font-bold text-gray-500 uppercase tracking-wider dark:text-gray-400">{config.short}</span>
+                    <span className="text-xs sm:text-sm font-bold text-gray-500 uppercase tracking-wider dark:text-gray-400">{config.short}</span>
                   </div>
                   <div>
-                    <p className={`text-3xl font-black ${config.text}`}>{dashboardStats.stats[key]}</p>
+                    <p className={`text-2xl sm:text-3xl font-black ${config.text}`}>{dashboardStats.stats[key]}</p>
                     <p className="text-xs text-gray-400 mt-1">Total {config.short.toLowerCase()} days this month</p>
                   </div>
                 </div>
@@ -337,8 +322,8 @@ export default function AttendanceView() {
 
           {/* Employee List */}
           <div className="rounded-2xl border border-gray-200 bg-white dark:bg-[#0b0f1a] dark:border-white/10 shadow-sm overflow-hidden flex flex-col">
-            <div className="border-b border-gray-200 dark:border-white/10 px-5 py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-              <h3 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
+            <div className="border-b border-gray-200 dark:border-white/10 px-4 sm:px-5 py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <h3 className="text-base font-bold text-gray-900 dark:text-white flex flex-wrap items-center gap-2">
                 <Users size={18} className="text-brand-500" />
                 Employee Attendance
                 <span className="ml-2 rounded-full bg-gray-100 dark:bg-white/5 px-2.5 py-0.5 text-xs font-semibold text-gray-600 dark:text-gray-300">
@@ -357,7 +342,62 @@ export default function AttendanceView() {
               </div>
             </div>
 
-            <div className="overflow-x-auto">
+            {/* Mobile: stacked cards. The six-column table clipped the Leave
+                count and the View button off the right edge on a phone. */}
+            <ul className="divide-y divide-gray-100 dark:divide-white/5 md:hidden">
+              {filteredEmployees.map((emp) => {
+                const empAtt = attendanceMap[emp.emp_code] || {};
+                const counts = [
+                  { key: "present", label: "Present", value: Object.values(empAtt).filter((s) => s === "present").length, cls: "bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400" },
+                  { key: "absent", label: "Absent", value: Object.values(empAtt).filter((s) => s === "absent").length, cls: "bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400" },
+                  { key: "half_day", label: "Half Day", value: Object.values(empAtt).filter((s) => s === "half_day").length, cls: "bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400" },
+                  { key: "leave", label: "Leave", value: Object.values(empAtt).filter((s) => s === "leave").length, cls: "bg-sky-50 text-sky-600 dark:bg-sky-900/20 dark:text-sky-400" },
+                ];
+
+                return (
+                  <li key={emp.id} className="px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-gray-100 text-[11px] font-bold text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                        {(emp.name || "?").split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-bold text-gray-900 dark:text-white break-words">{emp.name}</p>
+                        <p className="text-[11px] font-mono text-gray-400">{emp.emp_code}</p>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-4 gap-2">
+                      {counts.map((c) => (
+                        <div key={c.key} className="text-center">
+                          <span className={`block rounded-lg py-1 text-sm font-bold ${c.cls}`}>{c.value}</span>
+                          <span className="mt-1 block text-[9px] font-bold uppercase tracking-wider text-gray-400">
+                            {c.label}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        setSelectedEmployee(emp);
+                        setIsCalendarModalOpen(true);
+                      }}
+                      className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-gray-600 transition hover:bg-gray-50 dark:border-white/10 dark:bg-slate-900 dark:text-gray-300 dark:hover:bg-slate-800"
+                    >
+                      <CalendarIcon size={12} /> View Calendar
+                    </button>
+                  </li>
+                );
+              })}
+              {filteredEmployees.length === 0 && (
+                <li className="py-12 text-center">
+                  <Users size={32} className="mx-auto mb-3 text-gray-300 dark:text-gray-600" />
+                  <p className="text-sm text-gray-400">No employees match your search</p>
+                </li>
+              )}
+            </ul>
+
+            <div className="hidden overflow-x-auto md:block">
               <table className="w-full text-left text-sm text-gray-600 dark:text-gray-300">
                 <thead className="bg-gray-50/50 text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:bg-white/[0.02] dark:text-gray-400">
                   <tr>
@@ -508,7 +548,7 @@ export default function AttendanceView() {
               <div className="grid grid-cols-7">
                 {calendarCells.map((cell, idx) => {
                   if (!cell.day) {
-                    return <div key={`empty-${idx}`} className="min-h-[60px] border-b border-r border-gray-100 dark:border-white/5 bg-gray-50/50 dark:bg-white/[0.01]" />;
+                    return <div key={`empty-${idx}`} className="min-h-[52px] sm:min-h-[60px] border-b border-r border-gray-100 dark:border-white/5 bg-gray-50/50 dark:bg-white/[0.01]" />;
                   }
 
                   const status = attendanceMap[selectedEmployee.emp_code]?.[cell.dateStr] || null;
@@ -520,7 +560,7 @@ export default function AttendanceView() {
                   return (
                     <div
                       key={cell.day}
-                      className={`relative min-h-[80px] border-b border-r border-gray-100 dark:border-white/5 p-1 transition-all flex flex-col items-center justify-start pt-2 ${
+                      className={`relative min-h-[52px] sm:min-h-[80px] border-b border-r border-gray-100 dark:border-white/5 p-1 transition-all flex flex-col items-center justify-start pt-2 ${
                         todayHighlight
                           ? "bg-brand-50/50 dark:bg-brand-900/10 ring-1 ring-inset ring-brand-500/30"
                           : config
@@ -549,7 +589,7 @@ export default function AttendanceView() {
                 })}
               </div>
 
-              <div className="flex items-center justify-center gap-4 px-4 py-2 bg-gray-50 dark:bg-white/[0.02]">
+              <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 px-4 py-2 bg-gray-50 dark:bg-white/[0.02]">
                 {Object.entries(STATUS_CONFIG).map(([key, config]) => (
                   <div key={key} className="flex items-center gap-1 text-[9px] font-bold text-gray-500 dark:text-gray-400">
                     <span className={`h-2 w-2 rounded-full ${config.bg}`} />

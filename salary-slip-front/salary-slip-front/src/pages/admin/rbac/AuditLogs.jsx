@@ -98,7 +98,7 @@ export default function AuditLogs() {
         <select
           value={module}
           onChange={(e) => setModule(e.target.value)}
-          className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white"
+          className="min-w-0 flex-1 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white sm:flex-none"
         >
           <option value="">All modules</option>
           {MODULES.map((m) => (
@@ -110,7 +110,7 @@ export default function AuditLogs() {
         <select
           value={action}
           onChange={(e) => setAction(e.target.value)}
-          className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white"
+          className="min-w-0 flex-1 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white sm:flex-none"
         >
           <option value="">All actions</option>
           {Object.keys(ACTION_TONE).map((a) => (
@@ -122,7 +122,98 @@ export default function AuditLogs() {
       </div>
 
       <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden">
-        <div className="overflow-x-auto">
+        {loading ? (
+          <p className="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">Loading...</p>
+        ) : logs.length === 0 ? (
+          <p className="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+            No audit activity recorded yet.
+          </p>
+        ) : (
+          <>
+            {/* Mobile: each log becomes a stacked card. The desktop table has six
+                columns (one of them three lines tall) and cannot shrink to a
+                phone without cutting the timestamp and IP off-screen. */}
+            <ul className="divide-y divide-gray-100 dark:divide-gray-700 md:hidden">
+              {logs.map((log) => {
+                const isOpen = expanded === log.id;
+                const changes = diffLines(log.old_value, log.new_value);
+                return (
+                  <li key={log.id} className="px-4 py-3">
+                    <button
+                      type="button"
+                      onClick={() => setExpanded(isOpen ? null : log.id)}
+                      className="flex w-full items-start justify-between gap-2 text-left"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge variant={ACTION_TONE[log.action] || "gray"}>{log.action}</Badge>
+                          <span className="text-sm font-medium text-gray-800 dark:text-gray-100">
+                            {log.module}
+                          </span>
+                        </div>
+                        <dl className="mt-2 space-y-1 text-xs text-gray-600 dark:text-gray-300">
+                          <div className="flex gap-1.5">
+                            <dt className="font-semibold text-gray-500 dark:text-gray-400">User:</dt>
+                            <dd className="min-w-0 break-words">
+                              {log.user ? (
+                                <>
+                                  {log.user.name}{" "}
+                                  <span className="text-gray-400">(ID {log.user.id})</span>{" "}
+                                  <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500 bg-gray-100 dark:bg-gray-700 dark:text-gray-300 px-1.5 py-0.5 rounded">
+                                    {LEVEL_LABEL[levelOf(log.user.role)] || "—"}
+                                  </span>
+                                </>
+                              ) : (
+                                <span className="italic text-gray-400">System</span>
+                              )}
+                            </dd>
+                          </div>
+                          <div className="flex gap-1.5">
+                            <dt className="font-semibold text-gray-500 dark:text-gray-400">IP:</dt>
+                            <dd className="font-mono">{log.ip_address ?? "—"}</dd>
+                          </div>
+                          <div className="flex gap-1.5">
+                            <dt className="font-semibold text-gray-500 dark:text-gray-400">When:</dt>
+                            <dd>{new Date(log.created_at).toLocaleString()}</dd>
+                          </div>
+                        </dl>
+                      </div>
+                      {changes.length > 0 && (
+                        <span className="mt-0.5 flex-shrink-0 text-gray-400">
+                          {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                        </span>
+                      )}
+                    </button>
+
+                    {isOpen && changes.length > 0 && (
+                      <div className="mt-3 space-y-2">
+                        {changes.map((c) => (
+                          <div
+                            key={c.key}
+                            className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-2.5 text-xs"
+                          >
+                            <p className="font-semibold text-gray-700 dark:text-gray-200">{c.key}</p>
+                            <p className="mt-1 break-all font-mono text-red-600 dark:text-red-400">
+                              − {formatVal(c.before)}
+                            </p>
+                            <p className="break-all font-mono text-green-600 dark:text-green-400">
+                              + {formatVal(c.after)}
+                            </p>
+                          </div>
+                        ))}
+                        {log.user_agent && (
+                          <p className="text-[11px] break-all text-gray-400 dark:text-gray-500">
+                            {log.user_agent}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+
+            <div className="hidden overflow-x-auto md:block">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 dark:bg-gray-900/40 text-left text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
               <tr>
@@ -135,19 +226,7 @@ export default function AuditLogs() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-              {loading ? (
-                <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
-                    Loading...
-                  </td>
-                </tr>
-              ) : logs.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
-                    No audit activity recorded yet.
-                  </td>
-                </tr>
-              ) : (
+              {
                 logs.map((log) => {
                   const isOpen = expanded === log.id;
                   const changes = diffLines(log.old_value, log.new_value);
@@ -219,10 +298,12 @@ export default function AuditLogs() {
                     </Fragment>
                   );
                 })
-              )}
+              }
             </tbody>
           </table>
-        </div>
+            </div>
+          </>
+        )}
 
         {meta.totalPages > 1 && (
           <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 dark:border-gray-700 text-sm text-gray-500 dark:text-gray-400">

@@ -13,7 +13,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";
 import { COMPANY_OPTIONS, getCompanyConfig } from "../../config/companyConfig";
 import {
-  formatDateInputValue, PasswordStrength, isPasswordValid,
+  PasswordStrength, isPasswordValid,
 } from "./AdminModals/EmployeeHelpers";
 import {
   validateEmployeeForm, validateEmail, validateMobile, validatePan,
@@ -118,20 +118,6 @@ function parseExcelPreview(file) {
 // The only thing the backend actually requires per row (see
 // UserController::import) — mirrors that check here so problems show up
 // before upload instead of only in the after-the-fact report.
-function findInvalidEmployeeRows(rows, columnMappings) {
-  const empCodeColIndex = Object.entries(columnMappings).find(([, field]) => field === "emp_code")?.[0];
-  const invalid = [];
-  rows.forEach((row, idx) => {
-    const isBlankRow = !row.some((v) => v !== null && v !== "");
-    if (isBlankRow) return;
-    const empCodeValue = empCodeColIndex !== undefined ? row[Number(empCodeColIndex)] : undefined;
-    if (empCodeValue === undefined || String(empCodeValue).trim() === "") {
-      invalid.push({ rowNumber: idx + 2, reason: "Missing employee code" });
-    }
-  });
-  return invalid;
-}
-
 function fmtFileSize(bytes) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -364,7 +350,6 @@ export default function AddEmployeePage() {
   const empFileInputRef = useRef(null);
 
   const hasEmpCodeMapping = Object.values(empColumnMappings).includes("emp_code");
-  const invalidEmpRows = empPreview ? findInvalidEmployeeRows(empPreview.rows, empColumnMappings) : [];
 
   // ─── Bulk: account master ───
   const [amFile, setAmFile] = useState(null);

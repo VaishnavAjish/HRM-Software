@@ -5,7 +5,6 @@ import {
   DollarSign,
   ArrowUpRight,
   Plus,
-  Calendar,
   Building2,
   Clock
 } from "lucide-react";
@@ -13,11 +12,9 @@ import { StatCard } from "../../components/ui/Card";
 import { SkeletonTable } from "../../components/ui/Skeleton";
 import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";
-import { getCompanyConfig } from "../../config/companyConfig";
 import { salaryApi, rbacApi } from "../../utils/api";
 import toast from "react-hot-toast";
 import ManageDepartmentsModal from "./AdminModals/ManageDepartmentsModal";
-import { MonthYearPicker } from "../../components/ui/MonthYearPicker";
 import {
   LineChart,
   Line,
@@ -36,32 +33,13 @@ const PIE_COLORS = ["#6366f1", "#22c55e", "#f59e0b", "#ef4444", "#0ea5e9", "#a85
 const fmt = (n) =>
   n === null || n === undefined ? "—" : "₹" + Number(n).toLocaleString("en-IN");
 
-function toMonthYear(value) {
-  if (!/^\d{4}-\d{2}$/.test(value || "")) {
-    return "";
-  }
-  const [year, month] = value.split("-");
-  return `${month}/${year}`;
-}
-
-function buildDashboardDateFilter(fromMonth, toMonth) {
-  if (!fromMonth || !toMonth) return {};
-  const from = toMonthYear(fromMonth);
-  const to = toMonthYear(toMonth);
-  if (!from || !to) return {};
-  return { month: `${from}to${to}` };
-}
-
 export default function AdminDashboard() {
   const { user } = useAuth();
   const { companyId, companyScope, scopeKey, scopeLabel } = useCompany();
   const [loading, setLoading] = useState(false);
 
-  const [recentBatchesData, setRecentBatchesData] = useState([]);
   const [departmentHeadcountData, setDepartmentHeadcountData] = useState([]);
   const [dashboardStats, setDashboardStats] = useState(null);
-  const [fromMonth, setFromMonth] = useState("");
-  const [toMonth, setToMonth] = useState("");
   const [isManageDeptModalOpen, setIsManageDeptModalOpen] = useState(false);
   const [settings, setSettings] = useState({});
 
@@ -69,23 +47,13 @@ export default function AdminDashboard() {
     let cancelled = false;
 
     async function fetchData() {
-      if (fromMonth && toMonth && fromMonth > toMonth) {
-        return;
-      }
-
       setLoading(true);
       try {
-        const dashboardDateFilter = buildDashboardDateFilter(
-          fromMonth,
-          toMonth,
-        );
-
         const [dashRes, settingsRes] = await Promise.all([
           salaryApi.getAdminDashboard(
             user?.accessToken,
             user?.tokenType,
             companyScope,
-            dashboardDateFilter,
           ),
           rbacApi.getSettings(user?.accessToken, user?.tokenType, "main_dashboard").catch(() => ({ status: false }))
         ]);
@@ -118,25 +86,6 @@ export default function AdminDashboard() {
                   },
             ),
         );
-
-        // Process Recent Batches for the table
-        const batches = (dashData.recent_batches || []);
-
-        const mappedBatches = batches.map((item) => {
-          return {
-            id: item.id,
-            batchId: item.batch_id || `BATCH-${item.id}`,
-            month: item.month || "-",
-            year: item.year || "-",
-            status: item.status == 1 ? "Processed" : item.status == 2 ? "Failed" : "Pending",
-            date: item.created_at ? new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' }).format(new Date(item.created_at)) : "-",
-            unit: item.unit || "-",
-            companyLabel:
-              getCompanyConfig(item.company_code || companyId)?.label || "-",
-          };
-        });
-
-        setRecentBatchesData(mappedBatches);
       } catch (err) {
         if (!cancelled)
           toast.error(err.message || "Failed to load dashboard data");
@@ -149,12 +98,9 @@ export default function AdminDashboard() {
     return () => {
       cancelled = true;
     };
-  }, [companyId, companyScope, fromMonth, scopeKey, toMonth, user]);
+  }, [companyId, companyScope, scopeKey, user]);
 
-  const recentBatches = recentBatchesData.slice(0, 5);
   const totalDepartments = departmentHeadcountData.length || 0;
-  const hasDateFilter = Boolean(fromMonth || toMonth);
-  const invalidDateRange = Boolean(fromMonth && toMonth && fromMonth > toMonth);
 
   const isVisible = (key, defaultVal = true) => {
     return settings[key] !== undefined ? settings[key] : defaultVal;

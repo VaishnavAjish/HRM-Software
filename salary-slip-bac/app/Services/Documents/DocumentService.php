@@ -6,6 +6,7 @@ use App\Exceptions\DocumentException;
 use App\Models\Document;
 use App\Models\DocumentVersion;
 use App\Models\User;
+use App\Support\AadhaarReference;
 use App\Support\DocumentFileName;
 use App\Support\DocumentType;
 use App\Support\ObjectKeyBuilder;
@@ -139,6 +140,34 @@ class DocumentService
     }
 
     /**
+     * Folder reference for an owner: the non-reversible Aadhaar HMAC when one
+     * is available, otherwise the employee code, otherwise a surrogate from the
+     * row id.
+     *
+     * The raw Aadhaar number never reaches the key — secureReference() emits
+     * only its last four digits plus an HMAC.
+     */
+    public static function ownerFolderReference(User $owner): string
+    {
+        $raw = $owner->getRawOriginal('aadhar_card_no') ?? $owner->aadhar_card_no;
+
+        if (AadhaarReference::isValid($raw)) {
+            // Set DOCUMENT_MASK_AADHAAR=true to substitute the non-reversible
+            // HMAC reference here; the appointment id below still separates
+            // records either way.
+            return config('documents.mask_aadhaar_in_key')
+                ? AadhaarReference::secureReference($raw)
+                : AadhaarReference::normalise($raw);
+        }
+
+        if ($owner->aadhaar_secure_reference) {
+            return $owner->aadhaar_secure_reference;
+        }
+
+        return DocumentFileName::entityId($owner->emp_code, $owner->id);
+    }
+
+    /**
      * Reserve the next version number under a row lock so two concurrent
      * replacements cannot both claim the same number. The unique index on
      * (document_id, version) is the backstop if a driver ignores the lock.
@@ -153,7 +182,10 @@ class DocumentService
         ?string $description
     ): array {
         return DB::transaction(function () use ($owner, $documentType, $facts, $originalName, $actorId, $idempotencyKey, $description) {
-            $ownerRef = DocumentFileName::entityId($owner->emp_code, $owner->id);
+            // <EmployeeID>_<AadhaarNo> — either identifier alone is enough to
+            // keep folders distinct, which matters for appointments that have
+            // no emp_code assigned yet.
+            $ownerRef = self::ownerFolderReference($owner);
 
             $document = Document::where('document_type', $documentType)
                 ->where(function ($q) use ($owner, $ownerRef) {
@@ -181,13 +213,19 @@ class DocumentService
             $next = (int) DocumentVersion::where('document_id', $document->id)->max('version') + 1;
 
             $generatedName = DocumentFileName::build(
-                $ownerRef,
                 $documentType,
                 $next,
                 $facts['extension']
             );
 
-            $objectKey = ObjectKeyBuilder::build('employee', $ownerRef, $documentType, $generatedName);
+            // <aadhaar>/<appointmentId>/<type>/<file>. The id keeps records that
+            // share an Aadhaar number in separate folders.
+            $objectKey = ObjectKeyBuilder::appointmentKey(
+                $ownerRef,
+                $owner->id ?: 'PENDING',
+                $documentType,
+                $generatedName
+            );
 
             $version = DocumentVersion::create([
                 'document_id'         => $document->id,

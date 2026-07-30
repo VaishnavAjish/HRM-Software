@@ -1,4 +1,4 @@
-import { Menu, Bell, Sun, Moon, Search, Download, LogOut } from "lucide-react";
+import { Menu, Sun, Moon, Download, LogOut } from "lucide-react";
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
 import { useInstallPWA } from "../../hooks/useInstallPWA";
@@ -8,9 +8,8 @@ import CompanyScopeDropdown from "./CompanyScopeDropdown";
 export default function Header({ onMenuClick, title, isCollapsed }) {
   const { dark, toggle } = useTheme();
   const { user, logout } = useAuth();
-  const { canInstall, install, isIOS, showIOSGuide, dismissIOSGuide } =
+  const { canInstall, install, showIOSGuide, dismissIOSGuide } =
     useInstallPWA();
-  const [notifOpen, setNotifOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
 
   return (

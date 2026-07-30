@@ -5,8 +5,8 @@ namespace App\Support;
 /**
  * Enterprise filename generation.
  *
- *   <EntityID>_<EntityName>_<DocumentType>_V<Version>_<YYYYMMDDHHMMSS>.<ext>
- *   EMP1025_RohitSaket_PAN_CARD_V1_20260729154530.pdf
+ *   <DocumentType>_V<Version>_<YYYYMMDDHHMMSS>.<ext>
+ *   PAN_CARD_V1_20260730110000.pdf
  *
  * Timestamps are UTC so names sort consistently regardless of server timezone.
  * The extension comes from the sniffed MIME type, never from the browser.
@@ -24,24 +24,6 @@ class DocumentFileName
         'COM1', 'COM2', 'COM3', 'COM4', 'COM5', 'COM6', 'COM7', 'COM8', 'COM9',
         'LPT1', 'LPT2', 'LPT3', 'LPT4', 'LPT5', 'LPT6', 'LPT7', 'LPT8', 'LPT9',
     ];
-
-    /** "Rohit  Saket!" -> "RohitSaket" */
-    public static function entityName(?string $name): string
-    {
-        $parts = preg_split('/\s+/', trim((string) $name)) ?: [];
-        $clean = '';
-
-        foreach ($parts as $part) {
-            $part = preg_replace('/[^A-Za-z0-9]+/u', '', $part);
-            if ($part !== '') {
-                $clean .= ucfirst(strtolower($part));
-            }
-        }
-
-        $clean = substr($clean, 0, self::MAX_ENTITY_NAME);
-
-        return $clean !== '' ? $clean : 'User';
-    }
 
     /** Employee code if present, else a padded surrogate from the row id. */
     public static function entityId(?string $code, $fallbackId = null): string
@@ -82,23 +64,22 @@ class DocumentFileName
     }
 
     /**
-     * <EmployeeID>_<DocumentType>_V<Version>_<YYYYMMDDHHMMSS>.<ext>
-     * EMP001_PAN_CARD_V1_20260729190000.pdf
+     * <DocumentType>_V<Version>_<YYYYMMDDHHMMSS>.<ext>
+     * PAN_CARD_V1_20260730104100.pdf
      *
-     * The employee name is deliberately not part of the name: it is personal
-     * data that would otherwise sit in every object key and log line, and the
-     * employee ID already identifies the owner unambiguously.
+     * No owner identifier appears in the filename. The folder already scopes
+     * the file to one person via a non-reversible reference, and anything put
+     * here would also travel into presigned URLs and Content-Disposition
+     * headers.
      */
     public static function build(
-        string $entityId,
         string $documentType,
         int $version,
         string $extension,
         ?\DateTimeInterface $at = null
     ): string {
         $stem = sprintf(
-            '%s_%s_V%d_%s',
-            self::entityId($entityId),
+            '%s_V%d_%s',
             strtoupper(preg_replace('/[^A-Za-z0-9_]+/u', '_', $documentType) ?? 'OTHER'),
             max(1, $version),
             self::timestamp($at)

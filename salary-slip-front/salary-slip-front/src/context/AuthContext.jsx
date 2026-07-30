@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { authApi, roleApi, rbacApi } from "../utils/api";
+import { authApi, rbacApi } from "../utils/api";
 import { resolveCompanyId } from "../config/companyConfig";
 
 const AuthContext = createContext(null);
@@ -194,7 +194,7 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const lookupUser = (empCode) => {
+  const lookupUser = () => {
     return null;
   };
 

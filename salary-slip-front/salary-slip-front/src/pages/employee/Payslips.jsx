@@ -8,7 +8,6 @@ import { useCompany } from "../../context/CompanyContext";
 import useIsMobile from "../../hooks/useIsMobile";
 import {
   formatCurrency,
-  formatDate,
 } from "../../utils/payslipUtils";
 import { salaryApi } from "../../utils/api";
 import { exportNodeToPdf } from "../../utils/pdfUtils";
@@ -97,16 +96,6 @@ export default function Payslips() {
   const [pdfLoading, setPdfLoading] = useState(false);
   const { user } = useAuth();
   const isMobile = useIsMobile(768);
-
-  const employee = {
-    name: user?.name,
-    empCode: user?.empCode ?? user?.emp_code,
-    bankAccount: user?.bankAccount ?? user?.bank_account,
-    bankName: user?.bankName ?? user?.bank_name,
-    uan: user?.uan,
-    phone: user?.phone ?? user?.mobile,
-    role: user?.role ?? user?.designation,
-  };
 
   // Fetch triggered whenever page changes
   useEffect(() => {

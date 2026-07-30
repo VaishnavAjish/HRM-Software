@@ -6,7 +6,6 @@ import { getCompanyConfig } from "../../config/companyConfig";
 import { salaryApi } from "../../utils/api";
 import { downloadForm16PDF } from "../../utils/exportUtils";
 import { buildForm16DocumentData } from "../../utils/form16Utils";
-import Form16Document from "../../components/form16/Form16Document";
 import toast from "react-hot-toast";
 
 const FY_OPTIONS = [
@@ -75,7 +74,7 @@ export default function Form16() {
             setEmployee(mapEmployee({ ...dashData?.user, company_code: companyId }));
           }
         }
-      } catch (err) {
+      } catch {
         if (!cancelled) toast.error("Failed to load Form 16 data");
       } finally {
         if (!cancelled) setLoading(false);

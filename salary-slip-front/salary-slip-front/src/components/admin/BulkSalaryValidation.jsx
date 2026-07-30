@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useCallback } from "react";
 import { CheckCircle2, XCircle, Trash2, Upload, Table2 } from "lucide-react";
 import toast from "react-hot-toast";
 import Button from "../ui/Button";
@@ -52,7 +52,7 @@ export default function BulkSalaryValidation({
   );
   const monthColIdx = useMemo(() => findColumnIndex(headers, ["month"]), [headers]);
 
-  function validateRow(row) {
+  const validateRow = useCallback((row) => {
     const errors = [];
     if (empCodeColIdx === -1) {
       errors.push("No Employee Code column found in this file");
@@ -72,7 +72,7 @@ export default function BulkSalaryValidation({
       errors.push("Unrecognized month value");
     }
     return errors;
-  }
+  }, [empCodeColIdx, monthColIdx, rows]);
 
   const validatedRows = useMemo(() => {
     const mapped = rows.filter(r => !r.deleted).map(r => ({
@@ -83,7 +83,7 @@ export default function BulkSalaryValidation({
     const valid = mapped.filter(r => r.isValid);
     const invalid = mapped.filter(r => !r.isValid);
     return { all: [...valid, ...invalid], valid, invalid };
-  }, [rows]);
+  }, [rows, validateRow]);
 
   function openEdit(rowId, colIdx) {
     setEditing({ rowId, colIdx });

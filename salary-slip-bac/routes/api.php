@@ -18,6 +18,7 @@ use App\Http\Controllers\Admin\AttendanceController;
 use App\Http\Controllers\Admin\ShiftController;
 use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\Api\V1\DocumentController as V1DocumentController;
+use App\Http\Controllers\Api\V1\AppointmentController as V1AppointmentController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\SalariesSlipController;
 use App\Http\Controllers\UserController;
@@ -109,6 +110,22 @@ Route::middleware('jwt.auth')->group(function () {
 
         Route::delete('{id}', [V1DocumentController::class, 'destroy'])->whereNumber('id');
         Route::post('{id}/restore', [V1DocumentController::class, 'restore'])->whereNumber('id');
+    });
+
+    // Appointment Details: saved before any document can be attached, so the
+    // upload step always has a real database id to work with.
+    Route::group(['prefix' => 'v1/appointments'], function () {
+        Route::post('/', [V1AppointmentController::class, 'store'])->middleware('throttle:30,1');
+        Route::get('{appointmentId}', [V1AppointmentController::class, 'show'])->whereNumber('appointmentId');
+        Route::put('{appointmentId}', [V1AppointmentController::class, 'update'])->whereNumber('appointmentId');
+        Route::patch('{appointmentId}', [V1AppointmentController::class, 'update'])->whereNumber('appointmentId');
+        Route::post('{appointmentId}/complete', [V1AppointmentController::class, 'complete'])->whereNumber('appointmentId');
+
+        // The Aadhaar number comes from the appointment record, so the client
+        // never sends (and cannot influence) it.
+        Route::post('{appointmentId}/documents', [V1DocumentController::class, 'storeForAppointment'])
+            ->whereNumber('appointmentId')
+            ->middleware('throttle:30,1');
     });
     
     // Allow any authenticated user (like Agent) to fetch departments

@@ -119,7 +119,6 @@ class MigrateDocumentsToS3 extends Command
 
         $generatedName = $version->generated_file_name
             ?: DocumentFileName::build(
-                $document->owner_ref ?? 'USR000000',
                 $document->document_type,
                 $version->version,
                 $extension,

@@ -4,7 +4,6 @@ import {
   X,
   FileSpreadsheet,
   CloudUpload,
-  HardDrive,
   CheckCircle2,
   Hash,
   Layers,

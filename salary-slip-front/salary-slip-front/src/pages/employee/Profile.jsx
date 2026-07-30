@@ -1,8 +1,6 @@
 import { useState, useEffect } from "react";
 import ModernDatePicker from "../../components/ModernDatePicker";
 import {
-  PasswordStrength,
-  isPasswordValid,
   formatDateInputValue,
   getEmployeePhotoUrl,
 } from "../admin/AdminModals/EmployeeHelpers";
@@ -17,13 +15,9 @@ import {
   MapPin,
   Calendar,
   Hash,
-  Shield,
   Award,
-  Clock,
-  CheckCircle,
   AlertCircle,
-  Eye,
-  EyeOff,
+  CheckCircle2,
   CreditCard,
   User,
   Home,
@@ -32,9 +26,6 @@ import { useAuth } from "../../context/AuthContext"; // Corrected import path
 import { authApi, salaryApi } from "../../utils/api";
 import toast from "react-hot-toast";
 import usePhotoCapture from "../../hooks/usePhotoCapture";
-
-const inputCls =
-  "w-full px-3 py-2.5 text-sm bg-gray-50 dark:bg-gray-700/60 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition";
 
 function InfoRow({
   icon: Icon,
@@ -62,18 +53,6 @@ function InfoRow({
           </p>
         )}
       </div>
-    </div>
-  );
-}
-
-function StatCard({ label, value, sub, color }) {
-  return (
-    <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-3 text-center">
-      <p className={`text-lg font-bold ${color}`}>{value}</p>
-      <p className="text-xs text-gray-500 dark:text-gray-400 font-medium leading-tight mt-0.5">
-        {label}
-      </p>
-      {sub && <p className="text-xs text-gray-400 mt-0.5">{sub}</p>}
     </div>
   );
 }
@@ -207,21 +186,7 @@ export default function Profile() {
     setPhotoPreview("");
   };
 
-  const [passwords, setPasswords] = useState({
-    current: "",
-    next: "",
-    confirm: "",
-  });
-  const [showPwd, setShowPwd] = useState({
-    current: false,
-    next: false,
-    confirm: false,
-  });
-  const [pwdLoading, setPwdLoading] = useState(false);
-
   const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
-  const setPwd = (k, v) => setPasswords((p) => ({ ...p, [k]: v }));
-  const toggleShow = (k) => setShowPwd((p) => ({ ...p, [k]: !p[k] }));
 
   const handleSave = async () => {
     if (form.pan_card_no && !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/i.test(form.pan_card_no)) {
@@ -339,41 +304,6 @@ export default function Profile() {
     setEditing(false);
     setActiveStep(1);
   };
-
-  const handlePasswordUpdate = async () => {
-    if (!passwords.current || !passwords.next || !passwords.confirm) {
-      toast.error("All password fields are required");
-      return;
-    }
-    if (!isPasswordValid(passwords.next)) {
-      toast.error("Password must be 6+ chars with uppercase, lowercase, number & special character");
-      return;
-    }
-    setPwdLoading(true);
-    try {
-      const res = await authApi.changePassword(
-        user?.accessToken,
-        user?.tokenType,
-        passwords.current,
-        passwords.next,
-        passwords.confirm,
-      );
-      toast.success(res?.message || "Password updated successfully");
-      setPasswords({ current: "", next: "", confirm: "" });
-    } catch (err) {
-      toast.error(err.message || "Failed to update password");
-    } finally {
-      setPwdLoading(false);
-    }
-  };
-
-  const netSalary =
-    (emp.basicSalary || 0) +
-    (emp.allowances || 0) +
-    (emp.bonus || 0) -
-    (emp.deductions || 0);
-  const joinYear = emp.joinDate ? new Date(emp.joinDate).getFullYear() : "—";
-  const tenure = new Date().getFullYear() - joinYear;
 
   if (loading)
     return (
@@ -637,7 +567,7 @@ export default function Profile() {
 
             <div className="flex flex-wrap items-center gap-2 mt-3">
               <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
-                <CheckCircle size={10} /> {emp.status}
+                <CheckCircle2 size={10} /> {emp.status}
               </span>
               <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-brand-100 dark:bg-brand-900/30 text-brand-700 dark:text-brand-400">
                 <Building2 size={10} /> <span className="truncate max-w-[120px]">{emp.department || "—"}</span>

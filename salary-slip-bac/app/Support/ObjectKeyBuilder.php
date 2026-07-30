@@ -14,6 +14,7 @@ use InvalidArgumentException;
 class ObjectKeyBuilder
 {
     public const OWNER_PREFIXES = [
+        'appointment' => 'appointments',
         'user'     => 'users',
         'employee' => 'employees',
         'vendor'   => 'vendors',
@@ -86,10 +87,36 @@ class ObjectKeyBuilder
         string $documentType,
         string $fileName
     ): string {
-        self::ownerPrefix($ownerType);
-
         $key = implode('/', [
+            self::ownerPrefix($ownerType),
             self::sanitiseSegment($ownerRef, 'owner reference'),
+            self::sanitiseSegment($documentType, 'document type'),
+            self::sanitiseSegment($fileName, 'file name'),
+        ]);
+
+        return self::assertSafe($key);
+    }
+
+    /**
+     * <AadhaarOrRef>/<AppointmentId>/<DocumentType>/<GeneratedFileName>
+     *
+     *   123456789012/104/PAN_CARD/PAN_CARD_V1_20260730112000.pdf
+     *   123456789012/106/PAN_CARD/PAN_CARD_V1_20260730112100.pdf
+     *
+     * The appointment id is the second segment specifically so two records that
+     * share an Aadhaar number — which the backfill found 9 of — keep separate
+     * folders instead of one appearing as a new version of the other.
+     */
+    public static function appointmentKey(
+        string $aadhaarOrRef,
+        $appointmentId,
+        string $documentType,
+        string $fileName
+    ): string {
+        $key = implode('/', [
+            self::sanitiseSegment($aadhaarOrRef, 'aadhaar reference'),
+            self::sanitiseSegment((string) $appointmentId, 'appointment id'),
+            self::sanitiseSegment($documentType, 'document type'),
             self::sanitiseSegment($fileName, 'file name'),
         ]);
 
@@ -133,8 +160,10 @@ class ObjectKeyBuilder
             return true;
         }
 
-        // Current layout: exactly <employeeRef>/<generatedFileName>.
-        return (bool) preg_match('#^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+\.[A-Za-z0-9]{1,10}$#', $value);
+        // Current layout is <aadhaar>/<appointmentId>/<type>/<file>; earlier
+        // revisions wrote two or three segments. Accept any of them, always
+        // ending in an extension. Local paths were excluded above.
+        return (bool) preg_match('#^[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+){1,4}\.[A-Za-z0-9]{1,10}$#', $value);
     }
 
     /** Final gate — nothing reaches S3 without passing this. */

@@ -3,7 +3,7 @@ const APP_LABEL =
   typeof __APP_LABEL__ !== "undefined" ? __APP_LABEL__ : "Build better workplaces";
 
 import { NavLink, useLocation } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";
 import { useInstallPWA } from "../../hooks/useInstallPWA";
@@ -13,15 +13,11 @@ import {
   Users,
   DollarSign,
   Receipt,
-  LogOut,
   X,
   UserCircle,
   FileText,
-  FileSpreadsheet,
   ClipboardList,
   ChevronRight,
-  Download,
-  GripVertical,
   Plus,
   ChevronLeft,
   ShieldCheck,
@@ -121,9 +117,6 @@ const agentNav = [
   { to: "/agent/appointments", label: "Appointment Form", icon: Plus },
 ];
 
-const MIN_SIDEBAR_WIDTH = 240;
-const MAX_SIDEBAR_WIDTH = 380;
-
 export default function Sidebar({ open, onClose, width, isCollapsed, onCollapse }) {
   const { user, logout } = useAuth();
   const location = useLocation();
@@ -133,7 +126,7 @@ export default function Sidebar({ open, onClose, width, isCollapsed, onCollapse 
     scopeLabel,
     isAllCompanies,
   } = useCompany();
-  const { canInstall, install, showIOSGuide, dismissIOSGuide } =
+  const { showIOSGuide, dismissIOSGuide } =
     useInstallPWA();
     
   const [openMenus, setOpenMenus] = useState([]);
@@ -146,7 +139,7 @@ export default function Sidebar({ open, onClose, width, isCollapsed, onCollapse 
     );
   };
   
-  let nav = [];
+  let nav;
   if (user?.role === "admin") {
     nav = getAdminNav(companyId, user, isAllCompanies);
   } else if (user?.role === "agent") {
@@ -214,12 +207,6 @@ export default function Sidebar({ open, onClose, width, isCollapsed, onCollapse 
       toast.error(result?.message || "Logout failed");
     }
   };
-
-  const handleScopeChange = (nextScope) => {
-    setCompanyScope(nextScope);
-    onClose?.();
-  };
-
 
 
   return (

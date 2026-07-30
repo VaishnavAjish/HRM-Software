@@ -135,6 +135,7 @@ function normalizeAppointment(item, index) {
       adhar_image: item.adhar_image || null,
       pan_image: item.pan_image || null,
       check_image: item.check_image || null,
+      account_book: item.account_book || null,
     },
     members: (() => {
       try {
@@ -292,11 +293,25 @@ const FormInline = ({ label, value }) => (
   </div>
 );
 
+// Must match the four slots the appointment form uploads. Bank Passbook was
+// missing here, so it uploaded and stored but never appeared on this page.
 const DOC_LABELS = {
   adhar_image: "Aadhar Card",
   pan_image: "PAN Card",
   check_image: "Cheque",
+  account_book: "Bank Passbook",
 };
+
+/**
+ * Documents may be PDFs as well as images. The extension has to be read from
+ * the URL path, not the whole string — a presigned URL carries a query string
+ * after it.
+ */
+function isPdfUrl(url) {
+  if (!url) return false;
+  const path = String(url).split("?")[0].split("#")[0];
+  return path.toLowerCase().endsWith(".pdf");
+}
 
 function DocLightbox({ doc, onClose }) {
   if (!doc) return null;
@@ -321,11 +336,19 @@ function DocLightbox({ doc, onClose }) {
           </div>
         </div>
         <div className="overflow-auto max-h-[calc(90vh-56px)] flex items-center justify-center bg-gray-50 p-4">
-          <img
-            src={doc.url}
-            alt={doc.label}
-            className="max-w-full max-h-full object-contain rounded-lg"
-          />
+          {isPdfUrl(doc.url) ? (
+            <iframe
+              src={doc.url}
+              title={doc.label}
+              className="w-full h-[80vh] border-0 rounded-lg bg-white"
+            />
+          ) : (
+            <img
+              src={doc.url}
+              alt={doc.label}
+              className="max-w-full max-h-full object-contain rounded-lg"
+            />
+          )}
         </div>
       </div>
     </div>,
@@ -335,7 +358,15 @@ function DocLightbox({ doc, onClose }) {
 
 function DocumentsSection({ documents }) {
   const [lightbox, setLightbox] = useState(null);
-  const hasAny = Object.values(documents).some(Boolean);
+
+  // Stored values are S3 object keys (or legacy uploads/… paths); resolve them
+  // to a usable URL up front so both the thumbnail and the lightbox get the
+  // same one, and a server-local path renders as "not uploaded" rather than a
+  // broken image.
+  const resolved = Object.fromEntries(
+    Object.keys(DOC_LABELS).map((key) => [key, getEmployeePhotoUrl(documents[key])]),
+  );
+  const hasAny = Object.values(resolved).some(Boolean);
 
   return (
     <>
@@ -350,7 +381,7 @@ function DocumentsSection({ documents }) {
         {hasAny ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
             {Object.entries(DOC_LABELS).map(([key, label]) => {
-              const url = documents[key];
+              const url = resolved[key];
               return (
                 <div key={key} className="flex flex-col">
                   <button
@@ -365,11 +396,20 @@ function DocumentsSection({ documents }) {
                   >
                     {url ? (
                       <>
-                        <img
-                          src={url}
-                          alt={label}
-                          className="w-full h-full object-cover"
-                        />
+                        {isPdfUrl(url) ? (
+                          // A PDF cannot render in an <img>; show a document
+                          // tile that still opens in the viewer on click.
+                          <div className="w-full h-full flex flex-col items-center justify-center gap-1 bg-red-50 text-red-600">
+                            <FileText size={22} />
+                            <span className="text-[10px] font-bold">PDF</span>
+                          </div>
+                        ) : (
+                          <img
+                            src={url}
+                            alt={label}
+                            className="w-full h-full object-cover"
+                          />
+                        )}
                         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition flex items-center justify-center opacity-0 group-hover:opacity-100">
                           <div className="bg-white rounded-full p-2 shadow">
                             <ZoomIn size={14} className="text-gray-700" />
@@ -1077,7 +1117,7 @@ export default function Appointments() {
 
       const confirmMessage = oldValue
         ? `Change employee code to '${trimmed}'?`
-        : `Assign employee code '${trimmed}'? This will convert this appointment into a full employee record and remove it from the Appointments list.`;
+        : `Assign employee code '${trimmed}'? This moves the record out of Appointments and into Add Employee → Pending Employees, where you set their password to activate the login.`;
       if (!window.confirm(confirmMessage)) {
         revertEmpCodeCell(data.id, oldValue);
         return;

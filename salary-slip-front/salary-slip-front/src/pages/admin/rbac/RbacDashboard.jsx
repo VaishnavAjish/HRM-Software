@@ -10,25 +10,11 @@ import {
   Settings2,
   ShieldAlert,
 } from "lucide-react";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-} from "recharts";
 import toast from "react-hot-toast";
 import Modal from "../../../components/ui/Modal";
 import Button from "../../../components/ui/Button";
 import { rbacApi } from "../../../utils/api";
 import { useAuth } from "../../../context/AuthContext";
-
-const PIE_COLORS = ["#6366f1", "#22c55e", "#f59e0b", "#ef4444", "#0ea5e9", "#a855f7"];
 
 const CARDS = [
   { key: "totalUsers", label: "Total Users", icon: Users, settingKey: "dashboard.show_total_users" },
@@ -106,7 +92,7 @@ export default function RbacDashboard() {
       .then((res) => {
         if (res.status) setStats(res.data);
       })
-      .catch((err) => toast.error(err.message || "Failed to load RBAC dashboard"))
+      .catch(() => toast.error("Failed to load RBAC dashboard"))
       .finally(() => setLoading(false));
     loadSettings();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -192,8 +178,8 @@ export default function RbacDashboard() {
       } else {
         toast.error("Failed to save settings");
       }
-    } catch (err) {
-      toast.error(err.message || "Failed to save settings");
+    } catch {
+      toast.error("Failed to save settings");
     } finally {
       setSaving(false);
     }
