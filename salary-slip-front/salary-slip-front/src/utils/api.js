@@ -3,8 +3,66 @@ import {
   resolveCompanyIds,
   resolveCompanyScope,
 } from "../config/companyConfig";
+import { Capacitor, CapacitorHttp } from '@capacitor/core';
+
+// Two response shapes exist across the API: the original `{ message }` /
+// `{ error: "string" }`, and the newer v1 document/appointment endpoints'
+// `{ error: { code, message, details } }` (see DocumentException::toArray()).
+// Without this, an object `error` got passed straight into `new Error(...)`,
+// which coerces it to the literal string "[object Object]" — so a real,
+// specific rejection (e.g. "Unknown document type.") rendered as a useless
+// toast, making a hard failure look like nothing happened.
+function extractErrorMessage(data) {
+  if (data?.message) return data.message;
+  if (typeof data?.error === "string") return data.error;
+  if (data?.error?.message) return data.error.message;
+  return "Something went wrong. Please try again.";
+}
+
 async function apiRequest(path, options = {}) {
   const isFormData = options.body instanceof FormData;
+
+  // Use CapacitorHttp for native builds to bypass CORS issues.
+  const platform = Capacitor.getPlatform();
+  const useNativeHttp = platform === 'android' || platform === 'ios';
+
+  if (useNativeHttp) {
+    const url = `${baseUrl}/api${path}`;
+    console.log(`[API] Native Request (${platform}): ${options.method || "GET"} ${url}`);
+
+    try {
+      const response = await CapacitorHttp.request({
+        url,
+        method: options.method || "GET",
+        headers: {
+          ...(isFormData ? {} : { "Content-Type": "application/json" }),
+          Accept: "application/json",
+          ...options.headers,
+        },
+        data: options.body, // CapacitorHttp uses 'data' for body
+      });
+
+      const data = response.data;
+      if (response.status < 200 || response.status >= 300 || data?.success === false || data?.status === false) {
+        const message = extractErrorMessage(data);
+        const error = new Error(message);
+        error.status = response.status;
+        error.data = data;
+        if (response.status === 401 && options.headers?.Authorization) {
+          window.dispatchEvent(new CustomEvent("auth:unauthorized"));
+        }
+        throw error;
+      }
+      return data;
+    } catch (err) {
+      if (err instanceof Error && !err.status) {
+        // Network error
+        console.error("[API] Native Request Failed:", err);
+      }
+      throw err;
+    }
+  }
+
   const headers = isFormData
     ? { Accept: "application/json", ...options.headers }
     : {
@@ -13,14 +71,13 @@ async function apiRequest(path, options = {}) {
         ...options.headers,
       };
 
-  const response = await fetch(`${baseUrl}/api${path}`, {
+  const url = `${baseUrl}/api${path}`;
+  // Debug log to help identify connectivity issues in the mobile app.
+  console.log(`[API] Request: ${options.method || "GET"} ${url}`);
+
+  const response = await fetch(url, {
     ...options,
     headers,
-    // Without this, GET requests can be served from the HTTP cache instead
-    // of hitting the network — barely noticeable on desktop Chrome, but the
-    // Android WebView the mobile app runs in caches GETs more aggressively,
-    // which is why a freshly-added trial form or a just-assigned emp_code
-    // wouldn't show up anywhere until a full reload forced a real refetch.
     cache: "no-store",
   });
 
@@ -30,8 +87,7 @@ async function apiRequest(path, options = {}) {
     : null;
 
   if (!response.ok || data?.success === false || data?.status === false) {
-    const message =
-      data?.message || data?.error || "Something went wrong. Please try again.";
+    const message = extractErrorMessage(data);
     const error = new Error(message);
     error.status = response.status;
     error.data = data;
@@ -53,11 +109,11 @@ function buildCompanyQuery(companyId) {
   const scope = resolveCompanyScope(companyId);
   const query = {};
 
-  // If a specific company is selected (not 'all-companies'), add it to the query.
-  // The backend might crash if it receives 'all-companies' or a comma-separated list
-  // in contexts where it expects a single, lookup-ready company code.
-  if (scope.companyId && scope.companyId !== "all-companies") {
-    query.company_code = scope.companyId;
+  // The backend requires a company_code for most lookups. When 'Both Companies'
+  // is selected, we send 'all' which is explicitly handled by the server
+  // to skip single-company filtering.
+  if (scope.companyId) {
+    query.company_code = scope.companyId === "all-companies" ? "all" : scope.companyId;
   }
 
   if (scope.unit) {

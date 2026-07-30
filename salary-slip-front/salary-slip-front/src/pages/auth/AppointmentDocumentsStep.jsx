@@ -1,32 +1,39 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Upload, Eye, Download, RefreshCw, Trash2, Loader2, ArrowLeft,
-  CheckCircle2, AlertTriangle, Inbox,
+  CheckCircle2, AlertTriangle, Inbox, Camera,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { appointmentV1Api, documentV1Api } from "../../utils/api";
 import { useAuth } from "../../context/AuthContext";
+import usePhotoCapture from "../../hooks/usePhotoCapture";
 import DocumentViewerModal from "../../components/documents/DocumentViewerModal";
 import { PHOTO_DOCUMENT_TYPE } from "./documentTypes";
 
-const ACCEPT = ".pdf,.jpg,.jpeg,.png";
-const ALLOWED_MIME = ["application/pdf", "image/jpeg", "image/png"];
-const MAX_BYTES = 10 * 1024 * 1024;
+const ACCEPT = ".pdf,.jpg,.jpeg,.png,.webp";
 
-const TYPES = [
-  { value: "APPOINTMENT_FORM", label: "Appointment Form" },
+// Used only until GET /v1/documents/types answers (or if it's unreachable) —
+// the real, authoritative list always comes from the server. This previously
+// hardcoded list included "APPOINTMENT_FORM", which was never a key in
+// DocumentType::CATEGORIES on the backend: every upload against it was
+// rejected there with DOCUMENT_TYPE_INVALID, so it silently never appeared
+// in the list above. Every slug below is a real, current catalogue key so the
+// fallback can't repeat that mistake.
+const FALLBACK_TYPES = [
   { value: "AADHAR_CARD", label: "Aadhaar Card" },
   { value: "PAN_CARD", label: "PAN Card" },
-  { value: "PHOTOGRAPH", label: "Profile Photo" },
-  { value: "BANK_PASSBOOK", label: "Bank Passbook" },
+  { value: "PHOTOGRAPH", label: "Photograph" },
+  { value: "BANK_PASSBOOK", label: "Passbook" },
   { value: "RESUME", label: "Resume" },
-  { value: "ELECTRICITY_BILL", label: "Address Proof" },
-  { value: "DEGREE_CERTIFICATE", label: "Educational Certificate" },
+  { value: "ELECTRICITY_BILL", label: "Electricity Bill" },
+  { value: "DEGREE_CERTIFICATE", label: "Degree Certificate" },
   { value: "EXPERIENCE_LETTER", label: "Experience Letter" },
-  { value: "APPOINTMENT_LETTER", label: "Employment Contract" },
+  { value: "APPOINTMENT_LETTER", label: "Appointment Letter" },
   { value: "SIGNATURE", label: "Signature" },
   { value: "OTHER", label: "Other" },
 ];
+const FALLBACK_MAX_BYTES = 10 * 1024 * 1024;
+const FALLBACK_MIME = { default: ["application/pdf", "image/jpeg", "image/png"] };
 
 const formatSize = (b) =>
   !b ? "—" : b < 1024 ? `${b} B` : b < 1048576 ? `${(b / 1024).toFixed(0)} KB` : `${(b / 1048576).toFixed(1)} MB`;
@@ -105,8 +112,36 @@ export default function AppointmentDocumentsStep({
 
   const [viewing, setViewing] = useState(null);
   const [replacingId, setReplacingId] = useState(null);
+  const [replacingType, setReplacingType] = useState(null);
   const [retryingPhoto, setRetryingPhoto] = useState(false);
   const replaceRef = useRef(null);
+
+  // The type list, its per-type MIME allowlist and the max size are all
+  // authoritative on the server (config/documents.php, DocumentType). Fetched
+  // once here instead of hardcoded so the picker can never again offer a
+  // slug the backend will actually reject.
+  const [catalog, setCatalog] = useState({
+    types: FALLBACK_TYPES,
+    maxFileSizeBytes: FALLBACK_MAX_BYTES,
+    allowedMimeTypes: FALLBACK_MIME,
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    documentV1Api.getTypes(token, tokenType)
+      .then((res) => {
+        if (cancelled || !res?.data?.types?.length) return;
+        setCatalog({
+          types: res.data.types,
+          maxFileSizeBytes: res.data.maxFileSizeBytes || FALLBACK_MAX_BYTES,
+          allowedMimeTypes: res.data.allowedMimeTypes || FALLBACK_MIME,
+        });
+      })
+      .catch(() => {
+        // Keep the fallback list — better than an empty picker.
+      });
+    return () => { cancelled = true; };
+  }, [token, tokenType]);
 
   const loadList = useCallback(async () => {
     if (!appointmentId) return;
@@ -125,17 +160,28 @@ export default function AppointmentDocumentsStep({
     return () => clearTimeout(id);
   }, [loadList]);
 
-  const validate = (f) => {
+  // Capture instead of picking a file — rear camera, since these are physical
+  // documents (an ID card, a signed letter), not a selfie-style profile shot.
+  const { requestCapture, cameraModal } = usePhotoCapture({
+    onCapture: (capturedFile) => setFile(capturedFile),
+    front: false,
+  });
+
+  const validate = (f, type) => {
     if (!f) return "Choose a file.";
     if (f.size === 0) return "That file is empty.";
-    if (f.size > MAX_BYTES) return "File must be 10 MB or smaller.";
-    if (!ALLOWED_MIME.includes(f.type)) return "Only PDF, JPG and PNG files are supported.";
+    if (f.size > catalog.maxFileSizeBytes) return `File must be ${formatSize(catalog.maxFileSizeBytes)} or smaller.`;
+    const allowed = catalog.allowedMimeTypes[type] || catalog.allowedMimeTypes.default || FALLBACK_MIME.default;
+    if (!allowed.includes(f.type)) {
+      const names = allowed.map((m) => (m.split("/")[1] || m).toUpperCase()).join(", ");
+      return `This document type only accepts: ${names}.`;
+    }
     return null;
   };
 
   const handleUpload = async () => {
     if (!documentType) return toast.error("Select a document type.");
-    const problem = validate(file);
+    const problem = validate(file, documentType);
     if (problem) return toast.error(problem);
 
     setUploading(true);
@@ -191,7 +237,7 @@ export default function AppointmentDocumentsStep({
   const handleReplaceFile = async (e) => {
     const picked = e.target.files?.[0];
     e.target.value = "";
-    const problem = validate(picked);
+    const problem = validate(picked, replacingType);
     if (problem) return toast.error(problem);
     try {
       await documentV1Api.replace({ id: replacingId, file: picked }, token, tokenType);
@@ -201,6 +247,7 @@ export default function AppointmentDocumentsStep({
       toast.error(err?.message || "Replace failed.");
     } finally {
       setReplacingId(null);
+      setReplacingType(null);
     }
   };
 
@@ -282,18 +329,44 @@ export default function AppointmentDocumentsStep({
             className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm"
           >
             <option value="">Document type…</option>
-            {TYPES.map((t) => (
-              <option key={t.value} value={t.value}>{t.label}</option>
-            ))}
+            {catalog.types.some((t) => t.category) ? (
+              Object.entries(
+                catalog.types.reduce((groups, t) => {
+                  const key = t.category || "Other";
+                  (groups[key] ||= []).push(t);
+                  return groups;
+                }, {}),
+              ).map(([category, items]) => (
+                <optgroup key={category} label={category}>
+                  {items.map((t) => (
+                    <option key={t.value} value={t.value}>{t.label}</option>
+                  ))}
+                </optgroup>
+              ))
+            ) : (
+              catalog.types.map((t) => (
+                <option key={t.value} value={t.value}>{t.label}</option>
+              ))
+            )}
           </select>
 
-          <input
-            ref={fileRef}
-            type="file"
-            accept={ACCEPT}
-            onChange={(e) => setFile(e.target.files?.[0] || null)}
-            className="block w-full text-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-brand-700"
-          />
+          <div className="flex items-center gap-2">
+            <input
+              ref={fileRef}
+              type="file"
+              accept={ACCEPT}
+              onChange={(e) => setFile(e.target.files?.[0] || null)}
+              className="block w-full min-w-0 text-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-brand-700"
+            />
+            <button
+              type="button"
+              onClick={requestCapture}
+              title="Take a photo instead of choosing a file"
+              className="inline-flex flex-shrink-0 items-center justify-center rounded-lg border border-gray-200 p-2.5 text-gray-500 hover:border-brand-300 hover:text-brand-600"
+            >
+              <Camera size={16} />
+            </button>
+          </div>
 
           <button
             type="button"
@@ -304,9 +377,12 @@ export default function AppointmentDocumentsStep({
             {uploading ? <><Loader2 size={15} className="animate-spin" /> Uploading…</> : <><Upload size={15} /> Upload</>}
           </button>
         </div>
+        {cameraModal}
 
         {file && <p className="mt-2 text-[11px] text-gray-500">{file.name} · {formatSize(file.size)}</p>}
-        <p className="mt-1 text-[11px] text-gray-400">PDF, JPG, PNG · max 10 MB</p>
+        <p className="mt-1 text-[11px] text-gray-400">
+          PDF, JPG, PNG · max {formatSize(catalog.maxFileSizeBytes)}
+        </p>
 
         {lastError && (
           <div className="mt-3 flex items-center justify-between gap-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">
@@ -364,7 +440,7 @@ export default function AppointmentDocumentsStep({
                         <div className="flex items-center justify-end gap-1">
                           {a.view && <button type="button" title="View" onClick={() => setViewing(d)} className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 hover:text-brand-600"><Eye size={15} /></button>}
                           {a.download && <button type="button" title="Download" onClick={() => handleDownload(d)} className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 hover:text-brand-600"><Download size={15} /></button>}
-                          {a.replace && <button type="button" title="Replace" onClick={() => { setReplacingId(d.documentId); replaceRef.current?.click(); }} className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 hover:text-brand-600"><RefreshCw size={15} /></button>}
+                          {a.replace && <button type="button" title="Replace" onClick={() => { setReplacingId(d.documentId); setReplacingType(d.documentType); replaceRef.current?.click(); }} className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 hover:text-brand-600"><RefreshCw size={15} /></button>}
                           {a.delete && <button type="button" title="Delete" onClick={() => handleDelete(d)} className="rounded-lg p-1.5 text-gray-500 hover:bg-red-50 hover:text-red-600"><Trash2 size={15} /></button>}
                         </div>
                       </td>

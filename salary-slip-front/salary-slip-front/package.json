@@ -9,7 +9,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "mobile:sync": "npx cap sync",
-    "mobile:build": "cross-env VITE_ENV=DEV VITE_API_BASE_URL=http://10.0.2.2:8000/api vite build && npx cap sync",
+    "mobile:build": "cross-env VITE_ENV=DEV vite build && npx cap sync",
     "mobile:run:android": "npm run mobile:build && npx cap run android",
     "mobile:build:local": "npm run mobile:build",
     "mobile:run:android:local": "npm run mobile:run:android",

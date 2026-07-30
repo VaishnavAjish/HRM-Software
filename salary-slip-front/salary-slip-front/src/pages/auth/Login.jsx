@@ -314,7 +314,7 @@ export default function Login() {
     const result = await login(
       empCode,
       password,
-      undefined, // Let the backend resolve company from the employee record
+      COMPANY_OPTIONS.length > 1 ? "all" : COMPANY_OPTIONS[0]?.id,
     );
     if (result.success) {
       toast.success("Welcome back!");

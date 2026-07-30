@@ -135,9 +135,13 @@ export default defineConfig(({ mode }) => {
           ],
         },
 
+        // The service worker only needs to exist in a real production build —
+        // enabling it on the dev server means every fix has to fight Workbox's
+        // own cache before a tester ever sees it (the classic "I fixed it but
+        // it still shows the old behavior" symptom). Production builds are
+        // untouched by this flag; it only governs `npm run dev`.
         devOptions: {
-          enabled: true,
-          type: "module",
+          enabled: false,
         },
       }),
     ],

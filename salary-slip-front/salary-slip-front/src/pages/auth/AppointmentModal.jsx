@@ -1545,36 +1545,38 @@ const AppointmentModal = ({
               </MobileCard>
             </div>
 
-            {/* Step 1 Footer */}
-            {!isMobile && (
-              <div className="mt-4 flex justify-end">
-                <button
-                  type="button"
-                  onClick={handleSaveAndNext}
-                  disabled={savePhase !== "idle"}
-                  className="inline-flex items-center gap-2 px-6 py-2.5 bg-brand-600 text-white text-sm font-semibold rounded-lg hover:bg-brand-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {savePhase !== "idle" ? (
-                    <>
-                      <RefreshCw size={16} className="animate-spin" />
-                      {{
-                        validating: "Validating...",
-                        creating: "Saving Appointment...",
-                        updating: "Saving Changes...",
-                        opening: "Opening Upload Documents...",
-                      }[savePhase]}
-                    </>
-                  ) : (
-                    <>
-                      {savedAppointmentId
-                        ? "Save Changes & Next: Upload Documents"
-                        : "Save & Next: Upload Documents"}
-                      <ChevronRight size={16} />
-                    </>
-                  )}
-                </button>
-              </div>
-            )}
+            {/* Step 1 Footer — must render on mobile too. On mobile this is the
+                *only* way savedAppointmentId ever gets set (steps 1 and 2 both
+                render inline on mobile, see the `isMobile` checks above and
+                below), so hiding this button didn't just look wrong, it made
+                the Documents step permanently unreachable on a phone. */}
+            <div className="mt-4 flex justify-center sm:justify-end">
+              <button
+                type="button"
+                onClick={handleSaveAndNext}
+                disabled={savePhase !== "idle"}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-2.5 bg-brand-600 text-white text-sm font-semibold rounded-lg hover:bg-brand-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {savePhase !== "idle" ? (
+                  <>
+                    <RefreshCw size={16} className="animate-spin" />
+                    {{
+                      validating: "Validating...",
+                      creating: "Saving Appointment...",
+                      updating: "Saving Changes...",
+                      opening: "Opening Upload Documents...",
+                    }[savePhase]}
+                  </>
+                ) : (
+                  <>
+                    {savedAppointmentId
+                      ? "Save Changes & Next: Upload Documents"
+                      : "Save & Next: Upload Documents"}
+                    <ChevronRight size={16} />
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         )}
 
