@@ -192,6 +192,55 @@ class AppointmentController extends Controller
         }
     }
 
+    /**
+     * GET /v1/appointments/{id}/documents
+     *
+     * Scoped to this appointment specifically, not to the employee: one person
+     * can have several appointments, and historical records share Aadhaar
+     * numbers, so employee-level listing would mix unrelated documents together.
+     */
+    public function documents(Request $request, int $appointmentId)
+    {
+        try {
+            [$appointment, $actor] = $this->findAuthorized($appointmentId);
+
+            $documents = Document::query()
+                ->where('user_id', $appointment->id)
+                ->visible() // soft-deleted rows are excluded by default
+                ->with('currentVersionRecord')
+                ->orderByDesc('created_at')
+                ->get()
+                ->map(function (Document $document) use ($actor) {
+                    $current = $document->currentVersionRecord;
+
+                    return [
+                        'documentId'    => $document->id,
+                        'documentType'  => $document->document_type,
+                        'documentLabel' => $document->document_label,
+                        'status'        => $document->status,
+                        'version'       => $document->current_version,
+                        'createdAt'     => optional($document->created_at)->toIso8601String(),
+                        'currentVersion' => $current ? [
+                            'versionId'        => $current->id,
+                            'version'          => $current->version,
+                            'fileName'         => $current->generated_file_name,
+                            'originalFileName' => $current->original_file_name,
+                            'mimeType'         => $current->mime_type,
+                            'fileSize'         => $current->file_size,
+                            'uploadedAt'       => optional($current->uploaded_at)->toIso8601String(),
+                            'uploadedBy'       => $current->uploaded_by,
+                        ] : null,
+                        'actions' => Auth::actionsFor($actor, $document),
+                    ];
+                })
+                ->all();
+
+            return $this->ok(['items' => $documents, 'total' => count($documents)]);
+        } catch (DocumentException $e) {
+            return $this->fail($e);
+        }
+    }
+
     public function complete(Request $request, int $appointmentId)
     {
         try {

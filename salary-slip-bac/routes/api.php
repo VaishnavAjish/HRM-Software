@@ -123,6 +123,9 @@ Route::middleware('jwt.auth')->group(function () {
 
         // The Aadhaar number comes from the appointment record, so the client
         // never sends (and cannot influence) it.
+        Route::get('{appointmentId}/documents', [V1AppointmentController::class, 'documents'])
+            ->whereNumber('appointmentId');
+
         Route::post('{appointmentId}/documents', [V1DocumentController::class, 'storeForAppointment'])
             ->whereNumber('appointmentId')
             ->middleware('throttle:30,1');
