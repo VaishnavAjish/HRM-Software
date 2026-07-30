@@ -33,6 +33,50 @@ export function maskAadhaar(value) {
 }
 
 /**
+ * "7151 1598 8793" for display to an authorised viewer, or "-" when there is no
+ * complete number. Never derives anything from a mask — a masked string has only
+ * four real digits and cannot be turned back into an Aadhaar.
+ */
+export function formatFullAadhaar(value) {
+  const digits = normaliseAadhaar(value);
+
+  if (digits.length !== 12) {
+    return "-";
+  }
+
+  return `${digits.slice(0, 4)} ${digits.slice(4, 8)} ${digits.slice(8, 12)}`;
+}
+
+/**
+ * What to render for an appointment's Aadhaar.
+ *
+ * `aadhaar_full` is present only when the server decided this viewer may have
+ * it, so the presence of the field *is* the authorisation result — the client
+ * never makes that call itself.
+ */
+export function aadhaarDisplayFor(record) {
+  const full = formatFullAadhaar(record?.aadhaar_full);
+
+  if (full !== "-") {
+    return full;
+  }
+
+  return (
+    record?.aadhaar_masked ??
+    record?.aadhaarMasked ??
+    record?.aadharNo ??
+    "-"
+  );
+}
+
+/**
+ * The name used across the app. One helper so no screen invents its own rule —
+ * that is how the profile page ended up masked while appointment details showed
+ * the full number.
+ */
+export const getAadhaarDisplayValue = aadhaarDisplayFor;
+
+/**
  * Whether an Aadhaar is stored for a record, from whatever the API returned.
  *
  * Prefers the explicit `has_aadhaar` boolean: a legacy row holding a malformed

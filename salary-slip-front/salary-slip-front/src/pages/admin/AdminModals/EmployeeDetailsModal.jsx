@@ -304,7 +304,7 @@ export default function EmployeeDetailsModal({
                 <>
                   <Section icon={ShieldCheck} title="Government IDs">
                     <Field
-                      label="Aadhar Card No"
+                      label="Aadhaar Card No"
                       value={selected.aadharCardNo}
                     />
                     <Field label="PAN Card No" value={selected.panCardNo} />

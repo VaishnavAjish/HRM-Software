@@ -43,8 +43,33 @@ const AGENT_PAGES = [
 const LEVEL_LABEL = { 0: "Super Admin", 1: "Admin", 3: "Employee", 4: "Agent" };
 const LEVEL_TONE = { 0: "purple", 1: "yellow", 3: "gray", 4: "blue" };
 
+/**
+ * Permissions that are not page access — they unlock a specific sensitive
+ * action. Listed separately so an administrator can find them by name instead
+ * of having to know the internal key.
+ */
+const SENSITIVE_PERMISSIONS = [
+  {
+    key: "appointments.view_full_aadhaar",
+    label: "View Full Aadhaar Number",
+    module: "Appointments",
+    description:
+      "Temporarily reveal the complete Aadhaar number on an appointment. Every successful and denied attempt is audited.",
+  },
+];
+
+const SENSITIVE_KEYS = new Set(SENSITIVE_PERMISSIONS.map((p) => p.key));
+
+/**
+ * Page access defaults to read_write when no row exists, which is the historic
+ * behaviour. A sensitive permission must default the other way: no row means no
+ * access, matching what the backend enforces. Without this the matrix would
+ * show "granted" for a permission the server refuses.
+ */
 function accessFor(entries, pageKey) {
-  return entries[pageKey]?.value ?? "read_write";
+  const fallback = SENSITIVE_KEYS.has(pageKey) ? "no_access" : "read_write";
+
+  return entries[pageKey]?.value ?? fallback;
 }
 
 export default function PermissionMatrix() {
@@ -58,6 +83,8 @@ export default function PermissionMatrix() {
   const [saving, setSaving] = useState({});
   const [deleting, setDeleting] = useState({});
   const [search, setSearch] = useState("");
+  // The sensitive permission awaiting confirmation, or null.
+  const [pendingGrant, setPendingGrant] = useState(null);
 
   const loadAdmins = async () => {
     setLoading(true);
@@ -162,6 +189,26 @@ export default function PermissionMatrix() {
   const toggleEdit = (pageKey) => {
     const current = accessFor(entries, pageKey);
     setAccess(pageKey, current === "read_write" ? "view_only" : "read_write");
+  };
+
+  /**
+   * Revoking is immediate; granting asks first. Handing someone the ability to
+   * read identity documents should not be a single stray click, and the
+   * confirmation is where the audit expectation is stated out loud.
+   */
+  const toggleSensitive = (permission) => {
+    if (accessFor(entries, permission.key) === "no_access") {
+      setPendingGrant(permission);
+      return;
+    }
+
+    setAccess(permission.key, "no_access");
+  };
+
+  const confirmSensitiveGrant = async () => {
+    const permission = pendingGrant;
+    setPendingGrant(null);
+    if (permission) await setAccess(permission.key, "view_only");
   };
 
   if (user?.rawRole !== 0) {
@@ -309,6 +356,90 @@ export default function PermissionMatrix() {
             </table>
           </div>
         </div>
+
+        {/* Sensitive permissions are not page access, so they get their own
+            section with the internal key spelled out — an administrator should
+            not have to know it in advance to grant it. */}
+        {Number(selectedAdmin.role) !== 3 && Number(selectedAdmin.role) !== 4 && (
+          <div className="p-4 sm:p-6 bg-white dark:bg-gray-800 rounded-2xl border border-red-200 dark:border-red-900/50 space-y-4">
+            <div className="flex items-center gap-2">
+              <ShieldAlert size={16} className="text-red-500" />
+              <h3 className="font-bold text-gray-900 dark:text-white">Sensitive Data Permissions</h3>
+              <Badge variant="red">High Risk</Badge>
+            </div>
+
+            {SENSITIVE_PERMISSIONS.map((permission) => {
+              const granted = accessFor(entries, permission.key) !== "no_access";
+
+              return (
+                <div
+                  key={permission.key}
+                  className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-gray-200 dark:border-gray-700 p-3"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                      {permission.label}
+                      <span className="ml-2 text-[11px] font-normal text-gray-400">
+                        {permission.module}
+                      </span>
+                    </p>
+                    <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                      {permission.description}
+                    </p>
+                    <code className="mt-1 inline-block text-[10px] text-gray-400">
+                      {permission.key}
+                    </code>
+                  </div>
+
+                  <label className="flex shrink-0 items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+                    <input
+                      type="checkbox"
+                      checked={granted}
+                      disabled={Boolean(saving[permission.key])}
+                      onChange={() => toggleSensitive(permission)}
+                      className="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500"
+                    />
+                    {granted ? "Granted" : "Not granted"}
+                  </label>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {pendingGrant && (
+          <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 p-4">
+            <div className="w-full max-w-md rounded-2xl bg-white p-6 dark:bg-gray-800">
+              <h3 className="flex items-center gap-2 text-base font-bold text-gray-900 dark:text-white">
+                <ShieldAlert size={18} className="text-red-500" />
+                Grant access to full Aadhaar numbers?
+              </h3>
+              <p className="mt-3 text-sm text-gray-600 dark:text-gray-300">
+                This permission exposes highly sensitive identity data. Every reveal is audited.
+                Grant it only to users with a legitimate business need.
+              </p>
+              <p className="mt-2 text-xs text-gray-400">
+                Granting to {selectedAdmin.name} · {pendingGrant.key}
+              </p>
+              <div className="mt-5 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPendingGrant(null)}
+                  className="rounded-xl border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 dark:text-gray-200"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmSensitiveGrant}
+                  className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+                >
+                  Grant Permission
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }

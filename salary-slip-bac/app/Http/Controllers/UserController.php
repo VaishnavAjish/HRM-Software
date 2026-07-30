@@ -453,7 +453,16 @@ class UserController extends Controller
                 return response()->json(['status' => false, 'message' => 'Employee not found'], 404);
             }
         }
-        return response()->json(['status' => true, 'data' => $employee]);
+        // Single-record details: disclose the full number to the owner, or to an
+        // actor holding the grant. Lists never come through here.
+        $payload = \App\Support\AadhaarDisclosure::attach(
+            $employee->toArray(),
+            $employee,
+            $userAuth,
+            'EMPLOYEE_FULL_AADHAAR_VIEWED'
+        );
+
+        return response()->json(['status' => true, 'data' => $payload]);
     }
 
     public function store(Request $request)
@@ -969,6 +978,12 @@ class UserController extends Controller
         // SELF_PROFILE_FIELDS only permits 'photo', so an employee cannot write
         // their own ID-document fields through this endpoint.
         $data = array_merge($data, $this->storeUploadedFiles($request, self::SELF_PROFILE_FIELDS, $user));
+
+        // The profile form posts its Aadhaar field back on every save. Before
+        // this guard, a form that had only ever been shown the mask would write
+        // "XXXX XXXX 1345" over the stored number — and move the owner's S3
+        // document folder with it. Only a complete 12-digit value replaces.
+        $data = $this->withSafeAadhaar($data);
 
         // If the employee is currently pending, mark them as active once they update their profile
         if ((int)$user->status === 2) {

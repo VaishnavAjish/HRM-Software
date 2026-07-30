@@ -681,10 +681,17 @@ export const appointmentV1Api = {
    * prefetched or land in a history entry. The caller must keep the value in
    * component state only — never in a store, storage or the URL.
    */
-  revealAadhaar(appointmentId, accessToken, tokenType = "Bearer") {
+  revealAadhaar(appointmentId, accessToken, tokenType = "Bearer", context = "VIEW") {
     return apiRequest(`/v1/appointments/${appointmentId}/aadhaar/reveal`, {
       method: "POST",
-      headers: { ...authHeaders(accessToken, tokenType), "Cache-Control": "no-store" },
+      headers: {
+        ...authHeaders(accessToken, tokenType),
+        "Content-Type": "application/json",
+        "Cache-Control": "no-store",
+      },
+      // VIEW | PRINT | PDF — the server re-authorises and audits each context
+      // under its own action name.
+      body: JSON.stringify({ context }),
     });
   },
 

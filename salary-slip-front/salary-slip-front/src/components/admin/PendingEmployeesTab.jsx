@@ -5,6 +5,7 @@ import { salaryApi } from "../../utils/api";
 import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";
 import { getCompanyConfig } from "../../config/companyConfig";
+import { getAadhaarDisplayValue } from "../../utils/aadhaar";
 
 // Reuse the password validation logic
 const isPasswordValid = (password) => {
@@ -435,7 +436,9 @@ export default function PendingEmployeesTab() {
                   ["Blood Group", selectedEmp.blood_group],
                   ["Salary", selectedEmp.salary],
                   ["Manager", selectedEmp.manager_name],
-                  ["Aadhar No", selectedEmp.aadhar_card_no],
+                  // The raw column is hidden from every response, so reading it
+                  // directly always rendered blank.
+                  ["Aadhaar No", getAadhaarDisplayValue(selectedEmp)],
                   ["PAN No", selectedEmp.pan_card_no],
                   ["Bank Name", selectedEmp.bank_name],
                   ["Bank A/C No", selectedEmp.bank_account_no],

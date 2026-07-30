@@ -260,7 +260,9 @@ export default function EmployeeMasterTable() {
         department: row.department || "", designation: row.designation || "",
         dob: row.dob || "", gender: row.gender || "", address: row.address || "",
         city: row.city || "", district: row.district || "", state: row.state || "", pin: row.pin || "",
-        aadhar_card_no: row.aadhar_card_no || "", pan_card_no: row.pan_card_no || "",
+        // Masked: this is a list. The raw column is hidden from responses, so
+        // reading it directly rendered an empty column.
+        aadhar_card_no: row.aadhaar_masked || "", pan_card_no: row.pan_card_no || "",
         bank_name: row.bank_name || "", bank_ifsc_code: row.bank_ifsc_code || "",
         bank_account_no: row.bank_account_no || "",
         joining_date: row.joining_date || "", salary: row.salary || "",

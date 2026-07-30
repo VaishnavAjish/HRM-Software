@@ -512,7 +512,12 @@ export default function AddEditEmployeeModal({
                   {form.hasAadhaar && (
                     <p className="mt-1 text-[11px] text-gray-500 dark:text-slate-400">
                       On file:{" "}
-                      <span className="font-semibold">{form.aadhaarMasked || "XXXX XXXX ••••"}</span>{" "}
+                      {/* Full for a viewer the server disclosed it to, masked
+                          otherwise. The input below stays replacement-only
+                          either way. */}
+                      <span className="font-semibold">
+                        {form.aadhaarOnFile || form.aadhaarMasked || "XXXX XXXX ••••"}
+                      </span>{" "}
                       — enter all 12 digits only to replace it.
                     </p>
                   )}

@@ -7,7 +7,7 @@ import useGridHeaderContextMenu from "../../hooks/useGridHeaderContextMenu";
 import { useTheme } from "../../context/ThemeContext";
 import useIsMobile from "../../hooks/useIsMobile";
 import { getEmployeePhotoUrl } from "./AdminModals/EmployeeHelpers";
-import { maskAadhaar } from "../../utils/aadhaar";
+import { maskAadhaar, aadhaarDisplayFor, normaliseAadhaar } from "../../utils/aadhaar";
 
 /** Grant required to see a complete Aadhaar number; enforced server-side too. */
 const AADHAAR_REVEAL_PERMISSION = "appointments.view_full_aadhaar";
@@ -897,14 +897,15 @@ export default function Appointments() {
   ]);
   const [showColModal, setShowColModal] = useState(false);
 
-  // The complete Aadhaar number, held in component state only for as long as it
-  // is on screen. Never persisted, cached, put in the URL or logged — the
-  // server hands it over once, and it is dropped on Hide, on a timeout, or when
-  // the modal closes.
-  const [revealedAadhaar, setRevealedAadhaar] = useState("");
-  const [revealedFor, setRevealedFor] = useState(null);
-  const [revealingAadhaar, setRevealingAadhaar] = useState(false);
-  const aadhaarHideTimer = useRef(null);
+  /**
+   * The full Aadhaar for the open appointment, keyed by the id it belongs to.
+   *
+   * Component state only — never localStorage, sessionStorage, the URL, a
+   * global store or a persisted query cache. Keyed by id so closing the modal or
+   * switching records stops it rendering without an effect to clear it, and it
+   * cannot be shown against the wrong appointment.
+   */
+  const [fullAadhaar, setFullAadhaar] = useState({ id: null, value: "" });
 
   const formRef = useRef(null);
   const gridRef = useRef(null);
@@ -975,8 +976,13 @@ export default function Appointments() {
     [appointments],
   );
 
-  /** Only an explicitly granted user — or a Super Admin — may ask to reveal. */
-  const canRevealAadhaar = useMemo(() => {
+  /**
+   * The server decides. Its details response carries aadhaar_full only for an
+   * actor holding appointments.view_full_aadhaar, so the presence of that field
+   * IS the authorisation result. This flag only decides whether we bother asking
+   * and whether printed output gets a CONFIDENTIAL marking.
+   */
+  const canSeeFullAadhaar = useMemo(() => {
     if (Number(user?.rawRole) === 0) return true;
 
     const value = user?.permissions?.[AADHAAR_REVEAL_PERMISSION];
@@ -984,56 +990,95 @@ export default function Appointments() {
     return value === "view_only" || value === "read_write";
   }, [user]);
 
-  const hideAadhaar = useCallback(() => {
-    window.clearTimeout(aadhaarHideTimer.current);
-    setRevealedAadhaar("");
-  }, []);
+  /**
+   * Fetch the full number when the details modal opens, so it is simply present
+   * rather than behind a Show button. The list response is always masked; only
+   * this per-record request can return aadhaar_full, and only when the server
+   * agrees the viewer may have it.
+   */
+  useEffect(() => {
+    const appointmentId = selected?.id;
 
-  const handleRevealAadhaar = async () => {
-    if (!selected?.id || revealingAadhaar) return;
+    if (!appointmentId || !canSeeFullAadhaar) return undefined;
 
-    setRevealingAadhaar(true);
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await appointmentV1Api.get(appointmentId, user?.accessToken, user?.tokenType);
+        if (cancelled) return;
+
+        const digits = normaliseAadhaar(res?.data?.appointment?.aadhaar_full);
+        if (digits.length === 12) setFullAadhaar({ id: appointmentId, value: digits });
+      } catch {
+        // Masked display is the fallback; nothing to tell the user about.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selected?.id, canSeeFullAadhaar, user?.accessToken, user?.tokenType]);
+
+  /**
+   * What Appointment Details, Print and PDF all render for Aadhaar.
+   *
+   * One view model, so printed output cannot drift from the screen and cannot be
+   * assembled from whatever text happens to be in the DOM.
+   */
+  const detailsView = useMemo(() => {
+    if (!selected) return null;
+
+    const showingFull = fullAadhaar.id === selected.id && fullAadhaar.value.length === 12;
+
+    return {
+      ...selected,
+      aadharNo: aadhaarDisplayFor({
+        aadhaar_full: showingFull ? fullAadhaar.value : "",
+        aadhaar_masked: selected.aadharNo,
+      }),
+      // Drives the CONFIDENTIAL banner on print/PDF.
+      containsFullAadhaar: showingFull,
+      printedBy: user?.name || "",
+    };
+  }, [selected, fullAadhaar, user?.name]);
+
+  /**
+   * Re-ask the server before printing or exporting. The client cannot authorise
+   * itself: a flag like includeFullAadhaar:true proves nothing, so each action
+   * is re-checked and separately audited under its own action name.
+   */
+  const authoriseSensitiveOutput = async (context) => {
+    if (!selected?.id || !canSeeFullAadhaar) return;
+
     try {
-      const res = await appointmentV1Api.revealAadhaar(
+      await appointmentV1Api.revealAadhaar(
         selected.id,
         user?.accessToken,
         user?.tokenType,
+        context,
       );
-
-      const digits = String(res?.data?.aadhaarNumber ?? "").replace(/\D/g, "");
-      if (digits.length !== 12) throw new Error("Unable to reveal Aadhaar number.");
-
-      setRevealedAadhaar(digits.replace(/(\d{4})(\d{4})(\d{4})/, "$1 $2 $3"));
-      setRevealedFor(selected.id);
-
-      // Back to masked on its own, so an unattended screen does not keep it up.
-      window.clearTimeout(aadhaarHideTimer.current);
-      aadhaarHideTimer.current = window.setTimeout(
-        () => setRevealedAadhaar(""),
-        (Number(res?.data?.expiresIn) || 30) * 1000,
-      );
-    } catch (err) {
-      toast.error(err?.message || "Unable to reveal Aadhaar number.");
-    } finally {
-      setRevealingAadhaar(false);
+    } catch {
+      // A refusal only means this action is not audited as a full-Aadhaar one;
+      // the output still carries whatever the details response already allowed.
     }
   };
 
-  /**
-   * Derived rather than cleared from an effect: the number is shown only while
-   * the modal for the appointment it belongs to is open. Closing the modal or
-   * switching records therefore stops displaying it immediately, with no
-   * cascading state update to get wrong.
-   */
-  const shownAadhaar = selected?.id && revealedFor === selected.id ? revealedAadhaar : "";
 
-  useEffect(() => () => window.clearTimeout(aadhaarHideTimer.current), []);
 
   const handleDownloadPDF = async () => {
     if (!selected || !formRef.current) return;
     setPdfLoading(true);
     try {
-      const fileName = `Appointment_${selected.fullName.replace(/\s+/g, "_")}.pdf`;
+      // Server re-authorises and audits this export before it happens.
+      if (detailsView?.containsFullAadhaar) await authoriseSensitiveOutput("PDF");
+
+      // The Aadhaar never goes in the filename — a file listing is not a place
+      // for identity numbers.
+      const fileName = detailsView?.containsFullAadhaar
+        ? `Appointment_${selected.appointmentNumber || selected.id}_Confidential.pdf`
+        : `Appointment_${selected.fullName.replace(/\s+/g, "_")}.pdf`;
+
       await exportNodeToPdf(formRef.current, fileName, { fitToOnePage: true });
       toast.success("Form downloaded successfully");
     } catch {
@@ -1045,6 +1090,11 @@ export default function Appointments() {
 
   const handlePrint = () => {
     if (!formRef.current) return;
+
+    // Fire-and-forget: the recheck audits the action server-side. The printed
+    // content itself can only ever contain what the details response allowed.
+    if (detailsView?.containsFullAadhaar) authoriseSensitiveOutput("PRINT");
+
     const win = window.open("", "_blank", "width=1000,height=750");
     if (!win) {
       toast.error("Please allow pop-ups to print the appointment form");
@@ -2054,36 +2104,21 @@ export default function Appointments() {
           <>
             {/* Hidden Printable Form used purely for PDF/Print generation */}
             <div className="hidden" aria-hidden="true">
-              <PrintableForm data={selected} formRef={formRef} />
+              <PrintableForm data={detailsView} formRef={formRef} />
             </div>
 
-            {/* PC View: PrintableForm. Only this on-screen copy is given the
-                revealed number — the hidden instance above drives Print and PDF
-                and is never passed it. */}
+            {/* Both instances render the same view model, so what is printed or
+                exported is exactly what is on screen — no Show/Hide, and no
+                chance of the two disagreeing. */}
             <div className="hidden md:flex justify-center overflow-x-auto bg-gray-50 dark:bg-gray-900 rounded-xl p-4 border border-gray-200 dark:border-gray-800">
               <div className="scale-[0.85] sm:scale-[0.95] md:scale-100 origin-top flex items-center justify-center min-w-[max-content] pb-4">
-                <PrintableForm
-                  data={selected}
-                  aadhaarOverride={shownAadhaar}
-                  aadhaarAction={
-                    canRevealAadhaar && selected.aadharNo ? (
-                      <button
-                        type="button"
-                        onClick={shownAadhaar ? hideAadhaar : handleRevealAadhaar}
-                        disabled={revealingAadhaar}
-                        className="rounded border border-gray-400 px-2 py-0.5 text-[11px] font-semibold text-gray-700 hover:bg-gray-100 disabled:opacity-40"
-                      >
-                        {revealingAadhaar ? "…" : shownAadhaar ? "Hide" : "Show"}
-                      </button>
-                    ) : null
-                  }
-                />
+                <PrintableForm data={detailsView} />
               </div>
             </div>
 
             {/* Mobile View: Beautiful, responsive dashboard layout details form */}
             <div className="block md:hidden">
-              <ResponsiveDetailsForm data={selected} />
+              <ResponsiveDetailsForm data={detailsView} />
             </div>
 
             <DocumentsSection documents={selected.documents} />

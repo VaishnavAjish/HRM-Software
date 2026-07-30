@@ -197,7 +197,7 @@ class AadhaarRevealTest extends TestCase
         $this->assertSame(AadhaarAccess::PERMISSION, $entry->permission);
     }
 
-    public function test_the_normal_details_endpoint_still_returns_only_the_mask(): void
+    public function test_the_details_endpoint_gives_an_authorised_actor_the_full_number(): void
     {
         $appointment = $this->makeAppointment();
 
@@ -206,8 +206,107 @@ class AadhaarRevealTest extends TestCase
 
         $response->assertOk()
             ->assertJsonPath('data.appointment.aadhaar_masked', 'XXXX XXXX 8793')
+            ->assertJsonPath('data.appointment.aadhaar_full', '123456788793')
+            // The raw column stays hidden; aadhaar_full is added explicitly.
+            ->assertJsonMissingPath('data.appointment.aadhar_card_no');
+    }
+
+    public function test_the_details_endpoint_gives_an_unauthorised_actor_only_the_mask(): void
+    {
+        $appointment = $this->makeAppointment();
+
+        $response = $this->withToken(auth('api')->login($this->makeUser(1)))
+            ->getJson("/api/v1/appointments/{$appointment->id}");
+
+        $response->assertOk()
+            ->assertJsonPath('data.appointment.aadhaar_masked', 'XXXX XXXX 8793')
+            ->assertJsonMissingPath('data.appointment.aadhaar_full')
             ->assertJsonMissingPath('data.appointment.aadhar_card_no');
 
         $this->assertStringNotContainsString('123456788793', $response->getContent());
+    }
+
+    public function test_viewing_the_details_audits_the_sensitive_access_once(): void
+    {
+        $actor = $this->makeUser(0);
+        $appointment = $this->makeAppointment();
+
+        $this->withToken(auth('api')->login($actor))
+            ->getJson("/api/v1/appointments/{$appointment->id}")
+            ->assertOk();
+
+        $entries = DocumentAuditLog::where('action', 'APPOINTMENT_FULL_AADHAAR_VIEWED')->get();
+
+        $this->assertCount(1, $entries);
+        $this->assertSame('8793', $entries->first()->metadata['aadhaar_last4']);
+        $this->assertStringNotContainsString('123456788793', json_encode($entries->toArray()));
+    }
+
+    public function test_an_unauthorised_view_records_no_sensitive_access_entry(): void
+    {
+        $appointment = $this->makeAppointment();
+
+        $this->withToken(auth('api')->login($this->makeUser(1)))
+            ->getJson("/api/v1/appointments/{$appointment->id}")
+            ->assertOk();
+
+        $this->assertSame(
+            0,
+            DocumentAuditLog::where('action', 'APPOINTMENT_FULL_AADHAAR_VIEWED')->count(),
+        );
+    }
+
+    public function test_a_print_recheck_is_audited_under_its_own_action(): void
+    {
+        $appointment = $this->makeAppointment();
+
+        $this->withToken(auth('api')->login($this->makeUser(0)))
+            ->postJson("/api/v1/appointments/{$appointment->id}/aadhaar/reveal", ['context' => 'PRINT'])
+            ->assertOk()
+            ->assertJsonPath('data.aadhaarNumber', '123456788793');
+
+        $entry = DocumentAuditLog::where('action', 'APPOINTMENT_FULL_AADHAAR_PRINTED')->first();
+        $this->assertNotNull($entry);
+        $this->assertSame('PRINT', $entry->metadata['context']);
+    }
+
+    public function test_a_pdf_recheck_is_audited_under_its_own_action(): void
+    {
+        $appointment = $this->makeAppointment();
+
+        $this->withToken(auth('api')->login($this->makeUser(0)))
+            ->postJson("/api/v1/appointments/{$appointment->id}/aadhaar/reveal", ['context' => 'PDF'])
+            ->assertOk();
+
+        $this->assertNotNull(
+            DocumentAuditLog::where('action', 'APPOINTMENT_FULL_AADHAAR_PDF_DOWNLOADED')->first(),
+        );
+    }
+
+    public function test_an_unauthorised_print_recheck_is_refused(): void
+    {
+        $appointment = $this->makeAppointment();
+
+        // A client asking for print context does not get to skip the check.
+        $this->withToken(auth('api')->login($this->makeUser(1)))
+            ->postJson("/api/v1/appointments/{$appointment->id}/aadhaar/reveal", ['context' => 'PRINT'])
+            ->assertStatus(403);
+
+        $denied = DocumentAuditLog::where('action', 'APPOINTMENT_AADHAAR_REVEAL_DENIED')->first();
+        $this->assertNotNull($denied);
+        $this->assertSame('PRINT', $denied->metadata['context']);
+    }
+
+    public function test_the_list_endpoint_never_carries_the_full_number(): void
+    {
+        $this->makeAppointment();
+
+        $response = $this->withToken(auth('api')->login($this->makeUser(0)))
+            ->getJson('/api/appointment');
+
+        $response->assertOk();
+        // Lists stay masked regardless of permission.
+        $this->assertStringNotContainsString('123456788793', $response->getContent());
+        $this->assertStringNotContainsString('aadhaar_full', $response->getContent());
     }
 }

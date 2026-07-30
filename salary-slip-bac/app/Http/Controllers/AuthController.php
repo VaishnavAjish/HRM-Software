@@ -66,7 +66,18 @@ class AuthController extends Controller
         if (!$user) {
             return response()->json(['status' => false, 'message' => 'User not found'], 404);
         }
-        return response()->json(['status' => true, 'user' => $user]);
+
+        // Your own profile: you own this identity document, so the complete
+        // number is disclosed without needing a grant. toArray() still hides the
+        // raw column; aadhaar_full is added explicitly.
+        $payload = \App\Support\AadhaarDisclosure::attach(
+            $user->toArray(),
+            $user,
+            $user,
+            'EMPLOYEE_FULL_AADHAAR_VIEWED'
+        );
+
+        return response()->json(['status' => true, 'user' => $payload]);
     }
 
     public function logout()

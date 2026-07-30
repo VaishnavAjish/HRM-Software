@@ -79,7 +79,8 @@ function ProtectedRoute({ children, requiredRole }) {
     ];
     const source = {
       ...user,
-      phone: user.mobile_number || user.mobile_no || user.phone
+      phone: user.mobile_number || user.mobile_no || user.phone,
+      aadhar_card_no: user.aadhar_card_no || user.aadhar_no || user.aadharNo || user.aadhaar_masked || user.aadhar_masked || user.aadhaarMasked || (user.has_aadhaar ? "stored" : "")
     };
     let filled = 0;
     fields.forEach(f => {

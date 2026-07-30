@@ -29,7 +29,11 @@ import {
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";
-import { buildSafeAadhaarUpdate, hasStoredAadhaar } from "../../utils/aadhaar";
+import {
+  buildSafeAadhaarUpdate,
+  getAadhaarDisplayValue,
+  hasStoredAadhaar,
+} from "../../utils/aadhaar";
 import { useSearchParams } from "react-router-dom";
 import { getCompanyConfig } from "../../config/companyConfig";
 import { useTheme } from "../../context/ThemeContext";
@@ -179,10 +183,11 @@ function mapEmployee(item) {
     bankName: item.bank_name ?? "",
     bankIfscCode: item.bank_ifsc_code ?? "",
     bankAccountNo: item.bank_account_no ?? "",
-    // Masked only — the API hides aadhar_card_no, so reading it always produced
-    // "" and made a stored number look missing. The edit input stays empty and
-    // `hasAadhaar` is what tells the form a number is on file.
-    aadharCardNo: item.aadhaar_masked ?? "",
+    // Full when the server disclosed it for this viewer, masked otherwise. The
+    // list endpoint never returns aadhaar_full, so grid rows and exports stay
+    // masked automatically; only the single-record details fetch can carry it.
+    aadharCardNo: getAadhaarDisplayValue(item),
+    aadhaarOnFile: getAadhaarDisplayValue(item),
     aadhaarMasked: item.aadhaar_masked ?? "",
     hasAadhaar: hasStoredAadhaar(item),
     panCardNo: item.pan_card_no ?? "",

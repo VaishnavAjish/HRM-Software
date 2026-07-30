@@ -1,12 +1,56 @@
 import { describe, it, expect } from "vitest";
 
 import {
+  aadhaarDisplayFor,
   buildSafeAadhaarUpdate,
+  formatFullAadhaar,
   hasStoredAadhaar,
   isCompleteAadhaar,
   maskAadhaar,
   normaliseAadhaar,
 } from "./aadhaar";
+
+describe("formatFullAadhaar", () => {
+  it("groups twelve digits into fours", () => {
+    expect(formatFullAadhaar("715115988793")).toBe("7151 1598 8793");
+    expect(formatFullAadhaar("7151 1598 8793")).toBe("7151 1598 8793");
+    expect(formatFullAadhaar("7151-1598-8793")).toBe("7151 1598 8793");
+  });
+
+  it("preserves leading zeros", () => {
+    expect(formatFullAadhaar("012345678901")).toBe("0123 4567 8901");
+  });
+
+  it("refuses anything that is not a complete number", () => {
+    // A mask normalises to four digits and must never format as an Aadhaar.
+    expect(formatFullAadhaar("XXXX XXXX 8793")).toBe("-");
+    expect(formatFullAadhaar("12345")).toBe("-");
+    expect(formatFullAadhaar("")).toBe("-");
+    expect(formatFullAadhaar(null)).toBe("-");
+  });
+});
+
+describe("aadhaarDisplayFor", () => {
+  it("prefers the full number when the server supplied one", () => {
+    expect(
+      aadhaarDisplayFor({ aadhaar_full: "715115988793", aadhaar_masked: "XXXX XXXX 8793" }),
+    ).toBe("7151 1598 8793");
+  });
+
+  it("falls back to the mask when it did not", () => {
+    // Absence of aadhaar_full IS the authorisation result.
+    expect(aadhaarDisplayFor({ aadhaar_masked: "XXXX XXXX 8793" })).toBe("XXXX XXXX 8793");
+  });
+
+  it("never reconstructs a full number from a mask", () => {
+    expect(aadhaarDisplayFor({ aadhaar_masked: "XXXX XXXX 8793" })).not.toMatch(/^\d{4} /);
+  });
+
+  it("shows a dash when there is nothing at all", () => {
+    expect(aadhaarDisplayFor({})).toBe("-");
+    expect(aadhaarDisplayFor(null)).toBe("-");
+  });
+});
 
 /**
  * The rules these encode exist because `aadhar_card_no` is hidden from every API

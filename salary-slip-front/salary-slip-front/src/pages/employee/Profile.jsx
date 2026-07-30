@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext"; // Corrected import path
 import { authApi, salaryApi } from "../../utils/api";
+import { getAadhaarDisplayValue } from "../../utils/aadhaar";
 import toast from "react-hot-toast";
 import usePhotoCapture from "../../hooks/usePhotoCapture";
 
@@ -80,7 +81,7 @@ export default function Profile() {
     department: profile?.department || "",
     designation: profile?.designation || "",
     joining_date: profile?.joining_date || "",
-    aadhar_card_no: profile?.aadhar_card_no || profile?.aadhar_no || profile?.aadharNo || "",
+    aadhar_card_no: getAadhaarDisplayValue(profile),
   };
 
   const [editing, setEditing] = useState(false);
@@ -141,7 +142,7 @@ export default function Profile() {
           district: data.district || "",
           state: data.state || "",
           pin: data.pin || "",
-          aadhar_card_no: data.aadhar_card_no || data.aadhar_no || data.aadharNo || "",
+          aadhar_card_no: getAadhaarDisplayValue(data),
           pan_card_no: data.pan_card_no || "",
           bank_name: data.bank_name || "",
           bank_ifsc_code: data.bank_ifsc_code || "",
@@ -215,9 +216,9 @@ export default function Profile() {
         district: form.district,
         state: form.state,
         pin: form.pin,
-        aadhar_card_no: form.aadhar_card_no,
-        aadhar_no: form.aadhar_card_no,
-        aadharNo: form.aadhar_card_no,
+        // Aadhaar is deliberately absent. The field is read-only here, so there
+        // is nothing to save — and posting it back was writing the displayed
+        // value over the stored number.
         pan_card_no: form.pan_card_no,
         bank_name: form.bank_name,
         bank_ifsc_code: form.bank_ifsc_code,
@@ -249,9 +250,8 @@ export default function Profile() {
         district: form.district,
         state: form.state,
         pin: form.pin,
-        aadhar_card_no: form.aadhar_card_no,
-        aadhar_no: form.aadhar_card_no,
-        aadharNo: form.aadhar_card_no,
+        // Aadhaar is not edited here, so the local copy keeps whatever the
+        // server disclosed rather than being overwritten from the form.
         pan_card_no: form.pan_card_no,
         bank_name: form.bank_name,
         bank_ifsc_code: form.bank_ifsc_code,
@@ -294,7 +294,7 @@ export default function Profile() {
       district: profile?.district || "",
       state: profile?.state || "",
       pin: profile?.pin || "",
-      aadhar_card_no: profile?.aadhar_card_no || "",
+      aadhar_card_no: getAadhaarDisplayValue(profile),
       pan_card_no: profile?.pan_card_no || "",
       bank_name: profile?.bank_name || "",
       bank_ifsc_code: profile?.bank_ifsc_code || "",
@@ -479,7 +479,7 @@ export default function Profile() {
                   district: profile?.district || "",
                   state: profile?.state || "",
                   pin: profile?.pin || "",
-                  aadhar_card_no: profile?.aadhar_card_no || "",
+                  aadhar_card_no: getAadhaarDisplayValue(profile),
                   pan_card_no: profile?.pan_card_no || "",
                   bank_name: profile?.bank_name || "",
                   bank_ifsc_code: profile?.bank_ifsc_code || "",
@@ -922,15 +922,15 @@ export default function Profile() {
               icon={User}
               iconBg="bg-blue-50 dark:bg-blue-900/20"
               iconColor="text-blue-600"
-              label="Aadhar Card No"
+              label="Aadhaar Card No"
               value={emp.aadhar_card_no || "—"}
               editing={editing}
               editNode={
                 <input
-                  maxLength={12}
-                  value={form.aadhar_card_no}
-                  onChange={(e) => set("aadhar_card_no", e.target.value.replace(/\D/g, ""))}
-                  className="mt-0.5 w-full text-sm bg-transparent border-b border-brand-400 text-gray-900 dark:text-white focus:outline-none py-0.5"
+                  disabled
+                  readOnly
+                  value={form.aadhar_card_no || emp.aadhar_card_no || "—"}
+                  className="mt-0.5 w-full text-sm bg-transparent border-b border-gray-200 text-gray-400 dark:text-gray-500 cursor-not-allowed py-0.5 outline-none"
                 />
               }
             />

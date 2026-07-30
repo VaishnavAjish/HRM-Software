@@ -183,13 +183,23 @@ class AppointmentController extends Controller
     public function show(Request $request, int $appointmentId)
     {
         try {
-            [$appointment] = $this->findAuthorized($appointmentId);
+            [$appointment, $actor] = $this->findAuthorized($appointmentId);
 
             // toArray() hides the raw Aadhaar and appends aadhaar_masked.
+            $payload = $appointment->toArray();
+
+            // aadhaar_full is added only here, only for this one record, and only
+            // for an actor holding the grant. The column stays in User::$hidden
+            // so nothing else in the app can serialise it by accident.
+            $full = $this->fullAadhaarFor($appointment, $actor, 'APPOINTMENT_FULL_AADHAAR_VIEWED');
+            if ($full !== null) {
+                $payload['aadhaar_full'] = $full;
+            }
+
             return $this->ok([
                 'appointmentId'     => $appointment->id,
                 'appointmentNumber' => 'APT-' . str_pad((string) $appointment->id, 6, '0', STR_PAD_LEFT),
-                'appointment'       => $appointment->toArray(),
+                'appointment'       => $payload,
             ]);
         } catch (DocumentException $e) {
             return $this->fail($e);
@@ -290,6 +300,45 @@ class AppointmentController extends Controller
     }
 
     /**
+     * The complete Aadhaar for an actor who is allowed it, or null.
+     *
+     * Audits exactly once per call, which is once per HTTP request — a React
+     * re-render cannot produce another entry because it does not reach here.
+     * A denied attempt is recorded too, so the absence of a grant is visible in
+     * the trail rather than silent.
+     */
+    private function fullAadhaarFor(User $appointment, ?User $actor, string $action): ?string
+    {
+        if (!AadhaarAccess::allows($actor)) {
+            return null;
+        }
+
+        $digits = AadhaarReference::normalise(
+            (string) ($appointment->getRawOriginal('aadhar_card_no') ?? '')
+        );
+
+        if (!AadhaarReference::isValid($digits)) {
+            return null;
+        }
+
+        DocumentAudit::record(
+            $action,
+            null,
+            null,
+            [
+                'appointment_id' => $appointment->id,
+                'organization_code' => $appointment->company_code,
+                // Last four only — the trail records the access, not the value.
+                'aadhaar_last4' => substr($digits, -4),
+            ],
+            AadhaarAccess::PERMISSION,
+            'ALLOWED'
+        );
+
+        return $digits;
+    }
+
+    /**
      * POST /v1/appointments/{id}/aadhaar/reveal
      *
      * The one place a complete Aadhaar number leaves the server. Everything else
@@ -306,12 +355,22 @@ class AppointmentController extends Controller
             // not learn whether it has an Aadhaar on file.
             [$appointment, $actor] = $this->findAuthorized($appointmentId);
 
+            // Print and PDF come back through here so the server re-authorises
+            // each action rather than trusting a flag the client sends. A
+            // client-side `includeFullAadhaar: true` proves nothing.
+            $context = strtoupper((string) $request->input('context', 'VIEW'));
+            $action = match ($context) {
+                'PRINT' => 'APPOINTMENT_FULL_AADHAAR_PRINTED',
+                'PDF' => 'APPOINTMENT_FULL_AADHAAR_PDF_DOWNLOADED',
+                default => 'APPOINTMENT_AADHAAR_REVEALED',
+            };
+
             if (!AadhaarAccess::allows($actor)) {
                 DocumentAudit::record(
                     'APPOINTMENT_AADHAAR_REVEAL_DENIED',
                     null,
                     null,
-                    ['appointment_id' => $appointment->id],
+                    ['appointment_id' => $appointment->id, 'context' => $context],
                     AadhaarAccess::PERMISSION,
                     'DENIED'
                 );
@@ -338,12 +397,14 @@ class AppointmentController extends Controller
             }
 
             DocumentAudit::record(
-                'APPOINTMENT_AADHAAR_REVEALED',
+                $action,
                 null,
                 null,
                 [
                     'appointment_id' => $appointment->id,
-                    // Last four only. The audit trail records that a reveal
+                    'organization_code' => $appointment->company_code,
+                    'context' => $context,
+                    // Last four only. The audit trail records that access
                     // happened, never a second copy of the number.
                     'aadhaar_last4' => substr($digits, -4),
                 ],
