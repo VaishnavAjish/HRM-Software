@@ -69,7 +69,16 @@ class ObjectKeyBuilder
     }
 
     /**
-     * employees/EMP1025/PAN_CARD/EMP1025_Rohit_PAN_CARD_V1_20260729154530.pdf
+     * One prefix per employee, with the employee ID at the top level:
+     *
+     *   EMP001/EMP001_PAN_CARD_V1_20260729190000.pdf
+     *   EMP002/EMP002_BANK_PASSBOOK_V1_20260729190500.pdf
+     *
+     * S3 has no real directories — the prefix is created implicitly by the
+     * first object written under it, so nothing needs pre-creating.
+     *
+     * $ownerType is still validated (an unknown type is rejected) but is not
+     * part of the key; the employee reference alone separates owners.
      */
     public static function build(
         string $ownerType,
@@ -77,10 +86,10 @@ class ObjectKeyBuilder
         string $documentType,
         string $fileName
     ): string {
+        self::ownerPrefix($ownerType);
+
         $key = implode('/', [
-            self::ownerPrefix($ownerType),
             self::sanitiseSegment($ownerRef, 'owner reference'),
-            self::sanitiseSegment($documentType, 'document type'),
             self::sanitiseSegment($fileName, 'file name'),
         ]);
 
@@ -107,14 +116,25 @@ class ObjectKeyBuilder
             return false;
         }
 
+        // Legacy local storage under public/uploads is never an object key.
+        if (str_starts_with($value, 'uploads/')) {
+            return false;
+        }
+
+        // Keys written before the flat layout, still valid in the bucket.
         foreach (self::OWNER_PREFIXES as $prefix) {
             if (str_starts_with($value, $prefix . '/')) {
                 return true;
             }
         }
 
-        return str_starts_with($value, self::ARCHIVE_PREFIX . '/')
-            || str_starts_with($value, self::TEMP_PREFIX . '/');
+        if (str_starts_with($value, self::ARCHIVE_PREFIX . '/')
+            || str_starts_with($value, self::TEMP_PREFIX . '/')) {
+            return true;
+        }
+
+        // Current layout: exactly <employeeRef>/<generatedFileName>.
+        return (bool) preg_match('#^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+\.[A-Za-z0-9]{1,10}$#', $value);
     }
 
     /** Final gate — nothing reaches S3 without passing this. */

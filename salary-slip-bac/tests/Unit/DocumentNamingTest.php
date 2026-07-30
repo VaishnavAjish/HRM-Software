@@ -36,12 +36,20 @@ class DocumentNamingTest extends TestCase
 
     public function test_generated_filename_matches_specification(): void
     {
-        $at = new \DateTimeImmutable('2026-07-29 15:45:30', new \DateTimeZone('UTC'));
+        $at = new \DateTimeImmutable('2026-07-29 19:00:00', new \DateTimeZone('UTC'));
 
         $this->assertSame(
-            'EMP1025_RohitSaket_PAN_CARD_V1_20260729154530.pdf',
-            DocumentFileName::build('EMP1025', 'Rohit Saket', 'PAN_CARD', 1, 'pdf', $at)
+            'EMP001_PAN_CARD_V1_20260729190000.pdf',
+            DocumentFileName::build('EMP001', 'PAN_CARD', 1, 'pdf', $at)
         );
+    }
+
+    public function test_generated_filename_omits_the_employee_name(): void
+    {
+        $name = DocumentFileName::build('EMP001', 'PROFILE_PHOTO', 2, 'jpg');
+
+        $this->assertStringStartsWith('EMP001_PROFILE_PHOTO_V2_', $name);
+        $this->assertStringNotContainsString('Rohit', $name);
     }
 
     public function test_timestamp_is_utc_regardless_of_input_zone(): void
@@ -54,7 +62,7 @@ class DocumentNamingTest extends TestCase
 
     public function test_reserved_device_name_is_prefixed(): void
     {
-        $name = DocumentFileName::build('CON', '', 'CON', 1, 'pdf');
+        $name = DocumentFileName::build('CON', 'CON', 1, 'pdf');
 
         $this->assertStringNotContainsString('/', $name);
         $this->assertStringEndsWith('.pdf', $name);
@@ -67,14 +75,32 @@ class DocumentNamingTest extends TestCase
         $this->assertSame('pdf', DocumentFileName::extensionFor('application/pdf', 'exe'));
     }
 
-    public function test_object_key_layout(): void
+    public function test_object_key_is_employee_id_then_file(): void
     {
-        $key = ObjectKeyBuilder::build('employee', 'EMP1025', 'PAN_CARD', 'EMP1025_Rohit_PAN_CARD_V1_20260729154530.pdf');
+        $key = ObjectKeyBuilder::build('employee', 'EMP001', 'PAN_CARD', 'EMP001_PAN_CARD_V1_20260729190000.pdf');
 
-        $this->assertSame(
-            'employees/EMP1025/PAN_CARD/EMP1025_Rohit_PAN_CARD_V1_20260729154530.pdf',
-            $key
-        );
+        $this->assertSame('EMP001/EMP001_PAN_CARD_V1_20260729190000.pdf', $key);
+    }
+
+    public function test_each_employee_gets_a_separate_prefix(): void
+    {
+        $a = ObjectKeyBuilder::build('employee', 'EMP001', 'PAN_CARD', 'EMP001_PAN_CARD_V1_20260729190000.pdf');
+        $b = ObjectKeyBuilder::build('employee', 'EMP002', 'PAN_CARD', 'EMP002_PAN_CARD_V1_20260729190300.pdf');
+
+        $this->assertStringStartsWith('EMP001/', $a);
+        $this->assertStringStartsWith('EMP002/', $b);
+    }
+
+    public function test_object_key_detection_covers_both_layouts(): void
+    {
+        // Current flat layout and keys written before it.
+        $this->assertTrue(ObjectKeyBuilder::looksLikeObjectKey('EMP001/EMP001_PAN_CARD_V1_20260729190000.pdf'));
+        $this->assertTrue(ObjectKeyBuilder::looksLikeObjectKey('employees/EMP001/PAN_CARD/x.pdf'));
+
+        // Legacy local paths and absolute URLs must not be mistaken for keys.
+        $this->assertFalse(ObjectKeyBuilder::looksLikeObjectKey('uploads/photos/x.jpg'));
+        $this->assertFalse(ObjectKeyBuilder::looksLikeObjectKey('https://example.com/x.jpg'));
+        $this->assertFalse(ObjectKeyBuilder::looksLikeObjectKey(null));
     }
 
     /** @dataProvider traversalProvider */
@@ -99,7 +125,7 @@ class DocumentNamingTest extends TestCase
     {
         $key = ObjectKeyBuilder::build('employee', 'a/b\\c', 'PAN_CARD', 'file.pdf');
 
-        $this->assertSame('employees/a_b_c/PAN_CARD/file.pdf', $key);
+        $this->assertSame('a_b_c/file.pdf', $key);
     }
 
     public function test_assert_safe_rejects_illegal_keys(): void
@@ -124,8 +150,8 @@ class DocumentNamingTest extends TestCase
     public function test_archive_key_is_prefixed_and_safe(): void
     {
         $this->assertSame(
-            'archive/employees/EMP1025/PAN_CARD/f.pdf',
-            ObjectKeyBuilder::archiveKey('employees/EMP1025/PAN_CARD/f.pdf')
+            'archive/EMP001/EMP001_PAN_CARD_V1_20260729190000.pdf',
+            ObjectKeyBuilder::archiveKey('EMP001/EMP001_PAN_CARD_V1_20260729190000.pdf')
         );
     }
 }

@@ -182,7 +182,6 @@ class DocumentService
 
             $generatedName = DocumentFileName::build(
                 $ownerRef,
-                $owner->name,
                 $documentType,
                 $next,
                 $facts['extension']

@@ -89,10 +89,38 @@ class UserController extends Controller
             $name = trim(implode(' ', array_filter([$name['first'] ?? null, $name['mid'] ?? null, $name['surname'] ?? null])));
         }
 
+        // No users row and no employee code yet. Falling through with a null
+        // code would put every such person in the same employees/USR000000
+        // folder and, because versions are numbered per owner, make one
+        // person's upload look like V2 of another's. Derive a stable per-person
+        // reference from whatever identity the form did supply.
         return new User([
-            'emp_code' => $request->input('emp_code'),
+            'emp_code' => $request->input('emp_code') ?: $this->pendingOwnerRef($request),
             'name'     => $name ?: null,
         ]);
+    }
+
+    /**
+     * Deterministic placeholder reference for an employee who has no code yet.
+     *
+     * Same person (same Aadhaar/email/mobile) resolves to the same folder on a
+     * resubmission; different people never share one. Replaced by the real
+     * emp_code once the appointment is approved and the documents are migrated.
+     */
+    private function pendingOwnerRef(Request $request): string
+    {
+        $seed = $request->input('aadhar_card_no')
+            ?: $request->input('email')
+            ?: $request->input('mobile_number')
+            ?: $request->input('punching_no');
+
+        if (!$seed) {
+            // Nothing identifying at all — keep this submission's files together
+            // without colliding with anyone else's.
+            $seed = json_encode($request->except(self::FILE_UPLOAD_FIELDS)) . microtime(true);
+        }
+
+        return 'PENDING' . strtoupper(substr(sha1((string) $seed), 0, 10));
     }
 
     /**

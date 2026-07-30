@@ -81,18 +81,24 @@ class DocumentFileName
         return $hint !== '' ? substr($hint, 0, 10) : 'bin';
     }
 
+    /**
+     * <EmployeeID>_<DocumentType>_V<Version>_<YYYYMMDDHHMMSS>.<ext>
+     * EMP001_PAN_CARD_V1_20260729190000.pdf
+     *
+     * The employee name is deliberately not part of the name: it is personal
+     * data that would otherwise sit in every object key and log line, and the
+     * employee ID already identifies the owner unambiguously.
+     */
     public static function build(
         string $entityId,
-        ?string $entityName,
         string $documentType,
         int $version,
         string $extension,
         ?\DateTimeInterface $at = null
     ): string {
         $stem = sprintf(
-            '%s_%s_%s_V%d_%s',
+            '%s_%s_V%d_%s',
             self::entityId($entityId),
-            self::entityName($entityName),
             strtoupper(preg_replace('/[^A-Za-z0-9_]+/u', '_', $documentType) ?? 'OTHER'),
             max(1, $version),
             self::timestamp($at)
