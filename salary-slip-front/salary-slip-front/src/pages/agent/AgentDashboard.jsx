@@ -527,14 +527,14 @@ export default function AgentDashboard() {
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700/50">
                 {loading ? (
                   <tr>
-                    <td colSpan="6" className="px-6 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+                    <td colSpan="7" className="px-6 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
                       <span className="inline-block w-4 h-4 border-2 border-brand-200 border-t-brand-600 rounded-full animate-spin mr-2"></span>
                       Loading candidates...
                     </td>
                   </tr>
                 ) : candidates.length === 0 ? (
                   <tr>
-                    <td colSpan="6" className="px-6 py-12 text-center">
+                    <td colSpan="7" className="px-6 py-12 text-center">
                       <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 mb-3">
                         <FileText size={20} className="text-gray-400" />
                       </div>

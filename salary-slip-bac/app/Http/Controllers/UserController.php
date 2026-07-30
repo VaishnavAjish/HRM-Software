@@ -1168,9 +1168,36 @@ class UserController extends Controller
         // show up as the appointment record — not linger as a trial form too.
         $query = User::where('added_by', $request->user()->id)
             ->where(function ($q) {
-                $q->where('type', '!=', 'trial')->orWhere('processed', 0);
+                $q->whereNull('type')
+                  ->orWhere('type', '')
+                  ->orWhere('type', '!=', 'trial')
+                  ->orWhere('processed', 0);
             });
-        $candidates = $query->orderBy('id', 'desc')->get();
+        $actor = $request->user();
+        $disclosed = 0;
+
+        // The agent dashboard shows the complete Aadhaar, so these rows carry it.
+        // Scope is already the narrowest in the app — added_by is this agent — so a
+        // row reaching here is one the agent created and can open individually.
+        $candidates = $query->orderBy('id', 'desc')->get()->map(function (User $candidate) use ($actor, &$disclosed) {
+            $data = $candidate->attributesToArray();
+
+            $full = \App\Support\AadhaarDisclosure::fullFor($candidate, $actor);
+
+            if ($full !== null) {
+                $data['aadhaar_full'] = $full;
+                $disclosed++;
+            }
+
+            return $data;
+        });
+
+        \App\Support\AadhaarDisclosure::auditListDisclosure(
+            $actor,
+            $disclosed,
+            'AGENT_CANDIDATE_LIST_FULL_AADHAAR_DISCLOSED'
+        );
+
         return response()->json(['status' => true, 'data' => $candidates]);
     }
 

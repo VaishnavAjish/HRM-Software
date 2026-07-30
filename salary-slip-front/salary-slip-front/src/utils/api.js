@@ -51,8 +51,14 @@ async function apiRequest(path, options = {}) {
 
 function buildCompanyQuery(companyId) {
   const scope = resolveCompanyScope(companyId);
-  const resolved = resolveCompanyIds(scope.companyId);
-  const query = resolved.length > 0 ? { company_code: resolved.join(",") } : {};
+  const query = {};
+
+  // If a specific company is selected (not 'all-companies'), add it to the query.
+  // The backend might crash if it receives 'all-companies' or a comma-separated list
+  // in contexts where it expects a single, lookup-ready company code.
+  if (scope.companyId && scope.companyId !== "all-companies") {
+    query.company_code = scope.companyId;
+  }
 
   if (scope.unit) {
     query.unit = scope.unit;
@@ -68,11 +74,13 @@ function mergeCompanyFilters(filters = {}, companyId) {
   };
 }
 
-function resolveWriteCompanyId(companyId, fallbackCompanyId) {
-  return resolveCompanyIds(
+export function resolveWriteCompanyId(companyId, fallbackCompanyId) {
+  const resolved = resolveCompanyIds(
     resolveCompanyScope(companyId).companyId,
     fallbackCompanyId,
-  )[0];
+  );
+  // Never return 'all-companies' for a write operation; pick the first valid one instead.
+  return resolved.filter(id => id !== "all-companies")[0] || resolved[0];
 }
 
 export const salaryApi = {

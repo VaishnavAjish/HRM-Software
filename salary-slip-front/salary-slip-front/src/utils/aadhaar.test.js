@@ -222,3 +222,50 @@ describe("payload assembly", () => {
     expect(payload.aadhar_card_no).toBe("999988887777");
   });
 });
+
+/**
+ * Regressions found by reading the edit paths after the full-display change.
+ *
+ * Both were introduced by prefilling edit inputs with the stored number: the
+ * value now arrives grouped ("1234 5678 9012") and, for a record with nothing on
+ * file, arrives as the display dash. Neither shape existed while the inputs
+ * started empty, and both blocked saves that had nothing to do with Aadhaar.
+ */
+describe("prefilled edit inputs", () => {
+  it("accepts the grouped prefill as an unchanged value", () => {
+    const result = buildSafeAadhaarUpdate({
+      enteredValue: "1234 5678 9012",
+      hasStored: true,
+      isCreateMode: false,
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(result.include).toBe(true);
+    expect(result.value).toBe("123456789012");
+  });
+
+  it("treats the display dash as nothing entered rather than a bad entry", () => {
+    // getAadhaarDisplayValue renders "-" for a record with no number, and that
+    // string lands in the prefilled input. Rejecting it blocked the save of every
+    // employee who had no Aadhaar on file.
+    const result = buildSafeAadhaarUpdate({
+      enteredValue: "-",
+      hasStored: false,
+      isCreateMode: false,
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(result.include).toBe(false);
+  });
+
+  it("still refuses a genuinely partial entry", () => {
+    const result = buildSafeAadhaarUpdate({
+      enteredValue: "1234 56",
+      hasStored: true,
+      isCreateMode: false,
+    });
+
+    expect(result.include).toBe(false);
+    expect(result.error).toMatch(/12-digit/);
+  });
+});

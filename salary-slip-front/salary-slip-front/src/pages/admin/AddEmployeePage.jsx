@@ -826,7 +826,7 @@ export default function AddEmployeePage() {
 
                 {currentSection.key === "identity" && (
                   <SectionCard icon={CreditCard} title="Identity & Bank Details" index={4}>
-                    {input({ label: "Aadhar Card No", key: "aadharCardNo", placeholder: "XXXX XXXX XXXX" })}
+                    {input({ label: "Aadhaar Card No", key: "aadharCardNo", placeholder: "1234 5678 9012" })}
                     {input({ label: "PAN Card No", key: "panCardNo", placeholder: "ABCDE1234F" })}
                     {input({ label: "Bank Name", key: "bankName", placeholder: "Bank Name" })}
                     {input({ label: "Bank IFSC Code", key: "bankIfscCode", placeholder: "IFSC Code" })}

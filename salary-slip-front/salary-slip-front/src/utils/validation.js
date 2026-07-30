@@ -5,7 +5,14 @@ export const validatePan = (pan) => {
 
 export const validateAadhaar = (aadhaar) => {
   if (!aadhaar) return true;
-  return /^\d{12}$/.test(aadhaar);
+
+  // Digits only. Edit forms are prefilled with the stored number grouped for
+  // readability ("1234 5678 9012"), so testing the raw string would reject an
+  // untouched field and block every save. "-" is what a record with no number
+  // renders as, and it normalises to nothing, so it is treated as absent.
+  const digits = String(aadhaar).replace(/\D/g, "");
+
+  return digits.length === 0 || digits.length === 12;
 };
 
 export const validateIfsc = (ifsc) => {

@@ -48,6 +48,7 @@ export default defineConfig(({ mode }) => {
         : env.VITE_PROD_URL_MASTER;
 
   return {
+    root: "salary-slip-front",
     define: {
       __COMPANY_MODE__: JSON.stringify(COMPANY_MODE),
       __PROD_API_URL__: JSON.stringify(PROD_API_URL || ""),
@@ -146,7 +147,8 @@ export default defineConfig(({ mode }) => {
       include: ["react-is"],
     },
     build: {
-      outDir: gitBranch,
+      outDir: "../" + gitBranch,
+      emptyOutDir: true,
       rollupOptions: {
         output: {
           manualChunks: {

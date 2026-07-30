@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 import ModernDatePicker from "../../components/ModernDatePicker";
-import { authApi, salaryApi, appointmentV1Api } from "../../utils/api";
+import { authApi, salaryApi, appointmentV1Api, resolveWriteCompanyId } from "../../utils/api";
 import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";
 import { getCompanyUnits, COMPANY_OPTIONS } from "../../config/companyConfig";
@@ -170,10 +170,6 @@ const AppointmentModal = ({
     routeRequest.appointmentId ? "loading" : "idle",
   );
 
-  // "XXXX XXXX 9012" for a record that already has an Aadhaar on file. The full
-  // number is hidden from every API response, so there is nothing to put in the
-  // input; this drives the "on file" hint and lets a blank input mean
-  // "unchanged" instead of "clear it".
   // Whether the record already has an Aadhaar stored, so a cleared input reads
   // as "keep it" rather than "this is missing". The value itself now lives in
   // formData, prefilled from the record.
@@ -500,6 +496,8 @@ const AppointmentModal = ({
 
       if (key === "members") {
         payload.append(key, JSON.stringify(value));
+      } else if (key === "company_code") {
+        payload.append(key, resolveWriteCompanyId(value));
       } else if (value !== null && value !== undefined) {
         payload.append(key, value);
       }

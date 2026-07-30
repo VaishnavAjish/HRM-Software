@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { Check, FileSpreadsheet, X } from "lucide-react";
 import ModernDatePicker from "../../components/ModernDatePicker";
 import toast from "react-hot-toast";
-import { authApi } from "../../utils/api";
+import { authApi, resolveWriteCompanyId } from "../../utils/api";
 import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";
 import { getCompanyUnits } from "../../config/companyConfig";
@@ -303,7 +303,10 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
 
     setLoading(true);
     try {
-      const submitData = { ...formData, company_code: companyId || "nidhi-impex" };
+      const submitData = {
+        ...formData,
+        company_code: resolveWriteCompanyId(companyId || "nidhi-impex")
+      };
 
       if (isEditMode) {
         const snap = originalSnapshot || {};

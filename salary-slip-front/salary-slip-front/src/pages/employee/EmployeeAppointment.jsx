@@ -97,8 +97,8 @@ export default function EmployeeAppointment() {
           empWhatsapp: firstPresent(item.empWhatsapp, item.emp_whatsapp_no, item.emp_whatsapp) || "",
           refName: firstPresent(item.refName, item.reference_name, item.ref_name) || "",
           refMobile: firstPresent(item.refMobile, item.reference_mobile_no, item.ref_mobile) || "",
-          // The complete number: the appointment endpoints return aadhaar_full
-          // for a request that is allowed to see the record.
+          // The complete number. This page reads /api/profile, which discloses
+          // aadhaar_full to the owner of the record.
           aadharNo: getAadhaarDisplayValue(item),
           panNo: firstPresent(item.panNo, item.pan_card_no, item.pan_no) || "",
           bankName: firstPresent(item.bankName, item.bank_name) || "",

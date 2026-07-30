@@ -16,7 +16,11 @@ import { getCompanyConfig } from "../../config/companyConfig";
 // appointment form" is literally that form, not a lookalike.
 import AppointmentModal from "../../pages/auth/AppointmentModal";
 import TrialFormModal from "../../pages/auth/TrialFormModal";
-import { getAadhaarDisplayValue } from "../../utils/aadhaar";
+import {
+  buildSafeAadhaarUpdate,
+  getAadhaarDisplayValue,
+  hasStoredAadhaar,
+} from "../../utils/aadhaar";
 
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
@@ -52,7 +56,10 @@ const DETAIL_FIELDS = [
   ["Company", (r) => getCompanyConfig(r.company_code)?.label || r.company_code],
   ["Unit / Branch", "unit"], ["Joining Date", "joining_date"], ["Date of Birth", "dob"],
   ["Gender", "gender"], ["Blood Group", "blood_group"], ["Salary", "salary"],
-  ["Manager", "manager_name"], ["Aadhar No", "aadhar_card_no"], ["PAN No", "pan_card_no"],
+  // Accessor, not a key: aadhar_card_no is in User::$hidden so it never reaches
+  // the client, and reading it directly rendered an empty column. The list
+  // endpoints return aadhaar_full for rows the caller may open.
+  ["Manager", "manager_name"], ["Aadhaar No", (r) => getAadhaarDisplayValue(r)], ["PAN No", "pan_card_no"],
   ["Bank Name", "bank_name"], ["Bank A/C No", "bank_account_no"], ["IFSC", "bank_ifsc_code"],
   ["Address", "address"],
   ["Trial Date", "trial_date"], ["Last Company", "last_company_name"],
@@ -265,8 +272,8 @@ export default function EmployeeMasterTable() {
         department: row.department || "", designation: row.designation || "",
         dob: row.dob || "", gender: row.gender || "", address: row.address || "",
         city: row.city || "", district: row.district || "", state: row.state || "", pin: row.pin || "",
-        // Masked: this is a list. The raw column is hidden from responses, so
-        // reading it directly rendered an empty column.
+        // Prefilled with the complete stored number, grouped. Normalised again on
+        // save so the grouping never reaches the column.
         aadhar_card_no: getAadhaarDisplayValue(row), pan_card_no: row.pan_card_no || "",
         bank_name: row.bank_name || "", bank_ifsc_code: row.bank_ifsc_code || "",
         bank_account_no: row.bank_account_no || "",
@@ -282,10 +289,30 @@ export default function EmployeeMasterTable() {
   const handleEditSave = async (e) => {
     e.preventDefault();
     if (!editEmployeeRow) return;
+
+    // Decide what the Aadhaar field is allowed to do before anything is sent. A
+    // cleared or partly-deleted field must not overwrite the stored number — that
+    // is what detached records from their S3 document folders — and "-" (what a
+    // record with no number renders as) must not be stored either.
+    const aadhaar = buildSafeAadhaarUpdate({
+      enteredValue: editForm.aadhar_card_no,
+      hasStored: hasStoredAadhaar(editEmployeeRow),
+    });
+
+    if (aadhaar.error) {
+      toast.error(aadhaar.error);
+      return;
+    }
+
+    const payload = { ...editForm, ...(aadhaar.include && { aadhar_card_no: aadhaar.value }) };
+
+    // Absent, not empty. An empty value would overwrite the stored number.
+    if (!aadhaar.include) delete payload.aadhar_card_no;
+
     setEditSaving(true);
     try {
       await salaryApi.editEmployee(
-        editEmployeeRow.id, editForm, user?.accessToken, user?.tokenType,
+        editEmployeeRow.id, payload, user?.accessToken, user?.tokenType,
         { companyId: editEmployeeRow.company_code || companyId },
       );
       toast.success("Employee updated");

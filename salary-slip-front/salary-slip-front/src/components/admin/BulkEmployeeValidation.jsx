@@ -35,7 +35,7 @@ const FIELD_LABELS = {
   bank_name: "Bank Name",
   bank_account_no: "Bank Account No",
   bank_ifsc_code: "Bank IFSC Code",
-  aadhar_card_no: "Aadhar Card No",
+  aadhar_card_no: "Aadhaar Card No",
   pan_card_no: "PAN Card No",
   pf_no: "PF Number",
   esi_no: "ESI Number",

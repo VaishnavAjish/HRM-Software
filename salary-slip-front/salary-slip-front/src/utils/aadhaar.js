@@ -120,7 +120,13 @@ export function buildSafeAadhaarUpdate({
   isCreateMode = false,
   required = false,
 }) {
-  const entered = String(enteredValue ?? "").trim();
+  // A value carrying no digits is not an attempted replacement. This matters
+  // because a record with no stored number prefills the input with "-" (what
+  // getAadhaarDisplayValue renders for "nothing on file"), and treating that as a
+  // malformed entry blocked the save of every employee who had no Aadhaar.
+  const entered = normaliseAadhaar(enteredValue) === ""
+    ? ""
+    : String(enteredValue ?? "").trim();
 
   if (!entered) {
     if (isCreateMode) {
