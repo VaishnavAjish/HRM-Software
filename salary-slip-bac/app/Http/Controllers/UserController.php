@@ -8,6 +8,7 @@ use App\Models\UploadBatch;
 use App\Exceptions\DocumentException;
 use App\Services\DocumentStorageService;
 use App\Services\Documents\DocumentService;
+use App\Support\AadhaarReference;
 use App\Support\DocumentType;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -164,6 +165,82 @@ class UserController extends Controller
             'aadhar_card_no' => $aadhaar,
             'emp_code'       => $empCode ?: ($aadhaar ? null : $this->pendingOwnerRef($request)),
             'name'           => $name ?: null,
+        ]);
+    }
+
+    /**
+     * Decide what an incoming aadhar_card_no may do to the stored value.
+     *
+     * The column is hidden from every API response (see User::$hidden), so an
+     * edit form has nothing to repopulate the input with and posts it back
+     * empty — or, if a UI shows the mask, as "XXXX XXXX 9012". Writing either
+     * one erases the stored number, and with it the S3 folder reference derived
+     * from it, so a record silently loses the link to its own documents.
+     *
+     * Only a complete, valid 12-digit number may replace what is already there.
+     * Anything shorter is treated as "unchanged" and dropped from the payload.
+     */
+    private function withSafeAadhaar(array $data): array
+    {
+        if (!array_key_exists('aadhar_card_no', $data)) {
+            return $data;
+        }
+
+        $incoming = $data['aadhar_card_no'];
+
+        // Scalar-only: an array or object here is malformed input, never a number.
+        $digits = is_scalar($incoming) ? AadhaarReference::normalise((string) $incoming) : '';
+
+        if (!AadhaarReference::isValid($digits)) {
+            unset($data['aadhar_card_no']);
+
+            return $data;
+        }
+
+        // Store digits only, so "1234 5678 9012" and "123456789012" produce the
+        // same folder reference.
+        $data['aadhar_card_no'] = $digits;
+
+        return $data;
+    }
+
+    /**
+     * Write $data onto $target, noting any Aadhaar change on the way through.
+     *
+     * Every appointment/employee update goes through here so the audit cannot be
+     * forgotten at one call site while the others have it.
+     */
+    private function applyUpdate(User $target, array $data): void
+    {
+        if (isset($data['aadhar_card_no'])) {
+            $this->recordAadhaarChange($target, (string) $data['aadhar_card_no']);
+        }
+
+        $target->update($data);
+    }
+
+    /**
+     * Note that an Aadhaar was set or replaced. Last four digits only — the
+     * complete number must never reach a log file, so the previous value is
+     * recorded as presence plus its own last four rather than as a value.
+     */
+    private function recordAadhaarChange(User $employee, string $newDigits): void
+    {
+        $previous = $employee->getRawOriginal('aadhar_card_no');
+
+        if (AadhaarReference::normalise((string) $previous) === $newDigits) {
+            return;
+        }
+
+        \Illuminate\Support\Facades\Log::info('aadhaar.changed', [
+            'record_id' => $employee->id,
+            'record_type' => $employee->type ?: 'employee',
+            'actor_id' => auth('api')->id(),
+            'action' => $previous ? 'replaced' : 'added',
+            'previous_present' => (bool) $previous,
+            'previous_last4' => AadhaarReference::lastFour((string) $previous) ?: null,
+            'new_last4' => substr($newDigits, -4),
+            'at' => now()->toIso8601String(),
         ]);
     }
 
@@ -413,6 +490,8 @@ class UserController extends Controller
         $data['password'] = $request->password ?? '12345678';
         $data['role'] = $request->role ?? 3;
         $data['emp_code'] = $request->emp_code ?: strtoupper(Str::random(8));
+        // Normalise to digits, and never store a partial number.
+        $data = $this->withSafeAadhaar($data);
 
         $employee = User::create($data);
 
@@ -432,6 +511,10 @@ class UserController extends Controller
         }
 
         $data = $this->guardPrivilegedFields($userAuth, $request->all());
+        // The employee edit form cannot see the stored number either, so it
+        // posts aadhar_card_no: null. Without this the first edit of any
+        // employee erased their Aadhaar and detached them from their documents.
+        $data = $this->withSafeAadhaar($data);
         if (isset($data['password'])) {
             $data['password'] = $data['password'];
         }
@@ -453,7 +536,7 @@ class UserController extends Controller
             }
         }
 
-        $employee->update($data);
+        $this->applyUpdate($employee, $data);
 
         return response()->json(['status' => true, 'message' => 'Employee updated', 'data' => $employee]);
     }
@@ -775,6 +858,9 @@ class UserController extends Controller
         );
 
         $data = array_merge($data, $this->storeUploadedFiles($request, self::APPOINTMENT_FIELDS, $this->resolveDocumentOwner($request)));
+        // Applied before any branch below picks a target, so every path through
+        // this method is protected — not just the one that matches by id.
+        $data = $this->withSafeAadhaar($data);
 
         $userAuth = auth('api')->user();
 
@@ -802,14 +888,22 @@ class UserController extends Controller
                         'message' => "Employee code '{$newEmpCode}' is already assigned to {$conflict->name}",
                     ], 422);
                 }
-                if ($employee->type === 'appointment' || $employee->type === 'pending_employee') {
-                    // A code alone doesn't finish onboarding — the employee still
-                    // has no usable password, so park the record in Pending
-                    // Employees (Add Employee -> Pending) instead of promoting it
-                    // straight to a full employee. Assigning a password there is
-                    // what clears the type and activates the login.
-                    $data['type'] = 'pending_employee';
-                    $data['status'] = 2;
+                if (in_array($employee->type, ['appointment', 'pending_employee', 'trial'], true)) {
+                    // Assigning a code from Employee Master is the onboarding
+                    // decision itself — the record activates immediately rather
+                    // than waiting on a separate password step. Note this still
+                    // leaves the shared default password (12345678, see
+                    // appointmentStore/postTrialForm) live on the account until
+                    // the employee or an admin changes it.
+                    $data['type'] = null;
+                    $data['status'] = 0;
+                    if ($employee->type === 'trial') {
+                        // Leaving the trial pool for good — without this it would
+                        // still match getTrialForms()'s `processed = 0` filter if
+                        // the type were ever reverted, and audit trails read oddly
+                        // showing an unprocessed trial that's already a real code.
+                        $data['processed'] = 1;
+                    }
                 }
             }
             if ($request->has('checkbox')) {
@@ -821,7 +915,7 @@ class UserController extends Controller
                     $data['type'] = 'appointment';
                 }
             }
-            $employee->update($data);
+            $this->applyUpdate($employee, $data);
             return response()->json(['status' => true, 'message' => 'Employee updated', 'user' => $employee->fresh()]);
         }
 
@@ -832,13 +926,13 @@ class UserController extends Controller
                 if (!$this->inManagedScope($userAuth, $employee)) {
                     return response()->json(['status' => false, 'message' => 'Employee not found'], 404);
                 }
-                $employee->update($data);
+                $this->applyUpdate($employee, $data);
                 return response()->json(['status' => true, 'message' => 'Employee updated', 'user' => $employee->fresh()]);
             }
         }
 
         if ($userAuth) {
-            $userAuth->update($data);
+            $this->applyUpdate($userAuth, $data);
             return response()->json(['status' => true, 'message' => 'Profile updated', 'user' => $userAuth->fresh()]);
         }
 
@@ -962,6 +1056,9 @@ class UserController extends Controller
         // by this method itself, never taken from client input.
         $data = array_intersect_key($raw, array_flip(self::APPOINTMENT_FIELDS));
         $data = array_merge($data, $this->storeUploadedFiles($request, self::APPOINTMENT_FIELDS, $this->resolveDocumentOwner($request)));
+        // Normalise on the way in so "1234 5678 9012" and "123456789012" yield
+        // the same stored value and therefore the same document folder.
+        $data = $this->withSafeAadhaar($data);
 
         // Resolve the source trial form once. Converting it into an appointment
         // creates a brand-new users row, and users.email has a hard uniqueness

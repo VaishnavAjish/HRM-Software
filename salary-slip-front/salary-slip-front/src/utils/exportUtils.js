@@ -1820,8 +1820,14 @@ export function downloadPayslipPDF({ emp, payslip }) {
       [
         "Designation",
         `: ${String(data.employee.designation || "").toUpperCase()}`,
-        "",
-        "",
+        "Unit",
+        `: ${String(data.employee.unit || "").toUpperCase()}`,
+      ],
+      [
+        "PF Account No",
+        `: ${data.employee.pfAccountNo || "-"}`,
+        "ESI ID No",
+        `: ${data.employee.esiAccountNo || "-"}`,
       ],
     ],
     startY: y,

@@ -7,6 +7,7 @@ import toast from "react-hot-toast";
 import { appointmentV1Api, documentV1Api } from "../../utils/api";
 import { useAuth } from "../../context/AuthContext";
 import DocumentViewerModal from "../../components/documents/DocumentViewerModal";
+import { PHOTO_DOCUMENT_TYPE } from "./documentTypes";
 
 const ACCEPT = ".pdf,.jpg,.jpeg,.png";
 const ALLOWED_MIME = ["application/pdf", "image/jpeg", "image/png"];
@@ -33,6 +34,49 @@ const formatSize = (b) =>
 const formatDate = (iso) => (iso ? new Date(iso).toLocaleDateString() : "—");
 
 /**
+ * Shown when the profile photo taken on step 1 could not be uploaded with the
+ * appointment save. The appointment itself is already stored — only the photo
+ * is outstanding — so this offers a retry rather than sending the user back.
+ */
+function PendingPhotoBanner({ photo, retrying, onRetry, onRemove }) {
+  if (!photo) return null;
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+      <div className="flex items-center gap-2 text-xs text-amber-800">
+        <AlertTriangle size={15} className="shrink-0" />
+        <span>
+          <strong className="font-bold">Profile photo upload failed.</strong>{" "}
+          The appointment was saved. {photo.name} · {formatSize(photo.size)}
+        </span>
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onRetry}
+          disabled={retrying}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-40"
+        >
+          {retrying ? (
+            <><Loader2 size={13} className="animate-spin" /> Uploading…</>
+          ) : (
+            <><RefreshCw size={13} /> Retry Upload</>
+          )}
+        </button>
+        <button
+          type="button"
+          onClick={onRemove}
+          disabled={retrying}
+          className="rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-40"
+        >
+          Remove Photo
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
  * Step 2 of the appointment flow. Receives only the saved appointmentId — the
  * Aadhaar number is read server-side from the appointment record and is never
  * sent from here.
@@ -42,6 +86,9 @@ export default function AppointmentDocumentsStep({
   summary = {},
   onBack,
   onComplete,
+  pendingPhoto = null,
+  onPendingPhotoUploaded,
+  onDiscardPendingPhoto,
 }) {
   const { user } = useAuth();
   const token = user?.accessToken;
@@ -58,6 +105,7 @@ export default function AppointmentDocumentsStep({
 
   const [viewing, setViewing] = useState(null);
   const [replacingId, setReplacingId] = useState(null);
+  const [retryingPhoto, setRetryingPhoto] = useState(false);
   const replaceRef = useRef(null);
 
   const loadList = useCallback(async () => {
@@ -110,6 +158,33 @@ export default function AppointmentDocumentsStep({
       toast.error(err?.message || "Upload failed.");
     } finally {
       setUploading(false);
+    }
+  };
+
+  /**
+   * Retries only the photo. The appointment already exists, so this never
+   * creates or updates one — it posts the same File to the same appointmentId.
+   */
+  const handleRetryPendingPhoto = async () => {
+    if (!pendingPhoto || retryingPhoto) return;
+
+    setRetryingPhoto(true);
+    try {
+      await appointmentV1Api.uploadDocument(
+        appointmentId,
+        { file: pendingPhoto, documentType: PHOTO_DOCUMENT_TYPE },
+        token,
+        tokenType,
+      );
+      toast.success("Profile photo uploaded.");
+      // Only now may the parent drop the file.
+      onPendingPhotoUploaded?.();
+      loadList();
+    } catch (err) {
+      // Keep the file so the control stays available for another attempt.
+      toast.error(err?.message || "Profile photo upload failed.");
+    } finally {
+      setRetryingPhoto(false);
     }
   };
 
@@ -187,6 +262,13 @@ export default function AppointmentDocumentsStep({
           ))}
         </div>
       </div>
+
+      <PendingPhotoBanner
+        photo={pendingPhoto}
+        retrying={retryingPhoto}
+        onRetry={handleRetryPendingPhoto}
+        onRemove={onDiscardPendingPhoto}
+      />
 
       <div className="rounded-2xl border border-gray-200 bg-white p-4">
         <h3 className="mb-3 flex items-center gap-2 text-sm font-bold text-gray-800">

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { createPortal } from "react-dom";
 import { AllCommunityModule, ModuleRegistry } from "ag-grid-community";
 import { AgGridReact } from "ag-grid-react";
@@ -7,6 +7,10 @@ import useGridHeaderContextMenu from "../../hooks/useGridHeaderContextMenu";
 import { useTheme } from "../../context/ThemeContext";
 import useIsMobile from "../../hooks/useIsMobile";
 import { getEmployeePhotoUrl } from "./AdminModals/EmployeeHelpers";
+import { maskAadhaar } from "../../utils/aadhaar";
+
+/** Grant required to see a complete Aadhaar number; enforced server-side too. */
+const AADHAAR_REVEAL_PERMISSION = "appointments.view_full_aadhaar";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 import {
@@ -38,7 +42,7 @@ import Modal from "../../components/ui/Modal";
 import { SkeletonTable } from "../../components/ui/Skeleton";
 import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";
-import { authApi } from "../../utils/api";
+import { authApi, appointmentV1Api } from "../../utils/api";
 import PrintableForm from "../../components/forms/PrintableForm";
 import { exportNodeToPdf } from "../../utils/pdfUtils";
 import AppointmentModal from "../auth/AppointmentModal";
@@ -46,7 +50,7 @@ import {
   readAppointmentRouteState,
   clearAppointmentRouteState,
 } from "../auth/appointmentRouteState";
-import { COMPANY_OPTIONS, getCompanyUnits } from "../../config/companyConfig";
+import { getCompanyUnits } from "../../config/companyConfig";
 
 const inputCls =
   "w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-brand-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white";
@@ -101,7 +105,10 @@ function normalizeAppointment(item, index) {
       item.reference_mobile_no,
       item.ref_mobile,
     ),
-    aadharNo: firstPresent(item.aadharNo, item.aadhar_card_no, item.aadhar_no),
+    // Masked only. The backend hides aadhar_card_no from every response, so the
+    // raw keys are always absent here — reading them is what made this column
+    // render blank. aadhaar_masked is the appended, safe representation.
+    aadharNo: firstPresent(item.aadhaar_masked, maskAadhaar(item.aadhar_card_no)),
     panNo: firstPresent(item.panNo, item.pan_card_no, item.pan_no),
     bankName: firstPresent(item.bankName, item.bank_name),
     accountNo: firstPresent(
@@ -157,7 +164,10 @@ function normalizeAppointment(item, index) {
             4,
           );
         }
-      } catch (e) {}
+      } catch {
+        // Legacy rows store members in inconsistent shapes; fall through to
+        // the blank set below rather than failing the whole list.
+      }
       return Array(4).fill({});
     })(),
     isPrinted: Number(item.print ?? 0) === 1,
@@ -273,32 +283,6 @@ function StatusBadge({ status }) {
   );
 }
 
-const FormRow = ({ label, value }) => (
-  <div className="flex flex-row items-end gap-2 py-1">
-    <label className="text-[13px] font-bold whitespace-nowrap w-[130px] shrink-0 text-black leading-normal">
-      {label}
-    </label>
-    <span className="font-bold text-black inline">:</span>
-    <span className="border-b border-black flex-1 min-h-[24px] pb-[3px] px-1 text-[13px] font-medium uppercase leading-normal overflow-visible whitespace-nowrap text-black">
-      {value || ""}
-    </span>
-  </div>
-);
-
-const FormInline = ({ label, value }) => (
-  <div className="flex items-end gap-2 flex-1 py-1">
-    <label className="font-bold whitespace-nowrap text-[13px] text-black leading-normal">
-      {label}
-    </label>
-    <span className="font-bold text-black">:</span>
-    <span className="border-b border-black flex-1 min-h-[24px] pb-[3px] px-1 text-[13px] font-medium uppercase leading-normal overflow-visible whitespace-nowrap text-black">
-      {value || ""}
-    </span>
-  </div>
-);
-
-// Must match the four slots the appointment form uploads. Bank Passbook was
-// missing here, so it uploaded and stored but never appeared on this page.
 const DOC_LABELS = {
   adhar_image: "Aadhar Card",
   pan_image: "PAN Card",
@@ -327,6 +311,7 @@ function DocLightbox({ doc, onClose }) {
       <div
         className="relative max-w-3xl w-full max-h-[90vh] bg-white rounded-2xl overflow-hidden shadow-2xl"
         onClick={(e) => e.stopPropagation()}
+
       >
         <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
           <span className="font-bold text-sm text-gray-800">{doc.label}</span>
@@ -526,7 +511,7 @@ const ResponsiveDetailsForm = ({ data }) => {
           <DetailItem label="Blood Group" value={data.bloodGroup} />
           <DetailItem label="Reference Name" value={data.refName} />
           <DetailItem label="Reference Mobile" value={data.refMobile} />
-          <DetailItem label="Aadhar Card No" value={data.aadharNo} />
+          <DetailItem label="Aadhaar Card No" value={data.aadharNo} />
           <DetailItem label="PAN Card No" value={data.panNo} />
           <DetailItem label="Bank Name" value={data.bankName} />
           <DetailItem label="Bank Account No" value={data.accountNo} />
@@ -575,21 +560,64 @@ function CreateCandidateModal({ isOpen, onClose, onSuccess }) {
   const [agentsLoading, setAgentsLoading] = useState(false);
   const [editingAgentId, setEditingAgentId] = useState(null);
 
-  const fetchAgents = () => {
-    setAgentsLoading(true);
-    authApi.getAgents(user?.accessToken, user?.tokenType)
-      .then(res => setAgents(res.data || []))
-      .catch(() => toast.error("Failed to load agents"))
-      .finally(() => setAgentsLoading(false));
-  };
+  // Depend on the credentials rather than the `user` object: AuthProvider passes
+  // an inline object literal as its context value, so `user` is a new reference
+  // on every provider render and would re-fetch the agent list each time.
+  const accessToken = user?.accessToken;
+  const tokenType = user?.tokenType;
 
-  useEffect(() => {
+  const loadAgents = useCallback(async () => {
+    try {
+      const res = await authApi.getAgents(accessToken, tokenType);
+      setAgents(res.data || []);
+    } catch {
+      toast.error("Failed to load agents");
+    } finally {
+      setAgentsLoading(false);
+    }
+  }, [accessToken, tokenType]);
+
+  /** Reload after a create/update/delete, with the spinner. */
+  const fetchAgents = useCallback(() => {
+    setAgentsLoading(true);
+    loadAgents();
+  }, [loadAgents]);
+
+  // Reset the form when the modal opens. Assigning state during render is the
+  // supported way to reset on a prop change; from an effect body it renders the
+  // previous values first and only then replaces them.
+  const [wasOpen, setWasOpen] = useState(false);
+
+  if (wasOpen !== isOpen) {
+    setWasOpen(isOpen);
     if (isOpen) {
-      fetchAgents();
       setEditingAgentId(null);
       setFormData({ name: "", email: "", mobile_number: "", password: "", company_code: "", unit: "" });
+      setAgentsLoading(true);
     }
-  }, [isOpen, user]);
+  }
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await authApi.getAgents(accessToken, tokenType);
+        if (cancelled) return;
+        setAgents(res.data || []);
+      } catch {
+        if (!cancelled) toast.error("Failed to load agents");
+      } finally {
+        if (!cancelled) setAgentsLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, accessToken, tokenType]);
 
   const availableUnits = formData.company_code ? getCompanyUnits(formData.company_code) : [];
 
@@ -859,13 +887,25 @@ export default function Appointments() {
 
     return () => window.removeEventListener("popstate", restoreFromUrl);
   }, []);
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("All");
+  // No search box or status dropdown exists on this page, so these are fixed.
+  // Re-introduce state here if those controls are added back.
+  const search = "";
+  const statusFilter = "All";
   const [visibleColumns, setVisibleColumns] = useState([
-    "fullName", "empCode", "designation", "department", "joiningDate",
+    "fullName", "designation", "department", "joiningDate",
     "managerName", "unitName", "agentName", "status", "isPrinted",
   ]);
   const [showColModal, setShowColModal] = useState(false);
+
+  // The complete Aadhaar number, held in component state only for as long as it
+  // is on screen. Never persisted, cached, put in the URL or logged — the
+  // server hands it over once, and it is dropped on Hide, on a timeout, or when
+  // the modal closes.
+  const [revealedAadhaar, setRevealedAadhaar] = useState("");
+  const [revealedFor, setRevealedFor] = useState(null);
+  const [revealingAadhaar, setRevealingAadhaar] = useState(false);
+  const aadhaarHideTimer = useRef(null);
+
   const formRef = useRef(null);
   const gridRef = useRef(null);
   const gridContainerRef = useRef(null);
@@ -935,6 +975,60 @@ export default function Appointments() {
     [appointments],
   );
 
+  /** Only an explicitly granted user — or a Super Admin — may ask to reveal. */
+  const canRevealAadhaar = useMemo(() => {
+    if (Number(user?.rawRole) === 0) return true;
+
+    const value = user?.permissions?.[AADHAAR_REVEAL_PERMISSION];
+
+    return value === "view_only" || value === "read_write";
+  }, [user]);
+
+  const hideAadhaar = useCallback(() => {
+    window.clearTimeout(aadhaarHideTimer.current);
+    setRevealedAadhaar("");
+  }, []);
+
+  const handleRevealAadhaar = async () => {
+    if (!selected?.id || revealingAadhaar) return;
+
+    setRevealingAadhaar(true);
+    try {
+      const res = await appointmentV1Api.revealAadhaar(
+        selected.id,
+        user?.accessToken,
+        user?.tokenType,
+      );
+
+      const digits = String(res?.data?.aadhaarNumber ?? "").replace(/\D/g, "");
+      if (digits.length !== 12) throw new Error("Unable to reveal Aadhaar number.");
+
+      setRevealedAadhaar(digits.replace(/(\d{4})(\d{4})(\d{4})/, "$1 $2 $3"));
+      setRevealedFor(selected.id);
+
+      // Back to masked on its own, so an unattended screen does not keep it up.
+      window.clearTimeout(aadhaarHideTimer.current);
+      aadhaarHideTimer.current = window.setTimeout(
+        () => setRevealedAadhaar(""),
+        (Number(res?.data?.expiresIn) || 30) * 1000,
+      );
+    } catch (err) {
+      toast.error(err?.message || "Unable to reveal Aadhaar number.");
+    } finally {
+      setRevealingAadhaar(false);
+    }
+  };
+
+  /**
+   * Derived rather than cleared from an effect: the number is shown only while
+   * the modal for the appointment it belongs to is open. Closing the modal or
+   * switching records therefore stops displaying it immediately, with no
+   * cascading state update to get wrong.
+   */
+  const shownAadhaar = selected?.id && revealedFor === selected.id ? revealedAadhaar : "";
+
+  useEffect(() => () => window.clearTimeout(aadhaarHideTimer.current), []);
+
   const handleDownloadPDF = async () => {
     if (!selected || !formRef.current) return;
     setPdfLoading(true);
@@ -989,11 +1083,14 @@ export default function Appointments() {
           for (const rule of sheet.cssRules) {
             cssText += rule.cssText + "\n";
           }
-        } catch (e) {
+        } catch {
           // Ignore stylesheet access errors (e.g. CORS)
         }
       }
-    } catch (e) {}
+    } catch {
+      // Enumerating stylesheets can throw on cross-origin sheets; the print
+      // view degrades to unstyled rather than not opening at all.
+    }
     const appStyles = `<style>${cssText}</style>`;
 
     win.document.write(
@@ -1107,7 +1204,7 @@ export default function Appointments() {
           user?.tokenType,
         );
         loadAppointments();
-      } catch (_) {
+      } catch {
         // silent — print already happened
       }
     };
@@ -1119,64 +1216,10 @@ export default function Appointments() {
     }
   };
 
-  const revertEmpCodeCell = (id, oldValue) => {
-    setAppointments((prev) =>
-      prev.map((a) => (a.id === id ? { ...a, empCode: oldValue } : a)),
-    );
-  };
-
-  const handleEmpCodeUpdate = async ({ data, oldValue, newValue }) => {
-    const trimmed = String(newValue ?? "").trim();
-    if (trimmed === String(oldValue ?? "").trim()) return;
-
-    // Same guard as the Appointment Form modal — check for a conflicting
-    // emp_code and ask for confirmation before committing, instead of
-    // silently submitting and surfacing a raw 422 from the backend.
-    if (trimmed) {
-      try {
-        const check = await authApi.checkEmpCodeAvailability(
-          trimmed,
-          data.id,
-          user?.accessToken,
-          user?.tokenType,
-        );
-        if (check?.exists) {
-          toast.error(
-            `Employee code '${trimmed}' is already assigned to ${check.employee?.name || "another employee"}`,
-          );
-          revertEmpCodeCell(data.id, oldValue);
-          return;
-        }
-      } catch {
-        // Fail open — the backend still enforces this on submit either way.
-      }
-
-      const confirmMessage = oldValue
-        ? `Change employee code to '${trimmed}'?`
-        : `Assign employee code '${trimmed}'? This moves the record out of Appointments and into Add Employee → Pending Employees, where you set their password to activate the login.`;
-      if (!window.confirm(confirmMessage)) {
-        revertEmpCodeCell(data.id, oldValue);
-        return;
-      }
-    }
-
-    setAppointments((prev) =>
-      prev.map((a) => (a.id === data.id ? { ...a, empCode: trimmed } : a)),
-    );
-
-    try {
-      const payload = new FormData();
-      payload.append("id", data.id);
-      payload.append("emp_code", trimmed);
-      await authApi.updateAppointment(payload, user?.accessToken, user?.tokenType);
-      toast.success("Employee code updated");
-    } catch (err) {
-      revertEmpCodeCell(data.id, oldValue);
-      toast.error(err.message || "Failed to update employee code");
-    }
-  };
-
-  const handleStatusUpdate = async (id, approve) => {
+  // Memoised because the grid's column definitions close over it: as a plain
+  // function it was a new reference every render, so the useMemo that builds the
+  // columns re-ran on every render and rebuilt the whole grid definition.
+  const handleStatusUpdate = useCallback(async (id, approve) => {
     const label = approve ? "Approved" : "Rejected";
     setStatusLoading((prev) => ({ ...prev, [id]: label }));
     try {
@@ -1205,11 +1248,10 @@ export default function Appointments() {
         return n;
       });
     }
-  };
+  }, [appointments, selected, user]);
 
   const allColumns = useMemo(() => [
     { field: "fullName", label: "Employee" },
-    { field: "empCode", label: "Emp Code" },
     { field: "designation", label: "Designation" },
     { field: "department", label: "Department" },
     { field: "salary", label: "Salary" },
@@ -1368,21 +1410,6 @@ export default function Appointments() {
             </span>
           </div>
         ),
-      },
-      {
-        headerName: "Emp Code",
-        field: "empCode",
-        minWidth: 110,
-        editable: true,
-        hide: !visibleColumns.includes("empCode"),
-        cellRenderer: ({ value }) =>
-          value ? (
-            <span className="font-mono text-sm font-semibold text-brand-700 dark:text-brand-300">
-              {value}
-            </span>
-          ) : (
-            <span className="text-gray-400 text-sm">—</span>
-          ),
       },
       {
         headerName: "Designation",
@@ -1903,10 +1930,6 @@ export default function Appointments() {
               popupParent={document.body}
               enableCellTextSelection
               animateRows
-              singleClickEdit
-              onCellValueChanged={(params) => {
-                if (params.colDef.field === "empCode") handleEmpCodeUpdate(params);
-              }}
               overlayNoRowsTemplate="<span class='text-gray-400 text-sm'>No appointment forms found</span>"
             />
             <GridHeaderContextMenu
@@ -2034,10 +2057,27 @@ export default function Appointments() {
               <PrintableForm data={selected} formRef={formRef} />
             </div>
 
-            {/* PC View: PrintableForm */}
+            {/* PC View: PrintableForm. Only this on-screen copy is given the
+                revealed number — the hidden instance above drives Print and PDF
+                and is never passed it. */}
             <div className="hidden md:flex justify-center overflow-x-auto bg-gray-50 dark:bg-gray-900 rounded-xl p-4 border border-gray-200 dark:border-gray-800">
               <div className="scale-[0.85] sm:scale-[0.95] md:scale-100 origin-top flex items-center justify-center min-w-[max-content] pb-4">
-                <PrintableForm data={selected} />
+                <PrintableForm
+                  data={selected}
+                  aadhaarOverride={shownAadhaar}
+                  aadhaarAction={
+                    canRevealAadhaar && selected.aadharNo ? (
+                      <button
+                        type="button"
+                        onClick={shownAadhaar ? hideAadhaar : handleRevealAadhaar}
+                        disabled={revealingAadhaar}
+                        className="rounded border border-gray-400 px-2 py-0.5 text-[11px] font-semibold text-gray-700 hover:bg-gray-100 disabled:opacity-40"
+                      >
+                        {revealingAadhaar ? "…" : shownAadhaar ? "Hide" : "Show"}
+                      </button>
+                    ) : null
+                  }
+                />
               </div>
             </div>
 

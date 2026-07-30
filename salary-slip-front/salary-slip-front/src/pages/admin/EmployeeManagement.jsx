@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";
+import { buildSafeAadhaarUpdate, hasStoredAadhaar } from "../../utils/aadhaar";
 import { useSearchParams } from "react-router-dom";
 import { getCompanyConfig } from "../../config/companyConfig";
 import { useTheme } from "../../context/ThemeContext";
@@ -178,7 +179,12 @@ function mapEmployee(item) {
     bankName: item.bank_name ?? "",
     bankIfscCode: item.bank_ifsc_code ?? "",
     bankAccountNo: item.bank_account_no ?? "",
-    aadharCardNo: item.aadhar_card_no ?? "",
+    // Masked only — the API hides aadhar_card_no, so reading it always produced
+    // "" and made a stored number look missing. The edit input stays empty and
+    // `hasAadhaar` is what tells the form a number is on file.
+    aadharCardNo: item.aadhaar_masked ?? "",
+    aadhaarMasked: item.aadhaar_masked ?? "",
+    hasAadhaar: hasStoredAadhaar(item),
     panCardNo: item.pan_card_no ?? "",
     designation: item.designation ?? "",
     joiningDate: firstPresent(item.joining_date, item.date_of_joining),
@@ -390,7 +396,10 @@ export default function EmployeeManagement() {
 
   const openEdit = useCallback(
     async (emp) => {
-      setForm({ ...emp, password: "" });
+      // aadharCardNo carries the mask for the grid and exports; the editable
+      // input must start empty so the mask can never be posted back as if it
+      // were the real number. Blank means "keep what is stored".
+      setForm({ ...emp, aadharCardNo: "", password: "" });
       setSelected(emp);
       setShowPassword(false);
       setModal("edit");
@@ -410,6 +419,7 @@ export default function EmployeeManagement() {
         setForm((prev) => ({
           ...prev,
           ...full,
+          aadharCardNo: prev.aadharCardNo,
           password: "",
         }));
       } catch {
@@ -516,6 +526,20 @@ export default function EmployeeManagement() {
       return;
     }
 
+    // Decided once for both branches: a blank input on edit omits the field so
+    // the stored number survives, and a partial or masked entry is refused
+    // rather than written.
+    const aadhaar = buildSafeAadhaarUpdate({
+      enteredValue: form.aadharCardNo,
+      hasStored: Boolean(form.hasAadhaar),
+      isCreateMode: modal === "add",
+    });
+
+    if (aadhaar.error) {
+      toast.error(aadhaar.error);
+      return;
+    }
+
     if (modal === "add") {
       if (!form.empCode.trim() || !form.email.trim() || !form.password.trim()) {
         toast.error("Emp Code, Email and Password are required");
@@ -568,7 +592,7 @@ export default function EmployeeManagement() {
           bank_name: form.bankName || null,
           bank_ifsc_code: form.bankIfscCode || null,
           bank_account_no: form.bankAccountNo || null,
-          aadhar_card_no: form.aadharCardNo || null,
+          ...(aadhaar.include && { aadhar_card_no: aadhaar.value }),
           pan_card_no: form.panCardNo || null,
           joining_date: form.joiningDate || null,
           resignation_date: form.resignationDate || null,
@@ -639,7 +663,7 @@ export default function EmployeeManagement() {
         bank_name: form.bankName || null,
         bank_ifsc_code: form.bankIfscCode || null,
         bank_account_no: form.bankAccountNo || null,
-        aadhar_card_no: form.aadharCardNo || null,
+        ...(aadhaar.include && { aadhar_card_no: aadhaar.value }),
         pan_card_no: form.panCardNo || null,
         joining_date: form.joiningDate || null,
         resignation_date: form.resignationDate || null,

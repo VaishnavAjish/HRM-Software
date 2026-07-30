@@ -35,7 +35,7 @@ class User extends Authenticatable implements JWTSubject
         'encrypted_aadhaar_number', 'aadhar_card_no',
     ];
 
-    protected $appends = ['aadhaar_masked'];
+    protected $appends = ['aadhaar_masked', 'has_aadhaar'];
 
     protected function casts(): array
     {
@@ -47,6 +47,22 @@ class User extends Authenticatable implements JWTSubject
             'aadhaar_extracted_at' => 'datetime',
             'aadhaar_verified_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Whether a usable Aadhaar is on file.
+     *
+     * An edit form needs to distinguish "no number stored" from "stored but not
+     * sent to you" — it cannot see aadhar_card_no, and inferring existence from
+     * a non-empty mask breaks for a partial legacy value that masks to "".
+     */
+    public function getHasAadhaarAttribute(): bool
+    {
+        if ($this->aadhaar_last_four) {
+            return true;
+        }
+
+        return \App\Support\AadhaarReference::isValid($this->getRawOriginal('aadhar_card_no'));
     }
 
     /** The only Aadhaar value safe to render: "XXXX XXXX 9012". */

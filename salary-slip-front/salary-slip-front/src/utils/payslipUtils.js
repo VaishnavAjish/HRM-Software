@@ -444,6 +444,13 @@ export function buildPayslipData({ emp = {}, payslip = {}, companyId } = {}) {
         payslip.esi_no,
         "-",
       ),
+      pfAccountNo: firstPresent(
+        emp.pfNo,
+        emp.pf_no,
+        payslip.pfNo,
+        payslip.pf_no,
+        "-",
+      ),
       mobile: firstPresent(
         emp.phone,
         emp.mobile,

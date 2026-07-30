@@ -8,6 +8,7 @@ use App\Models\Document;
 use App\Models\User;
 use App\Services\Documents\DocumentAudit;
 use App\Services\Documents\DocumentAuthorizer as Auth;
+use App\Support\AadhaarAccess;
 use App\Support\AadhaarReference;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -36,6 +37,9 @@ class AppointmentController extends Controller
 
     /** Documents that must exist before an appointment can be completed. */
     private const REQUIRED_DOCUMENTS = ['AADHAR_CARD', 'PAN_CARD'];
+
+    /** How long the client may keep a revealed number on screen. */
+    private const REVEAL_TTL_SECONDS = 30;
 
     private function requestId(): string
     {
@@ -280,6 +284,80 @@ class AppointmentController extends Controller
                 'status'        => 'COMPLETED',
                 'message'       => 'Appointment completed successfully.',
             ]);
+        } catch (DocumentException $e) {
+            return $this->fail($e);
+        }
+    }
+
+    /**
+     * POST /v1/appointments/{id}/aadhaar/reveal
+     *
+     * The one place a complete Aadhaar number leaves the server. Everything else
+     * — list, details, documents, PDF — sees only `aadhaar_masked`.
+     *
+     * POST rather than GET so it is not casually cached, retried by a prefetch,
+     * or captured in a browser history entry, and the response carries no-store
+     * headers on top of that. Every attempt is audited, allowed or not.
+     */
+    public function revealAadhaar(Request $request, int $appointmentId)
+    {
+        try {
+            // Scope first: an actor who cannot reach the appointment at all must
+            // not learn whether it has an Aadhaar on file.
+            [$appointment, $actor] = $this->findAuthorized($appointmentId);
+
+            if (!AadhaarAccess::allows($actor)) {
+                DocumentAudit::record(
+                    'APPOINTMENT_AADHAAR_REVEAL_DENIED',
+                    null,
+                    null,
+                    ['appointment_id' => $appointment->id],
+                    AadhaarAccess::PERMISSION,
+                    'DENIED'
+                );
+
+                throw new DocumentException(
+                    DocumentException::APPOINTMENT_ACCESS_DENIED,
+                    'You are not permitted to view the full Aadhaar number.',
+                    403
+                );
+            }
+
+            $digits = AadhaarReference::normalise(
+                (string) ($appointment->getRawOriginal('aadhar_card_no') ?? '')
+            );
+
+            if (!AadhaarReference::isValid($digits)) {
+                // Same response whether it is absent or malformed — the caller
+                // does not need to be told which.
+                throw new DocumentException(
+                    DocumentException::APPOINTMENT_AADHAAR_MISSING,
+                    'A valid Aadhaar number is not available for this appointment.',
+                    404
+                );
+            }
+
+            DocumentAudit::record(
+                'APPOINTMENT_AADHAAR_REVEALED',
+                null,
+                null,
+                [
+                    'appointment_id' => $appointment->id,
+                    // Last four only. The audit trail records that a reveal
+                    // happened, never a second copy of the number.
+                    'aadhaar_last4' => substr($digits, -4),
+                ],
+                AadhaarAccess::PERMISSION,
+                'ALLOWED'
+            );
+
+            return $this->ok([
+                'aadhaarNumber' => $digits,
+                'expiresIn' => self::REVEAL_TTL_SECONDS,
+            ])
+                ->header('Cache-Control', 'no-store, no-cache, must-revalidate, private')
+                ->header('Pragma', 'no-cache')
+                ->header('Expires', '0');
         } catch (DocumentException $e) {
             return $this->fail($e);
         }

@@ -5,7 +5,7 @@ import * as XLSX from "xlsx";
 import {
   User, MapPin, Briefcase, CreditCard, Lock, LockKeyhole, Shield, Eye, EyeOff, Plus, Check,
   Building2, CloudUpload, Upload, FileSpreadsheet, X, Hash,
-  Layers, TableProperties, HardDrive, Download, ChevronLeft, ChevronRight, Users
+  Layers, TableProperties, HardDrive, Download, ChevronLeft, ChevronRight,
 } from "lucide-react";
 import Button from "../../components/ui/Button";
 import { salaryApi, authApi } from "../../utils/api";
@@ -19,11 +19,13 @@ import {
   validateEmployeeForm, validateEmail, validateMobile, validatePan,
   validateAadhaar, validateIfsc, validateBankAccount, validateEsi, validatePf,
 } from "../../utils/validation";
+import { buildSafeAadhaarUpdate } from "../../utils/aadhaar";
 import AddNewDepartment from "./AdminModals/AddNewDepartment";
 import UploadBatchPanel from "../../components/admin/UploadBatchPanel";
 import BulkEmployeeValidation from "../../components/admin/BulkEmployeeValidation";
 import ModernDatePicker from "../../components/ModernDatePicker";
 import PendingEmployeesTab from "../../components/admin/PendingEmployeesTab";
+import EmployeeMasterTable from "../../components/admin/EmployeeMasterTable";
 
 // ─── Bulk-import helpers (column auto-matching) ───
 function normalizeImportToken(value) {
@@ -307,7 +309,12 @@ export default function AddEmployeePage() {
   const { user } = useAuth();
   const { companyId, activeUnit, isAllCompanies } = useCompany();
 
-  const [mode, setMode] = useState("single"); // "single" | "bulk"
+  // Employee Master is the only mode reachable from the UI now — the tab
+  // switcher that used to let an admin pick "single" / "pending" / "bulk" has
+  // been removed. Their render branches below are kept fully working, just
+  // unreachable, since `mode` never changes off "master" without one. To
+  // bring a mode back, reintroduce a setter and a way to trigger it.
+  const [mode] = useState("master"); // "master" | "single" | "pending" | "bulk"
   const [bulkKind, setBulkKind] = useState("employees"); // "employees" | "account-master"
 
   // ─── Single-employee wizard state ───
@@ -435,6 +442,16 @@ export default function AddEmployeePage() {
       return;
     }
 
+    const aadhaar = buildSafeAadhaarUpdate({
+      enteredValue: form.aadharCardNo,
+      isCreateMode: true,
+    });
+
+    if (aadhaar.error) {
+      toast.error(aadhaar.error);
+      return;
+    }
+
     setSaveLoading(true);
     try {
       const payload = {
@@ -467,7 +484,10 @@ export default function AddEmployeePage() {
         bank_name: form.bankName || null,
         bank_ifsc_code: form.bankIfscCode || null,
         bank_account_no: form.bankAccountNo || null,
-        aadhar_card_no: form.aadharCardNo || null,
+        // Always a create here — this page has no edit mode — so an entered
+        // value is normalised to digits and a blank one is simply omitted. It
+        // is never inherited from a candidate/appointment row.
+        ...(aadhaar.include && { aadhar_card_no: aadhaar.value }),
         pan_card_no: form.panCardNo || null,
         joining_date: form.joiningDate || null,
         resignation_date: form.resignationDate || null,
@@ -618,28 +638,6 @@ export default function AddEmployeePage() {
 
   return (
     <div className="flex flex-col gap-4 p-2 lg:p-6 min-h-[calc(100vh-80px)] bg-transparent">
-      {/* Mode switcher */}
-      <div className="inline-flex self-start gap-1 rounded-xl border border-gray-200 bg-white p-1 dark:border-white/10 dark:bg-[#0b0f1a]">
-        {[
-          { key: "single", label: "Single Employee", icon: User },
-          { key: "pending", label: "Pending Employees", icon: Users },
-          { key: "bulk", label: "Bulk Upload", icon: CloudUpload },
-        ].map(({ key, label, icon: Icon }) => (
-          <button
-            key={key}
-            onClick={() => setMode(key)}
-            className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition ${
-              mode === key
-                ? "bg-brand-600 text-white shadow-sm shadow-brand-600/30"
-                : "text-gray-500 hover:bg-gray-100 dark:text-slate-400 dark:hover:bg-white/5"
-            }`}
-          >
-            <Icon size={15} />
-            {label}
-          </button>
-        ))}
-      </div>
-
       <div className="flex flex-1 flex-col xl:flex-row gap-6">
         {mode === "bulk" && (
           <div className="w-full xl:w-96 flex-shrink-0 flex flex-col gap-4">
@@ -655,7 +653,9 @@ export default function AddEmployeePage() {
         )}
 
         {/* Right Column */}
-        {mode === "pending" ? (
+        {mode === "master" ? (
+          <EmployeeMasterTable />
+        ) : mode === "pending" ? (
           <PendingEmployeesTab />
         ) : mode === "single" ? (
           <div className="flex-1 flex flex-col bg-white dark:bg-[#0b0f1a] rounded-2xl border border-gray-200 dark:border-white/10 shadow-sm overflow-hidden min-h-[70vh]">

@@ -123,13 +123,23 @@ function NidhiPayslipLayout({ data, className }) {
                 </td>
               </tr>
               <tr>
-                <td className="px-1.5 pb-2 align-top">Designation</td>
-                <td className="px-1.5 pb-2 align-top font-bold uppercase">
+                <td className="px-1.5 align-top">Designation</td>
+                <td className="px-1.5 align-top font-bold uppercase">
                   : {data.employee.designation}
                 </td>
-                <td className="px-1.5 pb-2 align-top">Unit</td>
-                <td className="px-1.5 pb-2 align-top font-bold uppercase">
+                <td className="px-1.5 align-top">Unit</td>
+                <td className="px-1.5 align-top font-bold uppercase">
                   : {data.employee.unit}
+                </td>
+              </tr>
+              <tr>
+                <td className="px-1.5 pb-2 align-top">PF Account No</td>
+                <td className="px-1.5 pb-2 align-top font-bold uppercase">
+                  : {data.employee.pfAccountNo}
+                </td>
+                <td className="px-1.5 pb-2 align-top">ESI ID No</td>
+                <td className="px-1.5 pb-2 align-top font-bold uppercase">
+                  : {data.employee.esiAccountNo}
                 </td>
               </tr>
             </tbody>

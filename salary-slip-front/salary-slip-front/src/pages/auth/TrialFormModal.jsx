@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, FileSpreadsheet, X } from "lucide-react";
 import ModernDatePicker from "../../components/ModernDatePicker";
@@ -53,11 +53,16 @@ const SectionHeader = ({ title }) => (
 // ─── Full-width field (spans both columns) ────────────────────────────────────
 const FullField = ({ label, name, value, onChange, error, type = "text", textarea }) => (
   <div className="col-span-1 sm:col-span-2 flex flex-col gap-1">
-    <label className="text-[11px] font-bold uppercase tracking-wide text-gray-500">
+    {/* htmlFor/id so the label actually names the control for screen readers. */}
+    <label
+      htmlFor={`trial-${name}`}
+      className="text-[11px] font-bold uppercase tracking-wide text-gray-500"
+    >
       {label}
     </label>
     {textarea ? (
       <textarea
+        id={`trial-${name}`}
         name={name}
         value={value}
         onChange={onChange}
@@ -65,7 +70,14 @@ const FullField = ({ label, name, value, onChange, error, type = "text", textare
         className={`${inputCls} resize-none`}
       />
     ) : (
-      <input type={type} name={name} value={value} onChange={onChange} className={inputCls} />
+      <input
+        id={`trial-${name}`}
+        type={type}
+        name={name}
+        value={value}
+        onChange={onChange}
+        className={inputCls}
+      />
     )}
     {error && <p className="text-[10px] text-red-600">{error}</p>}
   </div>
@@ -85,11 +97,14 @@ const HalfField = ({
   inputMode,
 }) => (
   <div className="flex flex-col gap-1">
-    <label className="text-[11px] font-bold uppercase tracking-wide text-gray-500">
+    <label
+      htmlFor={`trial-${name}`}
+      className="text-[11px] font-bold uppercase tracking-wide text-gray-500"
+    >
       {label}
     </label>
     {select ? (
-      <select name={name} value={value} onChange={onChange} className={inputCls}>
+      <select id={`trial-${name}`} name={name} value={value} onChange={onChange} className={inputCls}>
         {options.map((o) => (
           <option key={o.value ?? o} value={o.value ?? o}>
             {o.label ?? o}
@@ -98,6 +113,7 @@ const HalfField = ({
       </select>
     ) : (
       <input
+        id={`trial-${name}`}
         type={type}
         name={name}
         value={value}
@@ -128,7 +144,10 @@ const SignatureField = ({ label, name, value, onChange }) => (
 const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
   const { user } = useAuth();
   const isEditMode = Boolean(initialData);
-  const originalSnapshot = useRef(null);
+  // The record as it was when the modal opened, so the update payload can send
+  // only the fields that actually changed. State rather than a ref: it is
+  // assigned during the open transition, and refs must not be written in render.
+  const [originalSnapshot, setOriginalSnapshot] = useState(null);
 
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [errors, setErrors] = useState({});
@@ -199,51 +218,76 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
     clearError(name);
   };
 
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = "hidden";
+  /**
+   * The form state a freshly opened modal should show. Pure — it returns values
+   * instead of assigning them — so the open transition can apply it during
+   * render rather than from an effect, which renders the previous trial's
+   * values and only then replaces them.
+   */
+  const buildOpenState = () => {
+    if (isEditMode && initialData) {
+      const raw = initialData.raw || {};
+      const populated = {
+        form_no: raw.form_no || "",
+        trial_date: raw.trial_date || getTodayDate(),
+        department: raw.department || "",
+        name: raw.name || "",
+        address: raw.address || "",
+        mobile_number: raw.mobile_number || "",
+        mobile_no_2: raw.mobile_no_2 || "",
+        gender: raw.gender || "MALE",
+        email: raw.email || "",
+        unit: raw.unit || "",
+        last_company_name: raw.last_company_name || "",
+        last_company_address: raw.last_company_address || "",
+        experience: raw.experience || "",
+        reason_for_leaving: raw.reason_for_leaving || "",
+        hastak_name: raw.hastak_name || "",
+        hastak_code: raw.hastak_code || "",
+        hastak_mobile: raw.hastak_mobile || "",
+        contractor: raw.contractor || "",
+        manager_name: raw.manager_name || "",
+        akar: raw.akar || "",
+        emp_signature: raw.emp_signature || "",
+        manager_signature: raw.manager_signature || "",
+        hastak_signature: raw.hastak_signature || "",
+        hr_signature: raw.hr_signature || "",
+      };
 
-      if (isEditMode && initialData) {
-        const raw = initialData.raw || {};
-        const populated = {
-          form_no: raw.form_no || "",
-          trial_date: raw.trial_date || getTodayDate(),
-          department: raw.department || "",
-          name: raw.name || "",
-          address: raw.address || "",
-          mobile_number: raw.mobile_number || "",
-          mobile_no_2: raw.mobile_no_2 || "",
-          gender: raw.gender || "MALE",
-          email: raw.email || "",
-          unit: raw.unit || "",
-          last_company_name: raw.last_company_name || "",
-          last_company_address: raw.last_company_address || "",
-          experience: raw.experience || "",
-          reason_for_leaving: raw.reason_for_leaving || "",
-          hastak_name: raw.hastak_name || "",
-          hastak_code: raw.hastak_code || "",
-          hastak_mobile: raw.hastak_mobile || "",
-          contractor: raw.contractor || "",
-          manager_name: raw.manager_name || "",
-          akar: raw.akar || "",
-          emp_signature: raw.emp_signature || "",
-          manager_signature: raw.manager_signature || "",
-          hastak_signature: raw.hastak_signature || "",
-          hr_signature: raw.hr_signature || "",
-        };
-        setFormData(populated);
-        originalSnapshot.current = populated;
-      } else {
-        setFormData(EMPTY_FORM);
-      }
+      return { formData: populated, snapshot: populated };
+    }
+
+    return { formData: EMPTY_FORM, snapshot: null };
+  };
+
+  // Populate on open and clear the validation state on close. Assigning state
+  // during render is the supported way to reset when a prop changes; from an
+  // effect body it renders the stale values first.
+  const [wasOpen, setWasOpen] = useState(false);
+
+  if (wasOpen !== isOpen) {
+    setWasOpen(isOpen);
+
+    if (isOpen) {
+      const next = buildOpenState();
+      setFormData(next.formData);
+      setOriginalSnapshot(next.snapshot);
     } else {
-      document.body.style.overflow = "";
       setErrors({});
     }
+  }
+
+  // The scroll lock is a genuine external side effect, so it stays in an effect.
+  useEffect(() => {
+    if (!isOpen) {
+      document.body.style.overflow = "";
+      return undefined;
+    }
+
+    document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = "";
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
   if (!isOpen) return null;
@@ -260,7 +304,7 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
       const submitData = { ...formData, company_code: "nidhi-impex" };
 
       if (isEditMode) {
-        const snap = originalSnapshot.current || {};
+        const snap = originalSnapshot || {};
         const payload = new FormData();
         Object.entries(submitData).forEach(([key, value]) => {
           const curr = String(value ?? "");

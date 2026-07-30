@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   ChevronRight,
@@ -15,6 +15,9 @@ import { getCompanyUnits, COMPANY_OPTIONS } from "../../config/companyConfig";
 import useIsMobile from "../../hooks/useIsMobile";
 import usePhotoCapture from "../../hooks/usePhotoCapture";
 import AppointmentDocumentsStep from "./AppointmentDocumentsStep";
+import { PHOTO_DOCUMENT_TYPE } from "./documentTypes";
+import { readAppointmentRouteState, STEP_DOCUMENTS } from "./appointmentRouteState";
+import { maskAadhaar, normaliseAadhaar } from "../../utils/aadhaar";
 
 const DOC_FIELDS = [
   { key: "adhar_image", label: "Aadhar Card" },
@@ -95,24 +98,39 @@ const AppointmentModal = ({
     isAllCompanies ? "" : companyId,
   );
 
+  // Depend on the credentials themselves, not the `user` object. AuthProvider
+  // passes an inline object literal as its context value, so `user` is a new
+  // reference on every provider render — depending on it re-fetched departments,
+  // which set new state, which re-rendered, which re-fetched. In tests that mock
+  // useAuth the loop is unbounded (84 fetches in 300ms of idle), and it is what
+  // stopped React's act() from ever draining.
+  const accessToken = user?.accessToken;
+  const tokenType = user?.tokenType;
+
   useEffect(() => {
-    const fetchDepartments = async () => {
-      if (!user) return;
+    if (!isOpen || !accessToken) return undefined;
+
+    let cancelled = false;
+
+    (async () => {
       try {
         const res = await salaryApi.getDepartments(
-          user.accessToken,
-          user.tokenType,
+          accessToken,
+          tokenType,
           selectedCompanyId || companyId
         );
-        const departments = res?.data?.map((dept) => dept.name) || [];
-        setDepartmentsList(departments);
+        if (cancelled) return;
+        setDepartmentsList(res?.data?.map((dept) => dept.name) || []);
       } catch {
         // Suppress expected 403s for Agents so it gracefully falls back to text input
         // without panicking the console.
       }
+    })();
+
+    return () => {
+      cancelled = true;
     };
-    if (isOpen) fetchDepartments();
-  }, [isOpen, user, selectedCompanyId, companyId]);
+  }, [isOpen, accessToken, tokenType, selectedCompanyId, companyId]);
 
   const getTodayDate = () => {
     const d = new Date();
@@ -120,8 +138,10 @@ const AppointmentModal = ({
   };
 
   const isEditMode = Boolean(initialData?.id) && !isPrefillFromTrial;
-  const originalSnapshot = useRef(null);
-  const isAgent = user?.role === "agent";
+  // The record as it was when the modal opened, used to tell whether the
+  // employee code actually changed. State rather than a ref: it is assigned
+  // during the open transition, and refs must not be written during render.
+  const [originalSnapshot, setOriginalSnapshot] = useState(null);
 
   const isMobile = useIsMobile();
   const [step, setStep] = useState(1);
@@ -136,11 +156,25 @@ const AppointmentModal = ({
   // idle | validating | creating | updating | opening
   const [savePhase, setSavePhase] = useState("idle");
   const [appointmentSummary, setAppointmentSummary] = useState({});
-  // Held back from the appointment payload and uploaded as PROFILE_PHOTO once
+  // Held back from the appointment payload and uploaded as a PHOTOGRAPH
   // the record has an id. Kept on failure so it can be retried.
   const [pendingPhoto, setPendingPhoto] = useState(null);
+  // The URL is an external source of truth for which appointment to restore.
+  // It is read during render rather than synced in from an effect: assigning
+  // route-derived state in an effect body is a cascading render, and it would
+  // flash the empty create form before the restore begins. Back/Forward pushes
+  // a fresh request in through the popstate handler below.
+  const [routeRequest, setRouteRequest] = useState(readAppointmentRouteState);
   // idle | loading | success | error — drives the rehydration spinner.
-  const [rehydrateState, setRehydrateState] = useState("idle");
+  const [rehydrateState, setRehydrateState] = useState(
+    routeRequest.appointmentId ? "loading" : "idle",
+  );
+
+  // "XXXX XXXX 9012" for a record that already has an Aadhaar on file. The full
+  // number is hidden from every API response, so there is nothing to put in the
+  // input; this drives the "on file" hint and lets a blank input mean
+  // "unchanged" instead of "clear it".
+  const [storedAadhaarMasked, setStoredAadhaarMasked] = useState("");
 
   // Belt and braces: if anything else moves the form to step 2 without a saved
   // record, fall back to step 1 rather than showing an upload form that cannot
@@ -169,62 +203,77 @@ const AppointmentModal = ({
   };
 
   /**
+   * Browser Back/Forward. syncRoute uses replaceState, so popstate only fires
+   * for real history moves — each one re-reads the URL and asks for that record.
+   * A fresh object is pushed even when the id is unchanged, so returning to the
+   * same appointment still re-fetches rather than trusting stale state.
+   */
+  useEffect(() => {
+    if (!isOpen) return undefined;
+
+    const onPop = () => {
+      const next = readAppointmentRouteState();
+      setRouteRequest(next);
+      setRehydrateState(next.appointmentId ? "loading" : "idle");
+      if (!next.appointmentId) setStep(1);
+    };
+
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [isOpen]);
+
+  /**
    * Restore the workflow from ?appointmentId=&step= so a refresh mid-flow does
    * not drop the user back onto an empty create form. Never creates a record —
    * it only ever loads an existing one.
    */
-  const rehydrateFromLocation = async () => {
-    if (typeof window === "undefined") return;
-
-    const params = new URLSearchParams(window.location.search);
-    const routeId = params.get("appointmentId");
-    const requestedStep = params.get("step") === "documents" ? "documents" : "details";
-
-    if (!routeId) {
-      setStep(1);
-      return;
-    }
-
-    setRehydrateState("loading");
-    try {
-      const res = await appointmentV1Api.get(routeId, user?.accessToken, user?.tokenType);
-      const record = res?.data?.appointment;
-
-      if (!record?.id) throw new Error("Appointment not found.");
-
-      setSavedAppointmentId(record.id);
-      setAppointmentSummary({
-        appointmentNumber: res?.data?.appointmentNumber,
-        name: record.name,
-        aadhaarMasked: record.aadhaar_masked,
-        company: record.company_code,
-        unit: record.unit,
-      });
-      setRehydrateState("success");
-      // Documents only open once the record actually loaded.
-      setStep(requestedStep === "documents" ? 2 : 1);
-    } catch (err) {
-      setRehydrateState("error");
-      // Do not silently fall back to create mode — that is how duplicates get
-      // made. Clear the bad params and stay on step 1.
-      syncRoute(null);
-      setStep(1);
-      toast.error(err?.message || "Appointment not found.");
-    }
-  };
-
-  // Initial load plus browser Back/Forward, since syncRoute uses replaceState.
   useEffect(() => {
-    if (!isOpen) return undefined;
+    if (!isOpen || !routeRequest.appointmentId) return undefined;
 
-    rehydrateFromLocation();
+    let cancelled = false;
 
-    const onPop = () => rehydrateFromLocation();
-    window.addEventListener("popstate", onPop);
+    (async () => {
+      try {
+        const res = await appointmentV1Api.get(
+          routeRequest.appointmentId,
+          accessToken,
+          tokenType,
+        );
+        if (cancelled) return;
 
-    return () => window.removeEventListener("popstate", onPop);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen]);
+        const record = res?.data?.appointment;
+        if (!record?.id) throw new Error("Appointment not found.");
+
+        setSavedAppointmentId(record.id);
+        // Restoring mid-flow: the record's Aadhaar is on file even though the
+        // form cannot show it, so a blank input must not read as "clear it".
+        setStoredAadhaarMasked(record.aadhaar_masked || "");
+        setAppointmentSummary({
+          appointmentNumber: res?.data?.appointmentNumber,
+          name: record.name,
+          aadhaarMasked: record.aadhaar_masked,
+          company: record.company_code,
+          unit: record.unit,
+        });
+        setRehydrateState("success");
+        // Documents only open once the record actually loaded.
+        setStep(routeRequest.step === STEP_DOCUMENTS ? 2 : 1);
+      } catch (err) {
+        if (cancelled) return;
+
+        setRehydrateState("error");
+        // Do not silently fall back to create mode — that is how duplicates get
+        // made. Clear the bad params and stay on step 1.
+        syncRoute(null);
+        setStep(1);
+        toast.error(err?.message || "Appointment not found.");
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, routeRequest, accessToken, tokenType]);
 
   const handleBackToDetails = () => {
     setStep(1);
@@ -238,23 +287,44 @@ const AppointmentModal = ({
     else onClose();
   };
 
-  /** PROFILE_PHOTO upload, only ever after the appointment has an id. */
-  const uploadPendingPhoto = async (appointmentId) => {
-    if (!(pendingPhoto instanceof File)) return;
+  /**
+   * Uploads the profile photo as a document — only ever after the appointment
+   * has a real id. Resolves to whether it succeeded; the caller decides what to
+   * do with the file, so this never clears state behind its back.
+   *
+   * The file is passed in rather than read from state: a `setPendingPhoto` in
+   * the same render is not visible to this closure, and reading state here once
+   * skipped the upload silently.
+   */
+  const uploadPhotoDocument = async (appointmentId, file) => {
+    if (!(file instanceof File)) return false;
     try {
       await appointmentV1Api.uploadDocument(
         appointmentId,
-        { file: pendingPhoto, documentType: "PHOTOGRAPH" },
+        { file, documentType: PHOTO_DOCUMENT_TYPE },
         user?.accessToken,
         user?.tokenType,
       );
-      setPendingPhoto(null);
+      return true;
     } catch {
-      // The appointment itself is saved; keep the file for a retry from step 2.
       toast.error(
         "Appointment details were saved, but the profile photo upload failed. Retry from Upload Documents.",
       );
+      return false;
     }
+  };
+
+  /** Step 2 reports a successful retry — drop the file so it is not re-sent. */
+  const handlePendingPhotoUploaded = () => {
+    setPendingPhoto(null);
+    setFormData((prev) => ({ ...prev, photo: null }));
+  };
+
+  /** The user chose to abandon the photo. The saved appointment is untouched. */
+  const handleDiscardPendingPhoto = () => {
+    setPendingPhoto(null);
+    setFormData((prev) => ({ ...prev, photo: null }));
+    setPhotoPreview("");
   };
 
   const unitOptions = selectedCompanyId
@@ -357,6 +427,11 @@ const AppointmentModal = ({
   const validateStep1 = () => {
     const nextErrors = {};
     requiredFields.forEach(({ path, label }) => {
+      // A record that already has an Aadhaar on file may leave the input blank —
+      // the form is never given the stored number to put back, so requiring it
+      // again would block every edit. The backend keeps the existing value.
+      if (path === "aadhar_card_no" && storedAadhaarMasked) return;
+
       const value = getFieldValue(path);
       if (value == null || String(value).trim() === "") {
         nextErrors[path] = `${label} is required.`;
@@ -402,8 +477,22 @@ const AppointmentModal = ({
       payload.append("id", savedAppointmentId);
     }
 
+    // Digits only, so "1234 5678 9012" reaches the backend the same way the
+    // stored value does. Left as a string throughout — an Aadhaar is an
+    // identifier, not a number, and leading zeros must survive.
+    const aadhaarDigits = normaliseAadhaar(formData.aadhar_card_no);
+
     Object.entries({ ...formData, name: fullName }).forEach(([key, value]) => {
       if (DOC_FIELDS.some((d) => d.key === key) || key === "photo") return;
+
+      if (key === "aadhar_card_no") {
+        // Only send a complete number. Blank means "keep what is stored" — the
+        // input is never prefilled, so posting it would wipe the record's
+        // Aadhaar and orphan its documents in S3.
+        if (aadhaarDigits.length === 12) payload.append(key, aadhaarDigits);
+        return;
+      }
+
       if (key === "members") {
         payload.append(key, JSON.stringify(value));
       } else if (value !== null && value !== undefined) {
@@ -412,7 +501,7 @@ const AppointmentModal = ({
     });
 
     // The photo is deliberately NOT part of this request. It is uploaded as a
-    // PROFILE_PHOTO document once the appointment has an id, so the two
+    // PHOTOGRAPH document once the appointment has an id, so the two
     // operations can fail independently.
 
     if (savedAppointmentId) {
@@ -447,7 +536,7 @@ const AppointmentModal = ({
     const empCode = String(formData.emp_code ?? "").trim();
 
     if (empCode) {
-      const previousEmpCode = String(originalSnapshot.current?.emp_code ?? "").trim();
+      const previousEmpCode = String(originalSnapshot?.emp_code ?? "").trim();
 
       if (empCode !== previousEmpCode) {
         setSavePhase("idle");
@@ -478,11 +567,22 @@ const AppointmentModal = ({
 
       setSavedAppointmentId(id);
 
-      // Separate operation: a photo failure must not undo the saved record.
-      if (formData.photo instanceof File) {
-        setPendingPhoto(formData.photo);
-        await uploadPendingPhoto(id);
-      }
+      // Separate operation: a photo failure must not undo the saved record. The
+      // file is snapshotted here so nothing that re-renders in between can
+      // change what gets sent, and it is only dropped once the upload confirms.
+      const photoToUpload = formData.photo instanceof File ? formData.photo : null;
+      const photoUploaded = photoToUpload
+        ? await uploadPhotoDocument(id, photoToUpload)
+        : false;
+
+      // Survives into step 2 so the Retry control has something to send.
+      setPendingPhoto(photoUploaded ? null : photoToUpload);
+
+      // A freshly typed number masks from what was just saved; otherwise the
+      // record keeps the mask it already had. Recorded so a further edit in this
+      // same session still knows an Aadhaar is on file.
+      const savedAadhaarMasked = maskAadhaar(formData.aadhar_card_no) || storedAadhaarMasked;
+      setStoredAadhaarMasked(savedAadhaarMasked);
 
       setSavePhase("opening");
       setAppointmentSummary({
@@ -490,9 +590,7 @@ const AppointmentModal = ({
         name: `${formData.name.first} ${formData.name.mid} ${formData.name.surname}`
           .replace(/\s+/g, " ")
           .trim(),
-        aadhaarMasked: formData.aadhar_card_no
-          ? `XXXX XXXX ${String(formData.aadhar_card_no).replace(/\D/g, "").slice(-4)}`
-          : "",
+        aadhaarMasked: savedAadhaarMasked,
         company: formData.company_code,
         unit: formData.unit,
       });
@@ -541,124 +639,166 @@ const AppointmentModal = ({
     }
   };
 
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = "hidden";
+  /**
+   * The state a freshly opened modal should show. Pure — it returns values
+   * instead of assigning them — so the open transition can apply it during
+   * render rather than from an effect, which renders the previous record's
+   * values and then immediately replaces them.
+   */
+  const buildOpenState = () => {
+    if (initialData && (isEditMode || isPrefillFromTrial)) {
+      const raw = initialData.raw || initialData || {};
 
-      if (initialData && (isEditMode || isPrefillFromTrial)) {
-        const raw = initialData.raw || initialData || {};
-
-        // Split "First Mid Surname" back into parts
-        const nameStr = String(raw.name || "").trim();
-        const parts = nameStr.split(/\s+/).filter(Boolean);
-        let nameObj = { first: "", mid: "", surname: "" };
-        if (parts.length === 1)
-          nameObj = { first: parts[0], mid: "", surname: "" };
-        else if (parts.length === 2)
-          nameObj = { first: parts[0], mid: "", surname: parts[1] };
-        else if (parts.length >= 3)
-          nameObj = {
-            first: parts[0],
-            mid: parts.slice(1, -1).join(" "),
-            surname: parts[parts.length - 1],
-          };
-
-        // Parse members array
-        let parsedMembers = Array(4).fill({
-          name: "",
-          relation: "",
-          dob: "",
-          mobile: "",
-          occupation: "",
-        });
-        try {
-          let m = raw.members;
-          if (typeof m === "string" && m.trim()) {
-            const p = JSON.parse(m);
-            m = typeof p === "string" ? JSON.parse(p) : p;
-          }
-          if (Array.isArray(m)) {
-            parsedMembers = [...m, ...Array(Math.max(0, 4 - m.length)).fill({})]
-              .slice(0, 4)
-              .map((mem) => ({
-                name: mem?.name || "",
-                relation: mem?.relation || "",
-                dob: mem?.dob || "",
-                mobile: mem?.mobile || "",
-                occupation: mem?.occupation || "",
-              }));
-          }
-        } catch {
-          // ignore
-        }
-
-        const codeId = raw.company_code || "";
-        setSelectedCompanyId(codeId);
-
-        const populated = {
-          photo: null,
-          emp_code: raw.emp_code || "",
-          joining_date: raw.joining_date || getTodayDate(),
-          department: raw.department || "",
-          designation: raw.designation || "",
-          manager_name: raw.manager_name || "",
-          salary: String(raw.salary || ""),
-          mobile_number: raw.mobile_number || "",
-          emp_whatsapp_no: raw.emp_whatsapp_no || "",
-          punching_no: String(raw.punching_no || ""),
-          name: nameObj,
-          email: raw.email || "",
-          address: raw.address || "",
-          village: raw.village || "",
-          taluka: raw.taluka || "",
-          district: raw.district || "",
-          dob: raw.dob || "",
-          birth_place: raw.birth_place || "",
-          gender: raw.gender || "",
-          cast: raw.cast || "",
-          marital_status: raw.marital_status || "",
-          blood_group: raw.blood_group || "",
-          reference_name: raw.reference_name || "",
-          reference_mobile_no: raw.reference_mobile_no || "",
-          aadhar_card_no: raw.aadhar_card_no || "",
-          bank_name: raw.bank_name || "",
-          pan_card_no: raw.pan_card_no || "",
-          bank_ifsc_code: raw.bank_ifsc_code || "",
-          education: raw.education || "",
-          bank_account_no: raw.bank_account_no || "",
-          company_code: codeId,
-          unit: raw.unit || raw.unit_name || "",
-          emp_signature: raw.emp_signature || "",
-          members: parsedMembers,
+      // Split "First Mid Surname" back into parts
+      const nameStr = String(raw.name || "").trim();
+      const parts = nameStr.split(/\s+/).filter(Boolean);
+      let nameObj = { first: "", mid: "", surname: "" };
+      if (parts.length === 1)
+        nameObj = { first: parts[0], mid: "", surname: "" };
+      else if (parts.length === 2)
+        nameObj = { first: parts[0], mid: "", surname: parts[1] };
+      else if (parts.length >= 3)
+        nameObj = {
+          first: parts[0],
+          mid: parts.slice(1, -1).join(" "),
+          surname: parts[parts.length - 1],
         };
 
-        setFormData(populated);
-        originalSnapshot.current = {
+      // Parse members array
+      let parsedMembers = Array(4).fill({
+        name: "",
+        relation: "",
+        dob: "",
+        mobile: "",
+        occupation: "",
+      });
+      try {
+        let m = raw.members;
+        if (typeof m === "string" && m.trim()) {
+          const p = JSON.parse(m);
+          m = typeof p === "string" ? JSON.parse(p) : p;
+        }
+        if (Array.isArray(m)) {
+          parsedMembers = [...m, ...Array(Math.max(0, 4 - m.length)).fill({})]
+            .slice(0, 4)
+            .map((mem) => ({
+              name: mem?.name || "",
+              relation: mem?.relation || "",
+              dob: mem?.dob || "",
+              mobile: mem?.mobile || "",
+              occupation: mem?.occupation || "",
+            }));
+        }
+      } catch {
+        // ignore
+      }
+
+      const codeId = raw.company_code || "";
+
+      const populated = {
+        photo: null,
+        emp_code: raw.emp_code || "",
+        joining_date: raw.joining_date || getTodayDate(),
+        department: raw.department || "",
+        designation: raw.designation || "",
+        manager_name: raw.manager_name || "",
+        salary: String(raw.salary || ""),
+        mobile_number: raw.mobile_number || "",
+        emp_whatsapp_no: raw.emp_whatsapp_no || "",
+        punching_no: String(raw.punching_no || ""),
+        name: nameObj,
+        email: raw.email || "",
+        address: raw.address || "",
+        village: raw.village || "",
+        taluka: raw.taluka || "",
+        district: raw.district || "",
+        dob: raw.dob || "",
+        birth_place: raw.birth_place || "",
+        gender: raw.gender || "",
+        cast: raw.cast || "",
+        marital_status: raw.marital_status || "",
+        blood_group: raw.blood_group || "",
+        reference_name: raw.reference_name || "",
+        reference_mobile_no: raw.reference_mobile_no || "",
+        // Never prefilled: the API only ever returns aadhaar_masked, and putting
+        // "XXXX XXXX 9012" in the input would post the mask back as if it were
+        // the real number. Left blank, which means "unchanged".
+        aadhar_card_no: "",
+        bank_name: raw.bank_name || "",
+        pan_card_no: raw.pan_card_no || "",
+        bank_ifsc_code: raw.bank_ifsc_code || "",
+        education: raw.education || "",
+        bank_account_no: raw.bank_account_no || "",
+        company_code: codeId,
+        unit: raw.unit || raw.unit_name || "",
+        emp_signature: raw.emp_signature || "",
+        members: parsedMembers,
+      };
+
+      return {
+        selectedCompanyId: codeId,
+        formData: populated,
+        snapshot: {
           ...populated,
           nameStr,
           membersJson: JSON.stringify(parsedMembers),
-        };
+        },
+        photoPreview: initialData.photo || "",
+        // Only an existing appointment has an Aadhaar on file. A trial prefill
+        // creates a brand-new record, so the number has to be entered again —
+        // inheriting the trial row's mask would let the new appointment save
+        // with no Aadhaar at all and land its documents in a fallback folder.
+        aadhaarMasked: isEditMode ? raw.aadhaar_masked || "" : "",
+      };
+    }
 
-        setPhotoPreview(initialData.photo || "");
-      } else {
-        const newCompanyId = isAllCompanies ? "" : companyId;
-        setSelectedCompanyId(newCompanyId);
-        setFormData(getBlankFormData(newCompanyId));
-        originalSnapshot.current = null;
-        setPhotoPreview("");
-      }
+    const newCompanyId = isAllCompanies ? "" : companyId;
+
+    return {
+      selectedCompanyId: newCompanyId,
+      formData: getBlankFormData(newCompanyId),
+      snapshot: null,
+      photoPreview: "",
+      aadhaarMasked: "",
+    };
+  };
+
+  // Populate on open and clear on close. Assigning state during render is the
+  // supported way to reset when a prop changes; doing it in an effect body
+  // renders the previous record's values first and only then replaces them,
+  // which is what the set-state-in-effect rule warns about.
+  const [wasOpen, setWasOpen] = useState(false);
+
+  if (wasOpen !== isOpen) {
+    setWasOpen(isOpen);
+
+    if (isOpen) {
+      const next = buildOpenState();
+      setSelectedCompanyId(next.selectedCompanyId);
+      setFormData(next.formData);
+      setPhotoPreview(next.photoPreview);
+      setOriginalSnapshot(next.snapshot);
+      setStoredAadhaarMasked(next.aadhaarMasked);
     } else {
-      document.body.style.overflow = "";
       setStep(1);
       setErrors({});
       setShowConfirmTransfer(false);
       setEmpCodeConflict(null);
       setCheckingEmpCode(false);
     }
+  }
+
+  // The scroll lock is a genuine external side effect, so it stays in an effect.
+  useEffect(() => {
+    if (!isOpen) {
+      document.body.style.overflow = "";
+      return undefined;
+    }
+
+    document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = "";
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
   const handlePhotoChange = (file) => {
@@ -816,13 +956,22 @@ const AppointmentModal = ({
 
                 {/* Top Right Fields */}
                 <div className="md:col-span-7 space-y-3 w-full">
-                  <RowField
-                    label="Emp. Code"
-                    name="emp_code"
-                    value={formData.emp_code}
-                    onChange={handleChange}
-                    disabled={isAgent}
-                  />
+                  <div>
+                    {/* Assigning emp_code now happens from Employee Master only,
+                        so this field is always locked here — kept visible
+                        rather than removed since existing appointments still
+                        show whichever code they already have. */}
+                    <RowField
+                      label="Emp. Code"
+                      name="emp_code"
+                      value={formData.emp_code}
+                      onChange={handleChange}
+                      disabled
+                    />
+                    <p className="text-[10px] text-gray-400 mt-1 sm:ml-[138px]">
+                      Assign or change the employee code from Employee Master.
+                    </p>
+                  </div>
                   <RowField
                     label="Joining Date"
                     name="joining_date"
@@ -1072,16 +1221,27 @@ const AppointmentModal = ({
                     inputMode="numeric"
                     maxLength={10}
                   />
-                  <RowField
-                    label="Aadhar Card No"
-                    name="aadhar_card_no"
-                    value={formData.aadhar_card_no}
-                    onChange={handleChange}
-                    required
-                    error={errors.aadhar_card_no}
-                    inputMode="numeric"
-                    maxLength={12}
-                  />
+                  <div>
+                    <RowField
+                      label="Aadhar Card No"
+                      name="aadhar_card_no"
+                      value={formData.aadhar_card_no}
+                      onChange={handleChange}
+                      required={!storedAadhaarMasked}
+                      error={errors.aadhar_card_no}
+                      inputMode="numeric"
+                      maxLength={12}
+                    />
+                    {/* The stored number is never sent to the browser, so the
+                        input starts empty even in edit mode. Say so, or it reads
+                        as missing data. */}
+                    {storedAadhaarMasked && (
+                      <p className="mt-1 text-[11px] text-gray-500">
+                        On file: <span className="font-semibold">{storedAadhaarMasked}</span> — leave
+                        blank to keep it, or type all 12 digits to replace it.
+                      </p>
+                    )}
+                  </div>
                   <RowField
                     label="Bank Name"
                     name="bank_name"
@@ -1415,6 +1575,9 @@ const AppointmentModal = ({
               summary={appointmentSummary}
               onBack={handleBackToDetails}
               onComplete={handleAppointmentCompleted}
+              pendingPhoto={pendingPhoto}
+              onPendingPhotoUploaded={handlePendingPhotoUploaded}
+              onDiscardPendingPhoto={handleDiscardPendingPhoto}
             />
           </div>
         )}
@@ -1543,12 +1706,17 @@ const RowField = ({
 }) => (
   <div className="w-full">
     <div className="flex flex-col sm:flex-row sm:items-center items-start gap-1 sm:gap-2 w-full">
-      <label className="text-sm font-semibold text-gray-700 sm:text-[13px] sm:font-bold sm:text-black sm:whitespace-nowrap w-full sm:w-[130px] sm:shrink-0 mb-1 sm:mb-0">
+      {/* htmlFor/id so the label actually names the control for screen readers. */}
+      <label
+        htmlFor={`appt-${name}`}
+        className="text-sm font-semibold text-gray-700 sm:text-[13px] sm:font-bold sm:text-black sm:whitespace-nowrap w-full sm:w-[130px] sm:shrink-0 mb-1 sm:mb-0"
+      >
         {label} {required && <span className="text-red-600">*</span>}
       </label>
       <span className="font-bold hidden sm:inline">:</span>
       {type === "date" ? (
         <ModernDatePicker
+          id={`appt-${name}`}
           name={name}
           value={value}
           onChange={onChange}
@@ -1557,6 +1725,7 @@ const RowField = ({
         />
       ) : type === "select" ? (
         <select
+          id={`appt-${name}`}
           name={name}
           value={value}
           onChange={onChange}
@@ -1572,6 +1741,7 @@ const RowField = ({
         </select>
       ) : (
         <input
+          id={`appt-${name}`}
           type={type}
           name={name}
           value={value}

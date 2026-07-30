@@ -500,11 +500,23 @@ export default function AddEditEmployeeModal({
               ref={(el) => (sectionRefs.current.identity = el)}
             >
               <SectionCard icon={CreditCard} title="Identity & Bank Details" index={4}>
-                {input({
-                  label: "Aadhar Card No",
-                  key: "aadharCardNo",
-                  placeholder: "XXXX XXXX XXXX",
-                })}
+                <div>
+                  {input({
+                    label: "Aadhar Card No",
+                    key: "aadharCardNo",
+                    placeholder: form.hasAadhaar ? "Leave blank to keep" : "XXXX XXXX XXXX",
+                  })}
+                  {/* The stored number is never sent to the browser, so this
+                      input is empty even when one exists. Say so, or an editor
+                      reads it as missing and retypes it from a photocopy. */}
+                  {form.hasAadhaar && (
+                    <p className="mt-1 text-[11px] text-gray-500 dark:text-slate-400">
+                      On file:{" "}
+                      <span className="font-semibold">{form.aadhaarMasked || "XXXX XXXX ••••"}</span>{" "}
+                      — enter all 12 digits only to replace it.
+                    </p>
+                  )}
+                </div>
                 {input({
                   label: "PAN Card No",
                   key: "panCardNo",

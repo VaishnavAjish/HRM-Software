@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { authApi, rbacApi } from "../utils/api";
 import { resolveCompanyId } from "../config/companyConfig";
@@ -172,7 +172,7 @@ export function AuthProvider({ children }) {
     return () => window.removeEventListener("auth:unauthorized", handleUnauthorized);
   }, []);
 
-  const login = async (email, password, company_code) => {
+  const login = useCallback(async (email, password, company_code) => {
     setLoading(true);
     try {
       const data = await authApi.login(email.trim(), password, company_code);
@@ -192,16 +192,18 @@ export function AuthProvider({ children }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const lookupUser = () => {
+  const lookupUser = useCallback(() => {
     return null;
-  };
+  }, []);
 
-  const logout = async () => {
-    const accessToken = user?.accessToken;
-    const tokenType = user?.tokenType || "bearer";
+  // Depends on the credentials rather than the whole user object, so editing a
+  // profile field does not hand every consumer a new logout reference.
+  const accessToken = user?.accessToken;
+  const tokenType = user?.tokenType || "bearer";
 
+  const logout = useCallback(async () => {
     try {
       if (accessToken) {
         const data = await authApi.logout(accessToken, tokenType);
@@ -220,60 +222,91 @@ export function AuthProvider({ children }) {
       setUser(null);
       saveUserToStorage(null);
     }
-  };
+  }, [accessToken, tokenType]);
 
-  const updateUserRole = (empCode, newRole) => {
-    setUsers((prev) => ({
-      ...prev,
-      [empCode]: { ...prev[empCode], role: newRole },
-    }));
-    if (user?.empCode === empCode) {
-      const updated = { ...user, role: newRole };
-      setUser(updated);
-      saveUserToStorage(updated);
-    }
-  };
+  // These two genuinely depend on the current user, so they change identity when
+  // it does. That is fine: `user` is part of the context value anyway, so the
+  // value was going to change with it regardless. Persisting stays outside the
+  // state updater — updaters must be pure, and React double-invokes them in
+  // development.
+  const updateUserRole = useCallback(
+    (empCode, newRole) => {
+      setUsers((prev) => ({
+        ...prev,
+        [empCode]: { ...prev[empCode], role: newRole },
+      }));
+      if (user?.empCode === empCode) {
+        const updated = { ...user, role: newRole };
+        setUser(updated);
+        saveUserToStorage(updated);
+      }
+    },
+    [user],
+  );
 
-  const updateCurrentUser = (updates) => {
-    if (user) {
-      const updated = { ...user, ...updates };
-      setUser(updated);
-      saveUserToStorage(updated);
-    }
-  };
+  const updateCurrentUser = useCallback(
+    (updates) => {
+      if (user) {
+        const updated = { ...user, ...updates };
+        setUser(updated);
+        saveUserToStorage(updated);
+      }
+    },
+    [user],
+  );
 
-  const addUser = (userData) => {
+  const addUser = useCallback((userData) => {
     setUsers((prev) => ({ ...prev, [userData.empCode]: { ...userData } }));
-  };
+  }, []);
 
-  const removeUser = (empCode) => {
+  const removeUser = useCallback((empCode) => {
     setUsers((prev) => {
       const next = { ...prev };
       delete next[empCode];
       return next;
     });
-  };
+  }, []);
 
-  return (
-    <AuthContext.Provider
-      value={{
-        user,
-        users,
-        login,
-        logout,
-        loading,
-        initializing,
-        isAuthenticated: Boolean(user?.accessToken),
-        updateUserRole,
-        updateCurrentUser,
-        addUser,
-        removeUser,
-        lookupUser,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
+  const isAuthenticated = Boolean(accessToken);
+
+  /**
+   * One memoised object, so a re-render of whatever renders AuthProvider does
+   * not hand every consumer a brand new context value. An inline literal here
+   * invalidated every effect that depended on `user`, which is how the
+   * appointment modal ended up re-fetching in a loop.
+   */
+  const value = useMemo(
+    () => ({
+      user,
+      users,
+      login,
+      logout,
+      loading,
+      initializing,
+      isAuthenticated,
+      updateUserRole,
+      updateCurrentUser,
+      addUser,
+      removeUser,
+      lookupUser,
+    }),
+    [
+      user,
+      users,
+      login,
+      logout,
+      loading,
+      initializing,
+      isAuthenticated,
+      updateUserRole,
+      updateCurrentUser,
+      addUser,
+      removeUser,
+      lookupUser,
+    ],
   );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 // eslint-disable-next-line react-refresh/only-export-components

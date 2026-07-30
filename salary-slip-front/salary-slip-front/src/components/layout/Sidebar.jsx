@@ -37,12 +37,22 @@ function getAdminNav(companyId, user, isAllCompanies) {
 
   const nav = [
     ...(hasAccess("dashboard") ? [{ to: "/admin", label: "Dashboard", icon: LayoutDashboard, end: true }] : []),
+    ...(hasAccess("appointments") || (hasAccess("trial_form") && (companyId === "nidhi-impex" || isAllCompanies)) ? [{
+      label: "Appointments",
+      icon: ClipboardList,
+      subItems: [
+        ...(hasAccess("appointments") ? [{ to: "/admin/appointments", label: "Appointment Form" }] : []),
+        ...((hasAccess("trial_form") && (companyId === "nidhi-impex" || isAllCompanies))
+          ? [{ to: "/admin/trial-form", label: "Trial Form" }]
+          : []),
+      ]
+    }] : []),
     ...(hasAccess("employees") ? [{
       label: "Employees",
       icon: Users,
       subItems: [
-        { to: "/admin/employees", label: "View Employees" },
-        { to: "/admin/employees/add", label: "Add Employee" }
+        { to: "/admin/employees/add", label: "Employee Master" },
+        { to: "/admin/employees", label: "View Employees" }
       ]
     }] : []),
     ...(hasAccess("salary") ? [{
@@ -59,16 +69,6 @@ function getAdminNav(companyId, user, isAllCompanies) {
       subItems: [
         { to: "/admin/attendance", label: "View Attendance" },
         { to: "/admin/attendance/shift", label: "Shift" }
-      ]
-    }] : []),
-    ...(hasAccess("appointments") || (hasAccess("trial_form") && (companyId === "nidhi-impex" || isAllCompanies)) ? [{
-      label: "Appointments",
-      icon: ClipboardList,
-      subItems: [
-        ...(hasAccess("appointments") ? [{ to: "/admin/appointments", label: "Appointment Form" }] : []),
-        ...((hasAccess("trial_form") && (companyId === "nidhi-impex" || isAllCompanies))
-          ? [{ to: "/admin/trial-form", label: "Trial Form" }]
-          : []),
       ]
     }] : []),
   ];

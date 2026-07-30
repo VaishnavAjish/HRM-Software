@@ -16,14 +16,15 @@ import {
   CheckCircle2,
   ChevronRight,
   Send,
+  UserCheck,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { authApi } from "../../utils/api";
-import { COMPANY_OPTIONS } from "../../config/companyConfig";
+import { COMPANY_OPTIONS, getCompanyUnits, getCompanyConfig, normalizeCompanyId } from "../../config/companyConfig";
 
 /* ─── Step indicator ─── */
 function StepBar({ step }) {
-  const steps = ["Verify Email", "Set Password"];
+  const steps = ["Verify Employee", "Verify Email", "Set Password"];
   return (
     <div className="flex items-center justify-center mb-7">
       {steps.map((label, i) => {
@@ -239,7 +240,25 @@ export default function Login() {
   /* ── Appointment ── */
   // (Removed showAppointment state)
 
-  // Step 1 — email + OTP (formerly Step 2)
+  // Step 1 — Verify Employee (emp code + mobile). This is what makes "Set
+  // Password" double as first-time registration: it's the same identity
+  // check verifyEmployeeIdentity() runs, so a brand-new employee and someone
+  // resetting a known password go through one unified flow.
+  const [fCompanyId, setFCompanyId] = useState("");
+  const [fUnit, setFUnit] = useState("");
+  const [fEmpCode, setFEmpCode] = useState("");
+  const [fMobNum, setFMobNum] = useState("");
+  const [s1Loading, setS1Loading] = useState(false);
+  const [s1Err, setS1Err] = useState("");
+  const [verificationToken, setVerificationToken] = useState("");
+  // Company/branch are looked up from the employee code itself (GET
+  // /check-emp-code/{code}) rather than picked manually — codeResolved gates
+  // both the "locked" display and the submit button, since verifyEmpCode
+  // needs a real company_id/unit to scope its query correctly.
+  const [codeChecking, setCodeChecking] = useState(false);
+  const [codeResolved, setCodeResolved] = useState(false);
+
+  // Step 2 — email + OTP (formerly Step 1)
   const [emailInput, setEmailInput] = useState("");
   const [otpSent, setOtpSent] = useState(false);
   const [otp, setOtp] = useState("    ");
@@ -258,7 +277,7 @@ export default function Login() {
   };
   useEffect(() => clearOtpTimers, []);
 
-  // Step 2 (formerly Step 3)
+  // Step 3 (formerly Step 2)
   const [newPass, setNewPass] = useState("");
   const [confPass, setConfPass] = useState("");
   const [showNew, setShowNew] = useState(false);
@@ -270,6 +289,14 @@ export default function Login() {
     clearOtpTimers();
     setMode("forgot");
     setStep(1);
+    setFCompanyId("");
+    setFUnit("");
+    setFEmpCode("");
+    setFMobNum("");
+    setS1Err("");
+    setVerificationToken("");
+    setCodeChecking(false);
+    setCodeResolved(false);
     setEmailInput("");
     setOtpSent(false);
     setOtp("    ");
@@ -304,7 +331,79 @@ export default function Login() {
     }
   };
 
-  /* ── Step 1: send OTP to email ── */
+  /* ── Step 1a: look up company/branch from the employee code itself ── */
+  const handleEmpCodeBlur = async () => {
+    const code = fEmpCode.trim().toUpperCase();
+    setFEmpCode(code);
+    if (!code) {
+      setFCompanyId("");
+      setFUnit("");
+      setCodeResolved(false);
+      return;
+    }
+
+    setCodeChecking(true);
+    setS1Err("");
+    try {
+      const res = await authApi.checkEmpCode(code);
+      const normalizedId = normalizeCompanyId(res?.company_code);
+      // The DB value's casing doesn't always match the exact unit string this
+      // company's config uses (e.g. "shreeji" vs "Shreeji") — match loosely
+      // rather than showing a locked field with a value that isn't one of
+      // the options anyone would ever have picked from the select.
+      const units = getCompanyUnits(normalizedId);
+      const matchedUnit =
+        units.find((u) => u.toLowerCase() === String(res?.unit || "").toLowerCase()) || res?.unit || "";
+
+      setFCompanyId(normalizedId);
+      setFUnit(matchedUnit);
+      setCodeResolved(true);
+    } catch (error) {
+      setFCompanyId("");
+      setFUnit("");
+      setCodeResolved(false);
+      setS1Err(error.message || "Employee code not found");
+    } finally {
+      setCodeChecking(false);
+    }
+  };
+
+  /* ── Step 1: verify employee code + mobile ── */
+  const handleVerifyEmployee = async () => {
+    if (!fEmpCode.trim()) {
+      setS1Err("Enter your employee code");
+      return;
+    }
+    if (!codeResolved || !fCompanyId || !fUnit) {
+      setS1Err("Enter a valid employee code so your company and branch can be detected");
+      return;
+    }
+    const code = fEmpCode.trim().toUpperCase();
+    if (!/^\d{10}$/.test(fMobNum.trim())) {
+      setS1Err("Enter a valid 10-digit mobile number");
+      return;
+    }
+
+    setS1Err("");
+    setS1Loading(true);
+    try {
+      const res = await authApi.verifyEmpCode(code, fCompanyId, fUnit, {
+        mob_num: fMobNum.trim(),
+      });
+      setVerificationToken(res?.verification_token || "");
+      // Prefills whatever email is already on file — blank for a genuinely
+      // first-time registrant, who then simply types a new one in step 2.
+      setEmailInput(res?.data?.email || "");
+      setFEmpCode(code);
+      setStep(2);
+    } catch (error) {
+      setS1Err(error.message || "Could not verify your details. Please check and try again.");
+    } finally {
+      setS1Loading(false);
+    }
+  };
+
+  /* ── Step 2: send OTP to email ── */
   const handleSendOtp = async () => {
     if (!emailInput.trim() || !emailInput.includes("@")) {
       toast.error("Enter a valid email address");
@@ -313,7 +412,12 @@ export default function Login() {
 
     setSendLoading(true);
     try {
-      await authApi.verifyEmail(emailInput.trim());
+      await authApi.verifyEmail(emailInput.trim(), {
+        emp_code: fEmpCode,
+        verification_token: verificationToken,
+        company_code: fCompanyId,
+        unit: fUnit,
+      });
       setOtp("    ");
       setOtpVerifyLoading(false);
       setOtpAnim("idle");
@@ -327,7 +431,7 @@ export default function Login() {
     }
   };
 
-  /* ── Step 1 (OTP verification) → go to step 2 ── */
+  /* ── Step 2 (OTP verification) → go to step 3 ── */
   const handleVerifyOtp = async () => {
     const entered = otp.replace(/\s/g, "");
     if (entered.length < 4) {
@@ -355,7 +459,7 @@ export default function Login() {
               setPwdErr("");
               setOtpAnim("idle");
               setOtpVerifyLoading(false);
-              setStep(2);
+              setStep(3);
             }, OTP_CHECK_MS),
           );
         }, OTP_ORBIT_MS),
@@ -375,7 +479,7 @@ export default function Login() {
     }
   };
 
-  /* ── Step 2: set new password ── */
+  /* ── Step 3: set new password ── */
   const handleSetPassword = async () => {
     const passwordRegex =
       /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{6,}$/;
@@ -410,6 +514,14 @@ export default function Login() {
 
       // reset forgot state
       setStep(1);
+      setFCompanyId("");
+      setFUnit("");
+      setFEmpCode("");
+      setFMobNum("");
+      setS1Err("");
+      setVerificationToken("");
+      setCodeChecking(false);
+      setCodeResolved(false);
       setEmailInput("");
       setOtpSent(false);
       setOtp("    ");
@@ -527,7 +639,7 @@ export default function Login() {
                     onClick={enterForgot}
                     className="text-xs text-brand-600 dark:text-brand-400 hover:underline mt-1.5 block text-right w-full"
                   >
-                    Forgot password?
+                    Set Password
                   </button>
                 </div>
 
@@ -569,8 +681,135 @@ export default function Login() {
 
             <StepBar step={step} />
 
-            {/* ── STEP 1: Verify Email ── */}
+            {/* ── STEP 1: Verify Employee ── */}
             {step === 1 && (
+              <div className="animate-in fade-in slide-in-from-right-4 duration-300">
+                <div className="text-center">
+                  <div className="inline-flex items-center justify-center w-12 h-12 bg-indigo-100 dark:bg-indigo-900/30 rounded-full mb-4">
+                    <UserCheck size={24} className="text-indigo-600 dark:text-indigo-400" />
+                  </div>
+                  <h2 className="text-2xl font-bold text-gray-950 dark:text-white">
+                    Verify Employee
+                  </h2>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-2 max-w-sm mx-auto">
+                    First time here? Confirm your employee code and mobile number to get started.
+                  </p>
+                </div>
+
+                <div className="mt-7 space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                      Employee Code
+                    </label>
+                    <div className="relative">
+                      <input
+                        value={fEmpCode}
+                        onChange={(e) => {
+                          setFEmpCode(e.target.value.toUpperCase());
+                          if (codeResolved) setCodeResolved(false);
+                        }}
+                        onBlur={handleEmpCodeBlur}
+                        placeholder="e.g. NI1234"
+                        className={inCls + " pr-9"}
+                      />
+                      {codeChecking && (
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 border-2 border-gray-300 border-t-brand-500 rounded-full animate-spin" />
+                      )}
+                      {!codeChecking && codeResolved && (
+                        <CheckCircle2
+                          size={16}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-green-500"
+                        />
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                        Company
+                      </label>
+                      <select
+                        value={fCompanyId}
+                        disabled
+                        className={inCls + " opacity-60 cursor-not-allowed"}
+                      >
+                        <option value="">
+                          {codeChecking ? "Detecting..." : "Auto-detected"}
+                        </option>
+                        {COMPANY_OPTIONS.map((c) => (
+                          <option key={c.id} value={c.id}>{c.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                        Branch / Unit
+                      </label>
+                      <select
+                        value={fUnit}
+                        disabled
+                        className={inCls + " opacity-60 cursor-not-allowed"}
+                      >
+                        <option value="">
+                          {codeChecking ? "Detecting..." : "Auto-detected"}
+                        </option>
+                        {getCompanyUnits(fCompanyId).map((u) => (
+                          <option key={u} value={u}>{u}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  {codeResolved && (
+                    <p className="text-xs text-green-600 dark:text-green-400 -mt-2 flex items-center gap-1">
+                      <CheckCircle2 size={12} />
+                      Detected {getCompanyConfig(fCompanyId)?.label} — {fUnit}
+                    </p>
+                  )}
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                      Mobile Number
+                    </label>
+                    <input
+                      value={fMobNum}
+                      onChange={(e) => setFMobNum(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                      placeholder="10-digit mobile number"
+                      type="tel"
+                      inputMode="numeric"
+                      className={inCls}
+                    />
+                  </div>
+
+                  {s1Err && (
+                    <div className="flex items-center gap-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg px-3 py-2">
+                      <AlertCircle size={14} className="text-red-500 flex-shrink-0" />
+                      <p className="text-xs text-red-600 dark:text-red-400">{s1Err}</p>
+                    </div>
+                  )}
+
+                  <button
+                    onClick={handleVerifyEmployee}
+                    disabled={s1Loading || codeChecking}
+                    className="w-full py-2.5 bg-brand-600 hover:bg-brand-700 disabled:bg-brand-400 text-white rounded-xl font-semibold text-sm transition-colors flex items-center justify-center gap-2 shadow-sm shadow-brand-600/20"
+                  >
+                    {s1Loading ? (
+                      <>
+                        <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        Verifying...
+                      </>
+                    ) : (
+                      <>
+                        Verify & Next <ChevronRight size={16} />
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* ── STEP 2: Verify Email ── */}
+            {step === 2 && (
               <div className="animate-in fade-in slide-in-from-right-4 duration-300">
                 <div className="text-center">
                   <div className="inline-flex items-center justify-center w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-full mb-4">
@@ -704,8 +943,8 @@ export default function Login() {
               </div>
             )}
 
-            {/* ── STEP 2: Set New Password ── */}
-            {step === 2 && (
+            {/* ── STEP 3: Set New Password ── */}
+            {step === 3 && (
               <div className="animate-in fade-in slide-in-from-right-4 duration-300">
                 <div className="text-center mb-6">
                   <div className="inline-flex items-center justify-center w-12 h-12 bg-green-100 dark:bg-green-900/30 rounded-full mb-4">

@@ -11,7 +11,7 @@ function formatDate(value) {
   });
 }
 
-const PrintableForm = ({ data, formRef }) => {
+const PrintableForm = ({ data, formRef, aadhaarOverride = "", aadhaarAction = null }) => {
   const nameParts = (data.fullName || "").split(" ").filter(Boolean);
   let firstName = "";
   let midName = "";
@@ -366,12 +366,19 @@ const PrintableForm = ({ data, formRef }) => {
           <div className="w-full">
             <div className="flex flex-row items-end gap-2 py-1 w-full">
               <label className="text-[13px] font-bold text-black whitespace-nowrap w-[130px] shrink-0 leading-normal">
-                Aadhar Card No
+                Aadhaar Card No
               </label>
               <span className="font-bold text-black inline">:</span>
               <span className="flex-grow border-b border-black px-1 min-h-[20px] pb-0.5 text-[13px] font-medium leading-none">
-                {data.aadharNo || ""}
+                {/* aadhaarOverride is only ever passed to the on-screen copy of
+                    this form. The instance used for Print and PDF is rendered
+                    without it, so those outputs stay masked by construction
+                    rather than by remembering to clear state first. */}
+                {aadhaarOverride || data.aadharNo || ""}
               </span>
+              {aadhaarAction && (
+                <span className="print:hidden shrink-0">{aadhaarAction}</span>
+              )}
             </div>
           </div>
 

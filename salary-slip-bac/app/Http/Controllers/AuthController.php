@@ -296,7 +296,27 @@ class AuthController extends Controller
             return response()->json(['status' => false, 'message' => $validator->errors()->first()], 422);
         }
 
-        $emp = $this->findUserByEmail($request);
+        // A step-1 identity check (emp_code + mobile, see verifyEmployeeIdentity)
+        // may have just run and handed back a verification_token. That's what
+        // lets a first-time employee with no email on file yet "claim" one
+        // here, instead of the plain findUserByEmail() lookup below failing
+        // with nothing to match against.
+        $emp = null;
+        if ($request->filled('emp_code') && $request->filled('verification_token')) {
+            $emp = $this->findVerifiedEmployee($request);
+            if ($emp && $emp->email !== $request->email) {
+                $conflict = User::where('email', $request->email)->where('id', '!=', $emp->id)->first();
+                if ($conflict) {
+                    return response()->json(['status' => false, 'message' => 'This email is already registered to another account.'], 422);
+                }
+                $emp->email = $request->email;
+                $emp->save();
+            }
+        }
+
+        if (!$emp) {
+            $emp = $this->findUserByEmail($request);
+        }
         if (!$emp) {
             return response()->json(['status' => false, 'message' => 'Email not found in our records.'], 404);
         }

@@ -674,6 +674,20 @@ export const appointmentV1Api = {
     });
   },
 
+  /**
+   * The complete Aadhaar number, for an explicitly authorised user only.
+   *
+   * POST, not GET: the response carries sensitive data and must not be cached,
+   * prefetched or land in a history entry. The caller must keep the value in
+   * component state only — never in a store, storage or the URL.
+   */
+  revealAadhaar(appointmentId, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/appointments/${appointmentId}/aadhaar/reveal`, {
+      method: "POST",
+      headers: { ...authHeaders(accessToken, tokenType), "Cache-Control": "no-store" },
+    });
+  },
+
   // Scoped to the appointment, not the employee: one person can hold several
   // appointments, and historical records share Aadhaar numbers, so an
   // employee-level list would mix unrelated documents together.
@@ -860,12 +874,17 @@ export const authApi = {
     });
   },
 
-  verifyEmail(email) {
+  // `extra` carries emp_code/verification_token/company_code/unit from a
+  // preceding verifyEmpCode() call — the backend uses those to resolve the
+  // already-identity-verified employee and let them claim this email even
+  // when they don't have one on file yet (first-time registration).
+  verifyEmail(email, extra = {}) {
     return apiRequest("/new-email", {
       method: "POST",
       body: JSON.stringify({
         email,
         type: 1,
+        ...extra,
       }),
     });
   },

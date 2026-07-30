@@ -121,6 +121,14 @@ Route::middleware('jwt.auth')->group(function () {
         Route::patch('{appointmentId}', [V1AppointmentController::class, 'update'])->whereNumber('appointmentId');
         Route::post('{appointmentId}/complete', [V1AppointmentController::class, 'complete'])->whereNumber('appointmentId');
 
+        // The only route that returns a complete Aadhaar number. POST so it is
+        // not cached or prefetched, throttled because it is an obvious target
+        // for enumeration, and gated on appointments.view_full_aadhaar inside
+        // the controller — every attempt is audited either way.
+        Route::post('{appointmentId}/aadhaar/reveal', [V1AppointmentController::class, 'revealAadhaar'])
+            ->whereNumber('appointmentId')
+            ->middleware('throttle:10,1');
+
         // The Aadhaar number comes from the appointment record, so the client
         // never sends (and cannot influence) it.
         Route::get('{appointmentId}/documents', [V1AppointmentController::class, 'documents'])

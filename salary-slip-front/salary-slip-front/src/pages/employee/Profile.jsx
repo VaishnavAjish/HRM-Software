@@ -80,6 +80,7 @@ export default function Profile() {
     department: profile?.department || "",
     designation: profile?.designation || "",
     joining_date: profile?.joining_date || "",
+    aadhar_card_no: profile?.aadhar_card_no || profile?.aadhar_no || profile?.aadharNo || "",
   };
 
   const [editing, setEditing] = useState(false);
@@ -140,7 +141,7 @@ export default function Profile() {
           district: data.district || "",
           state: data.state || "",
           pin: data.pin || "",
-          aadhar_card_no: data.aadhar_card_no || "",
+          aadhar_card_no: data.aadhar_card_no || data.aadhar_no || data.aadharNo || "",
           pan_card_no: data.pan_card_no || "",
           bank_name: data.bank_name || "",
           bank_ifsc_code: data.bank_ifsc_code || "",
@@ -215,6 +216,8 @@ export default function Profile() {
         state: form.state,
         pin: form.pin,
         aadhar_card_no: form.aadhar_card_no,
+        aadhar_no: form.aadhar_card_no,
+        aadharNo: form.aadhar_card_no,
         pan_card_no: form.pan_card_no,
         bank_name: form.bank_name,
         bank_ifsc_code: form.bank_ifsc_code,
@@ -247,6 +250,8 @@ export default function Profile() {
         state: form.state,
         pin: form.pin,
         aadhar_card_no: form.aadhar_card_no,
+        aadhar_no: form.aadhar_card_no,
+        aadharNo: form.aadhar_card_no,
         pan_card_no: form.pan_card_no,
         bank_name: form.bank_name,
         bank_ifsc_code: form.bank_ifsc_code,
