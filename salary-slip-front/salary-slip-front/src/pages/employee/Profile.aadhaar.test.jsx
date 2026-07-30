@@ -96,14 +96,16 @@ describe("Profile — own Aadhaar", () => {
     expect(screen.queryByText("Aadhar Card No")).toBeNull();
   });
 
-  it("falls back to the mask when the server disclosed nothing", async () => {
+  it("shows a dash rather than a mask when the server sent no full number", async () => {
     authApi.getProfile.mockResolvedValue({
       user: { ...selfProfile, aadhaar_full: undefined },
     });
 
     await openIdentityStep();
 
-    expect(await screen.findByText(MASKED)).toBeInTheDocument();
+    // Not the mask: an absent field is missing data, and rendering
+    // "XXXX XXXX 1345" here would look like a deliberate withholding.
+    await waitFor(() => expect(screen.queryByText(MASKED)).toBeNull());
     expect(screen.queryByText(FULL_FORMATTED)).toBeNull();
   });
 
@@ -113,10 +115,10 @@ describe("Profile — own Aadhaar", () => {
     });
 
     await openIdentityStep();
-    await screen.findByText(MASKED);
 
     // Four known digits cannot become an Aadhaar.
-    expect(screen.queryByText(/^\d{4} \d{4} \d{4}$/)).toBeNull();
+    await waitFor(() => expect(screen.queryByText(/^\d{4} \d{4} \d{4}$/)).toBeNull());
+    expect(screen.queryByText(MASKED)).toBeNull();
   });
 
   it("keeps Aadhaar out of the profile save payload", async () => {

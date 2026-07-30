@@ -36,16 +36,6 @@ function CompanyLogo({ company, large = false }) {
   );
 }
 
-function DetailRow({ label, value, strong = false, uppercase = false }) {
-  return (
-    <div className="grid grid-cols-[112px_1fr] gap-2">
-      <span className="text-neutral-500">{label}</span>
-      <span className={strong ? "font-semibold" : ""}>
-        {uppercase ? String(value || "N.A.").toUpperCase() : value || "N.A."}
-      </span>
-    </div>
-  );
-}
 
 function NidhiPayslipLayout({ data, className }) {
   const rows = Array.from({ length: data.rowCount }, (_, index) => ({

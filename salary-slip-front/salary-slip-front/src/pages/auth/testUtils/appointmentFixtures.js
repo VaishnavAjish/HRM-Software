@@ -36,9 +36,10 @@ export function createAppointmentRow(overrides = {}) {
     blood_group: "-",
     reference_name: "Dinesh Saini",
     reference_mobile_no: "8107562363",
-    // What the API actually returns: aadhar_card_no is in User::$hidden, so it
-    // never reaches the client. Only the appended mask does. Fixtures that
-    // carried the raw number described a response shape that no longer exists.
+    // What the API actually returns. aadhar_card_no stays in User::$hidden;
+    // aadhaar_full is added deliberately per response for a request allowed to
+    // reach the record, and aadhaar_masked remains for API compatibility.
+    aadhaar_full: "715115988793",
     aadhaar_masked: "XXXX XXXX 8793",
     pan_card_no: "IFTPP8308N",
     bank_name: "STATE BANK OF INDIA",
@@ -90,7 +91,7 @@ export function createGetResponse({ appointmentId = 104, row } = {}) {
     data: {
       appointmentId,
       appointmentNumber: `APT-${String(appointmentId).padStart(6, "0")}`,
-      appointment: { ...appointment, aadhaar_masked: "XXXX XXXX 8793" },
+      appointment: { ...appointment, aadhaar_full: "715115988793", aadhaar_masked: "XXXX XXXX 8793" },
     },
   };
 }

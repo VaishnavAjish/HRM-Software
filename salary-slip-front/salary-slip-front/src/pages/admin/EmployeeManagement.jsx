@@ -207,7 +207,7 @@ function mapEmployee(item) {
 
 export default function EmployeeManagement() {
   const { user: currentUser } = useAuth();
-  const { activeUnit, companyId, companyScope, isAllCompanies, scopeKey } =
+  const { activeUnit, companyId, companyScope, scopeKey } =
     useCompany();
   const { dark } = useTheme();
   const isMobile = useIsMobile();
@@ -293,10 +293,11 @@ export default function EmployeeManagement() {
 
   useEffect(() => {
     const urlModal = searchParams.get("modal");
-    if (urlModal && urlModal === "add") {
-      setModal("add");
-      searchParams.delete("modal");
-      setSearchParams(searchParams, { replace: true });
+    if (urlModal === "add") {
+      setModal((prev) => (prev !== "add" ? "add" : prev));
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.delete("modal");
+      setSearchParams(nextParams, { replace: true });
     }
   }, [searchParams, setSearchParams]);
   const [selected, setSelected] = useState(null);

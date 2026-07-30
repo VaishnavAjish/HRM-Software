@@ -390,7 +390,7 @@ export default function TrialForm() {
           for (const rule of sheet.cssRules) {
             cssText += rule.cssText + "\n";
           }
-        } catch (e) {
+        } catch {
           // Ignore stylesheet access errors (e.g. CORS)
         }
       }

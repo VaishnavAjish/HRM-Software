@@ -1,4 +1,3 @@
-import React from 'react';
 
 export function firstPresent(...values) {
   return values.find((value) => value !== undefined && value !== null) ?? "";

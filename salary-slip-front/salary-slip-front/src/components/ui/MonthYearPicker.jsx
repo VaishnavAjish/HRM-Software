@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, X } from "lucide-react";
 
 const MONTHS = [
@@ -33,11 +33,8 @@ export function MonthYearPicker({ value, onChange, min, max, placeholder = "Sele
 
   useEffect(() => {
     if (isOpen) {
-      if (parsedValue) {
-        setViewYear(parsedValue.year);
-      } else {
-        setViewYear(new Date().getFullYear());
-      }
+      const targetYear = parsedValue ? parsedValue.year : new Date().getFullYear();
+      setViewYear(prev => (prev !== targetYear ? targetYear : prev));
     }
   }, [isOpen, value]);
 

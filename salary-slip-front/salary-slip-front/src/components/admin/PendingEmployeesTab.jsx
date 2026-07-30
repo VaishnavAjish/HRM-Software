@@ -52,7 +52,7 @@ export default function PendingEmployeesTab() {
   };
 
   const fetchPending = async () => {
-    setLoading(true);
+    setLoading((prev) => (prev !== true ? true : prev));
     try {
       const res = await salaryApi.getAllEmployees(
         currentUser?.accessToken,

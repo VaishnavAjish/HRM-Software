@@ -37,9 +37,17 @@ describe("aadhaarDisplayFor", () => {
     ).toBe("7151 1598 8793");
   });
 
-  it("falls back to the mask when it did not", () => {
-    // Absence of aadhaar_full IS the authorisation result.
-    expect(aadhaarDisplayFor({ aadhaar_masked: "XXXX XXXX 8793" })).toBe("XXXX XXXX 8793");
+  it("shows a dash rather than a mask when no full number was supplied", () => {
+    // The mask fallback is gone deliberately. A payload without aadhaar_full is a
+    // missing field, and rendering "XXXX XXXX 8793" made that look like a
+    // permission decision instead — which is how the app ended up masked on one
+    // screen and complete on another.
+    expect(aadhaarDisplayFor({ aadhaar_masked: "XXXX XXXX 8793" })).toBe("-");
+  });
+
+  it("reads the number from whichever legacy key carries it", () => {
+    expect(aadhaarDisplayFor({ aadhar_card_no: "715115988793" })).toBe("7151 1598 8793");
+    expect(aadhaarDisplayFor({ aadharNo: "715115988793" })).toBe("7151 1598 8793");
   });
 
   it("never reconstructs a full number from a mask", () => {

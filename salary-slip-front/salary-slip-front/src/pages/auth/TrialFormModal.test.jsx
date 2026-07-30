@@ -13,6 +13,17 @@ vi.mock("../../context/AuthContext", () => ({
   useAuth: () => ({ user: { accessToken: "t", tokenType: "Bearer", role: "admin" } }),
 }));
 
+// TrialFormModal reads useCompany() to seed the company field. Without this the
+// hook returns null outside a provider and the component throws while
+// destructuring, which failed all eight tests in this file.
+vi.mock("../../context/CompanyContext", () => ({
+  useCompany: () => ({
+    companyId: "nidhi-impex",
+    isAllCompanies: false,
+    companyOptions: [],
+  }),
+}));
+
 vi.mock("../../components/ModernDatePicker", () => ({
   default: ({ value, onChange, ...rest }) => (
     <input type="date" value={value || ""} onChange={(e) => onChange?.(e.target.value)} {...rest} />

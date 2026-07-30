@@ -731,10 +731,15 @@ export const appointmentV1Api = {
 /**
  * Confidential (full-Aadhaar) Print and PDF export.
  *
- * Separate from appointmentV1Api because these are not ordinary reads: each call
- * is an audited authorisation decision the server makes fresh, and none of them
- * may be retried automatically, cached, or have their failures swallowed. The
- * caller must treat any rejection as "the export did not happen".
+ * No caller remains in the app. Print and PDF now render the complete number
+ * directly, because display is gated on record access rather than on a separate
+ * export permission, so the two-stage authorise-then-export flow no longer has a
+ * masked alternative to choose between.
+ *
+ * Kept because the endpoints are live, org-scoped and covered by
+ * AadhaarConfidentialExportTest: they remain the only way to obtain a
+ * server-generated, watermarked PDF whose bytes cannot be altered through the
+ * DOM, which is worth having available if export ever needs its own gate again.
  *
  * `surface` is "appointments" or "employees" — the same flow, different
  * permission keys and different audit action names.

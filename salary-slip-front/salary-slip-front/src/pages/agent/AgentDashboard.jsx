@@ -134,23 +134,23 @@ export default function AgentDashboard() {
       ),
       unitName: firstPresent(item.unitName, item.unit_name, item.unit),
       status: displayStatus,
-      salary: item.salary || "-",
-      designation: item.designation || "-",
-      email: item.email || "-",
-      education: item.education || "-",
-      punchingNo: item.punching_no || "-",
-      address: item.address || "-",
-      village: item.village || "-",
-      taluka: item.taluka || "-",
-      district: item.district || "-",
-      dob: item.dob || "-",
-      birthPlace: item.birth_place || "-",
-      gender: item.gender || "-",
-      cast: item.cast || "-",
-      maritalStatus: item.marital_status || "-",
-      bloodGroup: item.blood_group || "-",
+      salary: item.salary || "",
+      designation: item.designation || "",
+      email: item.email || "",
+      education: item.education || "",
+      punchingNo: item.punching_no || "",
+      address: item.address || "",
+      village: item.village || "",
+      taluka: item.taluka || "",
+      district: item.district || "",
+      dob: item.dob || "",
+      birthPlace: item.birth_place || "",
+      gender: item.gender || "",
+      cast: item.cast || "",
+      maritalStatus: item.marital_status || "",
+      bloodGroup: item.blood_group || "",
       photo: item.photo || null,
-      signature: item.emp_signature || "-",
+      signature: item.emp_signature || "",
       documents: {
         adhar_image: item.adhar_image || null,
         pan_image: item.pan_image || null,
@@ -172,7 +172,9 @@ export default function AgentDashboard() {
               4,
             );
           }
-        } catch (e) {}
+        } catch {
+          // ignore
+        }
         return Array(4).fill({});
       })(),
       isPrinted: Number(item.print ?? 0) === 1,

@@ -7,7 +7,6 @@ import { useState } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";
 import { useInstallPWA } from "../../hooks/useInstallPWA";
-import toast from "react-hot-toast";
 import { hasStoredAadhaar } from "../../utils/aadhaar";
 import {
   LayoutDashboard,
@@ -140,30 +139,33 @@ export default function Sidebar({ open, onClose, width, isCollapsed, onCollapse 
     );
   };
   
-  let nav;
-  if (user?.role === "admin") {
-    nav = getAdminNav(companyId, user, isAllCompanies);
-  } else if (user?.role === "agent") {
-    const baseNav = agentNav.filter(item => {
-      if (!item.company) return true;
-      if (user?.company_code === 'all-companies') return true;
-      if (user?.company_code?.includes(item.company)) return true;
-      return false;
-    });
+  const nav = (() => {
+    if (user?.role === "admin") {
+      return getAdminNav(companyId, user, isAllCompanies);
+    }
 
-    const keyMap = {
-      "/agent": "agent_dashboard",
-      "/agent/trial-forms": "agent_trial_form",
-      "/agent/appointments": "agent_appointment_form",
-    };
+    if (user?.role === "agent") {
+      const baseNav = agentNav.filter(item => {
+        if (!item.company) return true;
+        if (user?.company_code === 'all-companies') return true;
+        if (user?.company_code?.includes(item.company)) return true;
+        return false;
+      });
 
-    nav = baseNav.filter(item => {
-      const key = keyMap[item.to];
-      if (!key) return true;
-      if (!user?.permissions) return true;
-      return user.permissions[key] !== "no_access";
-    });
-  } else {
+      const keyMap = {
+        "/agent": "agent_dashboard",
+        "/agent/trial-forms": "agent_trial_form",
+        "/agent/appointments": "agent_appointment_form",
+      };
+
+      return baseNav.filter(item => {
+        const key = keyMap[item.to];
+        if (!key) return true;
+        if (!user?.permissions) return true;
+        return user.permissions[key] !== "no_access";
+      });
+    }
+
     const fields = [
       "name", "email", "phone", "dob", "address", "city", "district", "state", "pin",
       "aadhar_card_no", "pan_card_no", "bank_name", "bank_ifsc_code", "bank_account_no",
@@ -194,13 +196,13 @@ export default function Sidebar({ open, onClose, width, isCollapsed, onCollapse 
       "/employee/appointment": "employee_appointment",
     };
 
-    nav = baseNav.filter(item => {
+    return baseNav.filter(item => {
       const key = keyMap[item.to];
       if (!key) return true;
       if (!user?.permissions) return true;
       return user.permissions[key] !== "no_access";
     });
-  }
+  })();
   
   // handleLogout removed
 

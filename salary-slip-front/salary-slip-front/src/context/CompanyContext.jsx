@@ -51,7 +51,7 @@ export function CompanyProvider({ children }) {
 
   useEffect(() => {
     if (!isSuperAdmin && !isMaster) {
-      setAdminScopeKey(userCompanyId);
+      setAdminScopeKey(prev => (prev !== userCompanyId ? userCompanyId : prev));
     }
   }, [isSuperAdmin, isMaster, userCompanyId]);
 

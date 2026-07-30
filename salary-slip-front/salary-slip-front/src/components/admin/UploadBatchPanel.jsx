@@ -37,8 +37,8 @@ export default function UploadBatchPanel({ type, icon: Icon = FileSpreadsheet, t
   const scrollRef = useRef(null);
 
   const loadPage = async (pageNum, { append }) => {
-    if (append) setLoadingMore(true);
-    else setLoading(true);
+    if (append) setLoadingMore((prev) => (prev !== true ? true : prev));
+    else setLoading((prev) => (prev !== true ? true : prev));
     try {
       const res = await salaryApi.getUploadBatches(type, user?.accessToken, user?.tokenType, companyId, pageNum, PAGE_LIMIT);
       if (res.status) {

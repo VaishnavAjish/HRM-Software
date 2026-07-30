@@ -367,7 +367,7 @@ const AppointmentModal = ({
     { path: "dob", label: "Birth Date" },
     { path: "gender", label: "Gender" },
     { path: "marital_status", label: "Marital Status" },
-    { path: "aadhar_card_no", label: "Aadhar Card No" },
+    { path: "aadhar_card_no", label: "Aadhaar Card No" },
     { path: "bank_name", label: "Bank Name" },
     { path: "pan_card_no", label: "PAN Card No" },
     { path: "bank_ifsc_code", label: "Bank IFSC Code" },
@@ -399,7 +399,9 @@ const AppointmentModal = ({
     },
     {
       path: "aadhar_card_no",
-      isValid: (v) => /^\d{12}$/.test(v),
+      // The input is displayed grouped ("7151 1598 8793"), so validate the
+      // digits rather than the display string.
+      isValid: (v) => normaliseAadhaar(v).length === 12,
       message: "Must be 12 digits.",
     },
     {
@@ -489,9 +491,9 @@ const AppointmentModal = ({
       if (DOC_FIELDS.some((d) => d.key === key) || key === "photo") return;
 
       if (key === "aadhar_card_no") {
-        // Only send a complete number. Blank means "keep what is stored" — the
-        // input is never prefilled, so posting it would wipe the record's
-        // Aadhaar and orphan its documents in S3.
+        // Only send a complete number. A cleared or partly-deleted field means
+        // "keep what is stored" — posting it would wipe the record's Aadhaar and
+        // orphan its documents in S3.
         if (aadhaarDigits.length === 12) payload.append(key, aadhaarDigits);
         return;
       }
@@ -727,9 +729,14 @@ const AppointmentModal = ({
         // the document without retyping. Safe to post back because it is the real
         // value; a partial edit is still refused by validation rather than
         // overwriting what is stored, and a cleared field means "unchanged".
-        aadhar_card_no: formatFullAadhaar(raw.aadhaar_full) !== "-"
-          ? formatFullAadhaar(raw.aadhaar_full)
-          : "",
+        //
+        // Only when editing. A trial prefill creates a brand-new appointment, and
+        // inheriting the trial row's number would let the new record save with an
+        // Aadhaar nobody re-checked against the document.
+        aadhar_card_no:
+          isEditMode && formatFullAadhaar(raw.aadhaar_full) !== "-"
+            ? formatFullAadhaar(raw.aadhaar_full)
+            : "",
         bank_name: raw.bank_name || "",
         pan_card_no: raw.pan_card_no || "",
         bank_ifsc_code: raw.bank_ifsc_code || "",

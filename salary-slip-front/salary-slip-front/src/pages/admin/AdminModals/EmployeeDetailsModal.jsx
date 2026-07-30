@@ -87,7 +87,7 @@ export default function EmployeeDetailsModal({
   const [activeTab, setActiveTab] = useState("profile");
 
   useEffect(() => {
-    if (isOpen) setActiveTab("profile");
+    if (isOpen) setActiveTab((prev) => (prev !== "profile" ? "profile" : prev));
   }, [isOpen]);
 
   useEffect(() => {
