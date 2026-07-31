@@ -36,7 +36,7 @@ class AppointmentController extends Controller
     ];
 
     /** Documents that must exist before an appointment can be completed. */
-    private const REQUIRED_DOCUMENTS = ['AADHAR_CARD', 'PAN_CARD'];
+    private const REQUIRED_DOCUMENTS = [];
 
     /** How long the client may keep a revealed number on screen. */
     private const REVEAL_TTL_SECONDS = 30;
@@ -56,19 +56,29 @@ class AppointmentController extends Controller
         return response()->json($e->toArray($this->requestId()), $e->status);
     }
 
-    private function rules(bool $creating): array
+    /**
+     * Every appointment field is optional.
+     *
+     * An appointment is a record of someone who has turned up, not a completed
+     * personnel file — the rest is filled in through Edit as it arrives. So
+     * nothing here is `required`, and a blank field is stored as NULL rather than
+     * rejected.
+     *
+     * The format rules stay. `nullable` means they only apply once a field has
+     * something in it, so a blank PAN saves while "ABC" is still refused instead
+     * of being written as a PAN number that will fail elsewhere later.
+     */
+    private function rules(): array
     {
-        $required = $creating ? 'required' : 'sometimes';
-
         return [
-            'name'            => "{$required}|string|max:255",
-            'email'           => "{$required}|email|max:255",
-            'mobile_number'   => "{$required}|regex:/^[6-9]\d{9}$/",
-            'aadhar_card_no'  => "{$required}|regex:/^\d{4}[\s-]?\d{4}[\s-]?\d{4}$/",
+            'name'            => 'nullable|string|max:255',
+            'email'           => 'nullable|email|max:255',
+            'mobile_number'   => 'nullable|regex:/^[6-9]\d{9}$/',
+            'aadhar_card_no'  => 'nullable|regex:/^\d{4}[\s-]?\d{4}[\s-]?\d{4}$/',
             'pan_card_no'     => 'nullable|regex:/^[A-Za-z]{5}\d{4}[A-Za-z]$/',
             'bank_ifsc_code'  => 'nullable|regex:/^[A-Za-z]{4}0[A-Za-z0-9]{6}$/',
             'bank_account_no' => 'nullable|regex:/^\d{9,18}$/',
-            'company_code'    => "{$required}|string|max:100",
+            'company_code'    => 'nullable|string|max:100',
             'unit'            => 'nullable|string|max:100',
             'members'         => 'nullable',
         ];
@@ -87,12 +97,22 @@ class AppointmentController extends Controller
             $data['aadhar_card_no'] = AadhaarReference::normalise($data['aadhar_card_no']);
         }
 
+        // users.email carries a UNIQUE index. Laravel's ConvertEmptyStringsToNull
+        // normally turns a blank field into null before it reaches here, and a
+        // unique index tolerates any number of NULLs — but it will reject a second
+        // row storing ''. Now that email is optional, two blank appointments is an
+        // ordinary thing to do, so this is pinned here rather than left to depend
+        // on global middleware staying in place.
+        if (array_key_exists('email', $data) && trim((string) $data['email']) === '') {
+            $data['email'] = null;
+        }
+
         return $data;
     }
 
     public function store(Request $request)
     {
-        $request->validate($this->rules(true));
+        $request->validate($this->rules());
 
         try {
             $actor = auth('api')->user();
@@ -106,6 +126,14 @@ class AppointmentController extends Controller
             // A non-super-admin cannot file an appointment into a company they
             // do not manage.
             if (!Auth::isSuperAdmin($actor) && ($data['company_code'] ?? null) !== $actor->company_code) {
+                $data['company_code'] = $actor->company_code;
+            }
+
+            // Company is optional on the form, but a record stored without one is
+            // matched by no company-scoped list query, so it would save
+            // successfully and then be invisible on the Appointments page. Fall
+            // back to the company of whoever created it.
+            if (trim((string) ($data['company_code'] ?? '')) === '') {
                 $data['company_code'] = $actor->company_code;
             }
 
@@ -143,7 +171,7 @@ class AppointmentController extends Controller
 
     public function update(Request $request, int $appointmentId)
     {
-        $request->validate($this->rules(false));
+        $request->validate($this->rules());
 
         try {
             [$appointment, $actor] = $this->findAuthorized($appointmentId);

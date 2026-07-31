@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { Check, FileSpreadsheet, X } from "lucide-react";
+import { Check, FileSpreadsheet, X, Upload, FileText } from "lucide-react";
 import ModernDatePicker from "../../components/ModernDatePicker";
 import toast from "react-hot-toast";
 import { authApi, resolveWriteCompanyId } from "../../utils/api";
 import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";
 import { getCompanyUnits } from "../../config/companyConfig";
+import usePhotoCapture from "../../hooks/usePhotoCapture";
+import { normaliseAadhaar, formatFullAadhaar } from "../../utils/aadhaar";
 
 const getTodayDate = () => {
   const d = new Date();
@@ -31,6 +33,7 @@ const EMPTY_FORM = {
   hastak_name: "",
   hastak_code: "",
   hastak_mobile: "",
+  hastak_department: "",
   contractor: "",
   manager_name: "",
   akar: "",
@@ -38,6 +41,9 @@ const EMPTY_FORM = {
   manager_signature: "",
   hastak_signature: "",
   hr_signature: "",
+  photo: null,
+  aadhar_card_no: "",
+  adhar_image: null,
 };
 
 // ─── Shared input class ────────────────────────────────────────────────────────
@@ -52,7 +58,7 @@ const SectionHeader = ({ title }) => (
 );
 
 // ─── Full-width field (spans both columns) ────────────────────────────────────
-const FullField = ({ label, name, value, onChange, error, type = "text", textarea }) => (
+const FullField = ({ label, name, value, onChange, error, type = "text", textarea, disabled }) => (
   <div className="col-span-1 sm:col-span-2 flex flex-col gap-1">
     {/* htmlFor/id so the label actually names the control for screen readers. */}
     <label
@@ -68,7 +74,8 @@ const FullField = ({ label, name, value, onChange, error, type = "text", textare
         value={value}
         onChange={onChange}
         rows={2}
-        className={`${inputCls} resize-none`}
+        disabled={disabled}
+        className={`${inputCls} resize-none disabled:bg-gray-100 disabled:text-gray-500 disabled:border-gray-200`}
       />
     ) : (
       <input
@@ -77,7 +84,8 @@ const FullField = ({ label, name, value, onChange, error, type = "text", textare
         name={name}
         value={value}
         onChange={onChange}
-        className={inputCls}
+        disabled={disabled}
+        className={`${inputCls} disabled:bg-gray-100 disabled:text-gray-500 disabled:border-gray-200`}
       />
     )}
     {error && <p className="text-[10px] text-red-600">{error}</p>}
@@ -96,6 +104,7 @@ const HalfField = ({
   options,
   maxLength,
   inputMode,
+  disabled,
 }) => (
   <div className="flex flex-col gap-1">
     <label
@@ -105,7 +114,7 @@ const HalfField = ({
       {label}
     </label>
     {select ? (
-      <select id={`trial-${name}`} name={name} value={value} onChange={onChange} className={inputCls}>
+      <select id={`trial-${name}`} name={name} value={value} onChange={onChange} disabled={disabled} className={`${inputCls} disabled:bg-gray-100 disabled:text-gray-500 disabled:border-gray-200`}>
         {options.map((o) => (
           <option key={o.value ?? o} value={o.value ?? o}>
             {o.label ?? o}
@@ -121,7 +130,8 @@ const HalfField = ({
         onChange={onChange}
         maxLength={maxLength}
         inputMode={inputMode}
-        className={inputCls}
+        disabled={disabled}
+        className={`${inputCls} disabled:bg-gray-100 disabled:text-gray-500 disabled:border-gray-200`}
       />
     )}
     {error && <p className="text-[10px] text-red-600">{error}</p>}
@@ -176,6 +186,11 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
       isValid: (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v),
       message: "Must be a valid email address.",
     },
+    {
+      path: "aadhar_card_no",
+      isValid: (v) => normaliseAadhaar(v).length === 12 || v.length === 0,
+      message: "Must be 12 digits.",
+    },
   ];
 
   const validate = () => {
@@ -207,6 +222,7 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
       mobile_number: 10,
       mobile_no_2: 10,
       hastak_mobile: 10,
+      aadhar_card_no: 12,
     };
 
     if (Object.keys(numericLimits).includes(name)) {
@@ -214,6 +230,10 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
       if (numericLimits[name]) {
         nextValue = nextValue.slice(0, numericLimits[name]);
       }
+    }
+
+    if (name === "aadhar_card_no") {
+      nextValue = nextValue.replace(/(\d{4})(?=\d)/g, "$1 ").trim();
     }
 
     setFormData((prev) => ({ ...prev, [name]: nextValue }));
@@ -247,6 +267,7 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
         hastak_name: raw.hastak_name || "",
         hastak_code: raw.hastak_code || "",
         hastak_mobile: raw.hastak_mobile || "",
+        hastak_department: raw.hastak_department || "",
         contractor: raw.contractor || "",
         manager_name: raw.manager_name || "",
         akar: raw.akar || "",
@@ -254,17 +275,21 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
         manager_signature: raw.manager_signature || "",
         hastak_signature: raw.hastak_signature || "",
         hr_signature: raw.hr_signature || "",
+        photo: null,
+        aadhar_card_no: isEditMode && formatFullAadhaar(raw.aadhaar_full) !== "-" ? formatFullAadhaar(raw.aadhaar_full) : "",
+        adhar_image: raw.adhar_image || null,
       };
 
-      return { formData: populated, snapshot: populated };
+      return { formData: populated, snapshot: populated, photoPreview: initialData.photo || "" };
     }
 
-    return { formData: EMPTY_FORM, snapshot: null };
+    return { formData: EMPTY_FORM, snapshot: null, photoPreview: "" };
   };
 
   // Populate on open and clear the validation state on close. Assigning state
   // during render is the supported way to reset when a prop changes; from an
   // effect body it renders the stale values first.
+  const [photoPreview, setPhotoPreview] = useState("");
   const [wasOpen, setWasOpen] = useState(false);
 
   if (wasOpen !== isOpen) {
@@ -274,6 +299,7 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
       const next = buildOpenState();
       setFormData(next.formData);
       setOriginalSnapshot(next.snapshot);
+      setPhotoPreview(next.photoPreview);
     } else {
       setErrors({});
     }
@@ -292,6 +318,18 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
     };
   }, [isOpen]);
 
+  const handlePhotoChange = (file) => {
+    if (!file) return;
+    setFormData((prev) => ({ ...prev, photo: file }));
+    const reader = new FileReader();
+    reader.onloadend = () => setPhotoPreview(reader.result);
+    reader.readAsDataURL(file);
+  };
+
+  const { requestCapture, cameraModal } = usePhotoCapture({
+    onCapture: handlePhotoChange,
+  });
+
   if (!isOpen) return null;
 
   const handleSubmit = async (e) => {
@@ -308,13 +346,21 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
         company_code: resolveWriteCompanyId(companyId || "nidhi-impex")
       };
 
+      if (submitData.aadhar_card_no) {
+        submitData.aadhar_card_no = normaliseAadhaar(submitData.aadhar_card_no);
+      }
+
       if (isEditMode) {
         const snap = originalSnapshot || {};
         const payload = new FormData();
         Object.entries(submitData).forEach(([key, value]) => {
-          const curr = String(value ?? "");
-          const orig = String(snap[key] ?? "");
-          if (curr !== orig) payload.append(key, curr);
+          if (value instanceof File) {
+            payload.append(key, value);
+          } else {
+            const curr = String(value ?? "");
+            const orig = String(snap[key] ?? "");
+            if (curr !== orig) payload.append(key, curr);
+          }
         });
 
         const res = await authApi.updateTrialForm(
@@ -426,6 +472,90 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
 
               {/* ── Candidate Details ── */}
               <SectionHeader title="Candidate Details" />
+
+              <div className="col-span-1 sm:col-span-2 flex flex-col md:flex-row gap-6 mb-2">
+                <div className="flex flex-col items-center flex-shrink-0">
+                  <div
+                    className="cursor-pointer group relative"
+                    onClick={requestCapture}
+                  >
+                    <div className="w-32 h-40 border border-gray-400 flex items-center justify-center bg-gray-50 overflow-hidden">
+                      {photoPreview ? (
+                        <img
+                          src={photoPreview}
+                          alt="Profile"
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="text-center text-[10px]">
+                          <p className="font-bold text-gray-400 group-hover:text-brand-500">
+                            TAP TO TAKE PHOTO
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-[9px] text-gray-400 mt-1 text-center">
+                      (Click box to take photo)
+                    </p>
+                  </div>
+                  {cameraModal}
+                </div>
+                
+                <div className="flex-1 flex flex-col gap-3 justify-center">
+                  <FullField
+                    label="Aadhaar Number"
+                    name="aadhar_card_no"
+                    value={formData.aadhar_card_no}
+                    onChange={handleChange}
+                    error={errors.aadhar_card_no}
+                    disabled={isEditMode}
+                  />
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[11px] font-bold uppercase tracking-wide text-gray-500">
+                      Upload Aadhaar Card
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <label className="cursor-pointer inline-flex items-center gap-2 rounded border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50">
+                        <Upload size={14} />
+                        {formData.adhar_image ? "Change File" : "Choose File"}
+                        <input
+                          type="file"
+                          accept="image/*,.pdf"
+                          className="hidden"
+                          onChange={(e) => {
+                            if (e.target.files && e.target.files[0]) {
+                              setFormData(prev => ({ ...prev, adhar_image: e.target.files[0] }));
+                            }
+                          }}
+                        />
+                      </label>
+                      {formData.adhar_image && (
+                        <div className="mt-2 w-full max-w-[150px] border rounded overflow-hidden shadow-sm bg-gray-50">
+                          {typeof formData.adhar_image === "string" ? (
+                            formData.adhar_image.toLowerCase().includes(".pdf") ? (
+                              <a href={formData.adhar_image} target="_blank" rel="noreferrer" className="flex flex-col items-center justify-center p-4 text-brand-600 hover:bg-brand-50 transition">
+                                <FileText size={24} className="mb-1" />
+                                <span className="text-[10px] font-semibold text-center">View PDF</span>
+                              </a>
+                            ) : (
+                              <a href={formData.adhar_image} target="_blank" rel="noreferrer" className="block w-full">
+                                <img src={formData.adhar_image} alt="Aadhaar" className="w-full h-auto object-cover max-h-[100px]" />
+                              </a>
+                            )
+                          ) : formData.adhar_image.type === "application/pdf" ? (
+                            <div className="flex flex-col items-center justify-center p-4 text-brand-600">
+                              <FileText size={24} className="mb-1" />
+                              <span className="text-[10px] font-semibold text-center">PDF Selected</span>
+                            </div>
+                          ) : (
+                            <img src={URL.createObjectURL(formData.adhar_image)} alt="Aadhaar" className="w-full h-auto object-cover max-h-[100px]" />
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
 
               <HalfField
                 label="Branch"
@@ -561,9 +691,9 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
                 inputMode="numeric"
               />
               <FullField
-                label="Department"
-                name="department"
-                value={formData.department}
+                label="Hastak Department"
+                name="hastak_department"
+                value={formData.hastak_department}
                 onChange={handleChange}
               />
               <FullField

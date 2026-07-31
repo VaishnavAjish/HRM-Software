@@ -116,22 +116,25 @@ describe("AppointmentModal — Aadhaar on an existing record", () => {
     expect(input).toHaveValue("7151 1598 8793");
     // Nothing masked is shown anywhere on the form.
     expect(screen.queryByText("XXXX XXXX 8793")).toBeNull();
-    // Clearing it keeps the stored value rather than erasing it.
-    expect(screen.getByText(/Clearing this field keeps the number/i)).toBeInTheDocument();
+    // Locked once the record exists, so the stored number cannot be edited away.
+    expect(input).toBeDisabled();
+    expect(screen.getByText(/locked once saved/i)).toBeInTheDocument();
   });
 
-  it("keeps the stored number when the field is cleared", async () => {
+  it("cannot be edited away once the record exists", async () => {
     renderModal({ initialData: createInitialData() });
 
-    await userEvent.clear(await screen.findByLabelText(AADHAAR_LABEL));
-    await userEvent.click(screen.getByRole("button", { name: SAVE }));
+    const input = await screen.findByLabelText(AADHAAR_LABEL);
 
+    // The stored number drives the record's S3 document folder, so it is locked
+    // rather than merely discouraged — clearing it would detach the record from
+    // its own documents.
+    expect(input).toBeDisabled();
+
+    await userEvent.click(screen.getByRole("button", { name: SAVE }));
     await waitFor(() => expect(authApi.updateAppointment).toHaveBeenCalledTimes(1));
 
-    // Absent, not empty: an empty value would overwrite the stored number and
-    // move the record's S3 document folder with it.
-    const fields = sentFields(authApi.updateAppointment);
-    expect("aadhar_card_no" in fields).toBe(false);
+    expect(sentFields(authApi.updateAppointment).aadhar_card_no).toBe("715115988793");
   });
 
   it("saves the untouched prefilled number back as digits", async () => {
@@ -148,33 +151,6 @@ describe("AppointmentModal — Aadhaar on an existing record", () => {
     // Digits only, so the grouping shown in the input never reaches the column.
     expect(fields.aadhar_card_no).toBe("715115988793");
     expect(fields.pan_card_no).toBe("IFTPP8308N");
-  });
-
-  it("sends a replacement only when all 12 digits are entered", async () => {
-    renderModal({ initialData: createInitialData() });
-
-    const input = await screen.findByLabelText(AADHAAR_LABEL);
-    await userEvent.clear(input);
-    await userEvent.type(input, "999988887777");
-    await userEvent.click(screen.getByRole("button", { name: SAVE }));
-
-    await waitFor(() => expect(authApi.updateAppointment).toHaveBeenCalledTimes(1));
-    expect(sentFields(authApi.updateAppointment).aadhar_card_no).toBe("999988887777");
-  });
-
-  it("blocks the save on a partial entry rather than storing a truncated number", async () => {
-    renderModal({ initialData: createInitialData() });
-
-    // Four digits are exactly what a mask's tail looks like — the shape that
-    // would arrive if a UI ever posted "XXXX XXXX 9012" back.
-    const partial = await screen.findByLabelText(AADHAAR_LABEL);
-    await userEvent.clear(partial);
-    await userEvent.type(partial, "9999");
-    await userEvent.click(screen.getByRole("button", { name: SAVE }));
-
-    expect(await screen.findByText(/Must be 12 digits/i)).toBeInTheDocument();
-    // Nothing is written at all, so the stored number cannot be damaged.
-    expect(authApi.updateAppointment).not.toHaveBeenCalled();
   });
 
   it("never posts the masked display string back", async () => {
@@ -199,16 +175,13 @@ describe("AppointmentModal — Aadhaar on an existing record", () => {
     expect(screen.queryByText("XXXX XXXX 8793")).toBeNull();
   });
 
-  it("shows the new number after it is replaced", async () => {
+  it("carries the locked number through to the documents step", async () => {
     renderModal({ initialData: createInitialData() });
 
-    const input = await screen.findByLabelText(AADHAAR_LABEL);
-    await userEvent.clear(input);
-    await userEvent.type(input, "999988887777");
-    await userEvent.click(screen.getByRole("button", { name: SAVE }));
+    await userEvent.click(await screen.findByRole("button", { name: SAVE }));
 
     expect(await screen.findByRole("button", { name: /Complete Appointment/i })).toBeInTheDocument();
-    expect(screen.getByText("9999 8888 7777")).toBeInTheDocument();
+    expect(screen.getByText("7151 1598 8793")).toBeInTheDocument();
   });
 });
 
@@ -219,23 +192,30 @@ describe("AppointmentModal — Aadhaar on a new record", () => {
     isPrefillFromTrial: true,
   });
 
-  it("requires the number because nothing is on file yet", async () => {
+  it("saves without an Aadhaar at all", async () => {
     renderModal(trialPrefill());
     await screen.findByRole("button", { name: SAVE_NEW });
 
-    // A new record has nothing on file, so the input starts empty and required.
-    expect(await screen.findByLabelText(AADHAAR_LABEL)).toHaveValue("");
-
+    // Every field on this form is optional. A trial prefill carries the number
+    // across, but clearing it must not block the save.
+    await userEvent.clear(await screen.findByLabelText(AADHAAR_LABEL));
     await userEvent.click(screen.getByRole("button", { name: SAVE_NEW }));
 
-    expect(await screen.findByText(/Aadhaar Card No is required/i)).toBeInTheDocument();
-    expect(authApi.submitAppointmentForm).not.toHaveBeenCalled();
+    await waitFor(() => expect(authApi.submitAppointmentForm).toHaveBeenCalledTimes(1));
+
+    // Omitted rather than sent empty — an empty value would clear a stored one.
+    expect("aadhar_card_no" in sentFields(authApi.submitAppointmentForm)).toBe(false);
+    expect(screen.queryByText(/is required/i)).toBeNull();
   });
 
   it("rejects a partial number instead of storing it", async () => {
     renderModal(trialPrefill());
 
-    await userEvent.type(await screen.findByLabelText(AADHAAR_LABEL), "12345");
+    // Blank is fine; half a number is not — the distinction format validation
+    // still draws now that nothing is mandatory.
+    const input = await screen.findByLabelText(AADHAAR_LABEL);
+    await userEvent.clear(input);
+    await userEvent.type(input, "12345");
     await userEvent.click(screen.getByRole("button", { name: SAVE_NEW }));
 
     expect(await screen.findByText(/Must be 12 digits/i)).toBeInTheDocument();
@@ -245,7 +225,9 @@ describe("AppointmentModal — Aadhaar on a new record", () => {
   it("includes the number in the create payload as digits", async () => {
     renderModal(trialPrefill());
 
-    await userEvent.type(await screen.findByLabelText(AADHAAR_LABEL), "715115988793");
+    const field = await screen.findByLabelText(AADHAAR_LABEL);
+    await userEvent.clear(field);
+    await userEvent.type(field, "715115988793");
     await userEvent.click(screen.getByRole("button", { name: SAVE_NEW }));
 
     await waitFor(() => expect(authApi.submitAppointmentForm).toHaveBeenCalledTimes(1));
@@ -259,7 +241,9 @@ describe("AppointmentModal — Aadhaar on a new record", () => {
   it("keeps Aadhaar in the payload even though documents upload separately", async () => {
     renderModal(trialPrefill());
 
-    await userEvent.type(await screen.findByLabelText(AADHAAR_LABEL), "715115988793");
+    const entered = await screen.findByLabelText(AADHAAR_LABEL);
+    await userEvent.clear(entered);
+    await userEvent.type(entered, "715115988793");
     await userEvent.click(screen.getByRole("button", { name: SAVE_NEW }));
 
     await waitFor(() => expect(authApi.submitAppointmentForm).toHaveBeenCalled());

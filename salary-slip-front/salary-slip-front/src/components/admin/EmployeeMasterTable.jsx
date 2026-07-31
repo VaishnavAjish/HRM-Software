@@ -33,7 +33,7 @@ const YEARS = ["2023", "2024", "2025", "2026", "2027", "2028"];
 // filter, and the available actions can all key off it without re-deriving
 // the same type/status logic the backend already applied once.
 const STAGE_META = {
-  trial:       { label: "Trial Form",  tone: "gray" },
+  trial:       { label: "Trial",       tone: "gray" },
   appointment: { label: "Appointment", tone: "blue" },
   pending:     { label: "Pending",     tone: "yellow" },
   employee:    { label: "Employee",    tone: "green" },
@@ -107,21 +107,26 @@ export default function EmployeeMasterTable() {
       // immediately flips its type to 'pending_employee' / status 2, which is
       // exactly the pendingRes query below. So "approved" and "shows up here
       // as Pending" are the same event; nothing unapproved should ever appear.
-      const [trialRes, pendingRes, employeeRes] = await Promise.all([
+      const [trialRes, appointmentRes, pendingRes, employeeRes] = await Promise.all([
         authApi.getTrialForms(user?.accessToken, user?.tokenType, companyScope),
+        authApi.getAppointmentForms(user?.accessToken, user?.tokenType, companyScope),
         salaryApi.getAllEmployees(user?.accessToken, user?.tokenType, { status: "2", limit: 1000 }, companyScope),
         salaryApi.getAllEmployees(user?.accessToken, user?.tokenType, { limit: 1000 }, companyScope),
       ]);
 
       const trialRows = (trialRes?.data || []).map((r) => ({ ...r, __stage: "trial" }));
+      // Appointments that are NOT yet approved (checkbox !== 1, no emp_code, status !== 1)
+      const apptData = appointmentRes?.data ?? appointmentRes ?? {};
+      const allAppointments = apptData?.appointments ?? apptData?.appointmentData ?? apptData?.appoinments ?? apptData?.data ?? apptData;
+      const appointmentList = Array.isArray(allAppointments) ? allAppointments : [];
+      const appointmentRows = appointmentList
+        .filter((a) => !Boolean(a.emp_code) && Number(a.checkbox) !== 1 && String(a.status) !== '1' && a.status !== 'Approved')
+        .map((r) => ({ ...r, __stage: "appointment" }));
       const pendingRows = (pendingRes?.data?.users?.data ?? pendingRes?.data?.users ?? []).map((r) => ({ ...r, __stage: "pending" }));
       const employeeRows = (employeeRes?.data?.users?.data ?? employeeRes?.data?.users ?? []).map((r) => ({ ...r, __stage: "employee" }));
 
-      // The three source queries are mutually exclusive by type/status, so this
-      // Map is a safety net against an id ever appearing twice, not a real
-      // merge concern — last one in wins, order below doesn't matter in practice.
       const merged = new Map();
-      [...trialRows, ...pendingRows, ...employeeRows].forEach((r) => merged.set(r.id, r));
+      [...trialRows, ...appointmentRows, ...pendingRows, ...employeeRows].forEach((r) => merged.set(r.id, r));
       setRows(Array.from(merged.values()));
     } catch (err) {
       toast.error(err.message || "Failed to load employee master data");
@@ -136,7 +141,7 @@ export default function EmployeeMasterTable() {
   }, [companyScope]);
 
   const stageCounts = useMemo(() => {
-    const counts = { all: rows.length, trial: 0, pending: 0, employee: 0 };
+    const counts = { all: rows.length, trial: 0, appointment: 0, pending: 0, employee: 0 };
     rows.forEach((r) => { counts[r.__stage] = (counts[r.__stage] || 0) + 1; });
     return counts;
   }, [rows]);
@@ -387,7 +392,8 @@ export default function EmployeeMasterTable() {
         <div className="flex flex-wrap items-center gap-2">
           {[
             { key: "all", label: "All" },
-            { key: "trial", label: "Trial Form" },
+            { key: "trial", label: "Trial" },
+            { key: "appointment", label: "Appointment" },
             { key: "pending", label: "Pending" },
             { key: "employee", label: "Employee" },
           ].map(({ key, label }) => (
@@ -510,8 +516,18 @@ export default function EmployeeMasterTable() {
 
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                       <Badge variant={meta.tone}>{meta.label}</Badge>
-                      <Badge variant={active ? "green" : row.status === 2 || row.status === "2" ? "yellow" : "red"}>
-                        {active ? "Active" : row.status === 2 || row.status === "2" ? "Pending" : "Inactive"}
+                      <Badge variant={
+                        row.__stage === "trial" ? "gray"
+                        : row.__stage === "appointment" ? "blue"
+                        : active ? "green"
+                        : (row.status === 2 || row.status === "2") ? "yellow"
+                        : "red"
+                      }>
+                        {row.__stage === "trial" ? "Trial"
+                        : row.__stage === "appointment" ? "Appointment"
+                        : active ? "Active"
+                        : (row.status === 2 || row.status === "2") ? "Pending"
+                        : "Inactive"}
                       </Badge>
                     </div>
 
@@ -525,7 +541,7 @@ export default function EmployeeMasterTable() {
                           onChange={(e) => setDraft(row.id, "emp_code", e.target.value)}
                           onBlur={() => commitField(row, "emp_code")}
                           onKeyDown={handleCellKeyDown}
-                          disabled={savingCell === `${row.id}:emp_code`}
+                          disabled={savingCell === `${row.id}:emp_code` || row.__stage === "trial" || row.__stage === "appointment"}
                           placeholder="Assign code"
                           className={cellInputCls}
                         />
@@ -539,7 +555,7 @@ export default function EmployeeMasterTable() {
                           onChange={(e) => setDraft(row.id, "punching_no", e.target.value)}
                           onBlur={() => commitField(row, "punching_no")}
                           onKeyDown={handleCellKeyDown}
-                          disabled={savingCell === `${row.id}:punching_no`}
+                          disabled={savingCell === `${row.id}:punching_no` || row.__stage === "trial" || row.__stage === "appointment"}
                           placeholder="Assign no."
                           className={cellInputCls}
                         />
@@ -594,7 +610,7 @@ export default function EmployeeMasterTable() {
                             onChange={(e) => setDraft(row.id, "emp_code", e.target.value)}
                             onBlur={() => commitField(row, "emp_code")}
                             onKeyDown={handleCellKeyDown}
-                            disabled={savingCell === `${row.id}:emp_code`}
+                            disabled={savingCell === `${row.id}:emp_code` || row.__stage === "trial" || row.__stage === "appointment"}
                             placeholder="Assign code"
                             className={cellInputCls}
                           />
@@ -605,7 +621,7 @@ export default function EmployeeMasterTable() {
                             onChange={(e) => setDraft(row.id, "punching_no", e.target.value)}
                             onBlur={() => commitField(row, "punching_no")}
                             onKeyDown={handleCellKeyDown}
-                            disabled={savingCell === `${row.id}:punching_no`}
+                            disabled={savingCell === `${row.id}:punching_no` || row.__stage === "trial" || row.__stage === "appointment"}
                             placeholder="Assign no."
                             className={cellInputCls}
                           />
@@ -628,8 +644,18 @@ export default function EmployeeMasterTable() {
                           {row.unit ? <div className="text-xs text-gray-400">{row.unit}</div> : null}
                         </td>
                         <td className="px-4 py-2.5">
-                          <Badge variant={active ? "green" : row.status === 2 || row.status === "2" ? "yellow" : "red"}>
-                            {active ? "Active" : row.status === 2 || row.status === "2" ? "Pending" : "Inactive"}
+                          <Badge variant={
+                            row.__stage === "trial" ? "gray"
+                            : row.__stage === "appointment" ? "blue"
+                            : active ? "green"
+                            : (row.status === 2 || row.status === "2") ? "yellow"
+                            : "red"
+                          }>
+                            {row.__stage === "trial" ? "Trial"
+                            : row.__stage === "appointment" ? "Appointment"
+                            : active ? "Active"
+                            : (row.status === 2 || row.status === "2") ? "Pending"
+                            : "Inactive"}
                           </Badge>
                         </td>
                         <td className="px-4 py-2.5">

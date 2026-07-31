@@ -33,12 +33,14 @@ Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware('auth:sanctum');
 
-Route::options('{any}', function () {
-    return response('', 204)
-        ->header('Access-Control-Allow-Origin', '*')
-        ->header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH')
-        ->header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
-})->where('any', '.*');
+/*
+ * Preflight is handled by Illuminate\Http\Middleware\HandleCors, driven by
+ * config/cors.php. There was a hand-rolled OPTIONS catch-all here that set its
+ * own Access-Control-* headers; it never ran for a real browser preflight
+ * (HandleCors answers those before routing) but it was a second place CORS
+ * appeared to be configured, which is exactly what makes a duplicate-header
+ * problem hard to trace. One source of truth: config/cors.php.
+ */
 
 Route::post('/login',    [AuthController::class, 'login']);
 Route::get('/check-emp-code/{code}', [AuthController::class, 'checkEmpCode']);

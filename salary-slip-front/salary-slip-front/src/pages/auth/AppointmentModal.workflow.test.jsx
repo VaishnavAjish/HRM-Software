@@ -113,29 +113,55 @@ describe("AppointmentModal — button wording", () => {
 });
 
 describe("AppointmentModal — save-first gating", () => {
-  it("does not call any save API when the form is empty", async () => {
+  /**
+   * Every field on this form is optional, so an empty form is a valid
+   * submission: an appointment records that somebody turned up, and the detail
+   * is filled in later through Edit. This used to be refused with "please fill
+   * all required fields".
+   */
+  /*
+   * POST /appointment (UserController::appointmentStore) answers with the created
+   * row under `data`, so the new id is data.id — not the data.appointmentId that
+   * the v1 save-first endpoint returns. createSaveResponse() models the v1 shape,
+   * which is why these two set their own.
+   */
+  const formSaveResponse = { status: true, message: "Appointment form submitted", data: { id: 301 } };
+
+  it("saves an entirely empty form", async () => {
+    authApi.submitAppointmentForm.mockResolvedValue(formSaveResponse);
     renderModal();
 
     await userEvent.click(await screen.findByRole("button", { name: SAVE_NEW }));
+
+    await waitFor(() => expect(authApi.submitAppointmentForm).toHaveBeenCalledTimes(1));
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it("opens the documents step after saving an empty form", async () => {
+    authApi.submitAppointmentForm.mockResolvedValue(formSaveResponse);
+    renderModal();
+
+    await userEvent.click(await screen.findByRole("button", { name: SAVE_NEW }));
+
+    expect(
+      await screen.findByRole("button", { name: /Complete Appointment/i }),
+    ).toBeInTheDocument();
+  });
+
+  /**
+   * A value that is present but malformed is still refused — blank and wrong are
+   * different things, and only the second one blocks the save.
+   */
+  it("still refuses a malformed value and leaves the URL untouched", async () => {
+    renderModal();
+
+    await userEvent.type(
+      await screen.findByLabelText(/Emp. Mobile No/i),
+      "12345",
+    );
+    await userEvent.click(screen.getByRole("button", { name: SAVE_NEW }));
 
     expect(authApi.submitAppointmentForm).not.toHaveBeenCalled();
-    expect(authApi.updateAppointment).not.toHaveBeenCalled();
-    expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/required fields/i));
-  });
-
-  it("does not open the documents step while the form is invalid", async () => {
-    renderModal();
-
-    await userEvent.click(await screen.findByRole("button", { name: SAVE_NEW }));
-
-    expect(screen.queryByRole("button", { name: /Complete Appointment/i })).toBeNull();
-  });
-
-  it("leaves the URL untouched when the form is invalid", async () => {
-    renderModal();
-
-    await userEvent.click(await screen.findByRole("button", { name: SAVE_NEW }));
-
     expect(currentRouteParams().get("appointmentId")).toBeNull();
     expect(currentRouteParams().get("step")).toBeNull();
   });

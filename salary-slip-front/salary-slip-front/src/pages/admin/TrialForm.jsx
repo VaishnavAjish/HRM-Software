@@ -78,9 +78,11 @@ function normalizeTrialForm(item, index) {
     hastakName: firstPresent(item.hastak_name, item.hastakName),
     hastakCode: firstPresent(item.hastak_code, item.hastakCode),
     hastakMobileNo: firstPresent(item.hastak_mobile, item.hastakMobileNo),
+    hastakDepartment: item.hastak_department || "-",
     contractor: item.contractor || "-",
     managerName: firstPresent(item.manager_name, item.managerName),
     akar: item.akar || "-",
+    aadharCardNo: item.aadhaar_full || item.aadhaar_masked || "-",
     empSignature: item.emp_signature || "",
     managerSignature: item.manager_signature || "",
     hastakSignature: item.hastak_signature || "",
@@ -90,6 +92,8 @@ function normalizeTrialForm(item, index) {
       item.createdAt,
       item.submitted_at,
     ),
+    photo: item.photo || "",
+    adharImage: item.adhar_image || "",
     raw: item,
   };
 }
@@ -173,6 +177,7 @@ const PrintableTrialForm = ({ data, formRef }) => {
     { label: "Reason for Leaving", value: data.reasonForLeaving },
     { label: "Hastak Name & Code", value: [data.hastakName, data.hastakCode ? `- ${data.hastakCode}` : ""].filter(Boolean).join(" ") },
     { label: "Hastak Mobile No", value: data.hastakMobileNo },
+    { label: "Hastak Department", value: data.hastakDepartment, full: true },
     { label: "Contractor", value: data.contractor, full: true },
     { label: "Manager Name", value: data.managerName },
     { label: "Akar", value: data.akar },
@@ -182,14 +187,22 @@ const PrintableTrialForm = ({ data, formRef }) => {
     <div
       ref={formRef}
       data-trial-print-form
-      className="mx-auto w-full max-w-[850px]"
+      className="mx-auto w-full max-w-[850px] print:max-w-none"
     >
       {/* ── Main white card ── */}
-      <div className="rounded-xl border border-dashed border-gray-400 bg-white p-4 sm:p-6 shadow-sm text-black">
+      <div className="rounded-xl border border-dashed border-gray-400 bg-white p-4 sm:p-6 shadow-sm text-black h-full flex flex-col print:h-[277mm] print:overflow-hidden print:border-none print:shadow-none print:rounded-none">
 
         {/* Header — centred logo + right-aligned date/form no */}
         <div className="flex items-start justify-between mb-1">
-          <div className="flex-1" />
+          <div className="flex-1">
+            <div className="w-24 h-32 border border-black flex items-center justify-center bg-gray-50 overflow-hidden print:w-[30mm] print:h-[40mm]">
+              {data.photo ? (
+                <img src={data.photo} alt="Photo" className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-[10px] text-gray-400">Photo</span>
+              )}
+            </div>
+          </div>
           <div className="flex-1 text-center">
             <h1 className="text-xl sm:text-2xl font-black uppercase tracking-widest text-black">
               Nidhi Impex
@@ -228,12 +241,13 @@ const PrintableTrialForm = ({ data, formRef }) => {
         </div>
 
         {/* ── Print table — always shown when printing ── */}
-        <div className="hidden print:block overflow-x-auto rounded-lg border border-black">
-          <table className="w-full min-w-[600px] border-collapse text-[13px]">
+        <div className="hidden print:block overflow-x-auto rounded-lg border border-black flex-1">
+          <table className="w-full h-full min-w-[600px] border-collapse text-[13px] [&_td]:h-8">
             <tbody>
               <Row label="Department" value={data.department} full />
               <Row label="Name of Employee" value={data.name} full />
               <Row label="Address" value={data.address} full />
+              <Row label="Aadhaar Number" value={data.aadharCardNo} full />
               <tr>
                 <td className="border border-black bg-gray-50 px-3 py-2 text-[12px] font-bold uppercase text-black">Mobile No 1</td>
                 <td className="border border-black px-3 py-2 text-[13px] font-medium text-black">{data.mobileNo1}</td>
@@ -260,6 +274,7 @@ const PrintableTrialForm = ({ data, formRef }) => {
                 <td className="border border-black bg-gray-50 px-3 py-2 text-[12px] font-bold uppercase text-black">Hastak Mobile No</td>
                 <td className="border border-black px-3 py-2 text-[13px] font-medium text-black">{data.hastakMobileNo}</td>
               </tr>
+              <Row label="Hastak Department" value={data.hastakDepartment} full />
               <Row label="Contractor" value={data.contractor} full />
               <tr>
                 <td className="border border-black bg-gray-50 px-3 py-2 text-[12px] font-bold uppercase text-black">Manager Name</td>
@@ -272,7 +287,7 @@ const PrintableTrialForm = ({ data, formRef }) => {
         </div>
 
         {/* ── Signatures ── */}
-        <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-x-16 gap-y-8 text-[13px] font-bold text-black">
+        <div className="mt-auto pt-8 grid grid-cols-1 sm:grid-cols-2 gap-x-16 gap-y-8 text-[13px] font-bold text-black">
           <div className="text-center">
             <div className="mb-1 h-8 border-b border-black px-1 text-[13px] font-semibold uppercase">{data.empSignature}</div>
             <p>Emp - Signature</p>
@@ -291,6 +306,19 @@ const PrintableTrialForm = ({ data, formRef }) => {
           </div>
         </div>
       </div>
+
+      {/* ── Aadhaar Card Print Page (New Page) ── */}
+      {data.adharImage && (
+        <div className="hidden print:flex w-full h-[277mm] flex-col items-center justify-center break-before-page pt-4 relative">
+          {data.adharImage.toLowerCase().includes('.pdf') ? (
+            <div className="text-center font-bold text-gray-700 mt-10">
+              [Aadhaar Card is a PDF document and cannot be printed directly as an image. Please print the PDF separately.]
+            </div>
+          ) : (
+            <img src={data.adharImage} alt="Aadhaar Card" className="max-w-[190mm] max-h-[270mm] object-contain" />
+          )}
+        </div>
+      )}
     </div>
   );
 };
@@ -409,19 +437,21 @@ export default function TrialForm() {
           html, body { margin: 0; padding: 0; background: white; font-family: sans-serif; }
           [data-trial-print-form] { box-shadow: none !important; }
           @media print {
-            @page { size: A4 portrait; margin: 4mm; }
+            @page { size: A4 portrait; margin: 0; }
             html, body {
+              width: 210mm;
               margin: 0 !important;
               padding: 0 !important;
               print-color-adjust: exact;
               -webkit-print-color-adjust: exact;
             }
             [data-trial-print-form] {
-              zoom: 0.9;
-              width: 850px !important;
+              width: 100% !important;
               max-width: none !important;
               box-shadow: none !important;
-              border: 1px dotted #555 !important;
+              border: none !important;
+              padding: 10mm !important;
+              zoom: 1;
             }
           }
         </style>
@@ -829,7 +859,7 @@ export default function TrialForm() {
                 </button>
               </>
             )}
-            {data.status === "Approved" && user?.role === 'agent' && (
+            {(data.status === "Approved" || data.status === "1") && (user?.role === 'agent' || ["0", "1", "2", "admin", "superadmin"].includes(String(user?.role).toLowerCase())) && (
               data.processed ? (
                 <span className="inline-flex items-center gap-1 rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs font-bold text-gray-500 dark:bg-gray-700 dark:text-gray-400 whitespace-nowrap">
                   <CheckCircle2 size={11} /> Processed
@@ -1109,7 +1139,7 @@ export default function TrialForm() {
                       </button>
                     </>
                   )}
-                  {form.status === "Approved" && user?.role === 'agent' && (
+                  {(form.status === "Approved" || form.status === "1") && (user?.role === 'agent' || ["0", "1", "2", "admin", "superadmin"].includes(String(user?.role).toLowerCase())) && (
                     form.processed ? (
                       <span className="inline-flex items-center gap-1.5 rounded-lg bg-gray-100 px-3 py-2 text-xs font-semibold text-gray-500 dark:bg-gray-700 dark:text-gray-400">
                         <CheckCircle2 size={13} /> Processed
@@ -1236,7 +1266,7 @@ export default function TrialForm() {
                     </button>
                   </>
                 )}
-                {selected.status === "Approved" && user?.role === 'agent' && (
+                {(selected.status === "Approved" || selected.status === "1") && (user?.role === 'agent' || ["0", "1", "2", "admin", "superadmin"].includes(String(user?.role).toLowerCase())) && (
                   selected.processed ? (
                     <span className="inline-flex items-center gap-1.5 rounded-xl bg-gray-100 px-4 py-2 text-sm font-semibold text-gray-500 dark:bg-gray-700 dark:text-gray-400">
                       <CheckCircle2 size={14} /> Processed

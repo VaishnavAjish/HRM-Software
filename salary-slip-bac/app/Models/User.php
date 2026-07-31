@@ -20,7 +20,7 @@ class User extends Authenticatable implements JWTSubject
         'designation', 'form_no', 'trial_date', 'mobile_no_2', 'last_company_name',
         'added_by', 'trial_form_id',
         'last_company_address', 'experience', 'reason_for_leaving', 'hastak_name',
-        'hastak_code', 'hastak_mobile', 'contractor', 'manager_signature',
+        'hastak_code', 'hastak_mobile', 'hastak_department', 'contractor', 'manager_signature',
         'hastak_signature', 'hr_signature', 'akar', 'shift_id'
     ];
 

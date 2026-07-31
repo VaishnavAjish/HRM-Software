@@ -1107,6 +1107,25 @@ class UserController extends Controller
         // the same stored value and therefore the same document folder.
         $data = $this->withSafeAadhaar($data);
 
+        // Every field on the appointment form is optional, so a blank email is an
+        // ordinary submission. users.email is UNIQUE and will reject a second row
+        // holding '' — NULL is the value a unique index allows any number of.
+        if (array_key_exists('email', $data) && trim((string) $data['email']) === '') {
+            $data['email'] = null;
+        }
+
+        // A record with no company matches no company-scoped list query, so it
+        // would save and then never appear on the Appointments page. Fall back to
+        // the company of whoever submitted it; a public submission with no
+        // authenticated user legitimately has none to inherit.
+        if (trim((string) ($data['company_code'] ?? '')) === '') {
+            $submitter = auth('api')->user();
+
+            if ($submitter?->company_code) {
+                $data['company_code'] = $submitter->company_code;
+            }
+        }
+
         // Resolve the source trial form once. Converting it into an appointment
         // creates a brand-new users row, and users.email has a hard uniqueness
         // constraint at the database level — a validation exemption alone isn't
@@ -1115,8 +1134,17 @@ class UserController extends Controller
         $trialForm = $trialFormId
             ? User::where('id', $trialFormId)->where('type', 'trial')->first()
             : null;
-        if ($trialForm && $trialForm->email && $trialForm->email === ($data['email'] ?? null)) {
+        if ($trialForm && $trialForm->email && strtolower(trim($trialForm->email)) === strtolower(trim($data['email'] ?? ''))) {
             $trialForm->update(['email' => null]);
+        }
+
+        if ($trialForm) {
+            if (!isset($data['photo']) && $trialForm->photo) {
+                $data['photo'] = $trialForm->photo;
+            }
+            if (!isset($data['adhar_image']) && $trialForm->adhar_image) {
+                $data['adhar_image'] = $trialForm->adhar_image;
+            }
         }
 
         $data['type'] = 'appointment';
@@ -1396,7 +1424,14 @@ class UserController extends Controller
             $data['added_by'] = $userAuth->id;
         }
         
+        $data = $this->withSafeAadhaar($data);
+
         $trialForm = User::create($data);
+
+        $files = $this->storeUploadedFiles($request, ['photo', 'adhar_image'], $trialForm);
+        if (!empty($files)) {
+            $trialForm->update($files);
+        }
 
         return response()->json(['status' => true, 'message' => 'Trial form submitted']);
     }
@@ -1421,9 +1456,26 @@ class UserController extends Controller
             $query->where('unit', $request->unit);
         }
 
+        $disclosed = 0;
+        $trialForms = $query->orderBy('id', 'desc')->get();
+        $trialForms->transform(function ($item) use ($userAuth, &$disclosed) {
+            $full = \App\Support\AadhaarDisclosure::fullFor($item, $userAuth);
+            if ($full) {
+                $item->setAttribute('aadhaar_full', $full);
+                $disclosed++;
+            }
+            return $item;
+        });
+
+        \App\Support\AadhaarDisclosure::auditListDisclosure(
+            $userAuth,
+            $disclosed,
+            'TRIAL_FORM_LIST_FULL_AADHAAR_DISCLOSED'
+        );
+
         return response()->json([
             'status' => true,
-            'data'   => $query->orderBy('id', 'desc')->get(),
+            'data'   => $trialForms,
         ]);
     }
 
@@ -1434,7 +1486,15 @@ class UserController extends Controller
             return response()->json(['status' => false, 'message' => 'Not found'], 404);
         }
 
-        $user->update($request->all());
+        $data = $request->all();
+        $data = $this->withSafeAadhaar($data);
+
+        $files = $this->storeUploadedFiles($request, ['photo', 'adhar_image'], $user);
+        if (!empty($files)) {
+            $data = array_merge($data, $files);
+        }
+
+        $user->update($data);
 
         return response()->json(['status' => true, 'message' => 'Trial form updated']);
     }

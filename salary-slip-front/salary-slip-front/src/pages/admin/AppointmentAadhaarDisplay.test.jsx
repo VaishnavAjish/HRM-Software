@@ -404,3 +404,53 @@ describe("When the list cannot be loaded", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 });
+
+/**
+ * Every appointment field is optional, so a row can arrive with almost nothing
+ * in it. The grid and the details view must render that as "-" or an em dash —
+ * never as the strings "undefined", "null" or "NaN", which is what leaks through
+ * when a blank value is passed to a formatter or concatenated into a label.
+ */
+describe("A record saved with everything blank", () => {
+  const blankRow = { id: 900, type: "appointment" };
+
+  it("renders no undefined, null or NaN in the list", async () => {
+    authApi.getAppointmentForms.mockResolvedValue({ data: [blankRow] });
+
+    render(<Appointments />);
+    await waitFor(() => expect(authApi.getAppointmentForms).toHaveBeenCalled());
+
+    const text = document.body.textContent;
+
+    expect(text).not.toMatch(/\bundefined\b/);
+    expect(text).not.toMatch(/\bNaN\b/);
+    expect(text).not.toMatch(/\bnull\b/);
+  });
+
+  it("renders placeholders instead of empty cells", async () => {
+    authApi.getAppointmentForms.mockResolvedValue({ data: [blankRow] });
+
+    render(<Appointments />);
+    await waitFor(() => expect(authApi.getAppointmentForms).toHaveBeenCalled());
+
+    // The row is present and shows a placeholder rather than blank space.
+    expect(await screen.findByTestId("row-900")).toBeInTheDocument();
+    expect(document.body.textContent).toMatch(/[—-]/);
+  });
+
+  it("opens the details view for a blank record without errors", async () => {
+    authApi.getAppointmentForms.mockResolvedValue({ data: [blankRow] });
+
+    render(<Appointments />);
+    await waitFor(() => expect(authApi.getAppointmentForms).toHaveBeenCalled());
+
+    const [view] = await screen.findAllByRole("button", { name: /view/i });
+    await userEvent.click(view);
+
+    // The printable form renders from the same view model as the screen.
+    await waitFor(() =>
+      expect(document.querySelector("[data-appointment-print-form]")).toBeInTheDocument(),
+    );
+    expect(document.body.textContent).not.toMatch(/\bundefined\b|\bNaN\b/);
+  });
+});

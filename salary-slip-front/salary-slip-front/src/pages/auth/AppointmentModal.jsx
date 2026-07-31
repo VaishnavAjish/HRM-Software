@@ -344,34 +344,19 @@ const AppointmentModal = ({
   const [empCodeConflict, setEmpCodeConflict] = useState(null);
   const [isFirstEmpCodeAssignment, setIsFirstEmpCodeAssignment] = useState(true);
 
-  const requiredFields = [
-    { path: "joining_date", label: "Joining Date" },
-    { path: "department", label: "Department" },
-    { path: "designation", label: "Designation" },
-    { path: "manager_name", label: "Manager Name" },
-    { path: "salary", label: "Salary" },
-    { path: "mobile_number", label: "Emp. Mobile No" },
-    { path: "emp_whatsapp_no", label: "Emp. Whatsapp No" },
-    { path: "name.first", label: "First Name" },
-    { path: "name.mid", label: "Mid Name" },
-    { path: "name.surname", label: "Surname" },
-    { path: "email", label: "Email" },
-    { path: "address", label: "Resident Add" },
-    { path: "village", label: "Village" },
-    { path: "taluka", label: "Taluka" },
-    { path: "district", label: "District" },
-    { path: "dob", label: "Birth Date" },
-    { path: "gender", label: "Gender" },
-    { path: "marital_status", label: "Marital Status" },
-    { path: "aadhar_card_no", label: "Aadhaar Card No" },
-    { path: "bank_name", label: "Bank Name" },
-    { path: "pan_card_no", label: "PAN Card No" },
-    { path: "bank_ifsc_code", label: "Bank IFSC Code" },
-    { path: "bank_account_no", label: "Bank Account No" },
-    { path: "company_code", label: "Company" },
-    { path: "unit", label: "Unit Name" },
-  ];
-
+  /*
+   * Every field on this form is optional.
+   *
+   * There is no required-field list any more: a record can be created from
+   * whatever the person filling it in actually has to hand, and the rest can be
+   * completed later through Edit. Blank fields are omitted from the payload and
+   * stored as NULL.
+   *
+   * What remains below is *format* validation, and it only ever runs on a field
+   * that has something in it — see the `value !== ""` guard in validateStep1. So
+   * a blank mobile number saves, while "12345" is still refused rather than
+   * being written as a phone number nobody can call.
+   */
   const fieldValidators = [
     {
       path: "mobile_number",
@@ -427,17 +412,9 @@ const AppointmentModal = ({
 
   const validateStep1 = () => {
     const nextErrors = {};
-    requiredFields.forEach(({ path, label }) => {
-      // A record that already has an Aadhaar on file may leave the input blank —
-      // the form is never given the stored number to put back, so requiring it
-      // again would block every edit. The backend keeps the existing value.
-      if (path === "aadhar_card_no" && aadhaarOnFile) return;
 
-      const value = getFieldValue(path);
-      if (value == null || String(value).trim() === "") {
-        nextErrors[path] = `${label} is required.`;
-      }
-    });
+    // No emptiness checks: a blank field is a valid answer everywhere on this
+    // form. Only the shape of a value that was actually entered is checked.
     fieldValidators.forEach(({ path, isValid, message }) => {
       const value = String(getFieldValue(path) ?? "")
         .trim()
@@ -474,8 +451,9 @@ const AppointmentModal = ({
 
     const payload = new FormData();
 
-    if (savedAppointmentId) {
-      payload.append("id", savedAppointmentId);
+    const targetId = savedAppointmentId || (isEditMode ? initialData?.id : null);
+    if (targetId) {
+      payload.append("id", targetId);
     }
 
     // Digits only, so "1234 5678 9012" reaches the backend the same way the
@@ -507,9 +485,9 @@ const AppointmentModal = ({
     // PHOTOGRAPH document once the appointment has an id, so the two
     // operations can fail independently.
 
-    if (savedAppointmentId) {
+    if (targetId) {
       const res = await authApi.updateAppointment(payload, user?.accessToken, user?.tokenType);
-      return res?.user?.id ?? res?.data?.id ?? savedAppointmentId;
+      return res?.user?.id ?? res?.data?.id ?? targetId;
     }
 
     payload.append("type", "appointment");
@@ -528,7 +506,7 @@ const AppointmentModal = ({
 
     if (!validateStep1()) {
       setSavePhase("idle");
-      toast.error("Please fill all required fields.");
+      toast.error("Please correct the highlighted fields.");
       return;
     }
 
@@ -558,7 +536,7 @@ const AppointmentModal = ({
   const proceedSaveAndNext = async () => {
 
     setIsSaving(true);
-    const wasUpdate = Boolean(savedAppointmentId);
+    const wasUpdate = Boolean(savedAppointmentId) || isEditMode;
     setSavePhase(wasUpdate ? "updating" : "creating");
 
     try {
@@ -728,13 +706,16 @@ const AppointmentModal = ({
         // value; a partial edit is still refused by validation rather than
         // overwriting what is stored, and a cleared field means "unchanged".
         //
-        // Only when editing. A trial prefill creates a brand-new appointment, and
-        // inheriting the trial row's number would let the new record save with an
-        // Aadhaar nobody re-checked against the document.
+        // overwriting what is stored, and a cleared field means "unchanged".
+        //
+        // A trial prefill creates a brand-new appointment, but now copies over
+        // the aadhaar number so the user doesn't have to type it again.
         aadhar_card_no:
-          isEditMode && formatFullAadhaar(raw.aadhaar_full) !== "-"
-            ? formatFullAadhaar(raw.aadhaar_full)
-            : "",
+          isEditMode
+            ? (formatFullAadhaar(raw.aadhaar_full) !== "-" ? formatFullAadhaar(raw.aadhaar_full) : "")
+            : isPrefillFromTrial
+              ? formatFullAadhaar(raw.aadhar_card_no || raw.aadhaar_full) !== "-" ? formatFullAadhaar(raw.aadhar_card_no || raw.aadhaar_full) : ""
+              : "",
         bank_name: raw.bank_name || "",
         pan_card_no: raw.pan_card_no || "",
         bank_ifsc_code: raw.bank_ifsc_code || "",
@@ -760,7 +741,7 @@ const AppointmentModal = ({
         // inheriting the trial row's mask would let the new appointment save
         // with no Aadhaar at all and land its documents in a fallback folder.
         aadhaarOnFile: isEditMode
-          ? Boolean(raw.aadhaar_full || raw.aadhaar_masked)
+          ? Boolean(raw.aadhaar_full || raw.aadhaar_masked || raw.aadhar_card_no)
           : false,
       };
     }
@@ -997,7 +978,6 @@ const AppointmentModal = ({
                     name="joining_date"
                     value={formData.joining_date}
                     onChange={handleChange}
-                    required
                     error={errors.joining_date}
                     type="date"
                   />
@@ -1007,7 +987,6 @@ const AppointmentModal = ({
                       name="department"
                       value={formData.department}
                       onChange={handleChange}
-                      required
                       error={errors.department}
                       type="select"
                       options={departmentsList}
@@ -1018,7 +997,6 @@ const AppointmentModal = ({
                       name="department"
                       value={formData.department}
                       onChange={handleChange}
-                      required
                       error={errors.department}
                     />
                   )}
@@ -1027,7 +1005,6 @@ const AppointmentModal = ({
                     name="designation"
                     value={formData.designation}
                     onChange={handleChange}
-                    required
                     error={errors.designation}
                   />
                   <RowField
@@ -1035,7 +1012,6 @@ const AppointmentModal = ({
                     name="manager_name"
                     value={formData.manager_name}
                     onChange={handleChange}
-                    required
                     error={errors.manager_name}
                   />
                   <RowField
@@ -1043,7 +1019,6 @@ const AppointmentModal = ({
                     name="salary"
                     value={formData.salary}
                     onChange={handleChange}
-                    required
                     error={errors.salary}
                   />
                   <RowField
@@ -1051,7 +1026,6 @@ const AppointmentModal = ({
                     name="mobile_number"
                     value={formData.mobile_number}
                     onChange={handleChange}
-                    required
                     error={errors.mobile_number}
                     inputMode="numeric"
                     maxLength={10}
@@ -1061,7 +1035,6 @@ const AppointmentModal = ({
                     name="emp_whatsapp_no"
                     value={formData.emp_whatsapp_no}
                     onChange={handleChange}
-                    required
                     error={errors.emp_whatsapp_no}
                     inputMode="numeric"
                     maxLength={10}
@@ -1073,31 +1046,19 @@ const AppointmentModal = ({
               <MobileCard title="Personal Information" isMobile={isMobile}>
                 <div className="mt-6 space-y-4">
                   {/* Punching No */}
-                <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
-                  <label className="font-bold w-full sm:w-[130px] sm:shrink-0 text-[13px]">
-                    Punching No
-                  </label>
-                  <span className="font-bold hidden sm:inline">:</span>
-                  <input
+                  <RowField
+                    label="Punching No"
                     name="punching_no"
                     value={formData.punching_no}
                     onChange={handleChange}
+                    error={errors.punching_no}
                     inputMode="numeric"
-                    className={`border w-full sm:w-48 h-7 px-2 outline-none text-[13px] ${
-                      errors.punching_no ? "border-red-500" : "border-gray-400"
-                    }`}
                   />
-                  {errors.punching_no && (
-                    <p className="text-[11px] text-red-600">
-                      {errors.punching_no}
-                    </p>
-                  )}
-                </div>
 
                 {/* Name */}
                 <div className="flex flex-col sm:flex-row items-start gap-1 sm:gap-2">
                   <label className="font-bold w-full sm:w-[130px] sm:shrink-0 pt-1 text-[13px]">
-                    Name <span className="text-red-600">*</span>
+                    Name
                   </label>
                   <span className="font-bold pt-1 hidden sm:inline">:</span>
                   <div className="flex-grow grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -1130,7 +1091,6 @@ const AppointmentModal = ({
                   name="email"
                   value={formData.email}
                   onChange={handleChange}
-                  required
                   error={errors.email}
                   type="email"
                 />
@@ -1140,7 +1100,6 @@ const AppointmentModal = ({
                   name="address"
                   value={formData.address}
                   onChange={handleChange}
-                  required
                   error={errors.address}
                 />
 
@@ -1151,7 +1110,6 @@ const AppointmentModal = ({
                     value={formData.village}
                     onChange={handleChange}
                     error={errors.village}
-                    required
                   />
                   <InlineField
                     label="Taluka"
@@ -1159,7 +1117,6 @@ const AppointmentModal = ({
                     value={formData.taluka}
                     onChange={handleChange}
                     error={errors.taluka}
-                    required
                   />
                   <InlineField
                     label="District"
@@ -1167,7 +1124,6 @@ const AppointmentModal = ({
                     value={formData.district}
                     onChange={handleChange}
                     error={errors.district}
-                    required
                   />
                 </div>
 
@@ -1177,7 +1133,6 @@ const AppointmentModal = ({
                     name="dob"
                     value={formData.dob}
                     onChange={handleChange}
-                    required
                     error={errors.dob}
                     type="date"
                   />
@@ -1192,7 +1147,6 @@ const AppointmentModal = ({
                     name="gender"
                     value={formData.gender}
                     onChange={handleChange}
-                    required
                     error={errors.gender}
                     type="select"
                     options={["MALE", "FEMALE", "OTHER"]}
@@ -1208,7 +1162,6 @@ const AppointmentModal = ({
                     name="marital_status"
                     value={formData.marital_status}
                     onChange={handleChange}
-                    required
                     error={errors.marital_status}
                     type="select"
                     options={["MARRIED", "UNMARRIED"]}
@@ -1247,17 +1200,14 @@ const AppointmentModal = ({
                       name="aadhar_card_no"
                       value={formData.aadhar_card_no}
                       onChange={handleChange}
-                      required={!aadhaarOnFile}
+                      disabled={isEditMode || aadhaarOnFile}
                       error={errors.aadhar_card_no}
                       inputMode="numeric"
                       maxLength={14}
                     />
-                    {/* Prefilled with the complete stored number in edit mode,
-                        so there is nothing to disclose separately. */}
-                    {aadhaarOnFile && (
+                    {(isEditMode || aadhaarOnFile) && (
                       <p className="mt-1 text-[11px] text-gray-500">
-                        Clearing this field keeps the number already on file. Type
-                        all 12 digits to replace it.
+                        Aadhaar Card No is locked once saved and cannot be edited.
                       </p>
                     )}
                   </div>
@@ -1266,7 +1216,6 @@ const AppointmentModal = ({
                     name="bank_name"
                     value={formData.bank_name}
                     onChange={handleChange}
-                    required
                     error={errors.bank_name}
                   />
                   <RowField
@@ -1274,7 +1223,6 @@ const AppointmentModal = ({
                     name="pan_card_no"
                     value={formData.pan_card_no}
                     onChange={handleChange}
-                    required
                     error={errors.pan_card_no}
                     maxLength={10}
                   />
@@ -1283,7 +1231,6 @@ const AppointmentModal = ({
                     name="bank_ifsc_code"
                     value={formData.bank_ifsc_code}
                     onChange={handleChange}
-                    required
                     error={errors.bank_ifsc_code}
                     maxLength={11}
                   />
@@ -1298,7 +1245,6 @@ const AppointmentModal = ({
                     name="bank_account_no"
                     value={formData.bank_account_no}
                     onChange={handleChange}
-                    required
                     error={errors.bank_account_no}
                     inputMode="numeric"
                     maxLength={18}
@@ -1481,7 +1427,7 @@ const AppointmentModal = ({
                   {isAllCompanies && (
                     <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 w-full">
                       <span className="font-bold whitespace-nowrap uppercase">
-                        Company <span className="text-red-600">*</span> :
+                        Company :
                       </span>
                       <select
                         value={selectedCompanyId}
@@ -1504,7 +1450,7 @@ const AppointmentModal = ({
                   )}
                   <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 w-full">
                     <span className="font-bold whitespace-nowrap uppercase">
-                      UNIT NAME <span className="text-red-600">*</span> :
+                      UNIT NAME :
                     </span>
                     <select
                       name="unit"
@@ -1714,7 +1660,7 @@ const AppointmentModal = ({
 
 const RowField = ({
   label,
-  required,
+
   name,
   value,
   onChange,
@@ -1732,7 +1678,7 @@ const RowField = ({
         htmlFor={`appt-${name}`}
         className="text-sm font-semibold text-gray-700 sm:text-[13px] sm:font-bold sm:text-black sm:whitespace-nowrap w-full sm:w-[130px] sm:shrink-0 mb-1 sm:mb-0"
       >
-        {label} {required && <span className="text-red-600">*</span>}
+        {label}
       </label>
       <span className="font-bold hidden sm:inline">:</span>
       {type === "date" ? (
@@ -1780,11 +1726,11 @@ const RowField = ({
   </div>
 );
 
-const InlineField = ({ label, required, name, value, onChange, error }) => (
+const InlineField = ({ label, name, value, onChange, error }) => (
   <div className="min-w-0">
     <div className="flex flex-col sm:flex-row sm:items-end gap-1 sm:gap-2">
       <label className="text-sm font-semibold text-gray-700 sm:text-[13px] sm:font-bold sm:text-black whitespace-nowrap mb-1 sm:mb-0">
-        {label} {required && <span className="text-red-600">*</span>}
+        {label}
       </label>
       <span className="font-bold hidden sm:inline">:</span>
       <input
