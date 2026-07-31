@@ -122,7 +122,7 @@ export default function AccountMasterUploadModal({
             ) : (
               <>
                 <button
-                  onClick={handleReset}
+                  onClick={handleReset} aria-label="Remove selected file"
                   disabled={uploading}
                   className="rounded-xl border border-gray-200 dark:border-gray-600 px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition disabled:opacity-40"
                 >
@@ -168,9 +168,10 @@ export default function AccountMasterUploadModal({
           </div>
           <button
             onClick={handleReset}
+            aria-label="Remove selected file"
             className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-700 dark:hover:text-gray-200 transition"
           >
-            <X size={16} />
+            <X size={16} aria-hidden="true" />
           </button>
         </div>
 

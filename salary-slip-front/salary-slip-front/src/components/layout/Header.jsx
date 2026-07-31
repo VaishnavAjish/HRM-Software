@@ -16,9 +16,11 @@ export default function Header({ onMenuClick, title, isCollapsed }) {
     <header className="h-16 bg-white dark:bg-gray-800 border-b-2 border-brand-600/20 dark:border-brand-600/30 flex items-center px-4 gap-4 sticky top-0 z-10">
       <button
         onClick={onMenuClick}
+        aria-label="Open navigation menu"
         className={`p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 ${isCollapsed ? "" : "lg:hidden"}`}
       >
-        <Menu size={20} />
+        {/* The icon is decorative; the button carries the name. */}
+        <Menu size={20} aria-hidden="true" />
       </button>
 
       <div className="flex-1">
@@ -75,11 +77,15 @@ export default function Header({ onMenuClick, title, isCollapsed }) {
         </div>
       )}
 
+      {/* The label names the action, not the current state, so it stays
+          accurate whichever icon is showing. */}
       <button
         onClick={toggle}
+        aria-label={dark ? "Switch to light theme" : "Switch to dark theme"}
+        aria-pressed={dark}
         className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 transition-colors"
       >
-        {dark ? <Sun size={18} /> : <Moon size={18} />}
+        {dark ? <Sun size={18} aria-hidden="true" /> : <Moon size={18} aria-hidden="true" />}
       </button>
 
       <div className="relative">

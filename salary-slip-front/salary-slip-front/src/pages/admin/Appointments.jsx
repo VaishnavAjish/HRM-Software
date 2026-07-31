@@ -316,6 +316,7 @@ function DocLightbox({ doc, onClose }) {
           <div className="flex items-center gap-2">
             <button
               onClick={onClose}
+              aria-label="Close document preview"
               className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-800 transition"
             >
               <X size={16} />
@@ -420,7 +421,7 @@ function DocumentsSection({ documents }) {
             })}
           </div>
         ) : (
-          <p className="text-sm text-gray-400 italic">
+          <p className="text-sm text-gray-500 dark:text-gray-400 italic">
             No documents uploaded with this form.
           </p>
         )}
@@ -474,7 +475,7 @@ const ResponsiveDetailsForm = ({ data }) => {
           {data.photo ? (
             <img src={data.photo} alt="Profile" className="w-full h-full object-cover" />
           ) : (
-            <span className="text-xs font-bold text-gray-400">NO PHOTO</span>
+            <span className="text-xs font-bold text-gray-500 dark:text-gray-400">NO PHOTO</span>
           )}
         </div>
         <div className="text-center sm:text-left min-w-0 flex-1">
@@ -541,7 +542,7 @@ const ResponsiveDetailsForm = ({ data }) => {
             ))}
           </div>
         ) : (
-          <p className="text-sm text-gray-400 italic">No family members registered.</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 italic">No family members registered.</p>
         )}
       </div>
     </div>
@@ -804,7 +805,7 @@ function CreateCandidateModal({ isOpen, onClose, onSuccess }) {
             {agentsLoading ? (
               <div className="flex justify-center py-4"><Loader2 className="animate-spin text-gray-400" size={20} /></div>
             ) : agents.length === 0 ? (
-              <p className="text-xs text-gray-400 text-center py-4">No agents found</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 text-center py-4">No agents found</p>
             ) : (
               agents.map(agent => (
                 <div key={agent.id} className={`p-3 rounded-xl border relative group transition-colors ${editingAgentId === agent.id ? "bg-blue-50/50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800" : "bg-gray-50 dark:bg-gray-700/40 border-gray-100 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-500"}`}>

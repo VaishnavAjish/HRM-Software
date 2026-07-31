@@ -1033,7 +1033,7 @@ export default function TrialForm() {
           ) : forms.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-xl border border-gray-200 bg-white py-12 text-center dark:border-gray-700 dark:bg-gray-800">
               <FileSpreadsheet size={32} className="mb-3 text-gray-300" />
-              <p className="text-sm text-gray-400">No trial forms found</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">No trial forms found</p>
             </div>
           ) : (
             forms.map((form) => (

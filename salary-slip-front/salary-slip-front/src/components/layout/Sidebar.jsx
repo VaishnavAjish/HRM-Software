@@ -2,7 +2,7 @@
 const APP_LABEL =
   typeof __APP_LABEL__ !== "undefined" ? __APP_LABEL__ : "NISS HRMS";
 
-import { NavLink, useLocation } from "react-router-dom";
+import { Link, NavLink, useLocation } from "react-router-dom";
 import { useState } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";
@@ -203,7 +203,10 @@ export default function Sidebar({ open, onClose, width, isCollapsed, onCollapse 
       return user.permissions[key] !== "no_access";
     });
   })();
-  
+
+  const dashboardPath =
+    user?.role === "admin" ? "/admin" : user?.role === "agent" ? "/agent" : "/employee";
+
   // handleLogout removed
 
 
@@ -222,7 +225,7 @@ export default function Sidebar({ open, onClose, width, isCollapsed, onCollapse 
         {/* brand accent stripe at the top */}
         <div className="h-1 w-full flex-shrink-0 bg-brand-600" />
         <div className={`flex items-center ${isCollapsed ? 'justify-center flex-col' : 'justify-between'} border-b border-gray-800 px-5 py-5`}>
-          <div className="flex items-center gap-3">
+          <Link to={dashboardPath} onClick={onClose} className="flex items-center gap-3">
             <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-brand-600" title={isCollapsed ? "HRMS" : undefined}>
               <ClipboardList size={16} className="text-white" />
             </div>
@@ -236,13 +239,14 @@ export default function Sidebar({ open, onClose, width, isCollapsed, onCollapse 
                 </span>
               </div>
             )}
-          </div>
+          </Link>
           {!isCollapsed && (
             <button
               onClick={onClose}
+              aria-label="Close navigation menu"
               className="p-1 text-gray-400 hover:text-white lg:hidden"
             >
-              <X size={18} />
+              <X size={18} aria-hidden="true" />
             </button>
           )}
           <button
@@ -375,7 +379,9 @@ export default function Sidebar({ open, onClose, width, isCollapsed, onCollapse 
         </nav>
 
         <div className="flex-shrink-0 border-t border-gray-800 px-4 py-3 text-center">
-          <span className="text-xs font-medium text-gray-500">
+          {/* gray-500 (#6B7280) on this near-black sidebar is 3.95:1 and fails
+              WCAG AA for normal text. gray-400 (#9CA3AF) reaches ~7.3:1. */}
+          <span className="text-xs font-medium text-gray-400">
             {isCollapsed ? "v1.0" : "Version 1.0"}
           </span>
         </div>

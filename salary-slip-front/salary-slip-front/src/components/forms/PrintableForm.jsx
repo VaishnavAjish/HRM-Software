@@ -67,7 +67,7 @@ const PrintableForm = ({ data, formRef }) => {
               />
             ) : (
               <div className="text-center">
-                <p className="font-bold text-gray-400">NO PHOTO</p>
+                <p className="font-bold text-gray-500 dark:text-gray-400">NO PHOTO</p>
               </div>
             )}
           </div>

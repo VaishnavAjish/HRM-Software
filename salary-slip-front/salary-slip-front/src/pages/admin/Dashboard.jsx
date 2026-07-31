@@ -35,7 +35,7 @@ const fmt = (n) =>
 
 export default function AdminDashboard() {
   const { user } = useAuth();
-  const { companyId, companyScope, scopeKey, scopeLabel } = useCompany();
+  const { companyId, companyScope, scopeKey } = useCompany();
   const [loading, setLoading] = useState(false);
 
   const [departmentHeadcountData, setDepartmentHeadcountData] = useState([]);
@@ -198,17 +198,6 @@ export default function AdminDashboard() {
 
   return (
     <div className="space-y-6">
-      <div className="space-y-4">
-        <div>
-          <h2 className="text-xl font-bold text-gray-900 dark:text-white">
-            Dashboard
-          </h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-            Overview of payroll &amp; workforce for {scopeLabel}
-          </p>
-        </div>
-      </div>
-
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         {isVisible("main_dashboard.show_current_date") && (
           <StatCard
@@ -275,7 +264,7 @@ export default function AdminDashboard() {
                     </LineChart>
                     </ResponsiveContainer>
                 ) : (
-                    <div className="flex items-center justify-center h-full text-sm text-gray-400">No chart data available</div>
+                    <div className="flex items-center justify-center h-full text-sm text-gray-500 dark:text-gray-400">No chart data available</div>
                 )}
                 </div>
             </div>
@@ -310,7 +299,7 @@ export default function AdminDashboard() {
 
               <div className="divide-y divide-gray-100 dark:divide-gray-700">
                 {(!dashboardStats?.monthly_stats || dashboardStats.monthly_stats.length === 0) && (
-                  <p className="text-center py-8 text-sm text-gray-400">
+                  <p className="text-center py-8 text-sm text-gray-500 dark:text-gray-400">
                     No salary details found
                   </p>
                 )}
@@ -404,7 +393,7 @@ export default function AdminDashboard() {
                     </>
                   );
                 })() : (
-                    <div className="flex items-center justify-center h-48 text-sm text-gray-400">No department data</div>
+                    <div className="flex items-center justify-center h-48 text-sm text-gray-500 dark:text-gray-400">No department data</div>
                 )}
             </div>
           )}
@@ -432,7 +421,7 @@ export default function AdminDashboard() {
 
             <div className="space-y-2 overflow-y-auto max-h-[400px] pr-1 pb-2">
               {departmentHeadcountData.length === 0 && (
-                <p className="text-center py-6 text-sm text-gray-400">
+                <p className="text-center py-6 text-sm text-gray-500 dark:text-gray-400">
                   No department data available
                 </p>
               )}

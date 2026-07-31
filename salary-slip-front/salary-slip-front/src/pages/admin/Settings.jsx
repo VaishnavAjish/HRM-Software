@@ -195,7 +195,7 @@ export default function Settings() {
                 </tr>
               ) : admins.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-12 text-center text-gray-400">No admins yet. Add one to get started.</td>
+                  <td colSpan={5} className="px-4 py-12 text-center text-gray-500 dark:text-gray-400">No admins yet. Add one to get started.</td>
                 </tr>
               ) : (
                 admins.map((admin) => {

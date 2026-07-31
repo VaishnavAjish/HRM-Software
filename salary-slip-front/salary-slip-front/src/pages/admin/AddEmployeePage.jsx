@@ -245,7 +245,7 @@ function FilePreviewCard({ file, preview, onClear, uploading }) {
           </div>
         </div>
         <button
-          onClick={onClear}
+          onClick={onClear} aria-label="Remove selected file"
           disabled={uploading}
           className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-400 dark:text-gray-500 transition flex-shrink-0"
         >

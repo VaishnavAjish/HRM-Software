@@ -51,7 +51,7 @@ export default function WelcomePopup({ onDismiss, onSetup }) {
         <>
           <div className="relative overflow-hidden flex-shrink-0 bg-gradient-to-br from-brand-600 via-brand-700 to-brand-900 px-5 py-6 sm:px-12 sm:py-8">
             <Blobs />
-            <button onClick={onDismiss} className="absolute top-5 right-5 p-2 rounded-xl bg-white/15 hover:bg-white/25 text-white transition-colors"><X size={18} /></button>
+            <button onClick={onDismiss} aria-label="Dismiss welcome message" className="absolute top-5 right-5 p-2 rounded-xl bg-white/15 hover:bg-white/25 text-white transition-colors"><X size={18} aria-hidden="true" /></button>
             <div className="relative z-10 flex items-center gap-3 sm:gap-6">
               <div className="w-12 h-12 sm:w-[72px] sm:h-[72px] rounded-2xl bg-white/20 border border-white/25 flex items-center justify-center flex-shrink-0 shadow-xl"><ClipboardList size={32} className="text-white" /></div>
               <div>
@@ -94,7 +94,7 @@ export default function WelcomePopup({ onDismiss, onSetup }) {
         <>
           <div className="relative overflow-hidden flex-shrink-0 bg-gradient-to-br from-indigo-600 via-brand-700 to-brand-900 px-5 py-6 sm:px-12 sm:py-8">
             <Blobs />
-            <button onClick={onDismiss} className="absolute top-5 right-5 p-2 rounded-xl bg-white/15 hover:bg-white/25 text-white transition-colors"><X size={18} /></button>
+            <button onClick={onDismiss} aria-label="Dismiss welcome message" className="absolute top-5 right-5 p-2 rounded-xl bg-white/15 hover:bg-white/25 text-white transition-colors"><X size={18} aria-hidden="true" /></button>
             <div className="relative z-10 flex items-center gap-3 sm:gap-6">
               <div className="w-12 h-12 sm:w-[72px] sm:h-[72px] rounded-2xl bg-white/20 border border-white/25 flex items-center justify-center flex-shrink-0 shadow-xl"><Building2 size={32} className="text-white" /></div>
               <div>

@@ -292,7 +292,7 @@ export default function AttendanceView() {
       ) : employees.length === 0 ? (
         <div className="rounded-2xl border border-gray-200 bg-white dark:bg-[#0b0f1a] dark:border-white/10 py-20 text-center">
           <Users size={40} className="mx-auto text-gray-300 dark:text-gray-600 mb-3" />
-          <p className="text-sm text-gray-400">No employees found for this company/branch</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">No employees found for this company/branch</p>
         </div>
       ) : (
         <div className="flex flex-col gap-6">
@@ -392,7 +392,7 @@ export default function AttendanceView() {
               {filteredEmployees.length === 0 && (
                 <li className="py-12 text-center">
                   <Users size={32} className="mx-auto mb-3 text-gray-300 dark:text-gray-600" />
-                  <p className="text-sm text-gray-400">No employees match your search</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">No employees match your search</p>
                 </li>
               )}
             </ul>
@@ -471,7 +471,7 @@ export default function AttendanceView() {
                     <tr>
                       <td colSpan="6" className="py-12 text-center">
                         <Users size={32} className="mx-auto mb-3 text-gray-300 dark:text-gray-600" />
-                        <p className="text-sm text-gray-400">No employees match your search</p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">No employees match your search</p>
                       </td>
                     </tr>
                   )}

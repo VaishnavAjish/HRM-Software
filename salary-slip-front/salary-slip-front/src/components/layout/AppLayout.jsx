@@ -3,22 +3,34 @@ import { Outlet, useLocation } from "react-router-dom";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
 
+// Kept in sync by hand with the "to"/"label" pairs in Sidebar.jsx's nav
+// definitions — the header should always show whatever the sidebar's own
+// active item is labelled.
 const pageTitles = {
   "/admin": "Dashboard",
-  "/admin/employees": "Employee Management",
-  "/admin/salary": "HRMS",
-  "/admin/attendance": "Attendance",
-  "/admin/attendance/shift": "Shift",
+  "/admin/appointments": "Appointment Form",
   "/admin/trial-form": "Trial Form",
+  "/admin/employees/add": "Employee Master",
+  "/admin/employees": "View Employees",
+  "/admin/salary": "Month & Batch Details",
+  "/admin/salary/upload": "Salary Upload",
+  "/admin/attendance": "View Attendance",
+  "/admin/attendance/shift": "Shift",
+  "/admin/tds/calculation": "TDS Calculation",
+  "/admin/form16": "Form 16",
+  "/admin/rbac": "Dashboard",
+  "/admin/rbac/users": "Users",
+  "/admin/rbac/permission-matrix": "Role Permission Matrix",
+  "/admin/rbac/audit-logs": "Audit Trails",
   "/admin/reports": "Reports",
   "/admin/settings": "Settings",
-  "/admin/profile": "My Profile",
+  "/admin/profile": "Profile",
   "/employee": "Dashboard",
-  "/employee/salary": "My Salary",
   "/employee/payslips": "Payslips",
-  "/employee/attendance": "Attendance",
+  "/employee/form16": "Form 16",
   "/employee/profile": "Profile",
-  "/agent": "Agent Portal",
+  "/employee/appointment": "Appointment Form",
+  "/agent": "Dashboard",
   "/agent/trial-forms": "Trial Form",
   "/agent/appointments": "Appointment Form",
 };

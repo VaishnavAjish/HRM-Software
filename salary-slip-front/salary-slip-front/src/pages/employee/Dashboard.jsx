@@ -236,7 +236,7 @@ export default function EmployeeDashboard() {
               ))}
             </div>
           ) : (
-            <div className="h-48 flex items-center justify-center text-sm text-gray-400">
+            <div className="h-48 flex items-center justify-center text-sm text-gray-500 dark:text-gray-400">
               No salary history available
             </div>
           )}
@@ -258,7 +258,7 @@ export default function EmployeeDashboard() {
 
           <div className="space-y-3">
             {recentSlips.length === 0 && (
-              <p className="text-center py-6 text-sm text-gray-400">
+              <p className="text-center py-6 text-sm text-gray-500 dark:text-gray-400">
                 No payslips available
               </p>
             )}

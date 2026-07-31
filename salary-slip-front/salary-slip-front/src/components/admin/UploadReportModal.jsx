@@ -65,7 +65,7 @@ export default function UploadReportModal({ isOpen, onClose, batch, type, loadin
       {loading ? (
         <div className="py-16 text-center text-sm text-gray-400">Loading report...</div>
       ) : rows.length === 0 ? (
-        <div className="py-16 text-center text-sm text-gray-400">No rows recorded for this batch.</div>
+        <div className="py-16 text-center text-sm text-gray-500 dark:text-gray-400">No rows recorded for this batch.</div>
       ) : (
         <div className="overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-xl">
           <table className="min-w-full text-xs border-collapse">

@@ -264,7 +264,7 @@ export default function ShiftManagement() {
           <Loader2 size={20} className="animate-spin" />
         </div>
       ) : shifts.length === 0 ? (
-        <div className="py-16 text-center text-sm text-gray-400">No shifts found. Create one to get started.</div>
+        <div className="py-16 text-center text-sm text-gray-500 dark:text-gray-400">No shifts found. Create one to get started.</div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {shifts.map((shift) => (
@@ -397,7 +397,7 @@ export default function ShiftManagement() {
             <Loader2 size={20} className="animate-spin" />
           </div>
         ) : assignEmployees.length === 0 ? (
-          <p className="py-10 text-center text-sm text-gray-400">No employees found for this company/branch.</p>
+          <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">No employees found for this company/branch.</p>
         ) : (
           <div className="max-h-[50vh] overflow-y-auto space-y-1.5">
             {assignEmployees.map((emp) => (

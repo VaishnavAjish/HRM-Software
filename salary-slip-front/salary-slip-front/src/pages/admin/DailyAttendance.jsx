@@ -445,7 +445,7 @@ export default function DailyAttendance() {
                   <Loader2 size={20} className="animate-spin" />
                 </div>
               ) : employees.length === 0 ? (
-                <div className="py-16 text-center text-sm text-gray-400">No employees found for this company/branch.</div>
+                <div className="py-16 text-center text-sm text-gray-500 dark:text-gray-400">No employees found for this company/branch.</div>
               ) : (
                 <div className="overflow-auto" style={{ maxHeight: "60vh" }}>
                   <table className="min-w-max table-fixed text-left text-xs border-collapse">

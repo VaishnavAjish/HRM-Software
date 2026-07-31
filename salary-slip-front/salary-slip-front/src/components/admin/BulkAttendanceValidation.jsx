@@ -264,7 +264,7 @@ export default function BulkAttendanceValidation({
               })}
               {validatedRows.all.length === 0 && (
                 <tr>
-                  <td colSpan={headers.length + 3} className="px-4 py-12 text-center text-sm text-gray-400">No data to display</td>
+                  <td colSpan={headers.length + 3} className="px-4 py-12 text-center text-sm text-gray-500 dark:text-gray-400">No data to display</td>
                 </tr>
               )}
             </tbody>

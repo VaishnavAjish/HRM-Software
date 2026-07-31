@@ -1,5 +1,24 @@
-import html2canvas from "html2canvas";
-import jsPDF from "jspdf";
+/*
+ * html2canvas (~201 kB) and jsPDF (~386 kB) are loaded when an export actually
+ * runs, not when a page that *can* export is opened. They were static imports,
+ * so every route touching this module carried ~590 kB of PDF machinery into its
+ * initial download for a button most visits never press.
+ *
+ * Safe to defer here because exportNodeToPdf is already async and every caller
+ * already awaits it — the exported signature does not change.
+ */
+let html2canvasPromise;
+let jsPdfPromise;
+
+function loadHtml2Canvas() {
+  html2canvasPromise ??= import("html2canvas").then((m) => m.default);
+  return html2canvasPromise;
+}
+
+function loadJsPdf() {
+  jsPdfPromise ??= import("jspdf").then((m) => m.default);
+  return jsPdfPromise;
+}
 
 const PDF_TARGET_WIDTH = 800;
 const PDF_MARGIN_X = 5;
@@ -132,6 +151,7 @@ async function captureCanvas(clone, captureWidth, captureHeight) {
   ];
 
   for (const options of attempts) {
+    const html2canvas = await loadHtml2Canvas();
     const canvas = await html2canvas(clone, options);
 
     if (canvas.width > 0 && canvas.height > 0 && !isCanvasBlank(canvas)) {
@@ -204,6 +224,7 @@ export async function exportNodeToPdf(
     const canvas = await captureCanvas(clone, captureWidth, captureHeight);
 
     const imgData = canvas.toDataURL("image/png");
+    const jsPDF = await loadJsPdf();
     const doc = new jsPDF({
       orientation: "portrait",
       unit: "mm",

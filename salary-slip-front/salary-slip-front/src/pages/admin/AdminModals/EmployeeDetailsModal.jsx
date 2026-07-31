@@ -132,9 +132,10 @@ export default function EmployeeDetailsModal({
           <button
             type="button"
             onClick={onClose}
+            aria-label="Close employee details"
             className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-white"
           >
-            <X size={18} />
+            <X size={18} aria-hidden="true" />
           </button>
         </div>
 

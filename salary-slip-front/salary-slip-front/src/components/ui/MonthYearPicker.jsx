@@ -98,7 +98,7 @@ export function MonthYearPicker({ value, onChange, min, max, placeholder = "Sele
           {value && (
             <button
               type="button"
-              onClick={handleClear}
+              onClick={handleClear} aria-label="Clear selected month"
               className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 focus:outline-none p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"
             >
               <X size={14} />

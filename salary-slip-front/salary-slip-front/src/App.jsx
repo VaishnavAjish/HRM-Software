@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import {
   BrowserRouter,
   Routes,
@@ -10,41 +11,54 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 import { CompanyProvider } from "./context/CompanyContext";
 import { ThemeProvider } from "./context/ThemeContext";
 
+/*
+ * Routes are split per page.
+ *
+ * Every page used to be a static import, so the entry chunk was ~2.5 MB: opening
+ * any single screen downloaded, parsed and executed the whole admin app —
+ * charts, grids, spreadsheet and PDF writers included. That parse/execute cost
+ * is the render delay in front of first paint, not anything the visited page
+ * does. Each page is now fetched when its route is first visited.
+ *
+ * AppLayout and Login stay eager: the shell renders on every authenticated
+ * route, and Login is the first paint for a signed-out visitor, so deferring
+ * either only adds a round trip.
+ */
 import Login from "./pages/auth/Login";
 import AppLayout from "./components/layout/AppLayout";
-import AddEmployeePage from "./pages/admin/AddEmployeePage";
+const AddEmployeePage = lazy(() => import("./pages/admin/AddEmployeePage"));
 
 // Admin pages
-import AdminDashboard from "./pages/admin/Dashboard";
-import EmployeeManagement from "./pages/admin/EmployeeManagement";
-import SalaryManagement from "./pages/admin/SalaryManagement";
-import SalaryUploadPage from "./pages/admin/SalaryUploadPage";
-import AttendanceView from "./pages/admin/AttendanceView";
+const AdminDashboard = lazy(() => import("./pages/admin/Dashboard"));
+const EmployeeManagement = lazy(() => import("./pages/admin/EmployeeManagement"));
+const SalaryManagement = lazy(() => import("./pages/admin/SalaryManagement"));
+const SalaryUploadPage = lazy(() => import("./pages/admin/SalaryUploadPage"));
+const AttendanceView = lazy(() => import("./pages/admin/AttendanceView"));
 
-import ShiftManagement from "./pages/admin/ShiftManagement";
-import Appointments from "./pages/admin/Appointments";
-import TrialForm from "./pages/admin/TrialForm";
-import Reports from "./pages/admin/Reports";
-import AdminForm16 from "./pages/admin/Form16";
-import TdsCalculation from "./pages/admin/TdsCalculation";
-import AdminProfile from "./pages/admin/AdminProfile";
-import Settings from "./pages/admin/Settings";
+const ShiftManagement = lazy(() => import("./pages/admin/ShiftManagement"));
+const Appointments = lazy(() => import("./pages/admin/Appointments"));
+const TrialForm = lazy(() => import("./pages/admin/TrialForm"));
+const Reports = lazy(() => import("./pages/admin/Reports"));
+const AdminForm16 = lazy(() => import("./pages/admin/Form16"));
+const TdsCalculation = lazy(() => import("./pages/admin/TdsCalculation"));
+const AdminProfile = lazy(() => import("./pages/admin/AdminProfile"));
+const Settings = lazy(() => import("./pages/admin/Settings"));
 
 // RBAC pages
-import RbacDashboard from "./pages/admin/rbac/RbacDashboard";
-import RbacUsers from "./pages/admin/rbac/RbacUsers";
-import PermissionMatrix from "./pages/admin/rbac/PermissionMatrix";
-import AuditLogs from "./pages/admin/rbac/AuditLogs";
+const RbacDashboard = lazy(() => import("./pages/admin/rbac/RbacDashboard"));
+const RbacUsers = lazy(() => import("./pages/admin/rbac/RbacUsers"));
+const PermissionMatrix = lazy(() => import("./pages/admin/rbac/PermissionMatrix"));
+const AuditLogs = lazy(() => import("./pages/admin/rbac/AuditLogs"));
 
 // Employee pages
-import EmployeeDashboard from "./pages/employee/Dashboard";
-import Payslips from "./pages/employee/Payslips";
-import EmployeeForm16 from "./pages/employee/Form16";
-import Profile from "./pages/employee/Profile";
-import EmployeeAppointment from "./pages/employee/EmployeeAppointment";
+const EmployeeDashboard = lazy(() => import("./pages/employee/Dashboard"));
+const Payslips = lazy(() => import("./pages/employee/Payslips"));
+const EmployeeForm16 = lazy(() => import("./pages/employee/Form16"));
+const Profile = lazy(() => import("./pages/employee/Profile"));
+const EmployeeAppointment = lazy(() => import("./pages/employee/EmployeeAppointment"));
 
 // Agent pages
-import AgentDashboard from "./pages/agent/AgentDashboard";
+const AgentDashboard = lazy(() => import("./pages/agent/AgentDashboard"));
 import { hasStoredAadhaar } from "./utils/aadhaar";
 
 function RouteLoader() {
@@ -103,6 +117,7 @@ function AppRoutes() {
   const { user, initializing, isAuthenticated } = useAuth();
 
   return (
+    <Suspense fallback={<RouteLoader />}>
     <Routes>
       <Route
         path="/login"
@@ -199,6 +214,7 @@ function AppRoutes() {
 
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
+    </Suspense>
   );
 }
 

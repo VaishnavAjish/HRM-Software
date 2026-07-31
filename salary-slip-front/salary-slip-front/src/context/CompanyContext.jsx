@@ -15,6 +15,9 @@ import { useAuth } from "./AuthContext";
 
 const CompanyContext = createContext(null);
 const STORAGE_KEY = "active_company_scope";
+// Sentinel for "session restore hasn't resolved a user yet", distinct from
+// the `null` that means "resolved, and there is no user" (logged out).
+const UNRESOLVED_OWNER = "__unresolved__";
 const DEFAULT_THEME =
   typeof __APP_COLOR__ !== "undefined" ? __APP_COLOR__ : "indigo";
 
@@ -35,7 +38,7 @@ function saveStoredScope(scopeKey) {
 }
 
 export function CompanyProvider({ children }) {
-  const { user } = useAuth();
+  const { user, initializing } = useAuth();
   const [adminScopeKey, setAdminScopeKey] = useState(loadStoredScope);
 
   const isAdmin = user?.role === "admin";
@@ -57,23 +60,48 @@ export function CompanyProvider({ children }) {
    * roles. So a Super Admin who selected "Silver Star / Daduk", signed out and
    * handed the machine over left the next Super Admin scoped to that branch,
    * with every list silently filtered by it. Resetting on a change of identity
-   * is what stops one person's selection becoming another person's view.
+   * is what stops one person's selection becoming another person's view. A
+   * fresh Super Admin login resets to "All Companies" rather than their own
+   * company — a Super Admin's default view is everything they oversee, not
+   * narrowed to whichever company their own account happens to be filed
+   * under.
    *
    * Assigning during render is the supported way to reset on a prop change;
    * doing it in an effect renders the previous user's scope first.
+   *
+   * On every page reload `user` starts out null while the session is
+   * restored from storage (see AuthContext's `initializing`), then flips to
+   * the real user once that finishes. That first resolution is not an
+   * identity change — it was resetting a Super Admin's persisted "All
+   * Companies" scope back to their home company on every reload. So the very
+   * first time a user resolves after `initializing` clears, the owner is
+   * just recorded, not reset; only a *later* change while already resolved
+   * (a real logout/login in the same tab) clears the scope.
    */
-  const [scopeOwnerId, setScopeOwnerId] = useState(user?.id ?? null);
+  const [scopeOwnerId, setScopeOwnerId] = useState(UNRESOLVED_OWNER);
 
-  if (scopeOwnerId !== (user?.id ?? null)) {
-    setScopeOwnerId(user?.id ?? null);
-    setAdminScopeKey(user ? userCompanyId : DEFAULT_COMPANY_ID);
+  if (!initializing) {
+    const currentId = user?.id ?? null;
+    if (scopeOwnerId === UNRESOLVED_OWNER) {
+      setScopeOwnerId(currentId);
+    } else if (scopeOwnerId !== currentId) {
+      setScopeOwnerId(currentId);
+      setAdminScopeKey(
+        !user ? DEFAULT_COMPANY_ID : isSuperAdmin ? ALL_COMPANY_ID : userCompanyId,
+      );
+    }
   }
 
   useEffect(() => {
-    if (!isSuperAdmin && !isMaster) {
+    // Gated on `!initializing` for the same reason as the render-time reset
+    // above: while the session is still restoring, `user` is null, which
+    // makes isSuperAdmin/isMaster both false regardless of the real user's
+    // role — forcing a Super Admin's scope to their home company before
+    // their actual role has even loaded.
+    if (!initializing && !isSuperAdmin && !isMaster) {
       setAdminScopeKey(prev => (prev !== userCompanyId ? userCompanyId : prev));
     }
-  }, [isSuperAdmin, isMaster, userCompanyId]);
+  }, [initializing, isSuperAdmin, isMaster, userCompanyId]);
 
   useEffect(() => {
     if (isSuperAdmin || isMaster) {

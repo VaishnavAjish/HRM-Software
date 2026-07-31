@@ -47,9 +47,10 @@ export default function Modal({
             </h3>
             <button
               onClick={onClose}
+              aria-label="Close dialog"
               className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 transition-colors flex-shrink-0"
             >
-              <X size={18} />
+              <X size={18} aria-hidden="true" />
             </button>
           </div>
         )}

@@ -369,13 +369,13 @@ export default function Payslips() {
             )}
 
             {!hasMore && payslips.length > 0 && (
-              <p className="py-3 text-center text-xs text-gray-400">
+              <p className="py-3 text-center text-xs text-gray-500 dark:text-gray-400">
                 All records loaded
               </p>
             )}
 
             {!loading && payslips.length === 0 && (
-              <p className="py-8 text-center text-sm text-gray-400">
+              <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
                 No payslips found
               </p>
             )}

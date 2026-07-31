@@ -240,8 +240,8 @@ export default function ModernDatePicker({
                 <h2 className="text-3xl font-normal text-gray-900 dark:text-white tracking-tight">
                   {getShortDayName(tempDate)}, {getShortMonthName(tempDate)} {tempDate.getDate()}
                 </h2>
-                <button type="button" className="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors p-2 hover:bg-black/5 dark:hover:bg-white/10 rounded-full">
-                  <Pencil size={20} strokeWidth={2} />
+                <button type="button" aria-label="Edit date" className="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors p-2 hover:bg-black/5 dark:hover:bg-white/10 rounded-full">
+                  <Pencil size={20} strokeWidth={2} aria-hidden="true" />
                 </button>
               </div>
             </div>
@@ -270,11 +270,11 @@ export default function ModernDatePicker({
                       </button>
                     </div>
                     <div className="flex items-center">
-                      <button type="button" onClick={handlePrevMonth} className="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 transition-colors">
-                        <ChevronLeft size={20} strokeWidth={2} />
+                      <button type="button" onClick={handlePrevMonth} aria-label="Previous month" className="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 transition-colors">
+                        <ChevronLeft size={20} strokeWidth={2} aria-hidden="true" />
                       </button>
-                      <button type="button" onClick={handleNextMonth} className="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 transition-colors">
-                        <ChevronRight size={20} strokeWidth={2} />
+                      <button type="button" onClick={handleNextMonth} aria-label="Next month" className="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 transition-colors">
+                        <ChevronRight size={20} strokeWidth={2} aria-hidden="true" />
                       </button>
                     </div>
                   </div>

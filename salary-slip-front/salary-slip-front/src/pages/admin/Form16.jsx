@@ -49,6 +49,15 @@ function mapEmployee(item) {
   };
 }
 
+/*
+ * Height reserved for the Form 16 preview column.
+ *
+ * The loading skeleton, the "nothing selected" placeholder and the rendered
+ * document all use this, so the column keeps one height across every state and
+ * the page stops reflowing as data arrives.
+ */
+const PREVIEW_MIN_HEIGHT = "min-h-[980px]";
+
 export default function AdminForm16() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -193,9 +202,11 @@ export default function AdminForm16() {
               ))}
             </div>
           </div>
-          <div className="space-y-6 rounded-3xl bg-neutral-300 px-3 py-5 sm:px-5">
-            <div className="skeleton h-[980px] w-full rounded-2xl" />
-            <div className="skeleton h-[980px] w-full rounded-2xl" />
+          {/* One page-sized block, matching PREVIEW_MIN_HEIGHT below. Two were
+              reserved here, so the column measured ~1,984px while loading and
+              then collapsed the moment real content took over. */}
+          <div className="rounded-3xl bg-neutral-300 px-3 py-5 sm:px-5">
+            <div className={`skeleton w-full rounded-2xl ${PREVIEW_MIN_HEIGHT}`} />
           </div>
         </div>
       </div>
@@ -318,22 +329,35 @@ export default function AdminForm16() {
             )}
 
             {!hasMore && employees.length > 0 && (
-              <p className="py-3 text-center text-xs text-gray-400">
+              <p className="py-3 text-center text-xs text-gray-500 dark:text-gray-400">
                 All records loaded
               </p>
             )}
 
             {!loading && employees.length === 0 && (
-              <p className="py-8 text-center text-sm text-gray-400">
+              <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
                 No employees found
               </p>
             )}
           </div>
         </div>
 
-        {!isMobile && data && (
-          <div className="rounded-3xl border border-gray-200 bg-neutral-300 px-3 py-5 shadow-sm dark:border-gray-700 sm:px-5 sm:py-6 overflow-x-auto">
-            <Form16Document data={data} />
+        {/* The column is always present on desktop, at a fixed minimum height.
+            It used to be omitted entirely until `data` existed, so the layout
+            went tall skeleton -> nothing -> tall document: two shifts, and the
+            reason CLS was accruing around 630ms. A placeholder also reads better
+            than an empty gap when no employee is selected yet. */}
+        {!isMobile && (
+          <div
+            className={`rounded-3xl border border-gray-200 bg-neutral-300 px-3 py-5 shadow-sm dark:border-gray-700 sm:px-5 sm:py-6 overflow-x-auto ${PREVIEW_MIN_HEIGHT}`}
+          >
+            {data ? (
+              <Form16Document data={data} />
+            ) : (
+              <p className="flex h-full items-center justify-center text-center text-sm text-gray-600">
+                Select an employee to preview their Form 16.
+              </p>
+            )}
           </div>
         )}
       </div>
