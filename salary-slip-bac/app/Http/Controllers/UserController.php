@@ -953,6 +953,7 @@ class UserController extends Controller
                     $data['status'] = 2; // Pending status
                 } elseif ($request->checkbox == 0 && ($employee->type === 'pending_employee' || $employee->type === 'appointment')) {
                     $data['type'] = 'appointment';
+                    $data['status'] = 2; // Rejected status
                 }
             }
             $this->applyUpdate($employee, $data);

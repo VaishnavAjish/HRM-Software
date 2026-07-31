@@ -25,6 +25,21 @@ export default function usePhotoCapture({ onCapture, front = true } = {}) {
 
   const requestCapture = useCallback(async () => {
     if (!isNativePlatform()) {
+      const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+      if (isMobile) {
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = "image/*";
+        input.capture = front ? "user" : "environment";
+        input.onchange = (e) => {
+          const file = e.target.files?.[0];
+          if (file) {
+            onCapture?.(file);
+          }
+        };
+        input.click();
+        return;
+      }
       setWebOpen(true);
       return;
     }

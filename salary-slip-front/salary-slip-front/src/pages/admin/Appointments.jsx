@@ -39,7 +39,7 @@ import Modal from "../../components/ui/Modal";
 import { SkeletonTable } from "../../components/ui/Skeleton";
 import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";
-import { authApi } from "../../utils/api";
+import { authApi, salaryApi } from "../../utils/api";
 import PrintableForm from "../../components/forms/PrintableForm";
 import { exportNodeToPdf } from "../../utils/pdfUtils";
 import AppointmentModal from "../auth/AppointmentModal";
@@ -1249,6 +1249,29 @@ export default function Appointments() {
     }
   }, [appointments, selected, user]);
 
+  const handleDeleteAppointment = useCallback(async (id) => {
+    if (!window.confirm("Are you sure you want to delete this rejected appointment form? This action cannot be undone.")) return;
+    setStatusLoading((prev) => ({ ...prev, [id]: "Deleting" }));
+    try {
+      const res = await salaryApi.deleteEmployee(id, user?.accessToken, user?.tokenType);
+      if (res.status) {
+        toast.success("Appointment form deleted successfully");
+        setAppointments((prev) => prev.filter((a) => a.id !== id));
+        if (selected?.id === id) setSelected(null);
+      } else {
+        toast.error(res.message || "Failed to delete appointment form");
+      }
+    } catch (error) {
+      toast.error(error.message || "Failed to delete appointment form");
+    } finally {
+      setStatusLoading((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+    }
+  }, [user, selected]);
+
   const allColumns = useMemo(() => [
     { field: "fullName", label: "Employee" },
     { field: "designation", label: "Designation" },
@@ -1335,42 +1358,61 @@ export default function Appointments() {
                     </button>
                     {user?.role !== 'agent' && (
                       <>
-                        <button
-                          onClick={() => handleStatusUpdate(data.id, true)}
-                          disabled={
-                            Boolean(statusLoading[data.id]) || data.status === "Approved"
-                          }
-                          className={`flex min-w-0 flex-1 justify-center items-center gap-1.5 rounded-lg px-2 py-2 text-xs font-semibold transition min-h-[36px] ${
-                            data.status === "Approved"
-                              ? "bg-green-600 text-white cursor-default"
-                              : "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 hover:bg-green-100 disabled:opacity-50"
-                          }`}
-                        >
-                          {statusLoading[data.id] === "Approved" ? (
-                            <Loader2 size={13} className="animate-spin" />
-                          ) : (
-                            <CheckCircle2 size={13} />
-                          )}
-                          Approve
-                        </button>
-                        <button
-                          onClick={() => handleStatusUpdate(data.id, false)}
-                          disabled={
-                            Boolean(statusLoading[data.id]) || data.status === "Rejected"
-                          }
-                          className={`flex min-w-0 flex-1 justify-center items-center gap-1.5 rounded-lg px-2 py-2 text-xs font-semibold transition min-h-[36px] ${
-                            data.status === "Rejected"
-                              ? "bg-red-600 text-white cursor-default"
-                              : "bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 hover:bg-red-100 disabled:opacity-50"
-                          }`}
-                        >
-                          {statusLoading[data.id] === "Rejected" ? (
-                            <Loader2 size={13} className="animate-spin" />
-                          ) : (
-                            <XCircle size={13} />
-                          )}
-                          Reject
-                        </button>
+                        {data.empCode ? (
+                          <button
+                            onClick={() => setEditTarget(data)}
+                            className="flex min-w-0 flex-1 justify-center items-center gap-1.5 rounded-lg bg-yellow-50 px-2 py-2 text-xs font-semibold text-yellow-600 transition hover:bg-yellow-100 min-h-[36px]"
+                          >
+                            <Pencil size={13} />
+                            Edit
+                          </button>
+                        ) : data.status === "Rejected" ? (
+                          <button
+                            onClick={() => handleDeleteAppointment(data.id)}
+                            disabled={statusLoading[data.id] === "Deleting"}
+                            className="flex min-w-0 flex-1 justify-center items-center gap-1.5 rounded-lg px-2 py-2 text-xs font-semibold bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 min-h-[36px]"
+                          >
+                            {statusLoading[data.id] === "Deleting" ? (
+                              <Loader2 size={13} className="animate-spin" />
+                            ) : (
+                              <Trash2 size={13} />
+                            )}
+                            Delete
+                          </button>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => handleStatusUpdate(data.id, true)}
+                              disabled={
+                                Boolean(statusLoading[data.id]) || data.status === "Approved"
+                              }
+                              className={`flex min-w-0 flex-1 justify-center items-center gap-1.5 rounded-lg px-2 py-2 text-xs font-semibold transition min-h-[36px] ${
+                                data.status === "Approved"
+                                  ? "bg-green-600 text-white cursor-default"
+                                  : "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 hover:bg-green-100 disabled:opacity-50"
+                              }`}
+                            >
+                              {statusLoading[data.id] === "Approved" ? (
+                                <Loader2 size={13} className="animate-spin" />
+                              ) : (
+                                <CheckCircle2 size={13} />
+                              )}
+                              Approve
+                            </button>
+                            <button
+                              onClick={() => handleStatusUpdate(data.id, false)}
+                              disabled={Boolean(statusLoading[data.id])}
+                              className="flex min-w-0 flex-1 justify-center items-center gap-1.5 rounded-lg px-2 py-2 text-xs font-semibold transition min-h-[36px] bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 hover:bg-red-100 disabled:opacity-50"
+                            >
+                              {statusLoading[data.id] === "Rejected" ? (
+                                <Loader2 size={13} className="animate-spin" />
+                              ) : (
+                                <XCircle size={13} />
+                              )}
+                              Reject
+                            </button>
+                          </>
+                        )}
                       </>
                     )}
                   </div>
@@ -1744,49 +1786,69 @@ export default function Appointments() {
             </Button>
             {user?.role !== 'agent' && (
               <>
-                <button
-                  onClick={() => handleStatusUpdate(data.id, true)}
-                  disabled={
-                    Boolean(statusLoading[data.id]) || data.status === "Approved"
-                  }
-                  className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold transition ${
-                    data.status === "Approved"
-                      ? "bg-green-600 text-white cursor-default"
-                      : "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 hover:bg-green-100 disabled:opacity-50"
-                  }`}
-                >
-                  {statusLoading[data.id] === "Approved" ? (
-                    <Loader2 size={11} className="animate-spin" />
-                  ) : (
-                    <CheckCircle2 size={11} />
-                  )}
-                  Approve
-                </button>
-                <button
-                  onClick={() => handleStatusUpdate(data.id, false)}
-                  disabled={
-                    Boolean(statusLoading[data.id]) || data.status === "Rejected"
-                  }
-                  className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold transition ${
-                    data.status === "Rejected"
-                      ? "bg-red-600 text-white cursor-default"
-                      : "bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 hover:bg-red-100 disabled:opacity-50"
-                  }`}
-                >
-                  {statusLoading[data.id] === "Rejected" ? (
-                    <Loader2 size={11} className="animate-spin" />
-                  ) : (
-                    <XCircle size={11} />
-                  )}
-                  Reject
-                </button>
+                {data.empCode ? (
+                  <Button
+                    size="sm"
+                    variant="warning"
+                    icon={<Pencil size={13} />}
+                    onClick={() => setEditTarget(data)}
+                  >
+                    Edit
+                  </Button>
+                ) : data.status === "Rejected" ? (
+                  <button
+                    onClick={() => handleDeleteAppointment(data.id)}
+                    disabled={statusLoading[data.id] === "Deleting"}
+                    className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold transition bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+                  >
+                    {statusLoading[data.id] === "Deleting" ? (
+                      <Loader2 size={11} className="animate-spin" />
+                    ) : (
+                      <Trash2 size={11} />
+                    )}
+                    Delete
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => handleStatusUpdate(data.id, true)}
+                      disabled={
+                        Boolean(statusLoading[data.id]) || data.status === "Approved"
+                      }
+                      className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold transition ${
+                        data.status === "Approved"
+                          ? "bg-green-600 text-white cursor-default"
+                          : "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 hover:bg-green-100 disabled:opacity-50"
+                      }`}
+                    >
+                      {statusLoading[data.id] === "Approved" ? (
+                        <Loader2 size={11} className="animate-spin" />
+                      ) : (
+                        <CheckCircle2 size={11} />
+                      )}
+                      Approve
+                    </button>
+                    <button
+                      onClick={() => handleStatusUpdate(data.id, false)}
+                      disabled={Boolean(statusLoading[data.id])}
+                      className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold transition bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 hover:bg-red-100 disabled:opacity-50"
+                    >
+                      {statusLoading[data.id] === "Rejected" ? (
+                        <Loader2 size={11} className="animate-spin" />
+                      ) : (
+                        <XCircle size={11} />
+                      )}
+                      Reject
+                    </button>
+                  </>
+                )}
               </>
             )}
           </div>
         ),
       },
     ];
-  }, [statusLoading, handleStatusUpdate, setGridLightbox, isMobile, user?.role, visibleColumns]);
+  }, [statusLoading, handleStatusUpdate, handleDeleteAppointment, setEditTarget, setGridLightbox, isMobile, user?.role, visibleColumns]);
 
   const defaultColDef = useMemo(
     () => ({
@@ -1996,44 +2058,58 @@ export default function Appointments() {
               <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
                 {user?.role !== 'agent' && (
                   <>
-                    <button
-                      onClick={() => handleStatusUpdate(selected.id, true)}
-                      disabled={
-                        Boolean(statusLoading[selected.id]) ||
-                        selected.status === "Approved"
-                      }
-                      className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-semibold transition shadow-sm ${
-                        selected.status === "Approved"
-                          ? "bg-green-600 text-white cursor-default"
-                          : "bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
-                      }`}
-                    >
-                      {statusLoading[selected.id] === "Approved" ? (
-                        <Loader2 size={14} className="animate-spin" />
-                      ) : (
-                        <CheckCircle2 size={14} />
-                      )}
-                      Approve
-                    </button>
-                    <button
-                      onClick={() => handleStatusUpdate(selected.id, false)}
-                      disabled={
-                        Boolean(statusLoading[selected.id]) ||
-                        selected.status === "Rejected"
-                      }
-                      className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-semibold transition shadow-sm ${
-                        selected.status === "Rejected"
-                          ? "bg-red-600 text-white cursor-default"
-                          : "bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
-                      }`}
-                    >
-                      {statusLoading[selected.id] === "Rejected" ? (
-                        <Loader2 size={14} className="animate-spin" />
-                      ) : (
-                        <XCircle size={14} />
-                      )}
-                      Reject
-                    </button>
+                    {!selected.empCode && (
+                      <>
+                        {selected.status === "Rejected" ? (
+                          <button
+                            onClick={() => handleDeleteAppointment(selected.id)}
+                            disabled={statusLoading[selected.id] === "Deleting"}
+                            className="inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-semibold transition shadow-sm bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+                          >
+                            {statusLoading[selected.id] === "Deleting" ? (
+                              <Loader2 size={14} className="animate-spin" />
+                            ) : (
+                              <Trash2 size={14} />
+                            )}
+                            Delete
+                          </button>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => handleStatusUpdate(selected.id, true)}
+                              disabled={
+                                Boolean(statusLoading[selected.id]) ||
+                                selected.status === "Approved"
+                              }
+                              className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-semibold transition shadow-sm ${
+                                selected.status === "Approved"
+                                  ? "bg-green-600 text-white cursor-default"
+                                  : "bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
+                              }`}
+                            >
+                              {statusLoading[selected.id] === "Approved" ? (
+                                <Loader2 size={14} className="animate-spin" />
+                              ) : (
+                                <CheckCircle2 size={14} />
+                              )}
+                              Approve
+                            </button>
+                            <button
+                              onClick={() => handleStatusUpdate(selected.id, false)}
+                              disabled={Boolean(statusLoading[selected.id])}
+                              className="inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-semibold transition shadow-sm bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+                            >
+                              {statusLoading[selected.id] === "Rejected" ? (
+                                <Loader2 size={14} className="animate-spin" />
+                              ) : (
+                                <XCircle size={14} />
+                              )}
+                              Reject
+                            </button>
+                          </>
+                        )}
+                      </>
+                    )}
                   </>
                 )}
               </div>

@@ -9,6 +9,7 @@ import { useAuth } from "../../context/AuthContext";
 import usePhotoCapture from "../../hooks/usePhotoCapture";
 import DocumentViewerModal from "../../components/documents/DocumentViewerModal";
 import { PHOTO_DOCUMENT_TYPE } from "./documentTypes";
+import { compressImage, ACCEPTED_MIME } from "../../utils/photoCapture";
 
 const ACCEPT = ".pdf,.jpg,.jpeg,.png,.webp";
 
@@ -187,9 +188,23 @@ export default function AppointmentDocumentsStep({
     setUploading(true);
     setLastError(null);
     try {
+      let fileToUpload = file;
+      if (fileToUpload && ACCEPTED_MIME.includes(fileToUpload.type)) {
+        try {
+          const compressed = await compressImage(fileToUpload, fileToUpload.name);
+          fileToUpload = compressed;
+        } catch (compressErr) {
+          console.warn("Client compression failed, uploading original:", compressErr);
+        }
+      }
+
       await appointmentV1Api.uploadDocument(
         appointmentId,
-        { file, documentType, idempotencyKey: `${appointmentId}-${documentType}-${file.size}-${file.lastModified}` },
+        {
+          file: fileToUpload,
+          documentType,
+          idempotencyKey: `${appointmentId}-${documentType}-${fileToUpload.size}-${fileToUpload.lastModified}`
+        },
         token,
         tokenType,
       );
@@ -240,7 +255,16 @@ export default function AppointmentDocumentsStep({
     const problem = validate(picked, replacingType);
     if (problem) return toast.error(problem);
     try {
-      await documentV1Api.replace({ id: replacingId, file: picked }, token, tokenType);
+      let fileToUpload = picked;
+      if (fileToUpload && ACCEPTED_MIME.includes(fileToUpload.type)) {
+        try {
+          const compressed = await compressImage(fileToUpload, fileToUpload.name);
+          fileToUpload = compressed;
+        } catch (compressErr) {
+          console.warn("Client compression failed, uploading original:", compressErr);
+        }
+      }
+      await documentV1Api.replace({ id: replacingId, file: fileToUpload }, token, tokenType);
       toast.success("New version uploaded.");
       loadList();
     } catch (err) {
@@ -409,47 +433,131 @@ export default function AppointmentDocumentsStep({
             <p className="text-sm text-gray-500">No documents uploaded yet.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="border-b border-gray-100 bg-gray-50 text-xs uppercase text-gray-500">
-                <tr>
-                  <th className="px-4 py-2.5">Type</th>
-                  <th className="px-4 py-2.5">File</th>
-                  <th className="px-4 py-2.5">Ver</th>
-                  <th className="px-4 py-2.5">Size</th>
-                  <th className="px-4 py-2.5">Uploaded</th>
-                  <th className="px-4 py-2.5">Status</th>
-                  <th className="px-4 py-2.5 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {docs.map((d) => {
-                  const cur = d.currentVersion || {};
-                  const a = d.actions || {};
-                  return (
-                    <tr key={d.documentId} className="border-b border-gray-50 last:border-0">
-                      <td className="px-4 py-2.5 font-semibold text-gray-800">{d.documentLabel || d.documentType}</td>
-                      <td className="max-w-[180px] truncate px-4 py-2.5 text-gray-600" title={cur.originalFileName}>{cur.originalFileName || "—"}</td>
-                      <td className="px-4 py-2.5 text-gray-500">v{d.version}</td>
-                      <td className="px-4 py-2.5 text-gray-500">{formatSize(cur.fileSize)}</td>
-                      <td className="px-4 py-2.5 text-gray-500">{formatDate(cur.uploadedAt || d.createdAt)}</td>
-                      <td className="px-4 py-2.5">
-                        <span className="rounded-full bg-green-50 px-2 py-0.5 text-[11px] font-bold text-green-700">{d.status}</span>
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <div className="flex items-center justify-end gap-1">
-                          {a.view && <button type="button" title="View" onClick={() => setViewing(d)} className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 hover:text-brand-600"><Eye size={15} /></button>}
-                          {a.download && <button type="button" title="Download" onClick={() => handleDownload(d)} className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 hover:text-brand-600"><Download size={15} /></button>}
-                          {a.replace && <button type="button" title="Replace" onClick={() => { setReplacingId(d.documentId); setReplacingType(d.documentType); replaceRef.current?.click(); }} className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 hover:text-brand-600"><RefreshCw size={15} /></button>}
-                          {a.delete && <button type="button" title="Delete" onClick={() => handleDelete(d)} className="rounded-lg p-1.5 text-gray-500 hover:bg-red-50 hover:text-red-600"><Trash2 size={15} /></button>}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <>
+            {/* Desktop Table View */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="border-b border-gray-100 bg-gray-50 text-xs uppercase text-gray-500">
+                  <tr>
+                    <th className="px-4 py-2.5">Type</th>
+                    <th className="px-4 py-2.5">File</th>
+                    <th className="px-4 py-2.5">Ver</th>
+                    <th className="px-4 py-2.5">Size</th>
+                    <th className="px-4 py-2.5">Uploaded</th>
+                    <th className="px-4 py-2.5">Status</th>
+                    <th className="px-4 py-2.5 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {docs.map((d) => {
+                    const cur = d.currentVersion || {};
+                    const a = d.actions || {};
+                    return (
+                      <tr key={d.documentId} className="border-b border-gray-50 last:border-0">
+                        <td className="px-4 py-2.5 font-semibold text-gray-800">{d.documentLabel || d.documentType}</td>
+                        <td className="max-w-[180px] truncate px-4 py-2.5 text-gray-600" title={cur.originalFileName}>{cur.originalFileName || "—"}</td>
+                        <td className="px-4 py-2.5 text-gray-500">v{d.version}</td>
+                        <td className="px-4 py-2.5 text-gray-500">{formatSize(cur.fileSize)}</td>
+                        <td className="px-4 py-2.5 text-gray-500">{formatDate(cur.uploadedAt || d.createdAt)}</td>
+                        <td className="px-4 py-2.5">
+                          <span className="rounded-full bg-green-50 px-2 py-0.5 text-[11px] font-bold text-green-700">{d.status}</span>
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <div className="flex items-center justify-end gap-1">
+                            {a.view && <button type="button" title="View" onClick={() => setViewing(d)} className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 hover:text-brand-600"><Eye size={15} /></button>}
+                            {a.download && <button type="button" title="Download" onClick={() => handleDownload(d)} className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 hover:text-brand-600"><Download size={15} /></button>}
+                            {a.replace && <button type="button" title="Replace" onClick={() => { setReplacingId(d.documentId); setReplacingType(d.documentType); replaceRef.current?.click(); }} className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 hover:text-brand-600"><RefreshCw size={15} /></button>}
+                            {a.delete && <button type="button" title="Delete" onClick={() => handleDelete(d)} className="rounded-lg p-1.5 text-gray-500 hover:bg-red-50 hover:text-red-600"><Trash2 size={15} /></button>}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile Stacked Card View */}
+            <div className="md:hidden block divide-y divide-gray-100 bg-white">
+              {docs.map((d) => {
+                const cur = d.currentVersion || {};
+                const a = d.actions || {};
+                return (
+                  <div key={d.documentId} className="p-4 space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-semibold text-gray-800 text-sm">
+                        {d.documentLabel || d.documentType}
+                      </span>
+                      <span className="rounded-full bg-green-50 px-2.5 py-0.5 text-[10px] font-bold text-green-700">
+                        {d.status}
+                      </span>
+                    </div>
+
+                    <div className="text-xs text-gray-500 space-y-1">
+                      <p className="truncate font-medium text-gray-700" title={cur.originalFileName}>
+                        File: {cur.originalFileName || "—"}
+                      </p>
+                      <div className="flex items-center gap-3 text-gray-400">
+                        <span>Ver: v{d.version}</span>
+                        <span>•</span>
+                        <span>Size: {formatSize(cur.fileSize)}</span>
+                      </div>
+                      <p className="text-[10px] text-gray-400">
+                        Uploaded: {formatDate(cur.uploadedAt || d.createdAt)}
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-gray-50">
+                      {a.view && (
+                        <button
+                          type="button"
+                          onClick={() => setViewing(d)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 min-h-[32px]"
+                        >
+                          <Eye size={13} className="text-gray-500" />
+                          View
+                        </button>
+                      )}
+                      {a.download && (
+                        <button
+                          type="button"
+                          onClick={() => handleDownload(d)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 min-h-[32px]"
+                        >
+                          <Download size={13} className="text-gray-500" />
+                          Download
+                        </button>
+                      )}
+                      {a.replace && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setReplacingId(d.documentId);
+                            setReplacingType(d.documentType);
+                            replaceRef.current?.click();
+                          }}
+                          className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 min-h-[32px]"
+                        >
+                          <RefreshCw size={13} className="text-gray-500" />
+                          Replace
+                        </button>
+                      )}
+                      {a.delete && (
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(d)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100 min-h-[32px]"
+                        >
+                          <Trash2 size={13} className="text-red-500" />
+                          Delete
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
         )}
       </div>
 
