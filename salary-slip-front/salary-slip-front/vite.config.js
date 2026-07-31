@@ -23,16 +23,16 @@ const APP_TITLE =
     ? "Nidhi Impex – HRMS"
     : gitBranch === "silver-star"
       ? "Silver Star – HRMS"
-      : "Build better workplaces – HRMS";
+      : "NISS HRMS";
 
 const APP_LABEL =
   gitBranch === "nidhi-impex"
     ? "Nidhi Impex"
     : gitBranch === "silver-star"
       ? "Silver Star"
-      : "Build better workplaces";
+      : "NISS HRMS";
 
-// amber = Nidhi Impex | sky = Silver Star | indigo = Build better workplaces
+// amber = Nidhi Impex | sky = Silver Star | indigo = NISS HRMS
 const APP_COLOR =
   gitBranch === "nidhi-impex"
     ? "amber"

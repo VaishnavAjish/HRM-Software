@@ -1,6 +1,6 @@
 /* global __APP_LABEL__ */
 const APP_LABEL =
-  typeof __APP_LABEL__ !== "undefined" ? __APP_LABEL__ : "Build better workplaces";
+  typeof __APP_LABEL__ !== "undefined" ? __APP_LABEL__ : "NISS HRMS";
 
 import { NavLink, useLocation } from "react-router-dom";
 import { useState } from "react";
