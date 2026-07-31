@@ -116,25 +116,35 @@ describe("AppointmentModal — Aadhaar on an existing record", () => {
     expect(input).toHaveValue("7151 1598 8793");
     // Nothing masked is shown anywhere on the form.
     expect(screen.queryByText("XXXX XXXX 8793")).toBeNull();
-    // Locked once the record exists, so the stored number cannot be edited away.
-    expect(input).toBeDisabled();
-    expect(screen.getByText(/locked once saved/i)).toBeInTheDocument();
+    // Editable, with blank meaning "keep what is stored" — see the next test.
+    expect(input).toBeEnabled();
+    expect(screen.getByText(/Leave blank to keep the number already on file/i)).toBeInTheDocument();
   });
 
-  it("cannot be edited away once the record exists", async () => {
+  it("keeps the stored number when the field is cleared", async () => {
+    renderModal({ initialData: createInitialData() });
+
+    await userEvent.clear(await screen.findByLabelText(AADHAAR_LABEL));
+    await userEvent.click(screen.getByRole("button", { name: SAVE }));
+
+    await waitFor(() => expect(authApi.updateAppointment).toHaveBeenCalledTimes(1));
+
+    // Omitted, not sent empty. The stored number drives the record's S3 document
+    // folder, so writing "" over it would detach the record from its own
+    // documents rather than merely blanking a field.
+    expect("aadhar_card_no" in sentFields(authApi.updateAppointment)).toBe(false);
+  });
+
+  it("replaces the stored number when a complete one is entered", async () => {
     renderModal({ initialData: createInitialData() });
 
     const input = await screen.findByLabelText(AADHAAR_LABEL);
-
-    // The stored number drives the record's S3 document folder, so it is locked
-    // rather than merely discouraged — clearing it would detach the record from
-    // its own documents.
-    expect(input).toBeDisabled();
-
+    await userEvent.clear(input);
+    await userEvent.type(input, "999988887777");
     await userEvent.click(screen.getByRole("button", { name: SAVE }));
-    await waitFor(() => expect(authApi.updateAppointment).toHaveBeenCalledTimes(1));
 
-    expect(sentFields(authApi.updateAppointment).aadhar_card_no).toBe("715115988793");
+    await waitFor(() => expect(authApi.updateAppointment).toHaveBeenCalledTimes(1));
+    expect(sentFields(authApi.updateAppointment).aadhar_card_no).toBe("999988887777");
   });
 
   it("saves the untouched prefilled number back as digits", async () => {

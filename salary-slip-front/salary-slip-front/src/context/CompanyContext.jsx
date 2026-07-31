@@ -49,6 +49,26 @@ export function CompanyProvider({ children }) {
   const isSuperAdmin = (user?.rawRole === 0 || (user?.role === 'admin' && user?.rawRole !== 1 && user?.rawRole !== 2)) && user?.role !== 'agent';
   const isMaster = user?.rawRole === 1 && user?.role !== 'agent';
 
+  /*
+   * The stored scope belongs to whoever chose it.
+   *
+   * adminScopeKey is seeded once from localStorage and, for a Super Admin or a
+   * Master, is never re-derived — the effect below only forces it for the other
+   * roles. So a Super Admin who selected "Silver Star / Daduk", signed out and
+   * handed the machine over left the next Super Admin scoped to that branch,
+   * with every list silently filtered by it. Resetting on a change of identity
+   * is what stops one person's selection becoming another person's view.
+   *
+   * Assigning during render is the supported way to reset on a prop change;
+   * doing it in an effect renders the previous user's scope first.
+   */
+  const [scopeOwnerId, setScopeOwnerId] = useState(user?.id ?? null);
+
+  if (scopeOwnerId !== (user?.id ?? null)) {
+    setScopeOwnerId(user?.id ?? null);
+    setAdminScopeKey(user ? userCompanyId : DEFAULT_COMPANY_ID);
+  }
+
   useEffect(() => {
     if (!isSuperAdmin && !isMaster) {
       setAdminScopeKey(prev => (prev !== userCompanyId ? userCompanyId : prev));

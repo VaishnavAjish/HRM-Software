@@ -1,7 +1,12 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { authApi, rbacApi } from "../utils/api";
 import { resolveCompanyId } from "../config/companyConfig";
+import {
+  broadcastSignOut,
+  clearStoredSession,
+  subscribeToSignOut,
+} from "../utils/authSession";
 
 const AuthContext = createContext(null);
 const STORAGE_KEY = "auth_user";
@@ -28,9 +33,13 @@ function loadUserFromStorage() {
 function saveUserToStorage(user) {
   if (user) {
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify(user));
-  } else {
-    sessionStorage.removeItem(STORAGE_KEY);
+    return;
   }
+
+  // Ending a session means more than dropping the token: the company and branch
+  // scope lives in localStorage and would otherwise be inherited by whoever
+  // signs in next. clearStoredSession owns that whole list.
+  clearStoredSession();
 }
 
 function buildAuthUser(apiUser, fallbackUser = {}, loginData = {}) {
@@ -172,9 +181,31 @@ export function AuthProvider({ children }) {
     return () => window.removeEventListener("auth:unauthorized", handleUnauthorized);
   }, []);
 
+  /*
+   * Another tab signed out.
+   *
+   * The token lives in sessionStorage, so every tab holds its own copy and this
+   * one would otherwise keep showing a signed-in UI until one of its own
+   * requests happened to come back 401. Clear immediately instead.
+   */
+  useEffect(
+    () =>
+      subscribeToSignOut(() => {
+        setUser((prev) => (prev ? null : prev));
+        saveUserToStorage(null);
+      }),
+    [],
+  );
+
   const login = useCallback(async (email, password, company_code) => {
     setLoading(true);
     try {
+      // Drop whatever the previous user left behind *before* the new identity is
+      // hydrated. Without this a sign-in inherits their stored company and branch
+      // scope, and every list the new user opens is filtered by it.
+      setUser(null);
+      clearStoredSession();
+
       const data = await authApi.login(email.trim(), password, company_code);
       const apiUser =
         data?.login || data?.data || data?.user || data?.employee || data;
@@ -203,25 +234,41 @@ export function AuthProvider({ children }) {
   const accessToken = user?.accessToken;
   const tokenType = user?.tokenType || "bearer";
 
+  // Collapses duplicate sign-outs — a double click, or a 401 arriving while the
+  // request is still in flight — onto a single backend call.
+  const logoutInFlight = useRef(null);
+
   const logout = useCallback(async () => {
-    try {
-      if (accessToken) {
-        const data = await authApi.logout(accessToken, tokenType);
+    if (logoutInFlight.current) return logoutInFlight.current;
+
+    const run = async () => {
+      try {
+        if (accessToken) {
+          // Revokes the token server-side. That endpoint is deliberately
+          // idempotent and answers 200 even for an expired or malformed token,
+          // so this can never leave the client unable to sign out.
+          await authApi.logout(accessToken, tokenType);
+        }
+
+        return { success: true, message: "Logged out successfully" };
+      } catch (error) {
+        // The local session is still cleared below. A network failure must not
+        // leave someone signed in on a shared machine.
         return {
-          success: true,
-          message: data?.message || "Logged out successfully",
+          success: false,
+          message: error.message || "Logout failed",
         };
+      } finally {
+        setUser(null);
+        saveUserToStorage(null);
+        broadcastSignOut();
+        logoutInFlight.current = null;
       }
-      return { success: true, message: "Logged out successfully" };
-    } catch (error) {
-      return {
-        success: false,
-        message: error.message || "Logout failed",
-      };
-    } finally {
-      setUser(null);
-      saveUserToStorage(null);
-    }
+    };
+
+    logoutInFlight.current = run();
+
+    return logoutInFlight.current;
   }, [accessToken, tokenType]);
 
   // These two genuinely depend on the current user, so they change identity when

@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Validator;
+use App\Support\AuthSession;
 use Tymon\JWTAuth\Facades\JWTAuth;
 
 class AuthController extends Controller
@@ -50,13 +51,15 @@ class AuthController extends Controller
             $user->save();
         }
 
-        return response()->json([
+        // Never cacheable: this response carries a bearer token. A shared cache
+        // replaying it would hand one user another user's session.
+        return AuthSession::noStore(response()->json([
             'status'      => true,
             'message'     => 'Login successful',
             'token'       => $token,
             'token_type'  => 'Bearer',
             'user'        => $user,
-        ]);
+        ]));
     }
 
     public function me()
@@ -76,17 +79,42 @@ class AuthController extends Controller
             'EMPLOYEE_FULL_AADHAAR_VIEWED'
         );
 
-        return response()->json(['status' => true, 'user' => $payload]);
+        // The authoritative current-user response. Must not be cached, or the
+        // next user through a shared cache receives this identity.
+        return AuthSession::noStore(response()->json(['status' => true, 'user' => $payload]));
     }
 
+    /**
+     * End the caller's session.
+     *
+     * Deliberately idempotent and unconditionally successful. The previous
+     * implementation called JWTAuth::invalidate(JWTAuth::getToken()) unguarded,
+     * so a logout arriving with an expired, malformed or absent token threw and
+     * returned 500 — and because the route also sat behind the jwt.auth
+     * middleware, such a request never reached this method at all. The token was
+     * therefore never blacklisted, and with a 30-day TTL it stayed valid for up
+     * to a month on whatever machine still held it while the user believed they
+     * had signed out.
+     *
+     * Logout now runs outside that middleware and treats every failure mode as a
+     * successful logout: there is no state in which telling the client "you are
+     * still signed in" is the safer answer.
+     */
     public function logout()
     {
-        try {
-            JWTAuth::invalidate(JWTAuth::getToken());
-            return response()->json(['status' => true, 'message' => 'Logged out successfully']);
-        } catch (\Exception $e) {
-            return response()->json(['status' => false, 'message' => 'Failed to logout'], 500);
+        $revoked = AuthSession::revokeCurrentToken();
+
+        if (!$revoked) {
+            // Already logged without the token by AuthSession. The client is
+            // still told to discard its session — a blacklist that is refusing
+            // writes must not keep the user signed in.
+            report(new \RuntimeException('Token revocation failed during logout.'));
         }
+
+        return AuthSession::noStore(response()->json([
+            'status' => true,
+            'message' => 'Logged out successfully',
+        ]));
     }
 
     public function register(Request $request)

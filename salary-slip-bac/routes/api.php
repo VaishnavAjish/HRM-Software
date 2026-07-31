@@ -73,10 +73,21 @@ Route::middleware(['jwt.auth', 'role:admin'])->group(function () {
 
 });
 
+/*
+ * Logout sits outside jwt.auth deliberately.
+ *
+ * The middleware rejects an expired, malformed or absent token with a 401 before
+ * the controller runs — so exactly the requests that most need to end a session
+ * could never reach the code that revokes one, and the token stayed valid for
+ * the rest of its 30-day life. The handler authenticates nothing and reveals
+ * nothing; it reads whatever token was presented, blacklists it if it can, and
+ * always answers "logged out". Throttled because it is unauthenticated.
+ */
+Route::post('logout', [AuthController::class, 'logout'])->middleware('throttle:30,1');
+
 Route::middleware('jwt.auth')->group(function () {
     // Any authenticated role (admin, agent, employee)
     Route::get('profile',    [AuthController::class, 'me']);
-    Route::post('logout',    [AuthController::class, 'logout']);
     Route::post("change-password", [AuthController::class, "changePassword"]);
     Route::post("profile-update", [UserController::class, "updateProfile"]);
     Route::get('my-permissions', [PermissionDimensionController::class, 'myPermissions']);
