@@ -1200,14 +1200,13 @@ const AppointmentModal = ({
                       name="aadhar_card_no"
                       value={formData.aadhar_card_no}
                       onChange={handleChange}
-                      disabled={isEditMode || aadhaarOnFile}
                       error={errors.aadhar_card_no}
                       inputMode="numeric"
                       maxLength={14}
                     />
                     {(isEditMode || aadhaarOnFile) && (
                       <p className="mt-1 text-[11px] text-gray-500">
-                        Aadhaar Card No is locked once saved and cannot be edited.
+                        Leave blank to keep the number already on file, or enter all 12 digits to replace it.
                       </p>
                     )}
                   </div>

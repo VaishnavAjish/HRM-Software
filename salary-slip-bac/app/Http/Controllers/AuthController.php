@@ -8,7 +8,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Validator;
 use Tymon\JWTAuth\Facades\JWTAuth;
 
@@ -230,18 +229,6 @@ class AuthController extends Controller
         if ($validator->fails()) {
             return response()->json(['status' => false, 'message' => $validator->errors()->first()], 422);
         }
-
-        // This step decides who a not-yet-onboarded employee's account
-        // belongs to (see the "first-time claim" comment below) with no
-        // stronger proof than mobile+DOB, so both a single emp_code and a
-        // single caller get a tight budget against guess/enumeration attempts.
-        $perCodeKey = 'identity-verify:code:' . $request->emp_code;
-        $perIpKey = 'identity-verify:ip:' . $request->ip();
-        if (RateLimiter::tooManyAttempts($perCodeKey, 5) || RateLimiter::tooManyAttempts($perIpKey, 20)) {
-            return response()->json(['status' => false, 'message' => 'Too many attempts. Please try again later.'], 429);
-        }
-        RateLimiter::hit($perCodeKey, 3600);
-        RateLimiter::hit($perIpKey, 3600);
 
         $emp = $this->findEmployeeForReset($request);
         if (!$emp) {

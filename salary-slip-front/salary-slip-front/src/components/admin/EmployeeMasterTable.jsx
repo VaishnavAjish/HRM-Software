@@ -3,7 +3,7 @@ import { toast } from "react-hot-toast";
 import * as XLSX from "xlsx";
 import {
   Search, Eye, Pencil, Trash2, Lock, Unlock, X,
-  Users, Loader2, Filter, RotateCcw, Download,
+  Users, Loader2, Filter, RotateCcw, Download, CloudUpload,
 } from "lucide-react";
 import Badge from "../ui/Badge";
 import Modal from "../ui/Modal";
@@ -67,7 +67,7 @@ const DETAIL_FIELDS = [
   ["Reference Name", "reference_name"], ["Reference Mobile", "reference_mobile_no"],
 ];
 
-export default function EmployeeMasterTable() {
+export default function EmployeeMasterTable({ onBulkUpload }) {
   const { user } = useAuth();
   const { companyScope, companyId } = useCompany();
 
@@ -378,39 +378,36 @@ export default function EmployeeMasterTable() {
             </div>
           </div>
 
+          <div className="w-full sm:w-auto flex items-center gap-2">
+            {onBulkUpload && (
+              <button
+                onClick={onBulkUpload}
+                className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 px-3 py-1.5 text-xs font-semibold text-white transition-colors"
+              >
+                <CloudUpload size={13} /> Bulk Employee Upload
+              </button>
+            )}
+
+            <button
+              onClick={exportToExcel}
+              className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 px-3 py-1.5 text-xs font-semibold text-white transition-colors"
+              title="Export the rows currently shown (respects filters above)"
+            >
+              <Download size={13} /> Export to Excel
+            </button>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
           <div className="relative w-full sm:w-64">
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search name, email, code..."
-              className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2 pl-9 text-sm text-gray-900 outline-none transition focus:border-brand-400 focus:bg-white dark:border-white/10 dark:bg-gray-800 dark:text-white dark:focus:bg-[#0b0f1a]"
+              className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 pl-8 text-xs text-gray-900 outline-none transition focus:border-brand-400 focus:bg-white dark:border-white/10 dark:bg-gray-800 dark:text-white dark:focus:bg-[#0b0f1a]"
             />
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+            <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-gray-400" />
           </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          {[
-            { key: "all", label: "All" },
-            { key: "trial", label: "Trial" },
-            { key: "appointment", label: "Appointment" },
-            { key: "pending", label: "Pending" },
-            { key: "employee", label: "Employee" },
-          ].map(({ key, label }) => (
-            <button
-              key={key}
-              onClick={() => setStageFilter(key)}
-              className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-                stageFilter === key
-                  ? "bg-brand-600 text-white shadow-sm shadow-brand-600/30"
-                  : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-white/5 dark:text-slate-300 dark:hover:bg-white/10"
-              }`}
-            >
-              {label} ({stageCounts[key] || 0})
-            </button>
-          ))}
-
-          <div className="h-5 w-px bg-gray-200 dark:bg-white/10 mx-1 hidden sm:block" />
 
           <div className="flex items-center gap-1.5 text-gray-400">
             <Filter size={13} />
@@ -432,6 +429,28 @@ export default function EmployeeMasterTable() {
             {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
           </select>
 
+          <div className="h-5 w-px bg-gray-200 dark:bg-white/10 mx-1 hidden sm:block" />
+
+          {[
+            { key: "all", label: "All" },
+            { key: "trial", label: "Trial" },
+            { key: "appointment", label: "Appointment" },
+            { key: "pending", label: "Pending" },
+            { key: "employee", label: "Employee" },
+          ].map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => setStageFilter(key)}
+              className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                stageFilter === key
+                  ? "bg-brand-600 text-white shadow-sm shadow-brand-600/30"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-white/5 dark:text-slate-300 dark:hover:bg-white/10"
+              }`}
+            >
+              {label} ({stageCounts[key] || 0})
+            </button>
+          ))}
+
           {(search || stageFilter !== "all" || month || year) && (
             <button
               onClick={clearFilters}
@@ -440,14 +459,6 @@ export default function EmployeeMasterTable() {
               <RotateCcw size={12} /> Reset
             </button>
           )}
-
-          <button
-            onClick={exportToExcel}
-            className="w-full sm:w-auto sm:ml-auto flex items-center justify-center gap-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 px-3 py-1.5 text-xs font-semibold text-white transition-colors"
-            title="Export the rows currently shown (respects filters above)"
-          >
-            <Download size={13} /> Export to Excel
-          </button>
         </div>
       </div>
 

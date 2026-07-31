@@ -162,11 +162,6 @@ function getSectionErrors(key, form) {
 }
 
 const fieldCls = "w-full rounded-xl border border-gray-200 bg-gray-100 px-3.5 py-2.5 text-sm text-gray-900 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-500/20 dark:border-white/10 dark:bg-slate-950/60 dark:text-white";
-const ACCOUNT_MASTER_HEADERS = [
-  "Code", "Employee Name", "Gender", "PAN", "Address", "City", "PIN", "District", "State",
-  "Mobile", "PF No.", "ESI No.", "Bank Name", "IFSC", "A/c Number", "Aadhar Number", "Branch",
-  "Department", "Designation", "Date of Joining", "DOB", "Resignation Date",
-];
 
 // Used only if the database column list hasn't loaded yet when Download
 // Template is clicked — keep in sync with UserController::importColumns().
@@ -309,13 +304,10 @@ export default function AddEmployeePage() {
   const { user } = useAuth();
   const { companyId, activeUnit, isAllCompanies } = useCompany();
 
-  // Employee Master is the only mode reachable from the UI now — the tab
-  // switcher that used to let an admin pick "single" / "pending" / "bulk" has
-  // been removed. Their render branches below are kept fully working, just
-  // unreachable, since `mode` never changes off "master" without one. To
-  // bring a mode back, reintroduce a setter and a way to trigger it.
-  const [mode] = useState("master"); // "master" | "single" | "pending" | "bulk"
-  const [bulkKind, setBulkKind] = useState("employees"); // "employees" | "account-master"
+  // Employee Master is the default mode. "single" and "pending" stay
+  // unreachable (no trigger wired to them), but "bulk" is reachable again via
+  // the "Bulk Employee Upload" button below.
+  const [mode, setMode] = useState("master"); // "master" | "single" | "pending" | "bulk"
 
   // ─── Single-employee wizard state ───
   const [form, setForm] = useState({
@@ -358,13 +350,6 @@ export default function AddEmployeePage() {
 
   const hasEmpCodeMapping = Object.values(empColumnMappings).includes("emp_code");
 
-  // ─── Bulk: account master ───
-  const [amFile, setAmFile] = useState(null);
-  const [amDragOver, setAmDragOver] = useState(false);
-  const [amUploading, setAmUploading] = useState(false);
-  const [amPreview, setAmPreview] = useState(null);
-  const amFileInputRef = useRef(null);
-
   useEffect(() => {
     salaryApi.getDepartments(user?.accessToken, user?.tokenType)
       .then((res) => setDepartmentsList(res?.data?.map((d) => d.name) || []))
@@ -372,14 +357,14 @@ export default function AddEmployeePage() {
   }, [user]);
 
   useEffect(() => {
-    if (mode !== "bulk" || bulkKind !== "employees" || importColumns.length > 0 || importColumnsLoading) return;
+    if (mode !== "bulk" || importColumns.length > 0 || importColumnsLoading) return;
     setImportColumnsLoading(true);
     salaryApi.getEmployeeImportColumns(user?.accessToken, user?.tokenType)
       .then((res) => setImportColumns(sanitizeEmployeeImportColumns(res?.data || [])))
       .catch((err) => toast.error(err.message || "Failed to load database columns"))
       .finally(() => setImportColumnsLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, bulkKind]);
+  }, [mode]);
 
   const update = (key) => (e) =>
     setForm((prev) => ({ ...prev, [key]: key === "mobileNo" ? e.target.value.replace(/\D/g, "") : e.target.value }));
@@ -572,50 +557,6 @@ export default function AddEmployeePage() {
     if (empFileInputRef.current) empFileInputRef.current.value = "";
   };
 
-  // ─── Bulk: account master handlers ───
-  const validateAndSetAmFile = async (file) => {
-    if (!file) return;
-    const allowed = [
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "application/vnd.ms-excel",
-    ];
-    if (!allowed.includes(file.type) && !/\.(xlsx|xls)$/i.test(file.name)) {
-      toast.error("Only Excel files (.xlsx, .xls) are allowed.");
-      return;
-    }
-    setAmFile(file);
-    try {
-      setAmPreview(await parseExcelPreview(file));
-    } catch (err) {
-      toast.error(err.message);
-      setAmFile(null);
-      setAmPreview(null);
-    }
-  };
-
-  const clearAmFile = (e) => {
-    e?.stopPropagation();
-    setAmFile(null);
-    setAmPreview(null);
-    if (amFileInputRef.current) amFileInputRef.current.value = "";
-  };
-
-  const handleAmUpload = async () => {
-    if (!amFile || !bulkCompanyId) return;
-    setAmUploading(true);
-    try {
-      const res = await salaryApi.uploadAccountMaster(amFile, user?.accessToken, user?.tokenType, { companyId: bulkCompanyId, unit: bulkUnit });
-      toast.success("Account master uploaded successfully!");
-      clearAmFile();
-      setBulkReloadCounter((prev) => prev + 1);
-      if (res?.batch_id) setJustUploadedBatchId(res.batch_id);
-    } catch (err) {
-      toast.error(err.message || "Upload failed. Please try again.");
-    } finally {
-      setAmUploading(false);
-    }
-  };
-
   const downloadEmployeeTemplate = () => {
     const cols = importColumns.length > 0 ? importColumns : FALLBACK_EMPLOYEE_COLUMNS;
     const headers = cols.map((f) => f.label);
@@ -629,20 +570,13 @@ export default function AddEmployeePage() {
     XLSX.writeFile(wb, "employee_bulk_upload_template.xlsx");
   };
 
-  const downloadAccountMasterTemplate = () => {
-    const ws = XLSX.utils.aoa_to_sheet([ACCOUNT_MASTER_HEADERS]);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Account Master");
-    XLSX.writeFile(wb, "account_master_template.xlsx");
-  };
-
   return (
     <div className="flex flex-col gap-4 p-2 lg:p-6 min-h-[calc(100vh-80px)] bg-transparent">
       <div className="flex flex-1 flex-col xl:flex-row gap-6">
         {mode === "bulk" && (
           <div className="w-full xl:w-96 flex-shrink-0 flex flex-col gap-4">
             <UploadBatchPanel
-              type={bulkKind === "employees" ? "employee" : "account-master"}
+              type="employee"
               icon={CloudUpload}
               title="Upload History"
               refreshKey={bulkReloadCounter}
@@ -654,7 +588,7 @@ export default function AddEmployeePage() {
 
         {/* Right Column */}
         {mode === "master" ? (
-          <EmployeeMasterTable />
+          <EmployeeMasterTable onBulkUpload={() => setMode("bulk")} />
         ) : mode === "pending" ? (
           <PendingEmployeesTab />
         ) : mode === "single" ? (
@@ -892,38 +826,27 @@ export default function AddEmployeePage() {
           <div className="flex-1 flex flex-col bg-white dark:bg-[#0b0f1a] rounded-2xl border border-gray-200 dark:border-white/10 shadow-sm overflow-hidden min-h-[70vh]">
             <div className="flex items-start justify-between gap-4 border-b border-gray-200 px-6 py-5 dark:border-white/10 shrink-0">
               <div className="flex items-start gap-3">
+                <button
+                  onClick={() => setMode("master")}
+                  className="mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-white/10 dark:hover:text-gray-200 transition"
+                  aria-label="Back to Employee Master"
+                  title="Back to Employee Master"
+                >
+                  <ChevronLeft size={18} />
+                </button>
                 <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-900/20 dark:text-brand-400">
                   <CloudUpload size={17} />
                 </div>
                 <div>
                   <h2 className="text-lg font-bold text-gray-900 dark:text-white">Bulk Employee Upload</h2>
                   <p className="text-xs text-gray-500 dark:text-slate-400">
-                    Add new employees from Excel, or update existing employees' account master details
+                    Add new employees to Employee Master from an Excel file
                   </p>
                 </div>
               </div>
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-hide">
-              <div className="inline-flex gap-1 rounded-xl border border-gray-200 bg-gray-50 p-1 dark:border-white/10 dark:bg-white/[0.03]">
-                {[
-                  { key: "employees", label: "New Employees" },
-                  { key: "account-master", label: "Account Master Update" },
-                ].map(({ key, label }) => (
-                  <button
-                    key={key}
-                    onClick={() => setBulkKind(key)}
-                    className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
-                      bulkKind === key
-                        ? "bg-brand-600 text-white shadow-sm shadow-brand-600/30"
-                        : "text-gray-500 hover:bg-gray-100 dark:text-slate-400 dark:hover:bg-white/5"
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-
               {/* Selection options */}
               <div className="rounded-2xl border border-gray-200 bg-gray-50 p-5 dark:border-white/10 dark:bg-white/[0.03]">
                 <h4 className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-gray-400 dark:text-slate-400 mb-4">
@@ -931,7 +854,7 @@ export default function AddEmployeePage() {
                 </h4>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
-                    <Label required={bulkKind === "account-master" || !isAllCompanies}>Company</Label>
+                    <Label required={!isAllCompanies}>Company</Label>
                     <select
                       value={bulkCompanyId}
                       onChange={(e) => {
@@ -944,11 +867,11 @@ export default function AddEmployeePage() {
                       className={`${fieldCls} disabled:opacity-50`}
                     >
                       <option value="">
-                        {bulkKind === "employees" && isAllCompanies ? "Mixed — use Company column from file" : "Select Company"}
+                        {isAllCompanies ? "Mixed — use Company column from file" : "Select Company"}
                       </option>
                       {COMPANY_OPTIONS.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
                     </select>
-                    {bulkKind === "employees" && isAllCompanies && (
+                    {isAllCompanies && (
                       <p className="text-[11px] text-gray-400 mt-1">
                         Uploading both companies in one sheet? Leave this blank and map a "Company" column when matching headers below — each row uses its own value.
                       </p>
@@ -964,81 +887,54 @@ export default function AddEmployeePage() {
                 </div>
 
                 <div className="mt-4 flex justify-end">
-                  {bulkKind === "account-master" ? (
-                    <Button variant="secondary" icon={<Download size={14} />} onClick={downloadAccountMasterTemplate}>
-                      Download Excel Template
-                    </Button>
-                  ) : (
-                    <Button variant="secondary" icon={<Download size={14} />} onClick={downloadEmployeeTemplate}>
-                      Download Excel Template
-                    </Button>
-                  )}
+                  <Button variant="secondary" icon={<Download size={14} />} onClick={downloadEmployeeTemplate}>
+                    Download Excel Template
+                  </Button>
                 </div>
               </div>
 
-              {/* Bulk: New Employees */}
-              {bulkKind === "employees" && (
-                <>
-                  {showValidation && empPreview ? (
-                    <BulkEmployeeValidation
-                      headers={empPreview.headers}
-                      rawRows={empPreview.rows}
-                      columnMappings={empColumnMappings}
-                      onConfirm={handleValidationConfirm}
-                      onCancel={handleValidationCancel}
-                      uploading={empUploading}
-                    />
-                  ) : !empFile ? (
-                    <DropZone
-                      dragOver={empDragOver}
-                      setDragOver={setEmpDragOver}
-                      onDrop={(e) => { e.preventDefault(); setEmpDragOver(false); const f = e.dataTransfer.files?.[0]; if (f) validateAndSetEmpFile(f); }}
-                      onClick={() => empFileInputRef.current?.click()}
-                      fileInputRef={empFileInputRef}
-                      onFileChange={(e) => { const f = e.target.files?.[0]; if (f) validateAndSetEmpFile(f); }}
-                    />
-                  ) : (
-                    <FilePreviewCard file={empFile} preview={empPreview} onClear={clearEmpFile} uploading={empUploading} />
-                  )}
-
-                  {!showValidation && empPreview && empPreview.headers.length > 0 && (
-                    importColumnsLoading ? (
-                      <p className="text-xs text-gray-400 dark:text-gray-500 text-center py-2">Checking file...</p>
-                    ) : !hasEmpCodeMapping ? (
-                      <div className="rounded-2xl border border-red-200 dark:border-red-900/40 bg-red-50 dark:bg-red-900/10 p-4">
-                        <p className="text-sm font-semibold text-red-700 dark:text-red-300">
-                          Couldn't detect an Employee Code column in this file
-                        </p>
-                        <p className="text-xs text-red-600/80 dark:text-red-400/80 mt-1">
-                          Make sure the sheet has a column like "Employee Code" or "Code" — download the template above for the expected format.
-                        </p>
-                      </div>
-                    ) : null
-                  )}
-                </>
+              {showValidation && empPreview ? (
+                <BulkEmployeeValidation
+                  headers={empPreview.headers}
+                  rawRows={empPreview.rows}
+                  columnMappings={empColumnMappings}
+                  onConfirm={handleValidationConfirm}
+                  onCancel={handleValidationCancel}
+                  uploading={empUploading}
+                />
+              ) : !empFile ? (
+                <DropZone
+                  dragOver={empDragOver}
+                  setDragOver={setEmpDragOver}
+                  onDrop={(e) => { e.preventDefault(); setEmpDragOver(false); const f = e.dataTransfer.files?.[0]; if (f) validateAndSetEmpFile(f); }}
+                  onClick={() => empFileInputRef.current?.click()}
+                  fileInputRef={empFileInputRef}
+                  onFileChange={(e) => { const f = e.target.files?.[0]; if (f) validateAndSetEmpFile(f); }}
+                />
+              ) : (
+                <FilePreviewCard file={empFile} preview={empPreview} onClear={clearEmpFile} uploading={empUploading} />
               )}
 
-              {/* Bulk: Account Master */}
-              {bulkKind === "account-master" && (
-                !amFile ? (
-                  <DropZone
-                    dragOver={amDragOver}
-                    setDragOver={setAmDragOver}
-                    onDrop={(e) => { e.preventDefault(); setAmDragOver(false); const f = e.dataTransfer.files?.[0]; if (f) validateAndSetAmFile(f); }}
-                    onClick={() => amFileInputRef.current?.click()}
-                    fileInputRef={amFileInputRef}
-                    onFileChange={(e) => { const f = e.target.files?.[0]; if (f) validateAndSetAmFile(f); }}
-                  />
-                ) : (
-                  <FilePreviewCard file={amFile} preview={amPreview} onClear={clearAmFile} uploading={amUploading} />
-                )
+              {!showValidation && empPreview && empPreview.headers.length > 0 && (
+                importColumnsLoading ? (
+                  <p className="text-xs text-gray-400 dark:text-gray-500 text-center py-2">Checking file...</p>
+                ) : !hasEmpCodeMapping ? (
+                  <div className="rounded-2xl border border-red-200 dark:border-red-900/40 bg-red-50 dark:bg-red-900/10 p-4">
+                    <p className="text-sm font-semibold text-red-700 dark:text-red-300">
+                      Couldn't detect an Employee Code column in this file
+                    </p>
+                    <p className="text-xs text-red-600/80 dark:text-red-400/80 mt-1">
+                      Make sure the sheet has a column like "Employee Code" or "Code" — download the template above for the expected format.
+                    </p>
+                  </div>
+                ) : null
               )}
             </div>
 
-            {!(showValidation && bulkKind === "employees") && (
+            {!showValidation && (
               <div className="flex items-center justify-between gap-4 border-t border-gray-200 bg-gray-50 px-6 py-4 dark:border-white/10 dark:bg-white/[0.02] shrink-0">
                 <div className="hidden items-center gap-2 text-xs text-gray-400 dark:text-slate-500 sm:flex">
-                  {bulkKind === "employees" && empPreview && !showValidation && (
+                  {empPreview && (
                     <>
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-brand-50 dark:bg-brand-900/20 text-brand-600 dark:text-brand-400 font-medium">
                         <Hash size={10} /> {empPreview.totalRows} rows
@@ -1048,38 +944,12 @@ export default function AddEmployeePage() {
                       </span>
                     </>
                   )}
-                  {bulkKind === "account-master" && amPreview && (
-                    <>
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-brand-50 dark:bg-brand-900/20 text-brand-600 dark:text-brand-400 font-medium">
-                        <Hash size={10} /> {amPreview.totalRows} rows
-                      </span>
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 font-medium">
-                        <Layers size={10} /> {amPreview.sheetName}
-                      </span>
-                    </>
-                  )}
                 </div>
 
                 <div className="ml-auto flex flex-wrap justify-end gap-3">
-                  <Button variant="secondary" onClick={() => navigate("/admin/employees")} disabled={empUploading || amUploading}>
+                  <Button variant="secondary" onClick={() => setMode("master")} disabled={empUploading}>
                     Cancel
                   </Button>
-                  {bulkKind === "employees" && !showValidation ? (
-                    <Button
-                      icon={<Upload size={14} />}
-                      disabled={empUploading || !empFile || (!bulkCompanyId && !isAllCompanies) || importColumnsLoading || !hasEmpCodeMapping}
-                    >
-                      {empUploading ? "Uploading..." : "Upload Employees"}
-                    </Button>
-                  ) : bulkKind === "account-master" ? (
-                    <Button
-                      icon={<Upload size={14} />}
-                      onClick={handleAmUpload}
-                      disabled={amUploading || !amFile || !bulkCompanyId}
-                    >
-                      {amUploading ? "Uploading..." : "Upload Account Master"}
-                    </Button>
-                  ) : null}
                 </div>
               </div>
             )}

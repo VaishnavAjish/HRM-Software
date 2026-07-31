@@ -24,7 +24,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext"; // Corrected import path
 import { authApi, salaryApi } from "../../utils/api";
-import { getAadhaarDisplayValue } from "../../utils/aadhaar";
+import { getAadhaarDisplayValue, hasStoredAadhaar, buildSafeAadhaarUpdate } from "../../utils/aadhaar";
 import toast from "react-hot-toast";
 import usePhotoCapture from "../../hooks/usePhotoCapture";
 
@@ -202,6 +202,18 @@ export default function Profile() {
       return;
     }
 
+    // A blank input on edit omits the field so the stored number survives; a
+    // partial or masked entry is refused rather than written.
+    const aadhaar = buildSafeAadhaarUpdate({
+      enteredValue: form.aadhar_card_no,
+      hasStored: hasStoredAadhaar(profile),
+    });
+    if (aadhaar.error) {
+      toast.error(aadhaar.error);
+      setActiveStep(3);
+      return;
+    }
+
     setLoading(true); // Use a loading state for the save operation
     try {
       const payload = {
@@ -216,9 +228,7 @@ export default function Profile() {
         district: form.district,
         state: form.state,
         pin: form.pin,
-        // Aadhaar is deliberately absent. The field is read-only here, so there
-        // is nothing to save — and posting it back was writing the displayed
-        // value over the stored number.
+        ...(aadhaar.include && { aadhar_card_no: aadhaar.value }),
         pan_card_no: form.pan_card_no,
         bank_name: form.bank_name,
         bank_ifsc_code: form.bank_ifsc_code,
@@ -250,8 +260,9 @@ export default function Profile() {
         district: form.district,
         state: form.state,
         pin: form.pin,
-        // Aadhaar is not edited here, so the local copy keeps whatever the
-        // server disclosed rather than being overwritten from the form.
+        // aadhar_card_no is hidden on the user model, so the update response
+        // never discloses it — sync from the value just sent instead.
+        ...(aadhaar.include && { aadhar_card_no: aadhaar.value, has_aadhaar: true }),
         pan_card_no: form.pan_card_no,
         bank_name: form.bank_name,
         bank_ifsc_code: form.bank_ifsc_code,
@@ -927,10 +938,10 @@ export default function Profile() {
               editing={editing}
               editNode={
                 <input
-                  disabled
-                  readOnly
-                  value={form.aadhar_card_no || emp.aadhar_card_no || "—"}
-                  className="mt-0.5 w-full text-sm bg-transparent border-b border-gray-200 text-gray-400 dark:text-gray-500 cursor-not-allowed py-0.5 outline-none"
+                  maxLength={14}
+                  value={form.aadhar_card_no}
+                  onChange={(e) => set("aadhar_card_no", e.target.value)}
+                  className="mt-0.5 w-full text-sm bg-transparent border-b border-brand-400 text-gray-900 dark:text-white focus:outline-none py-0.5"
                 />
               }
             />

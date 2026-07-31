@@ -719,7 +719,11 @@ class UserController extends Controller
 
                 $providedPassword = $rowData['password'] ?? '';
                 $rowData['password'] = $providedPassword !== '' ? $providedPassword : '12345678';
-                $rowData['status'] = 2;
+                // Bulk-imported employees are already vetted by whoever ran the
+                // upload, so they land Active rather than Pending — unlike a
+                // self-registered account, there is no separate approval step
+                // waiting to happen for these.
+                $rowData['status'] = 0;
 
                 try {
                     User::create($rowData);
@@ -780,7 +784,9 @@ class UserController extends Controller
                     if (!User::where('emp_code', $empCode)->where('is_deleted', 0)->exists()) {
                         $providedPassword = $rowData['password'] ?? '';
                         $rowData['password'] = $providedPassword !== '' ? $providedPassword : '12345678';
-                        $rowData['status'] = 2;
+                        // Bulk-imported employees land Active, not Pending — see
+                        // the matching comment in the rows-based branch above.
+                        $rowData['status'] = 0;
                     } else {
                         unset($rowData['password'], $rowData['status']);
                     }
