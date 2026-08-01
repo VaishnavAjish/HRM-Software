@@ -95,6 +95,17 @@ class SalariesSlipController extends Controller
             }
         }
 
-        return response()->json(['status' => true, 'data' => $slip]);
+        // The frontend falls back to the employee's own profile for any
+        // bank/statutory/contact field missing on the slip itself (older
+        // slips predate those columns being backfilled at import time) —
+        // same emp_code + company_code lookup salarySlipImport() uses.
+        $employee = \App\Models\User::where('emp_code', $slip->emp_code)
+            ->where('company_code', $slip->company_code)
+            ->first(['unit', 'department', 'designation', 'mobile_number', 'bank_account_no', 'bank_name', 'bank_ifsc_code', 'esi_no', 'pf_no', 'resignation_date']);
+
+        $data = $slip->toArray();
+        $data['user'] = $employee;
+
+        return response()->json(['status' => true, 'data' => $data]);
     }
 }

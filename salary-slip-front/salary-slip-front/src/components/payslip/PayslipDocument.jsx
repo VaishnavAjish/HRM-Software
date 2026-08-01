@@ -271,22 +271,56 @@ function NidhiPayslipLayout({ data, className }) {
 }
 
 function buildSilverTableRows(data) {
-  const earnings = [
-    { label: "BASIC", amount: Number(data.components.basicSalary || 0) },
-    { label: "HRA", amount: Number(data.components.hra || 0) },
-    {
-      label: "CON.AL",
-      amount: Number(data.components.conveyanceAllowance || 0),
-    },
-    { label: "PERFO", amount: Number(data.components.bonus || 0) },
+  // Every earning/deduction component that can carry an amount — not just
+  // the handful this template usually prints — so a component with a real
+  // value (PF, ESI, TDS, LWF, Advance, ...) never gets silently dropped from
+  // the printed total the way it previously was (Total Deductions only ever
+  // summed Professional Tax, so Net Pay came out higher than the actual net
+  // salary whenever an employee had any other deduction).
+  const earningDefs = [
+    { key: "basicSalary", label: "BASIC" },
+    { key: "dailyAllowance", label: "DA" },
+    { key: "hra", label: "HRA" },
+    { key: "wa", label: "WA" },
+    { key: "conveyanceAllowance", label: "CON.AL" },
+    { key: "educationAllowance", label: "EDU.A" },
+    { key: "medicalAllowance", label: "MED.A" },
+    { key: "mobileAllowance", label: "MOB.A" },
+    { key: "bonus", label: "PERFO" },
   ];
 
-  const deductions = [
-    {
+  const deductionDefs = [
+    { key: "professionalTax", label: "PROFESSIONAL TAX" },
+    { key: "providentFund", label: "PF" },
+    { key: "esiAmount", label: "ESI" },
+    { key: "tds", label: "TDS" },
+    { key: "lwf", label: "LWF" },
+    { key: "advance", label: "ADVANCE" },
+  ];
+
+  const nonZeroRows = (defs) =>
+    defs
+      .map((def) => ({
+        label: def.label,
+        amount: Number(data.components[def.key] || 0),
+      }))
+      .filter((row) => row.amount !== 0);
+
+  const earnings = nonZeroRows(earningDefs);
+  const deductions = nonZeroRows(deductionDefs);
+
+  if (earnings.length === 0) {
+    earnings.push({
+      label: "BASIC",
+      amount: Number(data.components.basicSalary || 0),
+    });
+  }
+  if (deductions.length === 0) {
+    deductions.push({
       label: "PROFESSIONAL TAX",
       amount: Number(data.components.professionalTax || 0),
-    },
-  ];
+    });
+  }
 
   const rowCount = Math.max(earnings.length, deductions.length, 4);
 
@@ -295,14 +329,15 @@ function buildSilverTableRows(data) {
     deduction: deductions[index] ?? null,
   }));
 
-  const totalEarnings = earnings.reduce((sum, row) => sum + row.amount, 0);
-  const totalDeductions = deductions.reduce((sum, row) => sum + row.amount, 0);
-
+  // Totals come from the fully-aggregated figures buildPayslipData already
+  // computed (which prefer the backend's own gross/deduction/net values),
+  // so Net Pay on the printed slip always matches the net salary on file —
+  // never just "sum of the rows this template happens to itemize".
   return {
     rows,
-    totalEarnings,
-    totalDeductions,
-    netPay: totalEarnings - totalDeductions,
+    totalEarnings: data.totals.earnings,
+    totalDeductions: data.totals.deductions,
+    netPay: data.totals.netPay,
   };
 }
 

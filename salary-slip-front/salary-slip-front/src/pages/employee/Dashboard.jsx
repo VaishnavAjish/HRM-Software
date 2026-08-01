@@ -82,7 +82,7 @@ export default function EmployeeDashboard() {
   const netSalary = Number(latestSlip.net_payable ?? latestSlip.net_salary ?? 0);
   const unit = backendUser?.unit || latestSlip.unit || "—";
   const totalDeduct = Number(latestSlip.total_deduct ?? latestSlip.total_deduction ?? 0);
-  const bookSalary = Number(latestSlip.book_salary ?? 0);
+  const bookSalary = Number(latestSlip.gross_salary ?? latestSlip.a_gross ?? latestSlip.book_salary ?? latestSlip.salary ?? 0);
 
   // ── salary_list — deduplicate by month+year (keep first = newest) ─
   const salaryMap = new Map();
@@ -156,12 +156,12 @@ export default function EmployeeDashboard() {
         </p>
         <div className="flex flex-wrap gap-3 mt-4">
           <div className="bg-white/10 rounded-xl px-4 py-2">
-            <p className="text-xs text-brand-200">Net Salary</p>
-            <p className="font-bold text-lg">{fmt(netSalary)}</p>
+            <p className="text-xs text-brand-200">Total Salary</p>
+            <p className="font-bold text-lg">{fmt(bookSalary)}</p>
           </div>
           <div className="bg-white/10 rounded-xl px-4 py-2">
-            <p className="text-xs text-brand-200">Book Salary</p>
-            <p className="font-bold text-lg">{fmt(bookSalary)}</p>
+            <p className="text-xs text-brand-200">Net Salary</p>
+            <p className="font-bold text-lg">{fmt(netSalary)}</p>
           </div>
           <div className="bg-white/10 rounded-xl px-4 py-2">
             <p className="text-xs text-brand-200">Deductions</p>
@@ -173,18 +173,18 @@ export default function EmployeeDashboard() {
       {/* Stat Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <StatCard
+          title="Total Salary"
+          value={fmt(bookSalary)}
+          icon={<BookOpen size={22} />}
+          color="green"
+          subtitle="Total salary"
+        />
+        <StatCard
           title="Net Salary"
           value={fmt(netSalary)}
           icon={<DollarSign size={22} />}
           color="blue"
           subtitle="Total net payable"
-        />
-        <StatCard
-          title="Book Salary"
-          value={fmt(bookSalary)}
-          icon={<BookOpen size={22} />}
-          color="green"
-          subtitle="Total book salary"
         />
         <StatCard
           title="Total Deductions"
@@ -272,7 +272,7 @@ export default function EmployeeDashboard() {
                     {monthName(s.month)} {s.year}
                   </p>
                   <p className="text-xs text-gray-400 mt-0.5 truncate">
-                    {s.designation} &middot; {s.paid_day} days paid
+                    {s.designation || backendUser?.designation || "—"} &middot; {s.paid_day ?? s.paid_days ?? 26} days paid
                   </p>
                   <p className="text-xs font-semibold text-green-600 dark:text-green-400 mt-0.5">
                     {fmt(s.net_payable)}

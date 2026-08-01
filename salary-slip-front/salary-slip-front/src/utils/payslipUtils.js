@@ -335,6 +335,7 @@ export function buildPayslipData({ emp = {}, payslip = {}, companyId } = {}) {
     { label: "BASIC", amount: basicSalary },
     { label: "DAILY ALLOWANCE", amount: dailyAllowance },
     { label: "HRA", amount: hra },
+    { label: "WA", amount: wa },
     { label: "Conv.A", amount: conveyanceAllowance },
     { label: "Edu.A", amount: educationAllowance },
     { label: "Med.A", amount: medicalAllowance },

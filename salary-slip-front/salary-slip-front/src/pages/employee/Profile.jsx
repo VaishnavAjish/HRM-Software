@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import ModernDatePicker from "../../components/ModernDatePicker";
 import {
   formatDateInputValue,
@@ -61,6 +62,7 @@ function InfoRow({
 export default function Profile() {
   const [loading, setLoading] = useState(true);
   const { user, updateCurrentUser } = useAuth();
+  const navigate = useNavigate();
   const [profile, setProfile] = useState(null);
 
   // Map the new API structure to a consistent object
@@ -285,6 +287,25 @@ export default function Profile() {
 
       if (photoFile) clearPendingPhoto();
       toast.success("Profile updated successfully");
+
+      const completionFields = [
+        "name", "email", "phone", "dob", "address", "city", "district", "state", "pin",
+        "aadhar_card_no", "pan_card_no", "bank_name", "bank_ifsc_code", "bank_account_no",
+        "gender", "department", "designation", "joining_date"
+      ];
+      let filled = 0;
+      const source = { ...form, phone: form.mobile_number || form.phone };
+      completionFields.forEach(field => {
+        if (source[field] && String(source[field]).trim() !== "") {
+          filled++;
+        }
+      });
+      const newCompletionPercentage = Math.round((filled / completionFields.length) * 100);
+
+      if (newCompletionPercentage === 100) {
+        navigate("/employee");
+        return;
+      }
     } catch (err) {
       toast.error(err.message || "Failed to update profile");
     } finally {

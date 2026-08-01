@@ -183,12 +183,20 @@ class AdminController extends Controller
         'basic' => 'basic',
         'hra' => 'hra',
         'da' => 'da',
+        'wa_al' => 'wa',
+        'wa' => 'wa',
+        'washing_allowance' => 'wa',
+        'washing' => 'wa',
         'con_al' => 'conv_a',
         'conal' => 'conv_a',
         'conveyance' => 'conv_a',
         'conv_a' => 'conv_a',
         'comm' => 'comm',
         'commission' => 'comm',
+        // "Perfo" (Performance) is the current business label for this same
+        // column — a rename, not a new field. See 'comm' above.
+        'perfo' => 'comm',
+        'performance' => 'comm',
         'other' => 'other',
         'others' => 'other',
         'gross_salary' => 'gross_salary',
@@ -406,11 +414,12 @@ class AdminController extends Controller
                 $basic = self::numOrNull($canonical['basic'] ?? null) ?? 0;
                 $hra = self::numOrNull($canonical['hra'] ?? null) ?? 0;
                 $da = self::numOrNull($canonical['da'] ?? null) ?? 0;
+                $wa = self::numOrNull($canonical['wa'] ?? null) ?? 0;
                 $convA = self::numOrNull($canonical['conv_a'] ?? null) ?? 0;
                 $comm = self::numOrNull($canonical['comm'] ?? null) ?? 0;
                 $other = self::numOrNull($canonical['other'] ?? null) ?? 0;
                 $salary = self::numOrNull($canonical['salary'] ?? null) ?? 0;
-                $componentGross = $basic + $hra + $da + $convA + $comm + $other;
+                $componentGross = $basic + $hra + $da + $wa + $convA + $comm + $other;
                 // Prefer the sum of earning components; fall back to a flat
                 // "Salary" figure for sheets that only give one number.
                 $grossSalary = $componentGross > 0
@@ -452,14 +461,15 @@ class AdminController extends Controller
                     'basic' => $basic,
                     'hra' => $hra,
                     'da' => $da,
+                    'wa' => $wa,
                     'conv_a' => $convA,
                     'comm' => $comm,
                     'other' => $other,
                     'gross_salary' => $grossSalary,
                     'pf' => $pf,
-                    'pf_uan' => $canonical['pf_uan'] ?? null,
+                    'pf_uan' => $canonical['pf_uan'] ?? $employee->pf_no ?? null,
                     'esi' => $esi,
-                    'esi_no' => $canonical['esi_no'] ?? null,
+                    'esi_no' => $canonical['esi_no'] ?? $employee->esi_no ?? null,
                     'pt' => $pt,
                     'tds' => $tds,
                     'lwf' => $lwf,
@@ -468,10 +478,15 @@ class AdminController extends Controller
                     'total_deduct' => $totalDeduction, // legacy mirror column read by dashboard/reports
                     'net_salary' => $netSalary,
                     'net_payable' => $netSalary, // legacy mirror column read by dashboard/reports
-                    'account_no' => $canonical['account_no'] ?? null,
+                    // The upload template has no columns for these — they were
+                    // only ever filled when a sheet happened to carry them
+                    // (never), leaving every payslip's bank/contact/statutory
+                    // details blank. Fall back to the employee's own stored
+                    // profile, same as emp_name/department/designation above.
+                    'account_no' => $canonical['account_no'] ?? $employee->bank_account_no ?? null,
                     'account_name' => $canonical['account_name'] ?? null,
-                    'bank_ifsc' => $canonical['bank_ifsc'] ?? null,
-                    'mobile_no' => $canonical['mobile_no'] ?? null,
+                    'bank_ifsc' => $canonical['bank_ifsc'] ?? $employee->bank_ifsc_code ?? null,
+                    'mobile_no' => $canonical['mobile_no'] ?? $employee->mobile_number ?? null,
                 ];
 
                 // Keyed on employee + month + year (not unit — an employee

@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
+use App\Support\AadhaarReference;
 use App\Support\AuthSession;
 use Tymon\JWTAuth\Facades\JWTAuth;
 
@@ -129,12 +131,30 @@ class AuthController extends Controller
             return response()->json(['status' => false, 'message' => $validator->errors()->first()], 422);
         }
 
+        $role = (int) ($request->role ?? 1);
+
         $user = User::create([
             'name'         => $request->name,
             'email'        => $request->email,
             'password'     => $request->password,
-            'role'         => $request->role ?? 1,
+            'role'         => $role,
             'company_code' => $request->company_code,
+            // This is the only creation path for RBAC admin/agent accounts —
+            // they log in with email + password directly, never claim an
+            // emp_code. Leaving it null left both `type` and `emp_code` null,
+            // which is exactly what UserController::getAppointment treats as
+            // a pending appointment, so every admin/agent created here leaked
+            // into the Appointments list. UserController::store already
+            // avoids this for the employee-creation path by forcing a code;
+            // mirror that here.
+            'emp_code'     => strtoupper(Str::random(8)),
+            // Role 4 (Agent) isn't excluded by role in UserController::index
+            // (View Employees) the way Admin/Super Admin are — only its
+            // `type` is checked there, and 'agent' is the value the rest of
+            // the app already keys off (e.g. added_by scoping). Without it,
+            // fixing the emp_code above would have made agents newly leak
+            // into View Employees instead of Appointments.
+            'type'         => $role === 4 ? 'agent' : null,
         ]);
 
         $token = JWTAuth::fromUser($user);
@@ -250,7 +270,6 @@ class AuthController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'emp_code' => 'required',
-            'mobile_number' => 'required',
             'photo' => 'nullable|image|mimes:jpeg,jpg,png,webp|max:5120',
         ]);
 
@@ -266,20 +285,45 @@ class AuthController extends Controller
             return response()->json(['status' => false, 'message' => 'Account is deactivated'], 403);
         }
 
-        $submittedMobile = preg_replace('/\D/', '', (string) $request->mobile_number);
+        // The "Verify Employee" screen collects an Aadhaar card number, not a
+        // mobile number — the frontend sends it under several legacy field
+        // name aliases (aadhar_card_no, aadhaar_no, mobile_number, ...) left
+        // over from earlier iterations of this flow. This used to validate
+        // $request->mobile_number against $emp->mobile_number, which meant
+        // the Aadhaar the user actually typed was never checked and instead
+        // compared (as a "mobile number") against the real mobile on file —
+        // failing for every already-registered employee.
+        $submittedAadhaar = AadhaarReference::normalise((string) (
+            $request->aadhar_card_no
+                ?? $request->aadhaar_card_no
+                ?? $request->aadhar_no
+                ?? $request->aadhaar_no
+                ?? $request->aadhar
+                ?? $request->aadhaar
+                ?? $request->mobile_number
+        ));
 
-        if (!empty($emp->mobile_number)) {
-            $onFileMobile = preg_replace('/\D/', '', (string) $emp->mobile_number);
-            if ($onFileMobile !== $submittedMobile) {
-                return response()->json(['status' => false, 'message' => 'Details do not match our records'], 422);
-            }
+        if (!AadhaarReference::isValid($submittedAadhaar)) {
+            return response()->json(['status' => false, 'message' => 'Enter a valid 12-digit Aadhar card number'], 422);
+        }
+
+        // Aadhaar can be on file in either the legacy plaintext column or the
+        // newer encrypted one (set via setAadhaarNumber()/the Aadhaar export
+        // flow) — prefer the encrypted value when present since that's the
+        // one later-verified employees actually have populated.
+        $onFileAadhaar = AadhaarReference::normalise(
+            (string) ($emp->encrypted_aadhaar_number ?? $emp->getRawOriginal('aadhar_card_no'))
+        );
+
+        if ($onFileAadhaar !== '' && $onFileAadhaar !== $submittedAadhaar) {
+            return response()->json(['status' => false, 'message' => 'Details do not match our records'], 422);
         }
 
         // First-time claim: nothing on file yet to check against, so capture
         // what was submitted. Once set, future attempts are cross-checked
         // against these values.
-        if (empty($emp->mobile_number)) {
-            $emp->mobile_number = $request->mobile_number;
+        if ($onFileAadhaar === '') {
+            $emp->aadhar_card_no = $submittedAadhaar;
         }
         if (empty($emp->address) && $request->filled('address')) {
             $emp->address = $request->address;

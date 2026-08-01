@@ -1049,25 +1049,60 @@ export const authApi = {
     });
   },
 
-  verifyEmpCode(empCode, companyId, unit, details = {}) {
-    const payload = this.buildScopedResetPayload(companyId, unit, {
-      emp_code: empCode,
-      mobile_number: details.mob_num,
-      dob: details.dob,
-      address: details.address,
-      type: 0,
-    });
+  async verifyEmpCode(empCode, companyId, unit, details = {}) {
+    const rawAadhaar = String(details.aadhar_num || details.mob_num || "").replace(/\D/g, "");
+    const formattedAadhaar = rawAadhaar.length === 12
+      ? `${rawAadhaar.slice(0, 4)} ${rawAadhaar.slice(4, 8)} ${rawAadhaar.slice(8, 12)}`
+      : rawAadhaar;
+    const dashedAadhaar = rawAadhaar.length === 12
+      ? `${rawAadhaar.slice(0, 4)}-${rawAadhaar.slice(4, 8)}-${rawAadhaar.slice(8, 12)}`
+      : rawAadhaar;
 
-    const formData = new FormData();
-    Object.entries(payload).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) formData.append(key, value);
-    });
-    if (details.photo) formData.append("photo", details.photo);
+    // Try formatted first (since DB stores Aadhaar with spaces like "1234 1234 1234"), then raw, then dashed
+    const aadhaarVariations = Array.from(new Set([
+      formattedAadhaar,
+      rawAadhaar,
+      dashedAadhaar,
+    ])).filter(Boolean);
 
-    return apiRequest("/new-emp_code", {
-      method: "POST",
-      body: formData,
-    });
+    let lastError = null;
+
+    for (const val of aadhaarVariations) {
+      try {
+        const payload = this.buildScopedResetPayload(companyId, unit, {
+          emp_code: empCode,
+          mobile_number: val,
+          mobile_no: val,
+          mobile: val,
+          aadhar_card_no: val,
+          aadhar_card_number: val,
+          aadhaar_card_no: val,
+          aadhaar_card_number: val,
+          aadhar_no: val,
+          aadhaar_no: val,
+          aadhar: val,
+          aadhaar: val,
+          dob: details.dob,
+          address: details.address,
+          type: 0,
+        });
+
+        const formData = new FormData();
+        Object.entries(payload).forEach(([key, value]) => {
+          if (value !== undefined && value !== null) formData.append(key, value);
+        });
+        if (details.photo) formData.append("photo", details.photo);
+
+        return await apiRequest("/new-emp_code", {
+          method: "POST",
+          body: formData,
+        });
+      } catch (err) {
+        lastError = err;
+      }
+    }
+
+    throw lastError || new Error("Could not verify your details. Please check and try again.");
   },
 
   // `extra` carries emp_code/verification_token/company_code/unit from a
