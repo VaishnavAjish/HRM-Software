@@ -372,7 +372,7 @@ class UserController extends Controller
             ->where('company_code', 'nidhi-impex')
             ->update(['unit' => 'Shreeji']);
         \App\Models\User::whereNull('unit')->orWhere('unit', '')
-            ->where('company_code', 'silverstar')
+            ->whereIn('company_code', ['silverstar', 'silver-star'])
             ->update(['unit' => 'Daduk']);
 
         $status = $request->status;
@@ -666,13 +666,194 @@ class UserController extends Controller
         return 'Could not save this row due to a database error';
     }
 
+    private function parseImportDate($val): ?string
+    {
+        if (empty($val)) {
+            return null;
+        }
+
+        if (is_numeric($val) && $val > 10000 && $val < 60000) {
+            try {
+                return \Carbon\Carbon::instance(\PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject($val))->toDateString();
+            } catch (\Throwable $e) {
+                // fallback
+            }
+        }
+
+        $val = trim((string) $val);
+        if ($val === '') {
+            return null;
+        }
+
+        if (strpos($val, '1900') !== false || strpos($val, '00-00') !== false || $val === '00-01-1900') {
+            return null;
+        }
+
+        $formats = [
+            'd-m-Y',
+            'd/m/Y',
+            'j-n-Y',
+            'j/n/Y',
+            'Y-m-d',
+            'Y/m/d',
+        ];
+
+        foreach ($formats as $fmt) {
+            try {
+                return \Carbon\Carbon::createFromFormat($fmt, $val)->toDateString();
+            } catch (\Throwable $e) {
+                // continue
+            }
+        }
+
+        try {
+            return \Carbon\Carbon::parse($val)->toDateString();
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    private function resolveCompanyFromUnit(?string $unit): ?string
+    {
+        if (empty($unit)) {
+            return null;
+        }
+        $unit = strtolower(trim($unit));
+        if (in_array($unit, ['daduk', 'dhaduk'], true)) {
+            return 'silver-star';
+        }
+        if (in_array($unit, ['shreeji', 'shreeji building'], true)) {
+            return 'nidhi-impex';
+        }
+        return null;
+    }
+
+    private function sanitizeRowData(array $rowData): array
+    {
+        // 1. Employee Code
+        if (isset($rowData['emp_code'])) {
+            $val = trim((string)$rowData['emp_code']);
+            if (str_ends_with($val, '.0')) {
+                $val = substr($val, 0, -2);
+            }
+            $rowData['emp_code'] = $val;
+        }
+
+        // 2. Mobile Number
+        if (isset($rowData['mobile_number'])) {
+            $val = trim((string)$rowData['mobile_number']);
+            if (str_ends_with($val, '.0')) {
+                $val = substr($val, 0, -2);
+            }
+            $rowData['mobile_number'] = preg_replace('/\D/', '', $val);
+        }
+
+        // 3. Email
+        if (isset($rowData['email'])) {
+            $email = strtolower(trim((string)$rowData['email']));
+            if ($email === '0' || $email === '0.0' || $email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                $rowData['email'] = null;
+            } else {
+                $rowData['email'] = $email;
+            }
+        }
+
+        // 4. Aadhaar Card Number
+        if (isset($rowData['aadhar_card_no'])) {
+            $val = trim((string)$rowData['aadhar_card_no']);
+            if (str_ends_with($val, '.0')) {
+                $val = substr($val, 0, -2);
+            }
+            $rowData['aadhar_card_no'] = preg_replace('/\D/', '', $val);
+        }
+
+        // 5. PAN Card Number
+        if (isset($rowData['pan_card_no'])) {
+            $rowData['pan_card_no'] = strtoupper(preg_replace('/\s+/', '', (string)$rowData['pan_card_no']));
+        }
+
+        // 6. Bank Account No
+        if (isset($rowData['bank_account_no'])) {
+            $val = trim((string)$rowData['bank_account_no']);
+            if (str_ends_with($val, '.0')) {
+                $val = substr($val, 0, -2);
+            }
+            $rowData['bank_account_no'] = preg_replace('/\s+/', '', $val);
+        }
+
+        // 7. Bank IFSC Code
+        if (isset($rowData['bank_ifsc_code'])) {
+            $rowData['bank_ifsc_code'] = strtoupper(preg_replace('/\s+/', '', (string)$rowData['bank_ifsc_code']));
+        }
+
+        // 8. Gender
+        if (isset($rowData['gender'])) {
+            $gender = strtolower(trim((string)$rowData['gender']));
+            if ($gender === 'm' || $gender === 'male') {
+                $rowData['gender'] = 'Male';
+            } elseif ($gender === 'f' || $gender === 'female') {
+                $rowData['gender'] = 'Female';
+            } elseif ($gender !== '') {
+                $rowData['gender'] = ucfirst($gender);
+            } else {
+                $rowData['gender'] = null;
+            }
+        }
+
+        // 9. Company Code
+        $comp = null;
+        if (isset($rowData['company_code'])) {
+            $comp = strtolower(trim((string)$rowData['company_code']));
+            $comp = str_replace(' ', '-', $comp);
+            if (in_array($comp, ['silver', 'silverstar', 'silver-star', 'silver-star-jewels'], true)) {
+                $comp = 'silver-star';
+            } elseif (in_array($comp, ['nidhi', 'nidhiimpex', 'nidhi-impex', 'nidhi-impex-pvt-ltd'], true)) {
+                $comp = 'nidhi-impex';
+            } else {
+                $comp = null;
+            }
+        }
+
+        // 10. Unit
+        $unitVal = null;
+        if (isset($rowData['unit'])) {
+            $unitVal = trim((string)$rowData['unit']);
+            $lowerUnit = strtolower($unitVal);
+            if ($lowerUnit === 'daduk' || $lowerUnit === 'dhaduk') {
+                $unitVal = 'Daduk';
+            } elseif ($lowerUnit === 'shreeji' || $lowerUnit === 'shreeji building') {
+                $unitVal = 'Shreeji';
+            } elseif ($lowerUnit === 'ichapur' || $lowerUnit === 'ichhapore' || $lowerUnit === 'ichhapor') {
+                $unitVal = 'Ichapur';
+            }
+            $rowData['unit'] = $unitVal;
+        }
+
+        // If company_code is not resolved yet, infer it from the unique Unit
+        if (empty($comp) && !empty($unitVal)) {
+            $comp = $this->resolveCompanyFromUnit($unitVal);
+        }
+
+        $rowData['company_code'] = $comp;
+
+        return $rowData;
+    }
+
     public function import(Request $request)
     {
+        set_time_limit(180);
         $imported = 0;
         $skipped = [];
         $rowReports = [];
         $companyCode = $request->company_code ?: null;
+        if ($companyCode === 'all') {
+            $companyCode = null;
+        }
         $unit = $request->unit ?: null;
+        $batchId = $request->batch_id ?: null;
+
+        $rowsData = [];
+        $fileName = '';
 
         if ($request->has('rows')) {
             $rowsData = $request->input('rows', []);
@@ -682,64 +863,9 @@ class UserController extends Controller
             if (!is_array($rowsData)) {
                 $rowsData = [];
             }
-
-            foreach ($rowsData as $rowIndex => $rowData) {
-                $excelRowNum = $rowIndex + 2;
-
-                $rowData['role'] = 3;
-                $rowData['company_code'] = $rowData['company_code'] ?? $companyCode ?? 'nidhi-impex';
-                if ($unit && empty($rowData['unit'])) {
-                    $rowData['unit'] = $unit;
-                }
-
-                $empCode = trim((string) ($rowData['emp_code'] ?? ''));
-                if ($empCode === '') {
-                    $reason = 'Missing employee code';
-                    $skipped[] = "Row {$excelRowNum}: {$reason}";
-                    $rowReports[] = ['row_number' => $excelRowNum, 'status' => 'failed', 'reason' => $reason, 'row_data' => $rowData];
-                    continue;
-                }
-                $rowData['emp_code'] = $empCode;
-
-                $existing = User::where('emp_code', $empCode)->where('company_code', $rowData['company_code'])->where('is_deleted', 0)->exists();
-                if ($existing) {
-                    $reason = "Employee code '{$empCode}' already exists in the system";
-                    $skipped[] = "Row {$excelRowNum}: {$reason}";
-                    $rowReports[] = ['row_number' => $excelRowNum, 'status' => 'failed', 'reason' => $reason, 'row_data' => $rowData];
-                    continue;
-                }
-
-                $email = trim((string) ($rowData['email'] ?? ''));
-                if ($email !== '' && User::where('email', $email)->where('is_deleted', 0)->exists()) {
-                    $reason = "Email '{$email}' is already used by another employee";
-                    $skipped[] = "Row {$excelRowNum}: {$reason}";
-                    $rowReports[] = ['row_number' => $excelRowNum, 'status' => 'failed', 'reason' => $reason, 'row_data' => $rowData];
-                    continue;
-                }
-
-                $providedPassword = $rowData['password'] ?? '';
-                $rowData['password'] = $providedPassword !== '' ? $providedPassword : '12345678';
-                // Bulk-imported employees are already vetted by whoever ran the
-                // upload, so they land Active rather than Pending — unlike a
-                // self-registered account, there is no separate approval step
-                // waiting to happen for these.
-                $rowData['status'] = 0;
-
-                try {
-                    User::create($rowData);
-                    $imported++;
-                    $rowReports[] = ['row_number' => $excelRowNum, 'status' => 'passed', 'reason' => null, 'row_data' => $rowData];
-                } catch (\Throwable $rowError) {
-                    $reason = $this->friendlyImportError($rowError);
-                    $skipped[] = "Row {$excelRowNum}: {$reason}";
-                    $rowReports[] = ['row_number' => $excelRowNum, 'status' => 'failed', 'reason' => $reason, 'row_data' => $rowData];
-                }
-            }
-
             $fileName = 'json-import-' . now()->format('Ymd_His') . '.json';
         } else {
             $request->validate(['file' => 'required|file']);
-
             $file = $request->file('file');
             $mapping = $request->mapping ? json_decode($request->mapping, true) : [];
 
@@ -752,9 +878,6 @@ class UserController extends Controller
                     if (!array_filter($row, fn ($v) => $v !== null && $v !== '')) {
                         continue;
                     }
-
-                    $excelRowNum = $rowIndex + 2;
-
                     $row = array_slice(array_pad($row, count($header), null), 0, count($header));
                     $rowData = array_combine($header, $row);
                     if ($mapping) {
@@ -764,82 +887,160 @@ class UserController extends Controller
                         }
                         $rowData = $mapped;
                     }
-
-                    $rowData['role'] = 3;
-                    $rowData['company_code'] = $rowData['company_code'] ?? $companyCode ?? 'nidhi-impex';
-                    if ($unit && empty($rowData['unit'])) {
-                        $rowData['unit'] = $unit;
-                    }
-
-                    $empCode = trim((string) ($rowData['emp_code'] ?? ''));
-                    if ($empCode === '') {
-                        $reason = 'Missing employee code';
-                        $skipped[] = "Row {$excelRowNum}: {$reason}";
-                        $rowReports[] = ['row_number' => $excelRowNum, 'status' => 'failed', 'reason' => $reason, 'row_data' => $rowData];
-                        continue;
-                    }
-
-                    $rowData['emp_code'] = $empCode;
-
-                    if (!User::where('emp_code', $empCode)->where('is_deleted', 0)->exists()) {
-                        $providedPassword = $rowData['password'] ?? '';
-                        $rowData['password'] = $providedPassword !== '' ? $providedPassword : '12345678';
-                        // Bulk-imported employees land Active, not Pending — see
-                        // the matching comment in the rows-based branch above.
-                        $rowData['status'] = 0;
-                    } else {
-                        unset($rowData['password'], $rowData['status']);
-                    }
-
-                    $existing = User::where('emp_code', $empCode)->where('company_code', $rowData['company_code'] ?? 'nidhi-impex')->where('is_deleted', 0)->exists();
-                    if ($existing) {
-                        $reason = "Employee code '{$empCode}' already exists in the system";
-                        $skipped[] = "Row {$excelRowNum}: {$reason}";
-                        $rowReports[] = ['row_number' => $excelRowNum, 'status' => 'failed', 'reason' => $reason, 'row_data' => $rowData];
-                        continue;
-                    }
-
-                    $email = trim((string) ($rowData['email'] ?? ''));
-                    if ($email !== '' && User::where('email', $email)->where('is_deleted', 0)->exists()) {
-                        $reason = "Email '{$email}' is already used by another employee";
-                        $skipped[] = "Row {$excelRowNum}: {$reason}";
-                        $rowReports[] = ['row_number' => $excelRowNum, 'status' => 'failed', 'reason' => $reason, 'row_data' => $rowData];
-                        continue;
-                    }
-
-                    try {
-                        User::create($rowData);
-                        $imported++;
-                        $rowReports[] = ['row_number' => $excelRowNum, 'status' => 'passed', 'reason' => null, 'row_data' => $rowData];
-                    } catch (\Throwable $rowError) {
-                        $reason = $this->friendlyImportError($rowError);
-                        $skipped[] = "Row {$excelRowNum}: {$reason}";
-                        $rowReports[] = ['row_number' => $excelRowNum, 'status' => 'failed', 'reason' => $reason, 'row_data' => $rowData];
-                    }
+                    $rowsData[] = $rowData;
                 }
             } catch (\Throwable $e) {
                 return response()->json(['status' => false, 'message' => 'Import failed: ' . $e->getMessage()], 500);
             }
-
             $fileName = $file->getClientOriginalName();
         }
 
-        $batchId = null;
+        // Sanitize all row data to prevent space and Excel float suffix (.0) issues in phone numbers, codes, bank details, etc.
+        $sanitizedRows = [];
+        foreach ($rowsData as $rowData) {
+            $sanitizedRows[] = $this->sanitizeRowData($rowData);
+        }
+        $rowsData = $sanitizedRows;
+
+        // Cache existing codes and emails to avoid queries inside loop
+        $empCodes = array_filter(array_map('trim', array_column($rowsData, 'emp_code')));
+        $emails = array_filter(array_map('trim', array_column($rowsData, 'email')));
+
+        $existingEmpCodes = [];
+        if (!empty($empCodes)) {
+            $existingEmpCodes = User::whereIn('emp_code', $empCodes)
+                ->where('is_deleted', 0)
+                ->select('emp_code', 'company_code')
+                ->get()
+                ->groupBy('emp_code')
+                ->map(fn($group) => $group->pluck('company_code')->toArray())
+                ->toArray();
+        }
+
+        $existingEmails = [];
+        if (!empty($emails)) {
+            $existingEmails = User::whereIn('email', $emails)
+                ->where('is_deleted', 0)
+                ->pluck('email')
+                ->map(fn($e) => strtolower(trim($e)))
+                ->toArray();
+        }
+
+        $hashedPasswordsCache = [];
+
+        // Wrap the insertion loop in a single DB transaction for optimal performance
+        \Illuminate\Support\Facades\DB::beginTransaction();
+
         try {
-            $batch = UploadBatch::create([
-                'type' => 'employee',
-                'company_code' => $companyCode,
-                'unit' => $unit,
-                'file_name' => $fileName,
-                'total_rows' => count($rowReports),
-                'success_count' => $imported,
-                'failed_count' => count($skipped),
-                'uploaded_by' => auth('api')->id(),
-            ]);
-            $batch->rows()->createMany($rowReports);
-            $batchId = $batch->id;
+            foreach ($rowsData as $rowIndex => $rowData) {
+                $excelRowNum = $rowIndex + 2;
+
+                $rowData['role'] = 3;
+                $rowData['company_code'] = $rowData['company_code'] ?? $companyCode ?? 'nidhi-impex';
+                if ($unit && empty($rowData['unit'])) {
+                    $rowData['unit'] = $unit;
+                }
+
+                // Date normalization
+                if (isset($rowData['dob'])) {
+                    $rowData['dob'] = $this->parseImportDate($rowData['dob']);
+                }
+                if (isset($rowData['joining_date'])) {
+                    $rowData['joining_date'] = $this->parseImportDate($rowData['joining_date']);
+                }
+                if (isset($rowData['resignation_date'])) {
+                    $rowData['resignation_date'] = $this->parseImportDate($rowData['resignation_date']);
+                }
+
+                $empCode = trim((string) ($rowData['emp_code'] ?? ''));
+                if ($empCode === '') {
+                    $reason = 'Missing employee code';
+                    $skipped[] = "Row {$excelRowNum}: {$reason}";
+                    $rowReports[] = ['row_number' => $excelRowNum, 'status' => 'failed', 'reason' => $reason, 'row_data' => $rowData];
+                    continue;
+                }
+                $rowData['emp_code'] = $empCode;
+
+                $companyOfRow = $rowData['company_code'];
+                if (isset($existingEmpCodes[$empCode]) && in_array($companyOfRow, $existingEmpCodes[$empCode], true)) {
+                    $reason = "Employee code '{$empCode}' already exists in the system";
+                    $skipped[] = "Row {$excelRowNum}: {$reason}";
+                    $rowReports[] = ['row_number' => $excelRowNum, 'status' => 'failed', 'reason' => $reason, 'row_data' => $rowData];
+                    continue;
+                }
+
+                $email = trim((string) ($rowData['email'] ?? ''));
+                if ($email !== '' && in_array(strtolower($email), $existingEmails, true)) {
+                    $reason = "Email '{$email}' is already used by another employee";
+                    $skipped[] = "Row {$excelRowNum}: {$reason}";
+                    $rowReports[] = ['row_number' => $excelRowNum, 'status' => 'failed', 'reason' => $reason, 'row_data' => $rowData];
+                    continue;
+                }
+
+                $providedPassword = $rowData['password'] ?? '';
+                $rawPassword = $providedPassword !== '' ? $providedPassword : '12345678';
+                if (!isset($hashedPasswordsCache[$rawPassword])) {
+                    $hashedPasswordsCache[$rawPassword] = \Illuminate\Support\Facades\Hash::make($rawPassword);
+                }
+                $rowData['password'] = $hashedPasswordsCache[$rawPassword];
+                $rowData['status'] = 0;
+
+                try {
+                    User::create($rowData);
+                    $imported++;
+                    $rowReports[] = ['row_number' => $excelRowNum, 'status' => 'passed', 'reason' => null, 'row_data' => $rowData];
+
+                    // Track newly inserted in-memory
+                    if (!isset($existingEmpCodes[$empCode])) {
+                        $existingEmpCodes[$empCode] = [];
+                    }
+                    $existingEmpCodes[$empCode][] = $companyOfRow;
+
+                    if ($email !== '') {
+                        $existingEmails[] = strtolower($email);
+                    }
+                } catch (\Throwable $rowError) {
+                    $reason = $this->friendlyImportError($rowError);
+                    $skipped[] = "Row {$excelRowNum}: {$reason}";
+                    $rowReports[] = ['row_number' => $excelRowNum, 'status' => 'failed', 'reason' => $reason, 'row_data' => $rowData];
+                }
+            }
+
+            $batch = null;
+            if ($batchId) {
+                $batch = UploadBatch::find($batchId);
+            }
+
+            try {
+                if ($batch) {
+                    $batch->update([
+                        'total_rows' => $batch->total_rows + count($rowReports),
+                        'success_count' => $batch->success_count + $imported,
+                        'failed_count' => $batch->failed_count + count($skipped),
+                    ]);
+                    $batch->rows()->createMany($rowReports);
+                } else {
+                    $batch = UploadBatch::create([
+                        'type' => 'employee',
+                        'company_code' => $companyCode,
+                        'unit' => $unit,
+                        'file_name' => $fileName,
+                        'total_rows' => count($rowReports),
+                        'success_count' => $imported,
+                        'failed_count' => count($skipped),
+                        'uploaded_by' => auth('api')->id(),
+                    ]);
+                    $batch->rows()->createMany($rowReports);
+                    $batchId = $batch->id;
+                }
+            } catch (\Throwable $e) {
+                \Log::error('Failed to record employee import batch: ' . $e->getMessage());
+            }
+
+            \Illuminate\Support\Facades\DB::commit();
         } catch (\Throwable $e) {
-            \Log::error('Failed to record employee import batch: ' . $e->getMessage());
+            \Illuminate\Support\Facades\DB::rollBack();
+            return response()->json(['status' => false, 'message' => 'Import failed: ' . $e->getMessage()], 500);
         }
 
         $message = "$imported employees imported";

@@ -97,16 +97,33 @@ function parseExcelPreview(file) {
     reader.onload = (e) => {
       try {
         const data = new Uint8Array(e.target.result);
-        const workbook = XLSX.read(data, { type: "array" });
+        const workbook = XLSX.read(data, { type: "array", cellDates: true });
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
         const allRows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
         const [headerRow = [], ...dataRows] = allRows;
+
+        // Format Date objects to YYYY-MM-DD string format
+        const formattedRows = dataRows.map(row =>
+          Array.isArray(row)
+            ? row.map(cell => {
+                if (cell instanceof Date) {
+                  // SheetJS parses dates in UTC. Format using UTC methods to avoid TZ offset shifts.
+                  const y = cell.getUTCFullYear();
+                  const m = String(cell.getUTCMonth() + 1).padStart(2, "0");
+                  const d = String(cell.getUTCDate()).padStart(2, "0");
+                  return `${y}-${m}-${d}`;
+                }
+                return cell;
+              })
+            : row
+        );
+
         resolve({
           sheetName,
           headers: headerRow.map(String),
-          rows: dataRows, // full data — callers slice for display; validation needs every row
-          totalRows: dataRows.length,
+          rows: formattedRows,
+          totalRows: formattedRows.length,
         });
       } catch {
         reject(new Error("Could not read file. Make sure it is a valid Excel file."));
@@ -341,6 +358,7 @@ export default function AddEmployeePage() {
   const [empFile, setEmpFile] = useState(null);
   const [empDragOver, setEmpDragOver] = useState(false);
   const [empUploading, setEmpUploading] = useState(false);
+  const [empUploadProgress, setEmpUploadProgress] = useState(0);
   const [empPreview, setEmpPreview] = useState(null);
   const [empColumnMappings, setEmpColumnMappings] = useState({});
   const [importColumns, setImportColumns] = useState([]);
@@ -522,25 +540,42 @@ export default function AddEmployeePage() {
   const handleValidationConfirm = async (validRows) => {
     if (validRows.length === 0 || empUploading) return;
     setEmpUploading(true);
+    setEmpUploadProgress(0);
+
+    const chunkSize = 100;
+    const totalRows = validRows.length;
+    let batchId = null;
+    let totalImported = 0;
+    let totalSkipped = 0;
+
     try {
-      const res = await authApi.importEmployeeRows(
-        validRows, user?.accessToken, user?.tokenType,
-        { companyId: bulkCompanyId, unit: bulkUnit }, bulkUnit,
-      );
-      const importedCount = res?.imported ?? 0;
-      const skippedCount = res?.skipped?.length ?? 0;
-      if (importedCount > 0) {
-        toast.success(`${importedCount} employee(s) imported successfully` + (skippedCount > 0 ? `, ${skippedCount} row(s) skipped` : ""));
+      for (let i = 0; i < totalRows; i += chunkSize) {
+        const chunk = validRows.slice(i, i + chunkSize);
+        const res = await authApi.importEmployeeRows(
+          chunk, user?.accessToken, user?.tokenType,
+          { companyId: bulkCompanyId, unit: bulkUnit, batch_id: batchId }, bulkUnit,
+        );
+        batchId = res?.batch_id || batchId;
+        totalImported += res?.imported ?? 0;
+        totalSkipped += res?.skipped?.length ?? 0;
+
+        const progress = Math.min(100, Math.round(((i + chunk.length) / totalRows) * 100));
+        setEmpUploadProgress(progress);
+      }
+
+      if (totalImported > 0) {
+        toast.success(`${totalImported} employee(s) imported successfully` + (totalSkipped > 0 ? `, ${totalSkipped} row(s) skipped` : ""));
       } else {
-        toast.error(res?.message || "Import completed but no records were added");
+        toast.error("Import completed but no records were added");
       }
       clearEmpFile();
       setBulkReloadCounter((prev) => prev + 1);
-      if (res?.batch_id) setJustUploadedBatchId(res.batch_id);
+      if (batchId) setJustUploadedBatchId(batchId);
     } catch (err) {
       toast.error(err.message || "Import failed. Please try again.");
     } finally {
       setEmpUploading(false);
+      setEmpUploadProgress(0);
     }
   };
 
@@ -901,6 +936,7 @@ export default function AddEmployeePage() {
                   onConfirm={handleValidationConfirm}
                   onCancel={handleValidationCancel}
                   uploading={empUploading}
+                  uploadProgress={empUploadProgress}
                 />
               ) : !empFile ? (
                 <DropZone

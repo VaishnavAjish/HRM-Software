@@ -66,7 +66,7 @@ Route::middleware(['jwt.auth', 'role:admin'])->group(function () {
             ->where('company_code', 'nidhi-impex')
             ->update(['unit' => 'Shreeji']);
         \App\Models\User::whereNull('unit')->orWhere('unit', '')
-            ->where('company_code', 'silverstar')
+            ->whereIn('company_code', ['silverstar', 'silver-star'])
             ->update(['unit' => 'Daduk']);
         return "Fixed units";
     });

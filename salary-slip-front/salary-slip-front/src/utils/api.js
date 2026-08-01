@@ -1158,6 +1158,7 @@ export const authApi = {
     unit,
   ) {
     const scope = resolveCompanyScope(companyId);
+    const batchId = typeof companyId === "object" ? companyId.batch_id : null;
     return apiRequest("/employee/import", {
       method: "POST",
       headers: accessToken
@@ -1167,6 +1168,7 @@ export const authApi = {
         rows,
         company_code: resolveWriteCompanyId(scope.companyId),
         unit: unit || scope.unit || "",
+        batch_id: batchId || null,
       }),
     });
   },

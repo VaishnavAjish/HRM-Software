@@ -55,6 +55,7 @@ export default function BulkEmployeeValidation({
   onConfirm,
   onCancel,
   uploading = false,
+  uploadProgress = 0,
 }) {
   const [rows, setRows] = useState(() =>
     rawRows.map((rowValues, idx) => {
@@ -298,14 +299,25 @@ export default function BulkEmployeeValidation({
       </Modal>
 
       <div className="flex items-center justify-between gap-4 border-t border-gray-200 bg-gray-50 px-4 py-3 dark:border-white/10 dark:bg-white/[0.02]">
-        <p className="text-xs text-gray-500 dark:text-gray-400">
-          {validatedRows.valid.length} row(s) ready to upload
-          {validatedRows.invalid.length > 0 && ` · ${validatedRows.invalid.length} need correction`}
-        </p>
+        <div className="flex-1 text-xs text-gray-500 dark:text-gray-400">
+          {uploading ? (
+            <div className="flex items-center gap-3 w-full max-w-xs">
+              <div className="flex-1 bg-gray-200 rounded-full h-2 dark:bg-gray-700 overflow-hidden">
+                <div className="bg-brand-600 h-2 rounded-full transition-all duration-300" style={{ width: `${uploadProgress}%` }}></div>
+              </div>
+              <span className="font-semibold text-brand-600 dark:text-brand-400 text-xs min-w-[32px]">{uploadProgress}%</span>
+            </div>
+          ) : (
+            <>
+              {validatedRows.valid.length} row(s) ready to upload
+              {validatedRows.invalid.length > 0 && ` · ${validatedRows.invalid.length} need correction`}
+            </>
+          )}
+        </div>
         <div className="flex gap-3">
           <Button variant="secondary" onClick={onCancel} disabled={uploading}>Back</Button>
           <Button icon={<Upload size={14} />} onClick={handleConfirm} disabled={uploading || validatedRows.valid.length === 0}>
-            {uploading ? "Uploading..." : `Upload ${validatedRows.valid.length} Employee(s)`}
+            {uploading ? `Uploading (${uploadProgress}%)` : `Upload ${validatedRows.valid.length} Employee(s)`}
           </Button>
         </div>
       </div>

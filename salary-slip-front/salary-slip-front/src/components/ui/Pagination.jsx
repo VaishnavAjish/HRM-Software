@@ -1,13 +1,17 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 export default function Pagination({
-  current,
-  total,
-  pageSize,
+  current: rawCurrent,
+  total: rawTotal,
+  pageSize: rawPageSize,
   onChange,
   onPageSizeChange,
   pageSizeOptions = [10, 15, 25, 50, 100],
 }) {
+  const current = Number(rawCurrent || 1);
+  const total = Number(rawTotal || 0);
+  const pageSize = Number(rawPageSize || 15);
+
   const pages = Math.ceil(total / pageSize) || 1;
   // Historically this hid the whole component (including the "Showing X of Y"
   // count) whenever everything fit on one page. That's still right for
@@ -82,12 +86,12 @@ export default function Pagination({
           </button>
           {getPageNumbers().map((n, i) =>
             n === "..." ? (
-              <span key={i} className="px-2 text-gray-400 text-sm">
+              <span key={`dots-${i}`} className="px-2 text-gray-400 text-sm">
                 …
               </span>
             ) : (
               <button
-                key={n}
+                key={`page-${n}-${i}`}
                 onClick={() => onChange(n)}
                 className={`w-8 h-8 text-sm rounded-lg font-medium transition ${n === current ? "bg-brand-600 text-white" : "hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300"}`}
               >

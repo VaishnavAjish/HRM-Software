@@ -31,7 +31,12 @@ class UploadBatchController extends Controller
             $query->where('company_code', $userAuth->company_code)->where('unit', $userAuth->unit);
         } elseif ($request->company_code) {
             $codes = explode(',', $request->company_code);
-            $query->whereIn('company_code', $codes);
+            if (!in_array('all', $codes, true)) {
+                $query->where(function ($q) use ($codes) {
+                    $q->whereIn('company_code', $codes)
+                      ->orWhereNull('company_code');
+                });
+            }
         }
 
         $perPage = (int) $request->query('limit', 15);
@@ -112,21 +117,24 @@ class UploadBatchController extends Controller
             }
 
             if ($type === 'salary') {
-                SalarySlip::where('company_code', $batch->company_code)
+                $comp = $data['company_code'] ?? $batch->company_code;
+                SalarySlip::where('company_code', $comp)
                     ->where('emp_code', $empCode)
                     ->where('month', $data['month'] ?? null)
                     ->where('year', $data['year'] ?? null)
                     ->delete();
             } elseif ($type === 'employee') {
+                $comp = $data['company_code'] ?? $batch->company_code;
                 User::where('emp_code', $empCode)
-                    ->where('company_code', $batch->company_code)
+                    ->where('company_code', $comp)
                     ->delete();
             } elseif ($type === 'attendance') {
+                $comp = $data['company_code'] ?? $batch->company_code;
                 $days = is_array($data['days'] ?? null) ? array_keys($data['days']) : [];
                 foreach ($days as $day) {
                     $date = sprintf('%04d-%02d-%02d', (int) $batch->year, (int) $batch->month, (int) $day);
                     Attendance::where('emp_code', $empCode)
-                        ->where('company_code', $batch->company_code)
+                        ->where('company_code', $comp)
                         ->where('date', $date)
                         ->delete();
                 }
