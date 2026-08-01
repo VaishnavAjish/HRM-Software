@@ -288,6 +288,10 @@ export default function EmployeeManagement() {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
+  const [selectedRows, setSelectedRows] = useState([]);
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+  const [bulkDeleteLoading, setBulkDeleteLoading] = useState(false);
+
   const [departmentsList, setDepartmentsList] = useState([]);
   const [isDeptModalOpen, setIsDeptModalOpen] = useState(false);
   const [newDeptName, setNewDeptName] = useState("");
@@ -701,6 +705,33 @@ export default function EmployeeManagement() {
     }
   };
 
+  const handleBulkDelete = async () => {
+    if (selectedRows.length === 0) return;
+    setBulkDeleteLoading(true);
+    try {
+      const ids = selectedRows.map((r) => r.id);
+      await salaryApi.deleteEmployees(ids, currentUser?.accessToken, currentUser?.tokenType);
+      toast.success(`${ids.length} employees deleted successfully`);
+      setSelectedRows([]);
+      setShowBulkDeleteConfirm(false);
+      refetchEmployees();
+    } catch (err) {
+      toast.error(err.message || "Failed to delete employees");
+    } finally {
+      setBulkDeleteLoading(false);
+    }
+  };
+
+  const onSelectionChanged = useCallback(() => {
+    if (gridRef.current?.api) {
+      setSelectedRows(gridRef.current.api.getSelectedRows());
+    }
+  }, []);
+
+  useEffect(() => {
+    setSelectedRows([]);
+  }, [employees]);
+
   const handleExport = async () => {
     setExportLoading(true);
 
@@ -787,6 +818,21 @@ export default function EmployeeManagement() {
     if (isMobile) {
       return [
         {
+          headerName: "",
+          checkboxSelection: true,
+          headerCheckboxSelection: true,
+          width: 45,
+          minWidth: 45,
+          maxWidth: 45,
+          pinned: "left",
+          lockPosition: true,
+          suppressMenu: true,
+          filter: false,
+          sortable: false,
+          resizable: false,
+          suppressMovable: true,
+        },
+        {
           headerName: "Employee Record",
           field: "mobileDetails",
           flex: 1,
@@ -835,6 +881,21 @@ export default function EmployeeManagement() {
     }
 
     return [
+      {
+        headerName: "",
+        checkboxSelection: true,
+        headerCheckboxSelection: true,
+        width: 45,
+        minWidth: 45,
+        maxWidth: 45,
+        pinned: "left",
+        lockPosition: true,
+        suppressMenu: true,
+        filter: false,
+        sortable: false,
+        resizable: false,
+        suppressMovable: true,
+      },
       {
         headerName: "Emp Code",
         field: "empCode",
@@ -1385,6 +1446,17 @@ export default function EmployeeManagement() {
 
         {/* Right Side: Actions */}
         <div className="ml-auto flex flex-wrap items-center gap-2 w-full sm:w-auto sm:justify-end">
+          {selectedRows.length > 0 && (
+            <Button
+              variant="danger"
+              onClick={() => setShowBulkDeleteConfirm(true)}
+              icon={<Trash2 size={16} />}
+              disabled={tableLoading}
+            >
+              Delete Selected ({selectedRows.length})
+            </Button>
+          )}
+
           <Button
             variant="secondary"
             onClick={handleExport}
@@ -1446,6 +1518,9 @@ export default function EmployeeManagement() {
             suppressCellFocus
             enableCellTextSelection
             animateRows
+            rowSelection="multiple"
+            suppressRowClickSelection={true}
+            onSelectionChanged={onSelectionChanged}
             overlayNoRowsTemplate="<span class='text-gray-400'>No employees found</span>"
             onGridReady={(params) => {
               if (Object.keys(gridFilterModel).length) {
@@ -1511,6 +1586,40 @@ export default function EmployeeManagement() {
         handleDelete={handleDelete}
         deleteLoading={deleteLoading}
       />
+
+
+      <Modal
+        isOpen={showBulkDeleteConfirm}
+        onClose={() => setShowBulkDeleteConfirm(false)}
+        title="Delete Selected Employees"
+        size="sm"
+      >
+        <div className="text-center py-2">
+          <div className="w-12 h-12 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mx-auto mb-3">
+            <Trash2 size={22} className="text-red-600" />
+          </div>
+          <p className="text-gray-700 dark:text-gray-300 text-sm">
+            Are you sure you want to delete{" "}
+            <strong>{selectedRows.length} selected employee(s)</strong>? This action is permanent and cannot be undone.
+          </p>
+        </div>
+        <div className="flex justify-end gap-3 mt-4">
+          <Button
+            variant="secondary"
+            onClick={() => setShowBulkDeleteConfirm(false)}
+            disabled={bulkDeleteLoading}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="danger"
+            onClick={handleBulkDelete}
+            disabled={bulkDeleteLoading}
+          >
+            {bulkDeleteLoading ? "Deleting..." : "Delete All"}
+          </Button>
+        </div>
+      </Modal>
 
       <AddNewDepartment
         isDeptModalOpen={isDeptModalOpen}

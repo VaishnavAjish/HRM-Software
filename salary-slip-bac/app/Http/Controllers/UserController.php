@@ -595,6 +595,30 @@ class UserController extends Controller
         return response()->json(['status' => true, 'message' => 'Employee deleted']);
     }
 
+    public function destroyMultiple(Request $request)
+    {
+        $ids = $request->input('ids', []);
+        if (!is_array($ids) || empty($ids)) {
+            return response()->json(['status' => false, 'message' => 'No IDs provided'], 400);
+        }
+
+        $user = auth('api')->user();
+        $employees = User::whereIn('id', $ids)->get();
+
+        $deletedCount = 0;
+        foreach ($employees as $employee) {
+            if ($this->inManagedScope($user, $employee)) {
+                $employee->delete();
+                $deletedCount++;
+            }
+        }
+
+        return response()->json([
+            'status' => true,
+            'message' => "{$deletedCount} employees deleted",
+        ]);
+    }
+
     public function dashboard(Request $request)
     {
         $user = auth('api')->user();
@@ -842,6 +866,9 @@ class UserController extends Controller
     public function import(Request $request)
     {
         set_time_limit(180);
+        if (\Illuminate\Support\Facades\DB::connection()->getDriverName() === 'sqlite') {
+            \Illuminate\Support\Facades\DB::statement('PRAGMA busy_timeout = 30000');
+        }
         $imported = 0;
         $skipped = [];
         $rowReports = [];

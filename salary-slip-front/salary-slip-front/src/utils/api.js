@@ -281,6 +281,17 @@ export const salaryApi = {
     });
   },
 
+  deleteEmployees(ids, accessToken, tokenType = "Bearer") {
+    return apiRequest("/employee/delete-multiple", {
+      method: "POST",
+      headers: {
+        ...(accessToken ? { Authorization: `${tokenType} ${accessToken}` } : {}),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ ids }),
+    });
+  },
+
   getDepartments(accessToken, tokenType = "Bearer", companyCode = null) {
     const query = (companyCode && companyCode !== "all-companies") ? `?company_code=${companyCode}` : "";
     return apiRequest(`/department/get${query}`, {

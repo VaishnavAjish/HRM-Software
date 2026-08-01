@@ -223,6 +223,7 @@ Route::middleware('jwt.auth')->group(function () {
             Route::post('store', [UserController::class, 'store']);
             Route::put('edit/{id}', [UserController::class, 'update']);
             Route::get('delete/{id}', [UserController::class, 'destroy']);
+            Route::post('delete-multiple', [UserController::class, 'destroyMultiple']);
             Route::post('import', [UserController::class, 'import']);
             Route::post('import-account-detail', [UserController::class, 'importAccountDetail']);
         });

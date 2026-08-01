@@ -202,6 +202,7 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
     return filtered.slice(start, start + pageSize);
   }, [filtered, page, pageSize]);
 
+
   const clearFilters = () => {
     setSearch(""); setStageFilter("all"); setMonth(""); setYear(""); setPage(1);
   };
