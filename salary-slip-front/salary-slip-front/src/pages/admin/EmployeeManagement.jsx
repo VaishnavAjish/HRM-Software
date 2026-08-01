@@ -5,26 +5,9 @@ import {
   Eye,
   Download,
   Crown,
-  Mail,
   CheckCircle,
   TableProperties,
-  Phone,
-  Calendar,
-  CalendarOff,
-  MapPin,
-  MapPinned,
-  Globe,
   Loader2,
-  Building2,
-  User,
-  Briefcase,
-  IdCard,
-  Scan,
-  Landmark,
-  KeyRound,
-  Wallet,
-  ShieldCheck,
-  HeartPulse,
   Search,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
@@ -42,7 +25,6 @@ import useGridHeaderContextMenu from "../../hooks/useGridHeaderContextMenu";
 import useIsMobile from "../../hooks/useIsMobile";
 
 import { SkeletonTable } from "../../components/ui/Skeleton";
-import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
 import Modal from "../../components/ui/Modal";
 import Pagination from "../../components/ui/Pagination";
@@ -58,7 +40,6 @@ import DeleteEmployeeModal from "./AdminModals/DeleteEmployeeModal";
 import AddNewDepartment from "./AdminModals/AddNewDepartment";
 import EmployeeDetailsModal from "./AdminModals/EmployeeDetailsModal";
 import {
-  EmployeeAvatar,
   formatDisplayDate,
   isPasswordValid,
 } from "./AdminModals/EmployeeHelpers";
@@ -727,7 +708,10 @@ export default function EmployeeManagement() {
       const res = await salaryApi.getAllEmployees(
         currentUser?.accessToken,
         currentUser?.tokenType,
-        apiFilter,
+        // Without an explicit limit the backend paginates at 15
+        // (UserController::index), so the export silently dropped every
+        // employee past the first page.
+        { ...apiFilter, limit: 1000 },
         companyScope,
       );
 
@@ -854,18 +838,18 @@ export default function EmployeeManagement() {
       {
         headerName: "Emp Code",
         field: "empCode",
-        minWidth: 110,
-        flex: 0,
+        flex: 1,
+        minWidth: 120,
         hide: isMobile || !visibleColumns.includes("empCode"),
         filter: "agTextColumnFilter",
         cellClass:
           "employee-ag-cell font-mono text-gray-600 dark:text-gray-300",
-       maxWidth: 140,},
+      },
       {
         headerName: "Name",
         field: "name", hide: isMobile || !visibleColumns.includes("name"),
-        minWidth: 180,
-        flex: 2,
+        flex: 1,
+        minWidth: 200,
         cellStyle: { overflow: "hidden" },
         valueGetter: ({ data }) => data?.name || data?.displayName || "-",
         filter: "agTextColumnFilter",
@@ -873,9 +857,7 @@ export default function EmployeeManagement() {
           if (!emp) return null;
 
           return (
-            <div className="flex h-full w-full items-center gap-3 overflow-hidden">
-              <EmployeeAvatar employee={emp} size="sm" />
-
+            <div className="flex h-full w-full items-center overflow-hidden">
               <span className="text-sm font-medium text-gray-900 dark:text-white truncate">
                 {emp.name || "-"}
               </span>
@@ -886,13 +868,12 @@ export default function EmployeeManagement() {
       {
         headerName: "Gender",
         field: "gender",
-        minWidth: 130,
         flex: 1,
+        minWidth: 120,
         hide: isMobile || !visibleColumns.includes("gender"),
         filter: "agTextColumnFilter",
         cellRenderer: ({ value }) => (
-          <div className="flex h-full w-full items-center gap-2 overflow-hidden">
-            <User size={14} className="text-gray-900 dark:text-white flex-shrink-0" />
+          <div className="flex h-full w-full items-center overflow-hidden">
             <span className="text-sm text-gray-600 dark:text-gray-300 truncate">
               {value || "-"}
             </span>
@@ -902,8 +883,8 @@ export default function EmployeeManagement() {
       {
         headerName: "Email",
         field: "email",
-        minWidth: 160,
         flex: 1,
+        minWidth: 200,
         hide: isMobile || !visibleColumns.includes("email"),
         cellStyle: { overflow: "hidden" },
         valueGetter: ({ data }) => data?.email || "-",
@@ -912,8 +893,7 @@ export default function EmployeeManagement() {
           if (!emp) return null;
 
           return (
-            <div className="flex h-full w-full items-center gap-2 overflow-hidden">
-              <Mail size={14} className="text-gray-400 flex-shrink-0" />
+            <div className="flex h-full w-full items-center overflow-hidden">
               <span className="text-sm text-gray-600 dark:text-gray-300 truncate">
                 {emp.email || "-"}
               </span>
@@ -924,16 +904,15 @@ export default function EmployeeManagement() {
       {
         headerName: "Mobile",
         field: "mobileNo",
-        minWidth: 150,
         flex: 1,
+        minWidth: 140,
         hide: isMobile || !visibleColumns.includes("mobileNo"),
         filter: "agTextColumnFilter",
         cellRenderer: ({ data: emp }) => {
           if (!emp) return null;
 
           return (
-            <div className="flex h-full w-full items-center gap-2 overflow-hidden">
-              <Phone size={14} className="text-gray-900 dark:text-white flex-shrink-0" />
+            <div className="flex h-full w-full items-center overflow-hidden">
               <span className="text-sm text-gray-600 dark:text-gray-300 truncate">
                 {emp.mobileNo || "-"}
               </span>
@@ -944,14 +923,13 @@ export default function EmployeeManagement() {
       {
         headerName: "DOB",
         field: "dob",
-        minWidth: 130,
         flex: 1,
+        minWidth: 130,
         hide: isMobile || !visibleColumns.includes("dob"),
         filter: "agTextColumnFilter",
         valueFormatter: ({ value }) => formatDisplayDate(value) || "-",
         cellRenderer: ({ value }) => (
-          <div className="flex h-full w-full items-center gap-2 overflow-hidden">
-            <Calendar size={14} className="text-gray-900 dark:text-white flex-shrink-0" />
+          <div className="flex h-full w-full items-center overflow-hidden">
             <span className="text-sm text-gray-600 dark:text-gray-300 truncate">
               {formatDisplayDate(value) || "-"}
             </span>
@@ -961,17 +939,16 @@ export default function EmployeeManagement() {
       {
         headerName: "Address",
         field: "address",
+        flex: 1,
         minWidth: 220,
-        flex: 1.2,
         hide: isMobile || !visibleColumns.includes("address"),
         filter: "agTextColumnFilter",
         cellStyle: { overflow: "hidden" },
         cellRenderer: ({ value }) => (
           <div
-            className="flex h-full w-full items-center gap-2 overflow-hidden"
+            className="flex h-full w-full items-center overflow-hidden"
             title={value || ""}
           >
-            <MapPin size={14} className="text-gray-900 dark:text-white flex-shrink-0" />
             <span className="text-sm text-gray-600 dark:text-gray-300 truncate">
               {value || "-"}
             </span>
@@ -981,13 +958,12 @@ export default function EmployeeManagement() {
       {
         headerName: "Department",
         field: "department",
-        minWidth: 140,
-        flex: 1.5,
+        flex: 1,
+        minWidth: 150,
         hide: isMobile || !visibleColumns.includes("department"),
         filter: "agTextColumnFilter",
         cellRenderer: ({ value }) => (
-          <div className="flex h-full w-full items-center gap-2 overflow-hidden">
-            <Building2 size={14} className="text-gray-900 dark:text-white flex-shrink-0" />
+          <div className="flex h-full w-full items-center overflow-hidden">
             <span className="text-sm text-gray-600 dark:text-gray-300 truncate">
               {value || "-"}
             </span>
@@ -997,13 +973,12 @@ export default function EmployeeManagement() {
       {
         headerName: "Designation",
         field: "designation",
-        minWidth: 140,
-        flex: 1.5,
+        flex: 1,
+        minWidth: 150,
         hide: isMobile || !visibleColumns.includes("designation"),
         filter: "agTextColumnFilter",
         cellRenderer: ({ value }) => (
-          <div className="flex h-full w-full items-center gap-2 overflow-hidden">
-            <Briefcase size={14} className="text-gray-900 dark:text-white flex-shrink-0" />
+          <div className="flex h-full w-full items-center overflow-hidden">
             <span className="text-sm text-gray-600 dark:text-gray-300 truncate">
               {value || "-"}
             </span>
@@ -1013,13 +988,12 @@ export default function EmployeeManagement() {
       {
         headerName: "City",
         field: "city",
-        minWidth: 130,
         flex: 1,
+        minWidth: 130,
         hide: isMobile || !visibleColumns.includes("city"),
         filter: "agTextColumnFilter",
         cellRenderer: ({ value }) => (
-          <div className="flex h-full w-full items-center gap-2 overflow-hidden">
-            <MapPin size={14} className="text-gray-900 dark:text-white flex-shrink-0" />
+          <div className="flex h-full w-full items-center overflow-hidden">
             <span className="text-sm text-gray-600 dark:text-gray-300 truncate">
               {value || "-"}
             </span>
@@ -1029,13 +1003,12 @@ export default function EmployeeManagement() {
       {
         headerName: "District",
         field: "district",
-        minWidth: 130,
         flex: 1,
+        minWidth: 130,
         hide: isMobile || !visibleColumns.includes("district"),
         filter: "agTextColumnFilter",
         cellRenderer: ({ value }) => (
-          <div className="flex h-full w-full items-center gap-2 overflow-hidden">
-            <MapPinned size={14} className="text-gray-900 dark:text-white flex-shrink-0" />
+          <div className="flex h-full w-full items-center overflow-hidden">
             <span className="text-sm text-gray-600 dark:text-gray-300 truncate">
               {value || "-"}
             </span>
@@ -1045,13 +1018,12 @@ export default function EmployeeManagement() {
       {
         headerName: "State",
         field: "state",
-        minWidth: 130,
         flex: 1,
+        minWidth: 130,
         hide: isMobile || !visibleColumns.includes("state"),
         filter: "agTextColumnFilter",
         cellRenderer: ({ value }) => (
-          <div className="flex h-full w-full items-center gap-2 overflow-hidden">
-            <Globe size={14} className="text-gray-900 dark:text-white flex-shrink-0" />
+          <div className="flex h-full w-full items-center overflow-hidden">
             <span className="text-sm text-gray-600 dark:text-gray-300 truncate">
               {value || "-"}
             </span>
@@ -1061,8 +1033,8 @@ export default function EmployeeManagement() {
       {
         headerName: "PIN",
         field: "pin",
-        minWidth: 110,
         flex: 1,
+        minWidth: 110,
         hide: isMobile || !visibleColumns.includes("pin"),
         filter: "agTextColumnFilter",
         cellClass:
@@ -1071,13 +1043,12 @@ export default function EmployeeManagement() {
       {
         headerName: "Aadhar Card No",
         field: "aadharCardNo",
-        minWidth: 160,
         flex: 1,
+        minWidth: 170,
         hide: isMobile || !visibleColumns.includes("aadharCardNo"),
         filter: "agTextColumnFilter",
         cellRenderer: ({ value }) => (
-          <div className="flex h-full w-full items-center gap-2 overflow-hidden">
-            <Scan size={14} className="text-gray-900 dark:text-white flex-shrink-0" />
+          <div className="flex h-full w-full items-center overflow-hidden">
             <span className="text-sm font-mono text-gray-600 dark:text-gray-300 truncate">
               {value || "-"}
             </span>
@@ -1087,13 +1058,12 @@ export default function EmployeeManagement() {
       {
         headerName: "PAN Card No",
         field: "panCardNo",
-        minWidth: 150,
         flex: 1,
+        minWidth: 150,
         hide: isMobile || !visibleColumns.includes("panCardNo"),
         filter: "agTextColumnFilter",
         cellRenderer: ({ value }) => (
-          <div className="flex h-full w-full items-center gap-2 overflow-hidden">
-            <IdCard size={14} className="text-gray-900 dark:text-white flex-shrink-0" />
+          <div className="flex h-full w-full items-center overflow-hidden">
             <span className="text-sm font-mono text-gray-600 dark:text-gray-300 truncate">
               {value || "-"}
             </span>
@@ -1103,13 +1073,12 @@ export default function EmployeeManagement() {
       {
         headerName: "Bank Name",
         field: "bankName",
-        minWidth: 150,
         flex: 1,
+        minWidth: 150,
         hide: isMobile || !visibleColumns.includes("bankName"),
         filter: "agTextColumnFilter",
         cellRenderer: ({ value }) => (
-          <div className="flex h-full w-full items-center gap-2 overflow-hidden">
-            <Landmark size={14} className="text-gray-900 dark:text-white flex-shrink-0" />
+          <div className="flex h-full w-full items-center overflow-hidden">
             <span className="text-sm text-gray-600 dark:text-gray-300 truncate">
               {value || "-"}
             </span>
@@ -1119,13 +1088,12 @@ export default function EmployeeManagement() {
       {
         headerName: "Bank IFSC Code",
         field: "bankIfscCode",
-        minWidth: 150,
         flex: 1,
+        minWidth: 150,
         hide: isMobile || !visibleColumns.includes("bankIfscCode"),
         filter: "agTextColumnFilter",
         cellRenderer: ({ value }) => (
-          <div className="flex h-full w-full items-center gap-2 overflow-hidden">
-            <KeyRound size={14} className="text-gray-900 dark:text-white flex-shrink-0" />
+          <div className="flex h-full w-full items-center overflow-hidden">
             <span className="text-sm font-mono text-gray-600 dark:text-gray-300 truncate">
               {value || "-"}
             </span>
@@ -1135,13 +1103,12 @@ export default function EmployeeManagement() {
       {
         headerName: "Bank Account No",
         field: "bankAccountNo",
-        minWidth: 160,
         flex: 1,
+        minWidth: 170,
         hide: isMobile || !visibleColumns.includes("bankAccountNo"),
         filter: "agTextColumnFilter",
         cellRenderer: ({ value }) => (
-          <div className="flex h-full w-full items-center gap-2 overflow-hidden">
-            <Wallet size={14} className="text-gray-900 dark:text-white flex-shrink-0" />
+          <div className="flex h-full w-full items-center overflow-hidden">
             <span className="text-sm font-mono text-gray-600 dark:text-gray-300 truncate">
               {value || "-"}
             </span>
@@ -1151,13 +1118,12 @@ export default function EmployeeManagement() {
       {
         headerName: "PF No",
         field: "pfNo",
-        minWidth: 130,
         flex: 1,
+        minWidth: 140,
         hide: isMobile || !visibleColumns.includes("pfNo"),
         filter: "agTextColumnFilter",
         cellRenderer: ({ value }) => (
-          <div className="flex h-full w-full items-center gap-2 overflow-hidden">
-            <ShieldCheck size={14} className="text-gray-900 dark:text-white flex-shrink-0" />
+          <div className="flex h-full w-full items-center overflow-hidden">
             <span className="text-sm font-mono text-gray-600 dark:text-gray-300 truncate">
               {value || "-"}
             </span>
@@ -1167,13 +1133,12 @@ export default function EmployeeManagement() {
       {
         headerName: "ESI No",
         field: "esiNo",
-        minWidth: 130,
         flex: 1,
+        minWidth: 140,
         hide: isMobile || !visibleColumns.includes("esiNo"),
         filter: "agTextColumnFilter",
         cellRenderer: ({ value }) => (
-          <div className="flex h-full w-full items-center gap-2 overflow-hidden">
-            <HeartPulse size={14} className="text-gray-900 dark:text-white flex-shrink-0" />
+          <div className="flex h-full w-full items-center overflow-hidden">
             <span className="text-sm font-mono text-gray-600 dark:text-gray-300 truncate">
               {value || "-"}
             </span>
@@ -1183,14 +1148,13 @@ export default function EmployeeManagement() {
       {
         headerName: "Joining Date",
         field: "joiningDate",
-        minWidth: 140,
         flex: 1,
+        minWidth: 140,
         hide: isMobile || !visibleColumns.includes("joiningDate"),
         filter: "agTextColumnFilter",
         valueFormatter: ({ value }) => formatDisplayDate(value) || "-",
         cellRenderer: ({ value }) => (
-          <div className="flex h-full w-full items-center gap-2 overflow-hidden">
-            <Calendar size={14} className="text-gray-900 dark:text-white flex-shrink-0" />
+          <div className="flex h-full w-full items-center overflow-hidden">
             <span className="text-sm text-gray-600 dark:text-gray-300 truncate">
               {formatDisplayDate(value) || "-"}
             </span>
@@ -1200,14 +1164,13 @@ export default function EmployeeManagement() {
       {
         headerName: "Resignation Date",
         field: "resignationDate",
-        minWidth: 150,
         flex: 1,
+        minWidth: 160,
         hide: isMobile || !visibleColumns.includes("resignationDate"),
         filter: "agTextColumnFilter",
         valueFormatter: ({ value }) => formatDisplayDate(value) || "-",
         cellRenderer: ({ value }) => (
-          <div className="flex h-full w-full items-center gap-2 overflow-hidden">
-            <CalendarOff size={14} className="text-gray-900 dark:text-white flex-shrink-0" />
+          <div className="flex h-full w-full items-center overflow-hidden">
             <span className="text-sm text-gray-600 dark:text-gray-300 truncate">
               {formatDisplayDate(value) || "-"}
             </span>
@@ -1217,30 +1180,35 @@ export default function EmployeeManagement() {
       {
         headerName: "Company",
         field: "companyLabel",
-        minWidth: 140,
-        flex: 1.5,
+        flex: 1,
+        minWidth: 150,
         hide: isMobile || !visibleColumns.includes("companyLabel"),
         filter: false,
         cellRenderer: ({ data: emp }) =>
-          emp ? <Badge variant="blue">{emp.companyLabel}</Badge> : null,
+          emp ? (
+            <span className="text-sm text-gray-600 dark:text-gray-300 truncate">
+              {emp.companyLabel || "-"}
+            </span>
+          ) : null,
       },
       {
         headerName: "Unit",
         field: "unit",
-        minWidth: 140,
         flex: 1,
+        minWidth: 140,
         hide: isMobile || !visibleColumns.includes("unit"),
         filter: "agTextColumnFilter",
         cellRenderer: ({ value }) => (
-          <Badge variant="gray">{value || "-"}</Badge>
+          <span className="text-sm text-gray-600 dark:text-gray-300 truncate">
+            {value || "-"}
+          </span>
         ),
       },
       {
         headerName: "Role",
         field: "loginRole",
-        minWidth: 120,
-        maxWidth: 140,
-        flex: 0,
+        flex: 1,
+        minWidth: 130,
         hide: isMobile || !visibleColumns.includes("loginRole"),
         filter: "agTextColumnFilter",
         filterValueGetter: ({ data }) =>
@@ -1251,14 +1219,7 @@ export default function EmployeeManagement() {
           if (!emp) return null;
 
           return (
-            <span
-              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${
-                emp.loginRole === "superadmin"
-                  ? "bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300"
-                  : "bg-brand-50 dark:bg-brand-900/20 text-brand-700 dark:text-brand-300"
-              }`}
-            >
-              {emp.loginRole === "superadmin" && <Crown size={10} />}
+            <span className="text-sm text-gray-600 dark:text-gray-300 truncate">
               {emp.loginRole === "superadmin" ? "Super Admin" : "Employee"}
             </span>
           );
@@ -1267,21 +1228,20 @@ export default function EmployeeManagement() {
       {
         headerName: "Status",
         field: "status",
-        minWidth: 160,
         flex: 1,
+        minWidth: 140,
         hide: isMobile || !visibleColumns.includes("status"),
         filter: "agTextColumnFilter",
         cellRenderer: ({ data: emp }) =>
           emp ? (
-            <Badge variant={emp.status === "Active" ? "green" : emp.status === "Pending" ? "yellow" : "gray"}>
+            <span className="text-sm text-gray-600 dark:text-gray-300 truncate">
               {emp.status}
-            </Badge>
+            </span>
           ) : null,
       },
       {
         headerName: "Actions",
-        minWidth: 160,
-        flex: 1,
+        width: 160,
         pinned: "right",
         sortable: false,
         filter: false,
@@ -1362,8 +1322,8 @@ export default function EmployeeManagement() {
   }
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between w-full">
+    <div className="flex h-full flex-col gap-5 overflow-hidden">
+      <div className="shrink-0 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between w-full">
         {/* Left Side: Search & Filter */}
         <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
           {/* Search Bar */}
@@ -1402,6 +1362,24 @@ export default function EmployeeManagement() {
                 </button>
               );
             })}
+          </div>
+
+          {/* Employee Counts */}
+          <div className="flex flex-wrap gap-3 text-sm text-gray-500 dark:text-gray-400">
+            <span>
+              <strong className="text-gray-900 dark:text-white">
+                {totalRecords}
+              </strong>{" "}
+              total employees
+            </span>
+
+            <span className="text-green-600">
+              <strong>{activeCount}</strong> active
+            </span>
+
+            <span className="text-gray-400">
+              <strong>{inactiveCount}</strong> inactive
+            </span>
           </div>
         </div>
 
@@ -1445,27 +1423,10 @@ export default function EmployeeManagement() {
         </div>
       </div>
 
-      <div className="flex gap-4 text-sm text-gray-500 dark:text-gray-400">
-        <span>
-          <strong className="text-gray-900 dark:text-white">
-            {totalRecords}
-          </strong>{" "}
-          total employees
-        </span>
-
-        <span className="text-green-600">
-          <strong>{activeCount}</strong> active
-        </span>
-
-        <span className="text-gray-400">
-          <strong>{inactiveCount}</strong> inactive
-        </span>
-      </div>
-
-      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden shadow-sm">
+      <div className="flex-1 min-h-0 flex flex-col bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden shadow-sm">
         <div
           ref={gridContainerRef}
-          className={`employee-ag-grid w-full ${
+          className={`employee-ag-grid w-full flex-1 min-h-0 ${
             dark ? "ag-theme-alpine-dark" : "ag-theme-alpine"
           } ${headerFrozen ? "grid-header-frozen" : ""}`}
         >
@@ -1478,8 +1439,8 @@ export default function EmployeeManagement() {
             loading={tableLoading}
             getRowId={(params) => String(params.data.id)}
             maintainColumnOrder={true}
-            domLayout="autoHeight"
-            rowHeight={isMobile ? 84 : 64}
+            domLayout="normal"
+            rowHeight={isMobile ? 84 : 44}
             headerHeight={48}
             popupParent={document.body}
             suppressCellFocus
@@ -1501,13 +1462,17 @@ export default function EmployeeManagement() {
           />
         </div>
 
-        <div className="px-5 py-3 border-t border-gray-100 dark:border-gray-700">
+        <div className="shrink-0 px-5 py-3 border-t border-gray-100 dark:border-gray-700">
           <Pagination
             current={apiPage}
             total={totalRecords}
             pageSize={perPage}
             onChange={(page) => {
               setApiPage(page);
+            }}
+            onPageSizeChange={(size) => {
+              setPerPage(size);
+              setApiPage(1);
             }}
           />
         </div>

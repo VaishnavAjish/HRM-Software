@@ -1305,6 +1305,8 @@ class UserController extends Controller
             return $data;
         });
 
+        $appointments = $this->attachAppointmentPhotos($appointments);
+
         // One entry for the request, with a count and no values. Auditing per row
         // would turn one page view into hundreds of inserts and bury the trail.
         \App\Support\AadhaarDisclosure::auditListDisclosure(
@@ -1320,6 +1322,61 @@ class UserController extends Controller
                 'appointments' => $appointments,
             ],
         ]);
+    }
+
+    /**
+     * Appointment photos never land in the legacy `users.photo` column — the
+     * upload step stores them as a PHOTOGRAPH Document instead (see
+     * AppointmentModal.jsx / DocumentController::storeForAppointment), which
+     * on the configured S3 provider is a private object with no public path.
+     *
+     * For any row still missing `photo`, look up its PHOTOGRAPH document and
+     * mint a fresh presigned view URL — done here, per request, rather than
+     * cached on the row, because a stored URL would go stale once the
+     * presign TTL expires. Presigning is a local HMAC computation (no AWS
+     * round trip), and one batched query covers every row, so this stays
+     * cheap even for a full list.
+     */
+    private function attachAppointmentPhotos($rows)
+    {
+        $missingIds = $rows
+            ->filter(fn ($row) => empty($row['photo']) && !empty($row['id']))
+            ->pluck('id')
+            ->all();
+
+        if (empty($missingIds)) {
+            return $rows;
+        }
+
+        $documents = \App\Models\Document::visible()
+            ->where('document_type', 'PHOTOGRAPH')
+            ->whereIn('user_id', $missingIds)
+            ->with('currentVersionRecord')
+            ->get()
+            ->keyBy('user_id');
+
+        if ($documents->isEmpty()) {
+            return $rows;
+        }
+
+        $service = DocumentService::make();
+
+        return $rows->map(function ($row) use ($documents, $service) {
+            $document = $documents->get($row['id'] ?? null);
+            $version = $document?->currentVersionRecord;
+
+            if (!$document || !$version || !$document->isReadable()) {
+                return $row;
+            }
+
+            try {
+                $row['photo'] = $service->viewUrl($document, $version)['url'];
+            } catch (\Throwable $e) {
+                // Leave photo empty rather than fail the whole list over one row.
+            }
+
+            return $row;
+        });
     }
 
     public function accountMaster(Request $request)

@@ -38,7 +38,7 @@ function getAdminNav(companyId, user, isAllCompanies) {
   const nav = [
     ...(hasAccess("dashboard") ? [{ to: "/admin", label: "Dashboard", icon: LayoutDashboard, end: true }] : []),
     ...(hasAccess("appointments") || (hasAccess("trial_form") && (companyId === "nidhi-impex" || isAllCompanies)) ? [{
-      label: "Appointments",
+      label: "Forms",
       icon: ClipboardList,
       subItems: [
         ...(hasAccess("appointments") ? [{ to: "/admin/appointments", label: "Appointment Form" }] : []),

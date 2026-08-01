@@ -658,7 +658,7 @@ export default function SalaryManagement() {
         headerName: "Month",
         field: "month",
         minWidth: isMobile ? 110 : 140,
-        cellRenderer: ({ value }) => <Badge variant="gray">{value}</Badge>,
+        cellClass: "salary-ag-cell text-gray-600 dark:text-gray-300",
         filter: "agTextColumnFilter",
         hide: isMobile || !visibleColumns.includes("month"),
       },
@@ -696,39 +696,21 @@ export default function SalaryManagement() {
         field: "workingDays",
         hide: isMobile || !visibleColumns.includes("workingDays"),
         filter: "agNumberColumnFilter",
-        cellRenderer: ({ value }) => (
-          <Badge
-            variant={value >= 26 ? "green" : value >= 20 ? "yellow" : "red"}
-          >
-            {value}
-          </Badge>
-        ),
+        cellClass: "salary-ag-cell text-gray-600 dark:text-gray-300",
       },
       {
         headerName: "Present Days",
         field: "presentDays",
         hide: isMobile || !visibleColumns.includes("presentDays"),
         filter: "agNumberColumnFilter",
-        cellRenderer: ({ value }) => (
-          <Badge
-            variant={value >= 26 ? "green" : value >= 20 ? "yellow" : "red"}
-          >
-            {value}
-          </Badge>
-        ),
+        cellClass: "salary-ag-cell text-gray-600 dark:text-gray-300",
       },
       {
         headerName: "Leave",
         field: "leave",
         hide: isMobile || !visibleColumns.includes("leave"),
         filter: "agNumberColumnFilter",
-        cellRenderer: ({ value }) => (
-          <Badge
-            variant={value === 0 ? "green" : value <= 3 ? "yellow" : "red"}
-          >
-            {value}
-          </Badge>
-        ),
+        cellClass: "salary-ag-cell text-gray-600 dark:text-gray-300",
       },
       currencyColumn("salary", "Salary", { hide: isMobile || !visibleColumns.includes("salary") }),
       currencyColumn("basic", "Basic Salary", { hide: isMobile || !visibleColumns.includes("basic") }),
@@ -743,9 +725,7 @@ export default function SalaryManagement() {
         hide: isMobile || !visibleColumns.includes("grossSalary"),
         filter: "agNumberColumnFilter",
         valueFormatter: ({ value }) => formatCurrency(Number(value ?? 0)),
-        cellRenderer: ({ value }) => (
-          <Badge variant="blue">{formatCurrency(Number(value ?? 0))}</Badge>
-        ),
+        cellClass: "salary-ag-cell font-medium text-brand-600 dark:text-brand-400",
       },
       currencyColumn("pf", "PF", {
         hide: isMobile || !visibleColumns.includes("pf"),
@@ -773,9 +753,7 @@ export default function SalaryManagement() {
         hide: isMobile || !visibleColumns.includes("totalDeduct"),
         filter: "agNumberColumnFilter",
         valueFormatter: ({ value }) => formatCurrency(Number(value ?? 0)),
-        cellRenderer: ({ value }) => (
-          <Badge variant="red">{formatCurrency(Number(value ?? 0))}</Badge>
-        ),
+        cellClass: "salary-ag-cell font-medium text-red-600 dark:text-red-400",
       },
       {
         headerName: "Net Salary",
@@ -783,9 +761,7 @@ export default function SalaryManagement() {
         hide: isMobile || !visibleColumns.includes("netSalary"),
         filter: "agNumberColumnFilter",
         valueFormatter: ({ value }) => formatCurrency(Number(value ?? 0)),
-        cellRenderer: ({ value }) => (
-          <Badge variant="green">{formatCurrency(Number(value ?? 0))}</Badge>
-        ),
+        cellClass: "salary-ag-cell font-medium text-green-600 dark:text-green-400",
       },
       {
         headerName: "Actions",
@@ -890,6 +866,7 @@ export default function SalaryManagement() {
           icon={<DollarSign size={22} />}
           color="blue"
           subtitle={`${scopeLabel} · ${totalRecords} total records`}
+          compact={true}
         />
 
         <StatCard
@@ -898,6 +875,7 @@ export default function SalaryManagement() {
           icon={<Building2 size={22} />}
           color="green"
           subtitle={`Across ${totalRecords} records`}
+          compact={true}
         />
       </div>
 

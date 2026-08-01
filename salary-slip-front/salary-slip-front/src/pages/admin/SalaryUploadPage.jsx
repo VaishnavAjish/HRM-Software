@@ -75,7 +75,10 @@ export default function SalaryUploadPage() {
       const res = await salaryApi.getAllEmployees(
         user?.accessToken,
         user?.tokenType,
-        {},
+        // Without an explicit limit the backend paginates at 15
+        // (UserController::index), so the template silently dropped every
+        // employee past the first page instead of listing them all.
+        { limit: 1000 },
         { companyId: selectedCompanyId, unit: selectedUnit }
       );
       const employees = res?.data?.users?.data ?? res?.data?.users ?? [];

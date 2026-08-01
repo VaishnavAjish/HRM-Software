@@ -571,8 +571,8 @@ export default function AddEmployeePage() {
   };
 
   return (
-    <div className="flex flex-col gap-4 p-2 lg:p-6 min-h-[calc(100vh-80px)] bg-transparent">
-      <div className="flex flex-1 flex-col xl:flex-row gap-6">
+    <div className="flex h-full flex-col gap-4 overflow-hidden bg-transparent">
+      <div className="flex flex-1 min-h-0 flex-col xl:flex-row gap-6">
         {mode === "bulk" && (
           <div className="w-full xl:w-96 flex-shrink-0 flex flex-col gap-4">
             <UploadBatchPanel

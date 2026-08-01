@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import Badge from "../ui/Badge";
 import Modal from "../ui/Modal";
+import Pagination from "../ui/Pagination";
 import { salaryApi, authApi } from "../../utils/api";
 import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";
@@ -21,6 +22,7 @@ import {
   getAadhaarDisplayValue,
   hasStoredAadhaar,
 } from "../../utils/aadhaar";
+import { getEmployeePhotoUrl } from "../../pages/admin/AdminModals/EmployeeHelpers";
 
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
@@ -45,6 +47,30 @@ function referenceDate(row) {
 
 function isActive(row) {
   return row.status === 0 || row.status === "0";
+}
+
+// Rows come from four different endpoints (trial, appointment, pending,
+// employee) but all of them carry the same raw `photo` field, so one
+// resolver/fallback works across every stage.
+function EmployeePhoto({ row, size = 36 }) {
+  const src = getEmployeePhotoUrl(row.photo);
+  const initial = (row.name || "?").trim().charAt(0).toUpperCase() || "?";
+  return (
+    <div
+      className="relative flex flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-brand-100 text-xs font-bold text-brand-600 dark:bg-brand-900/30 dark:text-brand-300"
+      style={{ height: size, width: size }}
+    >
+      <span>{initial}</span>
+      {src && (
+        <img
+          src={src}
+          alt={row.name ? `${row.name} photo` : "Employee photo"}
+          className="absolute inset-0 h-full w-full rounded-full object-cover"
+          onError={(e) => { e.currentTarget.style.display = "none"; }}
+        />
+      )}
+    </div>
+  );
 }
 
 // Fields shown in the View modal. Trial-specific fields only render when
@@ -77,6 +103,8 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
   const [stageFilter, setStageFilter] = useState("all");
   const [month, setMonth] = useState("");
   const [year, setYear] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(15);
 
   const [drafts, setDrafts] = useState({}); // { [id]: { emp_code?, punching_no? } }
   const [savingCell, setSavingCell] = useState(null); // `${id}:${field}`
@@ -169,7 +197,14 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
     });
   }, [rows, search, stageFilter, month, year]);
 
-  const clearFilters = () => { setSearch(""); setStageFilter("all"); setMonth(""); setYear(""); };
+  const paginated = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [filtered, page, pageSize]);
+
+  const clearFilters = () => {
+    setSearch(""); setStageFilter("all"); setMonth(""); setYear(""); setPage(1);
+  };
 
   const draftValue = (row, field) => drafts[row.id]?.[field] ?? row[field] ?? "";
 
@@ -362,27 +397,77 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
     "w-full min-w-[92px] rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 px-2 py-1.5 text-xs font-mono text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 disabled:opacity-50";
 
   return (
-    <div className="flex-1 flex flex-col bg-white dark:bg-[#0b0f1a] rounded-2xl border border-gray-200 dark:border-white/10 shadow-sm overflow-hidden min-h-[70vh]">
+    <div className="flex-1 min-h-0 flex flex-col bg-white dark:bg-[#0b0f1a] rounded-2xl border border-gray-200 dark:border-white/10 shadow-sm overflow-hidden">
       <div className="flex flex-col gap-4 border-b border-gray-200 px-6 py-5 dark:border-white/10 shrink-0">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-900/20 dark:text-brand-400">
-              <Users size={17} />
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative w-full sm:w-64">
+              <input
+                value={search}
+                onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+                placeholder="Search name, email, code..."
+                className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 pl-8 text-xs text-gray-900 outline-none transition focus:border-brand-400 focus:bg-white dark:border-white/10 dark:bg-gray-800 dark:text-white dark:focus:bg-[#0b0f1a]"
+              />
+              <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-gray-400" />
             </div>
-            <div>
-              <h2 className="text-lg font-bold text-gray-900 dark:text-white">Employee Master</h2>
-              <p className="text-xs text-gray-500 dark:text-slate-400">
-                Every trial form, pending onboarding and active employee in one place — appointments
-                join once approved on the Appointments page
-              </p>
+
+            <div className="flex items-center gap-1.5 text-gray-400">
+              <Filter size={13} />
             </div>
+            <select
+              value={month}
+              onChange={(e) => { setMonth(e.target.value); setPage(1); }}
+              className="rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 px-2.5 py-1.5 text-xs text-gray-700 dark:text-gray-200"
+            >
+              <option value="">All Months</option>
+              {MONTHS.map((m, idx) => <option key={m} value={String(idx + 1)}>{m}</option>)}
+            </select>
+            <select
+              value={year}
+              onChange={(e) => { setYear(e.target.value); setPage(1); }}
+              className="rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 px-2.5 py-1.5 text-xs text-gray-700 dark:text-gray-200"
+            >
+              <option value="">All Years</option>
+              {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
+            </select>
+
+            <div className="h-5 w-px bg-gray-200 dark:bg-white/10 mx-1 hidden sm:block" />
+
+            {[
+              { key: "all", label: "All" },
+              { key: "trial", label: "Trial" },
+              { key: "appointment", label: "Appointment" },
+              { key: "pending", label: "Pending" },
+              { key: "employee", label: "Employee" },
+            ].map(({ key, label }) => (
+              <button
+                key={key}
+                onClick={() => { setStageFilter(key); setPage(1); }}
+                className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                  stageFilter === key
+                    ? "bg-brand-600 text-white shadow-sm shadow-brand-600/30"
+                    : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-white/5 dark:text-slate-300 dark:hover:bg-white/10"
+                }`}
+              >
+                {label} ({stageCounts[key] || 0})
+              </button>
+            ))}
+
+            {(search || stageFilter !== "all" || month || year) && (
+              <button
+                onClick={clearFilters}
+                className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-gray-500 hover:bg-gray-100 dark:text-slate-400 dark:hover:bg-white/5"
+              >
+                <RotateCcw size={12} /> Reset
+              </button>
+            )}
           </div>
 
-          <div className="w-full sm:w-auto flex items-center gap-2">
+          <div className="flex items-center gap-2">
             {onBulkUpload && (
               <button
                 onClick={onBulkUpload}
-                className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 px-3 py-1.5 text-xs font-semibold text-white transition-colors"
+                className="flex items-center justify-center gap-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 px-3 py-1.5 text-xs font-semibold text-white transition-colors whitespace-nowrap"
               >
                 <CloudUpload size={13} /> Bulk Employee Upload
               </button>
@@ -390,75 +475,12 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
 
             <button
               onClick={exportToExcel}
-              className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 px-3 py-1.5 text-xs font-semibold text-white transition-colors"
+              className="flex items-center justify-center gap-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 px-3 py-1.5 text-xs font-semibold text-white transition-colors whitespace-nowrap"
               title="Export the rows currently shown (respects filters above)"
             >
               <Download size={13} /> Export to Excel
             </button>
           </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative w-full sm:w-64">
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search name, email, code..."
-              className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 pl-8 text-xs text-gray-900 outline-none transition focus:border-brand-400 focus:bg-white dark:border-white/10 dark:bg-gray-800 dark:text-white dark:focus:bg-[#0b0f1a]"
-            />
-            <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-gray-400" />
-          </div>
-
-          <div className="flex items-center gap-1.5 text-gray-400">
-            <Filter size={13} />
-          </div>
-          <select
-            value={month}
-            onChange={(e) => setMonth(e.target.value)}
-            className="rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 px-2.5 py-1.5 text-xs text-gray-700 dark:text-gray-200"
-          >
-            <option value="">All Months</option>
-            {MONTHS.map((m, idx) => <option key={m} value={String(idx + 1)}>{m}</option>)}
-          </select>
-          <select
-            value={year}
-            onChange={(e) => setYear(e.target.value)}
-            className="rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 px-2.5 py-1.5 text-xs text-gray-700 dark:text-gray-200"
-          >
-            <option value="">All Years</option>
-            {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
-          </select>
-
-          <div className="h-5 w-px bg-gray-200 dark:bg-white/10 mx-1 hidden sm:block" />
-
-          {[
-            { key: "all", label: "All" },
-            { key: "trial", label: "Trial" },
-            { key: "appointment", label: "Appointment" },
-            { key: "pending", label: "Pending" },
-            { key: "employee", label: "Employee" },
-          ].map(({ key, label }) => (
-            <button
-              key={key}
-              onClick={() => setStageFilter(key)}
-              className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-                stageFilter === key
-                  ? "bg-brand-600 text-white shadow-sm shadow-brand-600/30"
-                  : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-white/5 dark:text-slate-300 dark:hover:bg-white/10"
-              }`}
-            >
-              {label} ({stageCounts[key] || 0})
-            </button>
-          ))}
-
-          {(search || stageFilter !== "all" || month || year) && (
-            <button
-              onClick={clearFilters}
-              className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-gray-500 hover:bg-gray-100 dark:text-slate-400 dark:hover:bg-white/5"
-            >
-              <RotateCcw size={12} /> Reset
-            </button>
-          )}
         </div>
       </div>
 
@@ -481,16 +503,19 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
                 inline-edit inputs, four more an action row) has no honest way
                 to fit a phone width — it just clipped everything past Name. */}
             <ul className="divide-y divide-gray-100 dark:divide-gray-700 md:hidden">
-              {filtered.map((row) => {
+              {paginated.map((row) => {
                 const meta = STAGE_META[row.__stage] || STAGE_META.appointment;
                 const active = isActive(row);
                 const busy = rowBusy[row.id];
                 return (
                   <li key={row.id} className="p-4">
                     <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <p className="font-medium text-gray-900 dark:text-white break-words">{row.name || "—"}</p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 break-all">{row.email || "No email"}</p>
+                      <div className="flex min-w-0 flex-1 items-center gap-3">
+                        <EmployeePhoto row={row} size={40} />
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium text-gray-900 dark:text-white break-words">{row.name || "—"}</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 break-all">{row.email || "No email"}</p>
+                        </div>
                       </div>
                       <div className="flex flex-shrink-0 gap-1">
                         <button
@@ -578,14 +603,14 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
                         <dt className="font-semibold text-gray-500 dark:text-gray-400">Department</dt>
                         <dd className="text-gray-700 dark:text-gray-200 break-words">
                           {row.department || "—"}
-                          {row.designation ? ` · ${row.designation}` : ""}
+                          {row.designation ? ` Â· ${row.designation}` : ""}
                         </dd>
                       </div>
                       <div>
                         <dt className="font-semibold text-gray-500 dark:text-gray-400">Company / Unit</dt>
                         <dd className="text-gray-700 dark:text-gray-200 break-words">
                           {getCompanyConfig(row.company_code)?.label || row.company_code || "—"}
-                          {row.unit ? ` · ${row.unit}` : ""}
+                          {row.unit ? ` Â· ${row.unit}` : ""}
                         </dd>
                       </div>
                     </dl>
@@ -594,28 +619,32 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
               })}
             </ul>
 
-            <div className="hidden md:block overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 dark:bg-gray-900/40 text-left text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 sticky top-0">
+            <div className="hidden md:block overflow-x-auto overflow-y-visible">
+              <table className="w-full text-sm table-fixed border-separate border-spacing-0">
+                <thead className="text-left text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
                   <tr>
-                    <th className="px-4 py-3 font-medium w-32">Emp Code</th>
-                    <th className="px-4 py-3 font-medium w-32">Punching No</th>
-                    <th className="px-4 py-3 font-medium">Name</th>
-                    <th className="px-4 py-3 font-medium">Stage</th>
-                    <th className="px-4 py-3 font-medium">Department</th>
-                    <th className="px-4 py-3 font-medium">Company / Unit</th>
-                    <th className="px-4 py-3 font-medium">Status</th>
-                    <th className="px-4 py-3 font-medium text-right">Actions</th>
+                    <th className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900/40 px-4 py-2.5 font-bold w-14">Photo</th>
+                    <th className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900/40 px-4 py-2.5 font-bold w-32">Emp Code</th>
+                    <th className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900/40 px-4 py-2.5 font-bold w-32">Punching No</th>
+                    <th className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900/40 px-4 py-2.5 font-bold w-48">Name</th>
+                    <th className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900/40 px-4 py-2.5 font-bold w-28">Stage</th>
+                    <th className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900/40 px-4 py-2.5 font-bold w-40">Department</th>
+                    <th className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900/40 px-4 py-2.5 font-bold w-40">Company / Unit</th>
+                    <th className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900/40 px-4 py-2.5 font-bold w-28">Status</th>
+                    <th className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900/40 px-4 py-2.5 font-bold text-right w-32">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                  {filtered.map((row) => {
+                <tbody>
+                  {paginated.map((row) => {
                     const meta = STAGE_META[row.__stage] || STAGE_META.appointment;
                     const active = isActive(row);
                     const busy = rowBusy[row.id];
                     return (
                       <tr key={row.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/40">
-                        <td className="px-4 py-2.5">
+                        <td className="px-4 py-1.5 border-b border-gray-100 dark:border-gray-700">
+                          <EmployeePhoto row={row} />
+                        </td>
+                        <td className="px-4 py-1.5 border-b border-gray-100 dark:border-gray-700">
                           <input
                             value={draftValue(row, "emp_code")}
                             onChange={(e) => setDraft(row.id, "emp_code", e.target.value)}
@@ -626,7 +655,7 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
                             className={cellInputCls}
                           />
                         </td>
-                        <td className="px-4 py-2.5">
+                        <td className="px-4 py-1.5 border-b border-gray-100 dark:border-gray-700">
                           <input
                             value={draftValue(row, "punching_no")}
                             onChange={(e) => setDraft(row.id, "punching_no", e.target.value)}
@@ -637,24 +666,24 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
                             className={cellInputCls}
                           />
                         </td>
-                        <td className="px-4 py-2.5">
+                        <td className="px-4 py-1.5 border-b border-gray-100 dark:border-gray-700">
                           <div className="font-medium text-gray-900 dark:text-white">{row.name || "—"}</div>
                           <div className="text-xs text-gray-500 dark:text-gray-400">{row.email || "No email"}</div>
                         </td>
-                        <td className="px-4 py-2.5">
+                        <td className="px-4 py-1.5 border-b border-gray-100 dark:border-gray-700">
                           <Badge variant={meta.tone}>{meta.label}</Badge>
                         </td>
-                        <td className="px-4 py-2.5 text-gray-600 dark:text-gray-300">
+                        <td className="px-4 py-1.5 border-b border-gray-100 dark:border-gray-700 text-gray-600 dark:text-gray-300">
                           {row.department || "—"}
                           {row.designation && (
                             <div className="text-xs text-gray-400">{row.designation}</div>
                           )}
                         </td>
-                        <td className="px-4 py-2.5 text-gray-600 dark:text-gray-300">
+                        <td className="px-4 py-1.5 border-b border-gray-100 dark:border-gray-700 text-gray-600 dark:text-gray-300">
                           {getCompanyConfig(row.company_code)?.label || row.company_code || "—"}
                           {row.unit ? <div className="text-xs text-gray-400">{row.unit}</div> : null}
                         </td>
-                        <td className="px-4 py-2.5">
+                        <td className="px-4 py-1.5 border-b border-gray-100 dark:border-gray-700">
                           <Badge variant={
                             row.__stage === "trial" ? "gray"
                             : row.__stage === "appointment" ? "blue"
@@ -669,7 +698,7 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
                             : "Inactive"}
                           </Badge>
                         </td>
-                        <td className="px-4 py-2.5">
+                        <td className="px-4 py-1.5 border-b border-gray-100 dark:border-gray-700">
                           <div className="flex justify-end gap-1">
                             <button
                               onClick={() => openView(row)}
@@ -712,13 +741,26 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
         )}
       </div>
 
+      <div className="shrink-0 px-5 py-3 border-t border-gray-100 dark:border-gray-700">
+        <Pagination
+          current={page}
+          total={filtered.length}
+          pageSize={pageSize}
+          onChange={setPage}
+          onPageSizeChange={(size) => {
+            setPageSize(size);
+            setPage(1);
+          }}
+        />
+      </div>
+
       {/* ── View modal ── */}
       {viewRow && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white dark:bg-gray-800 w-full max-w-lg max-h-[85vh] flex flex-col rounded-2xl shadow-xl overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="px-6 py-5 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-800/50 shrink-0">
               <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                <Users size={16} className="text-brand-500" />
+                <EmployeePhoto row={viewRow} size={28} />
                 {viewRow.name || "Record"} Details
               </h3>
               <button onClick={() => setViewRow(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">

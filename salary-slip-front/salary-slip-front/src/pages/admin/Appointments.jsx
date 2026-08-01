@@ -12,7 +12,6 @@ import { getAadhaarDisplayValue, isCompleteAadhaar } from "../../utils/aadhaar";
 ModuleRegistry.registerModules([AllCommunityModule]);
 import {
   Calendar,
-  ClipboardList,
   Download,
   Eye,
   EyeOff,
@@ -31,6 +30,7 @@ import {
   Trash2,
   TableProperties,
   CheckCircle,
+  Search,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import Badge from "../../components/ui/Badge";
@@ -51,6 +51,14 @@ import { getCompanyUnits } from "../../config/companyConfig";
 
 const inputCls =
   "w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-brand-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white";
+
+const filterControlCls =
+  "rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-brand-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white";
+
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
 
 function firstPresent(...values) {
   return values.find((value) => value !== undefined && value !== null) ?? "";
@@ -888,10 +896,11 @@ export default function Appointments() {
 
     return () => window.removeEventListener("popstate", restoreFromUrl);
   }, []);
-  // No search box or status dropdown exists on this page, so these are fixed.
-  // Re-introduce state here if those controls are added back.
-  const search = "";
+  const [search, setSearch] = useState("");
   const statusFilter = "All";
+  const [monthFilter, setMonthFilter] = useState("All"); // "1"-"12"
+  const [yearFilter, setYearFilter] = useState("All"); // "YYYY"
+  const [departmentFilter, setDepartmentFilter] = useState("All");
   const [visibleColumns, setVisibleColumns] = useState([
     "fullName", "designation", "department", "joiningDate",
     "managerName", "unitName", "agentName", "status", "isPrinted",
@@ -948,6 +957,25 @@ export default function Appointments() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, scopeKey]);
 
+  const departmentOptions = useMemo(() => {
+    const set = new Set();
+    appointments.forEach((item) => {
+      if (item.department) set.add(item.department);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [appointments]);
+
+  const yearOptions = useMemo(() => {
+    const set = new Set();
+    appointments.forEach((item) => {
+      const d = new Date(item.joiningDate);
+      if (item.joiningDate && !Number.isNaN(d.getTime())) {
+        set.add(d.getFullYear());
+      }
+    });
+    return Array.from(set).sort((a, b) => b - a);
+  }, [appointments]);
+
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
     return appointments.filter((item) => {
@@ -969,9 +997,25 @@ export default function Appointments() {
       const matchesStatus =
         statusFilter === "All" ||
         item.status.toLowerCase() === statusFilter.toLowerCase();
-      return matchesSearch && matchesStatus;
+      const joiningDate = item.joiningDate ? new Date(item.joiningDate) : null;
+      const hasValidJoiningDate = joiningDate && !Number.isNaN(joiningDate.getTime());
+      const matchesMonth =
+        monthFilter === "All" ||
+        (hasValidJoiningDate && String(joiningDate.getMonth() + 1) === monthFilter);
+      const matchesYear =
+        yearFilter === "All" ||
+        (hasValidJoiningDate && String(joiningDate.getFullYear()) === yearFilter);
+      const matchesDepartment =
+        departmentFilter === "All" || item.department === departmentFilter;
+      return (
+        matchesSearch &&
+        matchesStatus &&
+        matchesMonth &&
+        matchesYear &&
+        matchesDepartment
+      );
     });
-  }, [appointments, search, statusFilter]);
+  }, [appointments, search, statusFilter, monthFilter, yearFilter, departmentFilter]);
 
   const counts = useMemo(
     () => ({
@@ -1866,21 +1910,60 @@ export default function Appointments() {
     <div className="space-y-5">
       <DocLightbox doc={gridLightbox} onClose={() => setGridLightbox(null)} />
       {/* Header */}
-      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-600 text-white shadow-sm shadow-brand-600/30">
-            <ClipboardList size={18} />
+      <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
+        <div className="flex flex-1 flex-wrap items-center gap-2">
+          <div className="relative min-w-[200px] flex-1 max-w-xs">
+            <Search
+              size={14}
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+            />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search name, code, mobile, unit..."
+              className={`${inputCls} pl-9`}
+            />
           </div>
-          <div>
-            <h1 className="text-lg font-bold text-gray-900 dark:text-white">
-              Appointment Forms
-            </h1>
-            <p className="text-xs text-gray-400">
-              {user?.role === 'agent' 
-                ? "View and create appointment forms" 
-                : "Review, approve or reject submitted appointment forms"}
-            </p>
-          </div>
+          <select
+            value={monthFilter}
+            onChange={(e) => setMonthFilter(e.target.value)}
+            className={filterControlCls}
+            aria-label="Filter by joining month"
+          >
+            <option value="All">All Months</option>
+            {MONTH_NAMES.map((name, i) => (
+              <option key={name} value={String(i + 1)}>
+                {name}
+              </option>
+            ))}
+          </select>
+          <select
+            value={yearFilter}
+            onChange={(e) => setYearFilter(e.target.value)}
+            className={filterControlCls}
+            aria-label="Filter by joining year"
+          >
+            <option value="All">All Years</option>
+            {yearOptions.map((year) => (
+              <option key={year} value={String(year)}>
+                {year}
+              </option>
+            ))}
+          </select>
+          <select
+            value={departmentFilter}
+            onChange={(e) => setDepartmentFilter(e.target.value)}
+            className={filterControlCls}
+            aria-label="Filter by department"
+          >
+            <option value="All">All Departments</option>
+            {departmentOptions.map((dept) => (
+              <option key={dept} value={dept}>
+                {dept}
+              </option>
+            ))}
+          </select>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {user?.role !== 'agent' && (

@@ -930,49 +930,6 @@ export default function TrialForm() {
 
     return (
       <div className="space-y-5 mt-5">
-      {/* Header */}
-      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-600 text-white shadow-sm shadow-brand-600/30">
-            <FileSpreadsheet size={18} />
-          </div>
-          <div>
-            <h1 className="text-lg font-bold text-gray-900 dark:text-white">
-              Trial Forms
-            </h1>
-            <p className="text-xs text-gray-400">
-              Candidate trial / interview forms — Nidhi Impex
-            </p>
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant="primary"
-            onClick={() => setAddFormOpen(true)}
-            icon={<Plus size={14} />}
-          >
-            New Trial Form
-          </Button>
-          <Button
-            variant="secondary"
-            onClick={() => setShowColModal(true)}
-            icon={<TableProperties size={14} />}
-          >
-            Columns
-          </Button>
-          <Button
-            variant="secondary"
-            onClick={loadForms}
-            disabled={loading}
-            icon={
-              loading ? <Loader2 size={14} className="animate-spin" /> : null
-            }
-          >
-            Refresh
-          </Button>
-        </div>
-      </div>
-
       {/* Stat strip */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
@@ -1427,30 +1384,62 @@ export default function TrialForm() {
 
   return (
     <div>
-      {companyId === "all-companies" && (
-        <div className="inline-flex rounded-lg border border-gray-200 bg-white p-1 dark:border-gray-700 dark:bg-gray-800 shadow-sm mb-4">
-          <button
-            onClick={() => setActiveTab("nidhi-impex")}
-            className={`px-4 py-2 text-sm font-semibold rounded-md transition-all ${
-              activeTab === "nidhi-impex"
-                ? "bg-brand-50 text-brand-600 dark:bg-brand-900/20 dark:text-brand-400"
-                : "text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-            }`}
-          >
-            Nidhi Impex
-          </button>
-          <button
-            onClick={() => setActiveTab("silverstar")}
-            className={`px-4 py-2 text-sm font-semibold rounded-md transition-all ${
-              activeTab === "silverstar"
-                ? "bg-brand-50 text-brand-600 dark:bg-brand-900/20 dark:text-brand-400"
-                : "text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-            }`}
-          >
-            Silverstar
-          </button>
-        </div>
-      )}
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        {companyId === "all-companies" ? (
+          <div className="inline-flex rounded-lg border border-gray-200 bg-white p-1 dark:border-gray-700 dark:bg-gray-800 shadow-sm">
+            <button
+              onClick={() => setActiveTab("nidhi-impex")}
+              className={`px-4 py-2 text-sm font-semibold rounded-md transition-all ${
+                activeTab === "nidhi-impex"
+                  ? "bg-brand-50 text-brand-600 dark:bg-brand-900/20 dark:text-brand-400"
+                  : "text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              }`}
+            >
+              Nidhi Impex
+            </button>
+            <button
+              onClick={() => setActiveTab("silverstar")}
+              className={`px-4 py-2 text-sm font-semibold rounded-md transition-all ${
+                activeTab === "silverstar"
+                  ? "bg-brand-50 text-brand-600 dark:bg-brand-900/20 dark:text-brand-400"
+                  : "text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              }`}
+            >
+              Silverstar
+            </button>
+          </div>
+        ) : (
+          <div />
+        )}
+        {isNidhiScope && (
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="primary"
+              onClick={() => setAddFormOpen(true)}
+              icon={<Plus size={14} />}
+            >
+              New Trial Form
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => setShowColModal(true)}
+              icon={<TableProperties size={14} />}
+            >
+              Columns
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={loadForms}
+              disabled={loading}
+              icon={
+                loading ? <Loader2 size={14} className="animate-spin" /> : null
+              }
+            >
+              Refresh
+            </Button>
+          </div>
+        )}
+      </div>
       {renderContent()}
     </div>
   );
