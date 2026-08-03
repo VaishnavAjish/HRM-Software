@@ -363,9 +363,13 @@ class AdminController extends Controller
 
                 $excelRowNum = $rowIndex + 2; // +1 for header, +1 for 1-index
 
+                // Employee codes aren't purely numeric — some units prefix
+                // them with a letter (e.g. "S1145") — and users.emp_code is
+                // a plain string(100), so rejecting/truncating anything that
+                // isn't numeric here only breaks those employees' uploads.
                 $empCodeRaw = trim((string) ($canonical['emp_code'] ?? ''));
-                if ($empCodeRaw === '' || !is_numeric($empCodeRaw)) {
-                    $reason = 'Missing or non-numeric employee code';
+                if ($empCodeRaw === '') {
+                    $reason = 'Missing employee code';
                     $skipped[] = "Row {$excelRowNum}: {$reason}";
                     $rowReports[] = [
                         'row_number' => $excelRowNum,
@@ -407,7 +411,7 @@ class AdminController extends Controller
                 // record when the sheet doesn't carry them — otherwise a
                 // minimal upload (just code + salary) leaves slips with a
                 // blank department, which breaks anything that groups by it.
-                $employee = User::where('emp_code', (int) $empCodeRaw)
+                $employee = User::where('emp_code', $empCodeRaw)
                     ->where('company_code', $company_code)
                     ->first();
 
@@ -448,7 +452,7 @@ class AdminController extends Controller
                     'unit' => $unit ?: ($employee->unit ?? null),
                     'month' => (string) $monthNum,
                     'year' => $year,
-                    'emp_code' => (int) $empCodeRaw,
+                    'emp_code' => $empCodeRaw,
                     'emp_name' => $canonical['emp_name'] ?? $employee->name ?? null,
                     'department' => $canonical['department'] ?? $employee->department ?? null,
                     'main_department' => $canonical['main_department'] ?? null,
@@ -495,7 +499,7 @@ class AdminController extends Controller
                 $slip = SalarySlip::updateOrCreate(
                     [
                         'company_code' => $company_code,
-                        'emp_code' => (int) $empCodeRaw,
+                        'emp_code' => $empCodeRaw,
                         'month' => (string) $monthNum,
                         'year' => $year,
                     ],

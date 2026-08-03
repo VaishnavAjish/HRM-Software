@@ -28,8 +28,15 @@ const MONTH_NAMES = [
   "December",
 ];
 
+function firstPresent(...values) {
+  return values.find(
+    (value) => value !== undefined && value !== null && value !== "",
+  );
+}
+
 function mapSlip(item) {
   const monthName = MONTH_NAMES[parseInt(item.month, 10) - 1] ?? "";
+  const empUser = item.user ?? {};
   return {
     id: item.id,
     company_code: item.company_code,
@@ -62,22 +69,34 @@ function mapSlip(item) {
     totalPaidDays: Number(item.paid_day ?? 26),
     leave: Number(item.leave ?? 0),
     lwp: Number(item.leave ?? 0),
-    // employee info — mapped to field names buildPayslipData reads
+    // employee info — mapped to field names buildPayslipData reads.
+    // Falls back to the linked users-table record (empUser) for any
+    // column the slip itself doesn't carry, same as SalaryManagement.jsx.
     name: item.emp_name ?? item.name,
     empCode: String(item.emp_code ?? item.empCode ?? ""),
     mainDepartment: item.main_department,
-    department: item.department,
-    role: item.designation,
-    designation: item.designation,
-    bankAccount: item.bank_account ?? item.account_no ?? item.bankAccount,
-    bankName: item.bank_name ?? item.account_name ?? item.bankName,
-    accountName: item.account_name,
-    bankIfsc: item.bank_ifsc,
-    uan: item.uan ?? item.pf_uan,
-    pfUan: item.pf_uan,
-    esiNo: item.esi_no,
-    phone: item.mobile_no ?? item.mobile ?? item.phone,
-    mobileNo: item.mobile_no,
+    department: firstPresent(item.department, empUser.department),
+    role: firstPresent(item.designation, empUser.designation),
+    designation: firstPresent(item.designation, empUser.designation),
+    bankAccount: firstPresent(
+      item.bank_account,
+      item.account_no,
+      item.bankAccount,
+      empUser.bank_account_no,
+    ),
+    bankName: firstPresent(
+      item.bank_name,
+      item.account_name,
+      item.bankName,
+      empUser.bank_name,
+    ),
+    accountName: firstPresent(item.account_name, empUser.bank_name),
+    bankIfsc: firstPresent(item.bank_ifsc, empUser.bank_ifsc_code),
+    uan: firstPresent(item.uan, item.pf_uan, empUser.pf_no),
+    pfUan: firstPresent(item.pf_uan, empUser.pf_no),
+    esiNo: firstPresent(item.esi_no, empUser.esi_no),
+    phone: firstPresent(item.mobile_no, item.mobile, item.phone, empUser.mobile_number),
+    mobileNo: firstPresent(item.mobile_no, empUser.mobile_number),
   };
 }
 
