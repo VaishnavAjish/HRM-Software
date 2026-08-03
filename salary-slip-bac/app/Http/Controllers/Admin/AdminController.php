@@ -23,9 +23,16 @@ class AdminController extends Controller
         $slipQuery = SalarySlip::query();
 
         $userAuth = auth('api')->user();
-        if ($userAuth && (int) $userAuth->role === 1) {
-            $userQuery->where('company_code', $userAuth->company_code);
-            $slipQuery->where('company_code', $userAuth->company_code);
+        if ($userAuth && ((int) $userAuth->role === 1 || (int) $userAuth->role === 0)) {
+            // Master/Super Admin view scope follows the company switcher
+            // (the request), not the admin's own stored company_code — that
+            // stored value is just where the account was created, not a
+            // restriction on what it's allowed to view.
+            if ($request->company_code && !in_array($request->company_code, ['all', 'all-companies'])) {
+                $codes = array_filter(array_map('trim', explode(',', $request->company_code)));
+                $userQuery->whereIn('company_code', $codes);
+                $slipQuery->whereIn('company_code', $codes);
+            }
         } elseif ($userAuth && (int) $userAuth->role === 2) {
             $userQuery->where('company_code', $userAuth->company_code)->where('unit', $userAuth->unit);
             $slipQuery->where('company_code', $userAuth->company_code)->where('unit', $userAuth->unit);
@@ -83,8 +90,11 @@ class AdminController extends Controller
         $recentSlips = (clone $slipQuery)->orderBy('id', 'desc')->take(10)->get();
 
         $batchQuery = \App\Models\UploadBatch::query();
-        if ($userAuth && (int) $userAuth->role === 1) {
-            $batchQuery->where('company_code', $userAuth->company_code);
+        if ($userAuth && ((int) $userAuth->role === 1 || (int) $userAuth->role === 0)) {
+            if ($request->company_code && !in_array($request->company_code, ['all', 'all-companies'])) {
+                $codes = array_filter(array_map('trim', explode(',', $request->company_code)));
+                $batchQuery->whereIn('company_code', $codes);
+            }
         } elseif ($userAuth && (int) $userAuth->role === 2) {
             $batchQuery->where('company_code', $userAuth->company_code)->where('unit', $userAuth->unit);
         } elseif ($request->company_code) {
