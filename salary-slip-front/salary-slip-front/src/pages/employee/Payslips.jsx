@@ -155,13 +155,19 @@ export default function Payslips() {
     };
   }, [companyId, page]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
+  // Changing company invalidates the loaded page, so the list resets. Assigned
+  // during render — the supported way to reset state when an input changes —
+  // because as an effect it painted the previous company's payslips once
+  // before clearing them.
+  const [companySeen, setCompanySeen] = useState(companyId);
+  if (companySeen !== companyId) {
+    setCompanySeen(companyId);
     setPayslips([]);
     setSelected(null);
     setDetail(null);
     setHasMore(false);
     setPage(1);
-  }, [companyId]);
+  }
 
   // IntersectionObserver on sentinel div at bottom of list
   useEffect(() => {

@@ -9,9 +9,11 @@ use App\Exceptions\DocumentException;
 use App\Services\DocumentStorageService;
 use App\Services\Documents\DocumentService;
 use App\Support\AadhaarReference;
+use App\Support\AuditLogger;
 use App\Support\DocumentType;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
@@ -605,7 +607,7 @@ class UserController extends Controller
         return response()->json(['status' => true, 'message' => 'Employee updated', 'data' => $employee]);
     }
 
-    public function destroy($id)
+    public function destroy($id, Request $request)
     {
         $employee = User::find($id);
         if (!$employee) {
@@ -616,7 +618,7 @@ class UserController extends Controller
             return response()->json(['status' => false, 'message' => 'Employee not found'], 404);
         }
 
-        $employee->delete();
+        $this->deleteAudited($employee, $request);
 
         return response()->json(['status' => true, 'message' => 'Employee deleted']);
     }
@@ -634,7 +636,7 @@ class UserController extends Controller
         $deletedCount = 0;
         foreach ($employees as $employee) {
             if ($this->inManagedScope($user, $employee)) {
-                $employee->delete();
+                $this->deleteAudited($employee, $request);
                 $deletedCount++;
             }
         }
@@ -643,6 +645,47 @@ class UserController extends Controller
             'status' => true,
             'message' => "{$deletedCount} employees deleted",
         ]);
+    }
+
+    /**
+     * Delete a user and record that it happened, or do neither.
+     *
+     * User rows are deleted outright — there is no SoftDeletes trait, so once
+     * the row is gone nothing anywhere says it existed. That is not theoretical:
+     * production went from 339 users to 338 during an audit window, one of the
+     * three role=1 admins, and audit_logs has no entry for it. The account
+     * cannot be identified, attributed or restored.
+     *
+     * The audit write is inside the transaction on purpose, unlike
+     * DocumentAudit::recordSafely, which is best-effort because it runs on
+     * ordinary page loads where a broken audit table must not turn a working
+     * screen into a 500. The trade-off inverts for a destructive, irreversible
+     * action: if we cannot record that an account was deleted, we do not delete
+     * it. Failing to delete is recoverable; deleting unrecorded is not.
+     *
+     * The snapshot holds what identifies the record and nothing sensitive — no
+     * Aadhaar, no bank details, no password hash — because an audit trail is
+     * read by more people than the record was.
+     */
+    private function deleteAudited(User $employee, Request $request): void
+    {
+        $snapshot = [
+            'id'           => $employee->id,
+            'name'         => $employee->name,
+            'emp_code'     => $employee->emp_code,
+            'email'        => $employee->email,
+            'role'         => $employee->role,
+            'company_code' => $employee->company_code,
+            'unit'         => $employee->unit,
+            'department'   => $employee->department,
+            'type'         => $employee->type,
+            'joining_date' => $employee->joining_date,
+        ];
+
+        DB::transaction(function () use ($employee, $request, $snapshot) {
+            AuditLogger::log($request, 'DELETE', 'employees', $snapshot, null);
+            $employee->delete();
+        });
     }
 
     public function dashboard(Request $request)

@@ -31,12 +31,18 @@ export function MonthYearPicker({ value, onChange, min, max, placeholder = "Sele
   const [viewYear, setViewYear] = useState(parsedValue ? parsedValue.year : currentNavDate.getFullYear());
   const popoverRef = useRef(null);
 
-  useEffect(() => {
-    if (isOpen) {
-      const targetYear = parsedValue ? parsedValue.year : new Date().getFullYear();
-      setViewYear(prev => (prev !== targetYear ? targetYear : prev));
+  /**
+   * Opening the picker should show the year the current value is in. That is a
+   * consequence of the click, not something to observe after the fact — doing
+   * it in an effect meant rendering the popover on the wrong year and then
+   * correcting it, one cascading render every time it opened.
+   */
+  const toggleOpen = () => {
+    if (!isOpen) {
+      setViewYear(parsedValue ? parsedValue.year : new Date().getFullYear());
     }
-  }, [isOpen, value]);
+    setIsOpen(!isOpen);
+  };
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -89,7 +95,7 @@ export function MonthYearPicker({ value, onChange, min, max, placeholder = "Sele
     <div className={`relative ${className}`} ref={popoverRef}>
       <div 
         className="flex items-center justify-between w-full h-full cursor-pointer"
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={toggleOpen}
       >
         <span className={displayValue ? "text-gray-900 dark:text-white" : "text-gray-400"}>
           {displayValue || placeholder}

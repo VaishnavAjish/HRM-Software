@@ -112,12 +112,18 @@ export default function AdminForm16() {
     };
   }, [companyScope, page, scopeKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
+  // Changing scope invalidates the loaded page, so the list resets. Assigned
+  // during render — the supported way to reset state when an input changes —
+  // because as an effect it painted the previous company's employees once
+  // before clearing them.
+  const [scopeSeen, setScopeSeen] = useState(scopeKey);
+  if (scopeSeen !== scopeKey) {
+    setScopeSeen(scopeKey);
     setEmployees([]);
     setSelected(null);
     setHasMore(false);
     setPage(1);
-  }, [scopeKey]);
+  }
 
   // IntersectionObserver on sentinel at bottom of list
   useEffect(() => {

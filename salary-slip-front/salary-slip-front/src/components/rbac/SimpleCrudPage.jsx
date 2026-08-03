@@ -21,8 +21,14 @@ export default function SimpleCrudPage({ title, description, icon: Icon, resourc
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
 
+  /**
+   * Raises no spinner of its own — every setState here happens after an await.
+   * `loading` starts true, so the mount fetch needs nothing, and a caller that
+   * refetches over an already-rendered list turns the spinner on itself. That
+   * keeps the effect free of synchronous state updates and the cascading render
+   * they cause.
+   */
   const fetchItems = async () => {
-    setLoading(true);
     try {
       const res = await resource.list(user?.accessToken, user?.tokenType);
       if (res.status) setItems(res.data || []);
@@ -31,6 +37,11 @@ export default function SimpleCrudPage({ title, description, icon: Icon, resourc
     } finally {
       setLoading(false);
     }
+  };
+
+  const refetch = () => {
+    setLoading(true);
+    return fetchItems();
   };
 
   useEffect(() => {

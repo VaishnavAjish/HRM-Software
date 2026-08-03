@@ -7,6 +7,7 @@ import { useState } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";
 import { useInstallPWA } from "../../hooks/useInstallPWA";
+import { useModuleAvailability } from "../../hooks/useModuleAvailability";
 import { hasStoredAadhaar } from "../../utils/aadhaar";
 import {
   LayoutDashboard,
@@ -26,7 +27,7 @@ import {
   Briefcase,
 } from "lucide-react";
 
-function getAdminNav(companyId, user, isAllCompanies) {
+function getAdminNav(companyId, user, isAllCompanies, isModuleAvailable = () => true) {
   const rawRole = user?.rawRole;
   const permissions = user?.permissions;
 
@@ -95,7 +96,11 @@ function getAdminNav(companyId, user, isAllCompanies) {
     });
   }
 
-  if (rawRole === 0 || hasAccess("hr.dashboard.read")) {
+  // Permission is not enough here. The HR tables are not in every deployment,
+  // and the same argument the Access Control block makes below applies: a menu
+  // item that can only return "being set up" turns "not migrated yet" into
+  // "looks broken", and an administrator cannot tell which it is.
+  if ((rawRole === 0 || hasAccess("hr.dashboard.read")) && isModuleAvailable("hr")) {
     nav.push({
       label: "HR",
       icon: Briefcase,
@@ -174,7 +179,8 @@ export default function Sidebar({ open, onClose, width, isCollapsed, onCollapse 
   } = useCompany();
   const { showIOSGuide, dismissIOSGuide } =
     useInstallPWA();
-    
+  const { isAvailable: isModuleAvailable } = useModuleAvailability();
+
   const [openMenus, setOpenMenus] = useState([]);
   
   const toggleMenu = (label) => {
@@ -187,7 +193,7 @@ export default function Sidebar({ open, onClose, width, isCollapsed, onCollapse 
   
   const nav = (() => {
     if (user?.role === "admin") {
-      return getAdminNav(companyId, user, isAllCompanies);
+      return getAdminNav(companyId, user, isAllCompanies, isModuleAvailable);
     }
 
     if (user?.role === "agent") {

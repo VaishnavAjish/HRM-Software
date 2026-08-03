@@ -14,7 +14,11 @@ export default function AgentDashboard() {
   const { user } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
-  const [formOpen, setFormOpen] = useState(false);
+  // The query string is the source of truth: `?modal=appointment` opens the
+  // form and closing navigates the parameter away. Mirroring that into state
+  // and syncing it from an effect meant the URL and the modal could disagree
+  // for a render, and a back-button that changed the URL without reopening.
+  const formOpen = new URLSearchParams(location.search).get("modal") === "appointment";
   const [viewCandidate, setViewCandidate] = useState(null);
   const [processCandidate, setProcessCandidate] = useState(null);
   const [candidates, setCandidates] = useState([]);
@@ -45,16 +49,8 @@ export default function AgentDashboard() {
     }
   }, [user]);
 
-  useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const modalParam = params.get("modal");
-    if (modalParam === "appointment") {
-      setFormOpen(true);
-    }
-  }, [location.search]);
-
   const handleModalClose = (wasSubmitted) => {
-    setFormOpen(false);
+    // Clearing the query string is what closes the modal.
     navigate("/agent", { replace: true });
     if (wasSubmitted) {
       fetchCandidates();

@@ -6,6 +6,8 @@ use Illuminate\Database\Eloquent\Model;
 
 class CandidateStageHistory extends Model
 {
+    protected $table = 'candidate_stage_history';
+
     public $timestamps = false;
 
     protected $fillable = ['candidate_id', 'from_stage', 'to_stage', 'changed_by', 'notes', 'created_at'];

@@ -92,16 +92,21 @@ export function CompanyProvider({ children }) {
     }
   }
 
-  useEffect(() => {
-    // Gated on `!initializing` for the same reason as the render-time reset
-    // above: while the session is still restoring, `user` is null, which
-    // makes isSuperAdmin/isMaster both false regardless of the real user's
-    // role — forcing a Super Admin's scope to their home company before
-    // their actual role has even loaded.
-    if (!initializing && !isSuperAdmin && !isMaster) {
-      setAdminScopeKey(prev => (prev !== userCompanyId ? userCompanyId : prev));
-    }
-  }, [initializing, isSuperAdmin, isMaster, userCompanyId]);
+  /*
+   * Someone who is neither a Super Admin nor a Master has exactly one scope:
+   * their own company. Assigned during render for the same reason as the reset
+   * above, and now in the same style — as an effect it rendered the stale scope
+   * first and corrected it on a second pass, which is visible as a flash of
+   * another company's data on the dashboard.
+   *
+   * Gated on `!initializing` for the same reason as the reset above: while the
+   * session is still restoring, `user` is null, which makes isSuperAdmin and
+   * isMaster both false regardless of the real user's role — forcing a Super
+   * Admin's scope to their home company before their actual role has loaded.
+   */
+  if (!initializing && !isSuperAdmin && !isMaster && adminScopeKey !== userCompanyId) {
+    setAdminScopeKey(userCompanyId);
+  }
 
   useEffect(() => {
     if (isSuperAdmin || isMaster) {
@@ -169,7 +174,6 @@ export function CompanyProvider({ children }) {
       companyId,
       companyIds,
       companyScope,
-      isAdmin,
       isSuperAdmin,
       isMaster,
       isAllCompanies,

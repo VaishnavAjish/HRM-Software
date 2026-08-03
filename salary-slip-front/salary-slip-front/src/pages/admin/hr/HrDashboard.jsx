@@ -49,7 +49,7 @@ const STAGE_LABELS = {
 
 export default function HrDashboard() {
   const { user } = useAuth();
-  const { companyScope, scopeKey } = useCompany();
+  const { companyScope } = useCompany();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
 
@@ -68,7 +68,10 @@ export default function HrDashboard() {
     }
     if (user?.accessToken) load();
     return () => { cancelled = true; };
-  }, [user, scopeKey]);
+    // companyScope is what the request actually reads. It is memoised in
+    // CompanyContext on [companyId, activeUnit] — the same inputs scopeKey is
+    // built from — so depending on it directly is stable and cannot loop.
+  }, [user, companyScope]);
 
   if (loading) {
     return (

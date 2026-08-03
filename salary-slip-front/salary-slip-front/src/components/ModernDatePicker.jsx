@@ -133,18 +133,6 @@ export default function ModernDatePicker({
   const [typedDate, setTypedDate] = useState('');
   const [typedError, setTypedError] = useState('');
 
-  // When picker opens, sync tempDate and view to actual value (or today)
-  useEffect(() => {
-    if (isOpen) {
-      const d = parseSafeDate(value) || new Date();
-      if (!isNaN(d.getTime())) {
-        setTempDate((prev) => (prev.getTime() !== d.getTime() ? d : prev));
-        setCurrentMonth((prev) => (prev !== d.getMonth() ? d.getMonth() : prev));
-        setCurrentYear((prev) => (prev !== d.getFullYear() ? d.getFullYear() : prev));
-      }
-    }
-  }, [isOpen, value]);
-
   useEffect(() => {
     function handleClickOutside(event) {
       if (
@@ -198,12 +186,20 @@ export default function ModernDatePicker({
     setIsOpen(false);
   };
 
-  // Every open starts on the calendar with a clean entry field. Done here
-  // rather than in an effect so opening doesn't cost an extra render pass.
+  // Every open starts on the calendar with a clean entry field, showing the
+  // currently selected date. Done here rather than in an effect so opening
+  // doesn't cost an extra render pass.
   const togglePicker = () => {
     if (!isOpen) {
       setViewMode('calendar');
       setTypedError('');
+
+      const d = parseSafeDate(value) || new Date();
+      if (!isNaN(d.getTime())) {
+        setTempDate(d);
+        setCurrentMonth(d.getMonth());
+        setCurrentYear(d.getFullYear());
+      }
     }
     setIsOpen(!isOpen);
   };

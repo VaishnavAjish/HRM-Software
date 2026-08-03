@@ -20,6 +20,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'jwt.auth' => \App\Http\Middleware\JwtMiddleware::class,
             'role' => \App\Http\Middleware\RoleMiddleware::class,
             'permission' => \App\Http\Middleware\RequirePermission::class,
+            'module.schema' => \App\Http\Middleware\RequireModuleSchema::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

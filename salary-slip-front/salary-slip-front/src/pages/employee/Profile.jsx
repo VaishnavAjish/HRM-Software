@@ -4,7 +4,7 @@ import ModernDatePicker from "../../components/ModernDatePicker";
 import {
   formatDateInputValue,
   getEmployeePhotoUrl,
-} from "../admin/AdminModals/EmployeeHelpers";
+} from "../admin/AdminModals/employee-helpers";
 import {
   Edit2,
   Save,
@@ -60,8 +60,17 @@ function InfoRow({
 }
 
 export default function Profile() {
-  const [loading, setLoading] = useState(true);
   const { user, updateCurrentUser } = useAuth();
+  // Nothing to fetch without a session, so nothing should be spinning. Derived
+  // from the token rather than corrected from the effect, which rendered a
+  // spinner and then removed it on a second pass for signed-out visitors.
+  const hasToken = Boolean(user?.accessToken);
+  const [loading, setLoading] = useState(hasToken);
+  const [spinnerFor, setSpinnerFor] = useState(hasToken);
+  if (spinnerFor !== hasToken) {
+    setSpinnerFor(hasToken);
+    setLoading(hasToken);
+  }
   const navigate = useNavigate();
   const [profile, setProfile] = useState(null);
 
@@ -164,7 +173,6 @@ export default function Profile() {
     }
 
     if (user?.accessToken) fetchProfile();
-    else setLoading(false);
   }, [user]);
 
   const [photoFile, setPhotoFile] = useState(null);

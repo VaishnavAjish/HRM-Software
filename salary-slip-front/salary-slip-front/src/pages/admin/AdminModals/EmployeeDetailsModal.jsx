@@ -17,11 +17,8 @@ import {
 import Button from "../../../components/ui/Button";
 import EmployeeDocuments from "../../../components/documents/EmployeeDocuments";
 import ModernDatePicker from "../../../components/ModernDatePicker";
-import {
-  EmployeeAvatar,
-  formatDateInputValue,
-  formatDisplayDate,
-} from "./EmployeeHelpers";
+import { EmployeeAvatar } from "./EmployeeHelpers";
+import { formatDateInputValue, formatDisplayDate } from "./employee-helpers";
 
 const TABS = [
   { key: "profile", label: "Profile & Contact", icon: User },
@@ -86,9 +83,14 @@ export default function EmployeeDetailsModal({
 }) {
   const [activeTab, setActiveTab] = useState("profile");
 
-  useEffect(() => {
-    if (isOpen) setActiveTab((prev) => (prev !== "profile" ? "profile" : prev));
-  }, [isOpen]);
+  // Each open starts on the Profile tab. Assigned during render — the supported
+  // way to reset state when an input changes — rather than from an effect,
+  // which showed the previous tab for one frame before switching back.
+  const [wasOpen, setWasOpen] = useState(isOpen);
+  if (wasOpen !== isOpen) {
+    setWasOpen(isOpen);
+    if (isOpen) setActiveTab("profile");
+  }
 
   useEffect(() => {
     if (isOpen) document.body.style.overflow = "hidden";

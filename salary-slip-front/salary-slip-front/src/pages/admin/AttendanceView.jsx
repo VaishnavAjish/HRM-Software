@@ -11,7 +11,6 @@ import {
   XCircle,
   Clock,
   Palmtree,
-  CalendarDays,
   FileSpreadsheet,
   Printer,
   RotateCcw,
@@ -24,8 +23,6 @@ import {
   UserCheck,
   UserX,
   AlertCircle,
-  Briefcase,
-  Layers,
 } from "lucide-react";
 import Modal from "../../components/ui/Modal";
 import { salaryApi } from "../../utils/api";
@@ -157,13 +154,6 @@ export default function AttendanceView() {
   const departmentsList = useMemo(() => {
     const set = new Set();
     employees.forEach((e) => { if (e.department) set.add(e.department); });
-    return Array.from(set);
-  }, [employees]);
-
-  // Derived shifts list
-  const shiftsList = useMemo(() => {
-    const set = new Set();
-    employees.forEach((e) => { if (e.shift_name || e.shift) set.add(e.shift_name || e.shift); });
     return Array.from(set);
   }, [employees]);
 

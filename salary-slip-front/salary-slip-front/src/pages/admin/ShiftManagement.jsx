@@ -12,15 +12,11 @@ import {
   XCircle,
   Moon,
   RotateCw,
-  Sliders,
   Search,
   Calendar,
-  ShieldAlert,
-  UserPlus,
   Eye,
   CheckSquare,
   Square,
-  Sparkles,
   SlidersHorizontal,
   RotateCcw,
   TrendingUp,
@@ -70,13 +66,25 @@ export default function ShiftManagement() {
   );
   const [selectedUnit, setSelectedUnit] = useState(activeUnit || "");
 
-  useEffect(() => {
+  /*
+   * Follow the scope switcher. Assigned during render — the supported way to
+   * reset state when an input changes — rather than from an effect, which
+   * rendered the previous company's shifts once before correcting itself.
+   *
+   * Reading selectedCompanyId through the updater rather than closing over it
+   * keeps this keyed on companyId alone. Closing over it meant the "fall back
+   * to the first company" branch could act on a stale value after a scope
+   * change, selecting a company the user had already moved away from.
+   */
+  const [companyIdSeen, setCompanyIdSeen] = useState(companyId);
+  if (companyIdSeen !== companyId) {
+    setCompanyIdSeen(companyId);
     if (companyId && companyId !== "all") {
       setSelectedCompanyId(companyId);
-    } else if (!selectedCompanyId && COMPANY_OPTIONS.length > 0) {
-      setSelectedCompanyId(COMPANY_OPTIONS[0].id);
+    } else if (COMPANY_OPTIONS.length > 0) {
+      setSelectedCompanyId((current) => current || COMPANY_OPTIONS[0].id);
     }
-  }, [companyId]);
+  }
 
   const [shifts, setShifts] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -279,14 +287,9 @@ export default function ShiftManagement() {
     });
   };
 
-  const toggleSelectAll = () => {
-    if (assignSelected.size === filteredAssignEmployees.length) {
-      setAssignSelected(new Set());
-    } else {
-      setAssignSelected(new Set(filteredAssignEmployees.map((e) => e.id)));
-    }
-  };
-
+  // Declared before toggleSelectAll, which reads it. The other way round the
+  // memo is referenced from above its own declaration, and the compiler cannot
+  // preserve memoization across that.
   const filteredAssignEmployees = useMemo(() => {
     if (!assignSearch.trim()) return assignEmployees;
     const q = assignSearch.toLowerCase();
@@ -294,6 +297,14 @@ export default function ShiftManagement() {
       (e) => (e.name || "").toLowerCase().includes(q) || (e.emp_code || "").toLowerCase().includes(q)
     );
   }, [assignEmployees, assignSearch]);
+
+  const toggleSelectAll = () => {
+    if (assignSelected.size === filteredAssignEmployees.length) {
+      setAssignSelected(new Set());
+    } else {
+      setAssignSelected(new Set(filteredAssignEmployees.map((e) => e.id)));
+    }
+  };
 
   const handleAssignSave = async () => {
     if (!assignShift) return;

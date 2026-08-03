@@ -26,7 +26,7 @@ import { exportNodeToPdf } from "../../utils/pdfUtils";
 import { salaryApi } from "../../utils/api";
 import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";
-import { useTheme } from "../../context/ThemeContext";
+import { useTheme } from "../../context/theme-context";
 import useGridHeaderContextMenu from "../../hooks/useGridHeaderContextMenu";
 import useIsMobile from "../../hooks/useIsMobile";
 

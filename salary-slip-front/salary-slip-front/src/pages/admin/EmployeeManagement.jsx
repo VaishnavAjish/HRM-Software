@@ -19,7 +19,7 @@ import {
 } from "../../utils/aadhaar";
 import { useSearchParams } from "react-router-dom";
 import { getCompanyConfig } from "../../config/companyConfig";
-import { useTheme } from "../../context/ThemeContext";
+import { useTheme } from "../../context/theme-context";
 import { validateEmployeeForm } from "../../utils/validation";
 import useGridHeaderContextMenu from "../../hooks/useGridHeaderContextMenu";
 import useIsMobile from "../../hooks/useIsMobile";
@@ -42,7 +42,7 @@ import EmployeeDetailsModal from "./AdminModals/EmployeeDetailsModal";
 import {
   formatDisplayDate,
   isPasswordValid,
-} from "./AdminModals/EmployeeHelpers";
+} from "./AdminModals/employee-helpers";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
@@ -272,14 +272,26 @@ export default function EmployeeManagement() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [modal, setModal] = useState(searchParams.get("modal") || null);
 
+  /*
+   * `?modal=add` opens the add form once, then the parameter is consumed so a
+   * refresh or a back-navigation does not reopen it.
+   *
+   * Opening is assigned during render — the supported way to react to an input
+   * change — while clearing the URL stays in an effect, because that is a write
+   * to an external system (the history entry) rather than component state.
+   */
+  const urlModal = searchParams.get("modal");
+  const [urlModalSeen, setUrlModalSeen] = useState(urlModal);
+  if (urlModalSeen !== urlModal) {
+    setUrlModalSeen(urlModal);
+    if (urlModal === "add") setModal("add");
+  }
+
   useEffect(() => {
-    const urlModal = searchParams.get("modal");
-    if (urlModal === "add") {
-      setModal((prev) => (prev !== "add" ? "add" : prev));
-      const nextParams = new URLSearchParams(searchParams);
-      nextParams.delete("modal");
-      setSearchParams(nextParams, { replace: true });
-    }
+    if (searchParams.get("modal") !== "add") return;
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete("modal");
+    setSearchParams(nextParams, { replace: true });
   }, [searchParams, setSearchParams]);
   const [selected, setSelected] = useState(null);
   const [form, setForm] = useState(emptyForm);
@@ -376,7 +388,7 @@ export default function EmployeeManagement() {
   }, []);
 
   const openEdit = useCallback(
-    async (emp) => {
+    (emp) => {
       // The input is prefilled with the complete stored number, so an editor can
       // check it against a document without retyping it. It is safe to post back
       // because it is the real value, not a mask — and buildSafeAadhaarUpdate
@@ -388,54 +400,45 @@ export default function EmployeeManagement() {
       setModal("edit");
       setViewLoading(true);
 
-      try {
-        const res = await salaryApi.getEmployee(
-          emp.id,
-          currentUser?.accessToken,
-          currentUser?.tokenType,
-          companyScope,
-        );
+      // The fetch runs in its own async scope rather than making the callback
+      // itself async: memoization cannot be preserved across an async
+      // useCallback, and the caller does not await this anyway.
+      salaryApi
+        .getEmployee(emp.id, currentUser?.accessToken, currentUser?.tokenType, companyScope)
+        .then((res) => {
+          const full = mapEmployee(res?.data ?? res);
 
-        const full = mapEmployee(res?.data ?? res);
-
-        setSelected(full);
-        setForm((prev) => ({
-          ...prev,
-          ...full,
-          // Keep whatever the editor has already typed rather than replacing it
-          // when the fuller record arrives.
-          aadharCardNo: prev.aadharCardNo || full.aadharCardNo,
-          password: "",
-        }));
-      } catch {
-        // partial row data already available
-      } finally {
-        setViewLoading(false);
-      }
+          setSelected(full);
+          setForm((prev) => ({
+            ...prev,
+            ...full,
+            // Keep whatever the editor has already typed rather than replacing
+            // it when the fuller record arrives.
+            aadharCardNo: prev.aadharCardNo || full.aadharCardNo,
+            password: "",
+          }));
+        })
+        .catch(() => {
+          // partial row data already available
+        })
+        .finally(() => setViewLoading(false));
     },
     [companyScope, currentUser?.accessToken, currentUser?.tokenType],
   );
 
   const openView = useCallback(
-    async (emp) => {
+    (emp) => {
       setSelected(emp);
       setModal("view");
       setViewLoading(true);
 
-      try {
-        const res = await salaryApi.getEmployee(
-          emp.id,
-          currentUser?.accessToken,
-          currentUser?.tokenType,
-          companyScope,
-        );
-
-        setSelected(mapEmployee(res?.data ?? res));
-      } catch (err) {
-        toast.error(err.message || "Failed to load employee");
-      } finally {
-        setViewLoading(false);
-      }
+      // As with openEdit: memoization cannot be preserved across an async
+      // useCallback, and nothing awaits this.
+      salaryApi
+        .getEmployee(emp.id, currentUser?.accessToken, currentUser?.tokenType, companyScope)
+        .then((res) => setSelected(mapEmployee(res?.data ?? res)))
+        .catch((err) => toast.error(err.message || "Failed to load employee"))
+        .finally(() => setViewLoading(false));
     },
     [companyScope, currentUser?.accessToken, currentUser?.tokenType],
   );
@@ -728,9 +731,15 @@ export default function EmployeeManagement() {
     }
   }, []);
 
-  useEffect(() => {
+  // A new set of rows invalidates the old selection. Assigned during render —
+  // the supported way to reset state when an input changes — rather than from
+  // an effect, which briefly reported the previous page's selection count
+  // against the new page.
+  const [rowsSeen, setRowsSeen] = useState(employees);
+  if (rowsSeen !== employees) {
+    setRowsSeen(employees);
     setSelectedRows([]);
-  }, [employees]);
+  }
 
   const handleExport = async () => {
     setExportLoading(true);

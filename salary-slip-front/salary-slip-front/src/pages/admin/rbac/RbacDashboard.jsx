@@ -149,7 +149,7 @@ export default function RbacDashboard() {
         setSettings(prev => ({ ...prev, [key]: currentValue }));
         toast.error("Failed to update widget setting");
       }
-    } catch (err) {
+    } catch {
       setSettings(prev => ({ ...prev, [key]: currentValue }));
       toast.error("Failed to update widget setting");
     } finally {

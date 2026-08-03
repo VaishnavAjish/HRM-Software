@@ -1,5 +1,5 @@
 import { Menu, Sun, Moon, Download, LogOut } from "lucide-react";
-import { useTheme } from "../../context/ThemeContext";
+import { useTheme } from "../../context/theme-context";
 import { useAuth } from "../../context/AuthContext";
 import { useInstallPWA } from "../../hooks/useInstallPWA";
 import { useState } from "react";

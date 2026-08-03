@@ -22,7 +22,7 @@ import {
   getAadhaarDisplayValue,
   hasStoredAadhaar,
 } from "../../utils/aadhaar";
-import { getEmployeePhotoUrl } from "../../pages/admin/AdminModals/EmployeeHelpers";
+import { getEmployeePhotoUrl } from "../../pages/admin/AdminModals/employee-helpers";
 
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
@@ -148,7 +148,7 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
       const allAppointments = apptData?.appointments ?? apptData?.appointmentData ?? apptData?.appoinments ?? apptData?.data ?? apptData;
       const appointmentList = Array.isArray(allAppointments) ? allAppointments : [];
       const appointmentRows = appointmentList
-        .filter((a) => !Boolean(a.emp_code) && Number(a.checkbox) !== 1 && String(a.status) !== '1' && a.status !== 'Approved')
+        .filter((a) => !a.emp_code && Number(a.checkbox) !== 1 && String(a.status) !== '1' && a.status !== 'Approved')
         .map((r) => ({ ...r, __stage: "appointment" }));
       const pendingRows = (pendingRes?.data?.users?.data ?? pendingRes?.data?.users ?? []).map((r) => ({ ...r, __stage: "pending" }));
       const employeeRows = (employeeRes?.data?.users?.data ?? employeeRes?.data?.users ?? []).map((r) => ({ ...r, __stage: "employee" }));

@@ -21,7 +21,8 @@ import { salaryApi } from "../../../utils/api";
 import { useAuth } from "../../../context/AuthContext";
 import { useCompany } from "../../../context/CompanyContext";
 import { COMPANY_OPTIONS } from "../../../config/companyConfig";
-import { formatDateInputValue, PasswordStrength } from "./EmployeeHelpers";
+import { PasswordStrength } from "./EmployeeHelpers";
+import { formatDateInputValue } from "./employee-helpers";
 
 const SECTIONS = [
   { key: "basic", label: "Basic Info", subtitle: "Personal particulars", icon: User },

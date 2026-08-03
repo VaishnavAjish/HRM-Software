@@ -12,15 +12,18 @@ function detectIOS() {
 
 export function useInstallPWA() {
   const [prompt, setPrompt] = useState(null);
-  const [installed, setInstalled] = useState(false);
+  // Already-installed is knowable before the first paint, so read it as the
+  // initial value rather than rendering "not installed" and correcting it from
+  // an effect. The lazy form keeps the media query off every later render.
+  const [installed, setInstalled] = useState(
+    () => window.matchMedia("(display-mode: standalone)").matches,
+  );
   const [showIOSGuide, setShowIOSGuide] = useState(false);
   const isIOS = detectIOS();
 
   useEffect(() => {
-    if (window.matchMedia("(display-mode: standalone)").matches) {
-      setInstalled(true);
-      return;
-    }
+    // Nothing to listen for once it is installed.
+    if (installed) return;
 
     const onBeforeInstall = (e) => {
       e.preventDefault();
@@ -39,7 +42,7 @@ export function useInstallPWA() {
       window.removeEventListener("beforeinstallprompt", onBeforeInstall);
       window.removeEventListener("appinstalled", onAppInstalled);
     };
-  }, []);
+  }, [installed]);
 
   const install = async () => {
     if (isIOS) {

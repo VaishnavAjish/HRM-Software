@@ -1,27 +1,5 @@
-import { baseUrl } from "../../../utils/url";
-
-export function getEmployeePhotoUrl(photo) {
-  if (!photo) return "";
-
-  const photoValue = String(photo).trim();
-
-  if (!photoValue) return "";
-
-  if (/^(https?:)?\/\//i.test(photoValue) || photoValue.startsWith("data:")) {
-    return photoValue;
-  }
-
-  // A server-local filesystem path is never servable to the browser. Chrome
-  // parses a leading drive letter as a URL scheme and rewrites "C:\…" to
-  // file:///C:/…, then refuses to load it ("Not allowed to load local
-  // resource"). Older rows hold PHP temp upload paths like
-  // C:\…\Temp\phpXXXX.tmp; render them as "no image" rather than a broken one.
-  if (/^[a-z]:[\\/]/i.test(photoValue) || photoValue.startsWith("\\\\") || /^file:/i.test(photoValue)) {
-    return "";
-  }
-
-  return `${baseUrl}/storage/${photoValue.replace(/^\/+/, "")}`;
-}
+import { getEmployeePhotoUrl, validatePassword } from "./employee-helpers";
+export { getEmployeePhotoUrl, validatePassword };
 
 export function EmployeeAvatar({ employee, size = "md" }) {
   const photoUrl = getEmployeePhotoUrl(employee?.photo);
@@ -52,21 +30,6 @@ export function EmployeeAvatar({ employee, size = "md" }) {
       )}
     </div>
   );
-}
-
-function validatePassword(pwd) {
-  return {
-    length: pwd.length >= 6,
-    upper: /[A-Z]/.test(pwd),
-    lower: /[a-z]/.test(pwd),
-    digit: /[0-9]/.test(pwd),
-    special: /[^A-Za-z0-9]/.test(pwd),
-  };
-}
-
-export function isPasswordValid(pwd) {
-  const v = validatePassword(pwd);
-  return v.length && v.upper && v.lower && v.digit && v.special;
 }
 
 export function PasswordStrength({ password, isEdit }) {
@@ -159,39 +122,4 @@ export function DetailRow({ icon, label, value, color, mono }) {
       </div>
     </div>
   );
-}
-
-export function formatDateInputValue(value) {
-  if (!value) return "";
-
-  if (/^\d{4}-\d{2}-\d{2}$/.test(String(value))) {
-    return value;
-  }
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
-
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-export function formatDisplayDate(value) {
-  if (!value) return "";
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return date.toLocaleDateString("en-IN", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
 }

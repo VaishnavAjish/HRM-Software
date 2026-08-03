@@ -1,0 +1,361 @@
+name: CI
+
+# Gates every push and PR. The job order is deliberate: the cheap static gates
+# run first and in parallel, and the two gates that would have caught the
+# 2026-08-03 authorization rollback — migration-integrity and permission-
+# coverage — run against a real PostgreSQL, not a fake.
+#
+# See docs/INCIDENT-2026-08-03-authz-rollback.md §10 and docs/AUDIT-2026-08-03.md.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22'
+  PHP_VERSION: '8.5'
+
+jobs:
+  # ---------------------------------------------------------------------------
+  laravel:
+    name: Laravel — tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: mbstring, pdo, pdo_sqlite, pdo_pgsql, zip, gd, bcmath
+          coverage: none
+
+      - name: Cache composer
+        uses: actions/cache@v4
+        with:
+          path: salary-slip-bac/vendor
+          key: composer-${{ hashFiles('salary-slip-bac/composer.lock') }}
+
+      - name: Install
+        working-directory: salary-slip-bac
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Prepare environment
+        working-directory: salary-slip-bac
+        run: |
+          cp .env.example .env 2>/dev/null || true
+          php artisan key:generate --force
+          php artisan jwt:secret --force || true
+
+      - name: Test
+        working-directory: salary-slip-bac
+        run: php artisan test
+
+  # ---------------------------------------------------------------------------
+  node:
+    name: Node — typecheck + tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: salary-slip-node/package-lock.json
+
+      - name: Install
+        working-directory: salary-slip-node
+        run: npm ci
+
+      - name: Generate Prisma client
+        working-directory: salary-slip-node
+        run: npx prisma generate
+
+      # The schema file is the contract even when the database is not
+      # reconciled to it. An invalid schema must never reach main.
+      - name: Validate Prisma schema
+        working-directory: salary-slip-node
+        run: npx prisma validate
+
+      - name: Typecheck
+        working-directory: salary-slip-node
+        run: npm run typecheck
+
+      - name: Test
+        working-directory: salary-slip-node
+        run: npm test
+
+  # ---------------------------------------------------------------------------
+  frontend:
+    name: Frontend — lint + tests + build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: salary-slip-front/salary-slip-front
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: salary-slip-front/salary-slip-front/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      # Non-blocking until the existing backlog is cleared (docs/STABILIZATION
+      # -2026-08-03.md §16). Flip `continue-on-error` to false once the count
+      # reaches zero — the ratchet below stops it growing in the meantime.
+      - name: Lint
+        id: lint
+        continue-on-error: true
+        run: npx eslint . -f json -o eslint-report.json
+
+      - name: Lint ratchet
+        run: |
+          BASELINE=43
+          COUNT=$(node -e "const r=require('./eslint-report.json');console.log(r.reduce((n,f)=>n+f.errorCount,0))")
+          echo "eslint errors: $COUNT (baseline $BASELINE)"
+          if [ "$COUNT" -gt "$BASELINE" ]; then
+            echo "::error::ESLint errors increased from $BASELINE to $COUNT"
+            exit 1
+          fi
+
+      - name: Test
+        run: npm run test:frontend
+
+      - name: Build
+        run: npm run build
+
+  # ---------------------------------------------------------------------------
+  # The gate that did not exist on 2026-08-03. It proves `php artisan migrate`
+  # completes on an empty database — which is exactly what the unrecorded
+  # authorization migration made impossible in production.
+  migration-integrity:
+    name: Migrations — apply cleanly to an empty database
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: hrms_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: mbstring, pdo, pdo_pgsql, zip, gd, bcmath
+          coverage: none
+
+      - name: Install
+        working-directory: salary-slip-bac
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Configure
+        working-directory: salary-slip-bac
+        run: |
+          cp .env.example .env 2>/dev/null || true
+          php artisan key:generate --force
+          {
+            echo "DB_CONNECTION=pgsql"
+            echo "DB_HOST=127.0.0.1"
+            echo "DB_PORT=5432"
+            echo "DB_DATABASE=hrms_ci"
+            echo "DB_USERNAME=postgres"
+            echo "DB_PASSWORD=postgres"
+          } >> .env
+
+      - name: Migrate (forward)
+        working-directory: salary-slip-bac
+        run: php artisan migrate --force
+
+      # A migration that cannot be reversed cannot be rolled back in an
+      # incident. Proving it now is cheaper than discovering it at 16:41.
+      - name: Migrate (rollback rehearsal)
+        working-directory: salary-slip-bac
+        run: php artisan migrate:rollback --force --step=5
+
+      - name: Migrate (re-apply)
+        working-directory: salary-slip-bac
+        run: php artisan migrate --force
+
+      - name: Assert no pending migrations
+        working-directory: salary-slip-bac
+        run: |
+          if php artisan migrate:status | grep -qi "Pending"; then
+            php artisan migrate:status
+            echo "::error::Pending migrations remain after a full apply"
+            exit 1
+          fi
+
+  # ---------------------------------------------------------------------------
+  # Permission coverage. Reported on every run; blocking only once the two
+  # vocabularies are reconciled (currently 0% — see the stabilization report).
+  permission-coverage:
+    name: Permissions — coverage
+    runs-on: ubuntu-latest
+    needs: migration-integrity
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: hrms_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: mbstring, pdo, pdo_pgsql, zip, gd, bcmath
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: salary-slip-node/package-lock.json
+
+      - name: Build a schema to measure against
+        working-directory: salary-slip-bac
+        run: |
+          composer install --no-interaction --prefer-dist --no-progress
+          cp .env.example .env 2>/dev/null || true
+          php artisan key:generate --force
+          {
+            echo "DB_CONNECTION=pgsql"
+            echo "DB_HOST=127.0.0.1"
+            echo "DB_PORT=5432"
+            echo "DB_DATABASE=hrms_ci"
+            echo "DB_USERNAME=postgres"
+            echo "DB_PASSWORD=postgres"
+          } >> .env
+          php artisan migrate --force
+          php artisan db:seed --force || true
+
+      - name: Install node deps
+        working-directory: salary-slip-node
+        run: npm ci && npx prisma generate
+
+      - name: Coverage report
+        working-directory: salary-slip-node
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/hrms_ci?schema=public
+        # --strict --min 100 is the target. Left non-blocking until the
+        # admin.*/hr.* vocabulary is seeded; the report is always printed.
+        run: npx tsx scripts/permission-coverage.ts
+
+      - name: Production state probe (informational)
+        working-directory: salary-slip-node
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/hrms_ci?schema=public
+        run: npx tsx scripts/prod-verify.ts
+
+  # ---------------------------------------------------------------------------
+  # The gap the incident exposed: 684 unit tests run against fakes and none of
+  # them could see that fifteen production tables had gone. These run against a
+  # real PostgreSQL and assert the readiness probe tells the truth on both
+  # schema generations and on the half-applied state in between.
+  integration:
+    name: Integration — real PostgreSQL
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: salary-slip-node/package-lock.json
+
+      - name: Install
+        working-directory: salary-slip-node
+        run: npm ci && npx prisma generate
+
+      - name: Integration tests
+        working-directory: salary-slip-node
+        env:
+          INTEGRATION_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres?schema=public
+        run: npx vitest run --testNamePattern='' src/modules/**/*.integration.test.ts
+
+  # ---------------------------------------------------------------------------
+  secrets-scan:
+    name: Secrets — no credentials committed
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Refuse tracked secrets
+        run: |
+          MATCHES=$(git ls-files | grep -iE '\.pem$|(^|/)\.env$|\.key$|id_rsa|\.p12$' || true)
+          if [ -n "$MATCHES" ]; then
+            echo "::error::Secret-bearing files are tracked:"
+            echo "$MATCHES"
+            exit 1
+          fi
+          echo "no tracked secrets"
+
+      - name: Refuse secrets in history
+        run: |
+          HIST=$(git log --all --diff-filter=A --name-only --pretty=format: \
+                 | grep -iE '\.pem$|(^|/)\.env$|\.key$|id_rsa' | sort -u || true)
+          if [ -n "$HIST" ]; then
+            echo "::error::Secret-bearing files exist in git history:"
+            echo "$HIST"
+            exit 1
+          fi
+          echo "history clean"
+
+  # ---------------------------------------------------------------------------
+  gate:
+    name: Deployment gate
+    runs-on: ubuntu-latest
+    needs: [laravel, node, frontend, migration-integrity, permission-coverage, integration, secrets-scan]
+    if: always()
+    steps:
+      - name: Refuse deployment on any failure
+        run: |
+          echo '${{ toJSON(needs) }}' > needs.json
+          FAILED=$(node -e "
+            const n=require('./needs.json');
+            console.log(Object.entries(n).filter(([,v])=>v.result!=='success').map(([k])=>k).join(', '));
+          ")
+          if [ -n "$FAILED" ]; then
+            echo "::error::Blocking deployment. Failed: $FAILED"
+            exit 1
+          fi
+          echo "All gates green — artifact is deployable."

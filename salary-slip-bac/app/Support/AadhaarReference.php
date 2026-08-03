@@ -8,13 +8,14 @@ use RuntimeException;
  * Turns an Aadhaar number into a deterministic, non-reversible reference safe
  * to use as a storage prefix.
  *
- *   123456789012  ->  AADHAAR_9012_a81f46c29d31
+ *   123456789012  ->  AADHAAR_a81f46c29d31b704
  *
  * The HMAC means the same person always resolves to the same folder while the
  * number itself cannot be recovered from the key — which matters because the
  * key travels into bucket listings, S3 access logs, CloudTrail and every
- * presigned URL. Only the last four digits are exposed, matching the masking
- * convention used everywhere else in the UI.
+ * presigned URL. Nothing of the number is exposed, not even the last four:
+ * unlike a masked field on a screen, a storage prefix is read by systems that
+ * were never granted record access.
  *
  * Changing AADHAAR_REFERENCE_SECRET changes every reference, so it must be
  * treated as permanent data, not a rotatable credential — rotating it orphans

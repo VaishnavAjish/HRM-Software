@@ -12,9 +12,8 @@ import { salaryApi, authApi } from "../../utils/api";
 import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";
 import { COMPANY_OPTIONS, getCompanyConfig } from "../../config/companyConfig";
-import {
-  PasswordStrength, isPasswordValid,
-} from "./AdminModals/EmployeeHelpers";
+import { PasswordStrength } from "./AdminModals/EmployeeHelpers";
+import { isPasswordValid } from "./AdminModals/employee-helpers";
 import {
   validateEmployeeForm, validateEmail, validateMobile, validatePan,
   validateAadhaar, validateIfsc, validateBankAccount, validateEsi, validatePf,

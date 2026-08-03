@@ -32,6 +32,7 @@ use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\SalariesSlipController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\Admin\Hr\HrDashboardController;
+use App\Http\Controllers\Api\ModuleAvailabilityController;
 use App\Http\Controllers\Admin\Hr\JobRequisitionController;
 use App\Http\Controllers\Admin\Hr\CandidateController;
 use App\Http\Controllers\Admin\Hr\InterviewController;
@@ -342,7 +343,14 @@ Route::middleware('jwt.auth')->group(function () {
             Route::delete('delete/{id}', [ShiftController::class, 'destroy'])->middleware('permission:hr.shift.delete');
             Route::post('assign', [ShiftController::class, 'assign'])->middleware('permission:hr.shift.assign');
         });
-        Route::group(["prefix" => "hr"], function () {
+        // Lets the client leave a module out of the navigation rather than
+        // offer a menu item that can only fail. No permission gate: it reports
+        // what exists, not what the caller may do.
+        Route::get('modules', [ModuleAvailabilityController::class, 'index']);
+
+        // Gated on schema, not just permission: the thirteen HR tables are not
+        // in production yet, and without this every route below is a 500.
+        Route::group(["prefix" => "hr", "middleware" => "module.schema:hr"], function () {
             Route::get('dashboard', [HrDashboardController::class, 'index'])->middleware('permission:hr.dashboard.read');
 
             Route::group(["prefix" => "requisitions"], function () {

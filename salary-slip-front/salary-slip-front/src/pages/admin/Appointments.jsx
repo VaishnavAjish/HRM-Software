@@ -4,9 +4,9 @@ import { AllCommunityModule, ModuleRegistry } from "ag-grid-community";
 import { AgGridReact } from "ag-grid-react";
 import GridHeaderContextMenu from "../../components/ui/GridHeaderContextMenu";
 import useGridHeaderContextMenu from "../../hooks/useGridHeaderContextMenu";
-import { useTheme } from "../../context/ThemeContext";
+import { useTheme } from "../../context/theme-context";
 import useIsMobile from "../../hooks/useIsMobile";
-import { getEmployeePhotoUrl } from "./AdminModals/EmployeeHelpers";
+import { getEmployeePhotoUrl } from "./AdminModals/employee-helpers";
 import { getAadhaarDisplayValue, isCompleteAadhaar } from "../../utils/aadhaar";
 
 ModuleRegistry.registerModules([AllCommunityModule]);

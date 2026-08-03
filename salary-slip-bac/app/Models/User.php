@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\Authorization\SchemaSupport;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Tymon\JWTAuth\Contracts\JWTSubject;
 
@@ -73,6 +74,68 @@ class User extends Authenticatable implements JWTSubject
         }
 
         return \App\Support\AadhaarReference::mask($this->getRawOriginal('aadhar_card_no'));
+    }
+
+    /**
+     * Derive the secure columns whenever aadhar_card_no is written.
+     *
+     * setAadhaarNumber() below is the deliberate path, but nothing was obliged
+     * to use it: aadhar_card_no is fillable, so every ordinary create/update —
+     * registration, the employee form, the appointment form, the importer —
+     * mass-assigned the plaintext and left encrypted_aadhaar_number,
+     * aadhaar_last_four and aadhaar_secure_reference null. Production shows the
+     * result exactly: 334 users with a plaintext number and zero with any of
+     * the three. The encryption was written, shipped, and never once reached.
+     *
+     * Doing it here rather than in each controller is what makes it true for
+     * write paths nobody has thought about yet, including future ones.
+     *
+     * Deliberately still writes the plaintext column. Readers across documents,
+     * auth and disclosure still fall back to it, so blanking it here would trade
+     * an at-rest problem for missing Aadhaar numbers on live screens. Retiring
+     * the column is a separate, ordered step: backfill, verify every reader
+     * prefers the encrypted value, then drop the plaintext.
+     */
+    public function setAadharCardNoAttribute($value): void
+    {
+        $this->attributes['aadhar_card_no'] = $value;
+
+        // The three columns below are added by
+        // 2026_07_30_000001_add_aadhaar_reference_to_users_table, and that
+        // migration has not reached production: `php artisan migrate` is
+        // blocked by the unrecorded authorization migration ahead of it.
+        // Assigning to a column that does not exist would fail the INSERT, so
+        // this would turn every employee and appointment save into a 500 on the
+        // exact deployment it is meant to protect. Probing costs one memoised
+        // information_schema lookup per process.
+        if (!SchemaSupport::hasColumn('users', 'encrypted_aadhaar_number')) {
+            return;
+        }
+
+        $digits = \App\Support\AadhaarReference::normalise((string) $value);
+
+        // Partial or malformed legacy values are stored as they arrive, as
+        // before. Deriving a reference from a number that is not one would put
+        // junk in the column the document folders are keyed on — and production
+        // has 39 single-character values and one UUID in this column.
+        if (!\App\Support\AadhaarReference::isValid($digits)) {
+            return;
+        }
+
+        $this->attributes['encrypted_aadhaar_number'] = $this->castAttributeAsEncryptedString(
+            'encrypted_aadhaar_number',
+            $digits
+        );
+        $this->attributes['aadhaar_last_four'] = substr($digits, -4);
+
+        try {
+            $this->attributes['aadhaar_secure_reference'] = \App\Support\AadhaarReference::secureReference($digits);
+        } catch (\RuntimeException) {
+            // AADHAAR_REFERENCE_SECRET is unset. The number is still encrypted
+            // and masked; only the storage key is unavailable. Refusing the
+            // whole write would take employee records down over a missing
+            // config value.
+        }
     }
 
     /**

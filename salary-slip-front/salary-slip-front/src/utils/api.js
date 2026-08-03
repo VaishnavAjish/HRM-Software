@@ -1595,6 +1595,14 @@ function hrQuery(params = {}) {
   return query ? `?${query}` : "";
 }
 
+export const modulesApi = {
+  // Which optional modules actually have their schema. Used to keep menu
+  // entries for absent modules out of the navigation entirely.
+  get(accessToken, tokenType = "Bearer") {
+    return apiRequest(`/modules`, { headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+};
+
 export const hrApi = {
   getDashboard(accessToken, tokenType = "Bearer", filters = {}) {
     return apiRequest(`/hr/dashboard${hrQuery(filters)}`, { headers: hrAuthHeaders(accessToken, tokenType) });
