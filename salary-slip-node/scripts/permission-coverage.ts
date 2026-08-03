@@ -1,116 +1,233 @@
-import { execFileSync } from 'node:child_process';
-import { PrismaClient } from '../src/generated/prisma/index.js';
-
 /**
- * Phase 6/7: permission coverage and role mapping.
+ * permission-coverage.ts — what the code enforces vs. what the database knows.
  *
- * Every code the application *enforces* is compared against the codes the
- * database actually holds. A code enforced but absent is not a missing row —
- * it is a gate that cannot be satisfied, and therefore falls through to
- * whatever the fallback does.
+ * Rewritten 2026-08-03. The previous version selected `permissions.code`
+ * unconditionally and died with `42703: column "code" does not exist` the
+ * moment the enterprise schema was rolled back — the exact situation in which
+ * you most need the answer. It now probes the schema first and reads whichever
+ * column carries the vocabulary, so it works on both schema generations. It
+ * also no longer shells out to `rg`, which silently returned zero matches when
+ * ripgrep was absent and made a broken scan look like a clean one.
  *
- * Read-only.
+ *   npx tsx scripts/permission-coverage.ts
+ *   npx tsx scripts/permission-coverage.ts --json
+ *   npx tsx scripts/permission-coverage.ts --strict --min 100   # CI gate
+ *
+ * Read-only. Touches no table other than `permissions`, and only with SELECT.
  */
 
-const db = new PrismaClient();
-const q = <T>(s: string) => db.$queryRawUnsafe<T[]>(s);
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { join, relative, sep } from 'node:path';
+import { db } from '../src/db/client.js';
 
-const rg = (pattern: string, path: string, flags: string[] = []): string[] => {
+const asJson = process.argv.includes('--json');
+const strict = process.argv.includes('--strict');
+const minIdx = process.argv.indexOf('--min');
+const minCoverage = minIdx >= 0 ? Number(process.argv[minIdx + 1]) : 100;
+
+const REPO = join(import.meta.dirname, '..', '..');
+const LARAVEL_ROUTES = join(REPO, 'salary-slip-bac', 'routes');
+const LARAVEL_APP = join(REPO, 'salary-slip-bac', 'app');
+const NODE_SRC = join(import.meta.dirname, '..', 'src');
+const REACT_SRC = join(REPO, 'salary-slip-front', 'salary-slip-front', 'src');
+
+interface Reference {
+  code: string;
+  surface: 'laravel' | 'node' | 'react';
+  file: string;
+  line: number;
+}
+
+// ---------------------------------------------------------------------------
+// Source scanning
+// ---------------------------------------------------------------------------
+
+function walk(dir: string, exts: string[], out: string[] = []): string[] {
+  let entries: string[];
   try {
-    return execFileSync('rg', ['-ohI', ...flags, pattern, path], { encoding: 'utf8' })
-      .split('\n')
-      .map((s) => s.trim())
-      .filter(Boolean);
+    entries = readdirSync(dir);
   } catch {
-    return [];
+    return out;
   }
-};
+  for (const entry of entries) {
+    if (entry === 'node_modules' || entry === 'vendor' || entry === '.git' || entry === 'generated') continue;
+    const full = join(dir, entry);
+    let st;
+    try {
+      st = statSync(full);
+    } catch {
+      continue;
+    }
+    if (st.isDirectory()) walk(full, exts, out);
+    else if (exts.some((e) => entry.endsWith(e))) out.push(full);
+  }
+  return out;
+}
 
-const BAC = '../salary-slip-bac';
-const FRONT = '../salary-slip-front/salary-slip-front/src';
+function scan(files: string[], surface: Reference['surface'], patterns: RegExp[]): Reference[] {
+  const refs: Reference[] = [];
+  for (const file of files) {
+    let text: string;
+    try {
+      text = readFileSync(file, 'utf8');
+    } catch {
+      continue;
+    }
+    text.split(/\r?\n/).forEach((line, i) => {
+      for (const pattern of patterns) {
+        // Patterns are declared /g; reset lastIndex so state does not leak between lines.
+        pattern.lastIndex = 0;
+        let m: RegExpExecArray | null;
+        while ((m = pattern.exec(line)) !== null) {
+          // A `permission:a,b,c` middleware string carries several codes at once.
+          for (const raw of m[1].split(',')) {
+            const code = raw.trim();
+            if (!code || !code.includes('.')) continue;
+            refs.push({ code, surface, file: relative(REPO, file).split(sep).join('/'), line: i + 1 });
+          }
+        }
+      }
+    });
+  }
+  return refs;
+}
 
-// ---- enforced by Laravel route middleware -------------------------------
-const laravel = new Set(
-  rg('permission:[a-zA-Z0-9_.\\-]+', `${BAC}/routes`).map((s) => s.replace('permission:', '')),
-);
-const laravelApp = new Set(
-  rg('permission:[a-zA-Z0-9_.\\-]+', `${BAC}/app`).map((s) => s.replace('permission:', '')),
-);
-laravelApp.forEach((c) => laravel.add(c));
+function collectReferences(): Reference[] {
+  const laravel = scan(
+    [...walk(LARAVEL_ROUTES, ['.php']), ...walk(LARAVEL_APP, ['.php'])],
+    'laravel',
+    [
+      /permission:([A-Za-z0-9_.*,& -]+)/g,
+      /can\(\s*['"]([A-Za-z0-9_.*& -]+)['"]/g,
+      /authorize\(\s*['"]([A-Za-z0-9_.*& -]+)['"]/g,
+    ],
+  );
 
-// ---- referenced by the React client -------------------------------------
-const frontend = new Set(
-  rg(`["'][a-z_]+\\.[a-z_.]+["']`, FRONT)
-    .map((s) => s.replace(/["']/g, ''))
-    .filter((s) =>
-      /^(admin|hr|employees|appointments|dashboard|platform|company|workforce|org|groups|branches|departments|security|reports|salary)\./.test(
-        s,
-      ),
-    ),
-);
+  const node = scan(
+    walk(NODE_SRC, ['.ts']).filter((f) => !f.endsWith('.test.ts')),
+    'node',
+    [
+      /requirePermission\(\s*['"]([A-Za-z0-9_.*& -]+)['"]/g,
+      /guarded\(\s*['"]([A-Za-z0-9_.*& -]+)['"]/g,
+      /permissionCode:\s*['"]([A-Za-z0-9_.*& -]+)['"]/g,
+    ],
+  );
 
-// ---- held by the database -----------------------------------------------
-const rows = await q<{ code: string; name: string; is_active: boolean; is_sensitive: boolean }>(
-  'select code, name, is_active, is_sensitive from permissions order by code',
-);
-const held = new Set(rows.map((r) => r.code));
+  const react = scan(
+    walk(REACT_SRC, ['.jsx', '.js', '.tsx', '.ts']).filter((f) => !/\.test\./.test(f)),
+    'react',
+    [
+      /requiredPermission=["']([A-Za-z0-9_.*& -]+)["']/g,
+      /hasPermission\(\s*['"]([A-Za-z0-9_.*& -]+)['"]/g,
+      /\bcan\(\s*['"]([A-Za-z0-9_.*& -]+)['"]/g,
+    ],
+  );
 
-const enforced = new Set([...laravel, ...frontend]);
+  return [...laravel, ...node, ...react];
+}
 
-const missing = [...enforced].filter((c) => !held.has(c)).sort();
-const unused = [...held].filter((c) => !enforced.has(c)).sort();
+// ---------------------------------------------------------------------------
+// Catalogue — schema-guarded
+// ---------------------------------------------------------------------------
 
-// duplicates: distinct rows that normalise to the same code
-const norm = (c: string) => c.toLowerCase().replace(/[^a-z0-9.]+/g, '.');
-const byNorm = new Map<string, string[]>();
-rows.forEach((r) => byNorm.set(norm(r.code), [...(byNorm.get(norm(r.code)) ?? []), r.code]));
-const dupes = [...byNorm].filter(([, v]) => v.length > 1);
+async function catalogue(): Promise<{ column: string; codes: string[]; duplicates: string[] }> {
+  const cols = await db.$queryRawUnsafe<Array<{ column_name: string }>>(
+    `select column_name from information_schema.columns
+      where table_schema='public' and table_name='permissions'`
+  );
+  const names = new Set(cols.map((c) => c.column_name));
 
-console.log(`enforced by Laravel routes : ${laravel.size}`);
-console.log(`referenced by React        : ${frontend.size}`);
-console.log(`held in permissions table  : ${held.size}`);
+  // `code` is the enterprise vocabulary column; `name` is what the
+  // pre-enterprise schema uses, and it already holds dotted strings.
+  const column = names.has('code') ? 'code' : 'name';
+  const activeFilter = names.has('is_active') ? 'where is_active = true' : '';
 
-console.log(`\n=== MISSING: enforced but not in the catalogue (${missing.length}) ===`);
-const byArea = new Map<string, string[]>();
-missing.forEach((c) => {
-  const a = c.split('.')[0]!;
-  byArea.set(a, [...(byArea.get(a) ?? []), c]);
-});
-[...byArea].sort().forEach(([a, cs]) => console.log(`  ${a} (${cs.length}): ${cs.join(', ')}`));
+  const found = await db.$queryRawUnsafe<Array<{ v: string }>>(
+    `select ${column} as v from permissions ${activeFilter} order by ${column}`
+  );
+  const all = found.map((r) => r.v).filter(Boolean);
 
-console.log(`\n=== UNUSED: in the catalogue, never enforced (${unused.length}) ===`);
-unused.forEach((c) => console.log(`  ${c}`));
+  const seen = new Map<string, number>();
+  for (const c of all) seen.set(c, (seen.get(c) ?? 0) + 1);
+  const duplicates = [...seen.entries()].filter(([, n]) => n > 1).map(([c]) => c);
 
-console.log(`\n=== DUPLICATE (normalised) (${dupes.length}) ===`);
-dupes.forEach(([n, v]) => console.log(`  ${n} <- ${v.join(' | ')}`));
+  return { column, codes: [...new Set(all)], duplicates };
+}
 
-console.log('\n=== codes containing whitespace ===');
-rows.filter((r) => /\s/.test(r.code)).forEach((r) => console.log(`  "${r.code}"`));
+// ---------------------------------------------------------------------------
 
-// ---- Phase 7: role coverage ---------------------------------------------
-console.log('\n=== ROLE COVERAGE ===');
-console.table(
-  await q(`select r.id, r.code, r.status, r.is_system,
-             (select count(*)::int from role_permissions rp where rp.role_id = r.id) as perms,
-             (select count(*)::int from user_roles ur where ur.role_id = r.id) as users
-           from roles r order by r.id`),
-);
+async function main() {
+  const refs = collectReferences();
+  const { column, codes, duplicates } = await catalogue();
 
-const [{ c: usersTotal }] = await q<{ c: number }>('select count(*)::int c from users');
-const [{ c: usersWithRole }] = await q<{ c: number }>(
-  'select count(distinct user_id)::int c from user_roles',
-);
-console.log(`users: ${usersTotal}, with a row in user_roles: ${usersWithRole}, without: ${usersTotal - usersWithRole}`);
+  const cat = new Set(codes);
+  const enforced = new Set(refs.map((r) => r.code));
 
-console.log('\nlegacy users.role distribution (what actually decides access today):');
-console.table(await q('select role, count(*)::int c from users group by role order by role'));
+  const missing = [...enforced].filter((c) => !cat.has(c)).sort();
+  const unused = [...cat].filter((c) => !enforced.has(c)).sort();
+  const covered = [...enforced].filter((c) => cat.has(c)).sort();
 
-const [{ c: orphanPerms }] = await q<{ c: number }>(
-  'select count(*)::int c from permissions p where not exists (select 1 from role_permissions rp where rp.permission_id = p.id)',
-);
-console.log(`\npermissions attached to no role: ${orphanPerms} / ${held.size}`);
+  const coverage = enforced.size ? (covered.length / enforced.size) * 100 : 100;
 
-console.log('\nauthorization_role_assignments (the NEW mechanism):');
-console.table(await q('select count(*)::int total from authorization_role_assignments'));
+  const bySurface = (s: Reference['surface']) => {
+    const set = new Set(refs.filter((r) => r.surface === s).map((r) => r.code));
+    const ok = [...set].filter((c) => cat.has(c)).length;
+    return { referenced: set.size, resolvable: ok, pct: set.size ? (ok / set.size) * 100 : 100 };
+  };
 
-await db.$disconnect();
+  const prefixes = (list: string[]) => {
+    const m = new Map<string, number>();
+    for (const c of list) {
+      const p = c.split('.')[0];
+      m.set(p, (m.get(p) ?? 0) + 1);
+    }
+    return [...m.entries()].sort((a, b) => b[1] - a[1]);
+  };
+
+  const report = {
+    generatedAt: new Date().toISOString(),
+    catalogueColumn: column,
+    catalogueSize: cat.size,
+    enforcedCodes: enforced.size,
+    callSites: refs.length,
+    coveragePct: Number(coverage.toFixed(2)),
+    surfaces: { laravel: bySurface('laravel'), node: bySurface('node'), react: bySurface('react') },
+    missing,
+    unused,
+    duplicates,
+    missingByPrefix: prefixes(missing),
+    unusedByPrefix: prefixes(unused),
+  };
+
+  if (asJson) {
+    console.log(JSON.stringify({ ...report, references: refs }, null, 2));
+  } else {
+    console.log(`\nPERMISSION COVERAGE — ${report.generatedAt}`);
+    console.log(`catalogue: permissions.${column} (${cat.size} distinct, ${duplicates.length} duplicated)`);
+    console.log(`enforced in code: ${enforced.size} distinct codes across ${refs.length} call sites\n`);
+
+    console.log(`COVERAGE: ${report.coveragePct}%  (${covered.length}/${enforced.size} enforced codes exist in the catalogue)`);
+    for (const [s, v] of Object.entries(report.surfaces)) {
+      console.log(`   ${s.padEnd(8)} ${v.resolvable}/${v.referenced} resolvable (${v.pct.toFixed(1)}%)`);
+    }
+
+    console.log(`\nMISSING — enforced by code, absent from the catalogue (${missing.length}):`);
+    for (const [p, n] of report.missingByPrefix) console.log(`   ${String(n).padStart(3)}  ${p}.*`);
+
+    console.log(`\nUNUSED — in the catalogue, enforced nowhere (${unused.length}):`);
+    for (const [p, n] of report.unusedByPrefix) console.log(`   ${String(n).padStart(3)}  ${p}.*`);
+
+    if (duplicates.length) console.log(`\nDUPLICATE (${duplicates.length}): ${duplicates.join(', ')}`);
+
+    if (missing.length) {
+      console.log(`\nEvery MISSING code denies by default under the enterprise engine.`);
+      console.log(`Enforcement must not be enabled until this list is empty or explicitly accepted.`);
+    }
+    console.log('');
+  }
+
+  await db.$disconnect();
+  if (strict && coverage < minCoverage) process.exit(1);
+}
+
+await main();
