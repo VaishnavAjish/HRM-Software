@@ -1800,7 +1800,10 @@ class UserController extends Controller
     {
         $userAuth = auth('api')->user();
 
-        $query = User::where('type', 'trial')->where('processed', 0);
+        $query = User::where('type', 'trial');
+        if (\App\Services\Authorization\SchemaSupport::hasColumn('users', 'processed')) {
+            $query->where('processed', 0);
+        }
 
         if ($userAuth && (int) $userAuth->role === 1) {
             $query->where('company_code', $userAuth->company_code);

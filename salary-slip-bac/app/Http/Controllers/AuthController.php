@@ -133,6 +133,20 @@ class AuthController extends Controller
 
         $role = (int) ($request->role ?? 1);
 
+        // An account scoped to more than one company must be a Master admin
+        // (role 1) — AdminController::dashboard() and the other admin-scoped
+        // queries only skip their company filter for role 0/1, so any other
+        // role assigned to multiple companies would end up filtered down to
+        // whatever narrow (often empty) match its own role's branch applies.
+        // Agents (role 4) are exempt: they already support multi-company
+        // scope through their own `type` check elsewhere in the app and must
+        // never be silently promoted to Admin just for spanning companies.
+        $companyCode = trim((string) $request->company_code);
+        $companyCount = $companyCode === '' ? 0 : count(array_filter(array_map('trim', explode(',', $companyCode))));
+        if ($companyCount > 1 && $role !== 4) {
+            $role = 1;
+        }
+
         $user = User::create([
             'name'         => $request->name,
             'email'        => $request->email,

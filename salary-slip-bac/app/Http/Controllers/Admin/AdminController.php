@@ -56,12 +56,12 @@ class AdminController extends Controller
                             $q->where(function($q1) use ($fromMonth, $fromYear) {
                                 $q1->where('year', '>', $fromYear)
                                    ->orWhere(function($q2) use ($fromMonth, $fromYear) {
-                                       $q2->where('year', $fromYear)->whereRaw('CAST(month AS UNSIGNED) >= ?', [$fromMonth]);
+                                       $q2->where('year', $fromYear)->whereRaw('CAST(month AS INTEGER) >= ?', [$fromMonth]);
                                    });
                             })->where(function($q1) use ($toMonth, $toYear) {
                                 $q1->where('year', '<', $toYear)
                                    ->orWhere(function($q2) use ($toMonth, $toYear) {
-                                       $q2->where('year', $toYear)->whereRaw('CAST(month AS UNSIGNED) <= ?', [$toMonth]);
+                                       $q2->where('year', $toYear)->whereRaw('CAST(month AS INTEGER) <= ?', [$toMonth]);
                                    });
                             });
                         });
