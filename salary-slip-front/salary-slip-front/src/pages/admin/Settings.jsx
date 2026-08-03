@@ -30,17 +30,20 @@ export default function Settings() {
 
   const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
 
-  const loadAdmins = async () => {
-    setLoading(true);
+  const requestAdmins = async () => {
     try {
       const res = await rbacApi.getUserRoles(user?.accessToken, user?.tokenType, 1, 100, "", "1");
       if (res.status) setAdmins(res.data || []);
-    } catch (err) {
-      toast.error(err.message || "Failed to load admins");
     } finally {
       setLoading(false);
     }
   };
+
+  // Raises no spinner of its own — every state update happens after an await,
+  // so calling this from an effect costs no cascading render. `loading` starts
+  // true, so the mount fetch needs none.
+  const loadAdmins = () =>
+    requestAdmins().catch((err) => toast.error(err.message || "Failed to load admins"));
 
   useEffect(() => {
     if (user?.rawRole === 0) loadAdmins();

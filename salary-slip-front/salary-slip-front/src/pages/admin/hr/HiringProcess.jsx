@@ -75,17 +75,26 @@ function RequisitionsTab() {
   const [saving, setSaving] = useState(false);
   const [timelineFor, setTimelineFor] = useState(null);
 
-  const load = async () => {
-    setLoading(true);
+  const requestRequisitions = async () => {
     try {
       const res = await hrApi.getRequisitions(user?.accessToken, user?.tokenType, companyScope);
       if (res.status) setRequisitions(res.data?.data || res.data || []);
-    } catch (err) {
-      toast.error(err.message || "Failed to load requisitions");
     } finally {
       setLoading(false);
     }
   };
+
+  // Raises no spinner of its own — every state update happens after an await,
+  // so calling this from an effect costs no cascading render. `loading` starts
+  // true; a scope change turns it back on during render below.
+  const load = () =>
+    requestRequisitions().catch((err) => toast.error(err.message || "Failed to load requisitions"));
+
+  const [scopeSeen, setScopeSeen] = useState(scopeKey);
+  if (scopeSeen !== scopeKey) {
+    setScopeSeen(scopeKey);
+    setLoading(true);
+  }
 
   useEffect(() => { if (user?.accessToken) load(); }, [user, scopeKey]); // eslint-disable-line react-hooks/exhaustive-deps
 

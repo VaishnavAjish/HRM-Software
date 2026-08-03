@@ -41,7 +41,6 @@ export function CompanyProvider({ children }) {
   const { user, initializing } = useAuth();
   const [adminScopeKey, setAdminScopeKey] = useState(loadStoredScope);
 
-  const isAdmin = user?.role === "admin";
   const userCompanyId = resolveCompanyId(
     user?.companyId,
     user?.company_code,
@@ -134,7 +133,12 @@ export function CompanyProvider({ children }) {
     document.documentElement.dataset.theme = theme;
   }, [companyId, isSuperAdmin]);
 
-  const companyIds = isSuperAdmin ? resolveCompanyIds(companyId) : [userCompanyId];
+  // Memoised because it is a fresh array on every render otherwise, which would
+  // change the context value's identity each time and re-render every consumer.
+  const companyIds = useMemo(
+    () => (isSuperAdmin ? resolveCompanyIds(companyId) : [userCompanyId]),
+    [isSuperAdmin, companyId, userCompanyId],
+  );
   const activeUnit = scope.unit;
   const scopeKey = scope.scopeKey;
   const isAllCompanies = companyId === ALL_COMPANY_ID;

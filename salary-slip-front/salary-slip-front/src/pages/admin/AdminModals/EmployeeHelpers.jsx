@@ -1,5 +1,4 @@
 import { getEmployeePhotoUrl, validatePassword } from "./employee-helpers";
-export { getEmployeePhotoUrl, validatePassword };
 
 export function EmployeeAvatar({ employee, size = "md" }) {
   const photoUrl = getEmployeePhotoUrl(employee?.photo);

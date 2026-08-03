@@ -50,8 +50,7 @@ export default function AuditLogs() {
   const [action, setAction] = useState("");
   const [expanded, setExpanded] = useState(null);
 
-  const fetchLogs = async (page = 1) => {
-    setLoading(true);
+  const requestLogs = async (page) => {
     try {
       const filters = {};
       if (module) filters.module = module;
@@ -61,12 +60,23 @@ export default function AuditLogs() {
         setLogs(res.data || []);
         setMeta(res.meta || { page: 1, totalPages: 1 });
       }
-    } catch (err) {
-      toast.error(err.message || "Failed to load audit logs");
     } finally {
       setLoading(false);
     }
   };
+
+  // Raises no spinner of its own — every state update happens after an await,
+  // so calling this from an effect costs no cascading render. `loading` starts
+  // true; a filter change turns it back on during render below.
+  const fetchLogs = (page = 1) =>
+    requestLogs(page).catch((err) => toast.error(err.message || "Failed to load audit logs"));
+
+  const filterKey = `${module}|${action}`;
+  const [filterSeen, setFilterSeen] = useState(filterKey);
+  if (filterSeen !== filterKey) {
+    setFilterSeen(filterKey);
+    setLoading(true);
+  }
 
   useEffect(() => {
     fetchLogs(1);

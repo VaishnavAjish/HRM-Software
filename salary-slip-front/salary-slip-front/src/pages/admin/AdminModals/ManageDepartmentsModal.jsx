@@ -19,8 +19,7 @@ export default function ManageDepartmentsModal({
   const [editingId, setEditingId] = useState(null);
   const [editName, setEditName] = useState("");
 
-  const fetchDepartments = async () => {
-    setLoading(true);
+  const requestDepartments = async () => {
     try {
       const res = await salaryApi.getDepartments(
         user?.accessToken,
@@ -29,20 +28,33 @@ export default function ManageDepartmentsModal({
       if (res.status) {
         setDepartments(res.data || []);
       }
-    } catch (error) {
-      console.error(error);
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
+  // Raises no spinner of its own — every state update happens after an await,
+  // so calling this from an effect costs no cascading render. Opening the modal
+  // turns the spinner back on during render below.
+  const fetchDepartments = () => requestDepartments().catch((error) => console.error(error));
+
+  // Each open starts clean. Assigned during render — the supported way to reset
+  // state when an input changes — rather than from the effect, which showed the
+  // last session's half-typed department name for a frame.
+  const [wasOpen, setWasOpen] = useState(isOpen);
+  if (wasOpen !== isOpen) {
+    setWasOpen(isOpen);
     if (isOpen) {
-      fetchDepartments();
+      setLoading(true);
       setNewDeptName("");
       setAdding(false);
       setEditingId(null);
     }
+  }
+
+  useEffect(() => {
+    if (isOpen) fetchDepartments();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
   const handleAddDepartment = async () => {

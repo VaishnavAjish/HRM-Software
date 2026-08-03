@@ -53,9 +53,7 @@ export default function PerformanceMatrix() {
       .catch(() => {});
   }, [user, scopeKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const loadCycleData = async (id) => {
-    if (!id) return;
-    setLoading(true);
+  const requestCycleData = async (id) => {
     try {
       const [dashRes, goalsRes, reviewsRes] = await Promise.all([
         hrApi.getPerformanceDashboard(user.accessToken, user.tokenType, { cycle_id: id }),
@@ -65,12 +63,22 @@ export default function PerformanceMatrix() {
       if (dashRes.status) setDashboard(dashRes.data);
       if (goalsRes.status) setGoals(goalsRes.data || []);
       if (reviewsRes.status) setReviews(reviewsRes.data || []);
-    } catch (err) {
-      toast.error(err.message || "Failed to load performance data");
     } finally {
       setLoading(false);
     }
   };
+
+  // Raises no spinner of its own — every state update happens after an await,
+  // so calling this from an effect costs no cascading render. `loading` starts
+  // true; switching cycle turns it back on during render below.
+  const loadCycleData = (id) =>
+    requestCycleData(id).catch((err) => toast.error(err.message || "Failed to load performance data"));
+
+  const [cycleSeen, setCycleSeen] = useState(cycleId);
+  if (cycleSeen !== cycleId) {
+    setCycleSeen(cycleId);
+    if (cycleId) setLoading(true);
+  }
 
   useEffect(() => { if (cycleId) loadCycleData(cycleId); }, [cycleId]); // eslint-disable-line react-hooks/exhaustive-deps
 

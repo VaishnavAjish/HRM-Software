@@ -51,8 +51,7 @@ export default function PendingEmployeesTab() {
     setModal("assign");
   };
 
-  const fetchPending = async () => {
-    setLoading((prev) => (prev !== true ? true : prev));
+  const requestPending = async () => {
     try {
       const res = await salaryApi.getAllEmployees(
         currentUser?.accessToken,
@@ -62,12 +61,27 @@ export default function PendingEmployeesTab() {
       );
       let data = res?.data?.users?.data ?? res?.data?.users ?? [];
       setEmployees(data);
-    } catch (err) {
-      toast.error(err.message || "Failed to load pending employees");
     } finally {
       setLoading(false);
     }
   };
+
+  // Raises no spinner of its own — every state update happens after an await,
+  // so calling this from an effect costs no cascading render. `loading` starts
+  // true, and a scope change turns it back on during render below.
+  const fetchPending = () =>
+    requestPending().catch((err) =>
+      toast.error(err.message || "Failed to load pending employees"),
+    );
+
+  // A scope change replaces the whole list, so the spinner comes back. Assigned
+  // during render rather than from the effect, which showed the previous
+  // company's pending employees until the new response landed.
+  const [scopeSeen, setScopeSeen] = useState(companyScope);
+  if (scopeSeen !== companyScope) {
+    setScopeSeen(companyScope);
+    setLoading(true);
+  }
 
   useEffect(() => {
     fetchPending();

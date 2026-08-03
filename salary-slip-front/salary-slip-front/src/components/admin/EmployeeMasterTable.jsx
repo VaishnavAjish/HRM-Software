@@ -126,8 +126,7 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
   const [editForm, setEditForm] = useState({});
   const [editSaving, setEditSaving] = useState(false);
 
-  const fetchAll = async () => {
-    setLoading(true);
+  const requestAll = async () => {
     try {
       // Appointments are deliberately NOT fetched here. An appointment only
       // becomes this page's business once it's approved on the Appointments
@@ -156,12 +155,22 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
       const merged = new Map();
       [...trialRows, ...appointmentRows, ...pendingRows, ...employeeRows].forEach((r) => merged.set(r.id, r));
       setRows(Array.from(merged.values()));
-    } catch (err) {
-      toast.error(err.message || "Failed to load employee master data");
     } finally {
       setLoading(false);
     }
   };
+
+  // Raises no spinner of its own — every state update happens after an await,
+  // so calling this from an effect costs no cascading render. `loading` starts
+  // true; a scope change turns it back on during render below.
+  const fetchAll = () =>
+    requestAll().catch((err) => toast.error(err.message || "Failed to load employee master data"));
+
+  const [scopeSeen, setScopeSeen] = useState(companyScope);
+  if (scopeSeen !== companyScope) {
+    setScopeSeen(companyScope);
+    setLoading(true);
+  }
 
   useEffect(() => {
     fetchAll();

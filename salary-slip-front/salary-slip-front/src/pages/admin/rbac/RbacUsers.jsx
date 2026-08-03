@@ -35,8 +35,7 @@ export default function RbacUsers() {
   });
   const [addLoading, setAddLoading] = useState(false);
 
-  const fetchUsers = async (page = 1, currentRoleFilter = roleFilter) => {
-    setLoading(true);
+  const requestUsers = async (page, currentRoleFilter) => {
     try {
       const res = await rbacApi.getUserRoles(user?.accessToken, user?.tokenType, page, 15, search, currentRoleFilter);
       if (res.status) {
@@ -44,12 +43,29 @@ export default function RbacUsers() {
         setUsers(filtered);
         setMeta(res.meta || { page: 1, totalPages: 1 });
       }
-    } catch (err) {
-      toast.error(err.message || "Failed to load users");
     } finally {
       setLoading(false);
     }
   };
+
+  // Raises no spinner of its own — every state update happens after an await,
+  // so calling this from an effect costs no cascading render. `loading` starts
+  // true; a filter change turns it back on during render below.
+  const fetchUsers = (page = 1, currentRoleFilter = roleFilter) =>
+    requestUsers(page, currentRoleFilter).catch((err) =>
+      toast.error(err.message || "Failed to load users"),
+    );
+
+  const refetchUsers = (page = 1, currentRoleFilter = roleFilter) => {
+    setLoading(true);
+    return fetchUsers(page, currentRoleFilter);
+  };
+
+  const [filterSeen, setFilterSeen] = useState(roleFilter);
+  if (filterSeen !== roleFilter) {
+    setFilterSeen(roleFilter);
+    setLoading(true);
+  }
 
   useEffect(() => {
     fetchUsers(1, roleFilter);
@@ -58,7 +74,7 @@ export default function RbacUsers() {
 
   const handleSearch = (e) => {
     e.preventDefault();
-    fetchUsers(1);
+    refetchUsers(1);
   };
 
   const toggleStatus = async (targetUser) => {

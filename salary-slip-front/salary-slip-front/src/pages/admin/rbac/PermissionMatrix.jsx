@@ -130,8 +130,7 @@ export default function PermissionMatrix() {
   // The sensitive permission awaiting confirmation, or null.
   const [pendingGrant, setPendingGrant] = useState(null);
 
-  const loadAdmins = async () => {
-    setLoading(true);
+  const requestAdmins = async () => {
     try {
       const res = await rbacApi.getUserRoles(user?.accessToken, user?.tokenType, 1, 100, "", "1,3,4");
       if (res.status) {
@@ -139,12 +138,16 @@ export default function PermissionMatrix() {
         const filtered = (res.data || []).filter(u => Number(u.role) !== 0);
         setAdmins(filtered);
       }
-    } catch (err) {
-      toast.error(err.message || "Failed to load admins");
     } finally {
       setLoading(false);
     }
   };
+
+  // Raises no spinner of its own — every state update happens after an await,
+  // so calling this from an effect costs no cascading render. `loading` starts
+  // true, so the mount fetch needs none.
+  const loadAdmins = () =>
+    requestAdmins().catch((err) => toast.error(err.message || "Failed to load admins"));
 
   useEffect(() => {
     loadAdmins();

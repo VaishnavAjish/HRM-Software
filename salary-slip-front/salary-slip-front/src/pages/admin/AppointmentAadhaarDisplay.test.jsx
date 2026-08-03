@@ -54,7 +54,7 @@ vi.mock("../../context/AuthContext", () => ({ useAuth: () => ({ user: mockUser }
 vi.mock("../../context/CompanyContext", () => ({
   useCompany: () => ({ isAllCompanies: false, companyId: "nidhi-impex", companyOptions: [] }),
 }));
-vi.mock("../../context/ThemeContext", () => ({ useTheme: () => ({ dark: false }) }));
+vi.mock("../../context/theme-context", () => ({ useTheme: () => ({ dark: false }) }));
 vi.mock("../../hooks/useIsMobile", () => ({ default: () => false }));
 vi.mock("../../hooks/useGridHeaderContextMenu", () => ({
   default: () => ({

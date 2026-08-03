@@ -29,16 +29,25 @@ export default function InterviewManagement() {
   const [rescheduleTarget, setRescheduleTarget] = useState(null);
   const [rescheduleAt, setRescheduleAt] = useState("");
 
-  const load = async () => {
+  /**
+   * Raises no spinner of its own — every state update happens in a promise
+   * continuation. `loading` starts true, so the mount fetch needs none, and
+   * turning it on from the effect was a synchronous setState that cost a
+   * cascading render before the request had even been sent. Callers refetching
+   * over an already-rendered list use reload().
+   */
+  const load = () =>
+    hrApi
+      .getInterviews(user?.accessToken, user?.tokenType, { per_page: 100 })
+      .then((res) => {
+        if (res.status) setInterviews(res.data?.data || res.data || []);
+      })
+      .catch((err) => toast.error(err.message || "Failed to load interviews"))
+      .finally(() => setLoading(false));
+
+  const reload = () => {
     setLoading(true);
-    try {
-      const res = await hrApi.getInterviews(user?.accessToken, user?.tokenType, { per_page: 100 });
-      if (res.status) setInterviews(res.data?.data || res.data || []);
-    } catch (err) {
-      toast.error(err.message || "Failed to load interviews");
-    } finally {
-      setLoading(false);
-    }
+    return load();
   };
 
   useEffect(() => {
@@ -54,7 +63,7 @@ export default function InterviewManagement() {
     setSaving(true);
     try {
       const res = await hrApi.storeInterview(form, user?.accessToken, user?.tokenType);
-      if (res.status) { toast.success("Interview scheduled"); setModalOpen(false); setForm(EMPTY_FORM); load(); }
+      if (res.status) { toast.success("Interview scheduled"); setModalOpen(false); setForm(EMPTY_FORM); reload(); }
     } catch (err) {
       toast.error(err.message || "Failed to schedule interview");
     } finally {
@@ -66,7 +75,7 @@ export default function InterviewManagement() {
     if (!window.confirm("Cancel this interview?")) return;
     try {
       const res = await hrApi.deleteInterview(id, user?.accessToken, user?.tokenType);
-      if (res.status) { toast.success("Interview cancelled"); load(); }
+      if (res.status) { toast.success("Interview cancelled"); reload(); }
     } catch (err) {
       toast.error(err.message || "Failed to cancel");
     }
@@ -76,7 +85,7 @@ export default function InterviewManagement() {
     if (!rescheduleAt) { toast.error("Pick a new date/time"); return; }
     try {
       const res = await hrApi.rescheduleInterview(rescheduleTarget.id, { scheduled_at: rescheduleAt }, user?.accessToken, user?.tokenType);
-      if (res.status) { toast.success("Interview rescheduled"); setRescheduleTarget(null); setRescheduleAt(""); load(); }
+      if (res.status) { toast.success("Interview rescheduled"); setRescheduleTarget(null); setRescheduleAt(""); reload(); }
     } catch (err) {
       toast.error(err.message || "Failed to reschedule");
     }
@@ -85,7 +94,7 @@ export default function InterviewManagement() {
   const submitFeedback = async () => {
     try {
       const res = await hrApi.submitInterviewFeedback(feedbackTarget.id, feedback, user?.accessToken, user?.tokenType);
-      if (res.status) { toast.success("Feedback submitted"); setFeedbackTarget(null); setFeedback(EMPTY_FEEDBACK); load(); }
+      if (res.status) { toast.success("Feedback submitted"); setFeedbackTarget(null); setFeedback(EMPTY_FEEDBACK); reload(); }
     } catch (err) {
       toast.error(err.message || "Failed to submit feedback");
     }

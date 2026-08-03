@@ -45,16 +45,25 @@ export default function CandidatePipeline() {
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
-  const load = async () => {
+  /**
+   * Raises no spinner of its own — every state update happens in a promise
+   * continuation. `loading` starts true, so the mount fetch needs none, and
+   * turning it on from the effect was a synchronous setState that cost a
+   * cascading render before the request had even been sent. Callers refetching
+   * over an already-rendered board use reload().
+   */
+  const load = () =>
+    hrApi
+      .getPipeline(user?.accessToken, user?.tokenType, companyScope)
+      .then((res) => {
+        if (res.status) setColumns(res.data || {});
+      })
+      .catch((err) => toast.error(err.message || "Failed to load pipeline"))
+      .finally(() => setLoading(false));
+
+  const reload = () => {
     setLoading(true);
-    try {
-      const res = await hrApi.getPipeline(user?.accessToken, user?.tokenType, companyScope);
-      if (res.status) setColumns(res.data || {});
-    } catch (err) {
-      toast.error(err.message || "Failed to load pipeline");
-    } finally {
-      setLoading(false);
-    }
+    return load();
   };
 
   useEffect(() => {
@@ -95,7 +104,7 @@ export default function CandidatePipeline() {
       if (!res.status) throw new Error(res.message);
     } catch (err) {
       toast.error(err.message || "Failed to move candidate");
-      load();
+      reload();
     }
   };
 
@@ -114,7 +123,7 @@ export default function CandidatePipeline() {
         toast.success("Candidate added");
         setModalOpen(false);
         setForm(EMPTY_FORM);
-        load();
+        reload();
       }
     } catch (err) {
       toast.error(err.message || "Failed to add candidate");

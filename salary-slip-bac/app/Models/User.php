@@ -100,14 +100,15 @@ class User extends Authenticatable implements JWTSubject
     {
         $this->attributes['aadhar_card_no'] = $value;
 
-        // The three columns below are added by
-        // 2026_07_30_000001_add_aadhaar_reference_to_users_table, and that
-        // migration has not reached production: `php artisan migrate` is
-        // blocked by the unrecorded authorization migration ahead of it.
-        // Assigning to a column that does not exist would fail the INSERT, so
-        // this would turn every employee and appointment save into a 500 on the
-        // exact deployment it is meant to protect. Probing costs one memoised
-        // information_schema lookup per process.
+        // The three columns below come from
+        // 2026_07_30_000001_add_aadhaar_reference_to_users_table. That has run
+        // in production — the columns exist there, empty — but it has not run
+        // everywhere: a deployment restored from an older snapshot, or one
+        // whose migrations are stranded behind an unrecorded migration, still
+        // lacks them. Assigning to a column that does not exist fails the whole
+        // INSERT, which would turn every employee and appointment save into a
+        // 500. Probing costs one memoised information_schema lookup per
+        // process, which is cheap next to that.
         if (!SchemaSupport::hasColumn('users', 'encrypted_aadhaar_number')) {
             return;
         }

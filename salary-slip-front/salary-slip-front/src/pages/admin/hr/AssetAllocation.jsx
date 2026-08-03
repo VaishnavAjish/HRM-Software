@@ -34,8 +34,7 @@ export default function AssetAllocation() {
   const [transferUserId, setTransferUserId] = useState("");
   const [qrTarget, setQrTarget] = useState(null);
 
-  const load = async () => {
-    setLoading(true);
+  const fetchAssets = async () => {
     try {
       const [assetsRes, dashRes] = await Promise.all([
         hrApi.getAssets(user?.accessToken, user?.tokenType, { ...companyScope, per_page: 100 }),
@@ -43,11 +42,23 @@ export default function AssetAllocation() {
       ]);
       if (assetsRes.status) setAssets(assetsRes.data?.data || assetsRes.data || []);
       if (dashRes.status) setDashboard(dashRes.data || {});
-    } catch (err) {
-      toast.error(err.message || "Failed to load assets");
     } finally {
       setLoading(false);
     }
+  };
+
+  /**
+   * Raises no spinner of its own — every state update happens after an await,
+   * so calling this from an effect costs no cascading render. `loading` starts
+   * true, so the mount fetch needs no spinner; callers refetching over an
+   * already-rendered list use reload().
+   */
+  const load = () =>
+    fetchAssets().catch((err) => toast.error(err.message || "Failed to load assets"));
+
+  const reload = () => {
+    setLoading(true);
+    return load();
   };
 
   useEffect(() => {
@@ -63,7 +74,7 @@ export default function AssetAllocation() {
     setSaving(true);
     try {
       const res = await hrApi.storeAsset(form, user?.accessToken, user?.tokenType);
-      if (res.status) { toast.success("Asset added"); setModalOpen(false); setForm(EMPTY_FORM); load(); }
+      if (res.status) { toast.success("Asset added"); setModalOpen(false); setForm(EMPTY_FORM); reload(); }
     } catch (err) {
       toast.error(err.message || "Failed to add asset");
     } finally {
@@ -75,7 +86,7 @@ export default function AssetAllocation() {
     if (!allocateUserId) { toast.error("Select an employee"); return; }
     try {
       const res = await hrApi.allocateAsset(allocateTarget.id, { user_id: allocateUserId }, user?.accessToken, user?.tokenType);
-      if (res.status) { toast.success("Asset allocated"); setAllocateTarget(null); setAllocateUserId(""); load(); }
+      if (res.status) { toast.success("Asset allocated"); setAllocateTarget(null); setAllocateUserId(""); reload(); }
     } catch (err) {
       toast.error(err.message || "Failed to allocate");
     }
@@ -84,7 +95,7 @@ export default function AssetAllocation() {
   const returnAsset = async (asset) => {
     try {
       const res = await hrApi.returnAsset(asset.id, {}, user?.accessToken, user?.tokenType);
-      if (res.status) { toast.success("Asset returned"); load(); }
+      if (res.status) { toast.success("Asset returned"); reload(); }
     } catch (err) {
       toast.error(err.message || "Failed to return asset");
     }
@@ -94,7 +105,7 @@ export default function AssetAllocation() {
     if (!transferUserId) { toast.error("Select an employee"); return; }
     try {
       const res = await hrApi.transferAsset(transferTarget.id, { user_id: transferUserId }, user?.accessToken, user?.tokenType);
-      if (res.status) { toast.success("Asset transferred"); setTransferTarget(null); setTransferUserId(""); load(); }
+      if (res.status) { toast.success("Asset transferred"); setTransferTarget(null); setTransferUserId(""); reload(); }
     } catch (err) {
       toast.error(err.message || "Failed to transfer");
     }

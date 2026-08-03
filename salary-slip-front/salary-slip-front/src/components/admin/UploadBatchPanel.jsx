@@ -36,10 +36,11 @@ export default function UploadBatchPanel({ type, icon: Icon = FileSpreadsheet, t
   const [deletingId, setDeletingId] = useState(null);
   const scrollRef = useRef(null);
 
-  const loadPage = async (pageNum, { append }) => {
-    if (append) setLoadingMore((prev) => (prev !== true ? true : prev));
-    else setLoading((prev) => (prev !== true ? true : prev));
+  const requestPage = async (pageNum, { append }) => {
     try {
+      // The append spinner belongs to the scroll handler that triggers it, so
+      // it is set here after the first await rather than by the caller.
+      if (append) setLoadingMore(true);
       const res = await salaryApi.getUploadBatches(type, user?.accessToken, user?.tokenType, companyId, pageNum, PAGE_LIMIT);
       if (res.status) {
         setBatches((prev) => (append ? [...prev, ...(res.data || [])] : res.data || []));
@@ -47,13 +48,26 @@ export default function UploadBatchPanel({ type, icon: Icon = FileSpreadsheet, t
         setTotalPages(res.meta?.totalPages || 1);
         setTotal(res.meta?.total ?? (res.data || []).length);
       }
-    } catch (err) {
-      toast.error(err.message || "Failed to load upload history");
     } finally {
       if (append) setLoadingMore(false);
       else setLoading(false);
     }
   };
+
+  // Raises no spinner of its own — every state update happens after an await,
+  // so calling this from an effect costs no cascading render. `loading` starts
+  // true; a type/company/refresh change turns it back on during render below.
+  const loadPage = (pageNum, options) =>
+    requestPage(pageNum, options).catch((err) =>
+      toast.error(err.message || "Failed to load upload history"),
+    );
+
+  const listKey = `${type}|${companyId}|${refreshKey}`;
+  const [listSeen, setListSeen] = useState(listKey);
+  if (listSeen !== listKey) {
+    setListSeen(listKey);
+    setLoading(true);
+  }
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
@@ -69,17 +83,24 @@ export default function UploadBatchPanel({ type, icon: Icon = FileSpreadsheet, t
     }
   };
 
-  const openReport = async (batchId) => {
-    setReportOpen(true);
-    setReportLoading(true);
+  const requestReport = async (batchId) => {
     try {
       const res = await salaryApi.getUploadBatch(type, batchId, user?.accessToken, user?.tokenType);
       if (res.status) setReportBatch(res.data);
-    } catch (err) {
-      toast.error(err.message || "Failed to load report");
     } finally {
       setReportLoading(false);
     }
+  };
+
+  // Fetch only — opening the dialog is the caller's business, so this is safe
+  // to call from an effect.
+  const loadReport = (batchId) =>
+    requestReport(batchId).catch((err) => toast.error(err.message || "Failed to load report"));
+
+  const openReport = (batchId) => {
+    setReportOpen(true);
+    setReportLoading(true);
+    return loadReport(batchId);
   };
 
   const deleteBatch = async (e, batchId) => {
@@ -103,11 +124,20 @@ export default function UploadBatchPanel({ type, icon: Icon = FileSpreadsheet, t
     }
   };
 
-  useEffect(() => {
+  // Expanding the requested row is a consequence of the prop changing, so it is
+  // assigned during render; fetching its report stays in the effect.
+  const [autoOpenSeen, setAutoOpenSeen] = useState(autoOpenBatchId);
+  if (autoOpenSeen !== autoOpenBatchId) {
+    setAutoOpenSeen(autoOpenBatchId);
     if (autoOpenBatchId) {
       setExpandedId(autoOpenBatchId);
-      openReport(autoOpenBatchId);
+      setReportOpen(true);
+      setReportLoading(true);
     }
+  }
+
+  useEffect(() => {
+    if (autoOpenBatchId) loadReport(autoOpenBatchId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoOpenBatchId]);
 

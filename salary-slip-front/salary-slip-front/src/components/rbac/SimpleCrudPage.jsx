@@ -28,16 +28,17 @@ export default function SimpleCrudPage({ title, description, icon: Icon, resourc
    * keeps the effect free of synchronous state updates and the cascading render
    * they cause.
    */
-  const fetchItems = async () => {
+  const requestItems = async () => {
     try {
       const res = await resource.list(user?.accessToken, user?.tokenType);
       if (res.status) setItems(res.data || []);
-    } catch (err) {
-      toast.error(err.message || `Failed to load ${title}`);
     } finally {
       setLoading(false);
     }
   };
+
+  const fetchItems = () =>
+    requestItems().catch((err) => toast.error(err.message || `Failed to load ${title}`));
 
   const refetch = () => {
     setLoading(true);
@@ -76,7 +77,7 @@ export default function SimpleCrudPage({ title, description, icon: Icon, resourc
       if (res.status) {
         toast.success(res.message || "Saved successfully");
         setModalOpen(false);
-        fetchItems();
+        refetch();
       } else {
         toast.error(res.message || "Failed to save");
       }
@@ -93,7 +94,7 @@ export default function SimpleCrudPage({ title, description, icon: Icon, resourc
       const res = await resource.remove(item.id, user?.accessToken, user?.tokenType);
       if (res.status) {
         toast.success("Deleted successfully");
-        fetchItems();
+        refetch();
       } else {
         toast.error(res.message || "Failed to delete");
       }

@@ -6,7 +6,8 @@ import AppointmentModal from "../auth/AppointmentModal";
 import TrialFormModal from "../auth/TrialFormModal";
 import { authApi } from "../../utils/api";
 import PrintableForm from "../../components/forms/PrintableForm";
-import { PrintableTrialForm, normalizeTrialForm } from "../../components/forms/PrintableTrialForm";
+import { PrintableTrialForm } from "../../components/forms/PrintableTrialForm";
+import { normalizeTrialForm } from "../../components/forms/trial-form-helpers";
 import toast from "react-hot-toast";
 import { getAadhaarDisplayValue } from "../../utils/aadhaar";
 
@@ -29,31 +30,40 @@ export default function AgentDashboard() {
   const [pdfLoading, setPdfLoading] = useState(false);
   const formRef = useRef(null);
 
-  const fetchCandidates = async () => {
+  const requestCandidates = async () => {
     try {
-      setLoading(true);
       const res = await authApi.getAgentCandidates(user?.accessToken, user?.tokenType);
       if (res?.status) {
         setCandidates(res.data || []);
       }
-    } catch {
-      toast.error("Failed to load candidates");
     } finally {
       setLoading(false);
     }
+  };
+
+  // Raises no spinner of its own — every state update happens after an await,
+  // so calling this from an effect costs no cascading render. `loading` starts
+  // true, so the mount fetch needs none; refetchCandidates is for the rest.
+  const fetchCandidates = () =>
+    requestCandidates().catch(() => toast.error("Failed to load candidates"));
+
+  const refetchCandidates = () => {
+    setLoading(true);
+    return fetchCandidates();
   };
 
   useEffect(() => {
     if (user?.accessToken) {
       fetchCandidates();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   const handleModalClose = (wasSubmitted) => {
     // Clearing the query string is what closes the modal.
     navigate("/agent", { replace: true });
     if (wasSubmitted) {
-      fetchCandidates();
+      refetchCandidates();
     }
   };
 
@@ -642,7 +652,7 @@ export default function AgentDashboard() {
         initialData={viewCandidate && viewCandidate.type === 'trial' ? { id: viewCandidate.id || viewCandidate._id, raw: viewCandidate, addedBy: viewCandidate.addedBy || user?.id } : null}
         onSuccess={() => {
           setViewCandidate(null);
-          fetchCandidates();
+          refetchCandidates();
         }}
       />
 
@@ -652,7 +662,7 @@ export default function AgentDashboard() {
         onClose={() => setProcessCandidate(null)}
         onSuccess={() => {
           setProcessCandidate(null);
-          fetchCandidates();
+          refetchCandidates();
         }}
         initialData={
           processCandidate

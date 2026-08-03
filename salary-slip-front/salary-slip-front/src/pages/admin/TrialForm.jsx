@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AllCommunityModule, ModuleRegistry } from "ag-grid-community";
 import { AgGridReact } from "ag-grid-react";
 import GridHeaderContextMenu from "../../components/ui/GridHeaderContextMenu";
@@ -485,32 +485,39 @@ export default function TrialForm() {
     }
   };
 
-  const handleStatusUpdate = async (id, approve) => {
-    const label = approve ? "Approved" : "Rejected";
-    setStatusLoading((prev) => ({ ...prev, [id]: label }));
-    try {
-      await authApi.updateTrialForm(
-        id,
-        { checkbox: approve ? 1 : 0 },
-        user?.accessToken,
-        user?.tokenType,
-      );
-      setForms((prev) =>
-        prev.map((f) => (f.id === id ? { ...f, status: label } : f)),
-      );
-      if (selected?.id === id)
-        setSelected((prev) => ({ ...prev, status: label }));
-      toast.success(`Trial form ${label.toLowerCase()} successfully`);
-    } catch (err) {
-      toast.error(err.message || "Failed to update status");
-    } finally {
-      setStatusLoading((prev) => {
-        const n = { ...prev };
-        delete n[id];
-        return n;
-      });
-    }
-  };
+  /**
+   * Memoised because the column definitions below depend on it; a fresh
+   * function each render rebuilt them and re-rendered the whole grid.
+   *
+   * Not an async callback: memoization cannot be preserved across one, and
+   * nothing awaits this — it is wired straight to a button.
+   */
+  const handleStatusUpdate = useCallback(
+    (id, approve) => {
+      const label = approve ? "Approved" : "Rejected";
+      setStatusLoading((prev) => ({ ...prev, [id]: label }));
+
+      return authApi
+        .updateTrialForm(id, { checkbox: approve ? 1 : 0 }, user?.accessToken, user?.tokenType)
+        .then(() => {
+          setForms((prev) =>
+            prev.map((f) => (f.id === id ? { ...f, status: label } : f)),
+          );
+          if (selected?.id === id)
+            setSelected((prev) => ({ ...prev, status: label }));
+          toast.success(`Trial form ${label.toLowerCase()} successfully`);
+        })
+        .catch((err) => toast.error(err.message || "Failed to update status"))
+        .finally(() => {
+          setStatusLoading((prev) => {
+            const n = { ...prev };
+            delete n[id];
+            return n;
+          });
+        });
+    },
+    [selected?.id, user?.accessToken, user?.tokenType],
+  );
 
   const handleDelete = async () => {
     if (!deleteTarget) return;

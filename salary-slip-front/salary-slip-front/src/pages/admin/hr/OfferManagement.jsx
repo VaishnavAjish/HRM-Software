@@ -30,16 +30,25 @@ export default function OfferManagement() {
   const [saving, setSaving] = useState(false);
   const [historyTarget, setHistoryTarget] = useState(null);
 
-  const load = async () => {
+  /**
+   * Raises no spinner of its own — every state update happens in a promise
+   * continuation. `loading` starts true, so the mount fetch needs none, and
+   * turning it on from the effect was a synchronous setState that cost a
+   * cascading render before the request had even been sent. Callers refetching
+   * over an already-rendered list use reload().
+   */
+  const load = () =>
+    hrApi
+      .getOffers(user?.accessToken, user?.tokenType, { per_page: 100 })
+      .then((res) => {
+        if (res.status) setOffers(res.data?.data || res.data || []);
+      })
+      .catch((err) => toast.error(err.message || "Failed to load offers"))
+      .finally(() => setLoading(false));
+
+  const reload = () => {
     setLoading(true);
-    try {
-      const res = await hrApi.getOffers(user?.accessToken, user?.tokenType, { per_page: 100 });
-      if (res.status) setOffers(res.data?.data || res.data || []);
-    } catch (err) {
-      toast.error(err.message || "Failed to load offers");
-    } finally {
-      setLoading(false);
-    }
+    return load();
   };
 
   useEffect(() => {
@@ -60,7 +69,7 @@ export default function OfferManagement() {
     try {
       const salary_breakup = Object.fromEntries(breakup.filter((r) => r.label).map((r) => [r.label, Number(r.amount) || 0]));
       const res = await hrApi.storeOffer({ ...form, salary_breakup }, user?.accessToken, user?.tokenType);
-      if (res.status) { toast.success("Offer created"); setModalOpen(false); setForm(EMPTY_FORM); setBreakup(EMPTY_BREAKUP); load(); }
+      if (res.status) { toast.success("Offer created"); setModalOpen(false); setForm(EMPTY_FORM); setBreakup(EMPTY_BREAKUP); reload(); }
     } catch (err) {
       toast.error(err.message || "Failed to create offer");
     } finally {
@@ -69,20 +78,20 @@ export default function OfferManagement() {
   };
 
   const approve = async (id) => {
-    try { const res = await hrApi.approveOffer(id, user?.accessToken, user?.tokenType); if (res.status) { toast.success("Offer approved"); load(); } }
+    try { const res = await hrApi.approveOffer(id, user?.accessToken, user?.tokenType); if (res.status) { toast.success("Offer approved"); reload(); } }
     catch (err) { toast.error(err.message || "Failed to approve"); }
   };
   const release = async (id) => {
-    try { const res = await hrApi.releaseOffer(id, user?.accessToken, user?.tokenType); if (res.status) { toast.success("Offer released"); load(); } }
+    try { const res = await hrApi.releaseOffer(id, user?.accessToken, user?.tokenType); if (res.status) { toast.success("Offer released"); reload(); } }
     catch (err) { toast.error(err.message || "Failed to release"); }
   };
   const respond = async (id, status) => {
-    try { const res = await hrApi.respondOffer(id, { status }, user?.accessToken, user?.tokenType); if (res.status) { toast.success(`Offer ${status}`); load(); } }
+    try { const res = await hrApi.respondOffer(id, { status }, user?.accessToken, user?.tokenType); if (res.status) { toast.success(`Offer ${status}`); reload(); } }
     catch (err) { toast.error(err.message || "Failed to record response"); }
   };
   const withdraw = async (id) => {
     if (!window.confirm("Withdraw this offer?")) return;
-    try { const res = await hrApi.deleteOffer(id, user?.accessToken, user?.tokenType); if (res.status) { toast.success("Offer withdrawn"); load(); } }
+    try { const res = await hrApi.deleteOffer(id, user?.accessToken, user?.tokenType); if (res.status) { toast.success("Offer withdrawn"); reload(); } }
     catch (err) { toast.error(err.message || "Failed to withdraw"); }
   };
 
