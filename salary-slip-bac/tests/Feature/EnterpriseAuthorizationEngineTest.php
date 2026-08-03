@@ -102,6 +102,17 @@ class EnterpriseAuthorizationEngineTest extends TestCase
         $this->assertFalse($decision->allowed);
     }
 
+    #[Test]
+    public function salary_list_runs_through_the_enterprise_permission_middleware(): void
+    {
+        $response = $this->withToken(auth('api')->login($this->admin))
+            ->getJson('/api/salary-slip/get?page=1&limit=15&company_code=all');
+
+        $response->assertOk()
+            ->assertJsonPath('status', true)
+            ->assertJsonStructure(['data', 'pagination']);
+    }
+
     private function makeUser(array $attributes): User
     {
         return User::create(array_merge([

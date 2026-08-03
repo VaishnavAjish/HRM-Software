@@ -825,7 +825,12 @@ exports.Prisma.PermissionsScalarFieldEnum = {
   group_id: 'group_id',
   description: 'description',
   created_at: 'created_at',
-  updated_at: 'updated_at'
+  updated_at: 'updated_at',
+  code: 'code',
+  resource: 'resource',
+  action: 'action',
+  is_active: 'is_active',
+  is_sensitive: 'is_sensitive'
 };
 
 exports.Prisma.Personal_access_tokensScalarFieldEnum = {
@@ -956,7 +961,13 @@ exports.Prisma.Reporting_relationshipsScalarFieldEnum = {
 
 exports.Prisma.Role_permissionsScalarFieldEnum = {
   role_id: 'role_id',
-  permission_id: 'permission_id'
+  permission_id: 'permission_id',
+  effect: 'effect',
+  conditions: 'conditions',
+  obligations: 'obligations',
+  inherit_to_children: 'inherit_to_children',
+  valid_from: 'valid_from',
+  valid_until: 'valid_until'
 };
 
 exports.Prisma.RolesScalarFieldEnum = {
@@ -965,7 +976,20 @@ exports.Prisma.RolesScalarFieldEnum = {
   type: 'type',
   is_active: 'is_active',
   created_at: 'created_at',
-  updated_at: 'updated_at'
+  updated_at: 'updated_at',
+  code: 'code',
+  tenant_id: 'tenant_id',
+  description: 'description',
+  role_type: 'role_type',
+  is_system: 'is_system',
+  is_assignable: 'is_assignable',
+  is_sensitive: 'is_sensitive',
+  requires_approval: 'requires_approval',
+  default_scope_type: 'default_scope_type',
+  status: 'status',
+  version: 'version',
+  created_by: 'created_by',
+  updated_by: 'updated_by'
 };
 
 exports.Prisma.Salary_slipsScalarFieldEnum = {
@@ -1108,7 +1132,11 @@ exports.Prisma.Upload_batchesScalarFieldEnum = {
 exports.Prisma.User_permissionsScalarFieldEnum = {
   user_id: 'user_id',
   permission_id: 'permission_id',
-  is_denied: 'is_denied'
+  is_denied: 'is_denied',
+  conditions: 'conditions',
+  obligations: 'obligations',
+  valid_from: 'valid_from',
+  valid_until: 'valid_until'
 };
 
 exports.Prisma.User_rolesScalarFieldEnum = {
@@ -1303,6 +1331,268 @@ exports.Prisma.Workforce_plansScalarFieldEnum = {
   updated_at: 'updated_at'
 };
 
+exports.Prisma.Authz_migrationsScalarFieldEnum = {
+  id: 'id',
+  applied_at: 'applied_at',
+  applied_by: 'applied_by'
+};
+
+exports.Prisma.Authorization_access_request_approvalsScalarFieldEnum = {
+  id: 'id',
+  access_request_id: 'access_request_id',
+  stage: 'stage',
+  sequence: 'sequence',
+  approver_id: 'approver_id',
+  status: 'status',
+  note: 'note',
+  decided_at: 'decided_at',
+  created_at: 'created_at',
+  updated_at: 'updated_at'
+};
+
+exports.Prisma.Authorization_access_requestsScalarFieldEnum = {
+  id: 'id',
+  tenant_id: 'tenant_id',
+  requester_id: 'requester_id',
+  target_user_id: 'target_user_id',
+  role_id: 'role_id',
+  permission_codes: 'permission_codes',
+  scope_type: 'scope_type',
+  scope_id: 'scope_id',
+  request_type: 'request_type',
+  business_reason: 'business_reason',
+  attachment_path: 'attachment_path',
+  requested_from: 'requested_from',
+  requested_until: 'requested_until',
+  status: 'status',
+  decided_by: 'decided_by',
+  decided_at: 'decided_at',
+  decision_note: 'decision_note',
+  revoked_at: 'revoked_at',
+  revoked_by: 'revoked_by',
+  revocation_reason: 'revocation_reason',
+  created_at: 'created_at',
+  updated_at: 'updated_at'
+};
+
+exports.Prisma.Authorization_access_review_itemsScalarFieldEnum = {
+  id: 'id',
+  review_id: 'review_id',
+  user_id: 'user_id',
+  role_id: 'role_id',
+  assignment_id: 'assignment_id',
+  decision: 'decision',
+  note: 'note',
+  reviewed_by: 'reviewed_by',
+  reviewed_at: 'reviewed_at',
+  created_at: 'created_at',
+  updated_at: 'updated_at'
+};
+
+exports.Prisma.Authorization_access_reviewsScalarFieldEnum = {
+  id: 'id',
+  tenant_id: 'tenant_id',
+  name: 'name',
+  description: 'description',
+  status: 'status',
+  scope_type: 'scope_type',
+  scope_id: 'scope_id',
+  due_at: 'due_at',
+  started_at: 'started_at',
+  completed_at: 'completed_at',
+  created_by: 'created_by',
+  created_at: 'created_at',
+  updated_at: 'updated_at'
+};
+
+exports.Prisma.Authorization_decision_logsScalarFieldEnum = {
+  id: 'id',
+  decision_id: 'decision_id',
+  tenant_id: 'tenant_id',
+  user_id: 'user_id',
+  session_id: 'session_id',
+  action: 'action',
+  resource_type: 'resource_type',
+  resource_id: 'resource_id',
+  decision: 'decision',
+  reason_code: 'reason_code',
+  matched_policy_ids: 'matched_policy_ids',
+  failed_conditions: 'failed_conditions',
+  scope: 'scope',
+  obligations: 'obligations',
+  ip_address: 'ip_address',
+  device: 'device',
+  request_id: 'request_id',
+  changed_fields: 'changed_fields',
+  business_reason: 'business_reason',
+  authorization_version: 'authorization_version',
+  duration_ms: 'duration_ms',
+  created_at: 'created_at'
+};
+
+exports.Prisma.Authorization_delegationsScalarFieldEnum = {
+  id: 'id',
+  tenant_id: 'tenant_id',
+  delegator_id: 'delegator_id',
+  delegate_id: 'delegate_id',
+  permission_codes: 'permission_codes',
+  scope_type: 'scope_type',
+  scope_id: 'scope_id',
+  reason: 'reason',
+  status: 'status',
+  valid_from: 'valid_from',
+  valid_until: 'valid_until',
+  approved_by: 'approved_by',
+  revoked_at: 'revoked_at',
+  created_at: 'created_at',
+  updated_at: 'updated_at'
+};
+
+exports.Prisma.Authorization_emergency_grantsScalarFieldEnum = {
+  id: 'id',
+  grant_uuid: 'grant_uuid',
+  tenant_id: 'tenant_id',
+  user_id: 'user_id',
+  permission_codes: 'permission_codes',
+  scope_type: 'scope_type',
+  scope_id: 'scope_id',
+  reason: 'reason',
+  status: 'status',
+  valid_from: 'valid_from',
+  valid_until: 'valid_until',
+  approved_by: 'approved_by',
+  mfa_verified: 'mfa_verified',
+  revoked_at: 'revoked_at',
+  revoked_by: 'revoked_by',
+  reviewed_at: 'reviewed_at',
+  reviewed_by: 'reviewed_by',
+  created_at: 'created_at',
+  updated_at: 'updated_at'
+};
+
+exports.Prisma.Authorization_feature_flagsScalarFieldEnum = {
+  id: 'id',
+  tenant_id: 'tenant_id',
+  key: 'key',
+  enabled: 'enabled',
+  description: 'description',
+  updated_by: 'updated_by',
+  created_at: 'created_at',
+  updated_at: 'updated_at'
+};
+
+exports.Prisma.Authorization_policiesScalarFieldEnum = {
+  id: 'id',
+  tenant_id: 'tenant_id',
+  code: 'code',
+  name: 'name',
+  description: 'description',
+  effect: 'effect',
+  subjects: 'subjects',
+  actions: 'actions',
+  resources: 'resources',
+  scope_type: 'scope_type',
+  scope_id: 'scope_id',
+  conditions: 'conditions',
+  obligations: 'obligations',
+  priority: 'priority',
+  status: 'status',
+  version: 'version',
+  valid_from: 'valid_from',
+  valid_until: 'valid_until',
+  requires_approval: 'requires_approval',
+  created_by: 'created_by',
+  updated_by: 'updated_by',
+  approved_by: 'approved_by',
+  created_at: 'created_at',
+  updated_at: 'updated_at'
+};
+
+exports.Prisma.Authorization_policy_versionsScalarFieldEnum = {
+  id: 'id',
+  policy_id: 'policy_id',
+  version: 'version',
+  snapshot: 'snapshot',
+  change_summary: 'change_summary',
+  previous_version_id: 'previous_version_id',
+  changed_by: 'changed_by',
+  approved_by: 'approved_by',
+  created_at: 'created_at'
+};
+
+exports.Prisma.Authorization_relationshipsScalarFieldEnum = {
+  id: 'id',
+  tenant_id: 'tenant_id',
+  subject_type: 'subject_type',
+  subject_id: 'subject_id',
+  relationship: 'relationship',
+  resource_type: 'resource_type',
+  resource_id: 'resource_id',
+  valid_from: 'valid_from',
+  valid_until: 'valid_until',
+  created_by: 'created_by',
+  created_at: 'created_at',
+  updated_at: 'updated_at'
+};
+
+exports.Prisma.Authorization_role_assignmentsScalarFieldEnum = {
+  id: 'id',
+  user_id: 'user_id',
+  role_id: 'role_id',
+  scope_type: 'scope_type',
+  scope_id: 'scope_id',
+  tenant_id: 'tenant_id',
+  status: 'status',
+  is_temporary: 'is_temporary',
+  valid_from: 'valid_from',
+  valid_until: 'valid_until',
+  reason: 'reason',
+  assigned_by: 'assigned_by',
+  approved_by: 'approved_by',
+  revoked_at: 'revoked_at',
+  revoked_by: 'revoked_by',
+  created_at: 'created_at',
+  updated_at: 'updated_at'
+};
+
+exports.Prisma.Authorization_role_inheritancesScalarFieldEnum = {
+  id: 'id',
+  parent_role_id: 'parent_role_id',
+  child_role_id: 'child_role_id',
+  created_at: 'created_at',
+  updated_at: 'updated_at'
+};
+
+exports.Prisma.Authorization_sod_rulesScalarFieldEnum = {
+  id: 'id',
+  tenant_id: 'tenant_id',
+  code: 'code',
+  name: 'name',
+  description: 'description',
+  left_codes: 'left_codes',
+  right_codes: 'right_codes',
+  severity: 'severity',
+  requires_override_reason: 'requires_override_reason',
+  is_active: 'is_active',
+  created_at: 'created_at',
+  updated_at: 'updated_at'
+};
+
+exports.Prisma.Authorization_sod_violationsScalarFieldEnum = {
+  id: 'id',
+  tenant_id: 'tenant_id',
+  rule_id: 'rule_id',
+  user_id: 'user_id',
+  detail: 'detail',
+  status: 'status',
+  override_reason: 'override_reason',
+  overridden_by: 'overridden_by',
+  detected_at: 'detected_at',
+  resolved_at: 'resolved_at',
+  created_at: 'created_at',
+  updated_at: 'updated_at'
+};
+
 exports.Prisma.SortOrder = {
   asc: 'asc',
   desc: 'desc'
@@ -1409,7 +1699,23 @@ exports.Prisma.ModelName = {
   vacancies: 'vacancies',
   workforce_forecasts: 'workforce_forecasts',
   workforce_plan_lines: 'workforce_plan_lines',
-  workforce_plans: 'workforce_plans'
+  workforce_plans: 'workforce_plans',
+  authz_migrations: 'authz_migrations',
+  authorization_access_request_approvals: 'authorization_access_request_approvals',
+  authorization_access_requests: 'authorization_access_requests',
+  authorization_access_review_items: 'authorization_access_review_items',
+  authorization_access_reviews: 'authorization_access_reviews',
+  authorization_decision_logs: 'authorization_decision_logs',
+  authorization_delegations: 'authorization_delegations',
+  authorization_emergency_grants: 'authorization_emergency_grants',
+  authorization_feature_flags: 'authorization_feature_flags',
+  authorization_policies: 'authorization_policies',
+  authorization_policy_versions: 'authorization_policy_versions',
+  authorization_relationships: 'authorization_relationships',
+  authorization_role_assignments: 'authorization_role_assignments',
+  authorization_role_inheritances: 'authorization_role_inheritances',
+  authorization_sod_rules: 'authorization_sod_rules',
+  authorization_sod_violations: 'authorization_sod_violations'
 };
 
 /**

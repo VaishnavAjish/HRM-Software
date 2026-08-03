@@ -6,9 +6,12 @@ use App\Services\Authorization\AuthorizationEngine;
 use App\Services\Authorization\FeatureFlags;
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 
 class RequirePermission
 {
+    private static ?bool $authorizationSchemaReady = null;
+
     public function __construct(
         private readonly AuthorizationEngine $authorization,
         private readonly FeatureFlags $flags,
@@ -29,6 +32,33 @@ class RequirePermission
             'branch_id' => $request->input('branch_id') ?? $request->query('branch_id'),
             'department' => $request->input('department') ?? $request->query('department'),
         ];
+
+        // Deployments can briefly run the new application code before the
+        // additive authorization migration reaches the database. Querying the
+        // new role/policy columns in that window turns every protected business
+        // endpoint into a 500. Keep the pre-existing authorization contract for
+        // business routes until the schema is complete; never expose the new
+        // administration surface without its backing schema.
+        if (!$this->schemaReady()) {
+            if (str_starts_with($permission, 'admin.')) {
+                return response()->json([
+                    'success' => false,
+                    'error' => [
+                        'code' => 'AUTHORIZATION_SCHEMA_NOT_READY',
+                        'message' => 'Authorization services are being upgraded. Please retry shortly.',
+                    ],
+                ], 503);
+            }
+            if (!$this->authorization->legacyAllows($actor, $permission, $resource)) {
+                return response()->json([
+                    'success' => false,
+                    'error' => ['code' => 'PERMISSION_DENIED', 'message' => 'You are not permitted to perform this action.'],
+                ], 403);
+            }
+            $request->attributes->set('authorization_compatibility_mode', true);
+            return $next($request);
+        }
+
         $decision = $this->authorization->decide($actor, $permission, $resource, [
             'action' => ['changed_fields' => array_keys($request->except(['password', 'token', 'access_token']))],
             'business_reason' => $request->input('businessReason'),
@@ -47,5 +77,18 @@ class RequirePermission
 
         $request->attributes->set('authorization_decision', $decision);
         return $next($request);
+    }
+
+    private function schemaReady(): bool
+    {
+        return self::$authorizationSchemaReady ??= Schema::hasTable('authorization_feature_flags')
+            && Schema::hasTable('authorization_role_assignments')
+            && Schema::hasTable('authorization_policies')
+            && Schema::hasColumn('permissions', 'code')
+            && Schema::hasColumn('permissions', 'is_active')
+            && Schema::hasColumn('roles', 'code')
+            && Schema::hasColumn('roles', 'status')
+            && Schema::hasColumn('role_permissions', 'effect')
+            && Schema::hasColumn('user_permissions', 'valid_until');
     }
 }

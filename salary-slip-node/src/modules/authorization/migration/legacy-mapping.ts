@@ -235,32 +235,49 @@ export function mapLegacyRole(role: unknown, type: string | null): AssignmentMap
 /* ------------------------------------------------------------------ */
 
 /**
- * The 24 live `page` dimension rows, keyed by the exact key_name in the
- * database. Anything not listed is reported rather than dropped.
+ * `page` dimension key -> a permission code **that exists in this database**.
+ *
+ * The obvious targets here would be the canonical `ui.admin.*` codes, and an
+ * earlier revision used them. A dry run proved that wrong: production's
+ * permissions table contains none of those codes, so all 24 page grants
+ * resolved to nothing and would have migrated as silent no-ops — every role
+ * losing its page access with no error to explain it.
+ *
+ * These therefore point at the live vocabulary. Where production has no
+ * equivalent the key maps to null and the migration reports it, because a
+ * dropped grant must be a visible decision rather than a missing key.
+ *
+ * Self-service and agent pages are the null cases: they gate an employee's
+ * own payslips and profile, which this catalogue never modelled as
+ * permissions — that access comes from the numeric role, migrated separately
+ * as a SELF-scoped assignment in step 3.
  */
-export const PAGE_DIMENSION_MAP: Readonly<Record<string, string>> = {
-  dashboard: 'ui.admin.dashboard.view',
-  employees: 'ui.admin.employees.view',
-  appointments: 'ui.admin.appointments.view',
-  salary: 'ui.admin.salary.view',
-  attendance: 'ui.admin.attendance.view',
-  reports: 'ui.admin.reports.view',
-  form16: 'payroll.payslip.read',
-  trial_form: 'recruitment.trial_form.read',
-  admin_management: 'admin.user.update',
-  rbac_dashboard: 'ui.admin.authorization.view',
-  rbac_users: 'admin.role.assign',
-  rbac_permission_matrix: 'admin.role.update',
-  rbac_audit_logs: 'admin.authorization.audit.read',
-  employee_payslips: 'self.payslip.read',
-  employee_form16: 'self.payslip.read',
-  employee_profile: 'self.profile.read',
-  employee_dashboard: 'ui.employee.dashboard.view',
-  employee_appointment: 'hr.appointment.read',
-  agent_dashboard: 'ui.agent.dashboard.view',
-  agent_trial_form: 'recruitment.trial_form.read',
-  agent_appointment_form: 'hr.appointment.create',
-  'appointments.view_full_aadhaar': 'hr.employee.aadhaar.reveal',
+export const PAGE_DIMENSION_MAP: Readonly<Record<string, string | null>> = {
+  dashboard: 'dashboard.hr.view',
+  employees: 'employees.view',
+  appointments: 'appointments.view',
+  salary: 'salary slips.view',
+  attendance: 'dashboard.attendance.view',
+  reports: 'reports.view',
+  // Form 16 is generated from payslip data and has no permission of its own.
+  form16: 'salary slips.view',
+  admin_management: 'security.users.manage',
+  rbac_dashboard: 'roles & permissions.view',
+  rbac_users: 'security.users.manage',
+  rbac_permission_matrix: 'roles & permissions.edit',
+  rbac_audit_logs: 'company.audit',
+  'appointments.view_full_aadhaar': 'appointments.view_full_aadhaar',
+
+  // No equivalent in the live catalogue — reported, not dropped silently.
+  trial_form: null,
+  employee_payslips: null,
+  employee_form16: null,
+  employee_profile: null,
+  employee_dashboard: null,
+  employee_appointment: null,
+  agent_dashboard: null,
+  agent_trial_form: null,
+  agent_appointment_form: null,
 };
 
 export type DimensionValue = 'read_write' | 'view_only' | 'no_access';
