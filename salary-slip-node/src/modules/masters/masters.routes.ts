@@ -2,6 +2,9 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
 import { AuthService } from '../auth/auth.service.js';
 import { authenticated } from '../auth/guards.js';
+import { AuthorizationEngine } from '../authorization/authorization.engine.js';
+import { PrismaAuthorizationRepository } from '../authorization/authorization.repository.js';
+import { requireAnyPermission } from '../authorization/enforcement.js';
 import { AuditLogger } from '../../lib/audit/audit-logger.js';
 import {
   ResourceService,
@@ -35,6 +38,7 @@ export interface MastersRouteDeps {
   audit: AuditLogger;
   /** Overridable so tests never touch the production database. */
   services?: Partial<Record<MasterKey, ResourceService>>;
+  engine?: AuthorizationEngine;
 }
 
 export type MasterKey = 'locations' | 'branches' | 'teams' | 'approval-levels';
@@ -70,7 +74,31 @@ export async function registerMastersRoutes(
   const services = { ...defaultServices(), ...(deps.services ?? {}) };
 
   // Every one of these is admin-only in routes/api.php.
-  const guard = { preHandler: authenticated(deps.authService, ['admin']) };
+  const engine = deps.engine ?? new AuthorizationEngine(new PrismaAuthorizationRepository());
+
+  /*
+   * Organization masters — locations, branches, teams, approval levels.
+   *
+   * Canonical code first, then the `resource.action` code production holds.
+   * `defer` because only `branches.*` exists in this catalogue: locations,
+   * teams and approval levels have no permission rows, and denying on a
+   * question that was never asked would lock admins out of screens they have
+   * always been able to use.
+   */
+  const PERMS = {
+    read: ['admin.organization.read', 'branches.manage', 'org.view'],
+    write: ['admin.organization.update', 'branches.manage', 'org.units.manage'],
+    remove: ['admin.organization.delete', 'branches.manage', 'org.units.manage'],
+  } as const;
+
+  const gate = (codes: readonly string[]) => ({
+    preHandler: [
+      authenticated(deps.authService, ['admin']),
+      requireAnyPermission(engine, [...codes], { whenUnknown: 'defer' }),
+    ],
+  });
+
+  const guard = gate(PERMS.read);
 
   for (const key of Object.keys(services) as MasterKey[]) {
     const service = services[key];
@@ -82,7 +110,7 @@ export async function registerMastersRoutes(
       })),
     );
 
-    app.post(`/api/rbac/${key}/store`, guard, async (request, reply) =>
+    app.post(`/api/rbac/${key}/store`, gate(PERMS.write), async (request, reply) =>
       respond(reply, async () => {
         const item = await service.create(request.body);
         await deps.audit.log(request, 'CREATE', service.name, null, item);
@@ -96,7 +124,7 @@ export async function registerMastersRoutes(
 
     app.put<{ Params: { id: string } }>(
       `/api/rbac/${key}/update/:id`,
-      guard,
+      gate(PERMS.write),
       async (request, reply) =>
         respond(reply, async () => {
           const { before, after } = await service.update(idOf(request), request.body);
@@ -111,7 +139,7 @@ export async function registerMastersRoutes(
 
     app.delete<{ Params: { id: string } }>(
       `/api/rbac/${key}/delete/:id`,
-      guard,
+      gate(PERMS.remove),
       async (request, reply) =>
         respond(reply, async () => {
           const before = await service.remove(idOf(request));

@@ -109,10 +109,7 @@ export default function OfferManagement() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900 dark:text-white">Offer Management</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">Draft, approve, release and track offers</p>
-        </div>
+        <p className="text-sm text-gray-500 dark:text-gray-400">Draft, approve, release and track offers</p>
         <Button icon={<Plus size={16} />} onClick={() => setModalOpen(true)}>New Offer</Button>
       </div>
 

@@ -126,10 +126,7 @@ export default function CandidatePipeline() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900 dark:text-white">Candidate Pipeline</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">Drag a card to move a candidate to the next stage</p>
-        </div>
+        <p className="text-sm text-gray-500 dark:text-gray-400">Drag a card to move a candidate to the next stage</p>
         <Button icon={<Plus size={16} />} onClick={() => setModalOpen(true)}>Add Candidate</Button>
       </div>
 

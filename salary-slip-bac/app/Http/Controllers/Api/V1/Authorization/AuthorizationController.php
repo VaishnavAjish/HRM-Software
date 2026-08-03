@@ -9,8 +9,10 @@ use App\Models\User;
 use App\Services\Authorization\AuthorizationCache;
 use App\Services\Authorization\AuthorizationEngine;
 use App\Services\Authorization\FeatureFlags;
+use App\Services\Authorization\SchemaSupport;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Str;
 
 class AuthorizationController extends Controller
 {
@@ -86,7 +88,14 @@ class AuthorizationController extends Controller
     public function me(Request $request)
     {
         $actor = auth('api')->user();
-        $permissions = Permission::query()->where('is_active', true)->orderBy('code')->limit(1000)->get();
+        $permissions = Permission::query()
+            ->when(
+                SchemaSupport::hasColumn('permissions', 'is_active'),
+                fn ($q) => $q->where('is_active', true)
+            )
+            ->orderBy(SchemaSupport::hasColumn('permissions', 'code') ? 'code' : 'name')
+            ->limit(1000)
+            ->get();
         $decisions = [];
         $shadow = $this->flags->enabled('authorization_shadow_mode', $actor->company_code, true);
         foreach ($permissions as $permission) {
@@ -107,12 +116,7 @@ class AuthorizationController extends Controller
             'authorizationVersion' => 'v2',
             'cacheVersion' => $this->cache->version($actor->company_code),
             'permissions' => $decisions,
-            'roles' => $actor->authorizationRoleAssignments()->active()->with('role:id,name,code,role_type')->get()
-                ->map(fn ($assignment) => [
-                    'code' => $assignment->role?->code, 'name' => $assignment->role?->name,
-                    'type' => $assignment->role?->role_type, 'scopeType' => $assignment->scope_type,
-                    'scopeId' => $assignment->scope_id, 'validUntil' => $assignment->valid_until,
-                ])->values(),
+            'roles' => $this->roleSnapshot($actor),
             'featureFlags' => $this->flagSnapshot($actor->company_code),
         ]]);
     }
@@ -139,6 +143,33 @@ class AuthorizationController extends Controller
         }
         $this->cache->invalidate($tenant === '*' ? null : $tenant);
         return response()->json(['success' => true, 'data' => $this->flagSnapshot($tenant)]);
+    }
+
+    /**
+     * The caller's roles, scoped where the enterprise assignment table exists.
+     *
+     * Without that table the only role source is the base user_roles pivot,
+     * which carries no scope or validity — those fields report null rather than
+     * the endpoint failing, so a pre-enterprise deployment still gets a usable
+     * snapshot instead of a 500.
+     */
+    private function roleSnapshot(User $actor): array
+    {
+        if (SchemaSupport::hasTable('authorization_role_assignments')) {
+            return $actor->authorizationRoleAssignments()->active()->with('role:id,name,code,role_type')->get()
+                ->map(fn ($assignment) => [
+                    'code' => $assignment->role?->code, 'name' => $assignment->role?->name,
+                    'type' => $assignment->role?->role_type, 'scopeType' => $assignment->scope_type,
+                    'scopeId' => $assignment->scope_id, 'validUntil' => $assignment->valid_until,
+                ])->values()->all();
+        }
+
+        return $actor->roles()->get()
+            ->map(fn ($role) => [
+                'code' => $role->code ?: Str::slug($role->name, '_'), 'name' => $role->name,
+                'type' => $role->role_type ?? $role->type, 'scopeType' => null,
+                'scopeId' => null, 'validUntil' => null,
+            ])->values()->all();
     }
 
     private function flagSnapshot(?string $tenantId): array

@@ -6,6 +6,14 @@ import { AuditLogger } from '../../lib/audit/audit-logger.js';
 import { ResourceError } from '../masters/masters.service.js';
 import { EmployeeService, type Actor } from './employees.service.js';
 import { PrismaEmployeeRepository } from './employees.repository.js';
+import { AuthorizationEngine } from '../authorization/authorization.engine.js';
+import { PrismaAuthorizationRepository } from '../authorization/authorization.repository.js';
+import {
+  authorizeFields,
+  authorizedResponse,
+  requireAnyPermission,
+} from '../authorization/enforcement.js';
+import { FieldAccessError } from '../authorization/field-security.js';
 import { EmployeeImportService, IMPORT_COLUMNS } from './import.service.js';
 import { PrismaImportRepository } from './import.repository.js';
 import { XlsxSheetReader, toKeyedRows } from '../../lib/excel/sheet-reader.js';
@@ -31,7 +39,23 @@ export interface EmployeeRouteDeps {
   audit: AuditLogger;
   employees?: EmployeeService;
   imports?: EmployeeImportService;
+  engine?: AuthorizationEngine;
 }
+
+/**
+ * Permission codes per operation, canonical first.
+ *
+ * Both vocabularies are listed because both are live: the canonical catalogue
+ * is what the migration moves toward, and the `resource.action` codes are what
+ * production holds today. Naming only one denies every caller holding the
+ * other — see requireAnyPermission.
+ */
+const PERMISSIONS = {
+  read: ['hr.employee.read', 'employees.view'],
+  create: ['hr.employee.create', 'employees.create'],
+  update: ['hr.employee.update', 'employees.edit'],
+  remove: ['hr.employee.delete', 'employees.delete'],
+} as const;
 
 async function respond(reply: FastifyReply, run: () => Promise<unknown>): Promise<unknown> {
   try {
@@ -39,6 +63,11 @@ async function respond(reply: FastifyReply, run: () => Promise<unknown>): Promis
   } catch (error) {
     if (error instanceof ResourceError) {
       return reply.status(error.statusCode).send({ status: false, message: error.message });
+    }
+    // A field-level refusal is a 403 with the offending fields named, not a
+    // generic 500 — the caller needs to know which field to drop.
+    if (error instanceof FieldAccessError) {
+      return reply.status(error.statusCode).send({ status: false, message: error.message, fields: error.fields });
     }
     throw error;
   }
@@ -57,7 +86,19 @@ export async function registerEmployeeRoutes(
   deps: EmployeeRouteDeps,
 ): Promise<void> {
   const employees = deps.employees ?? new EmployeeService(new PrismaEmployeeRepository());
-  const guard = { preHandler: authenticated(deps.authService, ['admin']) };
+  const engine = deps.engine ?? new AuthorizationEngine(new PrismaAuthorizationRepository());
+
+  // Authenticate, then authorize. The role check stays: it is a cheap first
+  // gate, and removing it would let a permission grant alone reach routes the
+  // legacy system never exposed to non-admins.
+  const guardFor = (codes: readonly string[]) => ({
+    preHandler: [
+      authenticated(deps.authService, ['admin']),
+      requireAnyPermission(engine, [...codes]),
+    ],
+  });
+
+  const guard = guardFor(PERMISSIONS.read);
 
   const importer =
     deps.imports ??
@@ -247,7 +288,9 @@ export async function registerEmployeeRoutes(
         status: true,
         data: {
           users: {
-            data: result.rows,
+            // Hidden and masked fields are stripped here, on the way out, so
+            // a protected value never reaches the client to be un-hidden.
+            data: authorizedResponse(request, result.rows),
             total: result.total,
             per_page: result.perPage,
             current_page: result.currentPage,
@@ -272,18 +315,20 @@ export async function registerEmployeeRoutes(
         });
       }
 
-      return { status: true, data };
+      return { status: true, data: authorizedResponse(request, data) };
     }),
   );
 
   // ---- POST /api/employee/store ------------------------------------------
 
-  app.post('/api/employee/store', guard, async (request, reply) =>
+  app.post('/api/employee/store', guardFor(PERMISSIONS.create), async (request, reply) =>
     respond(reply, async () => {
-      const employee = await employees.create(
-        actorOf(request),
-        (request.body ?? {}) as Record<string, unknown>,
-      );
+      const body = (request.body ?? {}) as Record<string, unknown>;
+      // Creating: no stored record to diff against, so every supplied field
+      // counts as a change and must be writable.
+      authorizeFields(request, body);
+
+      const employee = await employees.create(actorOf(request), body);
       await deps.audit.log(request, 'CREATE', 'Employee', null, { id: employee.id });
 
       return { status: true, message: 'Employee created', data: employee };
@@ -292,14 +337,17 @@ export async function registerEmployeeRoutes(
 
   // ---- PUT /api/employee/edit/:id ----------------------------------------
 
-  app.put<{ Params: { id: string } }>('/api/employee/edit/:id', guard, async (request, reply) =>
+  app.put<{ Params: { id: string } }>('/api/employee/edit/:id', guardFor(PERMISSIONS.update), async (request, reply) =>
     respond(reply, async () => {
       const id = idOf(request);
-      const employee = await employees.update(
-        actorOf(request),
-        id,
-        (request.body ?? {}) as Record<string, unknown>,
-      );
+      const body = (request.body ?? {}) as Record<string, unknown>;
+
+      // Diffed against the stored record, so a client echoing back fields it
+      // was given is not rejected for "changing" a read-only one.
+      const current = await employees.show(actorOf(request), id);
+      authorizeFields(request, body, current as Record<string, unknown>);
+
+      const employee = await employees.update(actorOf(request), id, body);
       await deps.audit.log(request, 'UPDATE', 'Employee', { id }, { id });
 
       return { status: true, message: 'Employee updated', data: employee };
@@ -321,12 +369,12 @@ export async function registerEmployeeRoutes(
     });
 
   // The verb the client uses today...
-  app.get<{ Params: { id: string } }>('/api/employee/delete/:id', guard, destroy);
+  app.get<{ Params: { id: string } }>('/api/employee/delete/:id', guardFor(PERMISSIONS.remove), destroy);
   // ...and the one it should use, available now so the switch is a one-line
   // client change rather than a coordinated release.
-  app.delete<{ Params: { id: string } }>('/api/employee/delete/:id', guard, destroy);
+  app.delete<{ Params: { id: string } }>('/api/employee/delete/:id', guardFor(PERMISSIONS.remove), destroy);
 
-  app.post('/api/employee/delete-multiple', guard, async (request, reply) =>
+  app.post('/api/employee/delete-multiple', guardFor(PERMISSIONS.remove), async (request, reply) =>
     respond(reply, async () => {
       const body = (request.body ?? {}) as { ids?: unknown };
       const ids = Array.isArray(body.ids)

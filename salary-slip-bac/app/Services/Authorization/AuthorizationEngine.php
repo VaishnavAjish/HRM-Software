@@ -11,7 +11,6 @@ use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Throwable;
 
@@ -124,20 +123,29 @@ class AuthorizationEngine
         $direct = DB::table('user_permissions')
             ->join('permissions', 'permissions.id', '=', 'user_permissions.permission_id')
             ->where('user_permissions.user_id', $actor->id)
-            ->where('permissions.is_active', true)
-            ->where(fn ($q) => $q->where('permissions.code', $permissionCode)->orWhere('permissions.name', $permissionCode))
-            ->where(fn ($q) => $q->whereNull('user_permissions.valid_from')->orWhere('user_permissions.valid_from', '<=', $now))
-            ->where(fn ($q) => $q->whereNull('user_permissions.valid_until')->orWhere('user_permissions.valid_until', '>', $now))
-            ->select('permissions.id', 'permissions.code', 'user_permissions.is_denied', 'user_permissions.conditions', 'user_permissions.obligations')
+            ->tap(fn ($q) => $this->whereActivePermission($q))
+            ->tap(fn ($q) => $this->wherePermissionCode($q, $permissionCode))
+            ->tap(fn ($q) => $this->whereValid($q, 'user_permissions', $now))
+            ->select(array_merge(
+                ['permissions.id', 'user_permissions.is_denied'],
+                array_map(
+                    fn (string $c) => 'permissions.' . $c,
+                    SchemaSupport::present('permissions', ['code'])
+                ),
+                array_map(
+                    fn (string $c) => 'user_permissions.' . $c,
+                    SchemaSupport::present('user_permissions', ['conditions', 'obligations'])
+                )
+            ))
             ->get();
 
         foreach ($direct as $grant) {
-            $conditions = $this->json($grant->conditions);
+            $conditions = $this->json($grant->conditions ?? null);
             if ($this->conditions->evaluate($conditions, $context)) {
                 $sources[] = [
                     'type' => 'USER_PERMISSION', 'id' => $grant->id,
                     'effect' => $grant->is_denied ? 'DENY' : 'ALLOW',
-                    'conditions' => $conditions, 'obligations' => $this->json($grant->obligations),
+                    'conditions' => $conditions, 'obligations' => $this->json($grant->obligations ?? null),
                     'inherited' => false,
                 ];
             }
@@ -150,13 +158,13 @@ class AuthorizationEngine
                 continue;
             }
             foreach ($this->rolePermissionRows($roleContext['role_id'], $permissionCode, $roleContext['inherited']) as $grant) {
-                $conditions = $this->json($grant->conditions);
+                $conditions = $this->json($grant->conditions ?? null);
                 if ($this->conditions->evaluate($conditions, $context)) {
                     $sources[] = [
                         'type' => 'ROLE_PERMISSION', 'id' => $grant->permission_id,
                         'roleId' => $roleContext['role_id'], 'roleCode' => $roleContext['role_code'],
-                        'effect' => strtoupper($grant->effect ?: 'ALLOW'),
-                        'conditions' => $conditions, 'obligations' => $this->json($grant->obligations),
+                        'effect' => strtoupper(($grant->effect ?? null) ?: 'ALLOW'),
+                        'conditions' => $conditions, 'obligations' => $this->json($grant->obligations ?? null),
                         'scopeType' => $roleContext['scope_type'], 'scopeId' => $roleContext['scope_id'],
                         'inherited' => $roleContext['inherited'],
                     ];
@@ -174,7 +182,7 @@ class AuthorizationEngine
     private function roleContexts(User $actor): array
     {
         $contexts = [];
-        if (Schema::hasTable('authorization_role_assignments')) {
+        if (SchemaSupport::hasTable('authorization_role_assignments')) {
             $assignments = AuthorizationRoleAssignment::active()->with('role')->where('user_id', $actor->id)->get();
             foreach ($assignments as $assignment) {
                 if (!$assignment->role || !$assignment->role->is_active || $assignment->role->status !== 'ACTIVE') {
@@ -198,6 +206,10 @@ class AuthorizationEngine
                 'scope_id' => ((int) $actor->role === 0) ? null : $actor->company_code,
                 'inherited' => false,
             ];
+        }
+
+        if (!SchemaSupport::hasTable('authorization_role_inheritances')) {
+            return $contexts;
         }
 
         $queue = $contexts;
@@ -236,22 +248,69 @@ class AuthorizationEngine
         return DB::table('role_permissions')
             ->join('permissions', 'permissions.id', '=', 'role_permissions.permission_id')
             ->where('role_permissions.role_id', $roleId)
-            ->where('permissions.is_active', true)
-            ->when($inherited, fn ($q) => $q->where('role_permissions.inherit_to_children', true))
-            ->where(function ($q) use ($permissionCode) {
-                $q->where('permissions.code', $permissionCode)
-                    ->orWhere('permissions.name', $permissionCode)
-                    ->orWhere('permissions.code', '*');
-                foreach ($this->wildcards($permissionCode) as $wildcard) {
-                    $q->orWhere('permissions.code', $wildcard);
-                }
-            })
-            ->where(fn ($q) => $q->whereNull('role_permissions.valid_from')->orWhere('role_permissions.valid_from', '<=', now()))
-            ->where(fn ($q) => $q->whereNull('role_permissions.valid_until')->orWhere('role_permissions.valid_until', '>', now()))
-            ->select(
-                'permissions.id as permission_id', 'role_permissions.effect', 'role_permissions.conditions',
-                'role_permissions.obligations'
-            )->get();
+            ->tap(fn ($q) => $this->whereActivePermission($q))
+            ->when(
+                $inherited && SchemaSupport::hasColumn('role_permissions', 'inherit_to_children'),
+                fn ($q) => $q->where('role_permissions.inherit_to_children', true)
+            )
+            ->tap(fn ($q) => $this->wherePermissionCode($q, $permissionCode, true))
+            ->tap(fn ($q) => $this->whereValid($q, 'role_permissions', now()))
+            ->select(array_merge(
+                ['permissions.id as permission_id'],
+                array_map(
+                    fn (string $c) => 'role_permissions.' . $c,
+                    SchemaSupport::present('role_permissions', ['effect', 'conditions', 'obligations'])
+                )
+            ))->get();
+    }
+
+    /**
+     * Restrict to enabled permissions. Pre-enterprise schemas have no is_active
+     * column, where every row is implicitly active.
+     */
+    private function whereActivePermission($query): void
+    {
+        if (SchemaSupport::hasColumn('permissions', 'is_active')) {
+            $query->where('permissions.is_active', true);
+        }
+    }
+
+    /**
+     * Match a permission by code, falling back to name where the enterprise
+     * permissions.code column is absent. Wildcard rows ('*' and the dotted
+     * prefixes) only exist in code form, so they are skipped on thin schemas.
+     */
+    private function wherePermissionCode($query, string $permissionCode, bool $allowWildcards = false): void
+    {
+        if (!SchemaSupport::hasColumn('permissions', 'code')) {
+            $query->where('permissions.name', $permissionCode);
+            return;
+        }
+
+        $query->where(function ($q) use ($permissionCode, $allowWildcards) {
+            $q->where('permissions.code', $permissionCode)
+                ->orWhere('permissions.name', $permissionCode);
+            if (!$allowWildcards) {
+                return;
+            }
+            $q->orWhere('permissions.code', '*');
+            foreach ($this->wildcards($permissionCode) as $wildcard) {
+                $q->orWhere('permissions.code', $wildcard);
+            }
+        });
+    }
+
+    /**
+     * Apply the valid_from/valid_until window when the grant table carries one.
+     */
+    private function whereValid($query, string $table, $now): void
+    {
+        if (SchemaSupport::hasColumn($table, 'valid_from')) {
+            $query->where(fn ($q) => $q->whereNull($table . '.valid_from')->orWhere($table . '.valid_from', '<=', $now));
+        }
+        if (SchemaSupport::hasColumn($table, 'valid_until')) {
+            $query->where(fn ($q) => $q->whereNull($table . '.valid_until')->orWhere($table . '.valid_until', '>', $now));
+        }
     }
 
     private function matchingPolicies(
@@ -262,7 +321,7 @@ class AuthorizationEngine
         ?string $tenantId,
         bool $global
     ): array {
-        if (!Schema::hasTable('authorization_policies')) {
+        if (!SchemaSupport::hasTable('authorization_policies')) {
             return [];
         }
         $roleCodes = array_values(array_unique(array_column($this->roleContexts($actor), 'role_code')));
@@ -310,7 +369,7 @@ class AuthorizationEngine
             ['table' => 'authorization_delegations', 'user_column' => 'delegate_id', 'type' => 'DELEGATION'],
             ['table' => 'authorization_emergency_grants', 'user_column' => 'user_id', 'type' => 'EMERGENCY_ACCESS'],
         ] as $definition) {
-            if (!Schema::hasTable($definition['table'])) {
+            if (!SchemaSupport::hasTable($definition['table'])) {
                 continue;
             }
             $rows = DB::table($definition['table'])
@@ -338,7 +397,7 @@ class AuthorizationEngine
 
     private function relationships(User $actor, array $resource, ?string $tenantId): array
     {
-        if (!Schema::hasTable('authorization_relationships') || empty($resource['id'])) {
+        if (!SchemaSupport::hasTable('authorization_relationships') || empty($resource['id'])) {
             return [];
         }
         return DB::table('authorization_relationships')
@@ -380,7 +439,7 @@ class AuthorizationEngine
         array $context,
         int $started
     ): AuthorizationDecision {
-        if (($context['audit'] ?? true) && Schema::hasTable('authorization_decision_logs')) {
+        if (($context['audit'] ?? true) && SchemaSupport::hasTable('authorization_decision_logs')) {
             try {
                 AuthorizationDecisionLog::create([
                     'decision_id' => (string) Str::uuid(),
@@ -416,7 +475,7 @@ class AuthorizationEngine
         if ((int) $actor->role === 0) {
             return true;
         }
-        if (!Schema::hasTable('authorization_role_assignments')) {
+        if (!SchemaSupport::hasTable('authorization_role_assignments')) {
             return false;
         }
         return AuthorizationRoleAssignment::active()

@@ -187,8 +187,8 @@ export default function HrDashboard() {
             <h3 className="text-base font-bold text-gray-900 dark:text-white mb-4">Quick Actions</h3>
             <div className="grid grid-cols-2 gap-2">
               <QuickAction to="/admin/hr/hiring" icon={<Plus size={16} />} label="New Requisition" />
-              <QuickAction to="/admin/hr/candidates" icon={<Users size={16} />} label="Add Candidate" />
-              <QuickAction to="/admin/hr/interviews" icon={<CalendarDays size={16} />} label="Schedule Interview" />
+              <QuickAction to="/admin/hr/hiring" icon={<Users size={16} />} label="Add Candidate" />
+              <QuickAction to="/admin/hr/hiring" icon={<CalendarDays size={16} />} label="Schedule Interview" />
               <QuickAction to="/admin/hr/assets" icon={<Laptop size={16} />} label="Allocate Asset" />
             </div>
           </div>

@@ -8,6 +8,48 @@ import { SkeletonTable } from "../../../components/ui/Skeleton";
 import { useAuth } from "../../../context/AuthContext";
 import { useCompany } from "../../../context/CompanyContext";
 import { hrApi } from "../../../utils/api";
+import CandidatePipeline from "./CandidatePipeline";
+import InterviewManagement from "./InterviewManagement";
+import OfferManagement from "./OfferManagement";
+import EmployeeOnboarding from "./EmployeeOnboarding";
+
+const TABS = [
+  { key: "requisitions", label: "Requisitions" },
+  { key: "pipeline", label: "Candidate Pipeline" },
+  { key: "interviews", label: "Interview Management" },
+  { key: "offers", label: "Offer Management" },
+  { key: "onboarding", label: "Employee Onboarding" },
+];
+
+export default function HiringProcess() {
+  const [tab, setTab] = useState("requisitions");
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-xl font-bold text-gray-900 dark:text-white">Hiring</h1>
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          Requisition → Approval → Posting → Applications → Interviews → Offer → Joining
+        </p>
+      </div>
+
+      <div className="flex gap-2 border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
+        {TABS.map((t) => (
+          <button key={t.key} onClick={() => setTab(t.key)}
+            className={`px-4 py-2 text-sm font-semibold whitespace-nowrap border-b-2 -mb-px transition-colors ${tab === t.key ? "border-brand-600 text-brand-600 dark:text-brand-400" : "border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700"}`}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "requisitions" && <RequisitionsTab />}
+      {tab === "pipeline" && <CandidatePipeline />}
+      {tab === "interviews" && <InterviewManagement />}
+      {tab === "offers" && <OfferManagement />}
+      {tab === "onboarding" && <EmployeeOnboarding />}
+    </div>
+  );
+}
 
 const inputClass = "w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500";
 
@@ -22,7 +64,7 @@ const EMPTY_FORM = {
   salary_max: "", description: "", requirements: "", target_closing_date: "",
 };
 
-export default function HiringProcess() {
+function RequisitionsTab() {
   const { user } = useAuth();
   const { companyScope, scopeKey } = useCompany();
   const [loading, setLoading] = useState(true);
@@ -128,13 +170,7 @@ export default function HiringProcess() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900 dark:text-white">Hiring Process</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Requisition → Approval → Posting → Applications → Selection → Joining
-          </p>
-        </div>
+      <div className="flex justify-end">
         <Button icon={<Plus size={16} />} onClick={openCreate}>New Requisition</Button>
       </div>
 

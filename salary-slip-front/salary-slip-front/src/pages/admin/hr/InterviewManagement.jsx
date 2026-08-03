@@ -94,10 +94,7 @@ export default function InterviewManagement() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900 dark:text-white">Interview Management</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">Scheduling, feedback and scorecards for every round</p>
-        </div>
+        <p className="text-sm text-gray-500 dark:text-gray-400">Scheduling, feedback and scorecards for every round</p>
         <Button icon={<Plus size={16} />} onClick={() => setModalOpen(true)}>Schedule Interview</Button>
       </div>
 

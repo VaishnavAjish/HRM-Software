@@ -10,6 +10,7 @@ import { AuthorizationEngine } from './authorization.engine.js';
 import { PrismaAuthorizationRepository } from './authorization.repository.js';
 import { SCOPE_TYPES, type Subject } from './authorization.types.js';
 import { MatrixService } from './matrix.service.js';
+import { isAuthorizationSchemaReady, SCHEMA_NOT_READY_BODY } from './schema-readiness.js';
 
 /**
  * Authorization API.
@@ -68,7 +69,28 @@ export async function registerAuthorizationRoutes(
 ): Promise<void> {
   const engine = deps.engine ?? new AuthorizationEngine(new PrismaAuthorizationRepository());
   const matrix = deps.matrix ?? new MatrixService();
-  const guard = { preHandler: authenticated(deps.authService) };
+
+  /**
+   * Refuse before touching the database if the authorization schema is absent.
+   *
+   * Every handler below reaches the authorization_* tables through raw SQL, so
+   * a missing schema surfaces as `42P01 relation does not exist` from inside a
+   * handler — an opaque 500 that tells the caller nothing and the operator
+   * less. When the platform was rolled back out of production on 2026-08-03,
+   * Laravel degraded cleanly because RequirePermission checks first; this file
+   * had no equivalent.
+   *
+   * Runs ahead of authentication deliberately: whether the feature exists is
+   * not a fact about the caller, and answering it first keeps an unavailable
+   * subsystem from looking like an authentication failure.
+   */
+  const schemaGate = async function ready(_request: FastifyRequest, reply: FastifyReply) {
+    if (!(await isAuthorizationSchemaReady())) {
+      await reply.status(503).send(SCHEMA_NOT_READY_BODY);
+    }
+  };
+
+  const guard = { preHandler: [schemaGate, authenticated(deps.authService)] };
 
   /**
    * Require a permission before the handler runs.
@@ -94,7 +116,7 @@ export async function registerAuthorizationRoutes(
     };
 
   const guarded = (permissionCode: string) => ({
-    preHandler: [authenticated(deps.authService), requirePermission(permissionCode)],
+    preHandler: [schemaGate, authenticated(deps.authService), requirePermission(permissionCode)],
   });
 
   /* ---- decisions -------------------------------------------------- */

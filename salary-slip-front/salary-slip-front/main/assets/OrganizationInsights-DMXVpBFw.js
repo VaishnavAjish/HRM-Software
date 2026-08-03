@@ -1,1 +1,0 @@
-import{j as t}from"./index-C8Xg6kXa.js";import{C as n}from"./ComingSoon-DifMHzFg.js";import"./ag-grid-vh0ptRm1.js";function a(){return t.jsx(n,{title:"Organization Insights",description:"Org-chart, span-of-control and cross-department analytics are coming in a future update."})}export{a as default};

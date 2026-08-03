@@ -70,17 +70,10 @@ const AccessControlMatrix = lazy(() => import("./pages/admin/access-control/Perm
 // HR module
 const HrDashboard = lazy(() => import("./pages/admin/hr/HrDashboard"));
 const HiringProcess = lazy(() => import("./pages/admin/hr/HiringProcess"));
-const CandidatePipeline = lazy(() => import("./pages/admin/hr/CandidatePipeline"));
-const InterviewManagement = lazy(() => import("./pages/admin/hr/InterviewManagement"));
-const OfferManagement = lazy(() => import("./pages/admin/hr/OfferManagement"));
 const AssetAllocation = lazy(() => import("./pages/admin/hr/AssetAllocation"));
 const PerformanceMatrix = lazy(() => import("./pages/admin/hr/PerformanceMatrix"));
 const HrReports = lazy(() => import("./pages/admin/hr/HrReports"));
-const EmployeeOnboarding = lazy(() => import("./pages/admin/hr/EmployeeOnboarding"));
-const EmployeeLifecycle = lazy(() => import("./pages/admin/hr/EmployeeLifecycle"));
-const EmployeeSeparation = lazy(() => import("./pages/admin/hr/EmployeeSeparation"));
 const ExitManagement = lazy(() => import("./pages/admin/hr/ExitManagement"));
-const OrganizationInsights = lazy(() => import("./pages/admin/hr/OrganizationInsights"));
 const HrSettings = lazy(() => import("./pages/admin/hr/HrSettings"));
 
 function RouteLoader() {
@@ -227,17 +220,10 @@ function AppRoutes() {
         {/* HR module */}
         <Route path="hr" element={<ProtectedRoute requiredPermission="hr.dashboard.read"><HrDashboard /></ProtectedRoute>} />
         <Route path="hr/hiring" element={<ProtectedRoute requiredPermission="hr.requisition.read"><HiringProcess /></ProtectedRoute>} />
-        <Route path="hr/candidates" element={<ProtectedRoute requiredPermission="hr.candidate.read"><CandidatePipeline /></ProtectedRoute>} />
-        <Route path="hr/interviews" element={<ProtectedRoute requiredPermission="hr.interview.read"><InterviewManagement /></ProtectedRoute>} />
-        <Route path="hr/offers" element={<ProtectedRoute requiredPermission="hr.offer.read"><OfferManagement /></ProtectedRoute>} />
         <Route path="hr/assets" element={<ProtectedRoute requiredPermission="hr.asset.read"><AssetAllocation /></ProtectedRoute>} />
         <Route path="hr/performance" element={<ProtectedRoute requiredPermission="hr.performance.read"><PerformanceMatrix /></ProtectedRoute>} />
         <Route path="hr/reports" element={<ProtectedRoute requiredPermission="hr.report.read"><HrReports /></ProtectedRoute>} />
-        <Route path="hr/onboarding" element={<EmployeeOnboarding />} />
-        <Route path="hr/lifecycle" element={<EmployeeLifecycle />} />
-        <Route path="hr/separation" element={<EmployeeSeparation />} />
         <Route path="hr/exit" element={<ExitManagement />} />
-        <Route path="hr/org-insights" element={<OrganizationInsights />} />
         <Route path="hr/settings" element={<HrSettings />} />
       </Route>
 

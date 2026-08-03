@@ -1,1 +1,0 @@
-import{j as i}from"./index-C8Xg6kXa.js";import{C as e}from"./ComingSoon-DifMHzFg.js";import"./ag-grid-vh0ptRm1.js";function r(){return i.jsx(e,{title:"Employee Lifecycle",description:"A single candidate-to-alumni timeline spanning hiring, onboarding, performance and exit is coming in a future update."})}export{r as default};

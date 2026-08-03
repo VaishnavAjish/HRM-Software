@@ -17,6 +17,79 @@ import { MAX_INHERITANCE_DEPTH, type AuthorizationRepository, type DecisionLogEn
 
 const num = (value: unknown): number => (typeof value === 'bigint' ? Number(value) : Number(value ?? 0));
 
+/**
+ * Which authorization_* tables exist.
+ *
+ * The platform's tables are created by a migration that may not have run —
+ * and were, at one point, created and then dropped again. Every query below
+ * is gated on this, so the engine degrades to the legacy grant tables rather
+ * than throwing `42P01 relation does not exist` on every request.
+ *
+ * This mirrors what the PHP engine does with Schema::hasTable(), and it is
+ * not defensive padding: a schema migration is a deploy, and an engine that
+ * hard-fails the moment its tables are absent turns a pending migration into
+ * an outage. Both directions must be survivable.
+ */
+const tableCache = new Map<string, boolean>();
+
+async function tableExists(name: string): Promise<boolean> {
+  const cached = tableCache.get(name);
+  if (cached !== undefined) return cached;
+
+  try {
+    const rows = await db.$queryRawUnsafe<Array<{ n: number }>>(
+      `SELECT count(*)::int AS n FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = $1`,
+      name,
+    );
+    const exists = (rows[0]?.n ?? 0) > 0;
+    tableCache.set(name, exists);
+    return exists;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Forget cached table existence.
+ *
+ * Called after a migration runs in the same process. Without it a long-lived
+ * server would keep taking the legacy path for the rest of its life after the
+ * tables appeared.
+ */
+export function resetSchemaCache(): void {
+  tableCache.clear();
+}
+
+/**
+ * Does a column exist on a table?
+ *
+ * `role_permissions.effect` and friends are added by the same migration. A
+ * query selecting them against the pre-migration shape fails just as hard as
+ * one against a missing table, so the widened columns are gated too.
+ */
+const columnCache = new Map<string, boolean>();
+
+async function columnExists(table: string, column: string): Promise<boolean> {
+  const key = `${table}.${column}`;
+  const cached = columnCache.get(key);
+  if (cached !== undefined) return cached;
+
+  try {
+    const rows = await db.$queryRawUnsafe<Array<{ n: number }>>(
+      `SELECT count(*)::int AS n FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = $1 AND column_name = $2`,
+      table,
+      column,
+    );
+    const exists = (rows[0]?.n ?? 0) > 0;
+    columnCache.set(key, exists);
+    return exists;
+  } catch {
+    return false;
+  }
+}
+
 /** Wildcard ancestors of a code: hr.employee.read -> hr.employee.*, hr.* */
 function wildcards(permissionCode: string): string[] {
   const parts = permissionCode.split('.');
@@ -51,15 +124,23 @@ function toGrant(row: RawGrant): GrantRow {
 
 export class PrismaAuthorizationRepository implements AuthorizationRepository {
   async directGrants(userId: number, permissionCode: string): Promise<GrantRow[]> {
+    // user_permissions predates the platform; its conditions/validity columns
+    // do not. Select only what this database actually has.
+    const widened = await columnExists('user_permissions', 'conditions');
+    const active = (await columnExists('permissions', 'is_active'))
+      ? 'AND p.is_active = TRUE'
+      : '';
+    const code = (await columnExists('permissions', 'code')) ? 'p.code = $2 OR' : '';
+
     const rows = await db.$queryRawUnsafe<RawGrant[]>(
-      `SELECT p.id, up.is_denied, up.conditions, up.obligations, NULL::text AS effect
+      `SELECT p.id, up.is_denied, NULL::text AS effect,
+              ${widened ? 'up.conditions, up.obligations' : 'NULL::jsonb AS conditions, NULL::jsonb AS obligations'}
          FROM user_permissions up
          JOIN permissions p ON p.id = up.permission_id
         WHERE up.user_id = $1
-          AND p.is_active = TRUE
-          AND (p.code = $2 OR p.name = $2)
-          AND (up.valid_from  IS NULL OR up.valid_from  <= now())
-          AND (up.valid_until IS NULL OR up.valid_until  > now())`,
+          ${active}
+          AND (${code} p.name = $2)
+          ${widened ? 'AND (up.valid_from IS NULL OR up.valid_from <= now()) AND (up.valid_until IS NULL OR up.valid_until > now())' : ''}`,
       userId,
       permissionCode,
     );
@@ -82,7 +163,8 @@ export class PrismaAuthorizationRepository implements AuthorizationRepository {
     const contexts: RoleContext[] = [];
     const seen = new Set<number>();
 
-    const scoped = await db.$queryRawUnsafe<
+    const scoped = (await tableExists('authorization_role_assignments'))
+      ? await db.$queryRawUnsafe<
       Array<{ role_id: bigint; code: string | null; scope_type: string | null; scope_id: string | null }>
     >(
       `SELECT a.role_id, r.code, a.scope_type, a.scope_id
@@ -95,7 +177,8 @@ export class PrismaAuthorizationRepository implements AuthorizationRepository {
           AND (a.valid_from  IS NULL OR a.valid_from  <= now())
           AND (a.valid_until IS NULL OR a.valid_until  > now())`,
       userId,
-    );
+    )
+      : [];
 
     for (const row of scoped) {
       const roleId = num(row.role_id);
@@ -111,10 +194,15 @@ export class PrismaAuthorizationRepository implements AuthorizationRepository {
       });
     }
 
+    const roleCode = (await columnExists('roles', 'code')) ? 'r.code' : 'NULL::text AS code';
+    const roleScope = (await columnExists('roles', 'default_scope_type'))
+      ? 'r.default_scope_type'
+      : `'TENANT'::text AS default_scope_type`;
+
     const legacy = await db.$queryRawUnsafe<
       Array<{ role_id: bigint; code: string | null; default_scope_type: string | null; company_code: string | null }>
     >(
-      `SELECT ur.role_id, r.code, r.default_scope_type, u.company_code
+      `SELECT ur.role_id, ${roleCode}, ${roleScope}, u.company_code
          FROM user_roles ur
          JOIN roles r ON r.id = ur.role_id
          JOIN users u ON u.id = ur.user_id
@@ -139,6 +227,8 @@ export class PrismaAuthorizationRepository implements AuthorizationRepository {
 
     // Breadth-first over inheritance edges, depth-capped so a cycle inserted
     // directly into the table cannot spin here.
+    if (!(await tableExists('authorization_role_inheritances'))) return contexts;
+
     let frontier = [...contexts];
     for (let depth = 0; depth < MAX_INHERITANCE_DEPTH && frontier.length > 0; depth += 1) {
       const next: RoleContext[] = [];
@@ -182,14 +272,33 @@ export class PrismaAuthorizationRepository implements AuthorizationRepository {
    */
   async rolePermissions(roleId: number, permissionCode: string, inheritedOnly: boolean): Promise<GrantRow[]> {
     const codes = [permissionCode, '*', ...wildcards(permissionCode)];
+    const widened = await columnExists('role_permissions', 'effect');
+    const hasCode = await columnExists('permissions', 'code');
+    const hasActive = await columnExists('permissions', 'is_active');
+
+    if (!widened) {
+      // Pre-migration shape: (role_id, permission_id) only. Every row is a
+      // plain ALLOW with no conditions, which is exactly what the legacy
+      // system meant by its existence.
+      const legacy = await db.$queryRawUnsafe<RawGrant[]>(
+        `SELECT p.id, NULL::text AS effect, NULL::jsonb AS conditions, NULL::jsonb AS obligations
+           FROM role_permissions rp
+           JOIN permissions p ON p.id = rp.permission_id
+          WHERE rp.role_id = $1 AND (${hasCode ? 'p.code = ANY($2::text[]) OR' : ''} p.name = $3)`,
+        roleId,
+        codes,
+        permissionCode,
+      );
+      return legacy.map(toGrant);
+    }
 
     const rows = await db.$queryRawUnsafe<RawGrant[]>(
       `SELECT p.id, rp.effect, rp.conditions, rp.obligations
          FROM role_permissions rp
          JOIN permissions p ON p.id = rp.permission_id
         WHERE rp.role_id = $1
-          AND p.is_active = TRUE
-          AND (p.code = ANY($2::text[]) OR p.name = $3)
+          ${hasActive ? 'AND p.is_active = TRUE' : ''}
+          AND (${hasCode ? 'p.code = ANY($2::text[]) OR' : ''} p.name = $3)
           AND ($4::boolean = FALSE OR rp.inherit_to_children = TRUE)
           AND (rp.valid_from  IS NULL OR rp.valid_from  <= now())
           AND (rp.valid_until IS NULL OR rp.valid_until  > now())`,
@@ -203,6 +312,8 @@ export class PrismaAuthorizationRepository implements AuthorizationRepository {
   }
 
   async policies(tenantId: string | null): Promise<PolicyRow[]> {
+    if (!(await tableExists('authorization_policies'))) return [];
+
     const rows = await db.$queryRawUnsafe<
       Array<{
         id: bigint;
@@ -246,6 +357,8 @@ export class PrismaAuthorizationRepository implements AuthorizationRepository {
 
   /** Delegations and emergency grants, both time-boxed, in one pass. */
   async temporaryGrants(userId: number): Promise<TemporaryGrantRow[]> {
+    if (!(await tableExists('authorization_delegations'))) return [];
+
     const rows = await db.$queryRawUnsafe<
       Array<{ id: bigint; kind: string; permission_codes: unknown; scope_type: string | null; scope_id: string | null }>
     >(
@@ -276,6 +389,8 @@ export class PrismaAuthorizationRepository implements AuthorizationRepository {
     resourceId: string,
     tenantId: string | null,
   ): Promise<string[]> {
+    if (!(await tableExists('authorization_relationships'))) return [];
+
     const rows = await db.$queryRawUnsafe<Array<{ relationship: string }>>(
       `SELECT relationship
          FROM authorization_relationships
@@ -294,6 +409,8 @@ export class PrismaAuthorizationRepository implements AuthorizationRepository {
   }
 
   async hasGlobalAssignment(userId: number): Promise<boolean> {
+    if (!(await tableExists('authorization_role_assignments'))) return false;
+
     const rows = await db.$queryRawUnsafe<Array<{ n: number }>>(
       `SELECT count(*)::int AS n
          FROM authorization_role_assignments a
@@ -312,6 +429,8 @@ export class PrismaAuthorizationRepository implements AuthorizationRepository {
    * the codebase, which is what makes the audit trail worth trusting.
    */
   async writeDecision(entry: DecisionLogEntry): Promise<void> {
+    if (!(await tableExists('authorization_decision_logs'))) return;
+
     await db.$executeRawUnsafe(
       `INSERT INTO authorization_decision_logs
          (decision_id, tenant_id, user_id, session_id, action, resource_type, resource_id,
