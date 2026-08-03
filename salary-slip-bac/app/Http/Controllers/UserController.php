@@ -370,14 +370,6 @@ class UserController extends Controller
 
     public function index(Request $request)
     {
-        // Auto-fix any legacy employees with null/empty unit
-        \App\Models\User::whereNull('unit')->orWhere('unit', '')
-            ->where('company_code', 'nidhi-impex')
-            ->update(['unit' => 'Shreeji']);
-        \App\Models\User::whereNull('unit')->orWhere('unit', '')
-            ->whereIn('company_code', ['silverstar', 'silver-star'])
-            ->update(['unit' => 'Daduk']);
-
         $status = $request->status;
         $query = User::where('is_deleted', 0)
             ->whereNotIn('role', [0, 1, 2]);
