@@ -1,1 +1,0 @@
-import{j as o}from"./index-0zkTQd4G.js";import{C as e}from"./ComingSoon-NOhtMBoQ.js";import"./ag-grid-vh0ptRm1.js";function n(){return o.jsx(e,{title:"Employee Onboarding",description:"Automated profile, ID, payroll and asset-request creation for newly joined employees is coming in a future update."})}export{n as default};

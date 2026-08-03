@@ -830,7 +830,8 @@ exports.Prisma.PermissionsScalarFieldEnum = {
   resource: 'resource',
   action: 'action',
   is_active: 'is_active',
-  is_sensitive: 'is_sensitive'
+  is_sensitive: 'is_sensitive',
+  level: 'level'
 };
 
 exports.Prisma.Personal_access_tokensScalarFieldEnum = {
@@ -1372,7 +1373,9 @@ exports.Prisma.Authorization_access_requestsScalarFieldEnum = {
   revoked_by: 'revoked_by',
   revocation_reason: 'revocation_reason',
   created_at: 'created_at',
-  updated_at: 'updated_at'
+  updated_at: 'updated_at',
+  permission_code: 'permission_code',
+  decision_reason: 'decision_reason'
 };
 
 exports.Prisma.Authorization_access_review_itemsScalarFieldEnum = {
@@ -1427,7 +1430,8 @@ exports.Prisma.Authorization_decision_logsScalarFieldEnum = {
   business_reason: 'business_reason',
   authorization_version: 'authorization_version',
   duration_ms: 'duration_ms',
-  created_at: 'created_at'
+  created_at: 'created_at',
+  updated_at: 'updated_at'
 };
 
 exports.Prisma.Authorization_delegationsScalarFieldEnum = {
@@ -1478,7 +1482,8 @@ exports.Prisma.Authorization_feature_flagsScalarFieldEnum = {
   description: 'description',
   updated_by: 'updated_by',
   created_at: 'created_at',
-  updated_at: 'updated_at'
+  updated_at: 'updated_at',
+  configuration: 'configuration'
 };
 
 exports.Prisma.Authorization_policiesScalarFieldEnum = {
@@ -1505,7 +1510,9 @@ exports.Prisma.Authorization_policiesScalarFieldEnum = {
   updated_by: 'updated_by',
   approved_by: 'approved_by',
   created_at: 'created_at',
-  updated_at: 'updated_at'
+  updated_at: 'updated_at',
+  audit_required: 'audit_required',
+  approved_at: 'approved_at'
 };
 
 exports.Prisma.Authorization_policy_versionsScalarFieldEnum = {
@@ -1517,7 +1524,11 @@ exports.Prisma.Authorization_policy_versionsScalarFieldEnum = {
   previous_version_id: 'previous_version_id',
   changed_by: 'changed_by',
   approved_by: 'approved_by',
-  created_at: 'created_at'
+  created_at: 'created_at',
+  approved_at: 'approved_at',
+  effective_at: 'effective_at',
+  deployment_status: 'deployment_status',
+  updated_at: 'updated_at'
 };
 
 exports.Prisma.Authorization_relationshipsScalarFieldEnum = {
@@ -1552,7 +1563,9 @@ exports.Prisma.Authorization_role_assignmentsScalarFieldEnum = {
   revoked_at: 'revoked_at',
   revoked_by: 'revoked_by',
   created_at: 'created_at',
-  updated_at: 'updated_at'
+  updated_at: 'updated_at',
+  assignment_source: 'assignment_source',
+  assignment_reason: 'assignment_reason'
 };
 
 exports.Prisma.Authorization_role_inheritancesScalarFieldEnum = {
@@ -1560,7 +1573,9 @@ exports.Prisma.Authorization_role_inheritancesScalarFieldEnum = {
   parent_role_id: 'parent_role_id',
   child_role_id: 'child_role_id',
   created_at: 'created_at',
-  updated_at: 'updated_at'
+  updated_at: 'updated_at',
+  max_depth: 'max_depth',
+  inherit_sensitive: 'inherit_sensitive'
 };
 
 exports.Prisma.Authorization_sod_rulesScalarFieldEnum = {
@@ -1575,7 +1590,10 @@ exports.Prisma.Authorization_sod_rulesScalarFieldEnum = {
   requires_override_reason: 'requires_override_reason',
   is_active: 'is_active',
   created_at: 'created_at',
-  updated_at: 'updated_at'
+  updated_at: 'updated_at',
+  conflicting_role_codes: 'conflicting_role_codes',
+  conflicting_permission_codes: 'conflicting_permission_codes',
+  enforcement: 'enforcement'
 };
 
 exports.Prisma.Authorization_sod_violationsScalarFieldEnum = {

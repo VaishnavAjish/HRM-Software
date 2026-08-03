@@ -19,6 +19,79 @@ function extractErrorMessage(data) {
   return "Something went wrong. Please try again.";
 }
 
+function splitTopLevelJsonDocuments(text) {
+  const documents = [];
+  let start = -1;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+
+    if (start === -1) {
+      if (/\s/.test(character)) continue;
+      if (character !== "{" && character !== "[") return [];
+      start = index;
+      depth = 1;
+      continue;
+    }
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (character === "\\") {
+        escaped = true;
+      } else if (character === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (character === '"') {
+      inString = true;
+    } else if (character === "{" || character === "[") {
+      depth += 1;
+    } else if (character === "}" || character === "]") {
+      depth -= 1;
+      if (depth === 0) {
+        documents.push(text.slice(start, index + 1));
+        start = -1;
+      }
+    }
+  }
+
+  return start === -1 ? documents : [];
+}
+
+// A misconfigured server/error-handler chain can append a second JSON object
+// to the first one (for example `{"message":"..."}{"message":"Server Error"}`).
+// Browsers reject that with a raw JSON SyntaxError, hiding the useful HTTP
+// status and preventing the normal API error UI from running.
+export function parseApiJsonResponse(text) {
+  if (!text.trim()) return { data: null, malformed: false };
+
+  try {
+    return { data: JSON.parse(text), malformed: false };
+  } catch (parseError) {
+    const documents = splitTopLevelJsonDocuments(text);
+    if (documents.length > 1) {
+      try {
+        const parsedDocuments = documents.map(document => JSON.parse(document));
+        return {
+          data: parsedDocuments.at(-1),
+          malformed: true,
+          parseError,
+        };
+      } catch {
+        // Fall through to the generic malformed-response result below.
+      }
+    }
+
+    return { data: null, malformed: true, parseError };
+  }
+}
+
 async function apiRequest(path, options = {}) {
   const isFormData = options.body instanceof FormData;
 
@@ -82,9 +155,32 @@ async function apiRequest(path, options = {}) {
   });
 
   const contentType = response.headers.get("content-type") || "";
-  const data = contentType.includes("application/json")
-    ? await response.json()
-    : null;
+  const responseText = await response.text();
+  const parsed = contentType.includes("application/json")
+    ? parseApiJsonResponse(responseText)
+    : { data: null, malformed: false };
+  const { data } = parsed;
+
+  if (parsed.malformed) {
+    console.error("[API] Server returned malformed JSON", {
+      status: response.status,
+      url,
+    });
+
+    const message = !response.ok && data
+      ? extractErrorMessage(data)
+      : "The server returned an invalid response. Please try again.";
+    const error = new Error(message);
+    error.status = response.status;
+    error.data = data;
+    error.cause = parsed.parseError;
+
+    if (response.status === 401 && headers.Authorization) {
+      window.dispatchEvent(new CustomEvent("auth:unauthorized"));
+    }
+
+    throw error;
+  }
 
   if (!response.ok || data?.success === false || data?.status === false) {
     const message = extractErrorMessage(data);

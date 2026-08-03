@@ -943,11 +943,13 @@ model permissions {
   action            String?            @db.VarChar(80)
   is_active         Boolean            @default(true)
   is_sensitive      Boolean            @default(false)
+  level             String             @default("ACTION") @db.VarChar(32)
   permission_groups permission_groups? @relation(fields: [group_id], references: [id], onUpdate: NoAction, map: "permissions_group_id_foreign")
   role_permissions  role_permissions[]
   user_permissions  user_permissions[]
 
   @@index([resource])
+  @@index([resource, action], map: "permissions_resource_action_index")
 }
 
 model personal_access_tokens {
@@ -1819,6 +1821,8 @@ model authorization_access_requests {
   revocation_reason                                         String?                                  @db.VarChar(500)
   created_at                                                DateTime?                                @db.Timestamp(0)
   updated_at                                                DateTime?                                @db.Timestamp(0)
+  permission_code                                           String?                                  @db.VarChar(255)
+  decision_reason                                           String?
   authorization_access_request_approvals                    authorization_access_request_approvals[]
   users_authorization_access_requests_decided_byTousers     users?                                   @relation("authorization_access_requests_decided_byTousers", fields: [decided_by], references: [id], onUpdate: NoAction)
   users_authorization_access_requests_requester_idTousers   users                                    @relation("authorization_access_requests_requester_idTousers", fields: [requester_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
@@ -1892,10 +1896,13 @@ model authorization_decision_logs {
   authorization_version String    @default("v2") @db.VarChar(20)
   duration_ms           Int?
   created_at            DateTime? @db.Timestamp(0)
+  updated_at            DateTime? @db.Timestamp(0)
   users                 users?    @relation(fields: [user_id], references: [id], onUpdate: NoAction)
 
   @@index([tenant_id, created_at(sort: Desc)], map: "auth_decision_log_search_idx")
   @@index([user_id, action, created_at(sort: Desc)], map: "auth_decision_log_user_idx")
+  @@index([resource_type, resource_id], map: "auth_decision_resource_idx")
+  @@index([tenant_id, decision, created_at], map: "auth_decision_tenant_idx")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -1953,15 +1960,16 @@ model authorization_emergency_grants {
 
 /// This model contains an expression index which requires additional setup for migrations. Visit https://pris.ly/d/expression-indexes for more info.
 model authorization_feature_flags {
-  id          BigInt    @id @default(autoincrement())
-  tenant_id   String?   @db.VarChar(190)
-  key         String    @db.VarChar(190)
-  enabled     Boolean   @default(false)
-  description String?   @db.VarChar(500)
-  updated_by  BigInt?
-  created_at  DateTime? @db.Timestamp(0)
-  updated_at  DateTime? @db.Timestamp(0)
-  users       users?    @relation(fields: [updated_by], references: [id], onUpdate: NoAction)
+  id            BigInt    @id @default(autoincrement())
+  tenant_id     String?   @db.VarChar(190)
+  key           String    @db.VarChar(190)
+  enabled       Boolean   @default(false)
+  description   String?   @db.VarChar(500)
+  updated_by    BigInt?
+  created_at    DateTime? @db.Timestamp(0)
+  updated_at    DateTime? @db.Timestamp(0)
+  configuration Json?     @db.Json
+  users         users?    @relation(fields: [updated_by], references: [id], onUpdate: NoAction)
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -1990,12 +1998,15 @@ model authorization_policies {
   approved_by                                     BigInt?
   created_at                                      DateTime?                       @db.Timestamp(0)
   updated_at                                      DateTime?                       @db.Timestamp(0)
+  audit_required                                  Boolean                         @default(true)
+  approved_at                                     DateTime?                       @db.Timestamp(0)
   users_authorization_policies_approved_byTousers users?                          @relation("authorization_policies_approved_byTousers", fields: [approved_by], references: [id], onUpdate: NoAction)
   users_authorization_policies_created_byTousers  users?                          @relation("authorization_policies_created_byTousers", fields: [created_by], references: [id], onUpdate: NoAction)
   users_authorization_policies_updated_byTousers  users?                          @relation("authorization_policies_updated_byTousers", fields: [updated_by], references: [id], onUpdate: NoAction)
   authorization_policy_versions                   authorization_policy_versions[]
 
   @@index([tenant_id, status, priority(sort: Desc)], map: "authorization_policies_lookup_idx")
+  @@index([valid_from, valid_until], map: "auth_policy_validity_idx")
 }
 
 model authorization_policy_versions {
@@ -2008,6 +2019,10 @@ model authorization_policy_versions {
   changed_by                                             BigInt?
   approved_by                                            BigInt?
   created_at                                             DateTime?                       @db.Timestamp(0)
+  approved_at                                            DateTime?                       @db.Timestamp(0)
+  effective_at                                           DateTime?                       @db.Timestamp(0)
+  deployment_status                                      String                          @default("PENDING") @db.VarChar(24)
+  updated_at                                             DateTime?                       @db.Timestamp(0)
   users_authorization_policy_versions_approved_byTousers users?                          @relation("authorization_policy_versions_approved_byTousers", fields: [approved_by], references: [id], onUpdate: NoAction)
   users_authorization_policy_versions_changed_byTousers  users?                          @relation("authorization_policy_versions_changed_byTousers", fields: [changed_by], references: [id], onUpdate: NoAction)
   authorization_policies                                 authorization_policies          @relation(fields: [policy_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
@@ -2033,6 +2048,7 @@ model authorization_relationships {
   users         users?    @relation(fields: [created_by], references: [id], onUpdate: NoAction)
 
   @@index([subject_type, subject_id, resource_type, resource_id], map: "auth_relationship_lookup_idx")
+  @@index([resource_type, resource_id, relationship], map: "auth_relationship_resource_idx")
 }
 
 model authorization_role_assignments {
@@ -2053,6 +2069,8 @@ model authorization_role_assignments {
   revoked_by                                              BigInt?
   created_at                                              DateTime?                           @db.Timestamp(0)
   updated_at                                              DateTime?                           @db.Timestamp(0)
+  assignment_source                                       String                              @default("MANUAL") @db.VarChar(32)
+  assignment_reason                                       String?
   authorization_access_review_items                       authorization_access_review_items[]
   users_authorization_role_assignments_approved_byTousers users?                              @relation("authorization_role_assignments_approved_byTousers", fields: [approved_by], references: [id], onUpdate: NoAction)
   users_authorization_role_assignments_assigned_byTousers users?                              @relation("authorization_role_assignments_assigned_byTousers", fields: [assigned_by], references: [id], onUpdate: NoAction)
@@ -2061,6 +2079,9 @@ model authorization_role_assignments {
   users_authorization_role_assignments_user_idTousers     users                               @relation("authorization_role_assignments_user_idTousers", fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([user_id, status, valid_until], map: "auth_role_assignment_user_idx")
+  @@index([valid_until, status], map: "auth_role_assign_expiry_idx")
+  @@index([role_id, scope_type, scope_id], map: "auth_role_assign_scope_idx")
+  @@index([user_id, tenant_id, status], map: "auth_role_assign_user_tenant_idx")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -2070,6 +2091,8 @@ model authorization_role_inheritances {
   child_role_id                                               BigInt
   created_at                                                  DateTime? @db.Timestamp(0)
   updated_at                                                  DateTime? @db.Timestamp(0)
+  max_depth                                                   Int       @default(8) @db.SmallInt
+  inherit_sensitive                                           Boolean   @default(false)
   roles_authorization_role_inheritances_child_role_idToroles  roles     @relation("authorization_role_inheritances_child_role_idToroles", fields: [child_role_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   roles_authorization_role_inheritances_parent_role_idToroles roles     @relation("authorization_role_inheritances_parent_role_idToroles", fields: [parent_role_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
@@ -2091,6 +2114,9 @@ model authorization_sod_rules {
   is_active                    Boolean                        @default(true)
   created_at                   DateTime?                      @db.Timestamp(0)
   updated_at                   DateTime?                      @db.Timestamp(0)
+  conflicting_role_codes       Json?                          @db.Json
+  conflicting_permission_codes Json?                          @db.Json
+  enforcement                  String                         @default("BLOCK") @db.VarChar(24)
   authorization_sod_violations authorization_sod_violations[]
 }
 

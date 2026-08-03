@@ -1,1 +1,0 @@
-import{j as o}from"./index-0zkTQd4G.js";import{C as e}from"./ComingSoon-NOhtMBoQ.js";import"./ag-grid-vh0ptRm1.js";function a(){return o.jsx(e,{title:"Employee Separation",description:"Resignation submission, manager/HR approval and the employee-profile lock workflow are coming in a future update."})}export{a as default};

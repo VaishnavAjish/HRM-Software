@@ -72116,6 +72116,7 @@ export namespace Prisma {
     action: string | null
     is_active: boolean | null
     is_sensitive: boolean | null
+    level: string | null
   }
 
   export type PermissionsMaxAggregateOutputType = {
@@ -72130,6 +72131,7 @@ export namespace Prisma {
     action: string | null
     is_active: boolean | null
     is_sensitive: boolean | null
+    level: string | null
   }
 
   export type PermissionsCountAggregateOutputType = {
@@ -72144,6 +72146,7 @@ export namespace Prisma {
     action: number
     is_active: number
     is_sensitive: number
+    level: number
     _all: number
   }
 
@@ -72170,6 +72173,7 @@ export namespace Prisma {
     action?: true
     is_active?: true
     is_sensitive?: true
+    level?: true
   }
 
   export type PermissionsMaxAggregateInputType = {
@@ -72184,6 +72188,7 @@ export namespace Prisma {
     action?: true
     is_active?: true
     is_sensitive?: true
+    level?: true
   }
 
   export type PermissionsCountAggregateInputType = {
@@ -72198,6 +72203,7 @@ export namespace Prisma {
     action?: true
     is_active?: true
     is_sensitive?: true
+    level?: true
     _all?: true
   }
 
@@ -72299,6 +72305,7 @@ export namespace Prisma {
     action: string | null
     is_active: boolean
     is_sensitive: boolean
+    level: string
     _count: PermissionsCountAggregateOutputType | null
     _avg: PermissionsAvgAggregateOutputType | null
     _sum: PermissionsSumAggregateOutputType | null
@@ -72332,6 +72339,7 @@ export namespace Prisma {
     action?: boolean
     is_active?: boolean
     is_sensitive?: boolean
+    level?: boolean
     permission_groups?: boolean | permissions$permission_groupsArgs<ExtArgs>
     role_permissions?: boolean | permissions$role_permissionsArgs<ExtArgs>
     user_permissions?: boolean | permissions$user_permissionsArgs<ExtArgs>
@@ -72350,6 +72358,7 @@ export namespace Prisma {
     action?: boolean
     is_active?: boolean
     is_sensitive?: boolean
+    level?: boolean
     permission_groups?: boolean | permissions$permission_groupsArgs<ExtArgs>
   }, ExtArgs["result"]["permissions"]>
 
@@ -72365,6 +72374,7 @@ export namespace Prisma {
     action?: boolean
     is_active?: boolean
     is_sensitive?: boolean
+    level?: boolean
     permission_groups?: boolean | permissions$permission_groupsArgs<ExtArgs>
   }, ExtArgs["result"]["permissions"]>
 
@@ -72380,9 +72390,10 @@ export namespace Prisma {
     action?: boolean
     is_active?: boolean
     is_sensitive?: boolean
+    level?: boolean
   }
 
-  export type permissionsOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "name" | "group_id" | "description" | "created_at" | "updated_at" | "code" | "resource" | "action" | "is_active" | "is_sensitive", ExtArgs["result"]["permissions"]>
+  export type permissionsOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "name" | "group_id" | "description" | "created_at" | "updated_at" | "code" | "resource" | "action" | "is_active" | "is_sensitive" | "level", ExtArgs["result"]["permissions"]>
   export type permissionsInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     permission_groups?: boolean | permissions$permission_groupsArgs<ExtArgs>
     role_permissions?: boolean | permissions$role_permissionsArgs<ExtArgs>
@@ -72415,6 +72426,7 @@ export namespace Prisma {
       action: string | null
       is_active: boolean
       is_sensitive: boolean
+      level: string
     }, ExtArgs["result"]["permissions"]>
     composites: {}
   }
@@ -72852,6 +72864,7 @@ export namespace Prisma {
     readonly action: FieldRef<"permissions", 'String'>
     readonly is_active: FieldRef<"permissions", 'Boolean'>
     readonly is_sensitive: FieldRef<"permissions", 'Boolean'>
+    readonly level: FieldRef<"permissions", 'String'>
   }
     
 
@@ -110463,6 +110476,8 @@ export namespace Prisma {
     revocation_reason: string | null
     created_at: Date | null
     updated_at: Date | null
+    permission_code: string | null
+    decision_reason: string | null
   }
 
   export type Authorization_access_requestsMaxAggregateOutputType = {
@@ -110487,6 +110502,8 @@ export namespace Prisma {
     revocation_reason: string | null
     created_at: Date | null
     updated_at: Date | null
+    permission_code: string | null
+    decision_reason: string | null
   }
 
   export type Authorization_access_requestsCountAggregateOutputType = {
@@ -110512,6 +110529,8 @@ export namespace Prisma {
     revocation_reason: number
     created_at: number
     updated_at: number
+    permission_code: number
+    decision_reason: number
     _all: number
   }
 
@@ -110556,6 +110575,8 @@ export namespace Prisma {
     revocation_reason?: true
     created_at?: true
     updated_at?: true
+    permission_code?: true
+    decision_reason?: true
   }
 
   export type Authorization_access_requestsMaxAggregateInputType = {
@@ -110580,6 +110601,8 @@ export namespace Prisma {
     revocation_reason?: true
     created_at?: true
     updated_at?: true
+    permission_code?: true
+    decision_reason?: true
   }
 
   export type Authorization_access_requestsCountAggregateInputType = {
@@ -110605,6 +110628,8 @@ export namespace Prisma {
     revocation_reason?: true
     created_at?: true
     updated_at?: true
+    permission_code?: true
+    decision_reason?: true
     _all?: true
   }
 
@@ -110717,6 +110742,8 @@ export namespace Prisma {
     revocation_reason: string | null
     created_at: Date | null
     updated_at: Date | null
+    permission_code: string | null
+    decision_reason: string | null
     _count: Authorization_access_requestsCountAggregateOutputType | null
     _avg: Authorization_access_requestsAvgAggregateOutputType | null
     _sum: Authorization_access_requestsSumAggregateOutputType | null
@@ -110761,6 +110788,8 @@ export namespace Prisma {
     revocation_reason?: boolean
     created_at?: boolean
     updated_at?: boolean
+    permission_code?: boolean
+    decision_reason?: boolean
     authorization_access_request_approvals?: boolean | authorization_access_requests$authorization_access_request_approvalsArgs<ExtArgs>
     users_authorization_access_requests_decided_byTousers?: boolean | authorization_access_requests$users_authorization_access_requests_decided_byTousersArgs<ExtArgs>
     users_authorization_access_requests_requester_idTousers?: boolean | usersDefaultArgs<ExtArgs>
@@ -110793,6 +110822,8 @@ export namespace Prisma {
     revocation_reason?: boolean
     created_at?: boolean
     updated_at?: boolean
+    permission_code?: boolean
+    decision_reason?: boolean
     users_authorization_access_requests_decided_byTousers?: boolean | authorization_access_requests$users_authorization_access_requests_decided_byTousersArgs<ExtArgs>
     users_authorization_access_requests_requester_idTousers?: boolean | usersDefaultArgs<ExtArgs>
     users_authorization_access_requests_revoked_byTousers?: boolean | authorization_access_requests$users_authorization_access_requests_revoked_byTousersArgs<ExtArgs>
@@ -110823,6 +110854,8 @@ export namespace Prisma {
     revocation_reason?: boolean
     created_at?: boolean
     updated_at?: boolean
+    permission_code?: boolean
+    decision_reason?: boolean
     users_authorization_access_requests_decided_byTousers?: boolean | authorization_access_requests$users_authorization_access_requests_decided_byTousersArgs<ExtArgs>
     users_authorization_access_requests_requester_idTousers?: boolean | usersDefaultArgs<ExtArgs>
     users_authorization_access_requests_revoked_byTousers?: boolean | authorization_access_requests$users_authorization_access_requests_revoked_byTousersArgs<ExtArgs>
@@ -110853,9 +110886,11 @@ export namespace Prisma {
     revocation_reason?: boolean
     created_at?: boolean
     updated_at?: boolean
+    permission_code?: boolean
+    decision_reason?: boolean
   }
 
-  export type authorization_access_requestsOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "tenant_id" | "requester_id" | "target_user_id" | "role_id" | "permission_codes" | "scope_type" | "scope_id" | "request_type" | "business_reason" | "attachment_path" | "requested_from" | "requested_until" | "status" | "decided_by" | "decided_at" | "decision_note" | "revoked_at" | "revoked_by" | "revocation_reason" | "created_at" | "updated_at", ExtArgs["result"]["authorization_access_requests"]>
+  export type authorization_access_requestsOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "tenant_id" | "requester_id" | "target_user_id" | "role_id" | "permission_codes" | "scope_type" | "scope_id" | "request_type" | "business_reason" | "attachment_path" | "requested_from" | "requested_until" | "status" | "decided_by" | "decided_at" | "decision_note" | "revoked_at" | "revoked_by" | "revocation_reason" | "created_at" | "updated_at" | "permission_code" | "decision_reason", ExtArgs["result"]["authorization_access_requests"]>
   export type authorization_access_requestsInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     authorization_access_request_approvals?: boolean | authorization_access_requests$authorization_access_request_approvalsArgs<ExtArgs>
     users_authorization_access_requests_decided_byTousers?: boolean | authorization_access_requests$users_authorization_access_requests_decided_byTousersArgs<ExtArgs>
@@ -110913,6 +110948,8 @@ export namespace Prisma {
       revocation_reason: string | null
       created_at: Date | null
       updated_at: Date | null
+      permission_code: string | null
+      decision_reason: string | null
     }, ExtArgs["result"]["authorization_access_requests"]>
     composites: {}
   }
@@ -111364,6 +111401,8 @@ export namespace Prisma {
     readonly revocation_reason: FieldRef<"authorization_access_requests", 'String'>
     readonly created_at: FieldRef<"authorization_access_requests", 'DateTime'>
     readonly updated_at: FieldRef<"authorization_access_requests", 'DateTime'>
+    readonly permission_code: FieldRef<"authorization_access_requests", 'String'>
+    readonly decision_reason: FieldRef<"authorization_access_requests", 'String'>
   }
     
 
@@ -114448,6 +114487,7 @@ export namespace Prisma {
     authorization_version: string | null
     duration_ms: number | null
     created_at: Date | null
+    updated_at: Date | null
   }
 
   export type Authorization_decision_logsMaxAggregateOutputType = {
@@ -114468,6 +114508,7 @@ export namespace Prisma {
     authorization_version: string | null
     duration_ms: number | null
     created_at: Date | null
+    updated_at: Date | null
   }
 
   export type Authorization_decision_logsCountAggregateOutputType = {
@@ -114493,6 +114534,7 @@ export namespace Prisma {
     authorization_version: number
     duration_ms: number
     created_at: number
+    updated_at: number
     _all: number
   }
 
@@ -114527,6 +114569,7 @@ export namespace Prisma {
     authorization_version?: true
     duration_ms?: true
     created_at?: true
+    updated_at?: true
   }
 
   export type Authorization_decision_logsMaxAggregateInputType = {
@@ -114547,6 +114590,7 @@ export namespace Prisma {
     authorization_version?: true
     duration_ms?: true
     created_at?: true
+    updated_at?: true
   }
 
   export type Authorization_decision_logsCountAggregateInputType = {
@@ -114572,6 +114616,7 @@ export namespace Prisma {
     authorization_version?: true
     duration_ms?: true
     created_at?: true
+    updated_at?: true
     _all?: true
   }
 
@@ -114684,6 +114729,7 @@ export namespace Prisma {
     authorization_version: string
     duration_ms: number | null
     created_at: Date | null
+    updated_at: Date | null
     _count: Authorization_decision_logsCountAggregateOutputType | null
     _avg: Authorization_decision_logsAvgAggregateOutputType | null
     _sum: Authorization_decision_logsSumAggregateOutputType | null
@@ -114728,6 +114774,7 @@ export namespace Prisma {
     authorization_version?: boolean
     duration_ms?: boolean
     created_at?: boolean
+    updated_at?: boolean
     users?: boolean | authorization_decision_logs$usersArgs<ExtArgs>
   }, ExtArgs["result"]["authorization_decision_logs"]>
 
@@ -114754,6 +114801,7 @@ export namespace Prisma {
     authorization_version?: boolean
     duration_ms?: boolean
     created_at?: boolean
+    updated_at?: boolean
     users?: boolean | authorization_decision_logs$usersArgs<ExtArgs>
   }, ExtArgs["result"]["authorization_decision_logs"]>
 
@@ -114780,6 +114828,7 @@ export namespace Prisma {
     authorization_version?: boolean
     duration_ms?: boolean
     created_at?: boolean
+    updated_at?: boolean
     users?: boolean | authorization_decision_logs$usersArgs<ExtArgs>
   }, ExtArgs["result"]["authorization_decision_logs"]>
 
@@ -114806,9 +114855,10 @@ export namespace Prisma {
     authorization_version?: boolean
     duration_ms?: boolean
     created_at?: boolean
+    updated_at?: boolean
   }
 
-  export type authorization_decision_logsOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "decision_id" | "tenant_id" | "user_id" | "session_id" | "action" | "resource_type" | "resource_id" | "decision" | "reason_code" | "matched_policy_ids" | "failed_conditions" | "scope" | "obligations" | "ip_address" | "device" | "request_id" | "changed_fields" | "business_reason" | "authorization_version" | "duration_ms" | "created_at", ExtArgs["result"]["authorization_decision_logs"]>
+  export type authorization_decision_logsOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "decision_id" | "tenant_id" | "user_id" | "session_id" | "action" | "resource_type" | "resource_id" | "decision" | "reason_code" | "matched_policy_ids" | "failed_conditions" | "scope" | "obligations" | "ip_address" | "device" | "request_id" | "changed_fields" | "business_reason" | "authorization_version" | "duration_ms" | "created_at" | "updated_at", ExtArgs["result"]["authorization_decision_logs"]>
   export type authorization_decision_logsInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     users?: boolean | authorization_decision_logs$usersArgs<ExtArgs>
   }
@@ -114847,6 +114897,7 @@ export namespace Prisma {
       authorization_version: string
       duration_ms: number | null
       created_at: Date | null
+      updated_at: Date | null
     }, ExtArgs["result"]["authorization_decision_logs"]>
     composites: {}
   }
@@ -115293,6 +115344,7 @@ export namespace Prisma {
     readonly authorization_version: FieldRef<"authorization_decision_logs", 'String'>
     readonly duration_ms: FieldRef<"authorization_decision_logs", 'Int'>
     readonly created_at: FieldRef<"authorization_decision_logs", 'DateTime'>
+    readonly updated_at: FieldRef<"authorization_decision_logs", 'DateTime'>
   }
     
 
@@ -118411,6 +118463,7 @@ export namespace Prisma {
     updated_by: number
     created_at: number
     updated_at: number
+    configuration: number
     _all: number
   }
 
@@ -118456,6 +118509,7 @@ export namespace Prisma {
     updated_by?: true
     created_at?: true
     updated_at?: true
+    configuration?: true
     _all?: true
   }
 
@@ -118554,6 +118608,7 @@ export namespace Prisma {
     updated_by: bigint | null
     created_at: Date | null
     updated_at: Date | null
+    configuration: JsonValue | null
     _count: Authorization_feature_flagsCountAggregateOutputType | null
     _avg: Authorization_feature_flagsAvgAggregateOutputType | null
     _sum: Authorization_feature_flagsSumAggregateOutputType | null
@@ -118584,6 +118639,7 @@ export namespace Prisma {
     updated_by?: boolean
     created_at?: boolean
     updated_at?: boolean
+    configuration?: boolean
     users?: boolean | authorization_feature_flags$usersArgs<ExtArgs>
   }, ExtArgs["result"]["authorization_feature_flags"]>
 
@@ -118596,6 +118652,7 @@ export namespace Prisma {
     updated_by?: boolean
     created_at?: boolean
     updated_at?: boolean
+    configuration?: boolean
     users?: boolean | authorization_feature_flags$usersArgs<ExtArgs>
   }, ExtArgs["result"]["authorization_feature_flags"]>
 
@@ -118608,6 +118665,7 @@ export namespace Prisma {
     updated_by?: boolean
     created_at?: boolean
     updated_at?: boolean
+    configuration?: boolean
     users?: boolean | authorization_feature_flags$usersArgs<ExtArgs>
   }, ExtArgs["result"]["authorization_feature_flags"]>
 
@@ -118620,9 +118678,10 @@ export namespace Prisma {
     updated_by?: boolean
     created_at?: boolean
     updated_at?: boolean
+    configuration?: boolean
   }
 
-  export type authorization_feature_flagsOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "tenant_id" | "key" | "enabled" | "description" | "updated_by" | "created_at" | "updated_at", ExtArgs["result"]["authorization_feature_flags"]>
+  export type authorization_feature_flagsOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "tenant_id" | "key" | "enabled" | "description" | "updated_by" | "created_at" | "updated_at" | "configuration", ExtArgs["result"]["authorization_feature_flags"]>
   export type authorization_feature_flagsInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     users?: boolean | authorization_feature_flags$usersArgs<ExtArgs>
   }
@@ -118647,6 +118706,7 @@ export namespace Prisma {
       updated_by: bigint | null
       created_at: Date | null
       updated_at: Date | null
+      configuration: Prisma.JsonValue | null
     }, ExtArgs["result"]["authorization_feature_flags"]>
     composites: {}
   }
@@ -119079,6 +119139,7 @@ export namespace Prisma {
     readonly updated_by: FieldRef<"authorization_feature_flags", 'BigInt'>
     readonly created_at: FieldRef<"authorization_feature_flags", 'DateTime'>
     readonly updated_at: FieldRef<"authorization_feature_flags", 'DateTime'>
+    readonly configuration: FieldRef<"authorization_feature_flags", 'Json'>
   }
     
 
@@ -119562,6 +119623,8 @@ export namespace Prisma {
     approved_by: bigint | null
     created_at: Date | null
     updated_at: Date | null
+    audit_required: boolean | null
+    approved_at: Date | null
   }
 
   export type Authorization_policiesMaxAggregateOutputType = {
@@ -119584,6 +119647,8 @@ export namespace Prisma {
     approved_by: bigint | null
     created_at: Date | null
     updated_at: Date | null
+    audit_required: boolean | null
+    approved_at: Date | null
   }
 
   export type Authorization_policiesCountAggregateOutputType = {
@@ -119611,6 +119676,8 @@ export namespace Prisma {
     approved_by: number
     created_at: number
     updated_at: number
+    audit_required: number
+    approved_at: number
     _all: number
   }
 
@@ -119653,6 +119720,8 @@ export namespace Prisma {
     approved_by?: true
     created_at?: true
     updated_at?: true
+    audit_required?: true
+    approved_at?: true
   }
 
   export type Authorization_policiesMaxAggregateInputType = {
@@ -119675,6 +119744,8 @@ export namespace Prisma {
     approved_by?: true
     created_at?: true
     updated_at?: true
+    audit_required?: true
+    approved_at?: true
   }
 
   export type Authorization_policiesCountAggregateInputType = {
@@ -119702,6 +119773,8 @@ export namespace Prisma {
     approved_by?: true
     created_at?: true
     updated_at?: true
+    audit_required?: true
+    approved_at?: true
     _all?: true
   }
 
@@ -119816,6 +119889,8 @@ export namespace Prisma {
     approved_by: bigint | null
     created_at: Date | null
     updated_at: Date | null
+    audit_required: boolean
+    approved_at: Date | null
     _count: Authorization_policiesCountAggregateOutputType | null
     _avg: Authorization_policiesAvgAggregateOutputType | null
     _sum: Authorization_policiesSumAggregateOutputType | null
@@ -119862,6 +119937,8 @@ export namespace Prisma {
     approved_by?: boolean
     created_at?: boolean
     updated_at?: boolean
+    audit_required?: boolean
+    approved_at?: boolean
     users_authorization_policies_approved_byTousers?: boolean | authorization_policies$users_authorization_policies_approved_byTousersArgs<ExtArgs>
     users_authorization_policies_created_byTousers?: boolean | authorization_policies$users_authorization_policies_created_byTousersArgs<ExtArgs>
     users_authorization_policies_updated_byTousers?: boolean | authorization_policies$users_authorization_policies_updated_byTousersArgs<ExtArgs>
@@ -119894,6 +119971,8 @@ export namespace Prisma {
     approved_by?: boolean
     created_at?: boolean
     updated_at?: boolean
+    audit_required?: boolean
+    approved_at?: boolean
     users_authorization_policies_approved_byTousers?: boolean | authorization_policies$users_authorization_policies_approved_byTousersArgs<ExtArgs>
     users_authorization_policies_created_byTousers?: boolean | authorization_policies$users_authorization_policies_created_byTousersArgs<ExtArgs>
     users_authorization_policies_updated_byTousers?: boolean | authorization_policies$users_authorization_policies_updated_byTousersArgs<ExtArgs>
@@ -119924,6 +120003,8 @@ export namespace Prisma {
     approved_by?: boolean
     created_at?: boolean
     updated_at?: boolean
+    audit_required?: boolean
+    approved_at?: boolean
     users_authorization_policies_approved_byTousers?: boolean | authorization_policies$users_authorization_policies_approved_byTousersArgs<ExtArgs>
     users_authorization_policies_created_byTousers?: boolean | authorization_policies$users_authorization_policies_created_byTousersArgs<ExtArgs>
     users_authorization_policies_updated_byTousers?: boolean | authorization_policies$users_authorization_policies_updated_byTousersArgs<ExtArgs>
@@ -119954,9 +120035,11 @@ export namespace Prisma {
     approved_by?: boolean
     created_at?: boolean
     updated_at?: boolean
+    audit_required?: boolean
+    approved_at?: boolean
   }
 
-  export type authorization_policiesOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "tenant_id" | "code" | "name" | "description" | "effect" | "subjects" | "actions" | "resources" | "scope_type" | "scope_id" | "conditions" | "obligations" | "priority" | "status" | "version" | "valid_from" | "valid_until" | "requires_approval" | "created_by" | "updated_by" | "approved_by" | "created_at" | "updated_at", ExtArgs["result"]["authorization_policies"]>
+  export type authorization_policiesOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "tenant_id" | "code" | "name" | "description" | "effect" | "subjects" | "actions" | "resources" | "scope_type" | "scope_id" | "conditions" | "obligations" | "priority" | "status" | "version" | "valid_from" | "valid_until" | "requires_approval" | "created_by" | "updated_by" | "approved_by" | "created_at" | "updated_at" | "audit_required" | "approved_at", ExtArgs["result"]["authorization_policies"]>
   export type authorization_policiesInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     users_authorization_policies_approved_byTousers?: boolean | authorization_policies$users_authorization_policies_approved_byTousersArgs<ExtArgs>
     users_authorization_policies_created_byTousers?: boolean | authorization_policies$users_authorization_policies_created_byTousersArgs<ExtArgs>
@@ -120008,6 +120091,8 @@ export namespace Prisma {
       approved_by: bigint | null
       created_at: Date | null
       updated_at: Date | null
+      audit_required: boolean
+      approved_at: Date | null
     }, ExtArgs["result"]["authorization_policies"]>
     composites: {}
   }
@@ -120459,6 +120544,8 @@ export namespace Prisma {
     readonly approved_by: FieldRef<"authorization_policies", 'BigInt'>
     readonly created_at: FieldRef<"authorization_policies", 'DateTime'>
     readonly updated_at: FieldRef<"authorization_policies", 'DateTime'>
+    readonly audit_required: FieldRef<"authorization_policies", 'Boolean'>
+    readonly approved_at: FieldRef<"authorization_policies", 'DateTime'>
   }
     
 
@@ -120993,6 +121080,10 @@ export namespace Prisma {
     changed_by: bigint | null
     approved_by: bigint | null
     created_at: Date | null
+    approved_at: Date | null
+    effective_at: Date | null
+    deployment_status: string | null
+    updated_at: Date | null
   }
 
   export type Authorization_policy_versionsMaxAggregateOutputType = {
@@ -121004,6 +121095,10 @@ export namespace Prisma {
     changed_by: bigint | null
     approved_by: bigint | null
     created_at: Date | null
+    approved_at: Date | null
+    effective_at: Date | null
+    deployment_status: string | null
+    updated_at: Date | null
   }
 
   export type Authorization_policy_versionsCountAggregateOutputType = {
@@ -121016,6 +121111,10 @@ export namespace Prisma {
     changed_by: number
     approved_by: number
     created_at: number
+    approved_at: number
+    effective_at: number
+    deployment_status: number
+    updated_at: number
     _all: number
   }
 
@@ -121047,6 +121146,10 @@ export namespace Prisma {
     changed_by?: true
     approved_by?: true
     created_at?: true
+    approved_at?: true
+    effective_at?: true
+    deployment_status?: true
+    updated_at?: true
   }
 
   export type Authorization_policy_versionsMaxAggregateInputType = {
@@ -121058,6 +121161,10 @@ export namespace Prisma {
     changed_by?: true
     approved_by?: true
     created_at?: true
+    approved_at?: true
+    effective_at?: true
+    deployment_status?: true
+    updated_at?: true
   }
 
   export type Authorization_policy_versionsCountAggregateInputType = {
@@ -121070,6 +121177,10 @@ export namespace Prisma {
     changed_by?: true
     approved_by?: true
     created_at?: true
+    approved_at?: true
+    effective_at?: true
+    deployment_status?: true
+    updated_at?: true
     _all?: true
   }
 
@@ -121169,6 +121280,10 @@ export namespace Prisma {
     changed_by: bigint | null
     approved_by: bigint | null
     created_at: Date | null
+    approved_at: Date | null
+    effective_at: Date | null
+    deployment_status: string
+    updated_at: Date | null
     _count: Authorization_policy_versionsCountAggregateOutputType | null
     _avg: Authorization_policy_versionsAvgAggregateOutputType | null
     _sum: Authorization_policy_versionsSumAggregateOutputType | null
@@ -121200,6 +121315,10 @@ export namespace Prisma {
     changed_by?: boolean
     approved_by?: boolean
     created_at?: boolean
+    approved_at?: boolean
+    effective_at?: boolean
+    deployment_status?: boolean
+    updated_at?: boolean
     users_authorization_policy_versions_approved_byTousers?: boolean | authorization_policy_versions$users_authorization_policy_versions_approved_byTousersArgs<ExtArgs>
     users_authorization_policy_versions_changed_byTousers?: boolean | authorization_policy_versions$users_authorization_policy_versions_changed_byTousersArgs<ExtArgs>
     authorization_policies?: boolean | authorization_policiesDefaultArgs<ExtArgs>
@@ -121218,6 +121337,10 @@ export namespace Prisma {
     changed_by?: boolean
     approved_by?: boolean
     created_at?: boolean
+    approved_at?: boolean
+    effective_at?: boolean
+    deployment_status?: boolean
+    updated_at?: boolean
     users_authorization_policy_versions_approved_byTousers?: boolean | authorization_policy_versions$users_authorization_policy_versions_approved_byTousersArgs<ExtArgs>
     users_authorization_policy_versions_changed_byTousers?: boolean | authorization_policy_versions$users_authorization_policy_versions_changed_byTousersArgs<ExtArgs>
     authorization_policies?: boolean | authorization_policiesDefaultArgs<ExtArgs>
@@ -121234,6 +121357,10 @@ export namespace Prisma {
     changed_by?: boolean
     approved_by?: boolean
     created_at?: boolean
+    approved_at?: boolean
+    effective_at?: boolean
+    deployment_status?: boolean
+    updated_at?: boolean
     users_authorization_policy_versions_approved_byTousers?: boolean | authorization_policy_versions$users_authorization_policy_versions_approved_byTousersArgs<ExtArgs>
     users_authorization_policy_versions_changed_byTousers?: boolean | authorization_policy_versions$users_authorization_policy_versions_changed_byTousersArgs<ExtArgs>
     authorization_policies?: boolean | authorization_policiesDefaultArgs<ExtArgs>
@@ -121250,9 +121377,13 @@ export namespace Prisma {
     changed_by?: boolean
     approved_by?: boolean
     created_at?: boolean
+    approved_at?: boolean
+    effective_at?: boolean
+    deployment_status?: boolean
+    updated_at?: boolean
   }
 
-  export type authorization_policy_versionsOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "policy_id" | "version" | "snapshot" | "change_summary" | "previous_version_id" | "changed_by" | "approved_by" | "created_at", ExtArgs["result"]["authorization_policy_versions"]>
+  export type authorization_policy_versionsOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "policy_id" | "version" | "snapshot" | "change_summary" | "previous_version_id" | "changed_by" | "approved_by" | "created_at" | "approved_at" | "effective_at" | "deployment_status" | "updated_at", ExtArgs["result"]["authorization_policy_versions"]>
   export type authorization_policy_versionsInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     users_authorization_policy_versions_approved_byTousers?: boolean | authorization_policy_versions$users_authorization_policy_versions_approved_byTousersArgs<ExtArgs>
     users_authorization_policy_versions_changed_byTousers?: boolean | authorization_policy_versions$users_authorization_policy_versions_changed_byTousersArgs<ExtArgs>
@@ -121293,6 +121424,10 @@ export namespace Prisma {
       changed_by: bigint | null
       approved_by: bigint | null
       created_at: Date | null
+      approved_at: Date | null
+      effective_at: Date | null
+      deployment_status: string
+      updated_at: Date | null
     }, ExtArgs["result"]["authorization_policy_versions"]>
     composites: {}
   }
@@ -121730,6 +121865,10 @@ export namespace Prisma {
     readonly changed_by: FieldRef<"authorization_policy_versions", 'BigInt'>
     readonly approved_by: FieldRef<"authorization_policy_versions", 'BigInt'>
     readonly created_at: FieldRef<"authorization_policy_versions", 'DateTime'>
+    readonly approved_at: FieldRef<"authorization_policy_versions", 'DateTime'>
+    readonly effective_at: FieldRef<"authorization_policy_versions", 'DateTime'>
+    readonly deployment_status: FieldRef<"authorization_policy_versions", 'String'>
+    readonly updated_at: FieldRef<"authorization_policy_versions", 'DateTime'>
   }
     
 
@@ -123479,6 +123618,8 @@ export namespace Prisma {
     revoked_by: bigint | null
     created_at: Date | null
     updated_at: Date | null
+    assignment_source: string | null
+    assignment_reason: string | null
   }
 
   export type Authorization_role_assignmentsMaxAggregateOutputType = {
@@ -123499,6 +123640,8 @@ export namespace Prisma {
     revoked_by: bigint | null
     created_at: Date | null
     updated_at: Date | null
+    assignment_source: string | null
+    assignment_reason: string | null
   }
 
   export type Authorization_role_assignmentsCountAggregateOutputType = {
@@ -123519,6 +123662,8 @@ export namespace Prisma {
     revoked_by: number
     created_at: number
     updated_at: number
+    assignment_source: number
+    assignment_reason: number
     _all: number
   }
 
@@ -123559,6 +123704,8 @@ export namespace Prisma {
     revoked_by?: true
     created_at?: true
     updated_at?: true
+    assignment_source?: true
+    assignment_reason?: true
   }
 
   export type Authorization_role_assignmentsMaxAggregateInputType = {
@@ -123579,6 +123726,8 @@ export namespace Prisma {
     revoked_by?: true
     created_at?: true
     updated_at?: true
+    assignment_source?: true
+    assignment_reason?: true
   }
 
   export type Authorization_role_assignmentsCountAggregateInputType = {
@@ -123599,6 +123748,8 @@ export namespace Prisma {
     revoked_by?: true
     created_at?: true
     updated_at?: true
+    assignment_source?: true
+    assignment_reason?: true
     _all?: true
   }
 
@@ -123706,6 +123857,8 @@ export namespace Prisma {
     revoked_by: bigint | null
     created_at: Date | null
     updated_at: Date | null
+    assignment_source: string
+    assignment_reason: string | null
     _count: Authorization_role_assignmentsCountAggregateOutputType | null
     _avg: Authorization_role_assignmentsAvgAggregateOutputType | null
     _sum: Authorization_role_assignmentsSumAggregateOutputType | null
@@ -123745,6 +123898,8 @@ export namespace Prisma {
     revoked_by?: boolean
     created_at?: boolean
     updated_at?: boolean
+    assignment_source?: boolean
+    assignment_reason?: boolean
     authorization_access_review_items?: boolean | authorization_role_assignments$authorization_access_review_itemsArgs<ExtArgs>
     users_authorization_role_assignments_approved_byTousers?: boolean | authorization_role_assignments$users_authorization_role_assignments_approved_byTousersArgs<ExtArgs>
     users_authorization_role_assignments_assigned_byTousers?: boolean | authorization_role_assignments$users_authorization_role_assignments_assigned_byTousersArgs<ExtArgs>
@@ -123772,6 +123927,8 @@ export namespace Prisma {
     revoked_by?: boolean
     created_at?: boolean
     updated_at?: boolean
+    assignment_source?: boolean
+    assignment_reason?: boolean
     users_authorization_role_assignments_approved_byTousers?: boolean | authorization_role_assignments$users_authorization_role_assignments_approved_byTousersArgs<ExtArgs>
     users_authorization_role_assignments_assigned_byTousers?: boolean | authorization_role_assignments$users_authorization_role_assignments_assigned_byTousersArgs<ExtArgs>
     users_authorization_role_assignments_revoked_byTousers?: boolean | authorization_role_assignments$users_authorization_role_assignments_revoked_byTousersArgs<ExtArgs>
@@ -123797,6 +123954,8 @@ export namespace Prisma {
     revoked_by?: boolean
     created_at?: boolean
     updated_at?: boolean
+    assignment_source?: boolean
+    assignment_reason?: boolean
     users_authorization_role_assignments_approved_byTousers?: boolean | authorization_role_assignments$users_authorization_role_assignments_approved_byTousersArgs<ExtArgs>
     users_authorization_role_assignments_assigned_byTousers?: boolean | authorization_role_assignments$users_authorization_role_assignments_assigned_byTousersArgs<ExtArgs>
     users_authorization_role_assignments_revoked_byTousers?: boolean | authorization_role_assignments$users_authorization_role_assignments_revoked_byTousersArgs<ExtArgs>
@@ -123822,9 +123981,11 @@ export namespace Prisma {
     revoked_by?: boolean
     created_at?: boolean
     updated_at?: boolean
+    assignment_source?: boolean
+    assignment_reason?: boolean
   }
 
-  export type authorization_role_assignmentsOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "user_id" | "role_id" | "scope_type" | "scope_id" | "tenant_id" | "status" | "is_temporary" | "valid_from" | "valid_until" | "reason" | "assigned_by" | "approved_by" | "revoked_at" | "revoked_by" | "created_at" | "updated_at", ExtArgs["result"]["authorization_role_assignments"]>
+  export type authorization_role_assignmentsOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "user_id" | "role_id" | "scope_type" | "scope_id" | "tenant_id" | "status" | "is_temporary" | "valid_from" | "valid_until" | "reason" | "assigned_by" | "approved_by" | "revoked_at" | "revoked_by" | "created_at" | "updated_at" | "assignment_source" | "assignment_reason", ExtArgs["result"]["authorization_role_assignments"]>
   export type authorization_role_assignmentsInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     authorization_access_review_items?: boolean | authorization_role_assignments$authorization_access_review_itemsArgs<ExtArgs>
     users_authorization_role_assignments_approved_byTousers?: boolean | authorization_role_assignments$users_authorization_role_assignments_approved_byTousersArgs<ExtArgs>
@@ -123877,6 +124038,8 @@ export namespace Prisma {
       revoked_by: bigint | null
       created_at: Date | null
       updated_at: Date | null
+      assignment_source: string
+      assignment_reason: string | null
     }, ExtArgs["result"]["authorization_role_assignments"]>
     composites: {}
   }
@@ -124323,6 +124486,8 @@ export namespace Prisma {
     readonly revoked_by: FieldRef<"authorization_role_assignments", 'BigInt'>
     readonly created_at: FieldRef<"authorization_role_assignments", 'DateTime'>
     readonly updated_at: FieldRef<"authorization_role_assignments", 'DateTime'>
+    readonly assignment_source: FieldRef<"authorization_role_assignments", 'String'>
+    readonly assignment_reason: FieldRef<"authorization_role_assignments", 'String'>
   }
     
 
@@ -124834,12 +124999,14 @@ export namespace Prisma {
     id: number | null
     parent_role_id: number | null
     child_role_id: number | null
+    max_depth: number | null
   }
 
   export type Authorization_role_inheritancesSumAggregateOutputType = {
     id: bigint | null
     parent_role_id: bigint | null
     child_role_id: bigint | null
+    max_depth: number | null
   }
 
   export type Authorization_role_inheritancesMinAggregateOutputType = {
@@ -124848,6 +125015,8 @@ export namespace Prisma {
     child_role_id: bigint | null
     created_at: Date | null
     updated_at: Date | null
+    max_depth: number | null
+    inherit_sensitive: boolean | null
   }
 
   export type Authorization_role_inheritancesMaxAggregateOutputType = {
@@ -124856,6 +125025,8 @@ export namespace Prisma {
     child_role_id: bigint | null
     created_at: Date | null
     updated_at: Date | null
+    max_depth: number | null
+    inherit_sensitive: boolean | null
   }
 
   export type Authorization_role_inheritancesCountAggregateOutputType = {
@@ -124864,6 +125035,8 @@ export namespace Prisma {
     child_role_id: number
     created_at: number
     updated_at: number
+    max_depth: number
+    inherit_sensitive: number
     _all: number
   }
 
@@ -124872,12 +125045,14 @@ export namespace Prisma {
     id?: true
     parent_role_id?: true
     child_role_id?: true
+    max_depth?: true
   }
 
   export type Authorization_role_inheritancesSumAggregateInputType = {
     id?: true
     parent_role_id?: true
     child_role_id?: true
+    max_depth?: true
   }
 
   export type Authorization_role_inheritancesMinAggregateInputType = {
@@ -124886,6 +125061,8 @@ export namespace Prisma {
     child_role_id?: true
     created_at?: true
     updated_at?: true
+    max_depth?: true
+    inherit_sensitive?: true
   }
 
   export type Authorization_role_inheritancesMaxAggregateInputType = {
@@ -124894,6 +125071,8 @@ export namespace Prisma {
     child_role_id?: true
     created_at?: true
     updated_at?: true
+    max_depth?: true
+    inherit_sensitive?: true
   }
 
   export type Authorization_role_inheritancesCountAggregateInputType = {
@@ -124902,6 +125081,8 @@ export namespace Prisma {
     child_role_id?: true
     created_at?: true
     updated_at?: true
+    max_depth?: true
+    inherit_sensitive?: true
     _all?: true
   }
 
@@ -124997,6 +125178,8 @@ export namespace Prisma {
     child_role_id: bigint
     created_at: Date | null
     updated_at: Date | null
+    max_depth: number
+    inherit_sensitive: boolean
     _count: Authorization_role_inheritancesCountAggregateOutputType | null
     _avg: Authorization_role_inheritancesAvgAggregateOutputType | null
     _sum: Authorization_role_inheritancesSumAggregateOutputType | null
@@ -125024,6 +125207,8 @@ export namespace Prisma {
     child_role_id?: boolean
     created_at?: boolean
     updated_at?: boolean
+    max_depth?: boolean
+    inherit_sensitive?: boolean
     roles_authorization_role_inheritances_child_role_idToroles?: boolean | rolesDefaultArgs<ExtArgs>
     roles_authorization_role_inheritances_parent_role_idToroles?: boolean | rolesDefaultArgs<ExtArgs>
   }, ExtArgs["result"]["authorization_role_inheritances"]>
@@ -125034,6 +125219,8 @@ export namespace Prisma {
     child_role_id?: boolean
     created_at?: boolean
     updated_at?: boolean
+    max_depth?: boolean
+    inherit_sensitive?: boolean
     roles_authorization_role_inheritances_child_role_idToroles?: boolean | rolesDefaultArgs<ExtArgs>
     roles_authorization_role_inheritances_parent_role_idToroles?: boolean | rolesDefaultArgs<ExtArgs>
   }, ExtArgs["result"]["authorization_role_inheritances"]>
@@ -125044,6 +125231,8 @@ export namespace Prisma {
     child_role_id?: boolean
     created_at?: boolean
     updated_at?: boolean
+    max_depth?: boolean
+    inherit_sensitive?: boolean
     roles_authorization_role_inheritances_child_role_idToroles?: boolean | rolesDefaultArgs<ExtArgs>
     roles_authorization_role_inheritances_parent_role_idToroles?: boolean | rolesDefaultArgs<ExtArgs>
   }, ExtArgs["result"]["authorization_role_inheritances"]>
@@ -125054,9 +125243,11 @@ export namespace Prisma {
     child_role_id?: boolean
     created_at?: boolean
     updated_at?: boolean
+    max_depth?: boolean
+    inherit_sensitive?: boolean
   }
 
-  export type authorization_role_inheritancesOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "parent_role_id" | "child_role_id" | "created_at" | "updated_at", ExtArgs["result"]["authorization_role_inheritances"]>
+  export type authorization_role_inheritancesOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "parent_role_id" | "child_role_id" | "created_at" | "updated_at" | "max_depth" | "inherit_sensitive", ExtArgs["result"]["authorization_role_inheritances"]>
   export type authorization_role_inheritancesInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     roles_authorization_role_inheritances_child_role_idToroles?: boolean | rolesDefaultArgs<ExtArgs>
     roles_authorization_role_inheritances_parent_role_idToroles?: boolean | rolesDefaultArgs<ExtArgs>
@@ -125082,6 +125273,8 @@ export namespace Prisma {
       child_role_id: bigint
       created_at: Date | null
       updated_at: Date | null
+      max_depth: number
+      inherit_sensitive: boolean
     }, ExtArgs["result"]["authorization_role_inheritances"]>
     composites: {}
   }
@@ -125512,6 +125705,8 @@ export namespace Prisma {
     readonly child_role_id: FieldRef<"authorization_role_inheritances", 'BigInt'>
     readonly created_at: FieldRef<"authorization_role_inheritances", 'DateTime'>
     readonly updated_at: FieldRef<"authorization_role_inheritances", 'DateTime'>
+    readonly max_depth: FieldRef<"authorization_role_inheritances", 'Int'>
+    readonly inherit_sensitive: FieldRef<"authorization_role_inheritances", 'Boolean'>
   }
     
 
@@ -125957,6 +126152,7 @@ export namespace Prisma {
     is_active: boolean | null
     created_at: Date | null
     updated_at: Date | null
+    enforcement: string | null
   }
 
   export type Authorization_sod_rulesMaxAggregateOutputType = {
@@ -125970,6 +126166,7 @@ export namespace Prisma {
     is_active: boolean | null
     created_at: Date | null
     updated_at: Date | null
+    enforcement: string | null
   }
 
   export type Authorization_sod_rulesCountAggregateOutputType = {
@@ -125985,6 +126182,9 @@ export namespace Prisma {
     is_active: number
     created_at: number
     updated_at: number
+    conflicting_role_codes: number
+    conflicting_permission_codes: number
+    enforcement: number
     _all: number
   }
 
@@ -126008,6 +126208,7 @@ export namespace Prisma {
     is_active?: true
     created_at?: true
     updated_at?: true
+    enforcement?: true
   }
 
   export type Authorization_sod_rulesMaxAggregateInputType = {
@@ -126021,6 +126222,7 @@ export namespace Prisma {
     is_active?: true
     created_at?: true
     updated_at?: true
+    enforcement?: true
   }
 
   export type Authorization_sod_rulesCountAggregateInputType = {
@@ -126036,6 +126238,9 @@ export namespace Prisma {
     is_active?: true
     created_at?: true
     updated_at?: true
+    conflicting_role_codes?: true
+    conflicting_permission_codes?: true
+    enforcement?: true
     _all?: true
   }
 
@@ -126138,6 +126343,9 @@ export namespace Prisma {
     is_active: boolean
     created_at: Date | null
     updated_at: Date | null
+    conflicting_role_codes: JsonValue | null
+    conflicting_permission_codes: JsonValue | null
+    enforcement: string
     _count: Authorization_sod_rulesCountAggregateOutputType | null
     _avg: Authorization_sod_rulesAvgAggregateOutputType | null
     _sum: Authorization_sod_rulesSumAggregateOutputType | null
@@ -126172,6 +126380,9 @@ export namespace Prisma {
     is_active?: boolean
     created_at?: boolean
     updated_at?: boolean
+    conflicting_role_codes?: boolean
+    conflicting_permission_codes?: boolean
+    enforcement?: boolean
     authorization_sod_violations?: boolean | authorization_sod_rules$authorization_sod_violationsArgs<ExtArgs>
     _count?: boolean | Authorization_sod_rulesCountOutputTypeDefaultArgs<ExtArgs>
   }, ExtArgs["result"]["authorization_sod_rules"]>
@@ -126189,6 +126400,9 @@ export namespace Prisma {
     is_active?: boolean
     created_at?: boolean
     updated_at?: boolean
+    conflicting_role_codes?: boolean
+    conflicting_permission_codes?: boolean
+    enforcement?: boolean
   }, ExtArgs["result"]["authorization_sod_rules"]>
 
   export type authorization_sod_rulesSelectUpdateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
@@ -126204,6 +126418,9 @@ export namespace Prisma {
     is_active?: boolean
     created_at?: boolean
     updated_at?: boolean
+    conflicting_role_codes?: boolean
+    conflicting_permission_codes?: boolean
+    enforcement?: boolean
   }, ExtArgs["result"]["authorization_sod_rules"]>
 
   export type authorization_sod_rulesSelectScalar = {
@@ -126219,9 +126436,12 @@ export namespace Prisma {
     is_active?: boolean
     created_at?: boolean
     updated_at?: boolean
+    conflicting_role_codes?: boolean
+    conflicting_permission_codes?: boolean
+    enforcement?: boolean
   }
 
-  export type authorization_sod_rulesOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "tenant_id" | "code" | "name" | "description" | "left_codes" | "right_codes" | "severity" | "requires_override_reason" | "is_active" | "created_at" | "updated_at", ExtArgs["result"]["authorization_sod_rules"]>
+  export type authorization_sod_rulesOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "tenant_id" | "code" | "name" | "description" | "left_codes" | "right_codes" | "severity" | "requires_override_reason" | "is_active" | "created_at" | "updated_at" | "conflicting_role_codes" | "conflicting_permission_codes" | "enforcement", ExtArgs["result"]["authorization_sod_rules"]>
   export type authorization_sod_rulesInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     authorization_sod_violations?: boolean | authorization_sod_rules$authorization_sod_violationsArgs<ExtArgs>
     _count?: boolean | Authorization_sod_rulesCountOutputTypeDefaultArgs<ExtArgs>
@@ -126247,6 +126467,9 @@ export namespace Prisma {
       is_active: boolean
       created_at: Date | null
       updated_at: Date | null
+      conflicting_role_codes: Prisma.JsonValue | null
+      conflicting_permission_codes: Prisma.JsonValue | null
+      enforcement: string
     }, ExtArgs["result"]["authorization_sod_rules"]>
     composites: {}
   }
@@ -126683,6 +126906,9 @@ export namespace Prisma {
     readonly is_active: FieldRef<"authorization_sod_rules", 'Boolean'>
     readonly created_at: FieldRef<"authorization_sod_rules", 'DateTime'>
     readonly updated_at: FieldRef<"authorization_sod_rules", 'DateTime'>
+    readonly conflicting_role_codes: FieldRef<"authorization_sod_rules", 'Json'>
+    readonly conflicting_permission_codes: FieldRef<"authorization_sod_rules", 'Json'>
+    readonly enforcement: FieldRef<"authorization_sod_rules", 'String'>
   }
     
 
@@ -129212,7 +129438,8 @@ export namespace Prisma {
     resource: 'resource',
     action: 'action',
     is_active: 'is_active',
-    is_sensitive: 'is_sensitive'
+    is_sensitive: 'is_sensitive',
+    level: 'level'
   };
 
   export type PermissionsScalarFieldEnum = (typeof PermissionsScalarFieldEnum)[keyof typeof PermissionsScalarFieldEnum]
@@ -129835,7 +130062,9 @@ export namespace Prisma {
     revoked_by: 'revoked_by',
     revocation_reason: 'revocation_reason',
     created_at: 'created_at',
-    updated_at: 'updated_at'
+    updated_at: 'updated_at',
+    permission_code: 'permission_code',
+    decision_reason: 'decision_reason'
   };
 
   export type Authorization_access_requestsScalarFieldEnum = (typeof Authorization_access_requestsScalarFieldEnum)[keyof typeof Authorization_access_requestsScalarFieldEnum]
@@ -129899,7 +130128,8 @@ export namespace Prisma {
     business_reason: 'business_reason',
     authorization_version: 'authorization_version',
     duration_ms: 'duration_ms',
-    created_at: 'created_at'
+    created_at: 'created_at',
+    updated_at: 'updated_at'
   };
 
   export type Authorization_decision_logsScalarFieldEnum = (typeof Authorization_decision_logsScalarFieldEnum)[keyof typeof Authorization_decision_logsScalarFieldEnum]
@@ -129959,7 +130189,8 @@ export namespace Prisma {
     description: 'description',
     updated_by: 'updated_by',
     created_at: 'created_at',
-    updated_at: 'updated_at'
+    updated_at: 'updated_at',
+    configuration: 'configuration'
   };
 
   export type Authorization_feature_flagsScalarFieldEnum = (typeof Authorization_feature_flagsScalarFieldEnum)[keyof typeof Authorization_feature_flagsScalarFieldEnum]
@@ -129989,7 +130220,9 @@ export namespace Prisma {
     updated_by: 'updated_by',
     approved_by: 'approved_by',
     created_at: 'created_at',
-    updated_at: 'updated_at'
+    updated_at: 'updated_at',
+    audit_required: 'audit_required',
+    approved_at: 'approved_at'
   };
 
   export type Authorization_policiesScalarFieldEnum = (typeof Authorization_policiesScalarFieldEnum)[keyof typeof Authorization_policiesScalarFieldEnum]
@@ -130004,7 +130237,11 @@ export namespace Prisma {
     previous_version_id: 'previous_version_id',
     changed_by: 'changed_by',
     approved_by: 'approved_by',
-    created_at: 'created_at'
+    created_at: 'created_at',
+    approved_at: 'approved_at',
+    effective_at: 'effective_at',
+    deployment_status: 'deployment_status',
+    updated_at: 'updated_at'
   };
 
   export type Authorization_policy_versionsScalarFieldEnum = (typeof Authorization_policy_versionsScalarFieldEnum)[keyof typeof Authorization_policy_versionsScalarFieldEnum]
@@ -130045,7 +130282,9 @@ export namespace Prisma {
     revoked_at: 'revoked_at',
     revoked_by: 'revoked_by',
     created_at: 'created_at',
-    updated_at: 'updated_at'
+    updated_at: 'updated_at',
+    assignment_source: 'assignment_source',
+    assignment_reason: 'assignment_reason'
   };
 
   export type Authorization_role_assignmentsScalarFieldEnum = (typeof Authorization_role_assignmentsScalarFieldEnum)[keyof typeof Authorization_role_assignmentsScalarFieldEnum]
@@ -130056,7 +130295,9 @@ export namespace Prisma {
     parent_role_id: 'parent_role_id',
     child_role_id: 'child_role_id',
     created_at: 'created_at',
-    updated_at: 'updated_at'
+    updated_at: 'updated_at',
+    max_depth: 'max_depth',
+    inherit_sensitive: 'inherit_sensitive'
   };
 
   export type Authorization_role_inheritancesScalarFieldEnum = (typeof Authorization_role_inheritancesScalarFieldEnum)[keyof typeof Authorization_role_inheritancesScalarFieldEnum]
@@ -130074,7 +130315,10 @@ export namespace Prisma {
     requires_override_reason: 'requires_override_reason',
     is_active: 'is_active',
     created_at: 'created_at',
-    updated_at: 'updated_at'
+    updated_at: 'updated_at',
+    conflicting_role_codes: 'conflicting_role_codes',
+    conflicting_permission_codes: 'conflicting_permission_codes',
+    enforcement: 'enforcement'
   };
 
   export type Authorization_sod_rulesScalarFieldEnum = (typeof Authorization_sod_rulesScalarFieldEnum)[keyof typeof Authorization_sod_rulesScalarFieldEnum]
@@ -134839,6 +135083,7 @@ export namespace Prisma {
     action?: StringNullableFilter<"permissions"> | string | null
     is_active?: BoolFilter<"permissions"> | boolean
     is_sensitive?: BoolFilter<"permissions"> | boolean
+    level?: StringFilter<"permissions"> | string
     permission_groups?: XOR<Permission_groupsNullableScalarRelationFilter, permission_groupsWhereInput> | null
     role_permissions?: Role_permissionsListRelationFilter
     user_permissions?: User_permissionsListRelationFilter
@@ -134856,6 +135101,7 @@ export namespace Prisma {
     action?: SortOrderInput | SortOrder
     is_active?: SortOrder
     is_sensitive?: SortOrder
+    level?: SortOrder
     permission_groups?: permission_groupsOrderByWithRelationInput
     role_permissions?: role_permissionsOrderByRelationAggregateInput
     user_permissions?: user_permissionsOrderByRelationAggregateInput
@@ -134876,6 +135122,7 @@ export namespace Prisma {
     action?: StringNullableFilter<"permissions"> | string | null
     is_active?: BoolFilter<"permissions"> | boolean
     is_sensitive?: BoolFilter<"permissions"> | boolean
+    level?: StringFilter<"permissions"> | string
     permission_groups?: XOR<Permission_groupsNullableScalarRelationFilter, permission_groupsWhereInput> | null
     role_permissions?: Role_permissionsListRelationFilter
     user_permissions?: User_permissionsListRelationFilter
@@ -134893,6 +135140,7 @@ export namespace Prisma {
     action?: SortOrderInput | SortOrder
     is_active?: SortOrder
     is_sensitive?: SortOrder
+    level?: SortOrder
     _count?: permissionsCountOrderByAggregateInput
     _avg?: permissionsAvgOrderByAggregateInput
     _max?: permissionsMaxOrderByAggregateInput
@@ -134915,6 +135163,7 @@ export namespace Prisma {
     action?: StringNullableWithAggregatesFilter<"permissions"> | string | null
     is_active?: BoolWithAggregatesFilter<"permissions"> | boolean
     is_sensitive?: BoolWithAggregatesFilter<"permissions"> | boolean
+    level?: StringWithAggregatesFilter<"permissions"> | string
   }
 
   export type personal_access_tokensWhereInput = {
@@ -138452,6 +138701,8 @@ export namespace Prisma {
     revocation_reason?: StringNullableFilter<"authorization_access_requests"> | string | null
     created_at?: DateTimeNullableFilter<"authorization_access_requests"> | Date | string | null
     updated_at?: DateTimeNullableFilter<"authorization_access_requests"> | Date | string | null
+    permission_code?: StringNullableFilter<"authorization_access_requests"> | string | null
+    decision_reason?: StringNullableFilter<"authorization_access_requests"> | string | null
     authorization_access_request_approvals?: Authorization_access_request_approvalsListRelationFilter
     users_authorization_access_requests_decided_byTousers?: XOR<UsersNullableScalarRelationFilter, usersWhereInput> | null
     users_authorization_access_requests_requester_idTousers?: XOR<UsersScalarRelationFilter, usersWhereInput>
@@ -138483,6 +138734,8 @@ export namespace Prisma {
     revocation_reason?: SortOrderInput | SortOrder
     created_at?: SortOrderInput | SortOrder
     updated_at?: SortOrderInput | SortOrder
+    permission_code?: SortOrderInput | SortOrder
+    decision_reason?: SortOrderInput | SortOrder
     authorization_access_request_approvals?: authorization_access_request_approvalsOrderByRelationAggregateInput
     users_authorization_access_requests_decided_byTousers?: usersOrderByWithRelationInput
     users_authorization_access_requests_requester_idTousers?: usersOrderByWithRelationInput
@@ -138517,6 +138770,8 @@ export namespace Prisma {
     revocation_reason?: StringNullableFilter<"authorization_access_requests"> | string | null
     created_at?: DateTimeNullableFilter<"authorization_access_requests"> | Date | string | null
     updated_at?: DateTimeNullableFilter<"authorization_access_requests"> | Date | string | null
+    permission_code?: StringNullableFilter<"authorization_access_requests"> | string | null
+    decision_reason?: StringNullableFilter<"authorization_access_requests"> | string | null
     authorization_access_request_approvals?: Authorization_access_request_approvalsListRelationFilter
     users_authorization_access_requests_decided_byTousers?: XOR<UsersNullableScalarRelationFilter, usersWhereInput> | null
     users_authorization_access_requests_requester_idTousers?: XOR<UsersScalarRelationFilter, usersWhereInput>
@@ -138548,6 +138803,8 @@ export namespace Prisma {
     revocation_reason?: SortOrderInput | SortOrder
     created_at?: SortOrderInput | SortOrder
     updated_at?: SortOrderInput | SortOrder
+    permission_code?: SortOrderInput | SortOrder
+    decision_reason?: SortOrderInput | SortOrder
     _count?: authorization_access_requestsCountOrderByAggregateInput
     _avg?: authorization_access_requestsAvgOrderByAggregateInput
     _max?: authorization_access_requestsMaxOrderByAggregateInput
@@ -138581,6 +138838,8 @@ export namespace Prisma {
     revocation_reason?: StringNullableWithAggregatesFilter<"authorization_access_requests"> | string | null
     created_at?: DateTimeNullableWithAggregatesFilter<"authorization_access_requests"> | Date | string | null
     updated_at?: DateTimeNullableWithAggregatesFilter<"authorization_access_requests"> | Date | string | null
+    permission_code?: StringNullableWithAggregatesFilter<"authorization_access_requests"> | string | null
+    decision_reason?: StringNullableWithAggregatesFilter<"authorization_access_requests"> | string | null
   }
 
   export type authorization_access_review_itemsWhereInput = {
@@ -138808,6 +139067,7 @@ export namespace Prisma {
     authorization_version?: StringFilter<"authorization_decision_logs"> | string
     duration_ms?: IntNullableFilter<"authorization_decision_logs"> | number | null
     created_at?: DateTimeNullableFilter<"authorization_decision_logs"> | Date | string | null
+    updated_at?: DateTimeNullableFilter<"authorization_decision_logs"> | Date | string | null
     users?: XOR<UsersNullableScalarRelationFilter, usersWhereInput> | null
   }
 
@@ -138834,6 +139094,7 @@ export namespace Prisma {
     authorization_version?: SortOrder
     duration_ms?: SortOrderInput | SortOrder
     created_at?: SortOrderInput | SortOrder
+    updated_at?: SortOrderInput | SortOrder
     users?: usersOrderByWithRelationInput
   }
 
@@ -138863,6 +139124,7 @@ export namespace Prisma {
     authorization_version?: StringFilter<"authorization_decision_logs"> | string
     duration_ms?: IntNullableFilter<"authorization_decision_logs"> | number | null
     created_at?: DateTimeNullableFilter<"authorization_decision_logs"> | Date | string | null
+    updated_at?: DateTimeNullableFilter<"authorization_decision_logs"> | Date | string | null
     users?: XOR<UsersNullableScalarRelationFilter, usersWhereInput> | null
   }, "id" | "decision_id">
 
@@ -138889,6 +139151,7 @@ export namespace Prisma {
     authorization_version?: SortOrder
     duration_ms?: SortOrderInput | SortOrder
     created_at?: SortOrderInput | SortOrder
+    updated_at?: SortOrderInput | SortOrder
     _count?: authorization_decision_logsCountOrderByAggregateInput
     _avg?: authorization_decision_logsAvgOrderByAggregateInput
     _max?: authorization_decision_logsMaxOrderByAggregateInput
@@ -138922,6 +139185,7 @@ export namespace Prisma {
     authorization_version?: StringWithAggregatesFilter<"authorization_decision_logs"> | string
     duration_ms?: IntNullableWithAggregatesFilter<"authorization_decision_logs"> | number | null
     created_at?: DateTimeNullableWithAggregatesFilter<"authorization_decision_logs"> | Date | string | null
+    updated_at?: DateTimeNullableWithAggregatesFilter<"authorization_decision_logs"> | Date | string | null
   }
 
   export type authorization_delegationsWhereInput = {
@@ -139185,6 +139449,7 @@ export namespace Prisma {
     updated_by?: BigIntNullableFilter<"authorization_feature_flags"> | bigint | number | null
     created_at?: DateTimeNullableFilter<"authorization_feature_flags"> | Date | string | null
     updated_at?: DateTimeNullableFilter<"authorization_feature_flags"> | Date | string | null
+    configuration?: JsonNullableFilter<"authorization_feature_flags">
     users?: XOR<UsersNullableScalarRelationFilter, usersWhereInput> | null
   }
 
@@ -139197,6 +139462,7 @@ export namespace Prisma {
     updated_by?: SortOrderInput | SortOrder
     created_at?: SortOrderInput | SortOrder
     updated_at?: SortOrderInput | SortOrder
+    configuration?: SortOrderInput | SortOrder
     users?: usersOrderByWithRelationInput
   }
 
@@ -139212,6 +139478,7 @@ export namespace Prisma {
     updated_by?: BigIntNullableFilter<"authorization_feature_flags"> | bigint | number | null
     created_at?: DateTimeNullableFilter<"authorization_feature_flags"> | Date | string | null
     updated_at?: DateTimeNullableFilter<"authorization_feature_flags"> | Date | string | null
+    configuration?: JsonNullableFilter<"authorization_feature_flags">
     users?: XOR<UsersNullableScalarRelationFilter, usersWhereInput> | null
   }, "id">
 
@@ -139224,6 +139491,7 @@ export namespace Prisma {
     updated_by?: SortOrderInput | SortOrder
     created_at?: SortOrderInput | SortOrder
     updated_at?: SortOrderInput | SortOrder
+    configuration?: SortOrderInput | SortOrder
     _count?: authorization_feature_flagsCountOrderByAggregateInput
     _avg?: authorization_feature_flagsAvgOrderByAggregateInput
     _max?: authorization_feature_flagsMaxOrderByAggregateInput
@@ -139243,6 +139511,7 @@ export namespace Prisma {
     updated_by?: BigIntNullableWithAggregatesFilter<"authorization_feature_flags"> | bigint | number | null
     created_at?: DateTimeNullableWithAggregatesFilter<"authorization_feature_flags"> | Date | string | null
     updated_at?: DateTimeNullableWithAggregatesFilter<"authorization_feature_flags"> | Date | string | null
+    configuration?: JsonNullableWithAggregatesFilter<"authorization_feature_flags">
   }
 
   export type authorization_policiesWhereInput = {
@@ -139273,6 +139542,8 @@ export namespace Prisma {
     approved_by?: BigIntNullableFilter<"authorization_policies"> | bigint | number | null
     created_at?: DateTimeNullableFilter<"authorization_policies"> | Date | string | null
     updated_at?: DateTimeNullableFilter<"authorization_policies"> | Date | string | null
+    audit_required?: BoolFilter<"authorization_policies"> | boolean
+    approved_at?: DateTimeNullableFilter<"authorization_policies"> | Date | string | null
     users_authorization_policies_approved_byTousers?: XOR<UsersNullableScalarRelationFilter, usersWhereInput> | null
     users_authorization_policies_created_byTousers?: XOR<UsersNullableScalarRelationFilter, usersWhereInput> | null
     users_authorization_policies_updated_byTousers?: XOR<UsersNullableScalarRelationFilter, usersWhereInput> | null
@@ -139304,6 +139575,8 @@ export namespace Prisma {
     approved_by?: SortOrderInput | SortOrder
     created_at?: SortOrderInput | SortOrder
     updated_at?: SortOrderInput | SortOrder
+    audit_required?: SortOrder
+    approved_at?: SortOrderInput | SortOrder
     users_authorization_policies_approved_byTousers?: usersOrderByWithRelationInput
     users_authorization_policies_created_byTousers?: usersOrderByWithRelationInput
     users_authorization_policies_updated_byTousers?: usersOrderByWithRelationInput
@@ -139338,6 +139611,8 @@ export namespace Prisma {
     approved_by?: BigIntNullableFilter<"authorization_policies"> | bigint | number | null
     created_at?: DateTimeNullableFilter<"authorization_policies"> | Date | string | null
     updated_at?: DateTimeNullableFilter<"authorization_policies"> | Date | string | null
+    audit_required?: BoolFilter<"authorization_policies"> | boolean
+    approved_at?: DateTimeNullableFilter<"authorization_policies"> | Date | string | null
     users_authorization_policies_approved_byTousers?: XOR<UsersNullableScalarRelationFilter, usersWhereInput> | null
     users_authorization_policies_created_byTousers?: XOR<UsersNullableScalarRelationFilter, usersWhereInput> | null
     users_authorization_policies_updated_byTousers?: XOR<UsersNullableScalarRelationFilter, usersWhereInput> | null
@@ -139369,6 +139644,8 @@ export namespace Prisma {
     approved_by?: SortOrderInput | SortOrder
     created_at?: SortOrderInput | SortOrder
     updated_at?: SortOrderInput | SortOrder
+    audit_required?: SortOrder
+    approved_at?: SortOrderInput | SortOrder
     _count?: authorization_policiesCountOrderByAggregateInput
     _avg?: authorization_policiesAvgOrderByAggregateInput
     _max?: authorization_policiesMaxOrderByAggregateInput
@@ -139404,6 +139681,8 @@ export namespace Prisma {
     approved_by?: BigIntNullableWithAggregatesFilter<"authorization_policies"> | bigint | number | null
     created_at?: DateTimeNullableWithAggregatesFilter<"authorization_policies"> | Date | string | null
     updated_at?: DateTimeNullableWithAggregatesFilter<"authorization_policies"> | Date | string | null
+    audit_required?: BoolWithAggregatesFilter<"authorization_policies"> | boolean
+    approved_at?: DateTimeNullableWithAggregatesFilter<"authorization_policies"> | Date | string | null
   }
 
   export type authorization_policy_versionsWhereInput = {
@@ -139419,6 +139698,10 @@ export namespace Prisma {
     changed_by?: BigIntNullableFilter<"authorization_policy_versions"> | bigint | number | null
     approved_by?: BigIntNullableFilter<"authorization_policy_versions"> | bigint | number | null
     created_at?: DateTimeNullableFilter<"authorization_policy_versions"> | Date | string | null
+    approved_at?: DateTimeNullableFilter<"authorization_policy_versions"> | Date | string | null
+    effective_at?: DateTimeNullableFilter<"authorization_policy_versions"> | Date | string | null
+    deployment_status?: StringFilter<"authorization_policy_versions"> | string
+    updated_at?: DateTimeNullableFilter<"authorization_policy_versions"> | Date | string | null
     users_authorization_policy_versions_approved_byTousers?: XOR<UsersNullableScalarRelationFilter, usersWhereInput> | null
     users_authorization_policy_versions_changed_byTousers?: XOR<UsersNullableScalarRelationFilter, usersWhereInput> | null
     authorization_policies?: XOR<Authorization_policiesScalarRelationFilter, authorization_policiesWhereInput>
@@ -139436,6 +139719,10 @@ export namespace Prisma {
     changed_by?: SortOrderInput | SortOrder
     approved_by?: SortOrderInput | SortOrder
     created_at?: SortOrderInput | SortOrder
+    approved_at?: SortOrderInput | SortOrder
+    effective_at?: SortOrderInput | SortOrder
+    deployment_status?: SortOrder
+    updated_at?: SortOrderInput | SortOrder
     users_authorization_policy_versions_approved_byTousers?: usersOrderByWithRelationInput
     users_authorization_policy_versions_changed_byTousers?: usersOrderByWithRelationInput
     authorization_policies?: authorization_policiesOrderByWithRelationInput
@@ -139457,6 +139744,10 @@ export namespace Prisma {
     changed_by?: BigIntNullableFilter<"authorization_policy_versions"> | bigint | number | null
     approved_by?: BigIntNullableFilter<"authorization_policy_versions"> | bigint | number | null
     created_at?: DateTimeNullableFilter<"authorization_policy_versions"> | Date | string | null
+    approved_at?: DateTimeNullableFilter<"authorization_policy_versions"> | Date | string | null
+    effective_at?: DateTimeNullableFilter<"authorization_policy_versions"> | Date | string | null
+    deployment_status?: StringFilter<"authorization_policy_versions"> | string
+    updated_at?: DateTimeNullableFilter<"authorization_policy_versions"> | Date | string | null
     users_authorization_policy_versions_approved_byTousers?: XOR<UsersNullableScalarRelationFilter, usersWhereInput> | null
     users_authorization_policy_versions_changed_byTousers?: XOR<UsersNullableScalarRelationFilter, usersWhereInput> | null
     authorization_policies?: XOR<Authorization_policiesScalarRelationFilter, authorization_policiesWhereInput>
@@ -139474,6 +139765,10 @@ export namespace Prisma {
     changed_by?: SortOrderInput | SortOrder
     approved_by?: SortOrderInput | SortOrder
     created_at?: SortOrderInput | SortOrder
+    approved_at?: SortOrderInput | SortOrder
+    effective_at?: SortOrderInput | SortOrder
+    deployment_status?: SortOrder
+    updated_at?: SortOrderInput | SortOrder
     _count?: authorization_policy_versionsCountOrderByAggregateInput
     _avg?: authorization_policy_versionsAvgOrderByAggregateInput
     _max?: authorization_policy_versionsMaxOrderByAggregateInput
@@ -139494,6 +139789,10 @@ export namespace Prisma {
     changed_by?: BigIntNullableWithAggregatesFilter<"authorization_policy_versions"> | bigint | number | null
     approved_by?: BigIntNullableWithAggregatesFilter<"authorization_policy_versions"> | bigint | number | null
     created_at?: DateTimeNullableWithAggregatesFilter<"authorization_policy_versions"> | Date | string | null
+    approved_at?: DateTimeNullableWithAggregatesFilter<"authorization_policy_versions"> | Date | string | null
+    effective_at?: DateTimeNullableWithAggregatesFilter<"authorization_policy_versions"> | Date | string | null
+    deployment_status?: StringWithAggregatesFilter<"authorization_policy_versions"> | string
+    updated_at?: DateTimeNullableWithAggregatesFilter<"authorization_policy_versions"> | Date | string | null
   }
 
   export type authorization_relationshipsWhereInput = {
@@ -139609,6 +139908,8 @@ export namespace Prisma {
     revoked_by?: BigIntNullableFilter<"authorization_role_assignments"> | bigint | number | null
     created_at?: DateTimeNullableFilter<"authorization_role_assignments"> | Date | string | null
     updated_at?: DateTimeNullableFilter<"authorization_role_assignments"> | Date | string | null
+    assignment_source?: StringFilter<"authorization_role_assignments"> | string
+    assignment_reason?: StringNullableFilter<"authorization_role_assignments"> | string | null
     authorization_access_review_items?: Authorization_access_review_itemsListRelationFilter
     users_authorization_role_assignments_approved_byTousers?: XOR<UsersNullableScalarRelationFilter, usersWhereInput> | null
     users_authorization_role_assignments_assigned_byTousers?: XOR<UsersNullableScalarRelationFilter, usersWhereInput> | null
@@ -139635,6 +139936,8 @@ export namespace Prisma {
     revoked_by?: SortOrderInput | SortOrder
     created_at?: SortOrderInput | SortOrder
     updated_at?: SortOrderInput | SortOrder
+    assignment_source?: SortOrder
+    assignment_reason?: SortOrderInput | SortOrder
     authorization_access_review_items?: authorization_access_review_itemsOrderByRelationAggregateInput
     users_authorization_role_assignments_approved_byTousers?: usersOrderByWithRelationInput
     users_authorization_role_assignments_assigned_byTousers?: usersOrderByWithRelationInput
@@ -139664,6 +139967,8 @@ export namespace Prisma {
     revoked_by?: BigIntNullableFilter<"authorization_role_assignments"> | bigint | number | null
     created_at?: DateTimeNullableFilter<"authorization_role_assignments"> | Date | string | null
     updated_at?: DateTimeNullableFilter<"authorization_role_assignments"> | Date | string | null
+    assignment_source?: StringFilter<"authorization_role_assignments"> | string
+    assignment_reason?: StringNullableFilter<"authorization_role_assignments"> | string | null
     authorization_access_review_items?: Authorization_access_review_itemsListRelationFilter
     users_authorization_role_assignments_approved_byTousers?: XOR<UsersNullableScalarRelationFilter, usersWhereInput> | null
     users_authorization_role_assignments_assigned_byTousers?: XOR<UsersNullableScalarRelationFilter, usersWhereInput> | null
@@ -139690,6 +139995,8 @@ export namespace Prisma {
     revoked_by?: SortOrderInput | SortOrder
     created_at?: SortOrderInput | SortOrder
     updated_at?: SortOrderInput | SortOrder
+    assignment_source?: SortOrder
+    assignment_reason?: SortOrderInput | SortOrder
     _count?: authorization_role_assignmentsCountOrderByAggregateInput
     _avg?: authorization_role_assignmentsAvgOrderByAggregateInput
     _max?: authorization_role_assignmentsMaxOrderByAggregateInput
@@ -139718,6 +140025,8 @@ export namespace Prisma {
     revoked_by?: BigIntNullableWithAggregatesFilter<"authorization_role_assignments"> | bigint | number | null
     created_at?: DateTimeNullableWithAggregatesFilter<"authorization_role_assignments"> | Date | string | null
     updated_at?: DateTimeNullableWithAggregatesFilter<"authorization_role_assignments"> | Date | string | null
+    assignment_source?: StringWithAggregatesFilter<"authorization_role_assignments"> | string
+    assignment_reason?: StringNullableWithAggregatesFilter<"authorization_role_assignments"> | string | null
   }
 
   export type authorization_role_inheritancesWhereInput = {
@@ -139729,6 +140038,8 @@ export namespace Prisma {
     child_role_id?: BigIntFilter<"authorization_role_inheritances"> | bigint | number
     created_at?: DateTimeNullableFilter<"authorization_role_inheritances"> | Date | string | null
     updated_at?: DateTimeNullableFilter<"authorization_role_inheritances"> | Date | string | null
+    max_depth?: IntFilter<"authorization_role_inheritances"> | number
+    inherit_sensitive?: BoolFilter<"authorization_role_inheritances"> | boolean
     roles_authorization_role_inheritances_child_role_idToroles?: XOR<RolesScalarRelationFilter, rolesWhereInput>
     roles_authorization_role_inheritances_parent_role_idToroles?: XOR<RolesScalarRelationFilter, rolesWhereInput>
   }
@@ -139739,6 +140050,8 @@ export namespace Prisma {
     child_role_id?: SortOrder
     created_at?: SortOrderInput | SortOrder
     updated_at?: SortOrderInput | SortOrder
+    max_depth?: SortOrder
+    inherit_sensitive?: SortOrder
     roles_authorization_role_inheritances_child_role_idToroles?: rolesOrderByWithRelationInput
     roles_authorization_role_inheritances_parent_role_idToroles?: rolesOrderByWithRelationInput
   }
@@ -139753,6 +140066,8 @@ export namespace Prisma {
     child_role_id?: BigIntFilter<"authorization_role_inheritances"> | bigint | number
     created_at?: DateTimeNullableFilter<"authorization_role_inheritances"> | Date | string | null
     updated_at?: DateTimeNullableFilter<"authorization_role_inheritances"> | Date | string | null
+    max_depth?: IntFilter<"authorization_role_inheritances"> | number
+    inherit_sensitive?: BoolFilter<"authorization_role_inheritances"> | boolean
     roles_authorization_role_inheritances_child_role_idToroles?: XOR<RolesScalarRelationFilter, rolesWhereInput>
     roles_authorization_role_inheritances_parent_role_idToroles?: XOR<RolesScalarRelationFilter, rolesWhereInput>
   }, "id" | "parent_role_id_child_role_id">
@@ -139763,6 +140078,8 @@ export namespace Prisma {
     child_role_id?: SortOrder
     created_at?: SortOrderInput | SortOrder
     updated_at?: SortOrderInput | SortOrder
+    max_depth?: SortOrder
+    inherit_sensitive?: SortOrder
     _count?: authorization_role_inheritancesCountOrderByAggregateInput
     _avg?: authorization_role_inheritancesAvgOrderByAggregateInput
     _max?: authorization_role_inheritancesMaxOrderByAggregateInput
@@ -139779,6 +140096,8 @@ export namespace Prisma {
     child_role_id?: BigIntWithAggregatesFilter<"authorization_role_inheritances"> | bigint | number
     created_at?: DateTimeNullableWithAggregatesFilter<"authorization_role_inheritances"> | Date | string | null
     updated_at?: DateTimeNullableWithAggregatesFilter<"authorization_role_inheritances"> | Date | string | null
+    max_depth?: IntWithAggregatesFilter<"authorization_role_inheritances"> | number
+    inherit_sensitive?: BoolWithAggregatesFilter<"authorization_role_inheritances"> | boolean
   }
 
   export type authorization_sod_rulesWhereInput = {
@@ -139797,6 +140116,9 @@ export namespace Prisma {
     is_active?: BoolFilter<"authorization_sod_rules"> | boolean
     created_at?: DateTimeNullableFilter<"authorization_sod_rules"> | Date | string | null
     updated_at?: DateTimeNullableFilter<"authorization_sod_rules"> | Date | string | null
+    conflicting_role_codes?: JsonNullableFilter<"authorization_sod_rules">
+    conflicting_permission_codes?: JsonNullableFilter<"authorization_sod_rules">
+    enforcement?: StringFilter<"authorization_sod_rules"> | string
     authorization_sod_violations?: Authorization_sod_violationsListRelationFilter
   }
 
@@ -139813,6 +140135,9 @@ export namespace Prisma {
     is_active?: SortOrder
     created_at?: SortOrderInput | SortOrder
     updated_at?: SortOrderInput | SortOrder
+    conflicting_role_codes?: SortOrderInput | SortOrder
+    conflicting_permission_codes?: SortOrderInput | SortOrder
+    enforcement?: SortOrder
     authorization_sod_violations?: authorization_sod_violationsOrderByRelationAggregateInput
   }
 
@@ -139832,6 +140157,9 @@ export namespace Prisma {
     is_active?: BoolFilter<"authorization_sod_rules"> | boolean
     created_at?: DateTimeNullableFilter<"authorization_sod_rules"> | Date | string | null
     updated_at?: DateTimeNullableFilter<"authorization_sod_rules"> | Date | string | null
+    conflicting_role_codes?: JsonNullableFilter<"authorization_sod_rules">
+    conflicting_permission_codes?: JsonNullableFilter<"authorization_sod_rules">
+    enforcement?: StringFilter<"authorization_sod_rules"> | string
     authorization_sod_violations?: Authorization_sod_violationsListRelationFilter
   }, "id" | "code">
 
@@ -139848,6 +140176,9 @@ export namespace Prisma {
     is_active?: SortOrder
     created_at?: SortOrderInput | SortOrder
     updated_at?: SortOrderInput | SortOrder
+    conflicting_role_codes?: SortOrderInput | SortOrder
+    conflicting_permission_codes?: SortOrderInput | SortOrder
+    enforcement?: SortOrder
     _count?: authorization_sod_rulesCountOrderByAggregateInput
     _avg?: authorization_sod_rulesAvgOrderByAggregateInput
     _max?: authorization_sod_rulesMaxOrderByAggregateInput
@@ -139871,6 +140202,9 @@ export namespace Prisma {
     is_active?: BoolWithAggregatesFilter<"authorization_sod_rules"> | boolean
     created_at?: DateTimeNullableWithAggregatesFilter<"authorization_sod_rules"> | Date | string | null
     updated_at?: DateTimeNullableWithAggregatesFilter<"authorization_sod_rules"> | Date | string | null
+    conflicting_role_codes?: JsonNullableWithAggregatesFilter<"authorization_sod_rules">
+    conflicting_permission_codes?: JsonNullableWithAggregatesFilter<"authorization_sod_rules">
+    enforcement?: StringWithAggregatesFilter<"authorization_sod_rules"> | string
   }
 
   export type authorization_sod_violationsWhereInput = {
@@ -144984,6 +145318,7 @@ export namespace Prisma {
     action?: string | null
     is_active?: boolean
     is_sensitive?: boolean
+    level?: string
     permission_groups?: permission_groupsCreateNestedOneWithoutPermissionsInput
     role_permissions?: role_permissionsCreateNestedManyWithoutPermissionsInput
     user_permissions?: user_permissionsCreateNestedManyWithoutPermissionsInput
@@ -145001,6 +145336,7 @@ export namespace Prisma {
     action?: string | null
     is_active?: boolean
     is_sensitive?: boolean
+    level?: string
     role_permissions?: role_permissionsUncheckedCreateNestedManyWithoutPermissionsInput
     user_permissions?: user_permissionsUncheckedCreateNestedManyWithoutPermissionsInput
   }
@@ -145016,6 +145352,7 @@ export namespace Prisma {
     action?: NullableStringFieldUpdateOperationsInput | string | null
     is_active?: BoolFieldUpdateOperationsInput | boolean
     is_sensitive?: BoolFieldUpdateOperationsInput | boolean
+    level?: StringFieldUpdateOperationsInput | string
     permission_groups?: permission_groupsUpdateOneWithoutPermissionsNestedInput
     role_permissions?: role_permissionsUpdateManyWithoutPermissionsNestedInput
     user_permissions?: user_permissionsUpdateManyWithoutPermissionsNestedInput
@@ -145033,6 +145370,7 @@ export namespace Prisma {
     action?: NullableStringFieldUpdateOperationsInput | string | null
     is_active?: BoolFieldUpdateOperationsInput | boolean
     is_sensitive?: BoolFieldUpdateOperationsInput | boolean
+    level?: StringFieldUpdateOperationsInput | string
     role_permissions?: role_permissionsUncheckedUpdateManyWithoutPermissionsNestedInput
     user_permissions?: user_permissionsUncheckedUpdateManyWithoutPermissionsNestedInput
   }
@@ -145049,6 +145387,7 @@ export namespace Prisma {
     action?: string | null
     is_active?: boolean
     is_sensitive?: boolean
+    level?: string
   }
 
   export type permissionsUpdateManyMutationInput = {
@@ -145062,6 +145401,7 @@ export namespace Prisma {
     action?: NullableStringFieldUpdateOperationsInput | string | null
     is_active?: BoolFieldUpdateOperationsInput | boolean
     is_sensitive?: BoolFieldUpdateOperationsInput | boolean
+    level?: StringFieldUpdateOperationsInput | string
   }
 
   export type permissionsUncheckedUpdateManyInput = {
@@ -145076,6 +145416,7 @@ export namespace Prisma {
     action?: NullableStringFieldUpdateOperationsInput | string | null
     is_active?: BoolFieldUpdateOperationsInput | boolean
     is_sensitive?: BoolFieldUpdateOperationsInput | boolean
+    level?: StringFieldUpdateOperationsInput | string
   }
 
   export type personal_access_tokensCreateInput = {
@@ -149135,6 +149476,8 @@ export namespace Prisma {
     revocation_reason?: string | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    permission_code?: string | null
+    decision_reason?: string | null
     authorization_access_request_approvals?: authorization_access_request_approvalsCreateNestedManyWithoutAuthorization_access_requestsInput
     users_authorization_access_requests_decided_byTousers?: usersCreateNestedOneWithoutAuthorization_access_requests_authorization_access_requests_decided_byTousersInput
     users_authorization_access_requests_requester_idTousers: usersCreateNestedOneWithoutAuthorization_access_requests_authorization_access_requests_requester_idTousersInput
@@ -149166,6 +149509,8 @@ export namespace Prisma {
     revocation_reason?: string | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    permission_code?: string | null
+    decision_reason?: string | null
     authorization_access_request_approvals?: authorization_access_request_approvalsUncheckedCreateNestedManyWithoutAuthorization_access_requestsInput
   }
 
@@ -149187,6 +149532,8 @@ export namespace Prisma {
     revocation_reason?: NullableStringFieldUpdateOperationsInput | string | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    permission_code?: NullableStringFieldUpdateOperationsInput | string | null
+    decision_reason?: NullableStringFieldUpdateOperationsInput | string | null
     authorization_access_request_approvals?: authorization_access_request_approvalsUpdateManyWithoutAuthorization_access_requestsNestedInput
     users_authorization_access_requests_decided_byTousers?: usersUpdateOneWithoutAuthorization_access_requests_authorization_access_requests_decided_byTousersNestedInput
     users_authorization_access_requests_requester_idTousers?: usersUpdateOneRequiredWithoutAuthorization_access_requests_authorization_access_requests_requester_idTousersNestedInput
@@ -149218,6 +149565,8 @@ export namespace Prisma {
     revocation_reason?: NullableStringFieldUpdateOperationsInput | string | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    permission_code?: NullableStringFieldUpdateOperationsInput | string | null
+    decision_reason?: NullableStringFieldUpdateOperationsInput | string | null
     authorization_access_request_approvals?: authorization_access_request_approvalsUncheckedUpdateManyWithoutAuthorization_access_requestsNestedInput
   }
 
@@ -149244,6 +149593,8 @@ export namespace Prisma {
     revocation_reason?: string | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    permission_code?: string | null
+    decision_reason?: string | null
   }
 
   export type authorization_access_requestsUpdateManyMutationInput = {
@@ -149264,6 +149615,8 @@ export namespace Prisma {
     revocation_reason?: NullableStringFieldUpdateOperationsInput | string | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    permission_code?: NullableStringFieldUpdateOperationsInput | string | null
+    decision_reason?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type authorization_access_requestsUncheckedUpdateManyInput = {
@@ -149289,6 +149642,8 @@ export namespace Prisma {
     revocation_reason?: NullableStringFieldUpdateOperationsInput | string | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    permission_code?: NullableStringFieldUpdateOperationsInput | string | null
+    decision_reason?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type authorization_access_review_itemsCreateInput = {
@@ -149521,6 +149876,7 @@ export namespace Prisma {
     authorization_version?: string
     duration_ms?: number | null
     created_at?: Date | string | null
+    updated_at?: Date | string | null
     users?: usersCreateNestedOneWithoutAuthorization_decision_logsInput
   }
 
@@ -149547,6 +149903,7 @@ export namespace Prisma {
     authorization_version?: string
     duration_ms?: number | null
     created_at?: Date | string | null
+    updated_at?: Date | string | null
   }
 
   export type authorization_decision_logsUpdateInput = {
@@ -149571,6 +149928,7 @@ export namespace Prisma {
     authorization_version?: StringFieldUpdateOperationsInput | string
     duration_ms?: NullableIntFieldUpdateOperationsInput | number | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     users?: usersUpdateOneWithoutAuthorization_decision_logsNestedInput
   }
 
@@ -149597,6 +149955,7 @@ export namespace Prisma {
     authorization_version?: StringFieldUpdateOperationsInput | string
     duration_ms?: NullableIntFieldUpdateOperationsInput | number | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   }
 
   export type authorization_decision_logsCreateManyInput = {
@@ -149622,6 +149981,7 @@ export namespace Prisma {
     authorization_version?: string
     duration_ms?: number | null
     created_at?: Date | string | null
+    updated_at?: Date | string | null
   }
 
   export type authorization_decision_logsUpdateManyMutationInput = {
@@ -149646,6 +150006,7 @@ export namespace Prisma {
     authorization_version?: StringFieldUpdateOperationsInput | string
     duration_ms?: NullableIntFieldUpdateOperationsInput | number | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   }
 
   export type authorization_decision_logsUncheckedUpdateManyInput = {
@@ -149671,6 +150032,7 @@ export namespace Prisma {
     authorization_version?: StringFieldUpdateOperationsInput | string
     duration_ms?: NullableIntFieldUpdateOperationsInput | number | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   }
 
   export type authorization_delegationsCreateInput = {
@@ -149954,6 +150316,7 @@ export namespace Prisma {
     description?: string | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    configuration?: NullableJsonNullValueInput | InputJsonValue
     users?: usersCreateNestedOneWithoutAuthorization_feature_flagsInput
   }
 
@@ -149966,6 +150329,7 @@ export namespace Prisma {
     updated_by?: bigint | number | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    configuration?: NullableJsonNullValueInput | InputJsonValue
   }
 
   export type authorization_feature_flagsUpdateInput = {
@@ -149976,6 +150340,7 @@ export namespace Prisma {
     description?: NullableStringFieldUpdateOperationsInput | string | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    configuration?: NullableJsonNullValueInput | InputJsonValue
     users?: usersUpdateOneWithoutAuthorization_feature_flagsNestedInput
   }
 
@@ -149988,6 +150353,7 @@ export namespace Prisma {
     updated_by?: NullableBigIntFieldUpdateOperationsInput | bigint | number | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    configuration?: NullableJsonNullValueInput | InputJsonValue
   }
 
   export type authorization_feature_flagsCreateManyInput = {
@@ -149999,6 +150365,7 @@ export namespace Prisma {
     updated_by?: bigint | number | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    configuration?: NullableJsonNullValueInput | InputJsonValue
   }
 
   export type authorization_feature_flagsUpdateManyMutationInput = {
@@ -150009,6 +150376,7 @@ export namespace Prisma {
     description?: NullableStringFieldUpdateOperationsInput | string | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    configuration?: NullableJsonNullValueInput | InputJsonValue
   }
 
   export type authorization_feature_flagsUncheckedUpdateManyInput = {
@@ -150020,6 +150388,7 @@ export namespace Prisma {
     updated_by?: NullableBigIntFieldUpdateOperationsInput | bigint | number | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    configuration?: NullableJsonNullValueInput | InputJsonValue
   }
 
   export type authorization_policiesCreateInput = {
@@ -150044,6 +150413,8 @@ export namespace Prisma {
     requires_approval?: boolean
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    audit_required?: boolean
+    approved_at?: Date | string | null
     users_authorization_policies_approved_byTousers?: usersCreateNestedOneWithoutAuthorization_policies_authorization_policies_approved_byTousersInput
     users_authorization_policies_created_byTousers?: usersCreateNestedOneWithoutAuthorization_policies_authorization_policies_created_byTousersInput
     users_authorization_policies_updated_byTousers?: usersCreateNestedOneWithoutAuthorization_policies_authorization_policies_updated_byTousersInput
@@ -150075,6 +150446,8 @@ export namespace Prisma {
     approved_by?: bigint | number | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    audit_required?: boolean
+    approved_at?: Date | string | null
     authorization_policy_versions?: authorization_policy_versionsUncheckedCreateNestedManyWithoutAuthorization_policiesInput
   }
 
@@ -150100,6 +150473,8 @@ export namespace Prisma {
     requires_approval?: BoolFieldUpdateOperationsInput | boolean
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    audit_required?: BoolFieldUpdateOperationsInput | boolean
+    approved_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     users_authorization_policies_approved_byTousers?: usersUpdateOneWithoutAuthorization_policies_authorization_policies_approved_byTousersNestedInput
     users_authorization_policies_created_byTousers?: usersUpdateOneWithoutAuthorization_policies_authorization_policies_created_byTousersNestedInput
     users_authorization_policies_updated_byTousers?: usersUpdateOneWithoutAuthorization_policies_authorization_policies_updated_byTousersNestedInput
@@ -150131,6 +150506,8 @@ export namespace Prisma {
     approved_by?: NullableBigIntFieldUpdateOperationsInput | bigint | number | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    audit_required?: BoolFieldUpdateOperationsInput | boolean
+    approved_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     authorization_policy_versions?: authorization_policy_versionsUncheckedUpdateManyWithoutAuthorization_policiesNestedInput
   }
 
@@ -150159,6 +150536,8 @@ export namespace Prisma {
     approved_by?: bigint | number | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    audit_required?: boolean
+    approved_at?: Date | string | null
   }
 
   export type authorization_policiesUpdateManyMutationInput = {
@@ -150183,6 +150562,8 @@ export namespace Prisma {
     requires_approval?: BoolFieldUpdateOperationsInput | boolean
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    audit_required?: BoolFieldUpdateOperationsInput | boolean
+    approved_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   }
 
   export type authorization_policiesUncheckedUpdateManyInput = {
@@ -150210,6 +150591,8 @@ export namespace Prisma {
     approved_by?: NullableBigIntFieldUpdateOperationsInput | bigint | number | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    audit_required?: BoolFieldUpdateOperationsInput | boolean
+    approved_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   }
 
   export type authorization_policy_versionsCreateInput = {
@@ -150218,6 +150601,10 @@ export namespace Prisma {
     snapshot: JsonNullValueInput | InputJsonValue
     change_summary?: string | null
     created_at?: Date | string | null
+    approved_at?: Date | string | null
+    effective_at?: Date | string | null
+    deployment_status?: string
+    updated_at?: Date | string | null
     users_authorization_policy_versions_approved_byTousers?: usersCreateNestedOneWithoutAuthorization_policy_versions_authorization_policy_versions_approved_byTousersInput
     users_authorization_policy_versions_changed_byTousers?: usersCreateNestedOneWithoutAuthorization_policy_versions_authorization_policy_versions_changed_byTousersInput
     authorization_policies: authorization_policiesCreateNestedOneWithoutAuthorization_policy_versionsInput
@@ -150235,6 +150622,10 @@ export namespace Prisma {
     changed_by?: bigint | number | null
     approved_by?: bigint | number | null
     created_at?: Date | string | null
+    approved_at?: Date | string | null
+    effective_at?: Date | string | null
+    deployment_status?: string
+    updated_at?: Date | string | null
     other_authorization_policy_versions?: authorization_policy_versionsUncheckedCreateNestedManyWithoutAuthorization_policy_versionsInput
   }
 
@@ -150244,6 +150635,10 @@ export namespace Prisma {
     snapshot?: JsonNullValueInput | InputJsonValue
     change_summary?: NullableStringFieldUpdateOperationsInput | string | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    approved_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    effective_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    deployment_status?: StringFieldUpdateOperationsInput | string
+    updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     users_authorization_policy_versions_approved_byTousers?: usersUpdateOneWithoutAuthorization_policy_versions_authorization_policy_versions_approved_byTousersNestedInput
     users_authorization_policy_versions_changed_byTousers?: usersUpdateOneWithoutAuthorization_policy_versions_authorization_policy_versions_changed_byTousersNestedInput
     authorization_policies?: authorization_policiesUpdateOneRequiredWithoutAuthorization_policy_versionsNestedInput
@@ -150261,6 +150656,10 @@ export namespace Prisma {
     changed_by?: NullableBigIntFieldUpdateOperationsInput | bigint | number | null
     approved_by?: NullableBigIntFieldUpdateOperationsInput | bigint | number | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    approved_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    effective_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    deployment_status?: StringFieldUpdateOperationsInput | string
+    updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     other_authorization_policy_versions?: authorization_policy_versionsUncheckedUpdateManyWithoutAuthorization_policy_versionsNestedInput
   }
 
@@ -150274,6 +150673,10 @@ export namespace Prisma {
     changed_by?: bigint | number | null
     approved_by?: bigint | number | null
     created_at?: Date | string | null
+    approved_at?: Date | string | null
+    effective_at?: Date | string | null
+    deployment_status?: string
+    updated_at?: Date | string | null
   }
 
   export type authorization_policy_versionsUpdateManyMutationInput = {
@@ -150282,6 +150685,10 @@ export namespace Prisma {
     snapshot?: JsonNullValueInput | InputJsonValue
     change_summary?: NullableStringFieldUpdateOperationsInput | string | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    approved_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    effective_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    deployment_status?: StringFieldUpdateOperationsInput | string
+    updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   }
 
   export type authorization_policy_versionsUncheckedUpdateManyInput = {
@@ -150294,6 +150701,10 @@ export namespace Prisma {
     changed_by?: NullableBigIntFieldUpdateOperationsInput | bigint | number | null
     approved_by?: NullableBigIntFieldUpdateOperationsInput | bigint | number | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    approved_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    effective_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    deployment_status?: StringFieldUpdateOperationsInput | string
+    updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   }
 
   export type authorization_relationshipsCreateInput = {
@@ -150413,6 +150824,8 @@ export namespace Prisma {
     revoked_at?: Date | string | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    assignment_source?: string
+    assignment_reason?: string | null
     authorization_access_review_items?: authorization_access_review_itemsCreateNestedManyWithoutAuthorization_role_assignmentsInput
     users_authorization_role_assignments_approved_byTousers?: usersCreateNestedOneWithoutAuthorization_role_assignments_authorization_role_assignments_approved_byTousersInput
     users_authorization_role_assignments_assigned_byTousers?: usersCreateNestedOneWithoutAuthorization_role_assignments_authorization_role_assignments_assigned_byTousersInput
@@ -150439,6 +150852,8 @@ export namespace Prisma {
     revoked_by?: bigint | number | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    assignment_source?: string
+    assignment_reason?: string | null
     authorization_access_review_items?: authorization_access_review_itemsUncheckedCreateNestedManyWithoutAuthorization_role_assignmentsInput
   }
 
@@ -150455,6 +150870,8 @@ export namespace Prisma {
     revoked_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    assignment_source?: StringFieldUpdateOperationsInput | string
+    assignment_reason?: NullableStringFieldUpdateOperationsInput | string | null
     authorization_access_review_items?: authorization_access_review_itemsUpdateManyWithoutAuthorization_role_assignmentsNestedInput
     users_authorization_role_assignments_approved_byTousers?: usersUpdateOneWithoutAuthorization_role_assignments_authorization_role_assignments_approved_byTousersNestedInput
     users_authorization_role_assignments_assigned_byTousers?: usersUpdateOneWithoutAuthorization_role_assignments_authorization_role_assignments_assigned_byTousersNestedInput
@@ -150481,6 +150898,8 @@ export namespace Prisma {
     revoked_by?: NullableBigIntFieldUpdateOperationsInput | bigint | number | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    assignment_source?: StringFieldUpdateOperationsInput | string
+    assignment_reason?: NullableStringFieldUpdateOperationsInput | string | null
     authorization_access_review_items?: authorization_access_review_itemsUncheckedUpdateManyWithoutAuthorization_role_assignmentsNestedInput
   }
 
@@ -150502,6 +150921,8 @@ export namespace Prisma {
     revoked_by?: bigint | number | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    assignment_source?: string
+    assignment_reason?: string | null
   }
 
   export type authorization_role_assignmentsUpdateManyMutationInput = {
@@ -150517,6 +150938,8 @@ export namespace Prisma {
     revoked_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    assignment_source?: StringFieldUpdateOperationsInput | string
+    assignment_reason?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type authorization_role_assignmentsUncheckedUpdateManyInput = {
@@ -150537,12 +150960,16 @@ export namespace Prisma {
     revoked_by?: NullableBigIntFieldUpdateOperationsInput | bigint | number | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    assignment_source?: StringFieldUpdateOperationsInput | string
+    assignment_reason?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type authorization_role_inheritancesCreateInput = {
     id?: bigint | number
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    max_depth?: number
+    inherit_sensitive?: boolean
     roles_authorization_role_inheritances_child_role_idToroles: rolesCreateNestedOneWithoutAuthorization_role_inheritances_authorization_role_inheritances_child_role_idTorolesInput
     roles_authorization_role_inheritances_parent_role_idToroles: rolesCreateNestedOneWithoutAuthorization_role_inheritances_authorization_role_inheritances_parent_role_idTorolesInput
   }
@@ -150553,12 +150980,16 @@ export namespace Prisma {
     child_role_id: bigint | number
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    max_depth?: number
+    inherit_sensitive?: boolean
   }
 
   export type authorization_role_inheritancesUpdateInput = {
     id?: BigIntFieldUpdateOperationsInput | bigint | number
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    max_depth?: IntFieldUpdateOperationsInput | number
+    inherit_sensitive?: BoolFieldUpdateOperationsInput | boolean
     roles_authorization_role_inheritances_child_role_idToroles?: rolesUpdateOneRequiredWithoutAuthorization_role_inheritances_authorization_role_inheritances_child_role_idTorolesNestedInput
     roles_authorization_role_inheritances_parent_role_idToroles?: rolesUpdateOneRequiredWithoutAuthorization_role_inheritances_authorization_role_inheritances_parent_role_idTorolesNestedInput
   }
@@ -150569,6 +151000,8 @@ export namespace Prisma {
     child_role_id?: BigIntFieldUpdateOperationsInput | bigint | number
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    max_depth?: IntFieldUpdateOperationsInput | number
+    inherit_sensitive?: BoolFieldUpdateOperationsInput | boolean
   }
 
   export type authorization_role_inheritancesCreateManyInput = {
@@ -150577,12 +151010,16 @@ export namespace Prisma {
     child_role_id: bigint | number
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    max_depth?: number
+    inherit_sensitive?: boolean
   }
 
   export type authorization_role_inheritancesUpdateManyMutationInput = {
     id?: BigIntFieldUpdateOperationsInput | bigint | number
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    max_depth?: IntFieldUpdateOperationsInput | number
+    inherit_sensitive?: BoolFieldUpdateOperationsInput | boolean
   }
 
   export type authorization_role_inheritancesUncheckedUpdateManyInput = {
@@ -150591,6 +151028,8 @@ export namespace Prisma {
     child_role_id?: BigIntFieldUpdateOperationsInput | bigint | number
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    max_depth?: IntFieldUpdateOperationsInput | number
+    inherit_sensitive?: BoolFieldUpdateOperationsInput | boolean
   }
 
   export type authorization_sod_rulesCreateInput = {
@@ -150606,6 +151045,9 @@ export namespace Prisma {
     is_active?: boolean
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    conflicting_role_codes?: NullableJsonNullValueInput | InputJsonValue
+    conflicting_permission_codes?: NullableJsonNullValueInput | InputJsonValue
+    enforcement?: string
     authorization_sod_violations?: authorization_sod_violationsCreateNestedManyWithoutAuthorization_sod_rulesInput
   }
 
@@ -150622,6 +151064,9 @@ export namespace Prisma {
     is_active?: boolean
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    conflicting_role_codes?: NullableJsonNullValueInput | InputJsonValue
+    conflicting_permission_codes?: NullableJsonNullValueInput | InputJsonValue
+    enforcement?: string
     authorization_sod_violations?: authorization_sod_violationsUncheckedCreateNestedManyWithoutAuthorization_sod_rulesInput
   }
 
@@ -150638,6 +151083,9 @@ export namespace Prisma {
     is_active?: BoolFieldUpdateOperationsInput | boolean
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    conflicting_role_codes?: NullableJsonNullValueInput | InputJsonValue
+    conflicting_permission_codes?: NullableJsonNullValueInput | InputJsonValue
+    enforcement?: StringFieldUpdateOperationsInput | string
     authorization_sod_violations?: authorization_sod_violationsUpdateManyWithoutAuthorization_sod_rulesNestedInput
   }
 
@@ -150654,6 +151102,9 @@ export namespace Prisma {
     is_active?: BoolFieldUpdateOperationsInput | boolean
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    conflicting_role_codes?: NullableJsonNullValueInput | InputJsonValue
+    conflicting_permission_codes?: NullableJsonNullValueInput | InputJsonValue
+    enforcement?: StringFieldUpdateOperationsInput | string
     authorization_sod_violations?: authorization_sod_violationsUncheckedUpdateManyWithoutAuthorization_sod_rulesNestedInput
   }
 
@@ -150670,6 +151121,9 @@ export namespace Prisma {
     is_active?: boolean
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    conflicting_role_codes?: NullableJsonNullValueInput | InputJsonValue
+    conflicting_permission_codes?: NullableJsonNullValueInput | InputJsonValue
+    enforcement?: string
   }
 
   export type authorization_sod_rulesUpdateManyMutationInput = {
@@ -150685,6 +151139,9 @@ export namespace Prisma {
     is_active?: BoolFieldUpdateOperationsInput | boolean
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    conflicting_role_codes?: NullableJsonNullValueInput | InputJsonValue
+    conflicting_permission_codes?: NullableJsonNullValueInput | InputJsonValue
+    enforcement?: StringFieldUpdateOperationsInput | string
   }
 
   export type authorization_sod_rulesUncheckedUpdateManyInput = {
@@ -150700,6 +151157,9 @@ export namespace Prisma {
     is_active?: BoolFieldUpdateOperationsInput | boolean
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    conflicting_role_codes?: NullableJsonNullValueInput | InputJsonValue
+    conflicting_permission_codes?: NullableJsonNullValueInput | InputJsonValue
+    enforcement?: StringFieldUpdateOperationsInput | string
   }
 
   export type authorization_sod_violationsCreateInput = {
@@ -154362,6 +154822,7 @@ export namespace Prisma {
     action?: SortOrder
     is_active?: SortOrder
     is_sensitive?: SortOrder
+    level?: SortOrder
   }
 
   export type permissionsAvgOrderByAggregateInput = {
@@ -154381,6 +154842,7 @@ export namespace Prisma {
     action?: SortOrder
     is_active?: SortOrder
     is_sensitive?: SortOrder
+    level?: SortOrder
   }
 
   export type permissionsMinOrderByAggregateInput = {
@@ -154395,6 +154857,7 @@ export namespace Prisma {
     action?: SortOrder
     is_active?: SortOrder
     is_sensitive?: SortOrder
+    level?: SortOrder
   }
 
   export type permissionsSumOrderByAggregateInput = {
@@ -156917,6 +157380,8 @@ export namespace Prisma {
     revocation_reason?: SortOrder
     created_at?: SortOrder
     updated_at?: SortOrder
+    permission_code?: SortOrder
+    decision_reason?: SortOrder
   }
 
   export type authorization_access_requestsAvgOrderByAggregateInput = {
@@ -156950,6 +157415,8 @@ export namespace Prisma {
     revocation_reason?: SortOrder
     created_at?: SortOrder
     updated_at?: SortOrder
+    permission_code?: SortOrder
+    decision_reason?: SortOrder
   }
 
   export type authorization_access_requestsMinOrderByAggregateInput = {
@@ -156974,6 +157441,8 @@ export namespace Prisma {
     revocation_reason?: SortOrder
     created_at?: SortOrder
     updated_at?: SortOrder
+    permission_code?: SortOrder
+    decision_reason?: SortOrder
   }
 
   export type authorization_access_requestsSumOrderByAggregateInput = {
@@ -157136,6 +157605,7 @@ export namespace Prisma {
     authorization_version?: SortOrder
     duration_ms?: SortOrder
     created_at?: SortOrder
+    updated_at?: SortOrder
   }
 
   export type authorization_decision_logsAvgOrderByAggregateInput = {
@@ -157162,6 +157632,7 @@ export namespace Prisma {
     authorization_version?: SortOrder
     duration_ms?: SortOrder
     created_at?: SortOrder
+    updated_at?: SortOrder
   }
 
   export type authorization_decision_logsMinOrderByAggregateInput = {
@@ -157182,6 +157653,7 @@ export namespace Prisma {
     authorization_version?: SortOrder
     duration_ms?: SortOrder
     created_at?: SortOrder
+    updated_at?: SortOrder
   }
 
   export type authorization_decision_logsSumOrderByAggregateInput = {
@@ -157345,6 +157817,7 @@ export namespace Prisma {
     updated_by?: SortOrder
     created_at?: SortOrder
     updated_at?: SortOrder
+    configuration?: SortOrder
   }
 
   export type authorization_feature_flagsAvgOrderByAggregateInput = {
@@ -157404,6 +157877,8 @@ export namespace Prisma {
     approved_by?: SortOrder
     created_at?: SortOrder
     updated_at?: SortOrder
+    audit_required?: SortOrder
+    approved_at?: SortOrder
   }
 
   export type authorization_policiesAvgOrderByAggregateInput = {
@@ -157435,6 +157910,8 @@ export namespace Prisma {
     approved_by?: SortOrder
     created_at?: SortOrder
     updated_at?: SortOrder
+    audit_required?: SortOrder
+    approved_at?: SortOrder
   }
 
   export type authorization_policiesMinOrderByAggregateInput = {
@@ -157457,6 +157934,8 @@ export namespace Prisma {
     approved_by?: SortOrder
     created_at?: SortOrder
     updated_at?: SortOrder
+    audit_required?: SortOrder
+    approved_at?: SortOrder
   }
 
   export type authorization_policiesSumOrderByAggregateInput = {
@@ -157493,6 +157972,10 @@ export namespace Prisma {
     changed_by?: SortOrder
     approved_by?: SortOrder
     created_at?: SortOrder
+    approved_at?: SortOrder
+    effective_at?: SortOrder
+    deployment_status?: SortOrder
+    updated_at?: SortOrder
   }
 
   export type authorization_policy_versionsAvgOrderByAggregateInput = {
@@ -157513,6 +157996,10 @@ export namespace Prisma {
     changed_by?: SortOrder
     approved_by?: SortOrder
     created_at?: SortOrder
+    approved_at?: SortOrder
+    effective_at?: SortOrder
+    deployment_status?: SortOrder
+    updated_at?: SortOrder
   }
 
   export type authorization_policy_versionsMinOrderByAggregateInput = {
@@ -157524,6 +158011,10 @@ export namespace Prisma {
     changed_by?: SortOrder
     approved_by?: SortOrder
     created_at?: SortOrder
+    approved_at?: SortOrder
+    effective_at?: SortOrder
+    deployment_status?: SortOrder
+    updated_at?: SortOrder
   }
 
   export type authorization_policy_versionsSumOrderByAggregateInput = {
@@ -157608,6 +158099,8 @@ export namespace Prisma {
     revoked_by?: SortOrder
     created_at?: SortOrder
     updated_at?: SortOrder
+    assignment_source?: SortOrder
+    assignment_reason?: SortOrder
   }
 
   export type authorization_role_assignmentsAvgOrderByAggregateInput = {
@@ -157637,6 +158130,8 @@ export namespace Prisma {
     revoked_by?: SortOrder
     created_at?: SortOrder
     updated_at?: SortOrder
+    assignment_source?: SortOrder
+    assignment_reason?: SortOrder
   }
 
   export type authorization_role_assignmentsMinOrderByAggregateInput = {
@@ -157657,6 +158152,8 @@ export namespace Prisma {
     revoked_by?: SortOrder
     created_at?: SortOrder
     updated_at?: SortOrder
+    assignment_source?: SortOrder
+    assignment_reason?: SortOrder
   }
 
   export type authorization_role_assignmentsSumOrderByAggregateInput = {
@@ -157679,12 +158176,15 @@ export namespace Prisma {
     child_role_id?: SortOrder
     created_at?: SortOrder
     updated_at?: SortOrder
+    max_depth?: SortOrder
+    inherit_sensitive?: SortOrder
   }
 
   export type authorization_role_inheritancesAvgOrderByAggregateInput = {
     id?: SortOrder
     parent_role_id?: SortOrder
     child_role_id?: SortOrder
+    max_depth?: SortOrder
   }
 
   export type authorization_role_inheritancesMaxOrderByAggregateInput = {
@@ -157693,6 +158193,8 @@ export namespace Prisma {
     child_role_id?: SortOrder
     created_at?: SortOrder
     updated_at?: SortOrder
+    max_depth?: SortOrder
+    inherit_sensitive?: SortOrder
   }
 
   export type authorization_role_inheritancesMinOrderByAggregateInput = {
@@ -157701,12 +158203,15 @@ export namespace Prisma {
     child_role_id?: SortOrder
     created_at?: SortOrder
     updated_at?: SortOrder
+    max_depth?: SortOrder
+    inherit_sensitive?: SortOrder
   }
 
   export type authorization_role_inheritancesSumOrderByAggregateInput = {
     id?: SortOrder
     parent_role_id?: SortOrder
     child_role_id?: SortOrder
+    max_depth?: SortOrder
   }
 
   export type authorization_sod_rulesCountOrderByAggregateInput = {
@@ -157722,6 +158227,9 @@ export namespace Prisma {
     is_active?: SortOrder
     created_at?: SortOrder
     updated_at?: SortOrder
+    conflicting_role_codes?: SortOrder
+    conflicting_permission_codes?: SortOrder
+    enforcement?: SortOrder
   }
 
   export type authorization_sod_rulesAvgOrderByAggregateInput = {
@@ -157739,6 +158247,7 @@ export namespace Prisma {
     is_active?: SortOrder
     created_at?: SortOrder
     updated_at?: SortOrder
+    enforcement?: SortOrder
   }
 
   export type authorization_sod_rulesMinOrderByAggregateInput = {
@@ -157752,6 +158261,7 @@ export namespace Prisma {
     is_active?: SortOrder
     created_at?: SortOrder
     updated_at?: SortOrder
+    enforcement?: SortOrder
   }
 
   export type authorization_sod_rulesSumOrderByAggregateInput = {
@@ -206986,6 +207496,7 @@ export namespace Prisma {
     action?: string | null
     is_active?: boolean
     is_sensitive?: boolean
+    level?: string
     role_permissions?: role_permissionsCreateNestedManyWithoutPermissionsInput
     user_permissions?: user_permissionsCreateNestedManyWithoutPermissionsInput
   }
@@ -207001,6 +207512,7 @@ export namespace Prisma {
     action?: string | null
     is_active?: boolean
     is_sensitive?: boolean
+    level?: string
     role_permissions?: role_permissionsUncheckedCreateNestedManyWithoutPermissionsInput
     user_permissions?: user_permissionsUncheckedCreateNestedManyWithoutPermissionsInput
   }
@@ -207046,6 +207558,7 @@ export namespace Prisma {
     action?: StringNullableFilter<"permissions"> | string | null
     is_active?: BoolFilter<"permissions"> | boolean
     is_sensitive?: BoolFilter<"permissions"> | boolean
+    level?: StringFilter<"permissions"> | string
   }
 
   export type permission_groupsCreateWithoutPermissionsInput = {
@@ -221216,6 +221729,7 @@ export namespace Prisma {
     action?: string | null
     is_active?: boolean
     is_sensitive?: boolean
+    level?: string
     permission_groups?: permission_groupsCreateNestedOneWithoutPermissionsInput
     user_permissions?: user_permissionsCreateNestedManyWithoutPermissionsInput
   }
@@ -221232,6 +221746,7 @@ export namespace Prisma {
     action?: string | null
     is_active?: boolean
     is_sensitive?: boolean
+    level?: string
     user_permissions?: user_permissionsUncheckedCreateNestedManyWithoutPermissionsInput
   }
 
@@ -221325,6 +221840,7 @@ export namespace Prisma {
     action?: NullableStringFieldUpdateOperationsInput | string | null
     is_active?: BoolFieldUpdateOperationsInput | boolean
     is_sensitive?: BoolFieldUpdateOperationsInput | boolean
+    level?: StringFieldUpdateOperationsInput | string
     permission_groups?: permission_groupsUpdateOneWithoutPermissionsNestedInput
     user_permissions?: user_permissionsUpdateManyWithoutPermissionsNestedInput
   }
@@ -221341,6 +221857,7 @@ export namespace Prisma {
     action?: NullableStringFieldUpdateOperationsInput | string | null
     is_active?: BoolFieldUpdateOperationsInput | boolean
     is_sensitive?: BoolFieldUpdateOperationsInput | boolean
+    level?: StringFieldUpdateOperationsInput | string
     user_permissions?: user_permissionsUncheckedUpdateManyWithoutPermissionsNestedInput
   }
 
@@ -221431,6 +221948,8 @@ export namespace Prisma {
     revocation_reason?: string | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    permission_code?: string | null
+    decision_reason?: string | null
     authorization_access_request_approvals?: authorization_access_request_approvalsCreateNestedManyWithoutAuthorization_access_requestsInput
     users_authorization_access_requests_decided_byTousers?: usersCreateNestedOneWithoutAuthorization_access_requests_authorization_access_requests_decided_byTousersInput
     users_authorization_access_requests_requester_idTousers: usersCreateNestedOneWithoutAuthorization_access_requests_authorization_access_requests_requester_idTousersInput
@@ -221460,6 +221979,8 @@ export namespace Prisma {
     revocation_reason?: string | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    permission_code?: string | null
+    decision_reason?: string | null
     authorization_access_request_approvals?: authorization_access_request_approvalsUncheckedCreateNestedManyWithoutAuthorization_access_requestsInput
   }
 
@@ -221522,6 +222043,8 @@ export namespace Prisma {
     revoked_at?: Date | string | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    assignment_source?: string
+    assignment_reason?: string | null
     authorization_access_review_items?: authorization_access_review_itemsCreateNestedManyWithoutAuthorization_role_assignmentsInput
     users_authorization_role_assignments_approved_byTousers?: usersCreateNestedOneWithoutAuthorization_role_assignments_authorization_role_assignments_approved_byTousersInput
     users_authorization_role_assignments_assigned_byTousers?: usersCreateNestedOneWithoutAuthorization_role_assignments_authorization_role_assignments_assigned_byTousersInput
@@ -221546,6 +222069,8 @@ export namespace Prisma {
     revoked_by?: bigint | number | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    assignment_source?: string
+    assignment_reason?: string | null
     authorization_access_review_items?: authorization_access_review_itemsUncheckedCreateNestedManyWithoutAuthorization_role_assignmentsInput
   }
 
@@ -221563,6 +222088,8 @@ export namespace Prisma {
     id?: bigint | number
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    max_depth?: number
+    inherit_sensitive?: boolean
     roles_authorization_role_inheritances_parent_role_idToroles: rolesCreateNestedOneWithoutAuthorization_role_inheritances_authorization_role_inheritances_parent_role_idTorolesInput
   }
 
@@ -221571,6 +222098,8 @@ export namespace Prisma {
     parent_role_id: bigint | number
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    max_depth?: number
+    inherit_sensitive?: boolean
   }
 
   export type authorization_role_inheritancesCreateOrConnectWithoutRoles_authorization_role_inheritances_child_role_idTorolesInput = {
@@ -221587,6 +222116,8 @@ export namespace Prisma {
     id?: bigint | number
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    max_depth?: number
+    inherit_sensitive?: boolean
     roles_authorization_role_inheritances_child_role_idToroles: rolesCreateNestedOneWithoutAuthorization_role_inheritances_authorization_role_inheritances_child_role_idTorolesInput
   }
 
@@ -221595,6 +222126,8 @@ export namespace Prisma {
     child_role_id: bigint | number
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    max_depth?: number
+    inherit_sensitive?: boolean
   }
 
   export type authorization_role_inheritancesCreateOrConnectWithoutRoles_authorization_role_inheritances_parent_role_idTorolesInput = {
@@ -222513,6 +223046,8 @@ export namespace Prisma {
     revocation_reason?: StringNullableFilter<"authorization_access_requests"> | string | null
     created_at?: DateTimeNullableFilter<"authorization_access_requests"> | Date | string | null
     updated_at?: DateTimeNullableFilter<"authorization_access_requests"> | Date | string | null
+    permission_code?: StringNullableFilter<"authorization_access_requests"> | string | null
+    decision_reason?: StringNullableFilter<"authorization_access_requests"> | string | null
   }
 
   export type authorization_access_review_itemsUpsertWithWhereUniqueWithoutRolesInput = {
@@ -222585,6 +223120,8 @@ export namespace Prisma {
     revoked_by?: BigIntNullableFilter<"authorization_role_assignments"> | bigint | number | null
     created_at?: DateTimeNullableFilter<"authorization_role_assignments"> | Date | string | null
     updated_at?: DateTimeNullableFilter<"authorization_role_assignments"> | Date | string | null
+    assignment_source?: StringFilter<"authorization_role_assignments"> | string
+    assignment_reason?: StringNullableFilter<"authorization_role_assignments"> | string | null
   }
 
   export type authorization_role_inheritancesUpsertWithWhereUniqueWithoutRoles_authorization_role_inheritances_child_role_idTorolesInput = {
@@ -222612,6 +223149,8 @@ export namespace Prisma {
     child_role_id?: BigIntFilter<"authorization_role_inheritances"> | bigint | number
     created_at?: DateTimeNullableFilter<"authorization_role_inheritances"> | Date | string | null
     updated_at?: DateTimeNullableFilter<"authorization_role_inheritances"> | Date | string | null
+    max_depth?: IntFilter<"authorization_role_inheritances"> | number
+    inherit_sensitive?: BoolFilter<"authorization_role_inheritances"> | boolean
   }
 
   export type authorization_role_inheritancesUpsertWithWhereUniqueWithoutRoles_authorization_role_inheritances_parent_role_idTorolesInput = {
@@ -226969,6 +227508,7 @@ export namespace Prisma {
     action?: string | null
     is_active?: boolean
     is_sensitive?: boolean
+    level?: string
     permission_groups?: permission_groupsCreateNestedOneWithoutPermissionsInput
     role_permissions?: role_permissionsCreateNestedManyWithoutPermissionsInput
   }
@@ -226985,6 +227525,7 @@ export namespace Prisma {
     action?: string | null
     is_active?: boolean
     is_sensitive?: boolean
+    level?: string
     role_permissions?: role_permissionsUncheckedCreateNestedManyWithoutPermissionsInput
   }
 
@@ -227408,6 +227949,7 @@ export namespace Prisma {
     action?: NullableStringFieldUpdateOperationsInput | string | null
     is_active?: BoolFieldUpdateOperationsInput | boolean
     is_sensitive?: BoolFieldUpdateOperationsInput | boolean
+    level?: StringFieldUpdateOperationsInput | string
     permission_groups?: permission_groupsUpdateOneWithoutPermissionsNestedInput
     role_permissions?: role_permissionsUpdateManyWithoutPermissionsNestedInput
   }
@@ -227424,6 +227966,7 @@ export namespace Prisma {
     action?: NullableStringFieldUpdateOperationsInput | string | null
     is_active?: BoolFieldUpdateOperationsInput | boolean
     is_sensitive?: BoolFieldUpdateOperationsInput | boolean
+    level?: StringFieldUpdateOperationsInput | string
     role_permissions?: role_permissionsUncheckedUpdateManyWithoutPermissionsNestedInput
   }
 
@@ -229036,6 +229579,8 @@ export namespace Prisma {
     revocation_reason?: string | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    permission_code?: string | null
+    decision_reason?: string | null
     authorization_access_request_approvals?: authorization_access_request_approvalsCreateNestedManyWithoutAuthorization_access_requestsInput
     users_authorization_access_requests_requester_idTousers: usersCreateNestedOneWithoutAuthorization_access_requests_authorization_access_requests_requester_idTousersInput
     users_authorization_access_requests_revoked_byTousers?: usersCreateNestedOneWithoutAuthorization_access_requests_authorization_access_requests_revoked_byTousersInput
@@ -229065,6 +229610,8 @@ export namespace Prisma {
     revocation_reason?: string | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    permission_code?: string | null
+    decision_reason?: string | null
     authorization_access_request_approvals?: authorization_access_request_approvalsUncheckedCreateNestedManyWithoutAuthorization_access_requestsInput
   }
 
@@ -229096,6 +229643,8 @@ export namespace Prisma {
     revocation_reason?: string | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    permission_code?: string | null
+    decision_reason?: string | null
     authorization_access_request_approvals?: authorization_access_request_approvalsCreateNestedManyWithoutAuthorization_access_requestsInput
     users_authorization_access_requests_decided_byTousers?: usersCreateNestedOneWithoutAuthorization_access_requests_authorization_access_requests_decided_byTousersInput
     users_authorization_access_requests_revoked_byTousers?: usersCreateNestedOneWithoutAuthorization_access_requests_authorization_access_requests_revoked_byTousersInput
@@ -229125,6 +229674,8 @@ export namespace Prisma {
     revocation_reason?: string | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    permission_code?: string | null
+    decision_reason?: string | null
     authorization_access_request_approvals?: authorization_access_request_approvalsUncheckedCreateNestedManyWithoutAuthorization_access_requestsInput
   }
 
@@ -229156,6 +229707,8 @@ export namespace Prisma {
     revocation_reason?: string | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    permission_code?: string | null
+    decision_reason?: string | null
     authorization_access_request_approvals?: authorization_access_request_approvalsCreateNestedManyWithoutAuthorization_access_requestsInput
     users_authorization_access_requests_decided_byTousers?: usersCreateNestedOneWithoutAuthorization_access_requests_authorization_access_requests_decided_byTousersInput
     users_authorization_access_requests_requester_idTousers: usersCreateNestedOneWithoutAuthorization_access_requests_authorization_access_requests_requester_idTousersInput
@@ -229185,6 +229738,8 @@ export namespace Prisma {
     revocation_reason?: string | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    permission_code?: string | null
+    decision_reason?: string | null
     authorization_access_request_approvals?: authorization_access_request_approvalsUncheckedCreateNestedManyWithoutAuthorization_access_requestsInput
   }
 
@@ -229216,6 +229771,8 @@ export namespace Prisma {
     revocation_reason?: string | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    permission_code?: string | null
+    decision_reason?: string | null
     authorization_access_request_approvals?: authorization_access_request_approvalsCreateNestedManyWithoutAuthorization_access_requestsInput
     users_authorization_access_requests_decided_byTousers?: usersCreateNestedOneWithoutAuthorization_access_requests_authorization_access_requests_decided_byTousersInput
     users_authorization_access_requests_requester_idTousers: usersCreateNestedOneWithoutAuthorization_access_requests_authorization_access_requests_requester_idTousersInput
@@ -229245,6 +229802,8 @@ export namespace Prisma {
     revocation_reason?: string | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    permission_code?: string | null
+    decision_reason?: string | null
     authorization_access_request_approvals?: authorization_access_request_approvalsUncheckedCreateNestedManyWithoutAuthorization_access_requestsInput
   }
 
@@ -229394,6 +229953,7 @@ export namespace Prisma {
     authorization_version?: string
     duration_ms?: number | null
     created_at?: Date | string | null
+    updated_at?: Date | string | null
   }
 
   export type authorization_decision_logsUncheckedCreateWithoutUsersInput = {
@@ -229418,6 +229978,7 @@ export namespace Prisma {
     authorization_version?: string
     duration_ms?: number | null
     created_at?: Date | string | null
+    updated_at?: Date | string | null
   }
 
   export type authorization_decision_logsCreateOrConnectWithoutUsersInput = {
@@ -229778,6 +230339,7 @@ export namespace Prisma {
     description?: string | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    configuration?: NullableJsonNullValueInput | InputJsonValue
   }
 
   export type authorization_feature_flagsUncheckedCreateWithoutUsersInput = {
@@ -229788,6 +230350,7 @@ export namespace Prisma {
     description?: string | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    configuration?: NullableJsonNullValueInput | InputJsonValue
   }
 
   export type authorization_feature_flagsCreateOrConnectWithoutUsersInput = {
@@ -229822,6 +230385,8 @@ export namespace Prisma {
     requires_approval?: boolean
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    audit_required?: boolean
+    approved_at?: Date | string | null
     users_authorization_policies_created_byTousers?: usersCreateNestedOneWithoutAuthorization_policies_authorization_policies_created_byTousersInput
     users_authorization_policies_updated_byTousers?: usersCreateNestedOneWithoutAuthorization_policies_authorization_policies_updated_byTousersInput
     authorization_policy_versions?: authorization_policy_versionsCreateNestedManyWithoutAuthorization_policiesInput
@@ -229851,6 +230416,8 @@ export namespace Prisma {
     updated_by?: bigint | number | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    audit_required?: boolean
+    approved_at?: Date | string | null
     authorization_policy_versions?: authorization_policy_versionsUncheckedCreateNestedManyWithoutAuthorization_policiesInput
   }
 
@@ -229886,6 +230453,8 @@ export namespace Prisma {
     requires_approval?: boolean
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    audit_required?: boolean
+    approved_at?: Date | string | null
     users_authorization_policies_approved_byTousers?: usersCreateNestedOneWithoutAuthorization_policies_authorization_policies_approved_byTousersInput
     users_authorization_policies_updated_byTousers?: usersCreateNestedOneWithoutAuthorization_policies_authorization_policies_updated_byTousersInput
     authorization_policy_versions?: authorization_policy_versionsCreateNestedManyWithoutAuthorization_policiesInput
@@ -229915,6 +230484,8 @@ export namespace Prisma {
     approved_by?: bigint | number | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    audit_required?: boolean
+    approved_at?: Date | string | null
     authorization_policy_versions?: authorization_policy_versionsUncheckedCreateNestedManyWithoutAuthorization_policiesInput
   }
 
@@ -229950,6 +230521,8 @@ export namespace Prisma {
     requires_approval?: boolean
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    audit_required?: boolean
+    approved_at?: Date | string | null
     users_authorization_policies_approved_byTousers?: usersCreateNestedOneWithoutAuthorization_policies_authorization_policies_approved_byTousersInput
     users_authorization_policies_created_byTousers?: usersCreateNestedOneWithoutAuthorization_policies_authorization_policies_created_byTousersInput
     authorization_policy_versions?: authorization_policy_versionsCreateNestedManyWithoutAuthorization_policiesInput
@@ -229979,6 +230552,8 @@ export namespace Prisma {
     approved_by?: bigint | number | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    audit_required?: boolean
+    approved_at?: Date | string | null
     authorization_policy_versions?: authorization_policy_versionsUncheckedCreateNestedManyWithoutAuthorization_policiesInput
   }
 
@@ -229998,6 +230573,10 @@ export namespace Prisma {
     snapshot: JsonNullValueInput | InputJsonValue
     change_summary?: string | null
     created_at?: Date | string | null
+    approved_at?: Date | string | null
+    effective_at?: Date | string | null
+    deployment_status?: string
+    updated_at?: Date | string | null
     users_authorization_policy_versions_changed_byTousers?: usersCreateNestedOneWithoutAuthorization_policy_versions_authorization_policy_versions_changed_byTousersInput
     authorization_policies: authorization_policiesCreateNestedOneWithoutAuthorization_policy_versionsInput
     authorization_policy_versions?: authorization_policy_versionsCreateNestedOneWithoutOther_authorization_policy_versionsInput
@@ -230013,6 +230592,10 @@ export namespace Prisma {
     previous_version_id?: bigint | number | null
     changed_by?: bigint | number | null
     created_at?: Date | string | null
+    approved_at?: Date | string | null
+    effective_at?: Date | string | null
+    deployment_status?: string
+    updated_at?: Date | string | null
     other_authorization_policy_versions?: authorization_policy_versionsUncheckedCreateNestedManyWithoutAuthorization_policy_versionsInput
   }
 
@@ -230032,6 +230615,10 @@ export namespace Prisma {
     snapshot: JsonNullValueInput | InputJsonValue
     change_summary?: string | null
     created_at?: Date | string | null
+    approved_at?: Date | string | null
+    effective_at?: Date | string | null
+    deployment_status?: string
+    updated_at?: Date | string | null
     users_authorization_policy_versions_approved_byTousers?: usersCreateNestedOneWithoutAuthorization_policy_versions_authorization_policy_versions_approved_byTousersInput
     authorization_policies: authorization_policiesCreateNestedOneWithoutAuthorization_policy_versionsInput
     authorization_policy_versions?: authorization_policy_versionsCreateNestedOneWithoutOther_authorization_policy_versionsInput
@@ -230047,6 +230634,10 @@ export namespace Prisma {
     previous_version_id?: bigint | number | null
     approved_by?: bigint | number | null
     created_at?: Date | string | null
+    approved_at?: Date | string | null
+    effective_at?: Date | string | null
+    deployment_status?: string
+    updated_at?: Date | string | null
     other_authorization_policy_versions?: authorization_policy_versionsUncheckedCreateNestedManyWithoutAuthorization_policy_versionsInput
   }
 
@@ -230111,6 +230702,8 @@ export namespace Prisma {
     revoked_at?: Date | string | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    assignment_source?: string
+    assignment_reason?: string | null
     authorization_access_review_items?: authorization_access_review_itemsCreateNestedManyWithoutAuthorization_role_assignmentsInput
     users_authorization_role_assignments_assigned_byTousers?: usersCreateNestedOneWithoutAuthorization_role_assignments_authorization_role_assignments_assigned_byTousersInput
     users_authorization_role_assignments_revoked_byTousers?: usersCreateNestedOneWithoutAuthorization_role_assignments_authorization_role_assignments_revoked_byTousersInput
@@ -230135,6 +230728,8 @@ export namespace Prisma {
     revoked_by?: bigint | number | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    assignment_source?: string
+    assignment_reason?: string | null
     authorization_access_review_items?: authorization_access_review_itemsUncheckedCreateNestedManyWithoutAuthorization_role_assignmentsInput
   }
 
@@ -230161,6 +230756,8 @@ export namespace Prisma {
     revoked_at?: Date | string | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    assignment_source?: string
+    assignment_reason?: string | null
     authorization_access_review_items?: authorization_access_review_itemsCreateNestedManyWithoutAuthorization_role_assignmentsInput
     users_authorization_role_assignments_approved_byTousers?: usersCreateNestedOneWithoutAuthorization_role_assignments_authorization_role_assignments_approved_byTousersInput
     users_authorization_role_assignments_revoked_byTousers?: usersCreateNestedOneWithoutAuthorization_role_assignments_authorization_role_assignments_revoked_byTousersInput
@@ -230185,6 +230782,8 @@ export namespace Prisma {
     revoked_by?: bigint | number | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    assignment_source?: string
+    assignment_reason?: string | null
     authorization_access_review_items?: authorization_access_review_itemsUncheckedCreateNestedManyWithoutAuthorization_role_assignmentsInput
   }
 
@@ -230211,6 +230810,8 @@ export namespace Prisma {
     revoked_at?: Date | string | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    assignment_source?: string
+    assignment_reason?: string | null
     authorization_access_review_items?: authorization_access_review_itemsCreateNestedManyWithoutAuthorization_role_assignmentsInput
     users_authorization_role_assignments_approved_byTousers?: usersCreateNestedOneWithoutAuthorization_role_assignments_authorization_role_assignments_approved_byTousersInput
     users_authorization_role_assignments_assigned_byTousers?: usersCreateNestedOneWithoutAuthorization_role_assignments_authorization_role_assignments_assigned_byTousersInput
@@ -230235,6 +230836,8 @@ export namespace Prisma {
     revoked_at?: Date | string | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    assignment_source?: string
+    assignment_reason?: string | null
     authorization_access_review_items?: authorization_access_review_itemsUncheckedCreateNestedManyWithoutAuthorization_role_assignmentsInput
   }
 
@@ -230261,6 +230864,8 @@ export namespace Prisma {
     revoked_at?: Date | string | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    assignment_source?: string
+    assignment_reason?: string | null
     authorization_access_review_items?: authorization_access_review_itemsCreateNestedManyWithoutAuthorization_role_assignmentsInput
     users_authorization_role_assignments_approved_byTousers?: usersCreateNestedOneWithoutAuthorization_role_assignments_authorization_role_assignments_approved_byTousersInput
     users_authorization_role_assignments_assigned_byTousers?: usersCreateNestedOneWithoutAuthorization_role_assignments_authorization_role_assignments_assigned_byTousersInput
@@ -230285,6 +230890,8 @@ export namespace Prisma {
     revoked_by?: bigint | number | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    assignment_source?: string
+    assignment_reason?: string | null
     authorization_access_review_items?: authorization_access_review_itemsUncheckedCreateNestedManyWithoutAuthorization_role_assignmentsInput
   }
 
@@ -234694,6 +235301,7 @@ export namespace Prisma {
     authorization_version?: StringFilter<"authorization_decision_logs"> | string
     duration_ms?: IntNullableFilter<"authorization_decision_logs"> | number | null
     created_at?: DateTimeNullableFilter<"authorization_decision_logs"> | Date | string | null
+    updated_at?: DateTimeNullableFilter<"authorization_decision_logs"> | Date | string | null
   }
 
   export type authorization_delegationsUpsertWithWhereUniqueWithoutUsers_authorization_delegations_approved_byTousersInput = {
@@ -234882,6 +235490,7 @@ export namespace Prisma {
     updated_by?: BigIntNullableFilter<"authorization_feature_flags"> | bigint | number | null
     created_at?: DateTimeNullableFilter<"authorization_feature_flags"> | Date | string | null
     updated_at?: DateTimeNullableFilter<"authorization_feature_flags"> | Date | string | null
+    configuration?: JsonNullableFilter<"authorization_feature_flags">
   }
 
   export type authorization_policiesUpsertWithWhereUniqueWithoutUsers_authorization_policies_approved_byTousersInput = {
@@ -234928,6 +235537,8 @@ export namespace Prisma {
     approved_by?: BigIntNullableFilter<"authorization_policies"> | bigint | number | null
     created_at?: DateTimeNullableFilter<"authorization_policies"> | Date | string | null
     updated_at?: DateTimeNullableFilter<"authorization_policies"> | Date | string | null
+    audit_required?: BoolFilter<"authorization_policies"> | boolean
+    approved_at?: DateTimeNullableFilter<"authorization_policies"> | Date | string | null
   }
 
   export type authorization_policiesUpsertWithWhereUniqueWithoutUsers_authorization_policies_created_byTousersInput = {
@@ -234991,6 +235602,10 @@ export namespace Prisma {
     changed_by?: BigIntNullableFilter<"authorization_policy_versions"> | bigint | number | null
     approved_by?: BigIntNullableFilter<"authorization_policy_versions"> | bigint | number | null
     created_at?: DateTimeNullableFilter<"authorization_policy_versions"> | Date | string | null
+    approved_at?: DateTimeNullableFilter<"authorization_policy_versions"> | Date | string | null
+    effective_at?: DateTimeNullableFilter<"authorization_policy_versions"> | Date | string | null
+    deployment_status?: StringFilter<"authorization_policy_versions"> | string
+    updated_at?: DateTimeNullableFilter<"authorization_policy_versions"> | Date | string | null
   }
 
   export type authorization_policy_versionsUpsertWithWhereUniqueWithoutUsers_authorization_policy_versions_changed_byTousersInput = {
@@ -246276,6 +246891,8 @@ export namespace Prisma {
     revocation_reason?: string | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    permission_code?: string | null
+    decision_reason?: string | null
     users_authorization_access_requests_decided_byTousers?: usersCreateNestedOneWithoutAuthorization_access_requests_authorization_access_requests_decided_byTousersInput
     users_authorization_access_requests_requester_idTousers: usersCreateNestedOneWithoutAuthorization_access_requests_authorization_access_requests_requester_idTousersInput
     users_authorization_access_requests_revoked_byTousers?: usersCreateNestedOneWithoutAuthorization_access_requests_authorization_access_requests_revoked_byTousersInput
@@ -246306,6 +246923,8 @@ export namespace Prisma {
     revocation_reason?: string | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    permission_code?: string | null
+    decision_reason?: string | null
   }
 
   export type authorization_access_requestsCreateOrConnectWithoutAuthorization_access_request_approvalsInput = {
@@ -246735,6 +247354,8 @@ export namespace Prisma {
     revocation_reason?: NullableStringFieldUpdateOperationsInput | string | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    permission_code?: NullableStringFieldUpdateOperationsInput | string | null
+    decision_reason?: NullableStringFieldUpdateOperationsInput | string | null
     users_authorization_access_requests_decided_byTousers?: usersUpdateOneWithoutAuthorization_access_requests_authorization_access_requests_decided_byTousersNestedInput
     users_authorization_access_requests_requester_idTousers?: usersUpdateOneRequiredWithoutAuthorization_access_requests_authorization_access_requests_requester_idTousersNestedInput
     users_authorization_access_requests_revoked_byTousers?: usersUpdateOneWithoutAuthorization_access_requests_authorization_access_requests_revoked_byTousersNestedInput
@@ -246765,6 +247386,8 @@ export namespace Prisma {
     revocation_reason?: NullableStringFieldUpdateOperationsInput | string | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    permission_code?: NullableStringFieldUpdateOperationsInput | string | null
+    decision_reason?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type usersUpsertWithoutAuthorization_access_request_approvalsInput = {
@@ -250529,6 +251152,8 @@ export namespace Prisma {
     revoked_at?: Date | string | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    assignment_source?: string
+    assignment_reason?: string | null
     users_authorization_role_assignments_approved_byTousers?: usersCreateNestedOneWithoutAuthorization_role_assignments_authorization_role_assignments_approved_byTousersInput
     users_authorization_role_assignments_assigned_byTousers?: usersCreateNestedOneWithoutAuthorization_role_assignments_authorization_role_assignments_assigned_byTousersInput
     users_authorization_role_assignments_revoked_byTousers?: usersCreateNestedOneWithoutAuthorization_role_assignments_authorization_role_assignments_revoked_byTousersInput
@@ -250554,6 +251179,8 @@ export namespace Prisma {
     revoked_by?: bigint | number | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    assignment_source?: string
+    assignment_reason?: string | null
   }
 
   export type authorization_role_assignmentsCreateOrConnectWithoutAuthorization_access_review_itemsInput = {
@@ -251471,6 +252098,8 @@ export namespace Prisma {
     revoked_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    assignment_source?: StringFieldUpdateOperationsInput | string
+    assignment_reason?: NullableStringFieldUpdateOperationsInput | string | null
     users_authorization_role_assignments_approved_byTousers?: usersUpdateOneWithoutAuthorization_role_assignments_authorization_role_assignments_approved_byTousersNestedInput
     users_authorization_role_assignments_assigned_byTousers?: usersUpdateOneWithoutAuthorization_role_assignments_authorization_role_assignments_assigned_byTousersNestedInput
     users_authorization_role_assignments_revoked_byTousers?: usersUpdateOneWithoutAuthorization_role_assignments_authorization_role_assignments_revoked_byTousersNestedInput
@@ -251496,6 +252125,8 @@ export namespace Prisma {
     revoked_by?: NullableBigIntFieldUpdateOperationsInput | bigint | number | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    assignment_source?: StringFieldUpdateOperationsInput | string
+    assignment_reason?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type authorization_access_reviewsUpsertWithoutAuthorization_access_review_itemsInput = {
@@ -261565,6 +262196,10 @@ export namespace Prisma {
     snapshot: JsonNullValueInput | InputJsonValue
     change_summary?: string | null
     created_at?: Date | string | null
+    approved_at?: Date | string | null
+    effective_at?: Date | string | null
+    deployment_status?: string
+    updated_at?: Date | string | null
     users_authorization_policy_versions_approved_byTousers?: usersCreateNestedOneWithoutAuthorization_policy_versions_authorization_policy_versions_approved_byTousersInput
     users_authorization_policy_versions_changed_byTousers?: usersCreateNestedOneWithoutAuthorization_policy_versions_authorization_policy_versions_changed_byTousersInput
     authorization_policy_versions?: authorization_policy_versionsCreateNestedOneWithoutOther_authorization_policy_versionsInput
@@ -261580,6 +262215,10 @@ export namespace Prisma {
     changed_by?: bigint | number | null
     approved_by?: bigint | number | null
     created_at?: Date | string | null
+    approved_at?: Date | string | null
+    effective_at?: Date | string | null
+    deployment_status?: string
+    updated_at?: Date | string | null
     other_authorization_policy_versions?: authorization_policy_versionsUncheckedCreateNestedManyWithoutAuthorization_policy_versionsInput
   }
 
@@ -263614,6 +264253,8 @@ export namespace Prisma {
     requires_approval?: boolean
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    audit_required?: boolean
+    approved_at?: Date | string | null
     users_authorization_policies_approved_byTousers?: usersCreateNestedOneWithoutAuthorization_policies_authorization_policies_approved_byTousersInput
     users_authorization_policies_created_byTousers?: usersCreateNestedOneWithoutAuthorization_policies_authorization_policies_created_byTousersInput
     users_authorization_policies_updated_byTousers?: usersCreateNestedOneWithoutAuthorization_policies_authorization_policies_updated_byTousersInput
@@ -263644,6 +264285,8 @@ export namespace Prisma {
     approved_by?: bigint | number | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    audit_required?: boolean
+    approved_at?: Date | string | null
   }
 
   export type authorization_policiesCreateOrConnectWithoutAuthorization_policy_versionsInput = {
@@ -263657,6 +264300,10 @@ export namespace Prisma {
     snapshot: JsonNullValueInput | InputJsonValue
     change_summary?: string | null
     created_at?: Date | string | null
+    approved_at?: Date | string | null
+    effective_at?: Date | string | null
+    deployment_status?: string
+    updated_at?: Date | string | null
     users_authorization_policy_versions_approved_byTousers?: usersCreateNestedOneWithoutAuthorization_policy_versions_authorization_policy_versions_approved_byTousersInput
     users_authorization_policy_versions_changed_byTousers?: usersCreateNestedOneWithoutAuthorization_policy_versions_authorization_policy_versions_changed_byTousersInput
     authorization_policies: authorization_policiesCreateNestedOneWithoutAuthorization_policy_versionsInput
@@ -263673,6 +264320,10 @@ export namespace Prisma {
     changed_by?: bigint | number | null
     approved_by?: bigint | number | null
     created_at?: Date | string | null
+    approved_at?: Date | string | null
+    effective_at?: Date | string | null
+    deployment_status?: string
+    updated_at?: Date | string | null
   }
 
   export type authorization_policy_versionsCreateOrConnectWithoutOther_authorization_policy_versionsInput = {
@@ -263686,6 +264337,10 @@ export namespace Prisma {
     snapshot: JsonNullValueInput | InputJsonValue
     change_summary?: string | null
     created_at?: Date | string | null
+    approved_at?: Date | string | null
+    effective_at?: Date | string | null
+    deployment_status?: string
+    updated_at?: Date | string | null
     users_authorization_policy_versions_approved_byTousers?: usersCreateNestedOneWithoutAuthorization_policy_versions_authorization_policy_versions_approved_byTousersInput
     users_authorization_policy_versions_changed_byTousers?: usersCreateNestedOneWithoutAuthorization_policy_versions_authorization_policy_versions_changed_byTousersInput
     authorization_policies: authorization_policiesCreateNestedOneWithoutAuthorization_policy_versionsInput
@@ -263701,6 +264356,10 @@ export namespace Prisma {
     changed_by?: bigint | number | null
     approved_by?: bigint | number | null
     created_at?: Date | string | null
+    approved_at?: Date | string | null
+    effective_at?: Date | string | null
+    deployment_status?: string
+    updated_at?: Date | string | null
     other_authorization_policy_versions?: authorization_policy_versionsUncheckedCreateNestedManyWithoutAuthorization_policy_versionsInput
   }
 
@@ -264545,6 +265204,8 @@ export namespace Prisma {
     requires_approval?: BoolFieldUpdateOperationsInput | boolean
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    audit_required?: BoolFieldUpdateOperationsInput | boolean
+    approved_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     users_authorization_policies_approved_byTousers?: usersUpdateOneWithoutAuthorization_policies_authorization_policies_approved_byTousersNestedInput
     users_authorization_policies_created_byTousers?: usersUpdateOneWithoutAuthorization_policies_authorization_policies_created_byTousersNestedInput
     users_authorization_policies_updated_byTousers?: usersUpdateOneWithoutAuthorization_policies_authorization_policies_updated_byTousersNestedInput
@@ -264575,6 +265236,8 @@ export namespace Prisma {
     approved_by?: NullableBigIntFieldUpdateOperationsInput | bigint | number | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    audit_required?: BoolFieldUpdateOperationsInput | boolean
+    approved_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   }
 
   export type authorization_policy_versionsUpsertWithoutOther_authorization_policy_versionsInput = {
@@ -264594,6 +265257,10 @@ export namespace Prisma {
     snapshot?: JsonNullValueInput | InputJsonValue
     change_summary?: NullableStringFieldUpdateOperationsInput | string | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    approved_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    effective_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    deployment_status?: StringFieldUpdateOperationsInput | string
+    updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     users_authorization_policy_versions_approved_byTousers?: usersUpdateOneWithoutAuthorization_policy_versions_authorization_policy_versions_approved_byTousersNestedInput
     users_authorization_policy_versions_changed_byTousers?: usersUpdateOneWithoutAuthorization_policy_versions_authorization_policy_versions_changed_byTousersNestedInput
     authorization_policies?: authorization_policiesUpdateOneRequiredWithoutAuthorization_policy_versionsNestedInput
@@ -264610,6 +265277,10 @@ export namespace Prisma {
     changed_by?: NullableBigIntFieldUpdateOperationsInput | bigint | number | null
     approved_by?: NullableBigIntFieldUpdateOperationsInput | bigint | number | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    approved_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    effective_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    deployment_status?: StringFieldUpdateOperationsInput | string
+    updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   }
 
   export type authorization_policy_versionsUpsertWithWhereUniqueWithoutAuthorization_policy_versionsInput = {
@@ -269496,6 +270167,9 @@ export namespace Prisma {
     is_active?: boolean
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    conflicting_role_codes?: NullableJsonNullValueInput | InputJsonValue
+    conflicting_permission_codes?: NullableJsonNullValueInput | InputJsonValue
+    enforcement?: string
   }
 
   export type authorization_sod_rulesUncheckedCreateWithoutAuthorization_sod_violationsInput = {
@@ -269511,6 +270185,9 @@ export namespace Prisma {
     is_active?: boolean
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    conflicting_role_codes?: NullableJsonNullValueInput | InputJsonValue
+    conflicting_permission_codes?: NullableJsonNullValueInput | InputJsonValue
+    enforcement?: string
   }
 
   export type authorization_sod_rulesCreateOrConnectWithoutAuthorization_sod_violationsInput = {
@@ -270334,6 +271011,9 @@ export namespace Prisma {
     is_active?: BoolFieldUpdateOperationsInput | boolean
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    conflicting_role_codes?: NullableJsonNullValueInput | InputJsonValue
+    conflicting_permission_codes?: NullableJsonNullValueInput | InputJsonValue
+    enforcement?: StringFieldUpdateOperationsInput | string
   }
 
   export type authorization_sod_rulesUncheckedUpdateWithoutAuthorization_sod_violationsInput = {
@@ -270349,6 +271029,9 @@ export namespace Prisma {
     is_active?: BoolFieldUpdateOperationsInput | boolean
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    conflicting_role_codes?: NullableJsonNullValueInput | InputJsonValue
+    conflicting_permission_codes?: NullableJsonNullValueInput | InputJsonValue
+    enforcement?: StringFieldUpdateOperationsInput | string
   }
 
   export type usersUpsertWithoutAuthorization_sod_violations_authorization_sod_violations_user_idTousersInput = {
@@ -274211,6 +274894,7 @@ export namespace Prisma {
     action?: string | null
     is_active?: boolean
     is_sensitive?: boolean
+    level?: string
   }
 
   export type permissionsUpdateWithoutPermission_groupsInput = {
@@ -274224,6 +274908,7 @@ export namespace Prisma {
     action?: NullableStringFieldUpdateOperationsInput | string | null
     is_active?: BoolFieldUpdateOperationsInput | boolean
     is_sensitive?: BoolFieldUpdateOperationsInput | boolean
+    level?: StringFieldUpdateOperationsInput | string
     role_permissions?: role_permissionsUpdateManyWithoutPermissionsNestedInput
     user_permissions?: user_permissionsUpdateManyWithoutPermissionsNestedInput
   }
@@ -274239,6 +274924,7 @@ export namespace Prisma {
     action?: NullableStringFieldUpdateOperationsInput | string | null
     is_active?: BoolFieldUpdateOperationsInput | boolean
     is_sensitive?: BoolFieldUpdateOperationsInput | boolean
+    level?: StringFieldUpdateOperationsInput | string
     role_permissions?: role_permissionsUncheckedUpdateManyWithoutPermissionsNestedInput
     user_permissions?: user_permissionsUncheckedUpdateManyWithoutPermissionsNestedInput
   }
@@ -274254,6 +274940,7 @@ export namespace Prisma {
     action?: NullableStringFieldUpdateOperationsInput | string | null
     is_active?: BoolFieldUpdateOperationsInput | boolean
     is_sensitive?: BoolFieldUpdateOperationsInput | boolean
+    level?: StringFieldUpdateOperationsInput | string
   }
 
   export type role_permissionsCreateManyPermissionsInput = {
@@ -274900,6 +275587,8 @@ export namespace Prisma {
     revocation_reason?: string | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    permission_code?: string | null
+    decision_reason?: string | null
   }
 
   export type authorization_access_review_itemsCreateManyRolesInput = {
@@ -274932,6 +275621,8 @@ export namespace Prisma {
     revoked_by?: bigint | number | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    assignment_source?: string
+    assignment_reason?: string | null
   }
 
   export type authorization_role_inheritancesCreateManyRoles_authorization_role_inheritances_child_role_idTorolesInput = {
@@ -274939,6 +275630,8 @@ export namespace Prisma {
     parent_role_id: bigint | number
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    max_depth?: number
+    inherit_sensitive?: boolean
   }
 
   export type authorization_role_inheritancesCreateManyRoles_authorization_role_inheritances_parent_role_idTorolesInput = {
@@ -274946,6 +275639,8 @@ export namespace Prisma {
     child_role_id: bigint | number
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    max_depth?: number
+    inherit_sensitive?: boolean
   }
 
   export type permission_dimensionsCreateManyRolesInput = {
@@ -274990,6 +275685,8 @@ export namespace Prisma {
     revocation_reason?: NullableStringFieldUpdateOperationsInput | string | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    permission_code?: NullableStringFieldUpdateOperationsInput | string | null
+    decision_reason?: NullableStringFieldUpdateOperationsInput | string | null
     authorization_access_request_approvals?: authorization_access_request_approvalsUpdateManyWithoutAuthorization_access_requestsNestedInput
     users_authorization_access_requests_decided_byTousers?: usersUpdateOneWithoutAuthorization_access_requests_authorization_access_requests_decided_byTousersNestedInput
     users_authorization_access_requests_requester_idTousers?: usersUpdateOneRequiredWithoutAuthorization_access_requests_authorization_access_requests_requester_idTousersNestedInput
@@ -275019,6 +275716,8 @@ export namespace Prisma {
     revocation_reason?: NullableStringFieldUpdateOperationsInput | string | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    permission_code?: NullableStringFieldUpdateOperationsInput | string | null
+    decision_reason?: NullableStringFieldUpdateOperationsInput | string | null
     authorization_access_request_approvals?: authorization_access_request_approvalsUncheckedUpdateManyWithoutAuthorization_access_requestsNestedInput
   }
 
@@ -275044,6 +275743,8 @@ export namespace Prisma {
     revocation_reason?: NullableStringFieldUpdateOperationsInput | string | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    permission_code?: NullableStringFieldUpdateOperationsInput | string | null
+    decision_reason?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type authorization_access_review_itemsUpdateWithoutRolesInput = {
@@ -275098,6 +275799,8 @@ export namespace Prisma {
     revoked_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    assignment_source?: StringFieldUpdateOperationsInput | string
+    assignment_reason?: NullableStringFieldUpdateOperationsInput | string | null
     authorization_access_review_items?: authorization_access_review_itemsUpdateManyWithoutAuthorization_role_assignmentsNestedInput
     users_authorization_role_assignments_approved_byTousers?: usersUpdateOneWithoutAuthorization_role_assignments_authorization_role_assignments_approved_byTousersNestedInput
     users_authorization_role_assignments_assigned_byTousers?: usersUpdateOneWithoutAuthorization_role_assignments_authorization_role_assignments_assigned_byTousersNestedInput
@@ -275122,6 +275825,8 @@ export namespace Prisma {
     revoked_by?: NullableBigIntFieldUpdateOperationsInput | bigint | number | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    assignment_source?: StringFieldUpdateOperationsInput | string
+    assignment_reason?: NullableStringFieldUpdateOperationsInput | string | null
     authorization_access_review_items?: authorization_access_review_itemsUncheckedUpdateManyWithoutAuthorization_role_assignmentsNestedInput
   }
 
@@ -275142,12 +275847,16 @@ export namespace Prisma {
     revoked_by?: NullableBigIntFieldUpdateOperationsInput | bigint | number | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    assignment_source?: StringFieldUpdateOperationsInput | string
+    assignment_reason?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type authorization_role_inheritancesUpdateWithoutRoles_authorization_role_inheritances_child_role_idTorolesInput = {
     id?: BigIntFieldUpdateOperationsInput | bigint | number
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    max_depth?: IntFieldUpdateOperationsInput | number
+    inherit_sensitive?: BoolFieldUpdateOperationsInput | boolean
     roles_authorization_role_inheritances_parent_role_idToroles?: rolesUpdateOneRequiredWithoutAuthorization_role_inheritances_authorization_role_inheritances_parent_role_idTorolesNestedInput
   }
 
@@ -275156,6 +275865,8 @@ export namespace Prisma {
     parent_role_id?: BigIntFieldUpdateOperationsInput | bigint | number
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    max_depth?: IntFieldUpdateOperationsInput | number
+    inherit_sensitive?: BoolFieldUpdateOperationsInput | boolean
   }
 
   export type authorization_role_inheritancesUncheckedUpdateManyWithoutRoles_authorization_role_inheritances_child_role_idTorolesInput = {
@@ -275163,12 +275874,16 @@ export namespace Prisma {
     parent_role_id?: BigIntFieldUpdateOperationsInput | bigint | number
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    max_depth?: IntFieldUpdateOperationsInput | number
+    inherit_sensitive?: BoolFieldUpdateOperationsInput | boolean
   }
 
   export type authorization_role_inheritancesUpdateWithoutRoles_authorization_role_inheritances_parent_role_idTorolesInput = {
     id?: BigIntFieldUpdateOperationsInput | bigint | number
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    max_depth?: IntFieldUpdateOperationsInput | number
+    inherit_sensitive?: BoolFieldUpdateOperationsInput | boolean
     roles_authorization_role_inheritances_child_role_idToroles?: rolesUpdateOneRequiredWithoutAuthorization_role_inheritances_authorization_role_inheritances_child_role_idTorolesNestedInput
   }
 
@@ -275177,6 +275892,8 @@ export namespace Prisma {
     child_role_id?: BigIntFieldUpdateOperationsInput | bigint | number
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    max_depth?: IntFieldUpdateOperationsInput | number
+    inherit_sensitive?: BoolFieldUpdateOperationsInput | boolean
   }
 
   export type authorization_role_inheritancesUncheckedUpdateManyWithoutRoles_authorization_role_inheritances_parent_role_idTorolesInput = {
@@ -275184,6 +275901,8 @@ export namespace Prisma {
     child_role_id?: BigIntFieldUpdateOperationsInput | bigint | number
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    max_depth?: IntFieldUpdateOperationsInput | number
+    inherit_sensitive?: BoolFieldUpdateOperationsInput | boolean
   }
 
   export type permission_dimensionsUpdateWithoutRolesInput = {
@@ -275419,6 +276138,8 @@ export namespace Prisma {
     revocation_reason?: string | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    permission_code?: string | null
+    decision_reason?: string | null
   }
 
   export type authorization_access_requestsCreateManyUsers_authorization_access_requests_requester_idTousersInput = {
@@ -275443,6 +276164,8 @@ export namespace Prisma {
     revocation_reason?: string | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    permission_code?: string | null
+    decision_reason?: string | null
   }
 
   export type authorization_access_requestsCreateManyUsers_authorization_access_requests_revoked_byTousersInput = {
@@ -275467,6 +276190,8 @@ export namespace Prisma {
     revocation_reason?: string | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    permission_code?: string | null
+    decision_reason?: string | null
   }
 
   export type authorization_access_requestsCreateManyUsers_authorization_access_requests_target_user_idTousersInput = {
@@ -275491,6 +276216,8 @@ export namespace Prisma {
     revocation_reason?: string | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    permission_code?: string | null
+    decision_reason?: string | null
   }
 
   export type authorization_access_review_itemsCreateManyUsers_authorization_access_review_items_reviewed_byTousersInput = {
@@ -275556,6 +276283,7 @@ export namespace Prisma {
     authorization_version?: string
     duration_ms?: number | null
     created_at?: Date | string | null
+    updated_at?: Date | string | null
   }
 
   export type authorization_delegationsCreateManyUsers_authorization_delegations_approved_byTousersInput = {
@@ -275701,6 +276429,7 @@ export namespace Prisma {
     description?: string | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    configuration?: NullableJsonNullValueInput | InputJsonValue
   }
 
   export type authorization_policiesCreateManyUsers_authorization_policies_approved_byTousersInput = {
@@ -275727,6 +276456,8 @@ export namespace Prisma {
     updated_by?: bigint | number | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    audit_required?: boolean
+    approved_at?: Date | string | null
   }
 
   export type authorization_policiesCreateManyUsers_authorization_policies_created_byTousersInput = {
@@ -275753,6 +276484,8 @@ export namespace Prisma {
     approved_by?: bigint | number | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    audit_required?: boolean
+    approved_at?: Date | string | null
   }
 
   export type authorization_policiesCreateManyUsers_authorization_policies_updated_byTousersInput = {
@@ -275779,6 +276512,8 @@ export namespace Prisma {
     approved_by?: bigint | number | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    audit_required?: boolean
+    approved_at?: Date | string | null
   }
 
   export type authorization_policy_versionsCreateManyUsers_authorization_policy_versions_approved_byTousersInput = {
@@ -275790,6 +276525,10 @@ export namespace Prisma {
     previous_version_id?: bigint | number | null
     changed_by?: bigint | number | null
     created_at?: Date | string | null
+    approved_at?: Date | string | null
+    effective_at?: Date | string | null
+    deployment_status?: string
+    updated_at?: Date | string | null
   }
 
   export type authorization_policy_versionsCreateManyUsers_authorization_policy_versions_changed_byTousersInput = {
@@ -275801,6 +276540,10 @@ export namespace Prisma {
     previous_version_id?: bigint | number | null
     approved_by?: bigint | number | null
     created_at?: Date | string | null
+    approved_at?: Date | string | null
+    effective_at?: Date | string | null
+    deployment_status?: string
+    updated_at?: Date | string | null
   }
 
   export type authorization_relationshipsCreateManyUsersInput = {
@@ -275834,6 +276577,8 @@ export namespace Prisma {
     revoked_by?: bigint | number | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    assignment_source?: string
+    assignment_reason?: string | null
   }
 
   export type authorization_role_assignmentsCreateManyUsers_authorization_role_assignments_assigned_byTousersInput = {
@@ -275853,6 +276598,8 @@ export namespace Prisma {
     revoked_by?: bigint | number | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    assignment_source?: string
+    assignment_reason?: string | null
   }
 
   export type authorization_role_assignmentsCreateManyUsers_authorization_role_assignments_revoked_byTousersInput = {
@@ -275872,6 +276619,8 @@ export namespace Prisma {
     revoked_at?: Date | string | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    assignment_source?: string
+    assignment_reason?: string | null
   }
 
   export type authorization_role_assignmentsCreateManyUsers_authorization_role_assignments_user_idTousersInput = {
@@ -275891,6 +276640,8 @@ export namespace Prisma {
     revoked_by?: bigint | number | null
     created_at?: Date | string | null
     updated_at?: Date | string | null
+    assignment_source?: string
+    assignment_reason?: string | null
   }
 
   export type authorization_sod_violationsCreateManyUsers_authorization_sod_violations_overridden_byTousersInput = {
@@ -277482,6 +278233,8 @@ export namespace Prisma {
     revocation_reason?: NullableStringFieldUpdateOperationsInput | string | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    permission_code?: NullableStringFieldUpdateOperationsInput | string | null
+    decision_reason?: NullableStringFieldUpdateOperationsInput | string | null
     authorization_access_request_approvals?: authorization_access_request_approvalsUpdateManyWithoutAuthorization_access_requestsNestedInput
     users_authorization_access_requests_requester_idTousers?: usersUpdateOneRequiredWithoutAuthorization_access_requests_authorization_access_requests_requester_idTousersNestedInput
     users_authorization_access_requests_revoked_byTousers?: usersUpdateOneWithoutAuthorization_access_requests_authorization_access_requests_revoked_byTousersNestedInput
@@ -277511,6 +278264,8 @@ export namespace Prisma {
     revocation_reason?: NullableStringFieldUpdateOperationsInput | string | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    permission_code?: NullableStringFieldUpdateOperationsInput | string | null
+    decision_reason?: NullableStringFieldUpdateOperationsInput | string | null
     authorization_access_request_approvals?: authorization_access_request_approvalsUncheckedUpdateManyWithoutAuthorization_access_requestsNestedInput
   }
 
@@ -277536,6 +278291,8 @@ export namespace Prisma {
     revocation_reason?: NullableStringFieldUpdateOperationsInput | string | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    permission_code?: NullableStringFieldUpdateOperationsInput | string | null
+    decision_reason?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type authorization_access_requestsUpdateWithoutUsers_authorization_access_requests_requester_idTousersInput = {
@@ -277556,6 +278313,8 @@ export namespace Prisma {
     revocation_reason?: NullableStringFieldUpdateOperationsInput | string | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    permission_code?: NullableStringFieldUpdateOperationsInput | string | null
+    decision_reason?: NullableStringFieldUpdateOperationsInput | string | null
     authorization_access_request_approvals?: authorization_access_request_approvalsUpdateManyWithoutAuthorization_access_requestsNestedInput
     users_authorization_access_requests_decided_byTousers?: usersUpdateOneWithoutAuthorization_access_requests_authorization_access_requests_decided_byTousersNestedInput
     users_authorization_access_requests_revoked_byTousers?: usersUpdateOneWithoutAuthorization_access_requests_authorization_access_requests_revoked_byTousersNestedInput
@@ -277585,6 +278344,8 @@ export namespace Prisma {
     revocation_reason?: NullableStringFieldUpdateOperationsInput | string | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    permission_code?: NullableStringFieldUpdateOperationsInput | string | null
+    decision_reason?: NullableStringFieldUpdateOperationsInput | string | null
     authorization_access_request_approvals?: authorization_access_request_approvalsUncheckedUpdateManyWithoutAuthorization_access_requestsNestedInput
   }
 
@@ -277610,6 +278371,8 @@ export namespace Prisma {
     revocation_reason?: NullableStringFieldUpdateOperationsInput | string | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    permission_code?: NullableStringFieldUpdateOperationsInput | string | null
+    decision_reason?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type authorization_access_requestsUpdateWithoutUsers_authorization_access_requests_revoked_byTousersInput = {
@@ -277630,6 +278393,8 @@ export namespace Prisma {
     revocation_reason?: NullableStringFieldUpdateOperationsInput | string | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    permission_code?: NullableStringFieldUpdateOperationsInput | string | null
+    decision_reason?: NullableStringFieldUpdateOperationsInput | string | null
     authorization_access_request_approvals?: authorization_access_request_approvalsUpdateManyWithoutAuthorization_access_requestsNestedInput
     users_authorization_access_requests_decided_byTousers?: usersUpdateOneWithoutAuthorization_access_requests_authorization_access_requests_decided_byTousersNestedInput
     users_authorization_access_requests_requester_idTousers?: usersUpdateOneRequiredWithoutAuthorization_access_requests_authorization_access_requests_requester_idTousersNestedInput
@@ -277659,6 +278424,8 @@ export namespace Prisma {
     revocation_reason?: NullableStringFieldUpdateOperationsInput | string | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    permission_code?: NullableStringFieldUpdateOperationsInput | string | null
+    decision_reason?: NullableStringFieldUpdateOperationsInput | string | null
     authorization_access_request_approvals?: authorization_access_request_approvalsUncheckedUpdateManyWithoutAuthorization_access_requestsNestedInput
   }
 
@@ -277684,6 +278451,8 @@ export namespace Prisma {
     revocation_reason?: NullableStringFieldUpdateOperationsInput | string | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    permission_code?: NullableStringFieldUpdateOperationsInput | string | null
+    decision_reason?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type authorization_access_requestsUpdateWithoutUsers_authorization_access_requests_target_user_idTousersInput = {
@@ -277704,6 +278473,8 @@ export namespace Prisma {
     revocation_reason?: NullableStringFieldUpdateOperationsInput | string | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    permission_code?: NullableStringFieldUpdateOperationsInput | string | null
+    decision_reason?: NullableStringFieldUpdateOperationsInput | string | null
     authorization_access_request_approvals?: authorization_access_request_approvalsUpdateManyWithoutAuthorization_access_requestsNestedInput
     users_authorization_access_requests_decided_byTousers?: usersUpdateOneWithoutAuthorization_access_requests_authorization_access_requests_decided_byTousersNestedInput
     users_authorization_access_requests_requester_idTousers?: usersUpdateOneRequiredWithoutAuthorization_access_requests_authorization_access_requests_requester_idTousersNestedInput
@@ -277733,6 +278504,8 @@ export namespace Prisma {
     revocation_reason?: NullableStringFieldUpdateOperationsInput | string | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    permission_code?: NullableStringFieldUpdateOperationsInput | string | null
+    decision_reason?: NullableStringFieldUpdateOperationsInput | string | null
     authorization_access_request_approvals?: authorization_access_request_approvalsUncheckedUpdateManyWithoutAuthorization_access_requestsNestedInput
   }
 
@@ -277758,6 +278531,8 @@ export namespace Prisma {
     revocation_reason?: NullableStringFieldUpdateOperationsInput | string | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    permission_code?: NullableStringFieldUpdateOperationsInput | string | null
+    decision_reason?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type authorization_access_review_itemsUpdateWithoutUsers_authorization_access_review_items_reviewed_byTousersInput = {
@@ -277907,6 +278682,7 @@ export namespace Prisma {
     authorization_version?: StringFieldUpdateOperationsInput | string
     duration_ms?: NullableIntFieldUpdateOperationsInput | number | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   }
 
   export type authorization_decision_logsUncheckedUpdateWithoutUsersInput = {
@@ -277931,6 +278707,7 @@ export namespace Prisma {
     authorization_version?: StringFieldUpdateOperationsInput | string
     duration_ms?: NullableIntFieldUpdateOperationsInput | number | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   }
 
   export type authorization_decision_logsUncheckedUpdateManyWithoutUsersInput = {
@@ -277955,6 +278732,7 @@ export namespace Prisma {
     authorization_version?: StringFieldUpdateOperationsInput | string
     duration_ms?: NullableIntFieldUpdateOperationsInput | number | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   }
 
   export type authorization_delegationsUpdateWithoutUsers_authorization_delegations_approved_byTousersInput = {
@@ -278370,6 +279148,7 @@ export namespace Prisma {
     description?: NullableStringFieldUpdateOperationsInput | string | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    configuration?: NullableJsonNullValueInput | InputJsonValue
   }
 
   export type authorization_feature_flagsUncheckedUpdateWithoutUsersInput = {
@@ -278380,6 +279159,7 @@ export namespace Prisma {
     description?: NullableStringFieldUpdateOperationsInput | string | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    configuration?: NullableJsonNullValueInput | InputJsonValue
   }
 
   export type authorization_feature_flagsUncheckedUpdateManyWithoutUsersInput = {
@@ -278390,6 +279170,7 @@ export namespace Prisma {
     description?: NullableStringFieldUpdateOperationsInput | string | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    configuration?: NullableJsonNullValueInput | InputJsonValue
   }
 
   export type authorization_policiesUpdateWithoutUsers_authorization_policies_approved_byTousersInput = {
@@ -278414,6 +279195,8 @@ export namespace Prisma {
     requires_approval?: BoolFieldUpdateOperationsInput | boolean
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    audit_required?: BoolFieldUpdateOperationsInput | boolean
+    approved_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     users_authorization_policies_created_byTousers?: usersUpdateOneWithoutAuthorization_policies_authorization_policies_created_byTousersNestedInput
     users_authorization_policies_updated_byTousers?: usersUpdateOneWithoutAuthorization_policies_authorization_policies_updated_byTousersNestedInput
     authorization_policy_versions?: authorization_policy_versionsUpdateManyWithoutAuthorization_policiesNestedInput
@@ -278443,6 +279226,8 @@ export namespace Prisma {
     updated_by?: NullableBigIntFieldUpdateOperationsInput | bigint | number | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    audit_required?: BoolFieldUpdateOperationsInput | boolean
+    approved_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     authorization_policy_versions?: authorization_policy_versionsUncheckedUpdateManyWithoutAuthorization_policiesNestedInput
   }
 
@@ -278470,6 +279255,8 @@ export namespace Prisma {
     updated_by?: NullableBigIntFieldUpdateOperationsInput | bigint | number | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    audit_required?: BoolFieldUpdateOperationsInput | boolean
+    approved_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   }
 
   export type authorization_policiesUpdateWithoutUsers_authorization_policies_created_byTousersInput = {
@@ -278494,6 +279281,8 @@ export namespace Prisma {
     requires_approval?: BoolFieldUpdateOperationsInput | boolean
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    audit_required?: BoolFieldUpdateOperationsInput | boolean
+    approved_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     users_authorization_policies_approved_byTousers?: usersUpdateOneWithoutAuthorization_policies_authorization_policies_approved_byTousersNestedInput
     users_authorization_policies_updated_byTousers?: usersUpdateOneWithoutAuthorization_policies_authorization_policies_updated_byTousersNestedInput
     authorization_policy_versions?: authorization_policy_versionsUpdateManyWithoutAuthorization_policiesNestedInput
@@ -278523,6 +279312,8 @@ export namespace Prisma {
     approved_by?: NullableBigIntFieldUpdateOperationsInput | bigint | number | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    audit_required?: BoolFieldUpdateOperationsInput | boolean
+    approved_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     authorization_policy_versions?: authorization_policy_versionsUncheckedUpdateManyWithoutAuthorization_policiesNestedInput
   }
 
@@ -278550,6 +279341,8 @@ export namespace Prisma {
     approved_by?: NullableBigIntFieldUpdateOperationsInput | bigint | number | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    audit_required?: BoolFieldUpdateOperationsInput | boolean
+    approved_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   }
 
   export type authorization_policiesUpdateWithoutUsers_authorization_policies_updated_byTousersInput = {
@@ -278574,6 +279367,8 @@ export namespace Prisma {
     requires_approval?: BoolFieldUpdateOperationsInput | boolean
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    audit_required?: BoolFieldUpdateOperationsInput | boolean
+    approved_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     users_authorization_policies_approved_byTousers?: usersUpdateOneWithoutAuthorization_policies_authorization_policies_approved_byTousersNestedInput
     users_authorization_policies_created_byTousers?: usersUpdateOneWithoutAuthorization_policies_authorization_policies_created_byTousersNestedInput
     authorization_policy_versions?: authorization_policy_versionsUpdateManyWithoutAuthorization_policiesNestedInput
@@ -278603,6 +279398,8 @@ export namespace Prisma {
     approved_by?: NullableBigIntFieldUpdateOperationsInput | bigint | number | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    audit_required?: BoolFieldUpdateOperationsInput | boolean
+    approved_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     authorization_policy_versions?: authorization_policy_versionsUncheckedUpdateManyWithoutAuthorization_policiesNestedInput
   }
 
@@ -278630,6 +279427,8 @@ export namespace Prisma {
     approved_by?: NullableBigIntFieldUpdateOperationsInput | bigint | number | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    audit_required?: BoolFieldUpdateOperationsInput | boolean
+    approved_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   }
 
   export type authorization_policy_versionsUpdateWithoutUsers_authorization_policy_versions_approved_byTousersInput = {
@@ -278638,6 +279437,10 @@ export namespace Prisma {
     snapshot?: JsonNullValueInput | InputJsonValue
     change_summary?: NullableStringFieldUpdateOperationsInput | string | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    approved_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    effective_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    deployment_status?: StringFieldUpdateOperationsInput | string
+    updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     users_authorization_policy_versions_changed_byTousers?: usersUpdateOneWithoutAuthorization_policy_versions_authorization_policy_versions_changed_byTousersNestedInput
     authorization_policies?: authorization_policiesUpdateOneRequiredWithoutAuthorization_policy_versionsNestedInput
     authorization_policy_versions?: authorization_policy_versionsUpdateOneWithoutOther_authorization_policy_versionsNestedInput
@@ -278653,6 +279456,10 @@ export namespace Prisma {
     previous_version_id?: NullableBigIntFieldUpdateOperationsInput | bigint | number | null
     changed_by?: NullableBigIntFieldUpdateOperationsInput | bigint | number | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    approved_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    effective_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    deployment_status?: StringFieldUpdateOperationsInput | string
+    updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     other_authorization_policy_versions?: authorization_policy_versionsUncheckedUpdateManyWithoutAuthorization_policy_versionsNestedInput
   }
 
@@ -278665,6 +279472,10 @@ export namespace Prisma {
     previous_version_id?: NullableBigIntFieldUpdateOperationsInput | bigint | number | null
     changed_by?: NullableBigIntFieldUpdateOperationsInput | bigint | number | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    approved_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    effective_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    deployment_status?: StringFieldUpdateOperationsInput | string
+    updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   }
 
   export type authorization_policy_versionsUpdateWithoutUsers_authorization_policy_versions_changed_byTousersInput = {
@@ -278673,6 +279484,10 @@ export namespace Prisma {
     snapshot?: JsonNullValueInput | InputJsonValue
     change_summary?: NullableStringFieldUpdateOperationsInput | string | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    approved_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    effective_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    deployment_status?: StringFieldUpdateOperationsInput | string
+    updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     users_authorization_policy_versions_approved_byTousers?: usersUpdateOneWithoutAuthorization_policy_versions_authorization_policy_versions_approved_byTousersNestedInput
     authorization_policies?: authorization_policiesUpdateOneRequiredWithoutAuthorization_policy_versionsNestedInput
     authorization_policy_versions?: authorization_policy_versionsUpdateOneWithoutOther_authorization_policy_versionsNestedInput
@@ -278688,6 +279503,10 @@ export namespace Prisma {
     previous_version_id?: NullableBigIntFieldUpdateOperationsInput | bigint | number | null
     approved_by?: NullableBigIntFieldUpdateOperationsInput | bigint | number | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    approved_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    effective_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    deployment_status?: StringFieldUpdateOperationsInput | string
+    updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     other_authorization_policy_versions?: authorization_policy_versionsUncheckedUpdateManyWithoutAuthorization_policy_versionsNestedInput
   }
 
@@ -278700,6 +279519,10 @@ export namespace Prisma {
     previous_version_id?: NullableBigIntFieldUpdateOperationsInput | bigint | number | null
     approved_by?: NullableBigIntFieldUpdateOperationsInput | bigint | number | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    approved_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    effective_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    deployment_status?: StringFieldUpdateOperationsInput | string
+    updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   }
 
   export type authorization_relationshipsUpdateWithoutUsersInput = {
@@ -278757,6 +279580,8 @@ export namespace Prisma {
     revoked_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    assignment_source?: StringFieldUpdateOperationsInput | string
+    assignment_reason?: NullableStringFieldUpdateOperationsInput | string | null
     authorization_access_review_items?: authorization_access_review_itemsUpdateManyWithoutAuthorization_role_assignmentsNestedInput
     users_authorization_role_assignments_assigned_byTousers?: usersUpdateOneWithoutAuthorization_role_assignments_authorization_role_assignments_assigned_byTousersNestedInput
     users_authorization_role_assignments_revoked_byTousers?: usersUpdateOneWithoutAuthorization_role_assignments_authorization_role_assignments_revoked_byTousersNestedInput
@@ -278781,6 +279606,8 @@ export namespace Prisma {
     revoked_by?: NullableBigIntFieldUpdateOperationsInput | bigint | number | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    assignment_source?: StringFieldUpdateOperationsInput | string
+    assignment_reason?: NullableStringFieldUpdateOperationsInput | string | null
     authorization_access_review_items?: authorization_access_review_itemsUncheckedUpdateManyWithoutAuthorization_role_assignmentsNestedInput
   }
 
@@ -278801,6 +279628,8 @@ export namespace Prisma {
     revoked_by?: NullableBigIntFieldUpdateOperationsInput | bigint | number | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    assignment_source?: StringFieldUpdateOperationsInput | string
+    assignment_reason?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type authorization_role_assignmentsUpdateWithoutUsers_authorization_role_assignments_assigned_byTousersInput = {
@@ -278816,6 +279645,8 @@ export namespace Prisma {
     revoked_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    assignment_source?: StringFieldUpdateOperationsInput | string
+    assignment_reason?: NullableStringFieldUpdateOperationsInput | string | null
     authorization_access_review_items?: authorization_access_review_itemsUpdateManyWithoutAuthorization_role_assignmentsNestedInput
     users_authorization_role_assignments_approved_byTousers?: usersUpdateOneWithoutAuthorization_role_assignments_authorization_role_assignments_approved_byTousersNestedInput
     users_authorization_role_assignments_revoked_byTousers?: usersUpdateOneWithoutAuthorization_role_assignments_authorization_role_assignments_revoked_byTousersNestedInput
@@ -278840,6 +279671,8 @@ export namespace Prisma {
     revoked_by?: NullableBigIntFieldUpdateOperationsInput | bigint | number | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    assignment_source?: StringFieldUpdateOperationsInput | string
+    assignment_reason?: NullableStringFieldUpdateOperationsInput | string | null
     authorization_access_review_items?: authorization_access_review_itemsUncheckedUpdateManyWithoutAuthorization_role_assignmentsNestedInput
   }
 
@@ -278860,6 +279693,8 @@ export namespace Prisma {
     revoked_by?: NullableBigIntFieldUpdateOperationsInput | bigint | number | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    assignment_source?: StringFieldUpdateOperationsInput | string
+    assignment_reason?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type authorization_role_assignmentsUpdateWithoutUsers_authorization_role_assignments_revoked_byTousersInput = {
@@ -278875,6 +279710,8 @@ export namespace Prisma {
     revoked_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    assignment_source?: StringFieldUpdateOperationsInput | string
+    assignment_reason?: NullableStringFieldUpdateOperationsInput | string | null
     authorization_access_review_items?: authorization_access_review_itemsUpdateManyWithoutAuthorization_role_assignmentsNestedInput
     users_authorization_role_assignments_approved_byTousers?: usersUpdateOneWithoutAuthorization_role_assignments_authorization_role_assignments_approved_byTousersNestedInput
     users_authorization_role_assignments_assigned_byTousers?: usersUpdateOneWithoutAuthorization_role_assignments_authorization_role_assignments_assigned_byTousersNestedInput
@@ -278899,6 +279736,8 @@ export namespace Prisma {
     revoked_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    assignment_source?: StringFieldUpdateOperationsInput | string
+    assignment_reason?: NullableStringFieldUpdateOperationsInput | string | null
     authorization_access_review_items?: authorization_access_review_itemsUncheckedUpdateManyWithoutAuthorization_role_assignmentsNestedInput
   }
 
@@ -278919,6 +279758,8 @@ export namespace Prisma {
     revoked_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    assignment_source?: StringFieldUpdateOperationsInput | string
+    assignment_reason?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type authorization_role_assignmentsUpdateWithoutUsers_authorization_role_assignments_user_idTousersInput = {
@@ -278934,6 +279775,8 @@ export namespace Prisma {
     revoked_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    assignment_source?: StringFieldUpdateOperationsInput | string
+    assignment_reason?: NullableStringFieldUpdateOperationsInput | string | null
     authorization_access_review_items?: authorization_access_review_itemsUpdateManyWithoutAuthorization_role_assignmentsNestedInput
     users_authorization_role_assignments_approved_byTousers?: usersUpdateOneWithoutAuthorization_role_assignments_authorization_role_assignments_approved_byTousersNestedInput
     users_authorization_role_assignments_assigned_byTousers?: usersUpdateOneWithoutAuthorization_role_assignments_authorization_role_assignments_assigned_byTousersNestedInput
@@ -278958,6 +279801,8 @@ export namespace Prisma {
     revoked_by?: NullableBigIntFieldUpdateOperationsInput | bigint | number | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    assignment_source?: StringFieldUpdateOperationsInput | string
+    assignment_reason?: NullableStringFieldUpdateOperationsInput | string | null
     authorization_access_review_items?: authorization_access_review_itemsUncheckedUpdateManyWithoutAuthorization_role_assignmentsNestedInput
   }
 
@@ -278978,6 +279823,8 @@ export namespace Prisma {
     revoked_by?: NullableBigIntFieldUpdateOperationsInput | bigint | number | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    assignment_source?: StringFieldUpdateOperationsInput | string
+    assignment_reason?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type authorization_sod_violationsUpdateWithoutUsers_authorization_sod_violations_overridden_byTousersInput = {
@@ -283603,6 +284450,10 @@ export namespace Prisma {
     changed_by?: bigint | number | null
     approved_by?: bigint | number | null
     created_at?: Date | string | null
+    approved_at?: Date | string | null
+    effective_at?: Date | string | null
+    deployment_status?: string
+    updated_at?: Date | string | null
   }
 
   export type authorization_policy_versionsUpdateWithoutAuthorization_policiesInput = {
@@ -283611,6 +284462,10 @@ export namespace Prisma {
     snapshot?: JsonNullValueInput | InputJsonValue
     change_summary?: NullableStringFieldUpdateOperationsInput | string | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    approved_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    effective_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    deployment_status?: StringFieldUpdateOperationsInput | string
+    updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     users_authorization_policy_versions_approved_byTousers?: usersUpdateOneWithoutAuthorization_policy_versions_authorization_policy_versions_approved_byTousersNestedInput
     users_authorization_policy_versions_changed_byTousers?: usersUpdateOneWithoutAuthorization_policy_versions_authorization_policy_versions_changed_byTousersNestedInput
     authorization_policy_versions?: authorization_policy_versionsUpdateOneWithoutOther_authorization_policy_versionsNestedInput
@@ -283626,6 +284481,10 @@ export namespace Prisma {
     changed_by?: NullableBigIntFieldUpdateOperationsInput | bigint | number | null
     approved_by?: NullableBigIntFieldUpdateOperationsInput | bigint | number | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    approved_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    effective_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    deployment_status?: StringFieldUpdateOperationsInput | string
+    updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     other_authorization_policy_versions?: authorization_policy_versionsUncheckedUpdateManyWithoutAuthorization_policy_versionsNestedInput
   }
 
@@ -283638,6 +284497,10 @@ export namespace Prisma {
     changed_by?: NullableBigIntFieldUpdateOperationsInput | bigint | number | null
     approved_by?: NullableBigIntFieldUpdateOperationsInput | bigint | number | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    approved_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    effective_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    deployment_status?: StringFieldUpdateOperationsInput | string
+    updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   }
 
   export type authorization_policy_versionsCreateManyAuthorization_policy_versionsInput = {
@@ -283649,6 +284512,10 @@ export namespace Prisma {
     changed_by?: bigint | number | null
     approved_by?: bigint | number | null
     created_at?: Date | string | null
+    approved_at?: Date | string | null
+    effective_at?: Date | string | null
+    deployment_status?: string
+    updated_at?: Date | string | null
   }
 
   export type authorization_policy_versionsUpdateWithoutAuthorization_policy_versionsInput = {
@@ -283657,6 +284524,10 @@ export namespace Prisma {
     snapshot?: JsonNullValueInput | InputJsonValue
     change_summary?: NullableStringFieldUpdateOperationsInput | string | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    approved_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    effective_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    deployment_status?: StringFieldUpdateOperationsInput | string
+    updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     users_authorization_policy_versions_approved_byTousers?: usersUpdateOneWithoutAuthorization_policy_versions_authorization_policy_versions_approved_byTousersNestedInput
     users_authorization_policy_versions_changed_byTousers?: usersUpdateOneWithoutAuthorization_policy_versions_authorization_policy_versions_changed_byTousersNestedInput
     authorization_policies?: authorization_policiesUpdateOneRequiredWithoutAuthorization_policy_versionsNestedInput
@@ -283672,6 +284543,10 @@ export namespace Prisma {
     changed_by?: NullableBigIntFieldUpdateOperationsInput | bigint | number | null
     approved_by?: NullableBigIntFieldUpdateOperationsInput | bigint | number | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    approved_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    effective_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    deployment_status?: StringFieldUpdateOperationsInput | string
+    updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     other_authorization_policy_versions?: authorization_policy_versionsUncheckedUpdateManyWithoutAuthorization_policy_versionsNestedInput
   }
 
@@ -283684,6 +284559,10 @@ export namespace Prisma {
     changed_by?: NullableBigIntFieldUpdateOperationsInput | bigint | number | null
     approved_by?: NullableBigIntFieldUpdateOperationsInput | bigint | number | null
     created_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    approved_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    effective_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    deployment_status?: StringFieldUpdateOperationsInput | string
+    updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   }
 
   export type authorization_access_review_itemsCreateManyAuthorization_role_assignmentsInput = {
