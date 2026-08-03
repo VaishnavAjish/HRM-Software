@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 
 const FULL_DIGITS = "715115981345";
 const FULL_FORMATTED = "7151 1598 1345";
@@ -55,7 +56,12 @@ beforeEach(() => {
 
 /** The Aadhaar row lives in the third step of the profile wizard. */
 async function openIdentityStep() {
-  render(<Profile />);
+  // Profile calls useNavigate, which throws outside a Router.
+  render(
+    <MemoryRouter>
+      <Profile />
+    </MemoryRouter>,
+  );
   await userEvent.click(await screen.findByText(/Identity & Bank/i));
 }
 

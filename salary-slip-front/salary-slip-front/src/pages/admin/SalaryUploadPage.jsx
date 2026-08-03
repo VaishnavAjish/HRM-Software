@@ -217,10 +217,35 @@ export default function SalaryUploadPage() {
       const okCount = res?.imported ?? 0;
       const skipCount = skipped.length;
 
-      if (skipCount > 0) {
-        toast.success(`Uploaded ${okCount} records. Skipped ${skipCount} due to missing fields.`);
+      /*
+       * The server explains every skipped row — "Row 2: Missing employee code",
+       * "Row 5: Unrecognized month value" — and that detail used to be thrown
+       * away in favour of a fixed "due to missing fields", which was wrong for
+       * every other cause and sent people looking in the wrong place. Summarise
+       * the distinct reasons instead; the per-row breakdown is still in the
+       * upload report.
+       */
+      const reasons = [
+        ...new Set(
+          skipped
+            .map((entry) => String(entry).replace(/^Row\s+\d+:\s*/i, "").trim())
+            .filter(Boolean),
+        ),
+      ];
+      const detail = reasons.length ? ` — ${reasons.join("; ")}` : "";
+      const rowWord = (n) => `${n} row${n === 1 ? "" : "s"}`;
+
+      if (skipCount === 0) {
+        toast.success(`Successfully uploaded ${okCount} salary slip${okCount === 1 ? "" : "s"}.`);
+      } else if (okCount === 0) {
+        // Nothing was written at all. This used to show a green tick reading
+        // "Uploaded 0 records", so a completely failed upload looked like it
+        // had worked.
+        toast.error(`No salary slips uploaded — ${rowWord(skipCount)} skipped${detail}`);
       } else {
-        toast.success(`Successfully uploaded ${okCount} salary slips.`);
+        toast(`Uploaded ${okCount}, skipped ${rowWord(skipCount)}${detail}`, {
+          icon: "⚠️",
+        });
       }
 
       clearFile();

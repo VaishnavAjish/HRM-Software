@@ -889,7 +889,7 @@ export default function SalaryManagement() {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="flex h-full flex-col gap-5 overflow-hidden">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <StatCard
           title="Total Payroll"
@@ -1012,10 +1012,10 @@ export default function SalaryManagement() {
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+      <div className="flex-1 min-h-0 flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
         <div
           ref={gridContainerRef}
-          className={`salary-ag-grid w-full ${
+          className={`salary-ag-grid w-full flex-1 min-h-0 ${
             dark ? "ag-theme-alpine-dark" : "ag-theme-alpine"
           } ${headerFrozen ? "grid-header-frozen" : ""}`}
         >
@@ -1034,8 +1034,8 @@ export default function SalaryManagement() {
               }
             }}
             onFilterChanged={handleFilterChanged}
-            domLayout="autoHeight"
-            rowHeight={isMobile ? 84 : 64}
+            domLayout="normal"
+            rowHeight={isMobile ? 84 : 44}
             headerHeight={48}
             popupParent={document.body}
             suppressCellFocus
@@ -1058,6 +1058,10 @@ export default function SalaryManagement() {
             pageSize={perPage}
             onChange={(page) => {
               setApiPage(page);
+            }}
+            onPageSizeChange={(size) => {
+              setPerPage(size);
+              setApiPage(1);
             }}
           />
         </div>
