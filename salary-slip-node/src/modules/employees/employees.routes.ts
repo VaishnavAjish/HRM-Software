@@ -3,7 +3,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { AuthService } from '../auth/auth.service.js';
 import { authenticated } from '../auth/guards.js';
 import { AuditLogger } from '../../lib/audit/audit-logger.js';
-import { ResourceError } from '../masters/masters.service.js';
+import { ResourceError } from '../../lib/errors.js';
 import { EmployeeService, type Actor } from './employees.service.js';
 import { PrismaEmployeeRepository } from './employees.repository.js';
 import { AuthorizationEngine } from '../authorization/authorization.engine.js';

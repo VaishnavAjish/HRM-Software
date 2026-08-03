@@ -15,9 +15,15 @@ return [
     | the connection which will be utilized unless another connection
     | is explicitly specified when you execute a query / statement.
     |
+    | PostgreSQL is the only supported engine. Note that this file is not the
+    | last word on what exists: Laravel merges its own vendor config file over
+    | it, so the connections removed here (sqlite) still reappear in the merged
+    | array. AppServiceProvider::refuseUnsupportedDatabase() is what actually
+    | stops a non-pgsql connection being used.
+    |
     */
 
-    'default' => env('DB_CONNECTION', 'sqlite'),
+    'default' => env('DB_CONNECTION', 'pgsql'),
 
     /*
     |--------------------------------------------------------------------------
@@ -31,18 +37,6 @@ return [
     */
 
     'connections' => [
-
-        'sqlite' => [
-            'driver' => 'sqlite',
-            'url' => env('DB_URL'),
-            'database' => env('DB_DATABASE', database_path('database.sqlite')),
-            'prefix' => '',
-            'foreign_key_constraints' => env('DB_FOREIGN_KEYS', true),
-            'busy_timeout' => 5000,
-            'journal_mode' => 'wal',
-            'synchronous' => 'NORMAL',
-            'transaction_mode' => 'DEFERRED',
-        ],
 
         'mysql' => [
             'driver' => 'mysql',

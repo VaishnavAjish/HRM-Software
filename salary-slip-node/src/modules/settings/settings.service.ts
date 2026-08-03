@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { ResourceError } from '../masters/masters.service.js';
+import { ResourceError } from '../../lib/errors.js';
 
 /**
  * RBAC settings — App\Http\Controllers\SettingsController.

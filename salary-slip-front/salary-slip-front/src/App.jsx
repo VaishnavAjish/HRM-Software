@@ -44,12 +44,6 @@ const TdsCalculation = lazy(() => import("./pages/admin/TdsCalculation"));
 const AdminProfile = lazy(() => import("./pages/admin/AdminProfile"));
 const Settings = lazy(() => import("./pages/admin/Settings"));
 
-// RBAC pages
-const RbacDashboard = lazy(() => import("./pages/admin/rbac/RbacDashboard"));
-const RbacUsers = lazy(() => import("./pages/admin/rbac/RbacUsers"));
-const PermissionMatrix = lazy(() => import("./pages/admin/rbac/PermissionMatrix"));
-const AuditLogs = lazy(() => import("./pages/admin/rbac/AuditLogs"));
-
 // Employee pages
 const EmployeeDashboard = lazy(() => import("./pages/employee/Dashboard"));
 const Payslips = lazy(() => import("./pages/employee/Payslips"));
@@ -61,11 +55,6 @@ const EmployeeAppointment = lazy(() => import("./pages/employee/EmployeeAppointm
 const AgentDashboard = lazy(() => import("./pages/agent/AgentDashboard"));
 import { hasStoredAadhaar } from "./utils/aadhaar";
 import { useAuthorization } from "./hooks/useAuthorization";
-const AuthorizationCenter = lazy(() => import("./pages/admin/rbac/AuthorizationCenter"));
-// Access Control module. Replaces the legacy /admin/rbac/permission-matrix
-// screen; both routes exist during the migration so the old one can be
-// removed in its own commit rather than as a side effect of this one.
-const AccessControlMatrix = lazy(() => import("./pages/admin/access-control/PermissionMatrix"));
 
 // HR module
 const HrDashboard = lazy(() => import("./pages/admin/hr/HrDashboard"));
@@ -188,28 +177,6 @@ function AppRoutes() {
         <Route path="attendance/shift" element={<ShiftManagement />} />
         <Route path="appointments" element={<Appointments />} />
         <Route path="admins" element={<Settings />} />
-
-        {/* RBAC module */}
-        <Route path="rbac" element={<RbacDashboard />} />
-        <Route path="rbac/users" element={<RbacUsers />} />
-        <Route path="rbac/permission-matrix" element={<PermissionMatrix />} />
-        <Route path="rbac/audit-logs" element={<AuditLogs />} />
-
-        {/* Access Control module */}
-        <Route
-          path="access-control/permission-matrix"
-          element={
-            <ProtectedRoute requiredPermission="admin.role.read">
-              <AccessControlMatrix />
-            </ProtectedRoute>
-          }
-        />
-        <Route path="authorization" element={<ProtectedRoute requiredPermission="ui.admin.authorization.view"><AuthorizationCenter view="overview" /></ProtectedRoute>} />
-        <Route path="authorization/roles" element={<ProtectedRoute requiredPermission="admin.role.read"><AuthorizationCenter view="roles" /></ProtectedRoute>} />
-        <Route path="authorization/policies" element={<ProtectedRoute requiredPermission="admin.policy.read"><AuthorizationCenter view="policies" /></ProtectedRoute>} />
-        <Route path="authorization/requests" element={<ProtectedRoute requiredPermission="admin.access_request.read"><AuthorizationCenter view="requests" /></ProtectedRoute>} />
-        <Route path="authorization/audit" element={<ProtectedRoute requiredPermission="admin.authorization.audit.read"><AuthorizationCenter view="audit" /></ProtectedRoute>} />
-        <Route path="authorization/simulator" element={<ProtectedRoute requiredPermission="admin.authorization.simulate"><AuthorizationCenter view="simulator" /></ProtectedRoute>} />
 
         <Route path="trial-form" element={<TrialForm />} />
         <Route path="tds/calculation" element={<TdsCalculation />} />

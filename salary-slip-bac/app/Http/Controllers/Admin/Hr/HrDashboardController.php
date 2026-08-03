@@ -74,12 +74,19 @@ class HrDashboardController extends Controller
         $hiringFunnel = Candidate::selectRaw('stage, COUNT(*) as total')->groupBy('stage')->pluck('total', 'stage');
 
         $months = collect(range(5, 0))->map(fn ($i) => Carbon::today()->subMonths($i)->format('Y-m'));
+        // No driver-specific date functions here: joining_date is a varchar
+        // holding 'YYYY-MM-DD', so a prefix match is exact, while
+        // resignation_date is a real date column matched by month range.
         $employeeGrowth = $months->map(function ($month) use ($userQuery) {
-            $count = (clone $userQuery)->whereRaw("strftime('%Y-%m', joining_date) = ?", [$month])->count();
+            $count = (clone $userQuery)->where('joining_date', 'like', $month.'%')->count();
             return ['month' => $month, 'count' => $count];
         });
         $attritionTrend = $months->map(function ($month) use ($userQuery) {
-            $count = (clone $userQuery)->whereRaw("strftime('%Y-%m', resignation_date) = ?", [$month])->count();
+            $start = Carbon::createFromFormat('Y-m', $month)->startOfMonth();
+            $count = (clone $userQuery)->whereBetween('resignation_date', [
+                $start->toDateString(),
+                $start->copy()->endOfMonth()->toDateString(),
+            ])->count();
             return ['month' => $month, 'count' => $count];
         });
 

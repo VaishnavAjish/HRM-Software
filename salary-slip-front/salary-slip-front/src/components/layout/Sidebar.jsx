@@ -21,7 +21,6 @@ import {
   ChevronRight,
   Plus,
   ChevronLeft,
-  ShieldCheck,
   Calendar,
   ChevronDown,
   Briefcase,
@@ -112,39 +111,6 @@ function getAdminNav(companyId, user, isAllCompanies, isModuleAvailable = () => 
         { to: "/admin/hr/exit", label: "Exit Management" },
         { to: "/admin/hr/reports", label: "HR Reports" },
         { to: "/admin/hr/settings", label: "HR Settings" },
-      ],
-    });
-  }
-
-  /*
-   * Access Control.
-   *
-   * Ordered as the reference design lists it — Dashboard, Roles, Permissions,
-   * Permission Matrix, then the policy and lifecycle screens, then Audit and
-   * Analytics last.
-   *
-   * Deliberately shorter than the full seventeen-item specification: only
-   * routes with a real page appear here. A menu that lists Delegations,
-   * Emergency Access, SoD Rules and Access Reviews before those screens exist
-   * is worse than one that omits them — it turns "not built yet" into "looks
-   * broken", and an administrator cannot tell which entries are load-bearing.
-   * Each is added here as its page lands.
-   */
-  if (rawRole === 0 || hasAccess("ui.admin.authorization.view")) {
-    nav.push({
-      label: "Access Control",
-      icon: ShieldCheck,
-      subItems: [
-        { to: "/admin/rbac", label: "Dashboard" },
-        { to: "/admin/authorization/roles", label: "Roles" },
-        { to: "/admin/rbac/users", label: "User Assignments" },
-        { to: "/admin/access-control/permission-matrix", label: "Permission Matrix" },
-        { to: "/admin/authorization/policies", label: "Policies" },
-        { to: "/admin/authorization/requests", label: "Access Requests" },
-        { to: "/admin/authorization/simulator", label: "Simulator" },
-        { to: "/admin/authorization", label: "Overview" },
-        { to: "/admin/authorization/audit", label: "Decision Audit" },
-        { to: "/admin/rbac/audit-logs", label: "Audit Logs" },
       ],
     });
   }

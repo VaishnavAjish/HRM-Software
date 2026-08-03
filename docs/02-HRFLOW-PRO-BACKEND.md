@@ -1,5 +1,11 @@
 # HRFlow Pro Backend (`server/`)
 
+> **Status: dormant.** Added 2026-07-27 in a single drop (2 commits) and
+> unchanged since. Its MongoDB database is separate from everything else in the
+> repository. The live API is `salary-slip-bac/` — see
+> `05-SALARY-SLIP-BACKEND.md`. This document still describes `server/`
+> accurately because the code has not moved.
+
 ## Technology Stack
 
 | Category | Technology | Version |

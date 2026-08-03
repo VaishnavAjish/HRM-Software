@@ -927,9 +927,6 @@ class UserController extends Controller
     public function import(Request $request)
     {
         set_time_limit(180);
-        if (\Illuminate\Support\Facades\DB::connection()->getDriverName() === 'sqlite') {
-            \Illuminate\Support\Facades\DB::statement('PRAGMA busy_timeout = 30000');
-        }
         $imported = 0;
         $skipped = [];
         $rowReports = [];

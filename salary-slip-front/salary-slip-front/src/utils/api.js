@@ -613,107 +613,26 @@ export const salaryApi = {
   },
 };
 
-export const roleApi = {
-  getRoles(accessToken, tokenType = "Bearer") {
-    return apiRequest("/roles/get", {
-      headers: accessToken
-        ? { Authorization: `${tokenType} ${accessToken}` }
-        : {},
-    });
-  },
-
-  getPermissionGroups(accessToken, tokenType = "Bearer") {
-    return apiRequest("/roles/permissions", {
-      headers: accessToken
-        ? { Authorization: `${tokenType} ${accessToken}` }
-        : {},
-    });
-  },
-
-  getRole(id, accessToken, tokenType = "Bearer") {
-    return apiRequest(`/roles/show/${id}`, {
-      headers: accessToken
-        ? { Authorization: `${tokenType} ${accessToken}` }
-        : {},
-    });
-  },
-
-  storeRole(payload, accessToken, tokenType = "Bearer") {
-    return apiRequest("/roles/store", {
-      method: "POST",
-      headers: accessToken
-        ? { Authorization: `${tokenType} ${accessToken}` }
-        : {},
-      body: JSON.stringify(payload),
-    });
-  },
-
-  updateRole(id, payload, accessToken, tokenType = "Bearer") {
-    return apiRequest(`/roles/update/${id}`, {
-      method: "PUT",
-      headers: accessToken
-        ? { Authorization: `${tokenType} ${accessToken}` }
-        : {},
-      body: JSON.stringify(payload),
-    });
-  },
-
-  deleteRole(id, accessToken, tokenType = "Bearer") {
-    return apiRequest(`/roles/delete/${id}`, {
-      method: "DELETE",
-      headers: accessToken
-        ? { Authorization: `${tokenType} ${accessToken}` }
-        : {},
-    });
-  },
-
-  getMatrix(accessToken, tokenType = "Bearer") {
-    return apiRequest("/roles/matrix", {
-      headers: accessToken
-        ? { Authorization: `${tokenType} ${accessToken}` }
-        : {},
-    });
-  },
-
-  updateMatrix(roleId, permissionIds, accessToken, tokenType = "Bearer") {
-    return apiRequest("/roles/matrix", {
-      method: "PUT",
-      headers: accessToken
-        ? { Authorization: `${tokenType} ${accessToken}` }
-        : {},
-      body: JSON.stringify({ role_id: roleId, permission_ids: permissionIds }),
-    });
-  },
-};
-
 function authHeaders(accessToken, tokenType) {
   return accessToken ? { Authorization: `${tokenType} ${accessToken}` } : {};
 }
 
+/*
+ * What survives of the RBAC API after the Access Control screens were removed.
+ *
+ * These three are not administration endpoints — they are read by pages that
+ * have nothing to do with managing permissions:
+ *   getMyPermissions -> AuthContext, on every login and session restore
+ *   getSettings      -> admin Dashboard (the "main_dashboard" group)
+ *   getUserRoles     -> admin Settings (/admin/admins), to list admin users
+ */
 export const rbacApi = {
   getMyPermissions(accessToken, tokenType = "Bearer") {
     return apiRequest("/my-permissions", { headers: authHeaders(accessToken, tokenType) });
   },
 
-  getDashboard(accessToken, tokenType = "Bearer") {
-    return apiRequest("/rbac/dashboard", { headers: authHeaders(accessToken, tokenType) });
-  },
-
-  getAuditLogs(accessToken, tokenType = "Bearer", page = 1, limit = 25, filters = {}) {
-    const params = new URLSearchParams({ page, limit, ...filters });
-    return apiRequest(`/rbac/audit-logs?${params}`, { headers: authHeaders(accessToken, tokenType) });
-  },
-
   getSettings(accessToken, tokenType = "Bearer", group = "rbac") {
     return apiRequest(`/rbac/settings?group=${group}`, { headers: authHeaders(accessToken, tokenType) });
-  },
-
-  updateSettings(settings, accessToken, tokenType = "Bearer", group = "rbac") {
-    return apiRequest(`/rbac/settings?group=${group}`, {
-      method: "PUT",
-      headers: authHeaders(accessToken, tokenType),
-      body: JSON.stringify({ settings }),
-    });
   },
 
   getUserRoles(accessToken, tokenType = "Bearer", page = 1, limit = 15, search = "", roleFilter = "") {
@@ -725,36 +644,14 @@ export const rbacApi = {
     });
     return apiRequest(`/rbac/user-roles?${params}`, { headers: authHeaders(accessToken, tokenType) });
   },
-
-  getDimensionRoles(dimension, accessToken, tokenType = "Bearer") {
-    return apiRequest(`/rbac/permission-dimensions/${dimension}/roles`, {
-      headers: authHeaders(accessToken, tokenType),
-    });
-  },
-
-  getDimension(dimension, accessToken, tokenType = "Bearer", roleId) {
-    const params = roleId ? `?role_id=${roleId}` : "";
-    return apiRequest(`/rbac/permission-dimensions/${dimension}${params}`, {
-      headers: authHeaders(accessToken, tokenType),
-    });
-  },
-
-  storeDimension(dimension, payload, accessToken, tokenType = "Bearer") {
-    return apiRequest(`/rbac/permission-dimensions/${dimension}`, {
-      method: "POST",
-      headers: authHeaders(accessToken, tokenType),
-      body: JSON.stringify(payload),
-    });
-  },
-
-  removeDimension(dimension, id, accessToken, tokenType = "Bearer") {
-    return apiRequest(`/rbac/permission-dimensions/${dimension}/${id}`, {
-      method: "DELETE",
-      headers: authHeaders(accessToken, tokenType),
-    });
-  },
 };
 
+/*
+ * Both calls here decide what the signed-in user may do; neither administers
+ * permissions. me() builds the permission snapshot AuthContext stores at login,
+ * and check() asks the server about one specific record where scope, row and
+ * field rules cannot be resolved from that snapshot alone.
+ */
 export const authorizationApi = {
   me(accessToken, tokenType = "Bearer") {
     return apiRequest("/v1/authorization/me", { headers: authHeaders(accessToken, tokenType) });
@@ -763,89 +660,6 @@ export const authorizationApi = {
     return apiRequest("/v1/authorization/check", {
       method: "POST", headers: authHeaders(accessToken, tokenType),
       body: JSON.stringify({ permissionCode, resource }),
-    });
-  },
-  simulate(payload, accessToken, tokenType = "Bearer") {
-    return apiRequest("/v1/authorization/simulate", {
-      method: "POST", headers: authHeaders(accessToken, tokenType), body: JSON.stringify(payload),
-    });
-  },
-  roles(accessToken, tokenType = "Bearer") {
-    return apiRequest("/v1/roles", { headers: authHeaders(accessToken, tokenType) });
-  },
-
-  /*
-   * Permission Matrix.
-   *
-   * The matrix is fetched as one document rather than a cell-per-request:
-   * ~110 permissions across 8 action columns is nearly 900 cells, and asking
-   * the API once per cell is what turns opening the screen into a thousand
-   * round trips. The response carries the modules, the permission catalogue
-   * and the selected role's effective state together, already resolved by the
-   * engine, so the grid renders from a single payload.
-   */
-  matrix(roleId, { scopeType, scopeId } = {}, accessToken, tokenType = "Bearer") {
-    const params = new URLSearchParams();
-    if (scopeType) params.set("scope_type", scopeType);
-    if (scopeId) params.set("scope_id", scopeId);
-    const query = params.toString();
-
-    return apiRequest(`/v1/roles/${roleId}/matrix${query ? `?${query}` : ""}`, {
-      headers: authHeaders(accessToken, tokenType),
-    });
-  },
-
-  /** Persists only the changed cells; the server rejects an empty diff. */
-  saveMatrix(roleId, changes, accessToken, tokenType = "Bearer") {
-    return apiRequest(`/v1/roles/${roleId}/matrix`, {
-      method: "PUT",
-      headers: authHeaders(accessToken, tokenType),
-      body: JSON.stringify({ changes }),
-    });
-  },
-
-  cloneRole(roleId, payload, accessToken, tokenType = "Bearer") {
-    return apiRequest(`/v1/roles/${roleId}/clone`, {
-      method: "POST",
-      headers: authHeaders(accessToken, tokenType),
-      body: JSON.stringify(payload),
-    });
-  },
-
-  /** Scope values for the Scope selector, per scope type. */
-  scopeOptions(scopeType, accessToken, tokenType = "Bearer") {
-    return apiRequest(`/v1/scopes/${scopeType}/options`, {
-      headers: authHeaders(accessToken, tokenType),
-    });
-  },
-
-  /** Runs the real engine for one user — not a static role read. */
-  effectivePermissions(userId, accessToken, tokenType = "Bearer") {
-    return apiRequest(`/v1/users/${userId}/effective-permissions`, {
-      headers: authHeaders(accessToken, tokenType),
-    });
-  },
-
-  policies(accessToken, tokenType = "Bearer") {
-    return apiRequest("/v1/policies", { headers: authHeaders(accessToken, tokenType) });
-  },
-  accessRequests(accessToken, tokenType = "Bearer") {
-    return apiRequest("/v1/access-requests", { headers: authHeaders(accessToken, tokenType) });
-  },
-  audit(accessToken, tokenType = "Bearer") {
-    return apiRequest("/v1/authorization/audit", { headers: authHeaders(accessToken, tokenType) });
-  },
-  analytics(accessToken, tokenType = "Bearer") {
-    return apiRequest("/v1/authorization/analytics", { headers: authHeaders(accessToken, tokenType) });
-  },
-  publishPolicy(id, accessToken, tokenType = "Bearer") {
-    return apiRequest(`/v1/policies/${id}/publish`, {
-      method: "POST", headers: authHeaders(accessToken, tokenType), body: JSON.stringify({ changeSummary: "Published from authorization console" }),
-    });
-  },
-  decideAccessRequest(id, decision, accessToken, tokenType = "Bearer") {
-    return apiRequest(`/v1/access-requests/${id}/${decision}`, {
-      method: "POST", headers: authHeaders(accessToken, tokenType), body: JSON.stringify({ decisionReason: `Access request ${decision}d from authorization console` }),
     });
   },
 };

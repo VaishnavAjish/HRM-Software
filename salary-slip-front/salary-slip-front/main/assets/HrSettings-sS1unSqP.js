@@ -1,0 +1,1 @@
+import{j as i}from"./index-B-yfRBlI.js";import{C as t}from"./ComingSoon-9UkyWRkR.js";import"./ag-grid-vh0ptRm1.js";function s(){return i.jsx(t,{title:"HR Settings",description:"Configuration for hiring stages, approval chains and HR notification rules is coming in a future update."})}export{s as default};

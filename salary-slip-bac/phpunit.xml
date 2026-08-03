@@ -23,8 +23,15 @@
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="BROADCAST_CONNECTION" value="null"/>
         <env name="CACHE_STORE" value="array"/>
-        <env name="DB_CONNECTION" value="sqlite"/>
-        <env name="DB_DATABASE" value=":memory:"/>
+        <!--
+            Tests run against a real PostgreSQL, not an in-memory substitute:
+            SQLite accepted SQL that Postgres rejects, so a green suite said
+            nothing about production. Create the database once with
+            `createdb niss_hrms_test`; host/port/credentials come from .env.
+            Override DB_DATABASE in the environment to point elsewhere.
+        -->
+        <env name="DB_CONNECTION" value="pgsql"/>
+        <env name="DB_DATABASE" value="niss_hrms_test"/>
         <env name="DB_URL" value=""/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>

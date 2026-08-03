@@ -17,7 +17,7 @@ use Tests\TestCase;
  */
 class AppointmentDocumentsTest extends TestCase
 {
-    // Migrations run against the in-memory sqlite DB that phpunit.xml
+    // Migrations run against the PostgreSQL test database that phpunit.xml
     // configures, so this never touches the development database.
     use RefreshDatabase;
 

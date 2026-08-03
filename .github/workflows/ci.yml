@@ -26,13 +26,27 @@ jobs:
   laravel:
     name: Laravel — tests
     runs-on: ubuntu-latest
+    # The suite runs on the same engine as production. It used to run on an
+    # in-memory SQLite, which happily accepted SQL that Postgres rejects.
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: niss_hrms_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
 
       - uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ env.PHP_VERSION }}
-          extensions: mbstring, pdo, pdo_sqlite, pdo_pgsql, zip, gd, bcmath
+          extensions: mbstring, pdo, pdo_pgsql, zip, gd, bcmath
           coverage: none
 
       - name: Cache composer
@@ -51,6 +65,14 @@ jobs:
           cp .env.example .env 2>/dev/null || true
           php artisan key:generate --force
           php artisan jwt:secret --force || true
+          {
+            echo "DB_CONNECTION=pgsql"
+            echo "DB_HOST=127.0.0.1"
+            echo "DB_PORT=5432"
+            echo "DB_DATABASE=niss_hrms_test"
+            echo "DB_USERNAME=postgres"
+            echo "DB_PASSWORD=postgres"
+          } >> .env
 
       - name: Test
         working-directory: salary-slip-bac

@@ -1,4 +1,4 @@
-import { ResourceError } from '../masters/masters.service.js';
+import { ResourceError } from '../../lib/errors.js';
 import { friendlyImportError, parseImportDate, sanitizeRow } from './import.transforms.js';
 import { companyCodesOf, scopeFor, type Actor } from './employees.service.js';
 

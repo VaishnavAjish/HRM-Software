@@ -12,7 +12,6 @@ import multipart from '@fastify/multipart';
 import { env, isProduction } from './config/env.js';
 import { redact } from './lib/laravel/aadhaar.js';
 import { registerAuthRoutes } from './modules/auth/auth.routes.js';
-import { registerMastersRoutes } from './modules/masters/masters.routes.js';
 import { registerShiftRoutes } from './modules/shifts/shifts.routes.js';
 import { registerEmployeeRoutes } from './modules/employees/employees.routes.js';
 import { registerAuthorizationRoutes } from './modules/authorization/authorization.routes.js';
@@ -107,7 +106,6 @@ export async function buildApp(): Promise<FastifyInstance> {
   const audit = new AuditLogger(new PrismaAuditSink());
 
   await registerAuthRoutes(app, { service: authService });
-  await registerMastersRoutes(app, { authService, audit });
   await registerShiftRoutes(app, { authService, audit });
   await registerEmployeeRoutes(app, { authService, audit });
   await registerAuthorizationRoutes(app, { authService, audit });

@@ -6,7 +6,7 @@ import { AuthorizationEngine } from '../authorization/authorization.engine.js';
 import { PrismaAuthorizationRepository } from '../authorization/authorization.repository.js';
 import { requireAnyPermission } from '../authorization/enforcement.js';
 import { AuditLogger } from '../../lib/audit/audit-logger.js';
-import { ResourceError } from '../masters/masters.service.js';
+import { ResourceError } from '../../lib/errors.js';
 import { ShiftService, type ShiftScope } from './shifts.service.js';
 import { SettingsService, DEFAULT_GROUP } from '../settings/settings.service.js';
 import { PrismaShiftRepository, PrismaSettingsRepository } from './shifts.repository.js';

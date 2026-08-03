@@ -1,5 +1,13 @@
 # Enterprise RBAC (`enterprise-rbac/`)
 
+> **Status: dormant reference implementation.** Added 2026-07-29 in a single
+> commit and unchanged since. Nothing imports it. The authorization platform
+> actually in use was reimplemented inside `salary-slip-bac`
+> (`app/Services/Authorization/`) and `salary-slip-node`
+> (`src/modules/authorization/`) — see `05-SALARY-SLIP-BACKEND.md` and
+> `08-SALARY-SLIP-NODE.md`. This document still describes `enterprise-rbac/`
+> accurately because the code has not moved.
+
 ## Overview
 
 A complete, standalone Role-Based Access Control system with a backend API and frontend management UI. Designed for enterprise-grade authorization with fine-grained permission control, organization hierarchy, and complete audit trail.

@@ -195,7 +195,24 @@ class AadhaarRevealPermissionSeederTest extends TestCase
         $this->assertSame('RECORD_ACCESS', AadhaarAccess::basisFor($hr->fresh(), $employee));
     }
 
-    public function test_granting_the_permission_through_the_api_is_audited(): void
+    /**
+     * There is no longer an HTTP route that can grant this permission.
+     *
+     * Three tests here used to drive /api/rbac/permission-dimensions/page and
+     * assert that the grant and the revocation were audited. Those endpoints
+     * belonged to the Access Control console and were removed with it, so the
+     * audit trail they asserted no longer has anything to record.
+     *
+     * The gate itself is unchanged and still enforced — see the storage-level
+     * grant and revoke tests above. What changed is administration: a grant is
+     * now made by the seeder or by writing the permission_dimensions row
+     * directly, and a deployment that needs to give someone below Super Admin
+     * full-Aadhaar access has no in-product way to do it.
+     *
+     * Pinned rather than deleted so that restoring an editor is a deliberate
+     * decision with a failing test behind it, not an accident.
+     */
+    public function test_no_api_route_remains_for_granting_the_permission(): void
     {
         $superAdmin = $this->makeUser(0);
         $hr = $this->makeUser(1);
@@ -207,53 +224,18 @@ class AadhaarRevealPermissionSeederTest extends TestCase
                 'key_name' => AadhaarAccess::PERMISSION,
                 'value' => 'view_only',
             ])
-            ->assertOk();
+            ->assertStatus(404);
 
-        $entry = AuditLog::where('action', 'ASSIGN')->latest('id')->first();
-
-        $this->assertNotNull($entry);
-        $this->assertSame($superAdmin->id, $entry->user_id);
-        $this->assertSame(AadhaarAccess::PERMISSION, $entry->new_value['key_name']);
-        $this->assertNotNull($entry->ip_address);
-    }
-
-    public function test_revoking_the_permission_through_the_api_is_audited(): void
-    {
-        $superAdmin = $this->makeUser(0);
-        $hr = $this->makeUser(1);
-        $role = Role::create(['name' => 'User_'.$hr->id.'_Permissions', 'type' => 'Custom']);
-        $entry = PermissionDimension::create([
+        $existing = PermissionDimension::create([
             'dimension' => 'page', 'role_id' => $role->id,
             'key_name' => AadhaarAccess::PERMISSION, 'value' => 'view_only',
         ]);
 
         $this->withToken(auth('api')->login($superAdmin))
-            ->deleteJson("/api/rbac/permission-dimensions/page/{$entry->id}")
-            ->assertOk();
+            ->deleteJson("/api/rbac/permission-dimensions/page/{$existing->id}")
+            ->assertStatus(404);
 
-        $log = AuditLog::where('action', 'REVOKE')->latest('id')->first();
-
-        $this->assertNotNull($log);
-        $this->assertSame(AadhaarAccess::PERMISSION, $log->old_value['key_name']);
-    }
-
-    public function test_permission_audit_entries_carry_no_aadhaar_value(): void
-    {
-        $superAdmin = $this->makeUser(0);
-        $hr = $this->makeUser(1);
-        $hr->forceFill(['aadhar_card_no' => '123456788793'])->save();
-        $role = Role::create(['name' => 'User_'.$hr->id.'_Permissions', 'type' => 'Custom']);
-
-        $this->withToken(auth('api')->login($superAdmin))
-            ->postJson('/api/rbac/permission-dimensions/page', [
-                'role_id' => $role->id,
-                'key_name' => AadhaarAccess::PERMISSION,
-                'value' => 'view_only',
-            ])
-            ->assertOk();
-
-        // Permission management records a key and a value, never identity data.
-        $serialised = json_encode(AuditLog::all()->toArray());
-        $this->assertStringNotContainsString('123456788793', $serialised);
+        // The row written directly is still honoured by the gate.
+        $this->assertNotNull($this->dimensionFor($hr));
     }
 }

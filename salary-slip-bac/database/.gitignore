@@ -1,1 +1,3 @@
+# SQLite is no longer a supported engine; this only keeps a leftover
+# pre-migration artifact from ever being committed.
 *.sqlite*

@@ -4,15 +4,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\Admin\AdminController;
-use App\Http\Controllers\Admin\RoleController;
-use App\Http\Controllers\Admin\RbacDashboardController;
-use App\Http\Controllers\Admin\LocationController;
-use App\Http\Controllers\Admin\BranchController;
-use App\Http\Controllers\Admin\TeamController;
-use App\Http\Controllers\Admin\ApprovalLevelController;
 use App\Http\Controllers\Admin\PermissionDimensionController;
 use App\Http\Controllers\Admin\UserRoleController;
-use App\Http\Controllers\Admin\AuditLogController;
 use App\Http\Controllers\Admin\UploadBatchController;
 use App\Http\Controllers\Admin\AttendanceController;
 use App\Http\Controllers\Admin\ShiftController;
@@ -20,13 +13,7 @@ use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\Api\V1\DocumentController as V1DocumentController;
 use App\Http\Controllers\Api\V1\AppointmentController as V1AppointmentController;
 use App\Http\Controllers\Api\V1\AadhaarExportController as V1AadhaarExportController;
-use App\Http\Controllers\Api\V1\Authorization\AccessRequestController as V1AccessRequestController;
-use App\Http\Controllers\Api\V1\Authorization\AccessLifecycleController as V1AccessLifecycleController;
-use App\Http\Controllers\Api\V1\Authorization\AuthorizationAuditController as V1AuthorizationAuditController;
 use App\Http\Controllers\Api\V1\Authorization\AuthorizationController as V1AuthorizationController;
-use App\Http\Controllers\Api\V1\Authorization\EnterpriseRoleController as V1EnterpriseRoleController;
-use App\Http\Controllers\Api\V1\Authorization\PermissionController as V1PermissionController;
-use App\Http\Controllers\Api\V1\Authorization\PolicyController as V1PolicyController;
 use App\Support\AadhaarExportAccess;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\SalariesSlipController;
@@ -133,67 +120,22 @@ Route::middleware('jwt.auth')->group(function () {
     Route::post("profile-update", [UserController::class, "updateProfile"]);
     Route::get('my-permissions', [PermissionDimensionController::class, 'myPermissions']);
 
-    // Centralized enterprise authorization API. Management operations are
-    // protected by canonical permissions; shadow mode preserves existing admin
-    // access while differences are audited during the staged cutover.
+    /*
+     * What remains of the enterprise authorization API after the Access Control
+     * console was removed.
+     *
+     * These are decision endpoints, not administration: `me` builds the
+     * permission snapshot the client stores at login, and `check`/`check-batch`
+     * answer questions about specific records where scope and row rules cannot
+     * be resolved from that snapshot. The management surface they used to sit
+     * alongside — roles, permissions, policies, access requests, delegations,
+     * emergency grants, simulation, flags, audit and analytics — is gone along
+     * with the screens that were its only caller.
+     */
     Route::prefix('v1/authorization')->group(function () {
         Route::get('me', [V1AuthorizationController::class, 'me']);
         Route::post('check', [V1AuthorizationController::class, 'check'])->middleware('throttle:120,1');
         Route::post('check-batch', [V1AuthorizationController::class, 'checkBatch'])->middleware('throttle:60,1');
-        Route::post('simulate', [V1AuthorizationController::class, 'simulate'])
-            ->middleware('permission:admin.authorization.simulate');
-        Route::get('flags', [V1AuthorizationController::class, 'flags']);
-        Route::put('flags', [V1AuthorizationController::class, 'updateFlags'])
-            ->middleware('permission:admin.authorization.configure');
-
-        Route::get('audit', [V1AuthorizationAuditController::class, 'index'])
-            ->middleware('permission:admin.authorization.audit.read');
-        Route::get('analytics', [V1AuthorizationAuditController::class, 'analytics'])
-            ->middleware('permission:admin.authorization.analytics.read');
-    });
-
-    Route::prefix('v1/permissions')->group(function () {
-        Route::get('/', [V1PermissionController::class, 'index'])->middleware('permission:admin.permission.read');
-        Route::post('/', [V1PermissionController::class, 'store'])->middleware('permission:admin.permission.create');
-        Route::patch('{permission}', [V1PermissionController::class, 'update'])->middleware('permission:admin.permission.update');
-    });
-
-    Route::prefix('v1/roles')->group(function () {
-        Route::get('/', [V1EnterpriseRoleController::class, 'index'])->middleware('permission:admin.role.read');
-        Route::post('/', [V1EnterpriseRoleController::class, 'store'])->middleware('permission:admin.role.create');
-        Route::get('{role}', [V1EnterpriseRoleController::class, 'show'])->middleware('permission:admin.role.read');
-        Route::patch('{role}', [V1EnterpriseRoleController::class, 'update'])->middleware('permission:admin.role.update');
-        Route::delete('{role}', [V1EnterpriseRoleController::class, 'destroy'])->middleware('permission:admin.role.delete');
-        Route::post('{role}/clone', [V1EnterpriseRoleController::class, 'clone'])->middleware('permission:admin.role.clone');
-        Route::post('{role}/assignments', [V1EnterpriseRoleController::class, 'assign'])->middleware('permission:admin.role.assign');
-        Route::post('{role}/inheritance', [V1EnterpriseRoleController::class, 'inherit'])->middleware('permission:admin.role.update');
-        Route::delete('{role}/inheritance/{parentRole}', [V1EnterpriseRoleController::class, 'removeInheritance'])->middleware('permission:admin.role.update');
-    });
-
-    Route::prefix('v1/policies')->group(function () {
-        Route::get('/', [V1PolicyController::class, 'index'])->middleware('permission:admin.policy.read');
-        Route::post('/', [V1PolicyController::class, 'store'])->middleware('permission:admin.policy.create');
-        Route::get('{policy}', [V1PolicyController::class, 'show'])->middleware('permission:admin.policy.read');
-        Route::patch('{policy}', [V1PolicyController::class, 'update'])->middleware('permission:admin.policy.update');
-        Route::post('{policy}/publish', [V1PolicyController::class, 'publish'])->middleware('permission:admin.policy.publish');
-        Route::post('{policy}/rollback', [V1PolicyController::class, 'rollback'])->middleware('permission:admin.policy.rollback');
-    });
-
-    Route::prefix('v1/access-requests')->group(function () {
-        Route::post('/', [V1AccessRequestController::class, 'store']);
-        Route::get('/', [V1AccessRequestController::class, 'index'])->middleware('permission:admin.access_request.read');
-        Route::post('{accessRequest}/approve', [V1AccessRequestController::class, 'approve'])->middleware('permission:admin.access_request.approve');
-        Route::post('{accessRequest}/reject', [V1AccessRequestController::class, 'reject'])->middleware('permission:admin.access_request.approve');
-        Route::post('{accessRequest}/revoke', [V1AccessRequestController::class, 'revoke'])->middleware('permission:admin.access_request.revoke');
-    });
-
-    Route::prefix('v1/authorization')->group(function () {
-        Route::get('delegations', [V1AccessLifecycleController::class, 'delegations'])->middleware('permission:admin.delegation.manage');
-        Route::post('delegations', [V1AccessLifecycleController::class, 'createDelegation'])->middleware('permission:admin.delegation.manage');
-        Route::post('delegations/{id}/revoke', [V1AccessLifecycleController::class, 'revokeDelegation'])->whereNumber('id')->middleware('permission:admin.delegation.manage');
-        Route::get('emergency-grants', [V1AccessLifecycleController::class, 'emergencyGrants'])->middleware('permission:admin.emergency_access.approve');
-        Route::post('emergency-grants', [V1AccessLifecycleController::class, 'createEmergencyGrant'])->middleware('permission:admin.emergency_access.approve');
-        Route::post('emergency-grants/{id}/revoke', [V1AccessLifecycleController::class, 'revokeEmergencyGrant'])->whereNumber('id')->middleware('permission:admin.emergency_access.approve');
     });
 
     // Legacy document endpoints (local storage, flat document_uploads table).
@@ -310,16 +252,6 @@ Route::middleware('jwt.auth')->group(function () {
             Route::put('update/{id}', [AdminController::class, 'updateDepartment'])->middleware('permission:hr.department.update');
             Route::delete('delete/{id}', [AdminController::class, 'deleteDepartment'])->middleware('permission:hr.department.delete');
         });
-        Route::group(["prefix" => "roles"], function(){
-            Route::get('get', [RoleController::class, 'index']);
-            Route::get('permissions', [RoleController::class, 'permissions']);
-            Route::get('matrix', [RoleController::class, 'matrix']);
-            Route::put('matrix', [RoleController::class, 'updateMatrix']);
-            Route::get('show/{id}', [RoleController::class, 'show']);
-            Route::post('store', [RoleController::class, 'store']);
-            Route::put('update/{id}', [RoleController::class, 'update']);
-            Route::delete('delete/{id}', [RoleController::class, 'destroy']);
-        });
         Route::group(["prefix" => "employee"], function(){
             Route::get('get', [UserController::class, 'index'])->middleware('permission:hr.employee.read');
             Route::get('show/{id}', [UserController::class, 'show'])->middleware('permission:hr.employee.read');
@@ -429,33 +361,22 @@ Route::middleware('jwt.auth')->group(function () {
             });
         });
 
+        /*
+         * Two survivors of the removed Access Control console, kept because
+         * their callers are ordinary admin screens:
+         *   settings   -> the admin Dashboard reads the "main_dashboard" group
+         *   user-roles -> /admin/admins lists admin users
+         * The dashboard, audit-log, org-structure (locations, branches, teams,
+         * approval levels) and permission-dimension CRUD endpoints are gone
+         * with the screens that were their only caller. Per-user page grants
+         * are still readable through /my-permissions above; only the UI for
+         * editing them has been withdrawn.
+         */
         Route::group(["prefix" => "rbac"], function () {
-            Route::get('dashboard', [RbacDashboardController::class, 'index']);
-            Route::get('audit-logs', [AuditLogController::class, 'index']);
-
             Route::get('settings', [SettingsController::class, 'index']);
             Route::put('settings', [SettingsController::class, 'update']);
 
             Route::get('user-roles', [UserRoleController::class, 'index']);
-
-            foreach ([
-                'locations' => LocationController::class,
-                'branches' => BranchController::class,
-                'teams' => TeamController::class,
-                'approval-levels' => ApprovalLevelController::class,
-            ] as $prefix => $controller) {
-                Route::group(["prefix" => $prefix], function () use ($controller) {
-                    Route::get('get', [$controller, 'index']);
-                    Route::post('store', [$controller, 'store']);
-                    Route::put('update/{id}', [$controller, 'update']);
-                    Route::delete('delete/{id}', [$controller, 'destroy']);
-                });
-            }
-
-            Route::get('permission-dimensions/{dimension}/roles', [PermissionDimensionController::class, 'roles']);
-            Route::get('permission-dimensions/{dimension}', [PermissionDimensionController::class, 'index']);
-            Route::post('permission-dimensions/{dimension}', [PermissionDimensionController::class, 'store']);
-            Route::delete('permission-dimensions/{dimension}/{id}', [PermissionDimensionController::class, 'destroy']);
         });
 
         Route::get('upload-batches/{type}', [UploadBatchController::class, 'index']);

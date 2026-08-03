@@ -1,5 +1,11 @@
 # HRFlow Pro Frontend (`client/`)
 
+> **Status: dormant.** Added 2026-07-27 in a single drop (2 commits) and
+> unchanged since. Not part of the running product and not wired to the
+> salary-slip stack. The live frontend is `salary-slip-front/salary-slip-front/`
+> — see `04-SALARY-SLIP-FRONTEND.md`. This document still describes `client/`
+> accurately because the code has not moved.
+
 ## Technology Stack
 
 | Category | Technology | Version |

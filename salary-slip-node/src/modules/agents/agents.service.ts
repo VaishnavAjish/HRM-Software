@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { ResourceError } from '../masters/masters.service.js';
+import { ResourceError } from '../../lib/errors.js';
 import { isValid, normalise } from '../../lib/laravel/aadhaar.js';
 import { serializeUser, type SerializedUser } from '../users/user.serializer.js';
 import {
