@@ -32,6 +32,38 @@ function getShortMonthName(date) {
   return months[date.getMonth()];
 }
 
+/** DD/MM/YYYY — what the manual-entry field shows and expects back. */
+function formatTyped(date) {
+  if (!date || isNaN(date.getTime())) return '';
+  const dd = String(date.getDate()).padStart(2, '0');
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  return `${dd}/${mm}/${date.getFullYear()}`;
+}
+
+/**
+ * Strict DD/MM/YYYY read for typed input.
+ *
+ * parseSafeDate() is deliberately forgiving because it also reads whatever the
+ * API stored, and it falls back to `new Date(str)` — which happily turns "1"
+ * into a date. Typing needs the opposite: reject anything not yet a complete,
+ * real, in-range date so a half-finished entry is never committed.
+ */
+function parseTyped(text) {
+  const match = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/.exec(String(text).trim());
+  if (!match) return null;
+
+  const d = parseInt(match[1], 10);
+  const m = parseInt(match[2], 10) - 1;
+  const y = parseInt(match[3], 10);
+
+  if (m < 0 || m > 11) return null;
+  if (y < startYear || y > currentYearConst) return null;
+  if (d < 1 || d > getDaysInMonth(y, m)) return null;
+
+  const date = new Date(y, m, d);
+  return isNaN(date.getTime()) ? null : date;
+}
+
 function parseSafeDate(dateStr) {
   if (!dateStr) return null;
   
@@ -93,8 +125,13 @@ export default function ModernDatePicker({
   const [currentMonth, setCurrentMonth] = useState((actualDate || new Date()).getMonth());
   const [currentYear, setCurrentYear] = useState((actualDate || new Date()).getFullYear());
 
-  // View modes: 'calendar' | 'year' | 'month'
+  // View modes: 'calendar' | 'year' | 'month' | 'input'
   const [viewMode, setViewMode] = useState('calendar');
+
+  // Manual entry (the pencil in the header). Kept as raw text so a partially
+  // typed date isn't fought by reformatting mid-keystroke.
+  const [typedDate, setTypedDate] = useState('');
+  const [typedError, setTypedError] = useState('');
 
   // When picker opens, sync tempDate and view to actual value (or today)
   useEffect(() => {
@@ -161,12 +198,71 @@ export default function ModernDatePicker({
     setIsOpen(false);
   };
 
+  // Every open starts on the calendar with a clean entry field. Done here
+  // rather than in an effect so opening doesn't cost an extra render pass.
+  const togglePicker = () => {
+    if (!isOpen) {
+      setViewMode('calendar');
+      setTypedError('');
+    }
+    setIsOpen(!isOpen);
+  };
+
+  const handleToggleTypedEntry = () => {
+    if (viewMode === 'input') {
+      setViewMode('calendar');
+      return;
+    }
+    setTypedDate(formatTyped(tempDate));
+    setTypedError('');
+    setViewMode('input');
+  };
+
+  const typedHint = `Use DD/MM/YYYY between ${startYear} and ${currentYearConst}`;
+
+  const handleTypedChange = (event) => {
+    const text = event.target.value;
+    setTypedDate(text);
+
+    // An empty field isn't an error yet — it's a field being cleared to retype.
+    if (!text.trim()) {
+      setTypedError('');
+      return;
+    }
+
+    const parsed = parseTyped(text);
+    if (!parsed) {
+      setTypedError(typedHint);
+      return;
+    }
+
+    setTypedError('');
+    setTempDate(parsed);
+    setCurrentMonth(parsed.getMonth());
+    setCurrentYear(parsed.getFullYear());
+  };
+
   const handleOk = () => {
-    const yyyy = tempDate.getFullYear();
-    const mm = String(tempDate.getMonth() + 1).padStart(2, '0');
-    const dd = String(tempDate.getDate()).padStart(2, '0');
+    let commit = tempDate;
+
+    // Typing "12/13/1990" and pressing OK used to be impossible to reach; now
+    // that it is, an unparseable entry has to stop here. Closing anyway would
+    // save whatever the calendar happened to be showing, which is not what the
+    // person typed.
+    if (viewMode === 'input') {
+      const parsed = parseTyped(typedDate);
+      if (!parsed) {
+        setTypedError(typedHint);
+        return;
+      }
+      commit = parsed;
+    }
+
+    const yyyy = commit.getFullYear();
+    const mm = String(commit.getMonth() + 1).padStart(2, '0');
+    const dd = String(commit.getDate()).padStart(2, '0');
     const formatted = `${yyyy}-${mm}-${dd}`;
-    
+
     if (onChange) {
       onChange({ target: { name, value: formatted } });
     }
@@ -212,7 +308,7 @@ export default function ModernDatePicker({
     <div className="relative w-full" ref={containerRef}>
       <div 
         className={`relative w-full cursor-pointer group ${disabled ? 'opacity-50 pointer-events-none' : ''}`}
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={togglePicker}
       >
         <input
           type="text"
@@ -240,8 +336,20 @@ export default function ModernDatePicker({
                 <h2 className="text-3xl font-normal text-gray-900 dark:text-white tracking-tight">
                   {getShortDayName(tempDate)}, {getShortMonthName(tempDate)} {tempDate.getDate()}
                 </h2>
-                <button type="button" aria-label="Edit date" className="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors p-2 hover:bg-black/5 dark:hover:bg-white/10 rounded-full">
-                  <Pencil size={20} strokeWidth={2} aria-hidden="true" />
+                <button
+                  type="button"
+                  onClick={handleToggleTypedEntry}
+                  aria-label={viewMode === 'input' ? 'Pick date from calendar' : 'Type date'}
+                  aria-pressed={viewMode === 'input'}
+                  className={`transition-colors p-2 rounded-full ${
+                    viewMode === 'input'
+                      ? 'bg-brand-600 text-white dark:bg-brand-500'
+                      : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/10'
+                  }`}
+                >
+                  {viewMode === 'input'
+                    ? <CalendarIcon size={20} strokeWidth={2} aria-hidden="true" />
+                    : <Pencil size={20} strokeWidth={2} aria-hidden="true" />}
                 </button>
               </div>
             </div>
@@ -314,6 +422,41 @@ export default function ModernDatePicker({
                       {y}
                     </button>
                   ))}
+                </div>
+              )}
+
+              {viewMode === 'input' && (
+                <div className="h-full px-4 py-6 flex flex-col">
+                  <label
+                    htmlFor={`${name || 'date'}-typed`}
+                    className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-2"
+                  >
+                    Date
+                  </label>
+                  <input
+                    id={`${name || 'date'}-typed`}
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    value={typedDate}
+                    onChange={handleTypedChange}
+                    placeholder="DD/MM/YYYY"
+                    aria-invalid={typedError ? 'true' : 'false'}
+                    aria-describedby={`${name || 'date'}-typed-hint`}
+                    className={`w-full bg-white dark:bg-gray-800 border rounded-xl px-4 py-2.5 text-sm text-gray-900 dark:text-white outline-none transition-colors ${
+                      typedError
+                        ? 'border-red-500 focus:border-red-500'
+                        : 'border-gray-200 dark:border-gray-700 focus:border-brand-500'
+                    }`}
+                  />
+                  <p
+                    id={`${name || 'date'}-typed-hint`}
+                    className={`mt-2 text-xs ${
+                      typedError ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-400'
+                    }`}
+                  >
+                    {typedError || typedHint}
+                  </p>
                 </div>
               )}
 

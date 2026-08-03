@@ -11,6 +11,7 @@ use App\Services\Documents\DocumentService;
 use App\Support\AadhaarReference;
 use App\Support\DocumentType;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
@@ -331,7 +332,11 @@ class UserController extends Controller
             return true;
         }
         if ((int) $userAuth->role === 1) {
-            return $employee->company_code === $userAuth->company_code;
+            $userCompanyCodes = array_filter(array_map('trim', explode(',', (string)$userAuth->company_code)));
+            if (in_array('all', $userCompanyCodes) || in_array('all-companies', $userCompanyCodes)) {
+                return true;
+            }
+            return in_array((string)$employee->company_code, $userCompanyCodes, true);
         }
         if ((int) $userAuth->role === 2) {
             return $employee->company_code === $userAuth->company_code
@@ -367,14 +372,6 @@ class UserController extends Controller
 
     public function index(Request $request)
     {
-        // Auto-fix any legacy employees with null/empty unit
-        \App\Models\User::whereNull('unit')->orWhere('unit', '')
-            ->where('company_code', 'nidhi-impex')
-            ->update(['unit' => 'Shreeji']);
-        \App\Models\User::whereNull('unit')->orWhere('unit', '')
-            ->whereIn('company_code', ['silverstar', 'silver-star'])
-            ->update(['unit' => 'Daduk']);
-
         $status = $request->status;
         $query = User::where('is_deleted', 0)
             ->whereNotIn('role', [0, 1, 2]);
@@ -395,11 +392,10 @@ class UserController extends Controller
         }
 
         $userAuth = auth('api')->user();
-        if ($userAuth && (int) $userAuth->role === 1) {
-            $query->where('company_code', $userAuth->company_code);
-        } elseif ($userAuth && (int) $userAuth->role === 2) {
-            $query->where('company_code', $userAuth->company_code)->where('unit', $userAuth->unit);
-        } elseif ($request->company_code) {
+        if ($userAuth) {
+            app(\App\Services\Authorization\AuthorizedUserQuery::class)->apply($query, $userAuth);
+        }
+        if ($request->company_code) {
             $codes = explode(',', $request->company_code);
             if (!in_array('all', $codes) && !in_array('all-companies', $codes)) {
                 $query->whereIn('company_code', $codes);
@@ -429,7 +425,9 @@ class UserController extends Controller
         // disclosed rather than the whole table.
         $disclosed = 0;
 
-        $rows = collect($employees->items())->map(function (User $employee) use ($userAuth, &$disclosed) {
+        $obligations = $request->attributes->get('authorization_decision')?->obligations ?? [];
+        $fieldSecurity = app(\App\Services\Authorization\FieldSecurity::class);
+        $rows = collect($employees->items())->map(function (User $employee) use ($userAuth, &$disclosed, $obligations, $fieldSecurity) {
             $data = $employee->attributesToArray();
 
             $full = \App\Support\AadhaarDisclosure::fullFor($employee, $userAuth);
@@ -439,7 +437,7 @@ class UserController extends Controller
                 $disclosed++;
             }
 
-            return $data;
+            return $fieldSecurity->filterResponse($data, $obligations);
         })->all();
 
         \App\Support\AadhaarDisclosure::auditListDisclosure(
@@ -474,8 +472,11 @@ class UserController extends Controller
         
         $userAuth = auth('api')->user();
         if ($userAuth) {
-            if ((int) $userAuth->role === 1 && $employee->company_code !== $userAuth->company_code) {
-                return response()->json(['status' => false, 'message' => 'Employee not found'], 404);
+            if ((int) $userAuth->role === 1) {
+                $userCompanyCodes = array_filter(array_map('trim', explode(',', (string)$userAuth->company_code)));
+                if (!in_array('all', $userCompanyCodes) && !in_array('all-companies', $userCompanyCodes) && !in_array((string)$employee->company_code, $userCompanyCodes, true)) {
+                    return response()->json(['status' => false, 'message' => 'Employee not found'], 404);
+                }
             }
             if ((int) $userAuth->role === 2 && ($employee->company_code !== $userAuth->company_code || $employee->unit !== $userAuth->unit)) {
                 return response()->json(['status' => false, 'message' => 'Employee not found'], 404);
@@ -489,6 +490,10 @@ class UserController extends Controller
             $employee,
             $userAuth,
             'EMPLOYEE_FULL_AADHAAR_VIEWED'
+        );
+        $payload = app(\App\Services\Authorization\FieldSecurity::class)->filterResponse(
+            $payload,
+            $request->attributes->get('authorization_decision')?->obligations ?? []
         );
 
         return response()->json(['status' => true, 'data' => $payload]);
@@ -531,6 +536,18 @@ class UserController extends Controller
         // Normalise to digits, and never store a partial number.
         $data = $this->withSafeAadhaar($data);
 
+        if (isset($data['aadhar_card_no'])) {
+            $conflict = User::where('aadhar_card_no', $data['aadhar_card_no'])
+                ->where('is_deleted', 0)
+                ->first();
+            if ($conflict) {
+                return response()->json([
+                    'status' => false,
+                    'message' => "This Aadhaar number is already assigned to {$conflict->name}",
+                ], 422);
+            }
+        }
+
         $employee = User::create($data);
 
         return response()->json(['status' => true, 'message' => 'Employee created', 'data' => $employee]);
@@ -549,12 +566,36 @@ class UserController extends Controller
         }
 
         $data = $this->guardPrivilegedFields($userAuth, $request->all());
+        $forbiddenFields = app(\App\Services\Authorization\FieldSecurity::class)->forbiddenUpdates(
+            $data,
+            $request->attributes->get('authorization_decision')?->obligations ?? []
+        );
+        if ($forbiddenFields) {
+            return response()->json([
+                'status' => false,
+                'message' => 'One or more fields are read-only for your access scope.',
+                'fields' => $forbiddenFields,
+            ], 403);
+        }
         // The employee edit form cannot see the stored number either, so it
         // posts aadhar_card_no: null. Without this the first edit of any
         // employee erased their Aadhaar and detached them from their documents.
         $data = $this->withSafeAadhaar($data);
         if (isset($data['password'])) {
             $data['password'] = $data['password'];
+        }
+
+        if (isset($data['aadhar_card_no'])) {
+            $aadhaarConflict = User::where('aadhar_card_no', $data['aadhar_card_no'])
+                ->where('id', '!=', $employee->id)
+                ->where('is_deleted', 0)
+                ->first();
+            if ($aadhaarConflict) {
+                return response()->json([
+                    'status' => false,
+                    'message' => "This Aadhaar number is already assigned to {$aadhaarConflict->name}",
+                ], 422);
+            }
         }
 
         $newEmpCode = isset($data['emp_code']) ? trim((string) $data['emp_code']) : null;
@@ -1491,10 +1532,23 @@ class UserController extends Controller
             })
             ->with('addedBy:id,name,email,emp_code');
 
+        if ($userAuth && $userAuth->type !== 'agent') {
+            app(\App\Services\Authorization\AuthorizedUserQuery::class)->apply($query, $userAuth);
+        }
+
         if ($userAuth && $userAuth->type === 'agent') {
             $query->where('added_by', $userAuth->id);
         } elseif ($userAuth && (int) $userAuth->role === 1) {
-            $query->where('company_code', $userAuth->company_code);
+            $userCompanyCodes = array_filter(array_map('trim', explode(',', (string)$userAuth->company_code)));
+            $hasAllCompanies = in_array('all', $userCompanyCodes) || in_array('all-companies', $userCompanyCodes) || count($userCompanyCodes) >= 2;
+
+            if ($request->company_code && !in_array($request->company_code, ['all', 'all-companies'])) {
+                $reqCodes = array_filter(array_map('trim', explode(',', $request->company_code)));
+                $allowedCodes = $hasAllCompanies ? $reqCodes : array_intersect($reqCodes, $userCompanyCodes);
+                $query->whereIn('company_code', !empty($allowedCodes) ? $allowedCodes : ['__none__']);
+            } elseif (!$hasAllCompanies) {
+                $query->whereIn('company_code', $userCompanyCodes);
+            }
         } elseif ($userAuth && (int) $userAuth->role === 2) {
             $query->where('company_code', $userAuth->company_code)->where('unit', $userAuth->unit);
         } elseif ($request->company_code) {
@@ -1517,7 +1571,9 @@ class UserController extends Controller
         // places this decision was never made about.
         $disclosed = 0;
 
-        $appointments = $query->orderBy('id', 'desc')->get()->map(function ($item) use ($userAuth, &$disclosed) {
+        $obligations = $request->attributes->get('authorization_decision')?->obligations ?? [];
+        $fieldSecurity = app(\App\Services\Authorization\FieldSecurity::class);
+        $appointments = $query->orderBy('id', 'desc')->get()->map(function ($item) use ($userAuth, &$disclosed, $obligations, $fieldSecurity) {
             $data = $item->attributesToArray();
             $data['agent'] = $item->addedBy
                 ? $item->addedBy->only(['id', 'name', 'email', 'emp_code'])
@@ -1530,7 +1586,7 @@ class UserController extends Controller
                 $disclosed++;
             }
 
-            return $data;
+            return $fieldSecurity->filterResponse($data, $obligations);
         });
 
         $appointments = $this->attachAppointmentPhotos($appointments);
@@ -1734,7 +1790,16 @@ class UserController extends Controller
         $query = User::where('type', 'trial')->where('processed', 0);
 
         if ($userAuth && (int) $userAuth->role === 1) {
-            $query->where('company_code', $userAuth->company_code);
+            $userCompanyCodes = array_filter(array_map('trim', explode(',', (string)$userAuth->company_code)));
+            $hasAllCompanies = in_array('all', $userCompanyCodes) || in_array('all-companies', $userCompanyCodes) || count($userCompanyCodes) >= 2;
+
+            if ($request->company_code && !in_array($request->company_code, ['all', 'all-companies'])) {
+                $reqCodes = array_filter(array_map('trim', explode(',', $request->company_code)));
+                $allowedCodes = $hasAllCompanies ? $reqCodes : array_intersect($reqCodes, $userCompanyCodes);
+                $query->whereIn('company_code', !empty($allowedCodes) ? $allowedCodes : ['__none__']);
+            } elseif (!$hasAllCompanies) {
+                $query->whereIn('company_code', $userCompanyCodes);
+            }
         } elseif ($userAuth && (int) $userAuth->role === 2) {
             $query->where('company_code', $userAuth->company_code)->where('unit', $userAuth->unit);
         } elseif ($request->company_code) {
@@ -1770,14 +1835,58 @@ class UserController extends Controller
         ]);
     }
 
+    /**
+     * Fields a trial-form edit may never set.
+     *
+     * User::$fillable is shared with employee creation, so it carries role,
+     * password, company_code and is_deleted. update($request->all()) against
+     * that list on a route agents can reach is a privilege-escalation
+     * primitive. The trial form UI submits none of these: it sends the form
+     * body, {print: 1} when printing, and {checkbox: 0|1} when approving.
+     */
+    private const TRIAL_FORM_PROTECTED_FIELDS = [
+        'id', 'role', 'password', 'company_code', 'is_deleted',
+        'emp_code', 'added_by', 'type', 'trial_form_id',
+    ];
+
+    /**
+     * The trial form this caller may act on, or null.
+     *
+     * Mirrors the scoping getTrialForms() already applies so the list and the
+     * operations on it agree: role 1 their company, role 2 their company and
+     * unit, an agent their own submissions, role 0 everything. Pinned to
+     * type = 'trial' so a trial-form route can never reach an employee or an
+     * administrator row — both methods here previously took the id straight
+     * from the URL and acted on whatever User::find() returned.
+     */
+    private function findTrialFormFor(?User $actor, $id): ?User
+    {
+        if (!$actor) {
+            return null;
+        }
+
+        $query = User::where('type', 'trial')->whereKey($id);
+
+        if ($actor->type === 'agent' || (int) $actor->role === 4) {
+            $query->where('added_by', $actor->id);
+        } elseif ((int) $actor->role === 1) {
+            $query->where('company_code', $actor->company_code);
+        } elseif ((int) $actor->role === 2) {
+            $query->where('company_code', $actor->company_code)
+                ->where('unit', $actor->unit);
+        }
+
+        return $query->first();
+    }
+
     public function updateTrialForm($id, Request $request)
     {
-        $user = User::find($id);
+        $user = $this->findTrialFormFor(auth('api')->user(), $id);
         if (!$user) {
             return response()->json(['status' => false, 'message' => 'Not found'], 404);
         }
 
-        $data = $request->all();
+        $data = Arr::except($request->all(), self::TRIAL_FORM_PROTECTED_FIELDS);
         $data = $this->withSafeAadhaar($data);
 
         $files = $this->storeUploadedFiles($request, ['photo', 'adhar_image'], $user);
@@ -1792,7 +1901,9 @@ class UserController extends Controller
 
     public function deleteTrialForm($id)
     {
-        $user = User::find($id);
+        // User has no SoftDeletes trait, so this is permanent — all the more
+        // reason the row has to be one this caller owns.
+        $user = $this->findTrialFormFor(auth('api')->user(), $id);
         if (!$user) {
             return response()->json(['status' => false, 'message' => 'Not found'], 404);
         }
@@ -1809,7 +1920,16 @@ class UserController extends Controller
         $query = User::where('type', 'agent');
         
         if ($userAuth && (int) $userAuth->role === 1) {
-            $query->where('company_code', $userAuth->company_code);
+            $userCompanyCodes = array_filter(array_map('trim', explode(',', (string)$userAuth->company_code)));
+            $hasAllCompanies = in_array('all', $userCompanyCodes) || in_array('all-companies', $userCompanyCodes) || count($userCompanyCodes) >= 2;
+
+            if ($request->company_code && !in_array($request->company_code, ['all', 'all-companies'])) {
+                $reqCodes = array_filter(array_map('trim', explode(',', $request->company_code)));
+                $allowedCodes = $hasAllCompanies ? $reqCodes : array_intersect($reqCodes, $userCompanyCodes);
+                $query->whereIn('company_code', !empty($allowedCodes) ? $allowedCodes : ['__none__']);
+            } elseif (!$hasAllCompanies) {
+                $query->whereIn('company_code', $userCompanyCodes);
+            }
         } elseif ($userAuth && (int) $userAuth->role === 2) {
             $query->where('company_code', $userAuth->company_code)->where('unit', $userAuth->unit);
         } elseif ($request->company_code) {

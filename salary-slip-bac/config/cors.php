@@ -1,12 +1,20 @@
 <?php
 
+$proxyHandlesCors = filter_var(
+    env('CORS_HANDLED_BY_PROXY', env('APP_ENV') === 'production'),
+    FILTER_VALIDATE_BOOL
+);
+
 return [
 
     'paths' => ['api/*', 'sanctum/csrf-cookie', '*'],
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => ['*'],
+    // niss.pro's edge proxy already emits the production CORS header. Emitting
+    // a second wildcard from Laravel produces the invalid `*, *` value browsers
+    // reject. Local/dev servers have no proxy, so Laravel remains the owner there.
+    'allowed_origins' => $proxyHandlesCors ? [] : ['*'],
 
     'allowed_origins_patterns' => [],
 

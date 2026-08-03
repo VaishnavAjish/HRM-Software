@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import { authApi, rbacApi } from "../utils/api";
+import { authApi, authorizationApi, rbacApi } from "../utils/api";
 import { resolveCompanyId } from "../config/companyConfig";
 import {
   broadcastSignOut,
@@ -94,12 +94,30 @@ function buildAuthUser(apiUser, fallbackUser = {}, loginData = {}) {
 
 async function loadPermissionsForUser(builtUser) {
   if (!builtUser?.accessToken) return builtUser;
-  if (builtUser.rawRole === 0) {
-    // Super Admin gets all access
-    return { ...builtUser, permissions: null }; 
+
+  try {
+    const enterprise = await authorizationApi.me(builtUser.accessToken, builtUser.tokenType);
+    if (enterprise?.success && enterprise?.data?.permissions) {
+      const decisions = enterprise.data.permissions;
+      const enterprisePortalRole = decisions["ui.admin.dashboard.view"]?.allowed ||
+        decisions["ui.admin.authorization.view"]?.allowed
+        ? "admin"
+        : builtUser.role;
+      return {
+        ...builtUser,
+        role: enterprisePortalRole,
+        authorization: enterprise.data,
+        permissions: Object.fromEntries(
+          Object.entries(decisions).map(([code, decision]) => [code, decision.allowed ? "read_write" : "no_access"]),
+        ),
+      };
+    }
+  } catch (err) {
+    console.warn("Enterprise authorization snapshot unavailable; using compatibility permissions.", err);
   }
 
   try {
+    if (builtUser.rawRole === 0) return { ...builtUser, permissions: { "*": "read_write" } };
     const res = await rbacApi.getMyPermissions(builtUser.accessToken, builtUser.tokenType);
     if (res.status) {
       const perms = {};
@@ -111,7 +129,7 @@ async function loadPermissionsForUser(builtUser) {
   } catch (err) {
     console.error("Failed to load user permissions", err);
   }
-  return { ...builtUser, permissions: {} }; // Empty object means default permissions
+  return { ...builtUser, permissions: {}, authorization: { permissions: {}, featureFlags: {} } };
 }
 
 export function AuthProvider({ children }) {

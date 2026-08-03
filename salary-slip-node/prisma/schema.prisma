@@ -1,0 +1,1620 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model aadhaar_export_authorizations {
+  id                                                        BigInt    @id @default(autoincrement())
+  uuid                                                      String    @unique(map: "aadhaar_export_authorizations_uuid_unique") @db.Uuid
+  token_hash                                                String    @unique(map: "aadhaar_export_authorizations_token_hash_unique") @db.VarChar(64)
+  actor_user_id                                             BigInt
+  target_user_id                                            BigInt
+  surface                                                   String    @db.VarChar(32)
+  export_type                                               String    @db.VarChar(16)
+  permission                                                String    @db.VarChar(255)
+  organization_code                                         String?   @db.VarChar(255)
+  unit                                                      String?   @db.VarChar(255)
+  expires_at                                                DateTime  @db.Timestamp(0)
+  used_at                                                   DateTime? @db.Timestamp(0)
+  request_id                                                String?   @db.VarChar(255)
+  audit_log_id                                              BigInt?
+  created_at                                                DateTime? @db.Timestamp(0)
+  updated_at                                                DateTime? @db.Timestamp(0)
+  users_aadhaar_export_authorizations_actor_user_idTousers  users     @relation("aadhaar_export_authorizations_actor_user_idTousers", fields: [actor_user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "aadhaar_export_authorizations_actor_user_id_foreign")
+  users_aadhaar_export_authorizations_target_user_idTousers users     @relation("aadhaar_export_authorizations_target_user_idTousers", fields: [target_user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "aadhaar_export_authorizations_target_user_id_foreign")
+
+  @@index([actor_user_id, target_user_id], map: "aadhaar_export_authorizations_actor_user_id_target_user_id_inde")
+  @@index([expires_at], map: "aadhaar_export_authorizations_expires_at_index")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model approval_levels {
+  id         BigInt    @id @default(autoincrement())
+  name       String    @db.VarChar(255)
+  level      Int       @default(1)
+  type       String    @default("Manual Approval") @db.VarChar(255)
+  created_at DateTime? @db.Timestamp(0)
+  updated_at DateTime? @db.Timestamp(0)
+}
+
+model attendances {
+  id           BigInt    @id @default(autoincrement())
+  emp_code     String    @db.VarChar(255)
+  company_code String    @db.VarChar(255)
+  unit         String?   @db.VarChar(255)
+  date         DateTime  @db.Date
+  status       String    @db.VarChar(255)
+  marked_by    BigInt?
+  created_at   DateTime? @db.Timestamp(0)
+  updated_at   DateTime? @db.Timestamp(0)
+  users        users?    @relation(fields: [marked_by], references: [id], onUpdate: NoAction, map: "attendances_marked_by_foreign")
+
+  @@unique([emp_code, company_code, date], map: "attendances_emp_code_company_code_date_unique")
+  @@index([company_code, unit, date], map: "attendances_company_code_unit_date_index")
+}
+
+model audit_logs {
+  id         BigInt    @id @default(autoincrement())
+  user_id    BigInt?
+  action     String    @db.VarChar(255)
+  module     String    @db.VarChar(255)
+  old_value  Json?     @db.Json
+  new_value  Json?     @db.Json
+  ip_address String?   @db.VarChar(255)
+  user_agent String?   @db.VarChar(255)
+  created_at DateTime? @db.Timestamp(0)
+  updated_at DateTime? @db.Timestamp(0)
+  users      users?    @relation(fields: [user_id], references: [id], onUpdate: NoAction, map: "audit_logs_user_id_foreign")
+
+  @@index([created_at], map: "audit_logs_created_at_index")
+  @@index([module], map: "audit_logs_module_index")
+}
+
+model auth_sessions {
+  id                                    BigInt    @id @default(autoincrement())
+  user_id                               BigInt
+  token_id                              String    @unique(map: "auth_sessions_token_id_unique") @db.VarChar(64)
+  ip                                    String?   @db.VarChar(64)
+  user_agent                            String?   @db.VarChar(512)
+  device_label                          String?   @db.VarChar(190)
+  last_seen_at                          DateTime? @db.Timestamp(0)
+  revoked_at                            DateTime? @db.Timestamp(0)
+  revoked_by                            BigInt?
+  revoke_reason                         String?   @db.VarChar(190)
+  created_at                            DateTime? @db.Timestamp(0)
+  updated_at                            DateTime? @db.Timestamp(0)
+  users_auth_sessions_revoked_byTousers users?    @relation("auth_sessions_revoked_byTousers", fields: [revoked_by], references: [id], onUpdate: NoAction, map: "auth_sessions_revoked_by_foreign")
+  users_auth_sessions_user_idTousers    users     @relation("auth_sessions_user_idTousers", fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "auth_sessions_user_id_foreign")
+
+  @@index([user_id, revoked_at], map: "auth_sessions_user_id_revoked_at_index")
+}
+
+model branches {
+  id          BigInt     @id @default(autoincrement())
+  name        String     @db.VarChar(255)
+  code        String     @unique(map: "branches_code_unique") @db.VarChar(255)
+  location_id BigInt?
+  created_at  DateTime?  @db.Timestamp(0)
+  updated_at  DateTime?  @db.Timestamp(0)
+  locations   locations? @relation(fields: [location_id], references: [id], onUpdate: NoAction, map: "branches_location_id_foreign")
+}
+
+model branding_configurations {
+  id           BigInt     @id @default(autoincrement())
+  company_id   BigInt?
+  status       String     @default("draft") @db.VarChar(16)
+  config       Json       @db.Json
+  version      Int        @default(1)
+  published_at DateTime?  @db.Timestamp(0)
+  published_by BigInt?
+  created_at   DateTime?  @db.Timestamp(0)
+  updated_at   DateTime?  @db.Timestamp(0)
+  companies    companies? @relation(fields: [company_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "branding_configurations_company_id_foreign")
+  users        users?     @relation(fields: [published_by], references: [id], onUpdate: NoAction, map: "branding_configurations_published_by_foreign")
+
+  @@index([company_id, status], map: "branding_configurations_company_id_status_index")
+}
+
+model business_groups {
+  id                        BigInt                      @id @default(autoincrement())
+  code                      String                      @unique(map: "business_groups_code_unique") @db.VarChar(64)
+  name                      String                      @db.VarChar(255)
+  registered_name           String?                     @db.VarChar(255)
+  group_type                String                      @default("operating") @db.VarChar(32)
+  description               String?
+  country                   String                      @default("IN") @db.VarChar(8)
+  default_currency          String                      @default("INR") @db.VarChar(8)
+  timezone                  String                      @default("Asia/Kolkata") @db.VarChar(64)
+  status                    String                      @default("active") @db.VarChar(24)
+  status_reason             String?
+  effective_from            DateTime?                   @db.Date
+  effective_to              DateTime?                   @db.Date
+  status_changed_by         BigInt?
+  created_at                DateTime?                   @db.Timestamp(0)
+  updated_at                DateTime?                   @db.Timestamp(0)
+  users                     users?                      @relation(fields: [status_changed_by], references: [id], onUpdate: NoAction, map: "business_groups_status_changed_by_foreign")
+  group_admin_assignments   group_admin_assignments[]
+  group_company_assignments group_company_assignments[]
+  group_policies            group_policies[]
+
+  @@index([status], map: "business_groups_status_index")
+}
+
+model cache {
+  key        String @id @db.VarChar(255)
+  value      String
+  expiration Int
+
+  @@index([expiration], map: "cache_expiration_index")
+}
+
+model cache_locks {
+  key        String @id @db.VarChar(255)
+  owner      String @db.VarChar(255)
+  expiration Int
+
+  @@index([expiration], map: "cache_locks_expiration_index")
+}
+
+model companies {
+  id                              BigInt                            @id @default(autoincrement())
+  code                            String                            @unique(map: "companies_code_unique") @db.VarChar(64)
+  name                            String                            @db.VarChar(255)
+  legal_name                      String?                           @db.VarChar(255)
+  aliases                         Json?                             @db.Json
+  status                          String                            @default("active") @db.VarChar(24)
+  timezone                        String                            @default("Asia/Kolkata") @db.VarChar(64)
+  default_currency                String                            @default("INR") @db.VarChar(8)
+  contract_start                  DateTime?                         @db.Date
+  contract_end                    DateTime?                         @db.Date
+  status_reason                   String?
+  status_changed_by               BigInt?
+  created_at                      DateTime?                         @db.Timestamp(0)
+  updated_at                      DateTime?                         @db.Timestamp(0)
+  registration_number             String?                           @db.VarChar(255)
+  industry                        String?                           @db.VarChar(96)
+  website                         String?                           @db.VarChar(255)
+  primary_email                   String?                           @db.VarChar(255)
+  primary_phone                   String?                           @db.VarChar(32)
+  registered_address              String?
+  fiscal_year_start_month         Int                               @default(4) @db.SmallInt
+  branding_configurations         branding_configurations[]
+  users                           users?                            @relation(fields: [status_changed_by], references: [id], onUpdate: NoAction, map: "companies_status_changed_by_foreign")
+  company_admin_assignments       company_admin_assignments[]
+  company_documents               company_documents[]
+  company_module_activations      company_module_activations[]
+  company_payroll_configurations  company_payroll_configurations[]
+  company_statutory_registrations company_statutory_registrations[]
+  company_units                   company_units[]
+  financial_centres               financial_centres[]
+  group_company_assignments       group_company_assignments[]
+  legal_entities                  legal_entities[]
+  location_calendar_entries       location_calendar_entries[]
+  organization_units              organization_units[]
+  positions                       positions[]
+  workforce_forecasts             workforce_forecasts[]
+  workforce_plans                 workforce_plans[]
+
+  @@index([status], map: "companies_status_index")
+}
+
+model company_admin_assignments {
+  id                                                 BigInt    @id @default(autoincrement())
+  company_id                                         BigInt
+  user_id                                            BigInt
+  role_label                                         String    @default("Company Administrator") @db.VarChar(64)
+  status                                             String    @default("active") @db.VarChar(16)
+  effective_from                                     DateTime  @db.Date
+  effective_to                                       DateTime? @db.Date
+  reason                                             String?
+  assigned_by                                        BigInt?
+  revoked_by                                         BigInt?
+  revoked_at                                         DateTime? @db.Timestamp(0)
+  revocation_reason                                  String?
+  created_at                                         DateTime? @db.Timestamp(0)
+  updated_at                                         DateTime? @db.Timestamp(0)
+  users_company_admin_assignments_assigned_byTousers users?    @relation("company_admin_assignments_assigned_byTousers", fields: [assigned_by], references: [id], onUpdate: NoAction, map: "company_admin_assignments_assigned_by_foreign")
+  companies                                          companies @relation(fields: [company_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "company_admin_assignments_company_id_foreign")
+  users_company_admin_assignments_revoked_byTousers  users?    @relation("company_admin_assignments_revoked_byTousers", fields: [revoked_by], references: [id], onUpdate: NoAction, map: "company_admin_assignments_revoked_by_foreign")
+  users_company_admin_assignments_user_idTousers     users     @relation("company_admin_assignments_user_idTousers", fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "company_admin_assignments_user_id_foreign")
+
+  @@index([company_id, status], map: "company_admin_assignments_company_id_status_index")
+  @@index([user_id, status], map: "company_admin_assignments_user_id_status_index")
+}
+
+model company_documents {
+  id                        BigInt          @id @default(autoincrement())
+  company_id                BigInt
+  legal_entity_id           BigInt?
+  document_type             String          @db.VarChar(48)
+  name                      String          @db.VarChar(255)
+  document_number_encrypted String?
+  document_number_masked    String?         @db.VarChar(64)
+  issuing_authority         String?         @db.VarChar(255)
+  issue_date                DateTime?       @db.Date
+  expires_at                DateTime?       @db.Date
+  verification_status       String          @default("unverified") @db.VarChar(24)
+  status                    String          @default("active") @db.VarChar(24)
+  storage_key               String?         @db.VarChar(500)
+  reminder_days             Int             @default(30)
+  notes                     String?
+  created_by                BigInt?
+  created_at                DateTime?       @db.Timestamp(0)
+  updated_at                DateTime?       @db.Timestamp(0)
+  companies                 companies       @relation(fields: [company_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "company_documents_company_id_foreign")
+  users                     users?          @relation(fields: [created_by], references: [id], onUpdate: NoAction, map: "company_documents_created_by_foreign")
+  legal_entities            legal_entities? @relation(fields: [legal_entity_id], references: [id], onUpdate: NoAction, map: "company_documents_legal_entity_id_foreign")
+
+  @@index([company_id, document_type, status], map: "company_documents_company_id_document_type_status_index")
+  @@index([expires_at], map: "company_documents_expires_at_index")
+}
+
+model company_module_activations {
+  id                   BigInt             @id @default(autoincrement())
+  company_id           BigInt
+  module_definition_id BigInt
+  status               String             @default("enabled") @db.VarChar(24)
+  reason               String?
+  changed_by           BigInt?
+  created_at           DateTime?          @db.Timestamp(0)
+  updated_at           DateTime?          @db.Timestamp(0)
+  users                users?             @relation(fields: [changed_by], references: [id], onUpdate: NoAction, map: "company_module_activations_changed_by_foreign")
+  companies            companies          @relation(fields: [company_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "company_module_activations_company_id_foreign")
+  module_definitions   module_definitions @relation(fields: [module_definition_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "company_module_activations_module_definition_id_foreign")
+
+  @@unique([company_id, module_definition_id], map: "company_module_activations_company_id_module_definition_id_uniq")
+}
+
+model company_payroll_configurations {
+  id                                                      BigInt          @id @default(autoincrement())
+  company_id                                              BigInt
+  legal_entity_id                                         BigInt?
+  config                                                  Json            @db.Json
+  status                                                  String          @default("draft") @db.VarChar(24)
+  approved_by                                             BigInt?
+  approved_at                                             DateTime?       @db.Timestamp(0)
+  locked_by                                               BigInt?
+  locked_at                                               DateTime?       @db.Timestamp(0)
+  created_at                                              DateTime?       @db.Timestamp(0)
+  updated_at                                              DateTime?       @db.Timestamp(0)
+  users_company_payroll_configurations_approved_byTousers users?          @relation("company_payroll_configurations_approved_byTousers", fields: [approved_by], references: [id], onUpdate: NoAction, map: "company_payroll_configurations_approved_by_foreign")
+  companies                                               companies       @relation(fields: [company_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "company_payroll_configurations_company_id_foreign")
+  legal_entities                                          legal_entities? @relation(fields: [legal_entity_id], references: [id], onUpdate: NoAction, map: "company_payroll_configurations_legal_entity_id_foreign")
+  users_company_payroll_configurations_locked_byTousers   users?          @relation("company_payroll_configurations_locked_byTousers", fields: [locked_by], references: [id], onUpdate: NoAction, map: "company_payroll_configurations_locked_by_foreign")
+
+  @@unique([company_id, legal_entity_id], map: "company_payroll_configurations_company_id_legal_entity_id_uniqu")
+}
+
+model company_statutory_registrations {
+  id                            BigInt          @id @default(autoincrement())
+  company_id                    BigInt
+  legal_entity_id               BigInt?
+  registration_type             String          @db.VarChar(32)
+  registration_number_encrypted String?
+  registration_number_masked    String?         @db.VarChar(64)
+  state                         String?         @db.VarChar(64)
+  authority                     String?         @db.VarChar(255)
+  registration_date             DateTime?       @db.Date
+  effective_from                DateTime?       @db.Date
+  expires_at                    DateTime?       @db.Date
+  filing_frequency              String?         @db.VarChar(24)
+  responsible_user_id           BigInt?
+  verification_status           String          @default("unverified") @db.VarChar(24)
+  status                        String          @default("active") @db.VarChar(24)
+  reminder_days                 Int             @default(30)
+  notes                         String?
+  created_at                    DateTime?       @db.Timestamp(0)
+  updated_at                    DateTime?       @db.Timestamp(0)
+  companies                     companies       @relation(fields: [company_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "company_statutory_registrations_company_id_foreign")
+  legal_entities                legal_entities? @relation(fields: [legal_entity_id], references: [id], onUpdate: NoAction, map: "company_statutory_registrations_legal_entity_id_foreign")
+  users                         users?          @relation(fields: [responsible_user_id], references: [id], onUpdate: NoAction, map: "company_statutory_registrations_responsible_user_id_foreign")
+
+  @@index([company_id, registration_type, status], map: "company_statutory_registrations_company_id_registration_type_st")
+  @@index([expires_at], map: "company_statutory_registrations_expires_at_index")
+}
+
+model company_units {
+  id                        BigInt                      @id @default(autoincrement())
+  company_id                BigInt
+  code                      String                      @db.VarChar(64)
+  name                      String                      @db.VarChar(255)
+  status                    String                      @default("active") @db.VarChar(24)
+  created_at                DateTime?                   @db.Timestamp(0)
+  updated_at                DateTime?                   @db.Timestamp(0)
+  location_type             String                      @default("factory") @db.VarChar(24)
+  address                   String?
+  city                      String?                     @db.VarChar(96)
+  state                     String?                     @db.VarChar(64)
+  pincode                   String?                     @db.VarChar(12)
+  timezone                  String                      @default("Asia/Kolkata") @db.VarChar(64)
+  latitude                  Decimal?                    @db.Decimal(10, 7)
+  longitude                 Decimal?                    @db.Decimal(10, 7)
+  geofence_radius_m         Int?
+  manager_name              String?                     @db.VarChar(96)
+  contact_phone             String?                     @db.VarChar(32)
+  weekly_off_days           Json?                       @db.Json
+  companies                 companies                   @relation(fields: [company_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "company_units_company_id_foreign")
+  location_calendar_entries location_calendar_entries[]
+  unit_admin_assignments    unit_admin_assignments[]
+
+  @@unique([company_id, code], map: "company_units_company_id_code_unique")
+}
+
+model dashboard_preferences {
+  id             BigInt    @id @default(autoincrement())
+  user_id        BigInt
+  dashboard_type String    @db.VarChar(32)
+  layout         Json?     @db.Json
+  filters        Json?     @db.Json
+  created_at     DateTime? @db.Timestamp(0)
+  updated_at     DateTime? @db.Timestamp(0)
+  users          users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "dashboard_preferences_user_id_foreign")
+
+  @@unique([user_id, dashboard_type], map: "dashboard_preferences_user_id_dashboard_type_unique")
+}
+
+model dashboard_saved_views {
+  id             BigInt    @id @default(autoincrement())
+  user_id        BigInt
+  dashboard_type String    @db.VarChar(32)
+  name           String    @db.VarChar(120)
+  filters        Json      @db.Json
+  is_shared      Boolean   @default(false)
+  created_at     DateTime? @db.Timestamp(0)
+  updated_at     DateTime? @db.Timestamp(0)
+  users          users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "dashboard_saved_views_user_id_foreign")
+
+  @@unique([user_id, dashboard_type, name], map: "dashboard_saved_views_user_id_dashboard_type_name_unique")
+  @@index([dashboard_type, is_shared], map: "dashboard_saved_views_dashboard_type_is_shared_index")
+}
+
+model departments {
+  id         BigInt    @id @default(autoincrement())
+  name       String?   @db.VarChar(255)
+  created_at DateTime? @db.Timestamp(0)
+  updated_at DateTime? @db.Timestamp(0)
+  teams      teams[]
+}
+
+model designations {
+  id                   BigInt                 @id @default(autoincrement())
+  code                 String                 @unique(map: "designations_code_unique") @db.VarChar(64)
+  name                 String                 @db.VarChar(255)
+  description          String?
+  management_category  String                 @default("individual") @db.VarChar(24)
+  job_level_id         BigInt?
+  status               String                 @default("active") @db.VarChar(24)
+  effective_from       DateTime?              @db.Date
+  effective_to         DateTime?              @db.Date
+  created_at           DateTime?              @db.Timestamp(0)
+  updated_at           DateTime?              @db.Timestamp(0)
+  job_levels           job_levels?            @relation(fields: [job_level_id], references: [id], onUpdate: NoAction, map: "designations_job_level_id_foreign")
+  positions            positions[]
+  workforce_plan_lines workforce_plan_lines[]
+}
+
+model document_audit_logs {
+  id                  BigInt             @id @default(autoincrement())
+  document_id         BigInt?
+  document_version_id BigInt?
+  organization_code   String?            @db.VarChar(255)
+  actor_user_id       BigInt?
+  action              String             @db.VarChar(255)
+  permission          String?            @db.VarChar(255)
+  permission_result   String?            @db.VarChar(255)
+  ip_address          String?            @db.VarChar(255)
+  user_agent          String?            @db.VarChar(512)
+  request_id          String?            @db.VarChar(255)
+  correlation_id      String?            @db.VarChar(255)
+  metadata            Json?              @db.Json
+  created_at          DateTime?          @db.Timestamp(0)
+  updated_at          DateTime?          @db.Timestamp(0)
+  users               users?             @relation(fields: [actor_user_id], references: [id], onUpdate: NoAction, map: "document_audit_logs_actor_user_id_foreign")
+  documents           documents?         @relation(fields: [document_id], references: [id], onUpdate: NoAction, map: "document_audit_logs_document_id_foreign")
+  document_versions   document_versions? @relation(fields: [document_version_id], references: [id], onUpdate: NoAction, map: "document_audit_logs_document_version_id_foreign")
+
+  @@index([action], map: "document_audit_logs_action_index")
+  @@index([actor_user_id], map: "document_audit_logs_actor_user_id_index")
+  @@index([created_at], map: "document_audit_logs_created_at_index")
+  @@index([document_id], map: "document_audit_logs_document_id_index")
+}
+
+model document_uploads {
+  id                                        BigInt    @id @default(autoincrement())
+  user_id                                   BigInt?
+  emp_code                                  String?   @db.VarChar(255)
+  user_name                                 String?   @db.VarChar(255)
+  document_type                             String    @db.VarChar(255)
+  document_category                         String?   @db.VarChar(255)
+  original_name                             String    @db.VarChar(255)
+  generated_name                            String    @db.VarChar(255)
+  storage_path                              String    @db.VarChar(255)
+  extension                                 String    @db.VarChar(20)
+  mime_type                                 String    @db.VarChar(255)
+  size                                      BigInt
+  checksum                                  String?   @db.VarChar(64)
+  version                                   Int       @default(1)
+  uploaded_by                               BigInt?
+  uploaded_at                               DateTime? @db.Timestamp(0)
+  created_at                                DateTime? @db.Timestamp(0)
+  updated_at                                DateTime? @db.Timestamp(0)
+  users_document_uploads_uploaded_byTousers users?    @relation("document_uploads_uploaded_byTousers", fields: [uploaded_by], references: [id], onUpdate: NoAction, map: "document_uploads_uploaded_by_foreign")
+  users_document_uploads_user_idTousers     users?    @relation("document_uploads_user_idTousers", fields: [user_id], references: [id], onUpdate: NoAction, map: "document_uploads_user_id_foreign")
+
+  @@index([checksum], map: "document_uploads_checksum_index")
+  @@index([document_type], map: "document_uploads_document_type_index")
+  @@index([emp_code, document_type], map: "document_uploads_emp_code_document_type_index")
+  @@index([generated_name], map: "document_uploads_generated_name_index")
+  @@index([uploaded_at], map: "document_uploads_uploaded_at_index")
+  @@index([user_id, document_type, version], map: "document_uploads_user_id_document_type_version_index")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model document_versions {
+  id                  BigInt                @id @default(autoincrement())
+  document_id         BigInt
+  version             Int
+  original_file_name  String                @db.VarChar(255)
+  generated_file_name String                @db.VarChar(255)
+  bucket_name         String?               @db.VarChar(255)
+  s3_object_key       String                @db.VarChar(1024)
+  folder_path         String?               @db.VarChar(1024)
+  file_extension      String                @db.VarChar(20)
+  file_size           BigInt
+  mime_type           String                @db.VarChar(255)
+  checksum_algorithm  String                @default("sha256") @db.VarChar(20)
+  checksum            String?               @db.VarChar(64)
+  etag                String?               @db.VarChar(255)
+  s3_version_id       String?               @db.VarChar(255)
+  storage_class       String?               @db.VarChar(255)
+  encryption_type     String?               @db.VarChar(255)
+  kms_key_id          String?               @db.VarChar(255)
+  upload_status       String                @default("PENDING_UPLOAD") @db.VarChar(255)
+  scan_status         String                @default("NOT_SCANNED") @db.VarChar(255)
+  uploaded_by         BigInt?
+  uploaded_at         DateTime?             @db.Timestamp(0)
+  idempotency_key     String?               @unique(map: "document_versions_idempotency_key_unique") @db.VarChar(255)
+  created_at          DateTime?             @db.Timestamp(0)
+  updated_at          DateTime?             @db.Timestamp(0)
+  document_audit_logs document_audit_logs[]
+  documents           documents             @relation(fields: [document_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "document_versions_document_id_foreign")
+  users               users?                @relation(fields: [uploaded_by], references: [id], onUpdate: NoAction, map: "document_versions_uploaded_by_foreign")
+
+  @@unique([document_id, version], map: "document_versions_document_id_version_unique")
+  @@index([checksum], map: "document_versions_checksum_index")
+  @@index([scan_status], map: "document_versions_scan_status_index")
+  @@index([upload_status], map: "document_versions_upload_status_index")
+  @@index([uploaded_at], map: "document_versions_uploaded_at_index")
+  @@index([uploaded_by], map: "document_versions_uploaded_by_index")
+}
+
+model documents {
+  id                                BigInt                @id @default(autoincrement())
+  organization_code                 String?               @db.VarChar(255)
+  owner_type                        String                @default("employee") @db.VarChar(255)
+  owner_id                          BigInt?
+  owner_ref                         String?               @db.VarChar(255)
+  user_id                           BigInt?
+  document_type                     String                @db.VarChar(255)
+  current_version                   Int                   @default(0)
+  status                            String                @default("ACTIVE") @db.VarChar(255)
+  description                       String?
+  is_deleted                        Boolean               @default(false)
+  deleted_at                        DateTime?             @db.Timestamp(0)
+  deleted_by                        BigInt?
+  created_by                        BigInt?
+  updated_by                        BigInt?
+  created_at                        DateTime?             @db.Timestamp(0)
+  updated_at                        DateTime?             @db.Timestamp(0)
+  document_audit_logs               document_audit_logs[]
+  document_versions                 document_versions[]
+  users_documents_created_byTousers users?                @relation("documents_created_byTousers", fields: [created_by], references: [id], onUpdate: NoAction, map: "documents_created_by_foreign")
+  users_documents_deleted_byTousers users?                @relation("documents_deleted_byTousers", fields: [deleted_by], references: [id], onUpdate: NoAction, map: "documents_deleted_by_foreign")
+  users_documents_updated_byTousers users?                @relation("documents_updated_byTousers", fields: [updated_by], references: [id], onUpdate: NoAction, map: "documents_updated_by_foreign")
+  users_documents_user_idTousers    users?                @relation("documents_user_idTousers", fields: [user_id], references: [id], onUpdate: NoAction, map: "documents_user_id_foreign")
+
+  @@index([document_type], map: "documents_document_type_index")
+  @@index([is_deleted], map: "documents_is_deleted_index")
+  @@index([organization_code], map: "documents_organization_code_index")
+  @@index([owner_ref, document_type], map: "documents_owner_ref_document_type_index")
+  @@index([owner_type, owner_id], map: "documents_owner_type_owner_id_index")
+  @@index([status], map: "documents_status_index")
+  @@index([user_id, document_type], map: "documents_user_id_document_type_index")
+}
+
+model failed_jobs {
+  id         BigInt   @id @default(autoincrement())
+  uuid       String   @unique(map: "failed_jobs_uuid_unique") @db.VarChar(255)
+  connection String
+  queue      String
+  payload    String
+  exception  String
+  failed_at  DateTime @default(now()) @db.Timestamp(0)
+}
+
+model feature_flags {
+  id          BigInt    @id @default(autoincrement())
+  key         String    @unique(map: "feature_flags_key_unique") @db.VarChar(64)
+  name        String    @db.VarChar(255)
+  description String?
+  enabled     Boolean   @default(false)
+  kill_switch Boolean   @default(false)
+  targeting   Json?     @db.Json
+  updated_by  BigInt?
+  created_at  DateTime? @db.Timestamp(0)
+  updated_at  DateTime? @db.Timestamp(0)
+  users       users?    @relation(fields: [updated_by], references: [id], onUpdate: NoAction, map: "feature_flags_updated_by_foreign")
+}
+
+model financial_centres {
+  id                      BigInt                 @id @default(autoincrement())
+  centre_type             String                 @db.VarChar(16)
+  code                    String                 @db.VarChar(64)
+  name                    String                 @db.VarChar(255)
+  description             String?
+  company_id              BigInt?
+  parent_centre_id        BigInt?
+  owner_user_id           BigInt?
+  accounting_reference    String?                @db.VarChar(96)
+  status                  String                 @default("active") @db.VarChar(24)
+  created_at              DateTime?              @db.Timestamp(0)
+  updated_at              DateTime?              @db.Timestamp(0)
+  companies               companies?             @relation(fields: [company_id], references: [id], onUpdate: NoAction, map: "financial_centres_company_id_foreign")
+  users                   users?                 @relation(fields: [owner_user_id], references: [id], onUpdate: NoAction, map: "financial_centres_owner_user_id_foreign")
+  financial_centres       financial_centres?     @relation("financial_centresTofinancial_centres", fields: [parent_centre_id], references: [id], onUpdate: NoAction, map: "financial_centres_parent_centre_id_foreign")
+  other_financial_centres financial_centres[]    @relation("financial_centresTofinancial_centres")
+  organization_units      organization_units[]
+  positions               positions[]
+  workforce_plan_lines    workforce_plan_lines[]
+
+  @@unique([centre_type, code], map: "financial_centres_centre_type_code_unique")
+}
+
+model grades {
+  id                                                 BigInt      @id @default(autoincrement())
+  code                                               String      @unique(map: "grades_code_unique") @db.VarChar(64)
+  name                                               String      @db.VarChar(255)
+  description                                        String?
+  minimum_job_level_id                               BigInt?
+  maximum_job_level_id                               BigInt?
+  status                                             String      @default("active") @db.VarChar(24)
+  effective_from                                     DateTime?   @db.Date
+  effective_to                                       DateTime?   @db.Date
+  created_at                                         DateTime?   @db.Timestamp(0)
+  updated_at                                         DateTime?   @db.Timestamp(0)
+  job_levels_grades_maximum_job_level_idTojob_levels job_levels? @relation("grades_maximum_job_level_idTojob_levels", fields: [maximum_job_level_id], references: [id], onUpdate: NoAction, map: "grades_maximum_job_level_id_foreign")
+  job_levels_grades_minimum_job_level_idTojob_levels job_levels? @relation("grades_minimum_job_level_idTojob_levels", fields: [minimum_job_level_id], references: [id], onUpdate: NoAction, map: "grades_minimum_job_level_id_foreign")
+  positions                                          positions[]
+}
+
+model group_admin_assignments {
+  id                                               BigInt          @id @default(autoincrement())
+  business_group_id                                BigInt
+  user_id                                          BigInt
+  role_label                                       String          @default("Group Administrator") @db.VarChar(64)
+  status                                           String          @default("active") @db.VarChar(16)
+  effective_from                                   DateTime        @db.Date
+  effective_to                                     DateTime?       @db.Date
+  reason                                           String?
+  assigned_by                                      BigInt?
+  revoked_by                                       BigInt?
+  revoked_at                                       DateTime?       @db.Timestamp(0)
+  revocation_reason                                String?
+  created_at                                       DateTime?       @db.Timestamp(0)
+  updated_at                                       DateTime?       @db.Timestamp(0)
+  users_group_admin_assignments_assigned_byTousers users?          @relation("group_admin_assignments_assigned_byTousers", fields: [assigned_by], references: [id], onUpdate: NoAction, map: "group_admin_assignments_assigned_by_foreign")
+  business_groups                                  business_groups @relation(fields: [business_group_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "group_admin_assignments_business_group_id_foreign")
+  users_group_admin_assignments_revoked_byTousers  users?          @relation("group_admin_assignments_revoked_byTousers", fields: [revoked_by], references: [id], onUpdate: NoAction, map: "group_admin_assignments_revoked_by_foreign")
+  users_group_admin_assignments_user_idTousers     users           @relation("group_admin_assignments_user_idTousers", fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "group_admin_assignments_user_id_foreign")
+
+  @@index([business_group_id, status], map: "group_admin_assignments_business_group_id_status_index")
+  @@index([user_id, status], map: "group_admin_assignments_user_id_status_index")
+}
+
+model group_company_assignments {
+  id                BigInt          @id @default(autoincrement())
+  business_group_id BigInt
+  company_id        BigInt
+  relationship_type String          @default("operating") @db.VarChar(32)
+  is_primary        Boolean         @default(false)
+  status            String          @default("active") @db.VarChar(16)
+  effective_from    DateTime        @db.Date
+  effective_to      DateTime?       @db.Date
+  reason            String?
+  changed_by        BigInt?
+  created_at        DateTime?       @db.Timestamp(0)
+  updated_at        DateTime?       @db.Timestamp(0)
+  business_groups   business_groups @relation(fields: [business_group_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "group_company_assignments_business_group_id_foreign")
+  users             users?          @relation(fields: [changed_by], references: [id], onUpdate: NoAction, map: "group_company_assignments_changed_by_foreign")
+  companies         companies       @relation(fields: [company_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "group_company_assignments_company_id_foreign")
+
+  @@index([business_group_id, status], map: "group_company_assignments_business_group_id_status_index")
+  @@index([company_id, status], map: "group_company_assignments_company_id_status_index")
+}
+
+model group_policies {
+  id                                       BigInt          @id @default(autoincrement())
+  business_group_id                        BigInt
+  code                                     String          @db.VarChar(64)
+  name                                     String          @db.VarChar(255)
+  category                                 String          @db.VarChar(48)
+  description                              String?
+  body                                     String?
+  status                                   String          @default("draft") @db.VarChar(24)
+  version                                  Int             @default(1)
+  applicability                            Json?           @db.Json
+  effective_from                           DateTime?       @db.Date
+  effective_to                             DateTime?       @db.Date
+  published_at                             DateTime?       @db.Timestamp(0)
+  published_by                             BigInt?
+  created_by                               BigInt?
+  created_at                               DateTime?       @db.Timestamp(0)
+  updated_at                               DateTime?       @db.Timestamp(0)
+  business_groups                          business_groups @relation(fields: [business_group_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "group_policies_business_group_id_foreign")
+  users_group_policies_created_byTousers   users?          @relation("group_policies_created_byTousers", fields: [created_by], references: [id], onUpdate: NoAction, map: "group_policies_created_by_foreign")
+  users_group_policies_published_byTousers users?          @relation("group_policies_published_byTousers", fields: [published_by], references: [id], onUpdate: NoAction, map: "group_policies_published_by_foreign")
+
+  @@index([business_group_id, code, status], map: "group_policies_business_group_id_code_status_index")
+}
+
+model job_batches {
+  id             String  @id @db.VarChar(255)
+  name           String  @db.VarChar(255)
+  total_jobs     Int
+  pending_jobs   Int
+  failed_jobs    Int
+  failed_job_ids String
+  options        String?
+  cancelled_at   Int?
+  created_at     Int
+  finished_at    Int?
+}
+
+model job_levels {
+  id                                             BigInt         @id @default(autoincrement())
+  code                                           String         @unique(map: "job_levels_code_unique") @db.VarChar(64)
+  name                                           String         @db.VarChar(255)
+  numeric_rank                                   Int            @unique(map: "job_levels_numeric_rank_unique")
+  management_category                            String         @default("individual") @db.VarChar(24)
+  description                                    String?
+  status                                         String         @default("active") @db.VarChar(24)
+  created_at                                     DateTime?      @db.Timestamp(0)
+  updated_at                                     DateTime?      @db.Timestamp(0)
+  designations                                   designations[]
+  grades_grades_maximum_job_level_idTojob_levels grades[]       @relation("grades_maximum_job_level_idTojob_levels")
+  grades_grades_minimum_job_level_idTojob_levels grades[]       @relation("grades_minimum_job_level_idTojob_levels")
+  positions                                      positions[]
+}
+
+model jobs {
+  id           BigInt @id @default(autoincrement())
+  queue        String @db.VarChar(255)
+  payload      String
+  attempts     Int    @db.SmallInt
+  reserved_at  Int?
+  available_at Int
+  created_at   Int
+
+  @@index([queue], map: "jobs_queue_index")
+}
+
+model legal_entities {
+  id                              BigInt                            @id @default(autoincrement())
+  company_id                      BigInt
+  code                            String                            @db.VarChar(64)
+  legal_name                      String                            @db.VarChar(255)
+  entity_type                     String                            @default("private-limited") @db.VarChar(48)
+  registration_number             String?                           @db.VarChar(255)
+  country                         String                            @default("IN") @db.VarChar(8)
+  state                           String?                           @db.VarChar(64)
+  incorporation_date              DateTime?                         @db.Date
+  registered_address              String?
+  is_primary                      Boolean                           @default(false)
+  payroll_responsible             Boolean                           @default(true)
+  statutory_filing_responsible    Boolean                           @default(true)
+  status                          String                            @default("active") @db.VarChar(24)
+  status_reason                   String?
+  effective_from                  DateTime?                         @db.Date
+  effective_to                    DateTime?                         @db.Date
+  created_at                      DateTime?                         @db.Timestamp(0)
+  updated_at                      DateTime?                         @db.Timestamp(0)
+  company_documents               company_documents[]
+  company_payroll_configurations  company_payroll_configurations[]
+  company_statutory_registrations company_statutory_registrations[]
+  companies                       companies                         @relation(fields: [company_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "legal_entities_company_id_foreign")
+
+  @@unique([company_id, code], map: "legal_entities_company_id_code_unique")
+  @@index([status], map: "legal_entities_status_index")
+}
+
+model location_calendar_entries {
+  id               BigInt         @id @default(autoincrement())
+  company_id       BigInt
+  company_unit_id  BigInt?
+  date             DateTime       @db.Date
+  name             String         @db.VarChar(120)
+  entry_type       String         @default("holiday") @db.VarChar(16)
+  recurring_annual Boolean        @default(false)
+  created_by       BigInt?
+  created_at       DateTime?      @db.Timestamp(0)
+  updated_at       DateTime?      @db.Timestamp(0)
+  companies        companies      @relation(fields: [company_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "location_calendar_entries_company_id_foreign")
+  company_units    company_units? @relation(fields: [company_unit_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "location_calendar_entries_company_unit_id_foreign")
+  users            users?         @relation(fields: [created_by], references: [id], onUpdate: NoAction, map: "location_calendar_entries_created_by_foreign")
+
+  @@unique([company_id, company_unit_id, date, name], map: "calendar_entry_unique")
+  @@index([company_id, date], map: "location_calendar_entries_company_id_date_index")
+}
+
+model locations {
+  id         BigInt     @id @default(autoincrement())
+  name       String     @db.VarChar(255)
+  type       String     @default("Office") @db.VarChar(255)
+  country    String?    @db.VarChar(255)
+  state      String?    @db.VarChar(255)
+  city       String?    @db.VarChar(255)
+  created_at DateTime?  @db.Timestamp(0)
+  updated_at DateTime?  @db.Timestamp(0)
+  branches   branches[]
+}
+
+model login_events {
+  id         BigInt    @id @default(autoincrement())
+  user_id    BigInt?
+  email      String    @db.VarChar(255)
+  result     String    @db.VarChar(24)
+  reason     String?   @db.VarChar(190)
+  ip         String?   @db.VarChar(64)
+  user_agent String?   @db.VarChar(512)
+  created_at DateTime? @db.Timestamp(0)
+  users      users?    @relation(fields: [user_id], references: [id], onUpdate: NoAction, map: "login_events_user_id_foreign")
+
+  @@index([email, created_at], map: "login_events_email_created_at_index")
+  @@index([email], map: "login_events_email_index")
+  @@index([result, created_at], map: "login_events_result_created_at_index")
+}
+
+model master_types {
+  id            BigInt          @id @default(autoincrement())
+  key           String          @unique(map: "master_types_key_unique") @db.VarChar(64)
+  name          String          @db.VarChar(255)
+  description   String?
+  hierarchical  Boolean         @default(false)
+  active        Boolean         @default(true)
+  created_at    DateTime?       @db.Timestamp(0)
+  updated_at    DateTime?       @db.Timestamp(0)
+  master_values master_values[]
+}
+
+model master_values {
+  id                  BigInt          @id @default(autoincrement())
+  master_type_id      BigInt
+  parent_id           BigInt?
+  code                String          @db.VarChar(64)
+  label               String          @db.VarChar(255)
+  sort_order          Int             @default(0)
+  metadata            Json?           @db.Json
+  status              String          @default("active") @db.VarChar(24)
+  archived_at         DateTime?       @db.Timestamp(0)
+  created_at          DateTime?       @db.Timestamp(0)
+  updated_at          DateTime?       @db.Timestamp(0)
+  master_types        master_types    @relation(fields: [master_type_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "master_values_master_type_id_foreign")
+  master_values       master_values?  @relation("master_valuesTomaster_values", fields: [parent_id], references: [id], onUpdate: NoAction, map: "master_values_parent_id_foreign")
+  other_master_values master_values[] @relation("master_valuesTomaster_values")
+
+  @@unique([master_type_id, code], map: "master_values_master_type_id_code_unique")
+  @@index([master_type_id, status], map: "master_values_master_type_id_status_index")
+}
+
+model mfa_credentials {
+  id           BigInt    @id @default(autoincrement())
+  user_id      BigInt    @unique(map: "mfa_credentials_user_id_unique")
+  secret       String
+  enabled_at   DateTime? @db.Timestamp(0)
+  last_used_at DateTime? @db.Timestamp(0)
+  created_at   DateTime? @db.Timestamp(0)
+  updated_at   DateTime? @db.Timestamp(0)
+  users        users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "mfa_credentials_user_id_foreign")
+}
+
+model migrations {
+  id        Int    @id @default(autoincrement())
+  migration String @db.VarChar(255)
+  batch     Int
+}
+
+model module_definitions {
+  id                         BigInt                       @id @default(autoincrement())
+  key                        String                       @unique(map: "module_definitions_key_unique") @db.VarChar(64)
+  name                       String                       @db.VarChar(255)
+  category                   String                       @default("general") @db.VarChar(64)
+  description                String?
+  depends_on                 Json?                        @db.Json
+  default_enabled            Boolean                      @default(true)
+  active                     Boolean                      @default(true)
+  created_at                 DateTime?                    @db.Timestamp(0)
+  updated_at                 DateTime?                    @db.Timestamp(0)
+  company_module_activations company_module_activations[]
+}
+
+model number_series {
+  id                     BigInt                   @id @default(autoincrement())
+  key                    String                   @unique(map: "number_series_key_unique") @db.VarChar(64)
+  name                   String                   @db.VarChar(255)
+  description            String?
+  scope_type             String                   @default("platform") @db.VarChar(24)
+  pattern                String                   @db.VarChar(255)
+  numeric_length         Int                      @default(5)
+  start_at               BigInt                   @default(1)
+  increment_by           Int                      @default(1)
+  reset_frequency        String                   @default("never") @db.VarChar(16)
+  active                 Boolean                  @default(true)
+  created_at             DateTime?                @db.Timestamp(0)
+  updated_at             DateTime?                @db.Timestamp(0)
+  number_series_counters number_series_counters[]
+}
+
+model number_series_counters {
+  id               BigInt        @id @default(autoincrement())
+  number_series_id BigInt
+  scope_key        String        @default("platform") @db.VarChar(128)
+  period_key       String        @default("") @db.VarChar(32)
+  current_value    BigInt        @default(0)
+  created_at       DateTime?     @db.Timestamp(0)
+  updated_at       DateTime?     @db.Timestamp(0)
+  number_series    number_series @relation(fields: [number_series_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "number_series_counters_number_series_id_foreign")
+
+  @@unique([number_series_id, scope_key, period_key], map: "series_scope_period_unique")
+}
+
+model organization_units {
+  id                       BigInt                    @id @default(autoincrement())
+  unit_type                String                    @db.VarChar(24)
+  code                     String                    @db.VarChar(64)
+  name                     String                    @db.VarChar(255)
+  description              String?
+  company_id               BigInt?
+  parent_unit_id           BigInt?
+  head_user_id             BigInt?
+  cost_centre_id           BigInt?
+  status                   String                    @default("active") @db.VarChar(24)
+  status_reason            String?
+  effective_from           DateTime?                 @db.Date
+  effective_to             DateTime?                 @db.Date
+  created_at               DateTime?                 @db.Timestamp(0)
+  updated_at               DateTime?                 @db.Timestamp(0)
+  companies                companies?                @relation(fields: [company_id], references: [id], onUpdate: NoAction, map: "organization_units_company_id_foreign")
+  financial_centres        financial_centres?        @relation(fields: [cost_centre_id], references: [id], onUpdate: NoAction, map: "organization_units_cost_centre_id_foreign")
+  users                    users?                    @relation(fields: [head_user_id], references: [id], onUpdate: NoAction, map: "organization_units_head_user_id_foreign")
+  organization_units       organization_units?       @relation("organization_unitsToorganization_units", fields: [parent_unit_id], references: [id], onUpdate: NoAction, map: "organization_units_parent_unit_id_foreign")
+  other_organization_units organization_units[]      @relation("organization_unitsToorganization_units")
+  positions                positions[]
+  reporting_relationships  reporting_relationships[]
+  workforce_plan_lines     workforce_plan_lines[]
+
+  @@unique([unit_type, code], map: "organization_units_unit_type_code_unique")
+  @@index([parent_unit_id], map: "organization_units_parent_unit_id_index")
+  @@index([unit_type, status], map: "organization_units_unit_type_status_index")
+}
+
+model password_reset_tokens {
+  email      String    @id @db.VarChar(255)
+  token      String    @db.VarChar(255)
+  created_at DateTime? @db.Timestamp(0)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model permission_dimensions {
+  id         BigInt    @id @default(autoincrement())
+  dimension  String    @db.VarChar(255)
+  role_id    BigInt
+  key_name   String    @db.VarChar(255)
+  value      String    @db.VarChar(255)
+  meta       Json?     @db.Json
+  created_at DateTime? @db.Timestamp(0)
+  updated_at DateTime? @db.Timestamp(0)
+  roles      roles     @relation(fields: [role_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "permission_dimensions_role_id_foreign")
+
+  @@unique([dimension, role_id, key_name], map: "permission_dimensions_dimension_role_id_key_name_unique")
+}
+
+model permission_groups {
+  id          BigInt        @id @default(autoincrement())
+  name        String        @unique(map: "permission_groups_name_unique") @db.VarChar(255)
+  created_at  DateTime?     @db.Timestamp(0)
+  updated_at  DateTime?     @db.Timestamp(0)
+  permissions permissions[]
+}
+
+model permissions {
+  id                BigInt             @id @default(autoincrement())
+  name              String             @unique(map: "permissions_name_unique") @db.VarChar(255)
+  group_id          BigInt?
+  description       String?            @db.VarChar(255)
+  created_at        DateTime?          @db.Timestamp(0)
+  updated_at        DateTime?          @db.Timestamp(0)
+  permission_groups permission_groups? @relation(fields: [group_id], references: [id], onUpdate: NoAction, map: "permissions_group_id_foreign")
+  role_permissions  role_permissions[]
+  user_permissions  user_permissions[]
+}
+
+model personal_access_tokens {
+  id             BigInt    @id @default(autoincrement())
+  tokenable_type String    @db.VarChar(255)
+  tokenable_id   BigInt
+  name           String
+  token          String    @unique(map: "personal_access_tokens_token_unique") @db.VarChar(64)
+  abilities      String?
+  last_used_at   DateTime? @db.Timestamp(0)
+  expires_at     DateTime? @db.Timestamp(0)
+  created_at     DateTime? @db.Timestamp(0)
+  updated_at     DateTime? @db.Timestamp(0)
+
+  @@index([expires_at], map: "personal_access_tokens_expires_at_index")
+  @@index([tokenable_type, tokenable_id], map: "personal_access_tokens_tokenable_type_tokenable_id_index")
+}
+
+model position_approval_requests {
+  id                                                                  BigInt     @id @default(autoincrement())
+  request_type                                                        String     @db.VarChar(24)
+  position_id                                                         BigInt?
+  proposed                                                            Json?      @db.Json
+  requested_headcount                                                 Int?
+  requested_fte                                                       Decimal?   @db.Decimal(8, 2)
+  justification                                                       String
+  financial_impact                                                    Decimal?   @db.Decimal(14, 2)
+  requester_user_id                                                   BigInt
+  status                                                              String     @default("pending") @db.VarChar(16)
+  decided_by                                                          BigInt?
+  decided_at                                                          DateTime?  @db.Timestamp(0)
+  decision_note                                                       String?
+  applied_position_id                                                 BigInt?
+  created_at                                                          DateTime?  @db.Timestamp(0)
+  updated_at                                                          DateTime?  @db.Timestamp(0)
+  positions_position_approval_requests_applied_position_idTopositions positions? @relation("position_approval_requests_applied_position_idTopositions", fields: [applied_position_id], references: [id], onUpdate: NoAction, map: "position_approval_requests_applied_position_id_foreign")
+  users_position_approval_requests_decided_byTousers                  users?     @relation("position_approval_requests_decided_byTousers", fields: [decided_by], references: [id], onUpdate: NoAction, map: "position_approval_requests_decided_by_foreign")
+  positions_position_approval_requests_position_idTopositions         positions? @relation("position_approval_requests_position_idTopositions", fields: [position_id], references: [id], onUpdate: NoAction, map: "position_approval_requests_position_id_foreign")
+  users_position_approval_requests_requester_user_idTousers           users      @relation("position_approval_requests_requester_user_idTousers", fields: [requester_user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "position_approval_requests_requester_user_id_foreign")
+
+  @@index([status], map: "position_approval_requests_status_index")
+}
+
+model position_incumbents {
+  id                                          BigInt    @id @default(autoincrement())
+  position_id                                 BigInt
+  user_id                                     BigInt
+  assignment_type                             String    @default("primary") @db.VarChar(24)
+  allocation_percentage                       Int       @default(100)
+  status                                      String    @default("active") @db.VarChar(16)
+  effective_from                              DateTime  @db.Date
+  effective_to                                DateTime? @db.Date
+  end_reason                                  String?
+  created_by                                  BigInt?
+  created_at                                  DateTime? @db.Timestamp(0)
+  updated_at                                  DateTime? @db.Timestamp(0)
+  users_position_incumbents_created_byTousers users?    @relation("position_incumbents_created_byTousers", fields: [created_by], references: [id], onUpdate: NoAction, map: "position_incumbents_created_by_foreign")
+  positions                                   positions @relation(fields: [position_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "position_incumbents_position_id_foreign")
+  users_position_incumbents_user_idTousers    users     @relation("position_incumbents_user_idTousers", fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "position_incumbents_user_id_foreign")
+
+  @@index([position_id, status], map: "position_incumbents_position_id_status_index")
+  @@index([user_id, status], map: "position_incumbents_user_id_status_index")
+}
+
+model positions {
+  id                                                                                   BigInt                       @id @default(autoincrement())
+  code                                                                                 String                       @unique(map: "positions_code_unique") @db.VarChar(96)
+  title                                                                                String                       @db.VarChar(255)
+  position_type                                                                        String                       @default("permanent") @db.VarChar(24)
+  company_id                                                                           BigInt?
+  organization_unit_id                                                                 BigInt?
+  designation_id                                                                       BigInt?
+  grade_id                                                                             BigInt?
+  job_level_id                                                                         BigInt?
+  cost_centre_id                                                                       BigInt?
+  reports_to_position_id                                                               BigInt?
+  authorized_headcount                                                                 Int                          @default(1)
+  authorized_fte                                                                       Decimal                      @default(1) @db.Decimal(8, 2)
+  critical                                                                             Boolean                      @default(false)
+  replacement_required                                                                 Boolean                      @default(false)
+  budgeted                                                                             Boolean                      @default(false)
+  estimated_annual_cost                                                                Decimal?                     @db.Decimal(14, 2)
+  hiring_manager_user_id                                                               BigInt?
+  owner_user_id                                                                        BigInt?
+  status                                                                               String                       @default("draft") @db.VarChar(24)
+  status_reason                                                                        String?
+  effective_from                                                                       DateTime?                    @db.Date
+  effective_to                                                                         DateTime?                    @db.Date
+  metadata                                                                             Json?                        @db.Json
+  created_by                                                                           BigInt?
+  created_at                                                                           DateTime?                    @db.Timestamp(0)
+  updated_at                                                                           DateTime?                    @db.Timestamp(0)
+  position_approval_requests_position_approval_requests_applied_position_idTopositions position_approval_requests[] @relation("position_approval_requests_applied_position_idTopositions")
+  position_approval_requests_position_approval_requests_position_idTopositions         position_approval_requests[] @relation("position_approval_requests_position_idTopositions")
+  position_incumbents                                                                  position_incumbents[]
+  companies                                                                            companies?                   @relation(fields: [company_id], references: [id], onUpdate: NoAction, map: "positions_company_id_foreign")
+  financial_centres                                                                    financial_centres?           @relation(fields: [cost_centre_id], references: [id], onUpdate: NoAction, map: "positions_cost_centre_id_foreign")
+  users_positions_created_byTousers                                                    users?                       @relation("positions_created_byTousers", fields: [created_by], references: [id], onUpdate: NoAction, map: "positions_created_by_foreign")
+  designations                                                                         designations?                @relation(fields: [designation_id], references: [id], onUpdate: NoAction, map: "positions_designation_id_foreign")
+  grades                                                                               grades?                      @relation(fields: [grade_id], references: [id], onUpdate: NoAction, map: "positions_grade_id_foreign")
+  users_positions_hiring_manager_user_idTousers                                        users?                       @relation("positions_hiring_manager_user_idTousers", fields: [hiring_manager_user_id], references: [id], onUpdate: NoAction, map: "positions_hiring_manager_user_id_foreign")
+  job_levels                                                                           job_levels?                  @relation(fields: [job_level_id], references: [id], onUpdate: NoAction, map: "positions_job_level_id_foreign")
+  organization_units                                                                   organization_units?          @relation(fields: [organization_unit_id], references: [id], onUpdate: NoAction, map: "positions_organization_unit_id_foreign")
+  users_positions_owner_user_idTousers                                                 users?                       @relation("positions_owner_user_idTousers", fields: [owner_user_id], references: [id], onUpdate: NoAction, map: "positions_owner_user_id_foreign")
+  positions                                                                            positions?                   @relation("positionsTopositions", fields: [reports_to_position_id], references: [id], onUpdate: NoAction, map: "positions_reports_to_position_id_foreign")
+  other_positions                                                                      positions[]                  @relation("positionsTopositions")
+  replacement_plans                                                                    replacement_plans[]
+  vacancies                                                                            vacancies[]
+
+  @@index([organization_unit_id, status], map: "positions_organization_unit_id_status_index")
+  @@index([status], map: "positions_status_index")
+}
+
+model replacement_candidates {
+  id                                                    BigInt            @id @default(autoincrement())
+  replacement_plan_id                                   BigInt
+  candidate_user_id                                     BigInt?
+  candidate_name                                        String?           @db.VarChar(255)
+  source                                                String            @default("internal") @db.VarChar(24)
+  readiness                                             String            @default("development_required") @db.VarChar(32)
+  rank                                                  Int               @default(1)
+  development_needs                                     String?
+  assessment_notes                                      String?
+  status                                                String            @default("active") @db.VarChar(16)
+  added_by                                              BigInt?
+  created_at                                            DateTime?         @db.Timestamp(0)
+  updated_at                                            DateTime?         @db.Timestamp(0)
+  users_replacement_candidates_added_byTousers          users?            @relation("replacement_candidates_added_byTousers", fields: [added_by], references: [id], onUpdate: NoAction, map: "replacement_candidates_added_by_foreign")
+  users_replacement_candidates_candidate_user_idTousers users?            @relation("replacement_candidates_candidate_user_idTousers", fields: [candidate_user_id], references: [id], onUpdate: NoAction, map: "replacement_candidates_candidate_user_id_foreign")
+  replacement_plans                                     replacement_plans @relation(fields: [replacement_plan_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "replacement_candidates_replacement_plan_id_foreign")
+
+  @@index([replacement_plan_id], map: "replacement_candidates_replacement_plan_id_index")
+}
+
+model replacement_plans {
+  id                                               BigInt                   @id @default(autoincrement())
+  position_id                                      BigInt
+  incumbent_user_id                                BigInt?
+  criticality                                      String                   @default("medium") @db.VarChar(16)
+  vacancy_risk                                     String                   @default("medium") @db.VarChar(16)
+  expected_vacancy_date                            DateTime?                @db.Date
+  replacement_timeframe                            String?                  @db.VarChar(32)
+  external_hiring_required                         Boolean                  @default(false)
+  confidentiality                                  String                   @default("restricted") @db.VarChar(16)
+  status                                           String                   @default("draft") @db.VarChar(16)
+  notes                                            String?
+  owner_user_id                                    BigInt?
+  created_by                                       BigInt?
+  created_at                                       DateTime?                @db.Timestamp(0)
+  updated_at                                       DateTime?                @db.Timestamp(0)
+  replacement_candidates                           replacement_candidates[]
+  users_replacement_plans_created_byTousers        users?                   @relation("replacement_plans_created_byTousers", fields: [created_by], references: [id], onUpdate: NoAction, map: "replacement_plans_created_by_foreign")
+  users_replacement_plans_incumbent_user_idTousers users?                   @relation("replacement_plans_incumbent_user_idTousers", fields: [incumbent_user_id], references: [id], onUpdate: NoAction, map: "replacement_plans_incumbent_user_id_foreign")
+  users_replacement_plans_owner_user_idTousers     users?                   @relation("replacement_plans_owner_user_idTousers", fields: [owner_user_id], references: [id], onUpdate: NoAction, map: "replacement_plans_owner_user_id_foreign")
+  positions                                        positions                @relation(fields: [position_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "replacement_plans_position_id_foreign")
+
+  @@index([position_id, status], map: "replacement_plans_position_id_status_index")
+}
+
+model reporting_relationships {
+  id                                                    BigInt              @id @default(autoincrement())
+  employee_user_id                                      BigInt
+  manager_user_id                                       BigInt
+  relationship_type                                     String              @default("primary") @db.VarChar(24)
+  organization_unit_id                                  BigInt?
+  status                                                String              @default("active") @db.VarChar(16)
+  effective_from                                        DateTime            @db.Date
+  effective_to                                          DateTime?           @db.Date
+  reason                                                String?
+  created_by                                            BigInt?
+  created_at                                            DateTime?           @db.Timestamp(0)
+  updated_at                                            DateTime?           @db.Timestamp(0)
+  users_reporting_relationships_created_byTousers       users?              @relation("reporting_relationships_created_byTousers", fields: [created_by], references: [id], onUpdate: NoAction, map: "reporting_relationships_created_by_foreign")
+  users_reporting_relationships_employee_user_idTousers users               @relation("reporting_relationships_employee_user_idTousers", fields: [employee_user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "reporting_relationships_employee_user_id_foreign")
+  users_reporting_relationships_manager_user_idTousers  users               @relation("reporting_relationships_manager_user_idTousers", fields: [manager_user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "reporting_relationships_manager_user_id_foreign")
+  organization_units                                    organization_units? @relation(fields: [organization_unit_id], references: [id], onUpdate: NoAction, map: "reporting_relationships_organization_unit_id_foreign")
+
+  @@index([employee_user_id, status], map: "reporting_relationships_employee_user_id_status_index")
+  @@index([manager_user_id, status], map: "reporting_relationships_manager_user_id_status_index")
+}
+
+model role_permissions {
+  role_id       BigInt
+  permission_id BigInt
+  permissions   permissions @relation(fields: [permission_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "role_permissions_permission_id_foreign")
+  roles         roles       @relation(fields: [role_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "role_permissions_role_id_foreign")
+
+  @@id([role_id, permission_id])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model roles {
+  id                    BigInt                  @id @default(autoincrement())
+  name                  String                  @unique(map: "roles_name_unique") @db.VarChar(255)
+  type                  String                  @default("Custom") @db.VarChar(255)
+  is_active             Boolean                 @default(true)
+  created_at            DateTime?               @db.Timestamp(0)
+  updated_at            DateTime?               @db.Timestamp(0)
+  permission_dimensions permission_dimensions[]
+  role_permissions      role_permissions[]
+  user_roles            user_roles[]
+}
+
+model salary_slips {
+  id                BigInt    @id @default(autoincrement())
+  month             String    @default("1") @db.VarChar(255)
+  year              Int       @default(1)
+  emp_code          String?   @db.VarChar(100)
+  emp_name          String?   @db.VarChar(255)
+  main_department   String?   @db.VarChar(255)
+  department        String?   @db.VarChar(255)
+  designation       String?   @db.VarChar(255)
+  book_salary       Float     @default(0)
+  paid_day          Float     @default(0)
+  basic             Float     @default(0)
+  da                Float     @default(0)
+  hra               Float     @default(0)
+  wa                Float     @default(0)
+  conv_a            Float     @default(0)
+  edu_a             Float     @default(0)
+  owa               Float     @default(0)
+  ppa               Float     @default(0)
+  pda               Float     @default(0)
+  med_a             Float     @default(0)
+  mob_a             Float     @default(0)
+  product_incentive Float     @default(0)
+  gross_salary      Float     @default(0)
+  pt                Float     @default(0)
+  pf                Float     @default(0)
+  esi               Float     @default(0)
+  tds               Float     @default(0)
+  lwf               Float     @default(0)
+  advance           Float     @default(0)
+  total_deduct      Float     @default(0)
+  net_payable       Float     @default(0)
+  created_at        DateTime? @db.Timestamp(0)
+  updated_at        DateTime? @db.Timestamp(0)
+  account_no        String?   @db.VarChar(255)
+  account_name      String?   @db.VarChar(255)
+  mobile_no         String?   @db.VarChar(255)
+  company_code      String    @default("nidhi-impex") @db.VarChar(255)
+  unit              String?   @db.VarChar(255)
+  leave             Float     @default(0)
+  a_gross           Float     @default(0)
+  bank_ifsc         String?   @db.VarChar(255)
+  pf_uan            String?   @db.VarChar(255)
+  esi_no            String?   @db.VarChar(255)
+  resignation_date  DateTime? @db.Date
+  working_days      String?   @db.VarChar(255)
+  present_days      String?   @db.VarChar(255)
+  salary            String?   @db.VarChar(255)
+  comm              String?   @db.VarChar(255)
+  other             String?   @db.VarChar(255)
+  total_deduction   String?   @db.VarChar(255)
+  net_salary        String?   @db.VarChar(255)
+
+  @@index([company_code], map: "salary_slips_company_code_index")
+  @@index([emp_code], map: "salary_slips_emp_code_index")
+  @@index([month], map: "salary_slips_month_index")
+  @@index([unit], map: "salary_slips_unit_index")
+  @@index([year], map: "salary_slips_year_index")
+}
+
+model sessions {
+  id            String  @id @db.VarChar(255)
+  user_id       BigInt?
+  ip_address    String? @db.VarChar(45)
+  user_agent    String?
+  payload       String
+  last_activity Int
+
+  @@index([last_activity], map: "sessions_last_activity_index")
+  @@index([user_id], map: "sessions_user_id_index")
+}
+
+model settings {
+  id         BigInt    @id @default(autoincrement())
+  created_at DateTime? @db.Timestamp(0)
+  updated_at DateTime? @db.Timestamp(0)
+  key        String?   @db.VarChar(255)
+  value      String?
+  group      String?   @db.VarChar(255)
+}
+
+model shifts {
+  id            BigInt    @id @default(autoincrement())
+  name          String    @db.VarChar(255)
+  company_code  String    @db.VarChar(255)
+  unit          String?   @db.VarChar(255)
+  start_time    DateTime  @db.Time(0)
+  end_time      DateTime  @db.Time(0)
+  grace_minutes Int       @default(0)
+  description   String?
+  created_at    DateTime? @db.Timestamp(0)
+  updated_at    DateTime? @db.Timestamp(0)
+
+  @@index([company_code, unit], map: "shifts_company_code_unit_index")
+}
+
+model teams {
+  id            BigInt       @id @default(autoincrement())
+  name          String       @db.VarChar(255)
+  department_id BigInt?
+  created_at    DateTime?    @db.Timestamp(0)
+  updated_at    DateTime?    @db.Timestamp(0)
+  departments   departments? @relation(fields: [department_id], references: [id], onUpdate: NoAction, map: "teams_department_id_foreign")
+}
+
+model unit_admin_assignments {
+  id                                              BigInt        @id @default(autoincrement())
+  company_unit_id                                 BigInt
+  user_id                                         BigInt
+  role_label                                      String        @default("Branch Administrator") @db.VarChar(64)
+  status                                          String        @default("active") @db.VarChar(16)
+  effective_from                                  DateTime      @db.Date
+  effective_to                                    DateTime?     @db.Date
+  reason                                          String?
+  assigned_by                                     BigInt?
+  revoked_by                                      BigInt?
+  revoked_at                                      DateTime?     @db.Timestamp(0)
+  revocation_reason                               String?
+  created_at                                      DateTime?     @db.Timestamp(0)
+  updated_at                                      DateTime?     @db.Timestamp(0)
+  users_unit_admin_assignments_assigned_byTousers users?        @relation("unit_admin_assignments_assigned_byTousers", fields: [assigned_by], references: [id], onUpdate: NoAction, map: "unit_admin_assignments_assigned_by_foreign")
+  company_units                                   company_units @relation(fields: [company_unit_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "unit_admin_assignments_company_unit_id_foreign")
+  users_unit_admin_assignments_revoked_byTousers  users?        @relation("unit_admin_assignments_revoked_byTousers", fields: [revoked_by], references: [id], onUpdate: NoAction, map: "unit_admin_assignments_revoked_by_foreign")
+  users_unit_admin_assignments_user_idTousers     users         @relation("unit_admin_assignments_user_idTousers", fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "unit_admin_assignments_user_id_foreign")
+
+  @@index([company_unit_id, status], map: "unit_admin_assignments_company_unit_id_status_index")
+  @@index([user_id, status], map: "unit_admin_assignments_user_id_status_index")
+}
+
+model upload_batch_rows {
+  id             BigInt         @id @default(autoincrement())
+  batch_id       BigInt
+  row_number     Int
+  status         String         @db.VarChar(255)
+  reason         String?        @db.VarChar(255)
+  row_data       Json?          @db.Json
+  created_at     DateTime?      @db.Timestamp(0)
+  updated_at     DateTime?      @db.Timestamp(0)
+  upload_batches upload_batches @relation(fields: [batch_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "upload_batch_rows_batch_id_foreign")
+}
+
+model upload_batches {
+  id                BigInt              @id @default(autoincrement())
+  type              String              @db.VarChar(255)
+  company_code      String?             @db.VarChar(255)
+  unit              String?             @db.VarChar(255)
+  month             String?             @db.VarChar(255)
+  year              String?             @db.VarChar(255)
+  file_name         String?             @db.VarChar(255)
+  total_rows        Int                 @default(0)
+  success_count     Int                 @default(0)
+  failed_count      Int                 @default(0)
+  uploaded_by       BigInt?
+  created_at        DateTime?           @db.Timestamp(0)
+  updated_at        DateTime?           @db.Timestamp(0)
+  upload_batch_rows upload_batch_rows[]
+  users             users?              @relation(fields: [uploaded_by], references: [id], onUpdate: NoAction, map: "upload_batches_uploaded_by_foreign")
+
+  @@index([type, company_code], map: "upload_batches_type_company_code_index")
+}
+
+model user_permissions {
+  user_id       BigInt
+  permission_id BigInt
+  is_denied     Boolean     @default(false)
+  permissions   permissions @relation(fields: [permission_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "user_permissions_permission_id_foreign")
+  users         users       @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "user_permissions_user_id_foreign")
+
+  @@id([user_id, permission_id])
+}
+
+model user_roles {
+  user_id BigInt
+  role_id BigInt
+  roles   roles  @relation(fields: [role_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "user_roles_role_id_foreign")
+  users   users  @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "user_roles_user_id_foreign")
+
+  @@id([user_id, role_id])
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model users {
+  id                                                                                BigInt                            @id @default(autoincrement())
+  name                                                                              String?                           @db.VarChar(255)
+  email                                                                             String?                           @unique(map: "users_email_unique") @db.VarChar(255)
+  otp                                                                               String?                           @db.VarChar(255)
+  password                                                                          String?                           @db.VarChar(255)
+  status                                                                            String                            @default("0") @db.VarChar(255)
+  role                                                                              Int                               @default(1)
+  emp_code                                                                          String?                           @db.VarChar(100)
+  email_verified_at                                                                 DateTime?                         @db.Timestamp(0)
+  remember_token                                                                    String?                           @db.VarChar(100)
+  created_at                                                                        DateTime?                         @db.Timestamp(0)
+  updated_at                                                                        DateTime?                         @db.Timestamp(0)
+  is_deleted                                                                        String                            @default("0") @db.VarChar(255)
+  company_code                                                                      String                            @default("nidhi-impex") @db.VarChar(255)
+  unit                                                                              String?                           @db.VarChar(255)
+  mobile_number                                                                     String?                           @db.VarChar(255)
+  dob                                                                               String?                           @db.VarChar(255)
+  photo                                                                             String?                           @db.VarChar(255)
+  address                                                                           String?
+  members                                                                           String?
+  joining_date                                                                      String?                           @db.VarChar(255)
+  department                                                                        String?                           @db.VarChar(255)
+  manager_name                                                                      String?                           @db.VarChar(255)
+  salary                                                                            String?                           @db.VarChar(255)
+  emp_whatsapp_no                                                                   String?                           @db.VarChar(255)
+  punching_no                                                                       String?                           @db.VarChar(255)
+  village                                                                           String?                           @db.VarChar(255)
+  taluka                                                                            String?                           @db.VarChar(255)
+  district                                                                          String?                           @db.VarChar(255)
+  birth_place                                                                       String?                           @db.VarChar(255)
+  gender                                                                            String?                           @db.VarChar(255)
+  cast                                                                              String?                           @db.VarChar(255)
+  marital_status                                                                    String?                           @db.VarChar(255)
+  blood_group                                                                       String?                           @db.VarChar(255)
+  reference_name                                                                    String?                           @db.VarChar(255)
+  reference_mobile_no                                                               String?                           @db.VarChar(255)
+  aadhar_card_no                                                                    String?                           @db.VarChar(255)
+  pan_card_no                                                                       String?                           @db.VarChar(255)
+  bank_name                                                                         String?                           @db.VarChar(255)
+  bank_ifsc_code                                                                    String?                           @db.VarChar(255)
+  bank_account_no                                                                   String?                           @db.VarChar(255)
+  education                                                                         String?                           @db.VarChar(255)
+  emp_signature                                                                     String?                           @db.VarChar(255)
+  resignation_date                                                                  DateTime?                         @db.Date
+  city                                                                              String?                           @db.VarChar(255)
+  pin                                                                               String?                           @db.VarChar(255)
+  state                                                                             String?                           @db.VarChar(255)
+  pf_no                                                                             String?                           @db.VarChar(255)
+  esi_no                                                                            String?                           @db.VarChar(255)
+  branch                                                                            String?                           @db.VarChar(255)
+  print                                                                             Boolean                           @default(false)
+  checkbox                                                                          Boolean                           @default(false)
+  check_image                                                                       String?                           @db.VarChar(255)
+  pan_image                                                                         String?                           @db.VarChar(255)
+  adhar_image                                                                       String?                           @db.VarChar(255)
+  type                                                                              String?                           @db.VarChar(255)
+  designation                                                                       String?                           @db.VarChar(255)
+  form_no                                                                           String?                           @db.VarChar(255)
+  trial_date                                                                        DateTime?                         @db.Date
+  mobile_no_2                                                                       String?                           @db.VarChar(255)
+  last_company_name                                                                 String?                           @db.VarChar(255)
+  last_company_address                                                              String?
+  experience                                                                        String?                           @db.VarChar(255)
+  reason_for_leaving                                                                String?
+  hastak_name                                                                       String?                           @db.VarChar(255)
+  hastak_code                                                                       String?                           @db.VarChar(255)
+  hastak_mobile                                                                     String?                           @db.VarChar(255)
+  contractor                                                                        String?                           @db.VarChar(255)
+  manager_signature                                                                 String?                           @db.VarChar(255)
+  hastak_signature                                                                  String?                           @db.VarChar(255)
+  hr_signature                                                                      String?                           @db.VarChar(255)
+  akar                                                                              String?                           @db.VarChar(255)
+  added_by                                                                          BigInt?
+  verification_token                                                                String?                           @db.VarChar(255)
+  verification_token_expires_at                                                     DateTime?                         @db.Timestamp(0)
+  processed                                                                         Boolean                           @default(false)
+  trial_form_id                                                                     BigInt?
+  shift_id                                                                          BigInt?
+  account_book                                                                      String?                           @db.VarChar(1024)
+  encrypted_aadhaar_number                                                          String?
+  aadhaar_last_four                                                                 String?                           @db.VarChar(4)
+  aadhaar_secure_reference                                                          String?                           @db.VarChar(64)
+  aadhaar_verification_status                                                       String                            @default("UNVERIFIED") @db.VarChar(32)
+  aadhaar_extraction_source                                                         String?                           @db.VarChar(32)
+  aadhaar_extracted_at                                                              DateTime?                         @db.Timestamp(0)
+  aadhaar_verified_by                                                               BigInt?
+  aadhaar_verified_at                                                               DateTime?                         @db.Timestamp(0)
+  hastak_department                                                                 String?                           @db.VarChar(255)
+  login_disabled_at                                                                 DateTime?                         @db.Timestamp(0)
+  login_disabled_reason                                                             String?
+  aadhaar_export_authorizations_aadhaar_export_authorizations_actor_user_idTousers  aadhaar_export_authorizations[]   @relation("aadhaar_export_authorizations_actor_user_idTousers")
+  aadhaar_export_authorizations_aadhaar_export_authorizations_target_user_idTousers aadhaar_export_authorizations[]   @relation("aadhaar_export_authorizations_target_user_idTousers")
+  attendances                                                                       attendances[]
+  audit_logs                                                                        audit_logs[]
+  auth_sessions_auth_sessions_revoked_byTousers                                     auth_sessions[]                   @relation("auth_sessions_revoked_byTousers")
+  auth_sessions_auth_sessions_user_idTousers                                        auth_sessions[]                   @relation("auth_sessions_user_idTousers")
+  branding_configurations                                                           branding_configurations[]
+  business_groups                                                                   business_groups[]
+  companies                                                                         companies[]
+  company_admin_assignments_company_admin_assignments_assigned_byTousers            company_admin_assignments[]       @relation("company_admin_assignments_assigned_byTousers")
+  company_admin_assignments_company_admin_assignments_revoked_byTousers             company_admin_assignments[]       @relation("company_admin_assignments_revoked_byTousers")
+  company_admin_assignments_company_admin_assignments_user_idTousers                company_admin_assignments[]       @relation("company_admin_assignments_user_idTousers")
+  company_documents                                                                 company_documents[]
+  company_module_activations                                                        company_module_activations[]
+  company_payroll_configurations_company_payroll_configurations_approved_byTousers  company_payroll_configurations[]  @relation("company_payroll_configurations_approved_byTousers")
+  company_payroll_configurations_company_payroll_configurations_locked_byTousers    company_payroll_configurations[]  @relation("company_payroll_configurations_locked_byTousers")
+  company_statutory_registrations                                                   company_statutory_registrations[]
+  dashboard_preferences                                                             dashboard_preferences[]
+  dashboard_saved_views                                                             dashboard_saved_views[]
+  document_audit_logs                                                               document_audit_logs[]
+  document_uploads_document_uploads_uploaded_byTousers                              document_uploads[]                @relation("document_uploads_uploaded_byTousers")
+  document_uploads_document_uploads_user_idTousers                                  document_uploads[]                @relation("document_uploads_user_idTousers")
+  document_versions                                                                 document_versions[]
+  documents_documents_created_byTousers                                             documents[]                       @relation("documents_created_byTousers")
+  documents_documents_deleted_byTousers                                             documents[]                       @relation("documents_deleted_byTousers")
+  documents_documents_updated_byTousers                                             documents[]                       @relation("documents_updated_byTousers")
+  documents_documents_user_idTousers                                                documents[]                       @relation("documents_user_idTousers")
+  feature_flags                                                                     feature_flags[]
+  financial_centres                                                                 financial_centres[]
+  group_admin_assignments_group_admin_assignments_assigned_byTousers                group_admin_assignments[]         @relation("group_admin_assignments_assigned_byTousers")
+  group_admin_assignments_group_admin_assignments_revoked_byTousers                 group_admin_assignments[]         @relation("group_admin_assignments_revoked_byTousers")
+  group_admin_assignments_group_admin_assignments_user_idTousers                    group_admin_assignments[]         @relation("group_admin_assignments_user_idTousers")
+  group_company_assignments                                                         group_company_assignments[]
+  group_policies_group_policies_created_byTousers                                   group_policies[]                  @relation("group_policies_created_byTousers")
+  group_policies_group_policies_published_byTousers                                 group_policies[]                  @relation("group_policies_published_byTousers")
+  location_calendar_entries                                                         location_calendar_entries[]
+  login_events                                                                      login_events[]
+  mfa_credentials                                                                   mfa_credentials?
+  organization_units                                                                organization_units[]
+  position_approval_requests_position_approval_requests_decided_byTousers           position_approval_requests[]      @relation("position_approval_requests_decided_byTousers")
+  position_approval_requests_position_approval_requests_requester_user_idTousers    position_approval_requests[]      @relation("position_approval_requests_requester_user_idTousers")
+  position_incumbents_position_incumbents_created_byTousers                         position_incumbents[]             @relation("position_incumbents_created_byTousers")
+  position_incumbents_position_incumbents_user_idTousers                            position_incumbents[]             @relation("position_incumbents_user_idTousers")
+  positions_positions_created_byTousers                                             positions[]                       @relation("positions_created_byTousers")
+  positions_positions_hiring_manager_user_idTousers                                 positions[]                       @relation("positions_hiring_manager_user_idTousers")
+  positions_positions_owner_user_idTousers                                          positions[]                       @relation("positions_owner_user_idTousers")
+  replacement_candidates_replacement_candidates_added_byTousers                     replacement_candidates[]          @relation("replacement_candidates_added_byTousers")
+  replacement_candidates_replacement_candidates_candidate_user_idTousers            replacement_candidates[]          @relation("replacement_candidates_candidate_user_idTousers")
+  replacement_plans_replacement_plans_created_byTousers                             replacement_plans[]               @relation("replacement_plans_created_byTousers")
+  replacement_plans_replacement_plans_incumbent_user_idTousers                      replacement_plans[]               @relation("replacement_plans_incumbent_user_idTousers")
+  replacement_plans_replacement_plans_owner_user_idTousers                          replacement_plans[]               @relation("replacement_plans_owner_user_idTousers")
+  reporting_relationships_reporting_relationships_created_byTousers                 reporting_relationships[]         @relation("reporting_relationships_created_byTousers")
+  reporting_relationships_reporting_relationships_employee_user_idTousers           reporting_relationships[]         @relation("reporting_relationships_employee_user_idTousers")
+  reporting_relationships_reporting_relationships_manager_user_idTousers            reporting_relationships[]         @relation("reporting_relationships_manager_user_idTousers")
+  unit_admin_assignments_unit_admin_assignments_assigned_byTousers                  unit_admin_assignments[]          @relation("unit_admin_assignments_assigned_byTousers")
+  unit_admin_assignments_unit_admin_assignments_revoked_byTousers                   unit_admin_assignments[]          @relation("unit_admin_assignments_revoked_byTousers")
+  unit_admin_assignments_unit_admin_assignments_user_idTousers                      unit_admin_assignments[]          @relation("unit_admin_assignments_user_idTousers")
+  upload_batches                                                                    upload_batches[]
+  user_permissions                                                                  user_permissions[]
+  user_roles                                                                        user_roles[]
+  users                                                                             users?                            @relation("usersTousers", fields: [aadhaar_verified_by], references: [id], onUpdate: NoAction, map: "users_aadhaar_verified_by_foreign")
+  other_users                                                                       users[]                           @relation("usersTousers")
+  vacancies_vacancies_created_byTousers                                             vacancies[]                       @relation("vacancies_created_byTousers")
+  vacancies_vacancies_filled_by_user_idTousers                                      vacancies[]                       @relation("vacancies_filled_by_user_idTousers")
+  vacancies_vacancies_hiring_manager_user_idTousers                                 vacancies[]                       @relation("vacancies_hiring_manager_user_idTousers")
+  workforce_forecasts_workforce_forecasts_created_byTousers                         workforce_forecasts[]             @relation("workforce_forecasts_created_byTousers")
+  workforce_forecasts_workforce_forecasts_published_byTousers                       workforce_forecasts[]             @relation("workforce_forecasts_published_byTousers")
+  workforce_plans_workforce_plans_approved_byTousers                                workforce_plans[]                 @relation("workforce_plans_approved_byTousers")
+  workforce_plans_workforce_plans_created_byTousers                                 workforce_plans[]                 @relation("workforce_plans_created_byTousers")
+  workforce_plans_workforce_plans_locked_byTousers                                  workforce_plans[]                 @relation("workforce_plans_locked_byTousers")
+  workforce_plans_workforce_plans_owner_user_idTousers                              workforce_plans[]                 @relation("workforce_plans_owner_user_idTousers")
+  workforce_plans_workforce_plans_submitted_byTousers                               workforce_plans[]                 @relation("workforce_plans_submitted_byTousers")
+
+  @@index([aadhaar_secure_reference], map: "users_aadhaar_secure_reference_index")
+  @@index([aadhaar_verification_status], map: "users_aadhaar_verification_status_index")
+  @@index([company_code], map: "users_company_code_index")
+  @@index([unit], map: "users_unit_index")
+}
+
+model vacancies {
+  id                                            BigInt    @id @default(autoincrement())
+  position_id                                   BigInt
+  source                                        String    @default("new_position") @db.VarChar(24)
+  reason                                        String?
+  vacancy_date                                  DateTime  @db.Date
+  required_by_date                              DateTime? @db.Date
+  openings                                      Int       @default(1)
+  required_fte                                  Decimal   @default(1) @db.Decimal(8, 2)
+  priority                                      String    @default("medium") @db.VarChar(16)
+  status                                        String    @default("planned") @db.VarChar(24)
+  status_reason                                 String?
+  estimated_cost                                Decimal?  @db.Decimal(14, 2)
+  hiring_manager_user_id                        BigInt?
+  requisition_code                              String?   @unique(map: "vacancies_requisition_code_unique") @db.VarChar(64)
+  requisition_created_at                        DateTime? @db.Timestamp(0)
+  filled_by_user_id                             BigInt?
+  closed_at                                     DateTime? @db.Timestamp(0)
+  created_by                                    BigInt?
+  created_at                                    DateTime? @db.Timestamp(0)
+  updated_at                                    DateTime? @db.Timestamp(0)
+  users_vacancies_created_byTousers             users?    @relation("vacancies_created_byTousers", fields: [created_by], references: [id], onUpdate: NoAction, map: "vacancies_created_by_foreign")
+  users_vacancies_filled_by_user_idTousers      users?    @relation("vacancies_filled_by_user_idTousers", fields: [filled_by_user_id], references: [id], onUpdate: NoAction, map: "vacancies_filled_by_user_id_foreign")
+  users_vacancies_hiring_manager_user_idTousers users?    @relation("vacancies_hiring_manager_user_idTousers", fields: [hiring_manager_user_id], references: [id], onUpdate: NoAction, map: "vacancies_hiring_manager_user_id_foreign")
+  positions                                     positions @relation(fields: [position_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "vacancies_position_id_foreign")
+
+  @@index([position_id], map: "vacancies_position_id_index")
+  @@index([status, vacancy_date], map: "vacancies_status_vacancy_date_index")
+}
+
+model workforce_forecasts {
+  id                                            BigInt     @id @default(autoincrement())
+  code                                          String     @unique(map: "workforce_forecasts_code_unique") @db.VarChar(96)
+  name                                          String     @db.VarChar(255)
+  company_id                                    BigInt?
+  scenario                                      String     @default("baseline") @db.VarChar(32)
+  horizon_months                                Int        @default(12)
+  base_date                                     DateTime   @db.Date
+  model_version                                 String     @default("deterministic-v1") @db.VarChar(32)
+  assumptions                                   Json?      @db.Json
+  results                                       Json?      @db.Json
+  status                                        String     @default("draft") @db.VarChar(16)
+  run_count                                     Int        @default(0)
+  generated_at                                  DateTime?  @db.Timestamp(0)
+  published_at                                  DateTime?  @db.Timestamp(0)
+  published_by                                  BigInt?
+  created_by                                    BigInt?
+  created_at                                    DateTime?  @db.Timestamp(0)
+  updated_at                                    DateTime?  @db.Timestamp(0)
+  companies                                     companies? @relation(fields: [company_id], references: [id], onUpdate: NoAction, map: "workforce_forecasts_company_id_foreign")
+  users_workforce_forecasts_created_byTousers   users?     @relation("workforce_forecasts_created_byTousers", fields: [created_by], references: [id], onUpdate: NoAction, map: "workforce_forecasts_created_by_foreign")
+  users_workforce_forecasts_published_byTousers users?     @relation("workforce_forecasts_published_byTousers", fields: [published_by], references: [id], onUpdate: NoAction, map: "workforce_forecasts_published_by_foreign")
+}
+
+model workforce_plan_lines {
+  id                   BigInt              @id @default(autoincrement())
+  workforce_plan_id    BigInt
+  organization_unit_id BigInt?
+  designation_id       BigInt?
+  cost_centre_id       BigInt?
+  period_key           String              @default("FY") @db.VarChar(16)
+  category             String?             @db.VarChar(48)
+  opening              Int?
+  additions            Int?
+  reductions           Int?
+  exits                Int?
+  closing              Int?
+  planned_fte          Decimal?            @db.Decimal(8, 2)
+  quantity             Decimal?            @db.Decimal(10, 2)
+  unit_cost            Decimal?            @db.Decimal(14, 2)
+  amount               Decimal?            @db.Decimal(14, 2)
+  justification        String?
+  created_at           DateTime?           @db.Timestamp(0)
+  updated_at           DateTime?           @db.Timestamp(0)
+  financial_centres    financial_centres?  @relation(fields: [cost_centre_id], references: [id], onUpdate: NoAction, map: "workforce_plan_lines_cost_centre_id_foreign")
+  designations         designations?       @relation(fields: [designation_id], references: [id], onUpdate: NoAction, map: "workforce_plan_lines_designation_id_foreign")
+  organization_units   organization_units? @relation(fields: [organization_unit_id], references: [id], onUpdate: NoAction, map: "workforce_plan_lines_organization_unit_id_foreign")
+  workforce_plans      workforce_plans     @relation(fields: [workforce_plan_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "workforce_plan_lines_workforce_plan_id_foreign")
+
+  @@index([workforce_plan_id], map: "workforce_plan_lines_workforce_plan_id_index")
+}
+
+model workforce_plans {
+  id                                                                       BigInt                 @id @default(autoincrement())
+  kind                                                                     String                 @db.VarChar(16)
+  code                                                                     String                 @db.VarChar(96)
+  name                                                                     String                 @db.VarChar(255)
+  financial_year                                                           String                 @db.VarChar(16)
+  scenario                                                                 String                 @default("baseline") @db.VarChar(32)
+  currency                                                                 String                 @default("INR") @db.VarChar(8)
+  company_id                                                               BigInt?
+  headcount_plan_id                                                        BigInt?
+  version_no                                                               Int                    @default(1)
+  parent_plan_id                                                           BigInt?
+  status                                                                   String                 @default("draft") @db.VarChar(16)
+  status_reason                                                            String?
+  assumptions                                                              Json?                  @db.Json
+  thresholds                                                               Json?                  @db.Json
+  owner_user_id                                                            BigInt?
+  submitted_by                                                             BigInt?
+  submitted_at                                                             DateTime?              @db.Timestamp(0)
+  approved_by                                                              BigInt?
+  approved_at                                                              DateTime?              @db.Timestamp(0)
+  locked_by                                                                BigInt?
+  locked_at                                                                DateTime?              @db.Timestamp(0)
+  created_by                                                               BigInt?
+  created_at                                                               DateTime?              @db.Timestamp(0)
+  updated_at                                                               DateTime?              @db.Timestamp(0)
+  workforce_plan_lines                                                     workforce_plan_lines[]
+  users_workforce_plans_approved_byTousers                                 users?                 @relation("workforce_plans_approved_byTousers", fields: [approved_by], references: [id], onUpdate: NoAction, map: "workforce_plans_approved_by_foreign")
+  companies                                                                companies?             @relation(fields: [company_id], references: [id], onUpdate: NoAction, map: "workforce_plans_company_id_foreign")
+  users_workforce_plans_created_byTousers                                  users?                 @relation("workforce_plans_created_byTousers", fields: [created_by], references: [id], onUpdate: NoAction, map: "workforce_plans_created_by_foreign")
+  workforce_plans_workforce_plans_headcount_plan_idToworkforce_plans       workforce_plans?       @relation("workforce_plans_headcount_plan_idToworkforce_plans", fields: [headcount_plan_id], references: [id], onUpdate: NoAction, map: "workforce_plans_headcount_plan_id_foreign")
+  other_workforce_plans_workforce_plans_headcount_plan_idToworkforce_plans workforce_plans[]      @relation("workforce_plans_headcount_plan_idToworkforce_plans")
+  users_workforce_plans_locked_byTousers                                   users?                 @relation("workforce_plans_locked_byTousers", fields: [locked_by], references: [id], onUpdate: NoAction, map: "workforce_plans_locked_by_foreign")
+  users_workforce_plans_owner_user_idTousers                               users?                 @relation("workforce_plans_owner_user_idTousers", fields: [owner_user_id], references: [id], onUpdate: NoAction, map: "workforce_plans_owner_user_id_foreign")
+  workforce_plans_workforce_plans_parent_plan_idToworkforce_plans          workforce_plans?       @relation("workforce_plans_parent_plan_idToworkforce_plans", fields: [parent_plan_id], references: [id], onUpdate: NoAction, map: "workforce_plans_parent_plan_id_foreign")
+  other_workforce_plans_workforce_plans_parent_plan_idToworkforce_plans    workforce_plans[]      @relation("workforce_plans_parent_plan_idToworkforce_plans")
+  users_workforce_plans_submitted_byTousers                                users?                 @relation("workforce_plans_submitted_byTousers", fields: [submitted_by], references: [id], onUpdate: NoAction, map: "workforce_plans_submitted_by_foreign")
+
+  @@unique([kind, code, version_no], map: "workforce_plans_kind_code_version_no_unique")
+  @@index([kind, status], map: "workforce_plans_kind_status_index")
+}

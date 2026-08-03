@@ -598,6 +598,8 @@ export default function SalaryManagement() {
     (field, headerName, extra = {}) => ({
       headerName,
       field,
+      flex: 0,
+      width: 140,
       filter: "agNumberColumnFilter",
       valueFormatter: ({ value }) => formatCurrency(Number(value ?? 0)),
       cellClass:
@@ -663,7 +665,8 @@ export default function SalaryManagement() {
       {
         headerName: "Month",
         field: "month",
-        minWidth: isMobile ? 110 : 140,
+        flex: 0,
+        width: isMobile ? 100 : 110,
         cellRenderer: ({ value }) => <Badge variant="gray">{value}</Badge>,
         filter: "agTextColumnFilter",
         hide: isMobile || !visibleColumns.includes("month"),
@@ -671,6 +674,8 @@ export default function SalaryManagement() {
       {
         headerName: "Employee Code",
         field: "empCode",
+        flex: 0,
+        width: 120,
         hide: isMobile || !visibleColumns.includes("empCode"),
         valueFormatter: ({ value }) => `${value ?? ""}`,
         cellClass: "salary-ag-cell font-mono text-gray-500 dark:text-gray-400",
@@ -679,7 +684,8 @@ export default function SalaryManagement() {
       {
         headerName: "Employee Name",
         field: "name",
-        minWidth: isMobile ? 120 : 160,
+        flex: 1.4,
+        minWidth: isMobile ? 120 : 180,
         cellClass: "salary-ag-cell font-medium text-gray-900 dark:text-white",
         cellStyle: {
           overflow: "hidden",
@@ -692,6 +698,8 @@ export default function SalaryManagement() {
       {
         headerName: "Resignation Date",
         field: "resignationDate",
+        flex: 0,
+        width: 140,
         hide: isMobile || !visibleColumns.includes("resignationDate"),
         filter: "agTextColumnFilter",
         valueFormatter: ({ value }) => value || "-",
@@ -700,6 +708,8 @@ export default function SalaryManagement() {
       {
         headerName: "Working Days",
         field: "workingDays",
+        flex: 0,
+        width: 110,
         hide: isMobile || !visibleColumns.includes("workingDays"),
         filter: "agNumberColumnFilter",
         cellRenderer: ({ value }) => (
@@ -713,6 +723,8 @@ export default function SalaryManagement() {
       {
         headerName: "Present Days",
         field: "presentDays",
+        flex: 0,
+        width: 110,
         hide: isMobile || !visibleColumns.includes("presentDays"),
         filter: "agNumberColumnFilter",
         cellRenderer: ({ value }) => (
@@ -726,6 +738,8 @@ export default function SalaryManagement() {
       {
         headerName: "Leave",
         field: "leave",
+        flex: 0,
+        width: 90,
         hide: isMobile || !visibleColumns.includes("leave"),
         filter: "agNumberColumnFilter",
         cellRenderer: ({ value }) => (
@@ -747,6 +761,8 @@ export default function SalaryManagement() {
       {
         headerName: "Gross Salary",
         field: "grossSalary",
+        flex: 0,
+        width: 150,
         hide: isMobile || !visibleColumns.includes("grossSalary"),
         filter: "agNumberColumnFilter",
         valueFormatter: ({ value }) => formatCurrency(Number(value ?? 0)),
@@ -777,6 +793,8 @@ export default function SalaryManagement() {
       {
         headerName: "Total Deduction",
         field: "totalDeduct",
+        flex: 0,
+        width: 150,
         hide: isMobile || !visibleColumns.includes("totalDeduct"),
         filter: "agNumberColumnFilter",
         valueFormatter: ({ value }) => formatCurrency(Number(value ?? 0)),
@@ -787,6 +805,8 @@ export default function SalaryManagement() {
       {
         headerName: "Net Salary",
         field: "netSalary",
+        flex: 0,
+        width: 150,
         hide: isMobile || !visibleColumns.includes("netSalary"),
         filter: "agNumberColumnFilter",
         valueFormatter: ({ value }) => formatCurrency(Number(value ?? 0)),
@@ -890,25 +910,27 @@ export default function SalaryManagement() {
 
   return (
     <div className="flex h-full flex-col gap-5 overflow-hidden">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 shrink-0">
         <StatCard
+          compact
           title="Total Payroll"
           value={formatCurrency(totalNetPayable)}
-          icon={<DollarSign size={22} />}
+          icon={<DollarSign size={18} />}
           color="blue"
           subtitle={`${scopeLabel} · ${totalRecords} total records`}
         />
 
         <StatCard
+          compact
           title="Total Departments"
           value={totalDepartments}
-          icon={<Building2 size={22} />}
+          icon={<Building2 size={18} />}
           color="green"
           subtitle={`Across ${totalRecords} records`}
         />
       </div>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center w-full">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center w-full shrink-0">
         {/* Left Side: Search & dropdown filters */}
         <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
           {/* Search Bar */}
@@ -1051,7 +1073,7 @@ export default function SalaryManagement() {
           />
         </div>
 
-        <div className="border-t border-gray-100 px-4 py-3 dark:border-gray-700">
+        <div className="shrink-0 border-t border-gray-100 px-4 py-3 dark:border-gray-700">
           <Pagination
             current={apiPage}
             total={totalRecords}

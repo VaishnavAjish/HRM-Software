@@ -31,23 +31,32 @@ function getAdminNav(companyId, user, isAllCompanies) {
 
   const hasAccess = (key) => {
     if (rawRole === 0) return true;
-    if (!permissions) return true; // Default to true if not set (permissive model)
+    if (user?.authorization?.permissions?.[key]) return user.authorization.permissions[key].allowed;
+    if (!permissions) return false;
     return permissions[key] !== "no_access";
   };
 
+  const pagePermission = {
+    dashboard: "ui.admin.dashboard.view", appointments: "ui.admin.appointments.view",
+    trial_form: "recruitment.trial_form.read", employees: "ui.admin.employees.view",
+    salary: "ui.admin.salary.view", attendance: "ui.admin.attendance.view",
+    tds: "payroll.payslip.read", form16: "payroll.payslip.read",
+  };
+  const canPage = (legacyKey) => hasAccess(pagePermission[legacyKey] || legacyKey) || (!user?.authorization && hasAccess(legacyKey));
+
   const nav = [
-    ...(hasAccess("dashboard") ? [{ to: "/admin", label: "Dashboard", icon: LayoutDashboard, end: true }] : []),
-    ...(hasAccess("appointments") || (hasAccess("trial_form") && (companyId === "nidhi-impex" || isAllCompanies)) ? [{
+    ...(canPage("dashboard") ? [{ to: "/admin", label: "Dashboard", icon: LayoutDashboard, end: true }] : []),
+    ...(canPage("appointments") || (canPage("trial_form") && (companyId === "nidhi-impex" || isAllCompanies)) ? [{
       label: "Forms",
       icon: ClipboardList,
       subItems: [
-        ...(hasAccess("appointments") ? [{ to: "/admin/appointments", label: "Appointment Form" }] : []),
-        ...((hasAccess("trial_form") && (companyId === "nidhi-impex" || isAllCompanies))
+        ...(canPage("appointments") ? [{ to: "/admin/appointments", label: "Appointment Form" }] : []),
+        ...((canPage("trial_form") && (companyId === "nidhi-impex" || isAllCompanies))
           ? [{ to: "/admin/trial-form", label: "Trial Form" }]
           : []),
       ]
     }] : []),
-    ...(hasAccess("employees") ? [{
+    ...(canPage("employees") ? [{
       label: "Employees",
       icon: Users,
       subItems: [
@@ -55,7 +64,7 @@ function getAdminNav(companyId, user, isAllCompanies) {
         { to: "/admin/employees", label: "View Employees" }
       ]
     }] : []),
-    ...(hasAccess("salary") ? [{
+    ...(canPage("salary") ? [{
       label: "Salary",
       icon: DollarSign,
       subItems: [
@@ -63,7 +72,7 @@ function getAdminNav(companyId, user, isAllCompanies) {
         { to: "/admin/salary/upload", label: "Salary Upload" }
       ]
     }] : []),
-    ...(hasAccess("attendance") ? [{
+    ...(canPage("attendance") ? [{
       label: "Attendance",
       icon: Calendar,
       subItems: [
@@ -74,8 +83,8 @@ function getAdminNav(companyId, user, isAllCompanies) {
   ];
 
   const tdsSubItems = [
-    ...(hasAccess("tds") ? [{ to: "/admin/tds/calculation", label: "TDS Calculation" }] : []),
-    ...(hasAccess("form16") ? [{ to: "/admin/form16", label: "Form 16" }] : []),
+    ...(canPage("tds") ? [{ to: "/admin/tds/calculation", label: "TDS Calculation" }] : []),
+    ...(canPage("form16") ? [{ to: "/admin/form16", label: "Form 16" }] : []),
   ];
   if (tdsSubItems.length > 0) {
     nav.push({
@@ -85,7 +94,7 @@ function getAdminNav(companyId, user, isAllCompanies) {
     });
   }
 
-  if (rawRole === 0) {
+  if (rawRole === 0 || hasAccess("ui.admin.authorization.view")) {
     nav.push({
       label: "RBAC",
       icon: ShieldCheck,
@@ -94,6 +103,12 @@ function getAdminNav(companyId, user, isAllCompanies) {
         { to: "/admin/rbac/users", label: "Users" },
         { to: "/admin/rbac/permission-matrix", label: "Role Permission Matrix" },
         { to: "/admin/rbac/audit-logs", label: "Audit Trails" },
+        { to: "/admin/authorization", label: "Authorization Overview" },
+        { to: "/admin/authorization/roles", label: "Enterprise Roles" },
+        { to: "/admin/authorization/policies", label: "Policies" },
+        { to: "/admin/authorization/requests", label: "Access Requests" },
+        { to: "/admin/authorization/audit", label: "Decision Audit" },
+        { to: "/admin/authorization/simulator", label: "Simulator" },
       ],
     });
   }

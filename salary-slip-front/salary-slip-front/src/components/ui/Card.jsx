@@ -8,7 +8,7 @@ export default function Card({ children, className = "", padding = true }) {
   );
 }
 
-export function StatCard({ title, value, icon, color, change, subtitle }) {
+export function StatCard({ title, value, icon, color, change, subtitle, compact = false }) {
   const colors = {
     blue: {
       bg: "bg-brand-50 dark:bg-brand-900/20",
@@ -40,16 +40,16 @@ export function StatCard({ title, value, icon, color, change, subtitle }) {
 
   return (
     <div
-      className={`bg-white dark:bg-gray-800 rounded-xl border ${c.border} shadow-sm p-6 flex items-start gap-4`}
+      className={`bg-white dark:bg-gray-800 rounded-xl border ${c.border} shadow-sm flex items-start ${compact ? "p-3.5 gap-3" : "p-6 gap-4"}`}
     >
-      <div className={`p-3 rounded-xl ${c.bg}`}>
-        <span className={`text-2xl ${c.icon}`}>{icon}</span>
+      <div className={`rounded-xl ${c.bg} ${compact ? "p-2" : "p-3"}`}>
+        <span className={`${c.icon} ${compact ? "text-lg" : "text-2xl"}`}>{icon}</span>
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-sm text-gray-500 dark:text-gray-400 font-medium">
           {title}
         </p>
-        <p className="text-2xl font-bold text-gray-900 dark:text-white mt-0.5 truncate">
+        <p className={`font-bold text-gray-900 dark:text-white mt-0.5 truncate ${compact ? "text-lg" : "text-2xl"}`}>
           {value}
         </p>
         {(change || subtitle) && (

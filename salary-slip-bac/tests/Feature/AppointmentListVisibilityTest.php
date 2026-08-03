@@ -195,18 +195,31 @@ class AppointmentListVisibilityTest extends TestCase
     }
 
     /**
-     * The public, unauthenticated job-application form posts to the same route.
-     * Nothing about the list depends on who submitted it.
+     * This previously asserted that an unauthenticated submission is accepted
+     * and then listed, on the stated grounds that "the public, unauthenticated
+     * job-application form posts to the same route".
+     *
+     * No such form exists. Every frontend route sits behind ProtectedRoute with
+     * the catch-all redirecting to /login; the only caller of
+     * submitAppointmentForm() is AppointmentModal, which sends a bearer token;
+     * and the separate client/ and server/ trees in this repo are a different
+     * product (hrflow-pro) whose "appointments" are calendar bookings, not this
+     * route. The docblock described what the code did, not a requirement — and
+     * what the code did was accept anonymous writes into the users table on an
+     * API whose CORS policy is allowed_origins: ['*'].
+     *
+     * Kept as coverage of the corrected behaviour rather than deleted, so the
+     * route cannot quietly become public again.
      */
-    public function test_an_unauthenticated_submission_appears_for_an_admin(): void
+    public function test_an_unauthenticated_submission_is_refused(): void
     {
-        $this->submitViaForm(null)->assertOk();
+        $this->submitViaForm(null)->assertUnauthorized();
 
         $admin = $this->superAdmin();
         $response = $this->list($admin, ['company_code' => 'nidhi-impex,silver-star']);
 
         $response->assertOk();
-        $this->assertCount(1, $response->json('data.appointments'));
+        $this->assertCount(0, $response->json('data.appointments'));
     }
 
     /**

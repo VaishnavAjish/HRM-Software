@@ -23,9 +23,12 @@ class AdminController extends Controller
         $slipQuery = SalarySlip::query();
 
         $userAuth = auth('api')->user();
-        if ($userAuth && (int) $userAuth->role === 1) {
-            $userQuery->where('company_code', $userAuth->company_code);
-            $slipQuery->where('company_code', $userAuth->company_code);
+        if ($userAuth && ((int) $userAuth->role === 1 || (int) $userAuth->role === 0)) {
+            if ($request->company_code && !in_array($request->company_code, ['all', 'all-companies'])) {
+                $codes = array_filter(array_map('trim', explode(',', $request->company_code)));
+                $userQuery->whereIn('company_code', $codes);
+                $slipQuery->whereIn('company_code', $codes);
+            }
         } elseif ($userAuth && (int) $userAuth->role === 2) {
             $userQuery->where('company_code', $userAuth->company_code)->where('unit', $userAuth->unit);
             $slipQuery->where('company_code', $userAuth->company_code)->where('unit', $userAuth->unit);
@@ -83,8 +86,11 @@ class AdminController extends Controller
         $recentSlips = (clone $slipQuery)->orderBy('id', 'desc')->take(10)->get();
 
         $batchQuery = \App\Models\UploadBatch::query();
-        if ($userAuth && (int) $userAuth->role === 1) {
-            $batchQuery->where('company_code', $userAuth->company_code);
+        if ($userAuth && ((int) $userAuth->role === 1 || (int) $userAuth->role === 0)) {
+            if ($request->company_code && !in_array($request->company_code, ['all', 'all-companies'])) {
+                $codes = array_filter(array_map('trim', explode(',', $request->company_code)));
+                $batchQuery->whereIn('company_code', $codes);
+            }
         } elseif ($userAuth && (int) $userAuth->role === 2) {
             $batchQuery->where('company_code', $userAuth->company_code)->where('unit', $userAuth->unit);
         } elseif ($request->company_code) {
@@ -308,7 +314,12 @@ class AdminController extends Controller
 
         $userAuth = auth('api')->user();
         if ($userAuth && (int) $userAuth->role === 1) {
-            $company_code = $userAuth->company_code;
+            $userCompanyCodes = array_filter(array_map('trim', explode(',', (string)$userAuth->company_code)));
+            if ($request->company_code && !in_array($request->company_code, ['all', 'all-companies']) && in_array($request->company_code, $userCompanyCodes, true)) {
+                $company_code = $request->company_code;
+            } else {
+                $company_code = $userCompanyCodes[0] ?? 'nidhi-impex';
+            }
             $unit = $request->unit;
         } elseif ($userAuth && (int) $userAuth->role === 2) {
             $company_code = $userAuth->company_code;
@@ -576,8 +587,11 @@ class AdminController extends Controller
         // create, so a unit-scoped manager can't delete another company's or
         // another unit's payslip just by knowing its id.
         $userAuth = auth('api')->user();
-        if ($userAuth && (int) $userAuth->role === 1 && $slip->company_code !== $userAuth->company_code) {
-            return response()->json(['status' => false, 'message' => 'Salary slip not found'], 404);
+        if ($userAuth && (int) $userAuth->role === 1) {
+            $userCompanyCodes = array_filter(array_map('trim', explode(',', (string)$userAuth->company_code)));
+            if (!in_array('all', $userCompanyCodes) && !in_array('all-companies', $userCompanyCodes) && !in_array((string)$slip->company_code, $userCompanyCodes, true)) {
+                return response()->json(['status' => false, 'message' => 'Salary slip not found'], 404);
+            }
         }
         if ($userAuth && (int) $userAuth->role === 2
             && ($slip->company_code !== $userAuth->company_code || $slip->unit !== $userAuth->unit)) {

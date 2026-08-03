@@ -659,6 +659,48 @@ export const rbacApi = {
   },
 };
 
+export const authorizationApi = {
+  me(accessToken, tokenType = "Bearer") {
+    return apiRequest("/v1/authorization/me", { headers: authHeaders(accessToken, tokenType) });
+  },
+  check(permissionCode, resource, accessToken, tokenType = "Bearer") {
+    return apiRequest("/v1/authorization/check", {
+      method: "POST", headers: authHeaders(accessToken, tokenType),
+      body: JSON.stringify({ permissionCode, resource }),
+    });
+  },
+  simulate(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest("/v1/authorization/simulate", {
+      method: "POST", headers: authHeaders(accessToken, tokenType), body: JSON.stringify(payload),
+    });
+  },
+  roles(accessToken, tokenType = "Bearer") {
+    return apiRequest("/v1/roles", { headers: authHeaders(accessToken, tokenType) });
+  },
+  policies(accessToken, tokenType = "Bearer") {
+    return apiRequest("/v1/policies", { headers: authHeaders(accessToken, tokenType) });
+  },
+  accessRequests(accessToken, tokenType = "Bearer") {
+    return apiRequest("/v1/access-requests", { headers: authHeaders(accessToken, tokenType) });
+  },
+  audit(accessToken, tokenType = "Bearer") {
+    return apiRequest("/v1/authorization/audit", { headers: authHeaders(accessToken, tokenType) });
+  },
+  analytics(accessToken, tokenType = "Bearer") {
+    return apiRequest("/v1/authorization/analytics", { headers: authHeaders(accessToken, tokenType) });
+  },
+  publishPolicy(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/policies/${id}/publish`, {
+      method: "POST", headers: authHeaders(accessToken, tokenType), body: JSON.stringify({ changeSummary: "Published from authorization console" }),
+    });
+  },
+  decideAccessRequest(id, decision, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/access-requests/${id}/${decision}`, {
+      method: "POST", headers: authHeaders(accessToken, tokenType), body: JSON.stringify({ decisionReason: `Access request ${decision}d from authorization console` }),
+    });
+  },
+};
+
 export const documentApi = {
   // Catalogue for the Document Type selector, grouped by category.
   getTypes(accessToken, tokenType = "Bearer") {
@@ -1131,12 +1173,23 @@ export const authApi = {
     });
   },
 
-  setNewPassword(password, email) {
+  /**
+   * Step 3 of the email reset.
+   *
+   * `otp` is the code the user already entered at step 2, forwarded rather
+   * than re-prompted. The Laravel endpoint ignores it — it checks only that
+   * some OTP is outstanding, which is why knowing an email address is
+   * currently enough to reset an account. The Node implementation verifies
+   * it. Sending it is a no-op against the old backend and a requirement
+   * against the new one.
+   */
+  setNewPassword(password, email, otp) {
     return apiRequest("/new-password", {
       method: "POST",
       body: JSON.stringify({
         password,
         email,
+        otp,
         type: 3,
       }),
     });

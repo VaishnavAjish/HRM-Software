@@ -26,7 +26,16 @@ class UploadBatchController extends Controller
         $query = UploadBatch::where('type', $type)->withCount('rows');
 
         if ($userAuth && (int) $userAuth->role === 1) {
-            $query->where('company_code', $userAuth->company_code);
+            $userCompanyCodes = array_filter(array_map('trim', explode(',', (string)$userAuth->company_code)));
+            $hasAllCompanies = in_array('all', $userCompanyCodes) || in_array('all-companies', $userCompanyCodes) || count($userCompanyCodes) >= 2;
+
+            if ($request->company_code && !in_array($request->company_code, ['all', 'all-companies'])) {
+                $reqCodes = array_filter(array_map('trim', explode(',', $request->company_code)));
+                $allowedCodes = $hasAllCompanies ? $reqCodes : array_intersect($reqCodes, $userCompanyCodes);
+                $query->whereIn('company_code', !empty($allowedCodes) ? $allowedCodes : ['__none__']);
+            } elseif (!$hasAllCompanies) {
+                $query->whereIn('company_code', $userCompanyCodes);
+            }
         } elseif ($userAuth && (int) $userAuth->role === 2) {
             $query->where('company_code', $userAuth->company_code)->where('unit', $userAuth->unit);
         } elseif ($request->company_code) {
@@ -69,8 +78,11 @@ class UploadBatchController extends Controller
         }
 
         $userAuth = auth('api')->user();
-        if ($userAuth && (int) $userAuth->role === 1 && $batch->company_code !== $userAuth->company_code) {
-            return response()->json(['status' => false, 'message' => 'Batch not found'], 404);
+        if ($userAuth && (int) $userAuth->role === 1) {
+            $userCompanyCodes = array_filter(array_map('trim', explode(',', (string)$userAuth->company_code)));
+            if (!in_array('all', $userCompanyCodes) && !in_array('all-companies', $userCompanyCodes) && !in_array((string)$batch->company_code, $userCompanyCodes, true)) {
+                return response()->json(['status' => false, 'message' => 'Batch not found'], 404);
+            }
         }
         if ($userAuth && (int) $userAuth->role === 2 && ($batch->company_code !== $userAuth->company_code || $batch->unit !== $userAuth->unit)) {
             return response()->json(['status' => false, 'message' => 'Batch not found'], 404);
@@ -98,8 +110,11 @@ class UploadBatchController extends Controller
         }
 
         $userAuth = auth('api')->user();
-        if ($userAuth && (int) $userAuth->role === 1 && $batch->company_code !== $userAuth->company_code) {
-            return response()->json(['status' => false, 'message' => 'Batch not found'], 404);
+        if ($userAuth && (int) $userAuth->role === 1) {
+            $userCompanyCodes = array_filter(array_map('trim', explode(',', (string)$userAuth->company_code)));
+            if (!in_array('all', $userCompanyCodes) && !in_array('all-companies', $userCompanyCodes) && !in_array((string)$batch->company_code, $userCompanyCodes, true)) {
+                return response()->json(['status' => false, 'message' => 'Batch not found'], 404);
+            }
         }
         if ($userAuth && (int) $userAuth->role === 2 && ($batch->company_code !== $userAuth->company_code || $batch->unit !== $userAuth->unit)) {
             return response()->json(['status' => false, 'message' => 'Batch not found'], 404);

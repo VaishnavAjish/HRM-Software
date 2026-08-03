@@ -60,6 +60,8 @@ const EmployeeAppointment = lazy(() => import("./pages/employee/EmployeeAppointm
 // Agent pages
 const AgentDashboard = lazy(() => import("./pages/agent/AgentDashboard"));
 import { hasStoredAadhaar } from "./utils/aadhaar";
+import { useAuthorization } from "./hooks/useAuthorization";
+const AuthorizationCenter = lazy(() => import("./pages/admin/rbac/AuthorizationCenter"));
 
 function RouteLoader() {
   return (
@@ -72,9 +74,10 @@ function RouteLoader() {
   );
 }
 
-function ProtectedRoute({ children, requiredRole }) {
+function ProtectedRoute({ children, requiredRole, requiredPermission }) {
   const location = useLocation();
   const { user, initializing, isAuthenticated } = useAuth();
+  const { can } = useAuthorization();
 
   if (initializing) return <RouteLoader />;
   if (!isAuthenticated) {
@@ -82,6 +85,10 @@ function ProtectedRoute({ children, requiredRole }) {
   }
 
   if (requiredRole && user.role !== requiredRole) {
+    const fallbackPath = user.role === "admin" ? "/admin" : (user.role === "agent" ? "/agent" : "/employee");
+    return <Navigate to={fallbackPath} replace />;
+  }
+  if (requiredPermission && !can(requiredPermission)) {
     const fallbackPath = user.role === "admin" ? "/admin" : (user.role === "agent" ? "/agent" : "/employee");
     return <Navigate to={fallbackPath} replace />;
   }
@@ -174,6 +181,12 @@ function AppRoutes() {
         <Route path="rbac/users" element={<RbacUsers />} />
         <Route path="rbac/permission-matrix" element={<PermissionMatrix />} />
         <Route path="rbac/audit-logs" element={<AuditLogs />} />
+        <Route path="authorization" element={<ProtectedRoute requiredPermission="ui.admin.authorization.view"><AuthorizationCenter view="overview" /></ProtectedRoute>} />
+        <Route path="authorization/roles" element={<ProtectedRoute requiredPermission="admin.role.read"><AuthorizationCenter view="roles" /></ProtectedRoute>} />
+        <Route path="authorization/policies" element={<ProtectedRoute requiredPermission="admin.policy.read"><AuthorizationCenter view="policies" /></ProtectedRoute>} />
+        <Route path="authorization/requests" element={<ProtectedRoute requiredPermission="admin.access_request.read"><AuthorizationCenter view="requests" /></ProtectedRoute>} />
+        <Route path="authorization/audit" element={<ProtectedRoute requiredPermission="admin.authorization.audit.read"><AuthorizationCenter view="audit" /></ProtectedRoute>} />
+        <Route path="authorization/simulator" element={<ProtectedRoute requiredPermission="admin.authorization.simulate"><AuthorizationCenter view="simulator" /></ProtectedRoute>} />
 
         <Route path="trial-form" element={<TrialForm />} />
         <Route path="tds/calculation" element={<TdsCalculation />} />

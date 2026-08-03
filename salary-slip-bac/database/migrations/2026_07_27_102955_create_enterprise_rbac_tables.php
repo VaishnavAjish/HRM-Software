@@ -58,6 +58,11 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('enterprise_rbac_tables');
+        Schema::dropIfExists('user_permissions');
+        Schema::dropIfExists('user_roles');
+        Schema::dropIfExists('role_permissions');
+        Schema::dropIfExists('roles');
+        Schema::dropIfExists('permissions');
+        Schema::dropIfExists('permission_groups');
     }
 };

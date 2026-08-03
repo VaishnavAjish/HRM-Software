@@ -157,10 +157,20 @@ function findCompanyUnit(companyId, value) {
 }
 
 export function normalizeCompanyId(value) {
-  const normalized = String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[_\s]+/g, "-");
+  if (!value) return DEFAULT_COMPANY_ID;
+  const rawStr = String(value).trim().toLowerCase();
+  if (rawStr.includes(",")) {
+    const parts = rawStr.split(",").map(s => s.trim()).filter(Boolean);
+    const resolved = parts.map(p => normalizeCompanyId(p));
+    if (resolved.length > 1) {
+      return ALL_COMPANY_ID;
+    }
+    if (resolved.length === 1) {
+      return resolved[0];
+    }
+  }
+
+  const normalized = rawStr.replace(/[_\s]+/g, "-");
 
   if (
     ["nidhi", "nidhi-impex", "nidhiimpex", "nidhi-impex-pvt-ltd"].includes(

@@ -6,7 +6,18 @@ use Illuminate\Database\Eloquent\Model;
 
 class Permission extends Model
 {
-    protected $fillable = ['name', 'group_id', 'description'];
+    protected $fillable = [
+        'name', 'code', 'resource', 'action', 'level', 'group_id',
+        'description', 'is_sensitive', 'is_active',
+    ];
+
+    protected function casts(): array
+    {
+        return [
+            'is_sensitive' => 'boolean',
+            'is_active' => 'boolean',
+        ];
+    }
 
     public function group()
     {

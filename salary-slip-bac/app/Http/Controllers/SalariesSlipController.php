@@ -87,8 +87,11 @@ class SalariesSlipController extends Controller
             if ((int) $user->role !== 0 && (int) $user->role !== 1 && (int) $user->role !== 2 && (string) $slip->emp_code !== (string) $user->emp_code) {
                 return response()->json(['status' => false, 'message' => 'Salary slip not found'], 404);
             }
-            if ((int) $user->role === 1 && (string) $slip->company_code !== (string) $user->company_code) {
-                return response()->json(['status' => false, 'message' => 'Salary slip not found'], 404);
+            if ((int) $user->role === 1) {
+                $userCompanyCodes = array_filter(array_map('trim', explode(',', (string)$user->company_code)));
+                if (!in_array('all', $userCompanyCodes) && !in_array('all-companies', $userCompanyCodes) && !in_array((string)$slip->company_code, $userCompanyCodes, true)) {
+                    return response()->json(['status' => false, 'message' => 'Salary slip not found'], 404);
+                }
             }
             if ((int) $user->role === 2 && ((string) $slip->company_code !== (string) $user->company_code || (string) $slip->unit !== (string) $user->unit)) {
                 return response()->json(['status' => false, 'message' => 'Salary slip not found'], 404);

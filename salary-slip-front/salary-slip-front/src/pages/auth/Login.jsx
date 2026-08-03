@@ -506,7 +506,9 @@ export default function Login() {
     setPwdLoading(true);
 
     try {
-      await authApi.setNewPassword(newPass, emailInput.trim());
+      // Same normalisation handleVerifyOtp() used, so the value the server
+      // compares against is exactly the one that was verified.
+      await authApi.setNewPassword(newPass, emailInput.trim(), otp.replace(/\s/g, ""));
       toast.success("Password updated! You can now log in.");
 
       setMode("login");

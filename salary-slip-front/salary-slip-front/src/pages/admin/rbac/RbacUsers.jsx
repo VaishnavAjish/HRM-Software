@@ -1,4 +1,4 @@
-import { Search, Lock, Unlock, Trash2, ShieldAlert, Plus } from "lucide-react";
+import { Search, Lock, Unlock, Trash2, ShieldAlert, Plus, Eye, EyeOff } from "lucide-react";
 import toast from "react-hot-toast";
 import Badge from "../../../components/ui/Badge";
 import Button from "../../../components/ui/Button";
@@ -25,13 +25,13 @@ export default function RbacUsers() {
   const [roleFilter, setRoleFilter] = useState("1,3,4"); // Default to All Accounts
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [addForm, setAddForm] = useState({
     name: "",
     email: "",
     password: "",
     role: "1",
-    company: "nidhi-impex",
-    agentCompanies: { "nidhi-impex": true, "silver-star": false }
+    agentCompanies: { "nidhi-impex": true, "silver-star": true }
   });
   const [addLoading, setAddLoading] = useState(false);
 
@@ -102,20 +102,15 @@ export default function RbacUsers() {
       return;
     }
 
-    let selectedCompany = "";
-    if (Number(addForm.role) === 1) {
-      selectedCompany = addForm.company;
-    } else if (Number(addForm.role) === 4) {
-      const selected = [];
-      if (addForm.agentCompanies["nidhi-impex"]) selected.push("nidhi-impex");
-      if (addForm.agentCompanies["silver-star"]) selected.push("silver-star");
-      
-      if (selected.length === 0) {
-        toast.error("Please select at least one company for the Agent");
-        return;
-      }
-      selectedCompany = selected.join(",");
+    const selected = [];
+    if (addForm.agentCompanies["nidhi-impex"]) selected.push("nidhi-impex");
+    if (addForm.agentCompanies["silver-star"]) selected.push("silver-star");
+    
+    if (selected.length === 0) {
+      toast.error("Please select at least one company");
+      return;
     }
+    const selectedCompany = selected.join(",");
 
     setAddLoading(true);
     try {
@@ -133,13 +128,13 @@ export default function RbacUsers() {
       if (res.status) {
         toast.success("User created successfully");
         setShowAddModal(false);
+        setShowPassword(false);
         setAddForm({
           name: "",
           email: "",
           password: "",
           role: "1",
-          company: "nidhi-impex",
-          agentCompanies: { "nidhi-impex": true, "silver-star": false }
+          agentCompanies: { "nidhi-impex": true, "silver-star": true }
         });
         fetchUsers(1);
       } else {
@@ -386,14 +381,24 @@ export default function RbacUsers() {
             <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
               Password
             </label>
-            <input
-              type="password"
-              required
-              value={addForm.password}
-              onChange={(e) => setAddForm({ ...addForm, password: e.target.value })}
-              className="w-full px-3 py-2 text-sm bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white outline-none focus:border-brand-500"
-              placeholder="Min 6 characters"
-            />
+            <div className="relative">
+              <input
+                type={showPassword ? "text" : "password"}
+                required
+                value={addForm.password}
+                onChange={(e) => setAddForm({ ...addForm, password: e.target.value })}
+                className="w-full px-3 py-2 pr-10 text-sm bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white outline-none focus:border-brand-500"
+                placeholder="Min 6 characters"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+                title={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
           </div>
 
           <div>
@@ -410,65 +415,47 @@ export default function RbacUsers() {
             </select>
           </div>
 
-          {Number(addForm.role) === 1 && (
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Company Access
+          <div>
+            <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Company Access (Select one or both)
+            </label>
+            <div className="flex gap-6 mt-1">
+              <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={addForm.agentCompanies["nidhi-impex"]}
+                  onChange={(e) =>
+                    setAddForm({
+                      ...addForm,
+                      agentCompanies: {
+                        ...addForm.agentCompanies,
+                        "nidhi-impex": e.target.checked,
+                      },
+                    })
+                  }
+                  className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                />
+                Nidhi Impex
               </label>
-              <select
-                value={addForm.company}
-                onChange={(e) => setAddForm({ ...addForm, company: e.target.value })}
-                className="w-full px-3 py-2 text-sm bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white outline-none focus:border-brand-500"
-              >
-                <option value="nidhi-impex">Nidhi Impex</option>
-                <option value="silver-star">Silver Star</option>
-              </select>
-            </div>
-          )}
-
-          {Number(addForm.role) === 4 && (
-            <div>
-              <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Company Access (Select one or both)
+              <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={addForm.agentCompanies["silver-star"]}
+                  onChange={(e) =>
+                    setAddForm({
+                      ...addForm,
+                      agentCompanies: {
+                        ...addForm.agentCompanies,
+                        "silver-star": e.target.checked,
+                      },
+                    })
+                  }
+                  className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                />
+                Silver Star
               </label>
-              <div className="flex gap-6 mt-1">
-                <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={addForm.agentCompanies["nidhi-impex"]}
-                    onChange={(e) =>
-                      setAddForm({
-                        ...addForm,
-                        agentCompanies: {
-                          ...addForm.agentCompanies,
-                          "nidhi-impex": e.target.checked,
-                        },
-                      })
-                    }
-                    className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
-                  />
-                  Nidhi Impex
-                </label>
-                <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={addForm.agentCompanies["silver-star"]}
-                    onChange={(e) =>
-                      setAddForm({
-                        ...addForm,
-                        agentCompanies: {
-                          ...addForm.agentCompanies,
-                          "silver-star": e.target.checked,
-                        },
-                      })
-                    }
-                    className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
-                  />
-                  Silver Star
-                </label>
-              </div>
             </div>
-          )}
+          </div>
 
           <div className="flex justify-end gap-3 pt-4 border-t border-gray-100 dark:border-gray-700 mt-6">
             <Button type="button" variant="secondary" onClick={() => setShowAddModal(false)}>
