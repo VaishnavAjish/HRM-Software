@@ -677,6 +677,59 @@ export const authorizationApi = {
   roles(accessToken, tokenType = "Bearer") {
     return apiRequest("/v1/roles", { headers: authHeaders(accessToken, tokenType) });
   },
+
+  /*
+   * Permission Matrix.
+   *
+   * The matrix is fetched as one document rather than a cell-per-request:
+   * ~110 permissions across 8 action columns is nearly 900 cells, and asking
+   * the API once per cell is what turns opening the screen into a thousand
+   * round trips. The response carries the modules, the permission catalogue
+   * and the selected role's effective state together, already resolved by the
+   * engine, so the grid renders from a single payload.
+   */
+  matrix(roleId, { scopeType, scopeId } = {}, accessToken, tokenType = "Bearer") {
+    const params = new URLSearchParams();
+    if (scopeType) params.set("scope_type", scopeType);
+    if (scopeId) params.set("scope_id", scopeId);
+    const query = params.toString();
+
+    return apiRequest(`/v1/roles/${roleId}/matrix${query ? `?${query}` : ""}`, {
+      headers: authHeaders(accessToken, tokenType),
+    });
+  },
+
+  /** Persists only the changed cells; the server rejects an empty diff. */
+  saveMatrix(roleId, changes, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/roles/${roleId}/matrix`, {
+      method: "PUT",
+      headers: authHeaders(accessToken, tokenType),
+      body: JSON.stringify({ changes }),
+    });
+  },
+
+  cloneRole(roleId, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/roles/${roleId}/clone`, {
+      method: "POST",
+      headers: authHeaders(accessToken, tokenType),
+      body: JSON.stringify(payload),
+    });
+  },
+
+  /** Scope values for the Scope selector, per scope type. */
+  scopeOptions(scopeType, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/scopes/${scopeType}/options`, {
+      headers: authHeaders(accessToken, tokenType),
+    });
+  },
+
+  /** Runs the real engine for one user — not a static role read. */
+  effectivePermissions(userId, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/users/${userId}/effective-permissions`, {
+      headers: authHeaders(accessToken, tokenType),
+    });
+  },
+
   policies(accessToken, tokenType = "Bearer") {
     return apiRequest("/v1/policies", { headers: authHeaders(accessToken, tokenType) });
   },
@@ -1429,5 +1482,192 @@ export const authApi = {
         ? { Authorization: `${tokenType} ${accessToken}` }
         : {},
     });
+  },
+};
+
+function hrAuthHeaders(accessToken, tokenType) {
+  return accessToken ? { Authorization: `${tokenType} ${accessToken}` } : {};
+}
+
+function hrQuery(params = {}) {
+  const usp = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === "") return;
+    usp.set(key, value);
+  });
+  const query = usp.toString();
+  return query ? `?${query}` : "";
+}
+
+export const hrApi = {
+  getDashboard(accessToken, tokenType = "Bearer", filters = {}) {
+    return apiRequest(`/hr/dashboard${hrQuery(filters)}`, { headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+
+  // Requisitions
+  getRequisitions(accessToken, tokenType = "Bearer", filters = {}) {
+    return apiRequest(`/hr/requisitions/get${hrQuery(filters)}`, { headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+  getRequisition(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/requisitions/show/${id}`, { headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+  storeRequisition(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest("/hr/requisitions/store", { method: "POST", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(payload) });
+  },
+  updateRequisition(id, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/requisitions/update/${id}`, { method: "PUT", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(payload) });
+  },
+  deleteRequisition(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/requisitions/delete/${id}`, { method: "DELETE", headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+  approveRequisition(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/requisitions/approve/${id}`, { method: "POST", headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+  publishRequisition(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/requisitions/publish/${id}`, { method: "POST", headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+
+  // Candidates
+  getCandidates(accessToken, tokenType = "Bearer", filters = {}) {
+    return apiRequest(`/hr/candidates/get${hrQuery(filters)}`, { headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+  getPipeline(accessToken, tokenType = "Bearer", filters = {}) {
+    return apiRequest(`/hr/candidates/pipeline${hrQuery(filters)}`, { headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+  getCandidate(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/candidates/show/${id}`, { headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+  storeCandidate(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest("/hr/candidates/store", { method: "POST", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(payload) });
+  },
+  updateCandidate(id, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/candidates/update/${id}`, { method: "PUT", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(payload) });
+  },
+  deleteCandidate(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/candidates/delete/${id}`, { method: "DELETE", headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+  moveCandidateStage(id, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/candidates/move-stage/${id}`, { method: "POST", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(payload) });
+  },
+
+  // Interviews
+  getInterviews(accessToken, tokenType = "Bearer", filters = {}) {
+    return apiRequest(`/hr/interviews/get${hrQuery(filters)}`, { headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+  getInterview(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/interviews/show/${id}`, { headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+  storeInterview(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest("/hr/interviews/store", { method: "POST", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(payload) });
+  },
+  updateInterview(id, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/interviews/update/${id}`, { method: "PUT", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(payload) });
+  },
+  deleteInterview(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/interviews/delete/${id}`, { method: "DELETE", headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+  rescheduleInterview(id, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/interviews/reschedule/${id}`, { method: "POST", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(payload) });
+  },
+  submitInterviewFeedback(id, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/interviews/feedback/${id}`, { method: "POST", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(payload) });
+  },
+
+  // Offers
+  getOffers(accessToken, tokenType = "Bearer", filters = {}) {
+    return apiRequest(`/hr/offers/get${hrQuery(filters)}`, { headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+  getOffer(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/offers/show/${id}`, { headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+  storeOffer(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest("/hr/offers/store", { method: "POST", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(payload) });
+  },
+  updateOffer(id, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/offers/update/${id}`, { method: "PUT", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(payload) });
+  },
+  deleteOffer(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/offers/delete/${id}`, { method: "DELETE", headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+  approveOffer(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/offers/approve/${id}`, { method: "POST", headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+  releaseOffer(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/offers/release/${id}`, { method: "POST", headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+  respondOffer(id, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/offers/respond/${id}`, { method: "POST", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(payload) });
+  },
+
+  // Assets
+  getAssets(accessToken, tokenType = "Bearer", filters = {}) {
+    return apiRequest(`/hr/assets/get${hrQuery(filters)}`, { headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+  getAssetDashboard(accessToken, tokenType = "Bearer", filters = {}) {
+    return apiRequest(`/hr/assets/dashboard${hrQuery(filters)}`, { headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+  getAsset(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/assets/show/${id}`, { headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+  storeAsset(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest("/hr/assets/store", { method: "POST", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(payload) });
+  },
+  updateAsset(id, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/assets/update/${id}`, { method: "PUT", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(payload) });
+  },
+  deleteAsset(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/assets/delete/${id}`, { method: "DELETE", headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+  allocateAsset(id, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/assets/allocate/${id}`, { method: "POST", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(payload) });
+  },
+  returnAsset(id, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/assets/return/${id}`, { method: "POST", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(payload) });
+  },
+  transferAsset(id, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/assets/transfer/${id}`, { method: "POST", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(payload) });
+  },
+
+  // Performance
+  getPerformanceDashboard(accessToken, tokenType = "Bearer", filters = {}) {
+    return apiRequest(`/hr/performance/dashboard${hrQuery(filters)}`, { headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+  getPerformanceCycles(accessToken, tokenType = "Bearer") {
+    return apiRequest("/hr/performance/cycles/get", { headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+  storePerformanceCycle(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest("/hr/performance/cycles/store", { method: "POST", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(payload) });
+  },
+  updatePerformanceCycle(id, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/performance/cycles/update/${id}`, { method: "PUT", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(payload) });
+  },
+  deletePerformanceCycle(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/performance/cycles/delete/${id}`, { method: "DELETE", headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+  getPerformanceGoals(accessToken, tokenType = "Bearer", filters = {}) {
+    return apiRequest(`/hr/performance/goals/get${hrQuery(filters)}`, { headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+  storePerformanceGoal(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest("/hr/performance/goals/store", { method: "POST", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(payload) });
+  },
+  updatePerformanceGoal(id, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/performance/goals/update/${id}`, { method: "PUT", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(payload) });
+  },
+  deletePerformanceGoal(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/performance/goals/delete/${id}`, { method: "DELETE", headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+  getPerformanceReviews(accessToken, tokenType = "Bearer", filters = {}) {
+    return apiRequest(`/hr/performance/reviews/get${hrQuery(filters)}`, { headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+  storePerformanceReview(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest("/hr/performance/reviews/store", { method: "POST", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(payload) });
+  },
+  updatePerformanceReview(id, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/performance/reviews/update/${id}`, { method: "PUT", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(payload) });
+  },
+
+  // Reports
+  generateReport(type, filters = {}, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/reports/generate${hrQuery({ type, ...filters })}`, { headers: hrAuthHeaders(accessToken, tokenType) });
   },
 };

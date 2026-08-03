@@ -31,7 +31,7 @@ export default function RbacUsers() {
     email: "",
     password: "",
     role: "1",
-    agentCompanies: { "nidhi-impex": true, "silver-star": true }
+    agentCompanies: { "nidhi-impex": true, "silver-star": false }
   });
   const [addLoading, setAddLoading] = useState(false);
 
@@ -134,7 +134,7 @@ export default function RbacUsers() {
           email: "",
           password: "",
           role: "1",
-          agentCompanies: { "nidhi-impex": true, "silver-star": true }
+          agentCompanies: { "nidhi-impex": true, "silver-star": false }
         });
         fetchUsers(1);
       } else {

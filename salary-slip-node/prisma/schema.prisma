@@ -938,9 +938,16 @@ model permissions {
   description       String?            @db.VarChar(255)
   created_at        DateTime?          @db.Timestamp(0)
   updated_at        DateTime?          @db.Timestamp(0)
+  code              String?            @unique(map: "permissions_code_unique") @db.VarChar(190)
+  resource          String?            @db.VarChar(190)
+  action            String?            @db.VarChar(80)
+  is_active         Boolean            @default(true)
+  is_sensitive      Boolean            @default(false)
   permission_groups permission_groups? @relation(fields: [group_id], references: [id], onUpdate: NoAction, map: "permissions_group_id_foreign")
   role_permissions  role_permissions[]
   user_permissions  user_permissions[]
+
+  @@index([resource])
 }
 
 model personal_access_tokens {
@@ -1123,25 +1130,54 @@ model reporting_relationships {
 }
 
 model role_permissions {
-  role_id       BigInt
-  permission_id BigInt
-  permissions   permissions @relation(fields: [permission_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "role_permissions_permission_id_foreign")
-  roles         roles       @relation(fields: [role_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "role_permissions_role_id_foreign")
+  role_id             BigInt
+  permission_id       BigInt
+  effect              String      @default("ALLOW") @db.VarChar(10)
+  conditions          Json?
+  obligations         Json?
+  inherit_to_children Boolean     @default(true)
+  valid_from          DateTime?   @db.Timestamp(0)
+  valid_until         DateTime?   @db.Timestamp(0)
+  permissions         permissions @relation(fields: [permission_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "role_permissions_permission_id_foreign")
+  roles               roles       @relation(fields: [role_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "role_permissions_role_id_foreign")
 
   @@id([role_id, permission_id])
+  @@index([role_id, valid_from, valid_until], map: "role_permissions_validity_idx")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model roles {
-  id                    BigInt                  @id @default(autoincrement())
-  name                  String                  @unique(map: "roles_name_unique") @db.VarChar(255)
-  type                  String                  @default("Custom") @db.VarChar(255)
-  is_active             Boolean                 @default(true)
-  created_at            DateTime?               @db.Timestamp(0)
-  updated_at            DateTime?               @db.Timestamp(0)
-  permission_dimensions permission_dimensions[]
-  role_permissions      role_permissions[]
-  user_roles            user_roles[]
+  id                                                                                    BigInt                              @id @default(autoincrement())
+  name                                                                                  String                              @unique(map: "roles_name_unique") @db.VarChar(255)
+  type                                                                                  String                              @default("Custom") @db.VarChar(255)
+  is_active                                                                             Boolean                             @default(true)
+  created_at                                                                            DateTime?                           @db.Timestamp(0)
+  updated_at                                                                            DateTime?                           @db.Timestamp(0)
+  code                                                                                  String?                             @unique(map: "roles_code_unique") @db.VarChar(190)
+  tenant_id                                                                             String?                             @db.VarChar(190)
+  description                                                                           String?                             @db.VarChar(500)
+  role_type                                                                             String                              @default("BUSINESS") @db.VarChar(40)
+  is_system                                                                             Boolean                             @default(false)
+  is_assignable                                                                         Boolean                             @default(true)
+  is_sensitive                                                                          Boolean                             @default(false)
+  requires_approval                                                                     Boolean                             @default(false)
+  default_scope_type                                                                    String                              @default("TENANT") @db.VarChar(40)
+  status                                                                                String                              @default("ACTIVE") @db.VarChar(30)
+  version                                                                               Int                                 @default(1)
+  created_by                                                                            BigInt?
+  updated_by                                                                            BigInt?
+  authorization_access_requests                                                         authorization_access_requests[]
+  authorization_access_review_items                                                     authorization_access_review_items[]
+  authorization_role_assignments                                                        authorization_role_assignments[]
+  authorization_role_inheritances_authorization_role_inheritances_child_role_idToroles  authorization_role_inheritances[]   @relation("authorization_role_inheritances_child_role_idToroles")
+  authorization_role_inheritances_authorization_role_inheritances_parent_role_idToroles authorization_role_inheritances[]   @relation("authorization_role_inheritances_parent_role_idToroles")
+  permission_dimensions                                                                 permission_dimensions[]
+  role_permissions                                                                      role_permissions[]
+  users_roles_created_byTousers                                                         users?                              @relation("roles_created_byTousers", fields: [created_by], references: [id], onUpdate: NoAction, map: "roles_created_by_foreign")
+  users_roles_updated_byTousers                                                         users?                              @relation("roles_updated_byTousers", fields: [updated_by], references: [id], onUpdate: NoAction, map: "roles_updated_by_foreign")
+  user_roles                                                                            user_roles[]
+
+  @@index([tenant_id, status], map: "roles_tenant_status_idx")
 }
 
 model salary_slips {
@@ -1309,10 +1345,15 @@ model user_permissions {
   user_id       BigInt
   permission_id BigInt
   is_denied     Boolean     @default(false)
+  conditions    Json?
+  obligations   Json?
+  valid_from    DateTime?   @db.Timestamp(0)
+  valid_until   DateTime?   @db.Timestamp(0)
   permissions   permissions @relation(fields: [permission_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "user_permissions_permission_id_foreign")
   users         users       @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "user_permissions_user_id_foreign")
 
   @@id([user_id, permission_id])
+  @@index([user_id, valid_from, valid_until], map: "user_permissions_validity_idx")
 }
 
 model user_roles {
@@ -1326,168 +1367,199 @@ model user_roles {
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model users {
-  id                                                                                BigInt                            @id @default(autoincrement())
-  name                                                                              String?                           @db.VarChar(255)
-  email                                                                             String?                           @unique(map: "users_email_unique") @db.VarChar(255)
-  otp                                                                               String?                           @db.VarChar(255)
-  password                                                                          String?                           @db.VarChar(255)
-  status                                                                            String                            @default("0") @db.VarChar(255)
-  role                                                                              Int                               @default(1)
-  emp_code                                                                          String?                           @db.VarChar(100)
-  email_verified_at                                                                 DateTime?                         @db.Timestamp(0)
-  remember_token                                                                    String?                           @db.VarChar(100)
-  created_at                                                                        DateTime?                         @db.Timestamp(0)
-  updated_at                                                                        DateTime?                         @db.Timestamp(0)
-  is_deleted                                                                        String                            @default("0") @db.VarChar(255)
-  company_code                                                                      String                            @default("nidhi-impex") @db.VarChar(255)
-  unit                                                                              String?                           @db.VarChar(255)
-  mobile_number                                                                     String?                           @db.VarChar(255)
-  dob                                                                               String?                           @db.VarChar(255)
-  photo                                                                             String?                           @db.VarChar(255)
-  address                                                                           String?
-  members                                                                           String?
-  joining_date                                                                      String?                           @db.VarChar(255)
-  department                                                                        String?                           @db.VarChar(255)
-  manager_name                                                                      String?                           @db.VarChar(255)
-  salary                                                                            String?                           @db.VarChar(255)
-  emp_whatsapp_no                                                                   String?                           @db.VarChar(255)
-  punching_no                                                                       String?                           @db.VarChar(255)
-  village                                                                           String?                           @db.VarChar(255)
-  taluka                                                                            String?                           @db.VarChar(255)
-  district                                                                          String?                           @db.VarChar(255)
-  birth_place                                                                       String?                           @db.VarChar(255)
-  gender                                                                            String?                           @db.VarChar(255)
-  cast                                                                              String?                           @db.VarChar(255)
-  marital_status                                                                    String?                           @db.VarChar(255)
-  blood_group                                                                       String?                           @db.VarChar(255)
-  reference_name                                                                    String?                           @db.VarChar(255)
-  reference_mobile_no                                                               String?                           @db.VarChar(255)
-  aadhar_card_no                                                                    String?                           @db.VarChar(255)
-  pan_card_no                                                                       String?                           @db.VarChar(255)
-  bank_name                                                                         String?                           @db.VarChar(255)
-  bank_ifsc_code                                                                    String?                           @db.VarChar(255)
-  bank_account_no                                                                   String?                           @db.VarChar(255)
-  education                                                                         String?                           @db.VarChar(255)
-  emp_signature                                                                     String?                           @db.VarChar(255)
-  resignation_date                                                                  DateTime?                         @db.Date
-  city                                                                              String?                           @db.VarChar(255)
-  pin                                                                               String?                           @db.VarChar(255)
-  state                                                                             String?                           @db.VarChar(255)
-  pf_no                                                                             String?                           @db.VarChar(255)
-  esi_no                                                                            String?                           @db.VarChar(255)
-  branch                                                                            String?                           @db.VarChar(255)
-  print                                                                             Boolean                           @default(false)
-  checkbox                                                                          Boolean                           @default(false)
-  check_image                                                                       String?                           @db.VarChar(255)
-  pan_image                                                                         String?                           @db.VarChar(255)
-  adhar_image                                                                       String?                           @db.VarChar(255)
-  type                                                                              String?                           @db.VarChar(255)
-  designation                                                                       String?                           @db.VarChar(255)
-  form_no                                                                           String?                           @db.VarChar(255)
-  trial_date                                                                        DateTime?                         @db.Date
-  mobile_no_2                                                                       String?                           @db.VarChar(255)
-  last_company_name                                                                 String?                           @db.VarChar(255)
-  last_company_address                                                              String?
-  experience                                                                        String?                           @db.VarChar(255)
-  reason_for_leaving                                                                String?
-  hastak_name                                                                       String?                           @db.VarChar(255)
-  hastak_code                                                                       String?                           @db.VarChar(255)
-  hastak_mobile                                                                     String?                           @db.VarChar(255)
-  contractor                                                                        String?                           @db.VarChar(255)
-  manager_signature                                                                 String?                           @db.VarChar(255)
-  hastak_signature                                                                  String?                           @db.VarChar(255)
-  hr_signature                                                                      String?                           @db.VarChar(255)
-  akar                                                                              String?                           @db.VarChar(255)
-  added_by                                                                          BigInt?
-  verification_token                                                                String?                           @db.VarChar(255)
-  verification_token_expires_at                                                     DateTime?                         @db.Timestamp(0)
-  processed                                                                         Boolean                           @default(false)
-  trial_form_id                                                                     BigInt?
-  shift_id                                                                          BigInt?
-  account_book                                                                      String?                           @db.VarChar(1024)
-  encrypted_aadhaar_number                                                          String?
-  aadhaar_last_four                                                                 String?                           @db.VarChar(4)
-  aadhaar_secure_reference                                                          String?                           @db.VarChar(64)
-  aadhaar_verification_status                                                       String                            @default("UNVERIFIED") @db.VarChar(32)
-  aadhaar_extraction_source                                                         String?                           @db.VarChar(32)
-  aadhaar_extracted_at                                                              DateTime?                         @db.Timestamp(0)
-  aadhaar_verified_by                                                               BigInt?
-  aadhaar_verified_at                                                               DateTime?                         @db.Timestamp(0)
-  hastak_department                                                                 String?                           @db.VarChar(255)
-  login_disabled_at                                                                 DateTime?                         @db.Timestamp(0)
-  login_disabled_reason                                                             String?
-  aadhaar_export_authorizations_aadhaar_export_authorizations_actor_user_idTousers  aadhaar_export_authorizations[]   @relation("aadhaar_export_authorizations_actor_user_idTousers")
-  aadhaar_export_authorizations_aadhaar_export_authorizations_target_user_idTousers aadhaar_export_authorizations[]   @relation("aadhaar_export_authorizations_target_user_idTousers")
-  attendances                                                                       attendances[]
-  audit_logs                                                                        audit_logs[]
-  auth_sessions_auth_sessions_revoked_byTousers                                     auth_sessions[]                   @relation("auth_sessions_revoked_byTousers")
-  auth_sessions_auth_sessions_user_idTousers                                        auth_sessions[]                   @relation("auth_sessions_user_idTousers")
-  branding_configurations                                                           branding_configurations[]
-  business_groups                                                                   business_groups[]
-  companies                                                                         companies[]
-  company_admin_assignments_company_admin_assignments_assigned_byTousers            company_admin_assignments[]       @relation("company_admin_assignments_assigned_byTousers")
-  company_admin_assignments_company_admin_assignments_revoked_byTousers             company_admin_assignments[]       @relation("company_admin_assignments_revoked_byTousers")
-  company_admin_assignments_company_admin_assignments_user_idTousers                company_admin_assignments[]       @relation("company_admin_assignments_user_idTousers")
-  company_documents                                                                 company_documents[]
-  company_module_activations                                                        company_module_activations[]
-  company_payroll_configurations_company_payroll_configurations_approved_byTousers  company_payroll_configurations[]  @relation("company_payroll_configurations_approved_byTousers")
-  company_payroll_configurations_company_payroll_configurations_locked_byTousers    company_payroll_configurations[]  @relation("company_payroll_configurations_locked_byTousers")
-  company_statutory_registrations                                                   company_statutory_registrations[]
-  dashboard_preferences                                                             dashboard_preferences[]
-  dashboard_saved_views                                                             dashboard_saved_views[]
-  document_audit_logs                                                               document_audit_logs[]
-  document_uploads_document_uploads_uploaded_byTousers                              document_uploads[]                @relation("document_uploads_uploaded_byTousers")
-  document_uploads_document_uploads_user_idTousers                                  document_uploads[]                @relation("document_uploads_user_idTousers")
-  document_versions                                                                 document_versions[]
-  documents_documents_created_byTousers                                             documents[]                       @relation("documents_created_byTousers")
-  documents_documents_deleted_byTousers                                             documents[]                       @relation("documents_deleted_byTousers")
-  documents_documents_updated_byTousers                                             documents[]                       @relation("documents_updated_byTousers")
-  documents_documents_user_idTousers                                                documents[]                       @relation("documents_user_idTousers")
-  feature_flags                                                                     feature_flags[]
-  financial_centres                                                                 financial_centres[]
-  group_admin_assignments_group_admin_assignments_assigned_byTousers                group_admin_assignments[]         @relation("group_admin_assignments_assigned_byTousers")
-  group_admin_assignments_group_admin_assignments_revoked_byTousers                 group_admin_assignments[]         @relation("group_admin_assignments_revoked_byTousers")
-  group_admin_assignments_group_admin_assignments_user_idTousers                    group_admin_assignments[]         @relation("group_admin_assignments_user_idTousers")
-  group_company_assignments                                                         group_company_assignments[]
-  group_policies_group_policies_created_byTousers                                   group_policies[]                  @relation("group_policies_created_byTousers")
-  group_policies_group_policies_published_byTousers                                 group_policies[]                  @relation("group_policies_published_byTousers")
-  location_calendar_entries                                                         location_calendar_entries[]
-  login_events                                                                      login_events[]
-  mfa_credentials                                                                   mfa_credentials?
-  organization_units                                                                organization_units[]
-  position_approval_requests_position_approval_requests_decided_byTousers           position_approval_requests[]      @relation("position_approval_requests_decided_byTousers")
-  position_approval_requests_position_approval_requests_requester_user_idTousers    position_approval_requests[]      @relation("position_approval_requests_requester_user_idTousers")
-  position_incumbents_position_incumbents_created_byTousers                         position_incumbents[]             @relation("position_incumbents_created_byTousers")
-  position_incumbents_position_incumbents_user_idTousers                            position_incumbents[]             @relation("position_incumbents_user_idTousers")
-  positions_positions_created_byTousers                                             positions[]                       @relation("positions_created_byTousers")
-  positions_positions_hiring_manager_user_idTousers                                 positions[]                       @relation("positions_hiring_manager_user_idTousers")
-  positions_positions_owner_user_idTousers                                          positions[]                       @relation("positions_owner_user_idTousers")
-  replacement_candidates_replacement_candidates_added_byTousers                     replacement_candidates[]          @relation("replacement_candidates_added_byTousers")
-  replacement_candidates_replacement_candidates_candidate_user_idTousers            replacement_candidates[]          @relation("replacement_candidates_candidate_user_idTousers")
-  replacement_plans_replacement_plans_created_byTousers                             replacement_plans[]               @relation("replacement_plans_created_byTousers")
-  replacement_plans_replacement_plans_incumbent_user_idTousers                      replacement_plans[]               @relation("replacement_plans_incumbent_user_idTousers")
-  replacement_plans_replacement_plans_owner_user_idTousers                          replacement_plans[]               @relation("replacement_plans_owner_user_idTousers")
-  reporting_relationships_reporting_relationships_created_byTousers                 reporting_relationships[]         @relation("reporting_relationships_created_byTousers")
-  reporting_relationships_reporting_relationships_employee_user_idTousers           reporting_relationships[]         @relation("reporting_relationships_employee_user_idTousers")
-  reporting_relationships_reporting_relationships_manager_user_idTousers            reporting_relationships[]         @relation("reporting_relationships_manager_user_idTousers")
-  unit_admin_assignments_unit_admin_assignments_assigned_byTousers                  unit_admin_assignments[]          @relation("unit_admin_assignments_assigned_byTousers")
-  unit_admin_assignments_unit_admin_assignments_revoked_byTousers                   unit_admin_assignments[]          @relation("unit_admin_assignments_revoked_byTousers")
-  unit_admin_assignments_unit_admin_assignments_user_idTousers                      unit_admin_assignments[]          @relation("unit_admin_assignments_user_idTousers")
-  upload_batches                                                                    upload_batches[]
-  user_permissions                                                                  user_permissions[]
-  user_roles                                                                        user_roles[]
-  users                                                                             users?                            @relation("usersTousers", fields: [aadhaar_verified_by], references: [id], onUpdate: NoAction, map: "users_aadhaar_verified_by_foreign")
-  other_users                                                                       users[]                           @relation("usersTousers")
-  vacancies_vacancies_created_byTousers                                             vacancies[]                       @relation("vacancies_created_byTousers")
-  vacancies_vacancies_filled_by_user_idTousers                                      vacancies[]                       @relation("vacancies_filled_by_user_idTousers")
-  vacancies_vacancies_hiring_manager_user_idTousers                                 vacancies[]                       @relation("vacancies_hiring_manager_user_idTousers")
-  workforce_forecasts_workforce_forecasts_created_byTousers                         workforce_forecasts[]             @relation("workforce_forecasts_created_byTousers")
-  workforce_forecasts_workforce_forecasts_published_byTousers                       workforce_forecasts[]             @relation("workforce_forecasts_published_byTousers")
-  workforce_plans_workforce_plans_approved_byTousers                                workforce_plans[]                 @relation("workforce_plans_approved_byTousers")
-  workforce_plans_workforce_plans_created_byTousers                                 workforce_plans[]                 @relation("workforce_plans_created_byTousers")
-  workforce_plans_workforce_plans_locked_byTousers                                  workforce_plans[]                 @relation("workforce_plans_locked_byTousers")
-  workforce_plans_workforce_plans_owner_user_idTousers                              workforce_plans[]                 @relation("workforce_plans_owner_user_idTousers")
-  workforce_plans_workforce_plans_submitted_byTousers                               workforce_plans[]                 @relation("workforce_plans_submitted_byTousers")
+  id                                                                                     BigInt                                   @id @default(autoincrement())
+  name                                                                                   String?                                  @db.VarChar(255)
+  email                                                                                  String?                                  @unique(map: "users_email_unique") @db.VarChar(255)
+  otp                                                                                    String?                                  @db.VarChar(255)
+  password                                                                               String?                                  @db.VarChar(255)
+  status                                                                                 String                                   @default("0") @db.VarChar(255)
+  role                                                                                   Int                                      @default(1)
+  emp_code                                                                               String?                                  @db.VarChar(100)
+  email_verified_at                                                                      DateTime?                                @db.Timestamp(0)
+  remember_token                                                                         String?                                  @db.VarChar(100)
+  created_at                                                                             DateTime?                                @db.Timestamp(0)
+  updated_at                                                                             DateTime?                                @db.Timestamp(0)
+  is_deleted                                                                             String                                   @default("0") @db.VarChar(255)
+  company_code                                                                           String                                   @default("nidhi-impex") @db.VarChar(255)
+  unit                                                                                   String?                                  @db.VarChar(255)
+  mobile_number                                                                          String?                                  @db.VarChar(255)
+  dob                                                                                    String?                                  @db.VarChar(255)
+  photo                                                                                  String?                                  @db.VarChar(255)
+  address                                                                                String?
+  members                                                                                String?
+  joining_date                                                                           String?                                  @db.VarChar(255)
+  department                                                                             String?                                  @db.VarChar(255)
+  manager_name                                                                           String?                                  @db.VarChar(255)
+  salary                                                                                 String?                                  @db.VarChar(255)
+  emp_whatsapp_no                                                                        String?                                  @db.VarChar(255)
+  punching_no                                                                            String?                                  @db.VarChar(255)
+  village                                                                                String?                                  @db.VarChar(255)
+  taluka                                                                                 String?                                  @db.VarChar(255)
+  district                                                                               String?                                  @db.VarChar(255)
+  birth_place                                                                            String?                                  @db.VarChar(255)
+  gender                                                                                 String?                                  @db.VarChar(255)
+  cast                                                                                   String?                                  @db.VarChar(255)
+  marital_status                                                                         String?                                  @db.VarChar(255)
+  blood_group                                                                            String?                                  @db.VarChar(255)
+  reference_name                                                                         String?                                  @db.VarChar(255)
+  reference_mobile_no                                                                    String?                                  @db.VarChar(255)
+  aadhar_card_no                                                                         String?                                  @db.VarChar(255)
+  pan_card_no                                                                            String?                                  @db.VarChar(255)
+  bank_name                                                                              String?                                  @db.VarChar(255)
+  bank_ifsc_code                                                                         String?                                  @db.VarChar(255)
+  bank_account_no                                                                        String?                                  @db.VarChar(255)
+  education                                                                              String?                                  @db.VarChar(255)
+  emp_signature                                                                          String?                                  @db.VarChar(255)
+  resignation_date                                                                       DateTime?                                @db.Date
+  city                                                                                   String?                                  @db.VarChar(255)
+  pin                                                                                    String?                                  @db.VarChar(255)
+  state                                                                                  String?                                  @db.VarChar(255)
+  pf_no                                                                                  String?                                  @db.VarChar(255)
+  esi_no                                                                                 String?                                  @db.VarChar(255)
+  branch                                                                                 String?                                  @db.VarChar(255)
+  print                                                                                  Boolean                                  @default(false)
+  checkbox                                                                               Boolean                                  @default(false)
+  check_image                                                                            String?                                  @db.VarChar(255)
+  pan_image                                                                              String?                                  @db.VarChar(255)
+  adhar_image                                                                            String?                                  @db.VarChar(255)
+  type                                                                                   String?                                  @db.VarChar(255)
+  designation                                                                            String?                                  @db.VarChar(255)
+  form_no                                                                                String?                                  @db.VarChar(255)
+  trial_date                                                                             DateTime?                                @db.Date
+  mobile_no_2                                                                            String?                                  @db.VarChar(255)
+  last_company_name                                                                      String?                                  @db.VarChar(255)
+  last_company_address                                                                   String?
+  experience                                                                             String?                                  @db.VarChar(255)
+  reason_for_leaving                                                                     String?
+  hastak_name                                                                            String?                                  @db.VarChar(255)
+  hastak_code                                                                            String?                                  @db.VarChar(255)
+  hastak_mobile                                                                          String?                                  @db.VarChar(255)
+  contractor                                                                             String?                                  @db.VarChar(255)
+  manager_signature                                                                      String?                                  @db.VarChar(255)
+  hastak_signature                                                                       String?                                  @db.VarChar(255)
+  hr_signature                                                                           String?                                  @db.VarChar(255)
+  akar                                                                                   String?                                  @db.VarChar(255)
+  added_by                                                                               BigInt?
+  verification_token                                                                     String?                                  @db.VarChar(255)
+  verification_token_expires_at                                                          DateTime?                                @db.Timestamp(0)
+  processed                                                                              Boolean                                  @default(false)
+  trial_form_id                                                                          BigInt?
+  shift_id                                                                               BigInt?
+  account_book                                                                           String?                                  @db.VarChar(1024)
+  encrypted_aadhaar_number                                                               String?
+  aadhaar_last_four                                                                      String?                                  @db.VarChar(4)
+  aadhaar_secure_reference                                                               String?                                  @db.VarChar(64)
+  aadhaar_verification_status                                                            String                                   @default("UNVERIFIED") @db.VarChar(32)
+  aadhaar_extraction_source                                                              String?                                  @db.VarChar(32)
+  aadhaar_extracted_at                                                                   DateTime?                                @db.Timestamp(0)
+  aadhaar_verified_by                                                                    BigInt?
+  aadhaar_verified_at                                                                    DateTime?                                @db.Timestamp(0)
+  hastak_department                                                                      String?                                  @db.VarChar(255)
+  login_disabled_at                                                                      DateTime?                                @db.Timestamp(0)
+  login_disabled_reason                                                                  String?
+  aadhaar_export_authorizations_aadhaar_export_authorizations_actor_user_idTousers       aadhaar_export_authorizations[]          @relation("aadhaar_export_authorizations_actor_user_idTousers")
+  aadhaar_export_authorizations_aadhaar_export_authorizations_target_user_idTousers      aadhaar_export_authorizations[]          @relation("aadhaar_export_authorizations_target_user_idTousers")
+  attendances                                                                            attendances[]
+  audit_logs                                                                             audit_logs[]
+  auth_sessions_auth_sessions_revoked_byTousers                                          auth_sessions[]                          @relation("auth_sessions_revoked_byTousers")
+  auth_sessions_auth_sessions_user_idTousers                                             auth_sessions[]                          @relation("auth_sessions_user_idTousers")
+  authorization_access_request_approvals                                                 authorization_access_request_approvals[]
+  authorization_access_requests_authorization_access_requests_decided_byTousers          authorization_access_requests[]          @relation("authorization_access_requests_decided_byTousers")
+  authorization_access_requests_authorization_access_requests_requester_idTousers        authorization_access_requests[]          @relation("authorization_access_requests_requester_idTousers")
+  authorization_access_requests_authorization_access_requests_revoked_byTousers          authorization_access_requests[]          @relation("authorization_access_requests_revoked_byTousers")
+  authorization_access_requests_authorization_access_requests_target_user_idTousers      authorization_access_requests[]          @relation("authorization_access_requests_target_user_idTousers")
+  authorization_access_review_items_authorization_access_review_items_reviewed_byTousers authorization_access_review_items[]      @relation("authorization_access_review_items_reviewed_byTousers")
+  authorization_access_review_items_authorization_access_review_items_user_idTousers     authorization_access_review_items[]      @relation("authorization_access_review_items_user_idTousers")
+  authorization_access_reviews                                                           authorization_access_reviews[]
+  authorization_decision_logs                                                            authorization_decision_logs[]
+  authorization_delegations_authorization_delegations_approved_byTousers                 authorization_delegations[]              @relation("authorization_delegations_approved_byTousers")
+  authorization_delegations_authorization_delegations_delegate_idTousers                 authorization_delegations[]              @relation("authorization_delegations_delegate_idTousers")
+  authorization_delegations_authorization_delegations_delegator_idTousers                authorization_delegations[]              @relation("authorization_delegations_delegator_idTousers")
+  authorization_emergency_grants_authorization_emergency_grants_approved_byTousers       authorization_emergency_grants[]         @relation("authorization_emergency_grants_approved_byTousers")
+  authorization_emergency_grants_authorization_emergency_grants_reviewed_byTousers       authorization_emergency_grants[]         @relation("authorization_emergency_grants_reviewed_byTousers")
+  authorization_emergency_grants_authorization_emergency_grants_revoked_byTousers        authorization_emergency_grants[]         @relation("authorization_emergency_grants_revoked_byTousers")
+  authorization_emergency_grants_authorization_emergency_grants_user_idTousers           authorization_emergency_grants[]         @relation("authorization_emergency_grants_user_idTousers")
+  authorization_feature_flags                                                            authorization_feature_flags[]
+  authorization_policies_authorization_policies_approved_byTousers                       authorization_policies[]                 @relation("authorization_policies_approved_byTousers")
+  authorization_policies_authorization_policies_created_byTousers                        authorization_policies[]                 @relation("authorization_policies_created_byTousers")
+  authorization_policies_authorization_policies_updated_byTousers                        authorization_policies[]                 @relation("authorization_policies_updated_byTousers")
+  authorization_policy_versions_authorization_policy_versions_approved_byTousers         authorization_policy_versions[]          @relation("authorization_policy_versions_approved_byTousers")
+  authorization_policy_versions_authorization_policy_versions_changed_byTousers          authorization_policy_versions[]          @relation("authorization_policy_versions_changed_byTousers")
+  authorization_relationships                                                            authorization_relationships[]
+  authorization_role_assignments_authorization_role_assignments_approved_byTousers       authorization_role_assignments[]         @relation("authorization_role_assignments_approved_byTousers")
+  authorization_role_assignments_authorization_role_assignments_assigned_byTousers       authorization_role_assignments[]         @relation("authorization_role_assignments_assigned_byTousers")
+  authorization_role_assignments_authorization_role_assignments_revoked_byTousers        authorization_role_assignments[]         @relation("authorization_role_assignments_revoked_byTousers")
+  authorization_role_assignments_authorization_role_assignments_user_idTousers           authorization_role_assignments[]         @relation("authorization_role_assignments_user_idTousers")
+  authorization_sod_violations_authorization_sod_violations_overridden_byTousers         authorization_sod_violations[]           @relation("authorization_sod_violations_overridden_byTousers")
+  authorization_sod_violations_authorization_sod_violations_user_idTousers               authorization_sod_violations[]           @relation("authorization_sod_violations_user_idTousers")
+  branding_configurations                                                                branding_configurations[]
+  business_groups                                                                        business_groups[]
+  companies                                                                              companies[]
+  company_admin_assignments_company_admin_assignments_assigned_byTousers                 company_admin_assignments[]              @relation("company_admin_assignments_assigned_byTousers")
+  company_admin_assignments_company_admin_assignments_revoked_byTousers                  company_admin_assignments[]              @relation("company_admin_assignments_revoked_byTousers")
+  company_admin_assignments_company_admin_assignments_user_idTousers                     company_admin_assignments[]              @relation("company_admin_assignments_user_idTousers")
+  company_documents                                                                      company_documents[]
+  company_module_activations                                                             company_module_activations[]
+  company_payroll_configurations_company_payroll_configurations_approved_byTousers       company_payroll_configurations[]         @relation("company_payroll_configurations_approved_byTousers")
+  company_payroll_configurations_company_payroll_configurations_locked_byTousers         company_payroll_configurations[]         @relation("company_payroll_configurations_locked_byTousers")
+  company_statutory_registrations                                                        company_statutory_registrations[]
+  dashboard_preferences                                                                  dashboard_preferences[]
+  dashboard_saved_views                                                                  dashboard_saved_views[]
+  document_audit_logs                                                                    document_audit_logs[]
+  document_uploads_document_uploads_uploaded_byTousers                                   document_uploads[]                       @relation("document_uploads_uploaded_byTousers")
+  document_uploads_document_uploads_user_idTousers                                       document_uploads[]                       @relation("document_uploads_user_idTousers")
+  document_versions                                                                      document_versions[]
+  documents_documents_created_byTousers                                                  documents[]                              @relation("documents_created_byTousers")
+  documents_documents_deleted_byTousers                                                  documents[]                              @relation("documents_deleted_byTousers")
+  documents_documents_updated_byTousers                                                  documents[]                              @relation("documents_updated_byTousers")
+  documents_documents_user_idTousers                                                     documents[]                              @relation("documents_user_idTousers")
+  feature_flags                                                                          feature_flags[]
+  financial_centres                                                                      financial_centres[]
+  group_admin_assignments_group_admin_assignments_assigned_byTousers                     group_admin_assignments[]                @relation("group_admin_assignments_assigned_byTousers")
+  group_admin_assignments_group_admin_assignments_revoked_byTousers                      group_admin_assignments[]                @relation("group_admin_assignments_revoked_byTousers")
+  group_admin_assignments_group_admin_assignments_user_idTousers                         group_admin_assignments[]                @relation("group_admin_assignments_user_idTousers")
+  group_company_assignments                                                              group_company_assignments[]
+  group_policies_group_policies_created_byTousers                                        group_policies[]                         @relation("group_policies_created_byTousers")
+  group_policies_group_policies_published_byTousers                                      group_policies[]                         @relation("group_policies_published_byTousers")
+  location_calendar_entries                                                              location_calendar_entries[]
+  login_events                                                                           login_events[]
+  mfa_credentials                                                                        mfa_credentials?
+  organization_units                                                                     organization_units[]
+  position_approval_requests_position_approval_requests_decided_byTousers                position_approval_requests[]             @relation("position_approval_requests_decided_byTousers")
+  position_approval_requests_position_approval_requests_requester_user_idTousers         position_approval_requests[]             @relation("position_approval_requests_requester_user_idTousers")
+  position_incumbents_position_incumbents_created_byTousers                              position_incumbents[]                    @relation("position_incumbents_created_byTousers")
+  position_incumbents_position_incumbents_user_idTousers                                 position_incumbents[]                    @relation("position_incumbents_user_idTousers")
+  positions_positions_created_byTousers                                                  positions[]                              @relation("positions_created_byTousers")
+  positions_positions_hiring_manager_user_idTousers                                      positions[]                              @relation("positions_hiring_manager_user_idTousers")
+  positions_positions_owner_user_idTousers                                               positions[]                              @relation("positions_owner_user_idTousers")
+  replacement_candidates_replacement_candidates_added_byTousers                          replacement_candidates[]                 @relation("replacement_candidates_added_byTousers")
+  replacement_candidates_replacement_candidates_candidate_user_idTousers                 replacement_candidates[]                 @relation("replacement_candidates_candidate_user_idTousers")
+  replacement_plans_replacement_plans_created_byTousers                                  replacement_plans[]                      @relation("replacement_plans_created_byTousers")
+  replacement_plans_replacement_plans_incumbent_user_idTousers                           replacement_plans[]                      @relation("replacement_plans_incumbent_user_idTousers")
+  replacement_plans_replacement_plans_owner_user_idTousers                               replacement_plans[]                      @relation("replacement_plans_owner_user_idTousers")
+  reporting_relationships_reporting_relationships_created_byTousers                      reporting_relationships[]                @relation("reporting_relationships_created_byTousers")
+  reporting_relationships_reporting_relationships_employee_user_idTousers                reporting_relationships[]                @relation("reporting_relationships_employee_user_idTousers")
+  reporting_relationships_reporting_relationships_manager_user_idTousers                 reporting_relationships[]                @relation("reporting_relationships_manager_user_idTousers")
+  roles_roles_created_byTousers                                                          roles[]                                  @relation("roles_created_byTousers")
+  roles_roles_updated_byTousers                                                          roles[]                                  @relation("roles_updated_byTousers")
+  unit_admin_assignments_unit_admin_assignments_assigned_byTousers                       unit_admin_assignments[]                 @relation("unit_admin_assignments_assigned_byTousers")
+  unit_admin_assignments_unit_admin_assignments_revoked_byTousers                        unit_admin_assignments[]                 @relation("unit_admin_assignments_revoked_byTousers")
+  unit_admin_assignments_unit_admin_assignments_user_idTousers                           unit_admin_assignments[]                 @relation("unit_admin_assignments_user_idTousers")
+  upload_batches                                                                         upload_batches[]
+  user_permissions                                                                       user_permissions[]
+  user_roles                                                                             user_roles[]
+  users                                                                                  users?                                   @relation("usersTousers", fields: [aadhaar_verified_by], references: [id], onUpdate: NoAction, map: "users_aadhaar_verified_by_foreign")
+  other_users                                                                            users[]                                  @relation("usersTousers")
+  vacancies_vacancies_created_byTousers                                                  vacancies[]                              @relation("vacancies_created_byTousers")
+  vacancies_vacancies_filled_by_user_idTousers                                           vacancies[]                              @relation("vacancies_filled_by_user_idTousers")
+  vacancies_vacancies_hiring_manager_user_idTousers                                      vacancies[]                              @relation("vacancies_hiring_manager_user_idTousers")
+  workforce_forecasts_workforce_forecasts_created_byTousers                              workforce_forecasts[]                    @relation("workforce_forecasts_created_byTousers")
+  workforce_forecasts_workforce_forecasts_published_byTousers                            workforce_forecasts[]                    @relation("workforce_forecasts_published_byTousers")
+  workforce_plans_workforce_plans_approved_byTousers                                     workforce_plans[]                        @relation("workforce_plans_approved_byTousers")
+  workforce_plans_workforce_plans_created_byTousers                                      workforce_plans[]                        @relation("workforce_plans_created_byTousers")
+  workforce_plans_workforce_plans_locked_byTousers                                       workforce_plans[]                        @relation("workforce_plans_locked_byTousers")
+  workforce_plans_workforce_plans_owner_user_idTousers                                   workforce_plans[]                        @relation("workforce_plans_owner_user_idTousers")
+  workforce_plans_workforce_plans_submitted_byTousers                                    workforce_plans[]                        @relation("workforce_plans_submitted_byTousers")
 
   @@index([aadhaar_secure_reference], map: "users_aadhaar_secure_reference_index")
   @@index([aadhaar_verification_status], map: "users_aadhaar_verification_status_index")
@@ -1617,4 +1689,427 @@ model workforce_plans {
 
   @@unique([kind, code, version_no], map: "workforce_plans_kind_code_version_no_unique")
   @@index([kind, status], map: "workforce_plans_kind_status_index")
+}
+
+model authz_migrations {
+  id         String   @id @db.VarChar(40)
+  applied_at DateTime @default(now()) @db.Timestamptz(6)
+  applied_by String?  @db.VarChar(190)
+
+  @@map("_authz_migrations")
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model pre_authz_permission_dimensions {
+  id         BigInt?
+  dimension  String?   @db.VarChar(255)
+  role_id    BigInt?
+  key_name   String?   @db.VarChar(255)
+  value      String?   @db.VarChar(255)
+  meta       Json?     @db.Json
+  created_at DateTime? @db.Timestamp(0)
+  updated_at DateTime? @db.Timestamp(0)
+
+  @@map("_pre_authz_permission_dimensions")
+  @@ignore
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model pre_authz_permission_groups {
+  id         BigInt?
+  name       String?   @db.VarChar(255)
+  created_at DateTime? @db.Timestamp(0)
+  updated_at DateTime? @db.Timestamp(0)
+
+  @@map("_pre_authz_permission_groups")
+  @@ignore
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model pre_authz_permissions {
+  id          BigInt?
+  name        String?   @db.VarChar(255)
+  group_id    BigInt?
+  description String?   @db.VarChar(255)
+  created_at  DateTime? @db.Timestamp(0)
+  updated_at  DateTime? @db.Timestamp(0)
+
+  @@map("_pre_authz_permissions")
+  @@ignore
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model pre_authz_role_permissions {
+  role_id       BigInt?
+  permission_id BigInt?
+
+  @@map("_pre_authz_role_permissions")
+  @@ignore
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model pre_authz_roles {
+  id         BigInt?
+  name       String?   @db.VarChar(255)
+  type       String?   @db.VarChar(255)
+  is_active  Boolean?
+  created_at DateTime? @db.Timestamp(0)
+  updated_at DateTime? @db.Timestamp(0)
+
+  @@map("_pre_authz_roles")
+  @@ignore
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model pre_authz_user_permissions {
+  user_id       BigInt?
+  permission_id BigInt?
+  is_denied     Boolean?
+
+  @@map("_pre_authz_user_permissions")
+  @@ignore
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model pre_authz_user_roles {
+  user_id BigInt?
+  role_id BigInt?
+
+  @@map("_pre_authz_user_roles")
+  @@ignore
+}
+
+model authorization_access_request_approvals {
+  id                            BigInt                        @id @default(autoincrement())
+  access_request_id             BigInt
+  stage                         String                        @db.VarChar(40)
+  sequence                      Int                           @default(1)
+  approver_id                   BigInt?
+  status                        String                        @default("PENDING") @db.VarChar(30)
+  note                          String?                       @db.VarChar(1000)
+  decided_at                    DateTime?                     @db.Timestamp(0)
+  created_at                    DateTime?                     @db.Timestamp(0)
+  updated_at                    DateTime?                     @db.Timestamp(0)
+  authorization_access_requests authorization_access_requests @relation(fields: [access_request_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users                         users?                        @relation(fields: [approver_id], references: [id], onUpdate: NoAction)
+
+  @@index([access_request_id, sequence], map: "auth_access_request_approval_idx")
+}
+
+model authorization_access_requests {
+  id                                                        BigInt                                   @id @default(autoincrement())
+  tenant_id                                                 String?                                  @db.VarChar(190)
+  requester_id                                              BigInt
+  target_user_id                                            BigInt?
+  role_id                                                   BigInt?
+  permission_codes                                          Json?
+  scope_type                                                String?                                  @db.VarChar(40)
+  scope_id                                                  String?                                  @db.VarChar(190)
+  request_type                                              String                                   @default("PERMANENT") @db.VarChar(30)
+  business_reason                                           String?                                  @db.VarChar(1000)
+  attachment_path                                           String?                                  @db.VarChar(500)
+  requested_from                                            DateTime?                                @db.Timestamp(0)
+  requested_until                                           DateTime?                                @db.Timestamp(0)
+  status                                                    String                                   @default("PENDING") @db.VarChar(30)
+  decided_by                                                BigInt?
+  decided_at                                                DateTime?                                @db.Timestamp(0)
+  decision_note                                             String?                                  @db.VarChar(1000)
+  revoked_at                                                DateTime?                                @db.Timestamp(0)
+  revoked_by                                                BigInt?
+  revocation_reason                                         String?                                  @db.VarChar(500)
+  created_at                                                DateTime?                                @db.Timestamp(0)
+  updated_at                                                DateTime?                                @db.Timestamp(0)
+  authorization_access_request_approvals                    authorization_access_request_approvals[]
+  users_authorization_access_requests_decided_byTousers     users?                                   @relation("authorization_access_requests_decided_byTousers", fields: [decided_by], references: [id], onUpdate: NoAction)
+  users_authorization_access_requests_requester_idTousers   users                                    @relation("authorization_access_requests_requester_idTousers", fields: [requester_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users_authorization_access_requests_revoked_byTousers     users?                                   @relation("authorization_access_requests_revoked_byTousers", fields: [revoked_by], references: [id], onUpdate: NoAction)
+  roles                                                     roles?                                   @relation(fields: [role_id], references: [id], onUpdate: NoAction)
+  users_authorization_access_requests_target_user_idTousers users?                                   @relation("authorization_access_requests_target_user_idTousers", fields: [target_user_id], references: [id], onUpdate: NoAction)
+
+  @@index([tenant_id, status, created_at(sort: Desc)], map: "auth_access_request_queue_idx")
+}
+
+model authorization_access_review_items {
+  id                                                         BigInt                          @id @default(autoincrement())
+  review_id                                                  BigInt
+  user_id                                                    BigInt
+  role_id                                                    BigInt?
+  assignment_id                                              BigInt?
+  decision                                                   String                          @default("PENDING") @db.VarChar(30)
+  note                                                       String?                         @db.VarChar(1000)
+  reviewed_by                                                BigInt?
+  reviewed_at                                                DateTime?                       @db.Timestamp(0)
+  created_at                                                 DateTime?                       @db.Timestamp(0)
+  updated_at                                                 DateTime?                       @db.Timestamp(0)
+  authorization_role_assignments                             authorization_role_assignments? @relation(fields: [assignment_id], references: [id], onUpdate: NoAction)
+  authorization_access_reviews                               authorization_access_reviews    @relation(fields: [review_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users_authorization_access_review_items_reviewed_byTousers users?                          @relation("authorization_access_review_items_reviewed_byTousers", fields: [reviewed_by], references: [id], onUpdate: NoAction)
+  roles                                                      roles?                          @relation(fields: [role_id], references: [id], onUpdate: NoAction)
+  users_authorization_access_review_items_user_idTousers     users                           @relation("authorization_access_review_items_user_idTousers", fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([review_id, decision], map: "auth_access_review_item_idx")
+}
+
+model authorization_access_reviews {
+  id                                BigInt                              @id @default(autoincrement())
+  tenant_id                         String?                             @db.VarChar(190)
+  name                              String                              @db.VarChar(255)
+  description                       String?                             @db.VarChar(1000)
+  status                            String                              @default("DRAFT") @db.VarChar(30)
+  scope_type                        String?                             @db.VarChar(40)
+  scope_id                          String?                             @db.VarChar(190)
+  due_at                            DateTime?                           @db.Timestamp(0)
+  started_at                        DateTime?                           @db.Timestamp(0)
+  completed_at                      DateTime?                           @db.Timestamp(0)
+  created_by                        BigInt?
+  created_at                        DateTime?                           @db.Timestamp(0)
+  updated_at                        DateTime?                           @db.Timestamp(0)
+  authorization_access_review_items authorization_access_review_items[]
+  users                             users?                              @relation(fields: [created_by], references: [id], onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model authorization_decision_logs {
+  id                    BigInt    @id @default(autoincrement())
+  decision_id           String    @unique(map: "auth_decision_log_uuid_unique") @db.Uuid
+  tenant_id             String?   @db.VarChar(190)
+  user_id               BigInt?
+  session_id            String?   @db.VarChar(190)
+  action                String    @db.VarChar(190)
+  resource_type         String?   @db.VarChar(190)
+  resource_id           String?   @db.VarChar(190)
+  decision              String    @db.VarChar(10)
+  reason_code           String?   @db.VarChar(80)
+  matched_policy_ids    Json?
+  failed_conditions     Json?
+  scope                 Json?
+  obligations           Json?
+  ip_address            String?   @db.VarChar(64)
+  device                String?   @db.VarChar(255)
+  request_id            String?   @db.VarChar(190)
+  changed_fields        Json?
+  business_reason       String?   @db.VarChar(255)
+  authorization_version String    @default("v2") @db.VarChar(20)
+  duration_ms           Int?
+  created_at            DateTime? @db.Timestamp(0)
+  users                 users?    @relation(fields: [user_id], references: [id], onUpdate: NoAction)
+
+  @@index([tenant_id, created_at(sort: Desc)], map: "auth_decision_log_search_idx")
+  @@index([user_id, action, created_at(sort: Desc)], map: "auth_decision_log_user_idx")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model authorization_delegations {
+  id                                                  BigInt    @id @default(autoincrement())
+  tenant_id                                           String?   @db.VarChar(190)
+  delegator_id                                        BigInt
+  delegate_id                                         BigInt
+  permission_codes                                    Json?
+  scope_type                                          String?   @db.VarChar(40)
+  scope_id                                            String?   @db.VarChar(190)
+  reason                                              String?   @db.VarChar(500)
+  status                                              String    @default("ACTIVE") @db.VarChar(30)
+  valid_from                                          DateTime  @db.Timestamp(0)
+  valid_until                                         DateTime  @db.Timestamp(0)
+  approved_by                                         BigInt?
+  revoked_at                                          DateTime? @db.Timestamp(0)
+  created_at                                          DateTime? @db.Timestamp(0)
+  updated_at                                          DateTime? @db.Timestamp(0)
+  users_authorization_delegations_approved_byTousers  users?    @relation("authorization_delegations_approved_byTousers", fields: [approved_by], references: [id], onUpdate: NoAction)
+  users_authorization_delegations_delegate_idTousers  users     @relation("authorization_delegations_delegate_idTousers", fields: [delegate_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users_authorization_delegations_delegator_idTousers users     @relation("authorization_delegations_delegator_idTousers", fields: [delegator_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([delegate_id, status, valid_until], map: "auth_delegation_active_idx")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model authorization_emergency_grants {
+  id                                                      BigInt    @id @default(autoincrement())
+  grant_uuid                                              String    @unique(map: "auth_emergency_grant_uuid_unique") @db.Uuid
+  tenant_id                                               String?   @db.VarChar(190)
+  user_id                                                 BigInt
+  permission_codes                                        Json?
+  scope_type                                              String?   @db.VarChar(40)
+  scope_id                                                String?   @db.VarChar(190)
+  reason                                                  String    @db.VarChar(1000)
+  status                                                  String    @default("ACTIVE") @db.VarChar(30)
+  valid_from                                              DateTime  @db.Timestamp(0)
+  valid_until                                             DateTime  @db.Timestamp(0)
+  approved_by                                             BigInt?
+  mfa_verified                                            Boolean   @default(false)
+  revoked_at                                              DateTime? @db.Timestamp(0)
+  revoked_by                                              BigInt?
+  reviewed_at                                             DateTime? @db.Timestamp(0)
+  reviewed_by                                             BigInt?
+  created_at                                              DateTime? @db.Timestamp(0)
+  updated_at                                              DateTime? @db.Timestamp(0)
+  users_authorization_emergency_grants_approved_byTousers users?    @relation("authorization_emergency_grants_approved_byTousers", fields: [approved_by], references: [id], onUpdate: NoAction)
+  users_authorization_emergency_grants_reviewed_byTousers users?    @relation("authorization_emergency_grants_reviewed_byTousers", fields: [reviewed_by], references: [id], onUpdate: NoAction)
+  users_authorization_emergency_grants_revoked_byTousers  users?    @relation("authorization_emergency_grants_revoked_byTousers", fields: [revoked_by], references: [id], onUpdate: NoAction)
+  users_authorization_emergency_grants_user_idTousers     users     @relation("authorization_emergency_grants_user_idTousers", fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([user_id, status, valid_until], map: "auth_emergency_active_idx")
+}
+
+/// This model contains an expression index which requires additional setup for migrations. Visit https://pris.ly/d/expression-indexes for more info.
+model authorization_feature_flags {
+  id          BigInt    @id @default(autoincrement())
+  tenant_id   String?   @db.VarChar(190)
+  key         String    @db.VarChar(190)
+  enabled     Boolean   @default(false)
+  description String?   @db.VarChar(500)
+  updated_by  BigInt?
+  created_at  DateTime? @db.Timestamp(0)
+  updated_at  DateTime? @db.Timestamp(0)
+  users       users?    @relation(fields: [updated_by], references: [id], onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model authorization_policies {
+  id                                              BigInt                          @id @default(autoincrement())
+  tenant_id                                       String?                         @db.VarChar(190)
+  code                                            String                          @unique(map: "authorization_policies_code_unique") @db.VarChar(190)
+  name                                            String                          @db.VarChar(255)
+  description                                     String?                         @db.VarChar(1000)
+  effect                                          String                          @default("ALLOW") @db.VarChar(10)
+  subjects                                        Json?
+  actions                                         Json?
+  resources                                       Json?
+  scope_type                                      String                          @default("TENANT") @db.VarChar(40)
+  scope_id                                        String?                         @db.VarChar(190)
+  conditions                                      Json?
+  obligations                                     Json?
+  priority                                        Int                             @default(100)
+  status                                          String                          @default("DRAFT") @db.VarChar(30)
+  version                                         Int                             @default(1)
+  valid_from                                      DateTime?                       @db.Timestamp(0)
+  valid_until                                     DateTime?                       @db.Timestamp(0)
+  requires_approval                               Boolean                         @default(false)
+  created_by                                      BigInt?
+  updated_by                                      BigInt?
+  approved_by                                     BigInt?
+  created_at                                      DateTime?                       @db.Timestamp(0)
+  updated_at                                      DateTime?                       @db.Timestamp(0)
+  users_authorization_policies_approved_byTousers users?                          @relation("authorization_policies_approved_byTousers", fields: [approved_by], references: [id], onUpdate: NoAction)
+  users_authorization_policies_created_byTousers  users?                          @relation("authorization_policies_created_byTousers", fields: [created_by], references: [id], onUpdate: NoAction)
+  users_authorization_policies_updated_byTousers  users?                          @relation("authorization_policies_updated_byTousers", fields: [updated_by], references: [id], onUpdate: NoAction)
+  authorization_policy_versions                   authorization_policy_versions[]
+
+  @@index([tenant_id, status, priority(sort: Desc)], map: "authorization_policies_lookup_idx")
+}
+
+model authorization_policy_versions {
+  id                                                     BigInt                          @id @default(autoincrement())
+  policy_id                                              BigInt
+  version                                                Int
+  snapshot                                               Json
+  change_summary                                         String?                         @db.VarChar(1000)
+  previous_version_id                                    BigInt?
+  changed_by                                             BigInt?
+  approved_by                                            BigInt?
+  created_at                                             DateTime?                       @db.Timestamp(0)
+  users_authorization_policy_versions_approved_byTousers users?                          @relation("authorization_policy_versions_approved_byTousers", fields: [approved_by], references: [id], onUpdate: NoAction)
+  users_authorization_policy_versions_changed_byTousers  users?                          @relation("authorization_policy_versions_changed_byTousers", fields: [changed_by], references: [id], onUpdate: NoAction)
+  authorization_policies                                 authorization_policies          @relation(fields: [policy_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  authorization_policy_versions                          authorization_policy_versions?  @relation("authorization_policy_versionsToauthorization_policy_versions", fields: [previous_version_id], references: [id], onUpdate: NoAction)
+  other_authorization_policy_versions                    authorization_policy_versions[] @relation("authorization_policy_versionsToauthorization_policy_versions")
+
+  @@unique([policy_id, version], map: "auth_policy_version_unique")
+}
+
+model authorization_relationships {
+  id            BigInt    @id @default(autoincrement())
+  tenant_id     String?   @db.VarChar(190)
+  subject_type  String    @default("user") @db.VarChar(80)
+  subject_id    String    @db.VarChar(190)
+  relationship  String    @db.VarChar(80)
+  resource_type String    @db.VarChar(190)
+  resource_id   String    @db.VarChar(190)
+  valid_from    DateTime? @db.Timestamp(0)
+  valid_until   DateTime? @db.Timestamp(0)
+  created_by    BigInt?
+  created_at    DateTime? @db.Timestamp(0)
+  updated_at    DateTime? @db.Timestamp(0)
+  users         users?    @relation(fields: [created_by], references: [id], onUpdate: NoAction)
+
+  @@index([subject_type, subject_id, resource_type, resource_id], map: "auth_relationship_lookup_idx")
+}
+
+model authorization_role_assignments {
+  id                                                      BigInt                              @id @default(autoincrement())
+  user_id                                                 BigInt
+  role_id                                                 BigInt
+  scope_type                                              String                              @default("TENANT") @db.VarChar(40)
+  scope_id                                                String?                             @db.VarChar(190)
+  tenant_id                                               String?                             @db.VarChar(190)
+  status                                                  String                              @default("ACTIVE") @db.VarChar(30)
+  is_temporary                                            Boolean                             @default(false)
+  valid_from                                              DateTime?                           @db.Timestamp(0)
+  valid_until                                             DateTime?                           @db.Timestamp(0)
+  reason                                                  String?                             @db.VarChar(500)
+  assigned_by                                             BigInt?
+  approved_by                                             BigInt?
+  revoked_at                                              DateTime?                           @db.Timestamp(0)
+  revoked_by                                              BigInt?
+  created_at                                              DateTime?                           @db.Timestamp(0)
+  updated_at                                              DateTime?                           @db.Timestamp(0)
+  authorization_access_review_items                       authorization_access_review_items[]
+  users_authorization_role_assignments_approved_byTousers users?                              @relation("authorization_role_assignments_approved_byTousers", fields: [approved_by], references: [id], onUpdate: NoAction)
+  users_authorization_role_assignments_assigned_byTousers users?                              @relation("authorization_role_assignments_assigned_byTousers", fields: [assigned_by], references: [id], onUpdate: NoAction)
+  users_authorization_role_assignments_revoked_byTousers  users?                              @relation("authorization_role_assignments_revoked_byTousers", fields: [revoked_by], references: [id], onUpdate: NoAction)
+  roles                                                   roles                               @relation(fields: [role_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users_authorization_role_assignments_user_idTousers     users                               @relation("authorization_role_assignments_user_idTousers", fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([user_id, status, valid_until], map: "auth_role_assignment_user_idx")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model authorization_role_inheritances {
+  id                                                          BigInt    @id @default(autoincrement())
+  parent_role_id                                              BigInt
+  child_role_id                                               BigInt
+  created_at                                                  DateTime? @db.Timestamp(0)
+  updated_at                                                  DateTime? @db.Timestamp(0)
+  roles_authorization_role_inheritances_child_role_idToroles  roles     @relation("authorization_role_inheritances_child_role_idToroles", fields: [child_role_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  roles_authorization_role_inheritances_parent_role_idToroles roles     @relation("authorization_role_inheritances_parent_role_idToroles", fields: [parent_role_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([parent_role_id, child_role_id], map: "auth_role_inheritance_unique")
+  @@index([child_role_id], map: "auth_role_inheritance_child_idx")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model authorization_sod_rules {
+  id                           BigInt                         @id @default(autoincrement())
+  tenant_id                    String?                        @db.VarChar(190)
+  code                         String                         @unique(map: "auth_sod_rule_code_unique") @db.VarChar(190)
+  name                         String                         @db.VarChar(255)
+  description                  String?                        @db.VarChar(1000)
+  left_codes                   Json
+  right_codes                  Json
+  severity                     String                         @default("BLOCK") @db.VarChar(30)
+  requires_override_reason     Boolean                        @default(true)
+  is_active                    Boolean                        @default(true)
+  created_at                   DateTime?                      @db.Timestamp(0)
+  updated_at                   DateTime?                      @db.Timestamp(0)
+  authorization_sod_violations authorization_sod_violations[]
+}
+
+model authorization_sod_violations {
+  id                                                      BigInt                  @id @default(autoincrement())
+  tenant_id                                               String?                 @db.VarChar(190)
+  rule_id                                                 BigInt
+  user_id                                                 BigInt
+  detail                                                  Json?
+  status                                                  String                  @default("OPEN") @db.VarChar(30)
+  override_reason                                         String?                 @db.VarChar(1000)
+  overridden_by                                           BigInt?
+  detected_at                                             DateTime?               @db.Timestamp(0)
+  resolved_at                                             DateTime?               @db.Timestamp(0)
+  created_at                                              DateTime?               @db.Timestamp(0)
+  updated_at                                              DateTime?               @db.Timestamp(0)
+  users_authorization_sod_violations_overridden_byTousers users?                  @relation("authorization_sod_violations_overridden_byTousers", fields: [overridden_by], references: [id], onUpdate: NoAction)
+  authorization_sod_rules                                 authorization_sod_rules @relation(fields: [rule_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users_authorization_sod_violations_user_idTousers       users                   @relation("authorization_sod_violations_user_idTousers", fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([user_id, status], map: "auth_sod_violation_idx")
 }

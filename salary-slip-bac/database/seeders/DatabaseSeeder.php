@@ -54,6 +54,7 @@ class DatabaseSeeder extends Seeder
 
         // Assign the RBAC "Super Admin" role (created by RbacSeeder)
         $this->call(RbacSeeder::class);
+        $this->call(HrTalentRbacSeeder::class);
         $superAdminRole = Role::where('name', 'Super Admin')->first();
         if ($superAdminRole) {
             // Idempotent, and won't strip any other roles already attached.

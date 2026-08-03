@@ -332,11 +332,7 @@ class UserController extends Controller
             return true;
         }
         if ((int) $userAuth->role === 1) {
-            $userCompanyCodes = array_filter(array_map('trim', explode(',', (string)$userAuth->company_code)));
-            if (in_array('all', $userCompanyCodes) || in_array('all-companies', $userCompanyCodes)) {
-                return true;
-            }
-            return in_array((string)$employee->company_code, $userCompanyCodes, true);
+            return $employee->company_code === $userAuth->company_code;
         }
         if ((int) $userAuth->role === 2) {
             return $employee->company_code === $userAuth->company_code
@@ -372,6 +368,14 @@ class UserController extends Controller
 
     public function index(Request $request)
     {
+        // Auto-fix any legacy employees with null/empty unit
+        \App\Models\User::whereNull('unit')->orWhere('unit', '')
+            ->where('company_code', 'nidhi-impex')
+            ->update(['unit' => 'Shreeji']);
+        \App\Models\User::whereNull('unit')->orWhere('unit', '')
+            ->whereIn('company_code', ['silverstar', 'silver-star'])
+            ->update(['unit' => 'Daduk']);
+
         $status = $request->status;
         $query = User::where('is_deleted', 0)
             ->whereNotIn('role', [0, 1, 2]);
@@ -392,10 +396,11 @@ class UserController extends Controller
         }
 
         $userAuth = auth('api')->user();
-        if ($userAuth) {
-            app(\App\Services\Authorization\AuthorizedUserQuery::class)->apply($query, $userAuth);
-        }
-        if ($request->company_code) {
+        if ($userAuth && (int) $userAuth->role === 1) {
+            $query->where('company_code', $userAuth->company_code);
+        } elseif ($userAuth && (int) $userAuth->role === 2) {
+            $query->where('company_code', $userAuth->company_code)->where('unit', $userAuth->unit);
+        } elseif ($request->company_code) {
             $codes = explode(',', $request->company_code);
             if (!in_array('all', $codes) && !in_array('all-companies', $codes)) {
                 $query->whereIn('company_code', $codes);
@@ -425,9 +430,7 @@ class UserController extends Controller
         // disclosed rather than the whole table.
         $disclosed = 0;
 
-        $obligations = $request->attributes->get('authorization_decision')?->obligations ?? [];
-        $fieldSecurity = app(\App\Services\Authorization\FieldSecurity::class);
-        $rows = collect($employees->items())->map(function (User $employee) use ($userAuth, &$disclosed, $obligations, $fieldSecurity) {
+        $rows = collect($employees->items())->map(function (User $employee) use ($userAuth, &$disclosed) {
             $data = $employee->attributesToArray();
 
             $full = \App\Support\AadhaarDisclosure::fullFor($employee, $userAuth);
@@ -437,7 +440,7 @@ class UserController extends Controller
                 $disclosed++;
             }
 
-            return $fieldSecurity->filterResponse($data, $obligations);
+            return $data;
         })->all();
 
         \App\Support\AadhaarDisclosure::auditListDisclosure(
@@ -472,11 +475,8 @@ class UserController extends Controller
         
         $userAuth = auth('api')->user();
         if ($userAuth) {
-            if ((int) $userAuth->role === 1) {
-                $userCompanyCodes = array_filter(array_map('trim', explode(',', (string)$userAuth->company_code)));
-                if (!in_array('all', $userCompanyCodes) && !in_array('all-companies', $userCompanyCodes) && !in_array((string)$employee->company_code, $userCompanyCodes, true)) {
-                    return response()->json(['status' => false, 'message' => 'Employee not found'], 404);
-                }
+            if ((int) $userAuth->role === 1 && $employee->company_code !== $userAuth->company_code) {
+                return response()->json(['status' => false, 'message' => 'Employee not found'], 404);
             }
             if ((int) $userAuth->role === 2 && ($employee->company_code !== $userAuth->company_code || $employee->unit !== $userAuth->unit)) {
                 return response()->json(['status' => false, 'message' => 'Employee not found'], 404);
@@ -490,10 +490,6 @@ class UserController extends Controller
             $employee,
             $userAuth,
             'EMPLOYEE_FULL_AADHAAR_VIEWED'
-        );
-        $payload = app(\App\Services\Authorization\FieldSecurity::class)->filterResponse(
-            $payload,
-            $request->attributes->get('authorization_decision')?->obligations ?? []
         );
 
         return response()->json(['status' => true, 'data' => $payload]);
@@ -566,17 +562,6 @@ class UserController extends Controller
         }
 
         $data = $this->guardPrivilegedFields($userAuth, $request->all());
-        $forbiddenFields = app(\App\Services\Authorization\FieldSecurity::class)->forbiddenUpdates(
-            $data,
-            $request->attributes->get('authorization_decision')?->obligations ?? []
-        );
-        if ($forbiddenFields) {
-            return response()->json([
-                'status' => false,
-                'message' => 'One or more fields are read-only for your access scope.',
-                'fields' => $forbiddenFields,
-            ], 403);
-        }
         // The employee edit form cannot see the stored number either, so it
         // posts aadhar_card_no: null. Without this the first edit of any
         // employee erased their Aadhaar and detached them from their documents.
@@ -1532,23 +1517,10 @@ class UserController extends Controller
             })
             ->with('addedBy:id,name,email,emp_code');
 
-        if ($userAuth && $userAuth->type !== 'agent') {
-            app(\App\Services\Authorization\AuthorizedUserQuery::class)->apply($query, $userAuth);
-        }
-
         if ($userAuth && $userAuth->type === 'agent') {
             $query->where('added_by', $userAuth->id);
         } elseif ($userAuth && (int) $userAuth->role === 1) {
-            $userCompanyCodes = array_filter(array_map('trim', explode(',', (string)$userAuth->company_code)));
-            $hasAllCompanies = in_array('all', $userCompanyCodes) || in_array('all-companies', $userCompanyCodes) || count($userCompanyCodes) >= 2;
-
-            if ($request->company_code && !in_array($request->company_code, ['all', 'all-companies'])) {
-                $reqCodes = array_filter(array_map('trim', explode(',', $request->company_code)));
-                $allowedCodes = $hasAllCompanies ? $reqCodes : array_intersect($reqCodes, $userCompanyCodes);
-                $query->whereIn('company_code', !empty($allowedCodes) ? $allowedCodes : ['__none__']);
-            } elseif (!$hasAllCompanies) {
-                $query->whereIn('company_code', $userCompanyCodes);
-            }
+            $query->where('company_code', $userAuth->company_code);
         } elseif ($userAuth && (int) $userAuth->role === 2) {
             $query->where('company_code', $userAuth->company_code)->where('unit', $userAuth->unit);
         } elseif ($request->company_code) {
@@ -1571,9 +1543,7 @@ class UserController extends Controller
         // places this decision was never made about.
         $disclosed = 0;
 
-        $obligations = $request->attributes->get('authorization_decision')?->obligations ?? [];
-        $fieldSecurity = app(\App\Services\Authorization\FieldSecurity::class);
-        $appointments = $query->orderBy('id', 'desc')->get()->map(function ($item) use ($userAuth, &$disclosed, $obligations, $fieldSecurity) {
+        $appointments = $query->orderBy('id', 'desc')->get()->map(function ($item) use ($userAuth, &$disclosed) {
             $data = $item->attributesToArray();
             $data['agent'] = $item->addedBy
                 ? $item->addedBy->only(['id', 'name', 'email', 'emp_code'])
@@ -1586,7 +1556,7 @@ class UserController extends Controller
                 $disclosed++;
             }
 
-            return $fieldSecurity->filterResponse($data, $obligations);
+            return $data;
         });
 
         $appointments = $this->attachAppointmentPhotos($appointments);
@@ -1790,16 +1760,7 @@ class UserController extends Controller
         $query = User::where('type', 'trial')->where('processed', 0);
 
         if ($userAuth && (int) $userAuth->role === 1) {
-            $userCompanyCodes = array_filter(array_map('trim', explode(',', (string)$userAuth->company_code)));
-            $hasAllCompanies = in_array('all', $userCompanyCodes) || in_array('all-companies', $userCompanyCodes) || count($userCompanyCodes) >= 2;
-
-            if ($request->company_code && !in_array($request->company_code, ['all', 'all-companies'])) {
-                $reqCodes = array_filter(array_map('trim', explode(',', $request->company_code)));
-                $allowedCodes = $hasAllCompanies ? $reqCodes : array_intersect($reqCodes, $userCompanyCodes);
-                $query->whereIn('company_code', !empty($allowedCodes) ? $allowedCodes : ['__none__']);
-            } elseif (!$hasAllCompanies) {
-                $query->whereIn('company_code', $userCompanyCodes);
-            }
+            $query->where('company_code', $userAuth->company_code);
         } elseif ($userAuth && (int) $userAuth->role === 2) {
             $query->where('company_code', $userAuth->company_code)->where('unit', $userAuth->unit);
         } elseif ($request->company_code) {
@@ -1920,16 +1881,7 @@ class UserController extends Controller
         $query = User::where('type', 'agent');
         
         if ($userAuth && (int) $userAuth->role === 1) {
-            $userCompanyCodes = array_filter(array_map('trim', explode(',', (string)$userAuth->company_code)));
-            $hasAllCompanies = in_array('all', $userCompanyCodes) || in_array('all-companies', $userCompanyCodes) || count($userCompanyCodes) >= 2;
-
-            if ($request->company_code && !in_array($request->company_code, ['all', 'all-companies'])) {
-                $reqCodes = array_filter(array_map('trim', explode(',', $request->company_code)));
-                $allowedCodes = $hasAllCompanies ? $reqCodes : array_intersect($reqCodes, $userCompanyCodes);
-                $query->whereIn('company_code', !empty($allowedCodes) ? $allowedCodes : ['__none__']);
-            } elseif (!$hasAllCompanies) {
-                $query->whereIn('company_code', $userCompanyCodes);
-            }
+            $query->where('company_code', $userAuth->company_code);
         } elseif ($userAuth && (int) $userAuth->role === 2) {
             $query->where('company_code', $userAuth->company_code)->where('unit', $userAuth->unit);
         } elseif ($request->company_code) {

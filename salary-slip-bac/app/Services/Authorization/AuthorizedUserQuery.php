@@ -11,7 +11,7 @@ class AuthorizedUserQuery
 {
     public function apply(Builder $query, User $actor): Builder
     {
-        if ((int) $actor->role === 0 || (int) $actor->role === 1) {
+        if ((int) $actor->role === 0) {
             return $query;
         }
 

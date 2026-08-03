@@ -56,9 +56,7 @@ class DocumentAuthorizer
         }
 
         if ((int) $actor->role === 1) {
-            $actorCodes = array_filter(array_map('trim', explode(',', (string)$actor->company_code)));
-            if (in_array('all', $actorCodes) || in_array('all-companies', $actorCodes)) return true;
-            return in_array((string)$owner->company_code, $actorCodes, true);
+            return $actor->company_code === $owner->company_code;
         }
 
         if ((int) $actor->role === 2) {

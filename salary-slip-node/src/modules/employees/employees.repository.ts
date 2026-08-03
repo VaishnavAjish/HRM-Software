@@ -176,6 +176,17 @@ export class PrismaEmployeeRepository implements EmployeeRepository {
     );
   }
 
+  async findAnyByEmpCode(code: string, exceptId?: number): Promise<EmployeeRow | null> {
+    return normalise(
+      (await db.users.findFirst({
+        where: {
+          emp_code: code,
+          ...(exceptId === undefined ? {} : { id: { not: BigInt(exceptId) } }),
+        },
+      })) as Record<string, unknown> | null,
+    );
+  }
+
   async emailTaken(email: string, exceptId?: number): Promise<boolean> {
     return (
       (await db.users.count({

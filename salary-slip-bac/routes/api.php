@@ -31,6 +31,14 @@ use App\Support\AadhaarExportAccess;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\SalariesSlipController;
 use App\Http\Controllers\UserController;
+use App\Http\Controllers\Admin\Hr\HrDashboardController;
+use App\Http\Controllers\Admin\Hr\JobRequisitionController;
+use App\Http\Controllers\Admin\Hr\CandidateController;
+use App\Http\Controllers\Admin\Hr\InterviewController;
+use App\Http\Controllers\Admin\Hr\OfferController;
+use App\Http\Controllers\Admin\Hr\AssetController;
+use App\Http\Controllers\Admin\Hr\PerformanceController;
+use App\Http\Controllers\Admin\Hr\HrReportController;
 
 Route::get("gautampithadiya", function(){
     return "Gautam";
@@ -334,6 +342,85 @@ Route::middleware('jwt.auth')->group(function () {
             Route::delete('delete/{id}', [ShiftController::class, 'destroy'])->middleware('permission:hr.shift.delete');
             Route::post('assign', [ShiftController::class, 'assign'])->middleware('permission:hr.shift.assign');
         });
+        Route::group(["prefix" => "hr"], function () {
+            Route::get('dashboard', [HrDashboardController::class, 'index'])->middleware('permission:hr.dashboard.read');
+
+            Route::group(["prefix" => "requisitions"], function () {
+                Route::get('get', [JobRequisitionController::class, 'index'])->middleware('permission:hr.requisition.read');
+                Route::get('show/{id}', [JobRequisitionController::class, 'show'])->middleware('permission:hr.requisition.read');
+                Route::post('store', [JobRequisitionController::class, 'store'])->middleware('permission:hr.requisition.create');
+                Route::put('update/{id}', [JobRequisitionController::class, 'update'])->middleware('permission:hr.requisition.update');
+                Route::delete('delete/{id}', [JobRequisitionController::class, 'destroy'])->middleware('permission:hr.requisition.delete');
+                Route::post('approve/{id}', [JobRequisitionController::class, 'approve'])->middleware('permission:hr.requisition.approve');
+                Route::post('publish/{id}', [JobRequisitionController::class, 'publish'])->middleware('permission:hr.requisition.publish');
+            });
+
+            Route::group(["prefix" => "candidates"], function () {
+                Route::get('get', [CandidateController::class, 'index'])->middleware('permission:hr.candidate.read');
+                Route::get('pipeline', [CandidateController::class, 'pipeline'])->middleware('permission:hr.candidate.read');
+                Route::get('show/{id}', [CandidateController::class, 'show'])->middleware('permission:hr.candidate.read');
+                Route::post('store', [CandidateController::class, 'store'])->middleware('permission:hr.candidate.create');
+                Route::put('update/{id}', [CandidateController::class, 'update'])->middleware('permission:hr.candidate.update');
+                Route::delete('delete/{id}', [CandidateController::class, 'destroy'])->middleware('permission:hr.candidate.delete');
+                Route::post('move-stage/{id}', [CandidateController::class, 'moveStage'])->middleware('permission:hr.candidate.move_stage');
+            });
+
+            Route::group(["prefix" => "interviews"], function () {
+                Route::get('get', [InterviewController::class, 'index'])->middleware('permission:hr.interview.read');
+                Route::get('show/{id}', [InterviewController::class, 'show'])->middleware('permission:hr.interview.read');
+                Route::post('store', [InterviewController::class, 'store'])->middleware('permission:hr.interview.create');
+                Route::put('update/{id}', [InterviewController::class, 'update'])->middleware('permission:hr.interview.update');
+                Route::delete('delete/{id}', [InterviewController::class, 'destroy'])->middleware('permission:hr.interview.delete');
+                Route::post('reschedule/{id}', [InterviewController::class, 'reschedule'])->middleware('permission:hr.interview.update');
+                Route::post('feedback/{id}', [InterviewController::class, 'feedback'])->middleware('permission:hr.interview.feedback');
+            });
+
+            Route::group(["prefix" => "offers"], function () {
+                Route::get('get', [OfferController::class, 'index'])->middleware('permission:hr.offer.read');
+                Route::get('show/{id}', [OfferController::class, 'show'])->middleware('permission:hr.offer.read');
+                Route::post('store', [OfferController::class, 'store'])->middleware('permission:hr.offer.create');
+                Route::put('update/{id}', [OfferController::class, 'update'])->middleware('permission:hr.offer.update');
+                Route::delete('delete/{id}', [OfferController::class, 'destroy'])->middleware('permission:hr.offer.update');
+                Route::post('approve/{id}', [OfferController::class, 'approve'])->middleware('permission:hr.offer.approve');
+                Route::post('release/{id}', [OfferController::class, 'release'])->middleware('permission:hr.offer.release');
+                Route::post('respond/{id}', [OfferController::class, 'respond'])->middleware('permission:hr.offer.update');
+            });
+
+            Route::group(["prefix" => "assets"], function () {
+                Route::get('get', [AssetController::class, 'index'])->middleware('permission:hr.asset.read');
+                Route::get('dashboard', [AssetController::class, 'dashboard'])->middleware('permission:hr.asset.read');
+                Route::get('show/{id}', [AssetController::class, 'show'])->middleware('permission:hr.asset.read');
+                Route::post('store', [AssetController::class, 'store'])->middleware('permission:hr.asset.create');
+                Route::put('update/{id}', [AssetController::class, 'update'])->middleware('permission:hr.asset.update');
+                Route::delete('delete/{id}', [AssetController::class, 'destroy'])->middleware('permission:hr.asset.delete');
+                Route::post('allocate/{id}', [AssetController::class, 'allocate'])->middleware('permission:hr.asset.allocate');
+                Route::post('return/{id}', [AssetController::class, 'returnAsset'])->middleware('permission:hr.asset.return');
+                Route::post('transfer/{id}', [AssetController::class, 'transfer'])->middleware('permission:hr.asset.transfer');
+            });
+
+            Route::group(["prefix" => "performance"], function () {
+                Route::get('dashboard', [PerformanceController::class, 'dashboard'])->middleware('permission:hr.performance.read');
+
+                Route::get('cycles/get', [PerformanceController::class, 'cycles'])->middleware('permission:hr.performance.read');
+                Route::post('cycles/store', [PerformanceController::class, 'storeCycle'])->middleware('permission:hr.performance.create');
+                Route::put('cycles/update/{id}', [PerformanceController::class, 'updateCycle'])->middleware('permission:hr.performance.update');
+                Route::delete('cycles/delete/{id}', [PerformanceController::class, 'destroyCycle'])->middleware('permission:hr.performance.update');
+
+                Route::get('goals/get', [PerformanceController::class, 'goals'])->middleware('permission:hr.performance.read');
+                Route::post('goals/store', [PerformanceController::class, 'storeGoal'])->middleware('permission:hr.performance.create');
+                Route::put('goals/update/{id}', [PerformanceController::class, 'updateGoal'])->middleware('permission:hr.performance.update');
+                Route::delete('goals/delete/{id}', [PerformanceController::class, 'destroyGoal'])->middleware('permission:hr.performance.update');
+
+                Route::get('reviews/get', [PerformanceController::class, 'reviews'])->middleware('permission:hr.performance.read');
+                Route::post('reviews/store', [PerformanceController::class, 'storeReview'])->middleware('permission:hr.performance.review');
+                Route::put('reviews/update/{id}', [PerformanceController::class, 'updateReview'])->middleware('permission:hr.performance.review');
+            });
+
+            Route::group(["prefix" => "reports"], function () {
+                Route::get('generate', [HrReportController::class, 'generate'])->middleware('permission:hr.report.read');
+            });
+        });
+
         Route::group(["prefix" => "rbac"], function () {
             Route::get('dashboard', [RbacDashboardController::class, 'index']);
             Route::get('audit-logs', [AuditLogController::class, 'index']);

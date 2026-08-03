@@ -23,6 +23,7 @@ import {
   ShieldCheck,
   Calendar,
   ChevronDown,
+  Briefcase,
 } from "lucide-react";
 
 function getAdminNav(companyId, user, isAllCompanies) {
@@ -91,6 +92,29 @@ function getAdminNav(companyId, user, isAllCompanies) {
       label: "TDS",
       icon: Receipt,
       subItems: tdsSubItems
+    });
+  }
+
+  if (rawRole === 0 || hasAccess("hr.dashboard.read")) {
+    nav.push({
+      label: "HR",
+      icon: Briefcase,
+      subItems: [
+        { to: "/admin/hr", label: "HR Dashboard" },
+        { to: "/admin/hr/hiring", label: "Hiring Process" },
+        { to: "/admin/hr/candidates", label: "Candidate Pipeline" },
+        { to: "/admin/hr/interviews", label: "Interview Management" },
+        { to: "/admin/hr/offers", label: "Offer Management" },
+        { to: "/admin/hr/onboarding", label: "Employee Onboarding" },
+        { to: "/admin/hr/assets", label: "Asset Allocation" },
+        { to: "/admin/hr/performance", label: "Performance Matrix" },
+        { to: "/admin/hr/lifecycle", label: "Employee Lifecycle" },
+        { to: "/admin/hr/separation", label: "Employee Separation" },
+        { to: "/admin/hr/exit", label: "Exit Management" },
+        { to: "/admin/hr/org-insights", label: "Organization Insights" },
+        { to: "/admin/hr/reports", label: "HR Reports" },
+        { to: "/admin/hr/settings", label: "HR Settings" },
+      ],
     });
   }
 

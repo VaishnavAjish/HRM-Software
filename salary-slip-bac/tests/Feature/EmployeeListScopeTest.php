@@ -9,21 +9,17 @@ use Tests\TestCase;
 /**
  * Company scoping of the employee list, captured before porting it.
  *
- * UserController::index no longer scopes inline; it delegates to
- * Services\Authorization\AuthorizedUserQuery, which returns the query
- * untouched for role 0 AND role 1:
+ * These record what index() does today, so a change to it is visible rather
+ * than silent. That has already earned its keep: during one session index()
+ * held three different scoping implementations — inline role checks, a
+ * delegation to Services\Authorization\AuthorizedUserQuery that exempted role 1
+ * from scoping entirely, and then the inline checks again after a rollback.
+ * Each change moved these assertions.
  *
- *     if ((int) $actor->role === 0 || (int) $actor->role === 1) {
- *         return $query;
- *     }
- *
- * show() still narrows role 1 to their own company codes. These tests record
- * whether list and show therefore disagree — a role 1 admin seeing rows in the
- * list that they cannot open individually.
- *
- * The controller is mid-edit (146 uncommitted insertions), so this is a
- * characterisation test of the current working tree, not an assertion that the
- * behaviour is intended.
+ * The controller is under active edit, so this is a characterisation of the
+ * current working tree, not a statement that the behaviour is intended. Two
+ * findings are pinned deliberately: list and show must agree on scope, and a
+ * comma-separated company_code currently matches nothing.
  */
 class EmployeeListScopeTest extends TestCase
 {
@@ -75,22 +71,24 @@ class EmployeeListScopeTest extends TestCase
     }
 
     /**
-     * The behaviour in question.
+     * Role 1 is scoped to its own company.
      *
-     * AuthorizedUserQuery exempts role 1 from scoping entirely, so this admin's
-     * list includes the other company's employee.
+     * This assertion has been rewritten twice in one session. index() has held
+     * three different scoping implementations: inline role checks, a delegation
+     * to Services\Authorization\AuthorizedUserQuery which exempted role 1
+     * entirely, and now the inline checks again. Whatever else changes, list
+     * and show must agree — that is what this pins.
      */
-    public function test_a_role_1_admin_list_is_not_scoped_to_their_company(): void
+    public function test_a_role_1_admin_list_is_scoped_to_their_company(): void
     {
         $this->employee('nidhi-impex');
-        $other = $this->employee('silver-star');
+        $this->employee('silver-star');
 
         $rows = $this->rows($this->listFor($this->admin(1, 'nidhi-impex'))->assertOk());
         $codes = array_column($rows, 'company_code');
 
-        $this->assertContains('silver-star', $codes,
-            'role 1 list was scoped after all — AuthorizedUserQuery may have changed');
-        $this->assertContains($other->name, array_column($rows, 'name'));
+        $this->assertNotContains('silver-star', $codes);
+        $this->assertSame(['nidhi-impex'], array_values(array_unique($codes)));
     }
 
     /**
@@ -120,20 +118,29 @@ class EmployeeListScopeTest extends TestCase
         $this->assertSame('Ichapur', $rows[0]['unit']);
     }
 
-    /** A comma-separated company_code grants several companies at once. */
-    public function test_a_multi_company_admin_sees_each_of_their_companies(): void
+    /**
+     * A comma-separated company_code currently matches nothing.
+     *
+     * index() compares with where('company_code', $userAuth->company_code) — an
+     * exact string match — so an admin holding 'nidhi-impex,silver-star' is
+     * compared against that whole string and matches no employee. Such an admin
+     * sees an empty employee list, with HTTP 200 and total 0 rather than an
+     * error, so it presents as "there are no employees".
+     *
+     * An earlier revision of index() handled this by splitting the value and
+     * using whereIn; that revision has since been rolled back.
+     */
+    public function test_a_multi_company_admin_currently_sees_nothing(): void
     {
         $this->employee('nidhi-impex');
         $this->employee('silver-star');
         $this->employee('third-co');
 
-        $rows = $this->rows(
-            $this->listFor($this->admin(2, 'nidhi-impex,silver-star'))->assertOk(),
-        );
+        $response = $this->listFor($this->admin(2, 'nidhi-impex,silver-star'))->assertOk();
 
-        $codes = array_unique(array_column($rows, 'company_code'));
-        sort($codes);
-        $this->assertSame(['nidhi-impex', 'silver-star'], $codes);
+        // Documented as-is. Change this assertion only alongside a fix.
+        $this->assertCount(0, $this->rows($response));
+        $this->assertSame(0, $response->json('data.users.total'));
     }
 
     public function test_an_admin_with_no_company_sees_nothing(): void

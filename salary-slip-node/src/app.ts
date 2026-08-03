@@ -15,6 +15,10 @@ import { registerAuthRoutes } from './modules/auth/auth.routes.js';
 import { registerMastersRoutes } from './modules/masters/masters.routes.js';
 import { registerShiftRoutes } from './modules/shifts/shifts.routes.js';
 import { registerEmployeeRoutes } from './modules/employees/employees.routes.js';
+import { registerAuthorizationRoutes } from './modules/authorization/authorization.routes.js';
+import { registerAgentRoutes } from './modules/agents/agents.routes.js';
+import { registerTrialFormRoutes } from './modules/trialforms/trialforms.routes.js';
+import { registerProfileRoutes } from './modules/profile/profile.routes.js';
 import { AuthService } from './modules/auth/auth.service.js';
 import { PrismaAuthRepository, PrismaCacheStore } from './modules/auth/auth.repository.js';
 import { TokenBlacklist } from './modules/auth/token-blacklist.js';
@@ -106,6 +110,10 @@ export async function buildApp(): Promise<FastifyInstance> {
   await registerMastersRoutes(app, { authService, audit });
   await registerShiftRoutes(app, { authService, audit });
   await registerEmployeeRoutes(app, { authService, audit });
+  await registerAuthorizationRoutes(app, { authService, audit });
+  await registerAgentRoutes(app, { authService, audit });
+  await registerTrialFormRoutes(app, { authService, audit });
+  await registerProfileRoutes(app, { authService });
 
   /**
    * Health check. Deliberately unauthenticated and free of dependency probes:

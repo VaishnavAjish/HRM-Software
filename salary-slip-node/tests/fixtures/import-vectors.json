@@ -1,0 +1,388 @@
+{
+    "_comment": "Captured from UserController via reflection.",
+    "sanitize": [
+        {
+            "in": {
+                "emp_code": "1138.0"
+            },
+            "out": {
+                "emp_code": "1138",
+                "company_code": null
+            }
+        },
+        {
+            "in": {
+                "emp_code": "S001"
+            },
+            "out": {
+                "emp_code": "S001",
+                "company_code": null
+            }
+        },
+        {
+            "in": {
+                "emp_code": "  EMP-77  "
+            },
+            "out": {
+                "emp_code": "EMP-77",
+                "company_code": null
+            }
+        },
+        {
+            "in": {
+                "mobile_number": "9876543210.0"
+            },
+            "out": {
+                "mobile_number": "9876543210",
+                "company_code": null
+            }
+        },
+        {
+            "in": {
+                "mobile_number": "+91 98765-43210"
+            },
+            "out": {
+                "mobile_number": "919876543210",
+                "company_code": null
+            }
+        },
+        {
+            "in": {
+                "email": "  Ravi@Example.COM "
+            },
+            "out": {
+                "email": "ravi@example.com",
+                "company_code": null
+            }
+        },
+        {
+            "in": {
+                "email": "0"
+            },
+            "out": {
+                "email": null,
+                "company_code": null
+            }
+        },
+        {
+            "in": {
+                "email": "0.0"
+            },
+            "out": {
+                "email": null,
+                "company_code": null
+            }
+        },
+        {
+            "in": {
+                "email": "not-an-email"
+            },
+            "out": {
+                "email": null,
+                "company_code": null
+            }
+        },
+        {
+            "in": {
+                "aadhar_card_no": "7151 1598 1345"
+            },
+            "out": {
+                "aadhar_card_no": "715115981345",
+                "company_code": null
+            }
+        },
+        {
+            "in": {
+                "aadhar_card_no": "715115981345.0"
+            },
+            "out": {
+                "aadhar_card_no": "715115981345",
+                "company_code": null
+            }
+        },
+        {
+            "in": {
+                "pan_card_no": " abcde 1234e "
+            },
+            "out": {
+                "pan_card_no": "ABCDE1234E",
+                "company_code": null
+            }
+        },
+        {
+            "in": {
+                "bank_account_no": "00112233445566.0"
+            },
+            "out": {
+                "bank_account_no": "00112233445566",
+                "company_code": null
+            }
+        },
+        {
+            "in": {
+                "bank_ifsc_code": "sbin 000 1234"
+            },
+            "out": {
+                "bank_ifsc_code": "SBIN0001234",
+                "company_code": null
+            }
+        },
+        {
+            "in": {
+                "gender": "m"
+            },
+            "out": {
+                "gender": "Male",
+                "company_code": null
+            }
+        },
+        {
+            "in": {
+                "gender": "MALE"
+            },
+            "out": {
+                "gender": "Male",
+                "company_code": null
+            }
+        },
+        {
+            "in": {
+                "gender": "f"
+            },
+            "out": {
+                "gender": "Female",
+                "company_code": null
+            }
+        },
+        {
+            "in": {
+                "gender": "other"
+            },
+            "out": {
+                "gender": "Other",
+                "company_code": null
+            }
+        },
+        {
+            "in": {
+                "gender": "  "
+            },
+            "out": {
+                "gender": null,
+                "company_code": null
+            }
+        },
+        {
+            "in": {
+                "company_code": "silver"
+            },
+            "out": {
+                "company_code": "silver-star"
+            }
+        },
+        {
+            "in": {
+                "company_code": "SilverStar"
+            },
+            "out": {
+                "company_code": "silver-star"
+            }
+        },
+        {
+            "in": {
+                "company_code": "Silver Star"
+            },
+            "out": {
+                "company_code": "silver-star"
+            }
+        },
+        {
+            "in": {
+                "company_code": "nidhi"
+            },
+            "out": {
+                "company_code": "nidhi-impex"
+            }
+        },
+        {
+            "in": {
+                "company_code": "Nidhi Impex Pvt Ltd"
+            },
+            "out": {
+                "company_code": "nidhi-impex"
+            }
+        },
+        {
+            "in": {
+                "company_code": "Acme Ltd"
+            },
+            "out": {
+                "company_code": null
+            }
+        },
+        {
+            "in": {
+                "unit": "daduk"
+            },
+            "out": {
+                "unit": "Daduk",
+                "company_code": "silver-star"
+            }
+        },
+        {
+            "in": {
+                "unit": "DHADUK"
+            },
+            "out": {
+                "unit": "Daduk",
+                "company_code": "silver-star"
+            }
+        },
+        {
+            "in": {
+                "unit": "shreeji building"
+            },
+            "out": {
+                "unit": "Shreeji",
+                "company_code": "nidhi-impex"
+            }
+        },
+        {
+            "in": {
+                "unit": "ichhapore"
+            },
+            "out": {
+                "unit": "Ichapur",
+                "company_code": null
+            }
+        },
+        {
+            "in": {
+                "unit": "Somewhere"
+            },
+            "out": {
+                "unit": "Somewhere",
+                "company_code": null
+            }
+        },
+        {
+            "in": {
+                "unit": "Ichapur"
+            },
+            "out": {
+                "unit": "Ichapur",
+                "company_code": null
+            }
+        },
+        {
+            "in": {
+                "company_code": "nidhi",
+                "unit": "Daduk"
+            },
+            "out": {
+                "company_code": "nidhi-impex",
+                "unit": "Daduk"
+            }
+        },
+        {
+            "in": {
+                "emp_code": null,
+                "mobile_number": null
+            },
+            "out": {
+                "emp_code": null,
+                "mobile_number": null,
+                "company_code": null
+            }
+        },
+        {
+            "in": {
+                "emp_code": "1138"
+            },
+            "out": {
+                "emp_code": "1138",
+                "company_code": null
+            }
+        },
+        {
+            "in": [],
+            "out": {
+                "company_code": null
+            }
+        }
+    ],
+    "dates": [
+        {
+            "in": 44197,
+            "out": "2021-01-01"
+        },
+        {
+            "in": 5000,
+            "out": "5000-08-03"
+        },
+        {
+            "in": 10001,
+            "out": "1927-05-19"
+        },
+        {
+            "in": 59999,
+            "out": "2064-04-07"
+        },
+        {
+            "in": "09-03-1985",
+            "out": "1985-03-09"
+        },
+        {
+            "in": "09/03/1985",
+            "out": "1985-03-09"
+        },
+        {
+            "in": "9-3-1985",
+            "out": "1985-03-09"
+        },
+        {
+            "in": "1985-03-09",
+            "out": "1985-03-09"
+        },
+        {
+            "in": "1985/03/09",
+            "out": "1985-03-09"
+        },
+        {
+            "in": "00-01-1900",
+            "out": null
+        },
+        {
+            "in": "01-01-1900",
+            "out": null
+        },
+        {
+            "in": "00-00-0000",
+            "out": null
+        },
+        {
+            "in": "not a date",
+            "out": null
+        },
+        {
+            "in": "",
+            "out": null
+        },
+        {
+            "in": "   ",
+            "out": null
+        },
+        {
+            "in": null,
+            "out": null
+        },
+        {
+            "in": 0,
+            "out": null
+        },
+        {
+            "in": "31-02-2020",
+            "out": "2020-03-02"
+        }
+    ]
+}

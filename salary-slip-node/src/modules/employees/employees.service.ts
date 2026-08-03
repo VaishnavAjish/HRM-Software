@@ -75,6 +75,8 @@ export interface EmployeeRepository {
   update(id: number, data: Record<string, unknown>): Promise<EmployeeRow>;
   remove(id: number): Promise<void>;
   removeMany(ids: number[]): Promise<number>;
+  /** Availability check for the appointment form; unscoped by design. */
+  findAnyByEmpCode(code: string, exceptId?: number): Promise<EmployeeRow | null>;
   /** Aadhaar uniqueness across live records. */
   findByAadhaar(digits: string, exceptId?: number): Promise<EmployeeRow | null>;
   emailTaken(email: string, exceptId?: number): Promise<boolean>;
@@ -312,6 +314,17 @@ export class EmployeeService {
     }
 
     return serializeUser(await this.repo.update(id, data));
+  }
+
+  /**
+   * Look a code up regardless of company.
+   *
+   * Deliberately unscoped: the question is whether the code is free anywhere,
+   * because emp_code has to be unique wherever the record lands. Only three
+   * fields reach the response, which is what bounds the disclosure.
+   */
+  async findByEmpCode(code: string, exceptId?: number): Promise<EmployeeRow | null> {
+    return this.repo.findAnyByEmpCode(code, exceptId);
   }
 
   async remove(actor: Actor, id: number): Promise<void> {
