@@ -56,11 +56,12 @@ class DocumentAuthorizer
         }
 
         if ((int) $actor->role === 1) {
-            return $actor->company_code === $owner->company_code;
+            return (new \App\Services\Authorization\ScopeMatcher())->tenantMatches($actor->company_code, $owner->company_code, false);
         }
 
         if ((int) $actor->role === 2) {
-            return $actor->company_code === $owner->company_code && $actor->unit === $owner->unit;
+            return (new \App\Services\Authorization\ScopeMatcher())->tenantMatches($actor->company_code, $owner->company_code, false)
+                && $actor->unit === $owner->unit;
         }
 
         // Agents see records they created; plain employees see only their own.
