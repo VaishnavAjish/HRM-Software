@@ -390,8 +390,23 @@ class UserController extends Controller
         }
 
         $userAuth = auth('api')->user();
-        if ($userAuth && (int) $userAuth->role === 1) {
-            $query->where('company_code', $userAuth->company_code);
+        if ($userAuth && ((int) $userAuth->role === 1 || (int) $userAuth->role === 0)) {
+            $requested = $request->company_code && !in_array($request->company_code, ['all', 'all-companies'])
+                ? array_filter(array_map('trim', explode(',', $request->company_code)))
+                : [];
+
+            // Role 1 may narrow within its own companies but never outside them;
+            // only role 0 is unscoped when no filter is supplied.
+            $own = array_filter(array_map('trim', explode(',', (string) $userAuth->company_code)));
+            $codes = (int) $userAuth->role === 0
+                ? $requested
+                : ($requested ? array_intersect($requested, $own) : $own);
+
+            if ($codes) {
+                $query->whereIn('company_code', $codes);
+            } elseif ((int) $userAuth->role !== 0) {
+                $query->whereRaw('1 = 0');
+            }
         } elseif ($userAuth && (int) $userAuth->role === 2) {
             $query->where('company_code', $userAuth->company_code)->where('unit', $userAuth->unit);
         } elseif ($request->company_code) {
@@ -1551,8 +1566,23 @@ class UserController extends Controller
 
         if ($userAuth && $userAuth->type === 'agent') {
             $query->where('added_by', $userAuth->id);
-        } elseif ($userAuth && (int) $userAuth->role === 1) {
-            $query->where('company_code', $userAuth->company_code);
+        } elseif ($userAuth && ((int) $userAuth->role === 1 || (int) $userAuth->role === 0)) {
+            $requested = $request->company_code && !in_array($request->company_code, ['all', 'all-companies'])
+                ? array_filter(array_map('trim', explode(',', $request->company_code)))
+                : [];
+
+            // Role 1 may narrow within its own companies but never outside them;
+            // only role 0 is unscoped when no filter is supplied.
+            $own = array_filter(array_map('trim', explode(',', (string) $userAuth->company_code)));
+            $codes = (int) $userAuth->role === 0
+                ? $requested
+                : ($requested ? array_intersect($requested, $own) : $own);
+
+            if ($codes) {
+                $query->whereIn('company_code', $codes);
+            } elseif ((int) $userAuth->role !== 0) {
+                $query->whereRaw('1 = 0');
+            }
         } elseif ($userAuth && (int) $userAuth->role === 2) {
             $query->where('company_code', $userAuth->company_code)->where('unit', $userAuth->unit);
         } elseif ($request->company_code) {
@@ -1794,8 +1824,23 @@ class UserController extends Controller
             $query->where('processed', 0);
         }
 
-        if ($userAuth && (int) $userAuth->role === 1) {
-            $query->where('company_code', $userAuth->company_code);
+        if ($userAuth && ((int) $userAuth->role === 1 || (int) $userAuth->role === 0)) {
+            $requested = $request->company_code && !in_array($request->company_code, ['all', 'all-companies'])
+                ? array_filter(array_map('trim', explode(',', $request->company_code)))
+                : [];
+
+            // Role 1 may narrow within its own companies but never outside them;
+            // only role 0 is unscoped when no filter is supplied.
+            $own = array_filter(array_map('trim', explode(',', (string) $userAuth->company_code)));
+            $codes = (int) $userAuth->role === 0
+                ? $requested
+                : ($requested ? array_intersect($requested, $own) : $own);
+
+            if ($codes) {
+                $query->whereIn('company_code', $codes);
+            } elseif ((int) $userAuth->role !== 0) {
+                $query->whereRaw('1 = 0');
+            }
         } elseif ($userAuth && (int) $userAuth->role === 2) {
             $query->where('company_code', $userAuth->company_code)->where('unit', $userAuth->unit);
         } elseif ($request->company_code) {
@@ -1915,8 +1960,23 @@ class UserController extends Controller
         
         $query = User::where('type', 'agent');
         
-        if ($userAuth && (int) $userAuth->role === 1) {
-            $query->where('company_code', $userAuth->company_code);
+        if ($userAuth && ((int) $userAuth->role === 1 || (int) $userAuth->role === 0)) {
+            $requested = $request->company_code && !in_array($request->company_code, ['all', 'all-companies'])
+                ? array_filter(array_map('trim', explode(',', $request->company_code)))
+                : [];
+
+            // Role 1 may narrow within its own companies but never outside them;
+            // only role 0 is unscoped when no filter is supplied.
+            $own = array_filter(array_map('trim', explode(',', (string) $userAuth->company_code)));
+            $codes = (int) $userAuth->role === 0
+                ? $requested
+                : ($requested ? array_intersect($requested, $own) : $own);
+
+            if ($codes) {
+                $query->whereIn('company_code', $codes);
+            } elseif ((int) $userAuth->role !== 0) {
+                $query->whereRaw('1 = 0');
+            }
         } elseif ($userAuth && (int) $userAuth->role === 2) {
             $query->where('company_code', $userAuth->company_code)->where('unit', $userAuth->unit);
         } elseif ($request->company_code) {

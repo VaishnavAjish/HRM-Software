@@ -43,6 +43,12 @@ const AdminForm16 = lazy(() => import("./pages/admin/Form16"));
 const TdsCalculation = lazy(() => import("./pages/admin/TdsCalculation"));
 const AdminProfile = lazy(() => import("./pages/admin/AdminProfile"));
 const Settings = lazy(() => import("./pages/admin/Settings"));
+const PermissionMatrix = lazy(() => import("./pages/admin/hr/ComingSoon"));
+const AccessControlUsers = lazy(() => import("./pages/admin/accessControl/AccessControlUsers"));
+const AccessRequests = lazy(() => import("./pages/admin/hr/ComingSoon"));
+const Delegations = lazy(() => import("./pages/admin/hr/ComingSoon"));
+const EmergencyAccess = lazy(() => import("./pages/admin/hr/ComingSoon"));
+const Policies = lazy(() => import("./pages/admin/hr/ComingSoon"));
 
 // Employee pages
 const EmployeeDashboard = lazy(() => import("./pages/employee/Dashboard"));
@@ -190,8 +196,58 @@ function AppRoutes() {
         <Route path="hr/assets" element={<ProtectedRoute requiredPermission="hr.asset.read"><AssetAllocation /></ProtectedRoute>} />
         <Route path="hr/performance" element={<ProtectedRoute requiredPermission="hr.performance.read"><PerformanceMatrix /></ProtectedRoute>} />
         <Route path="hr/reports" element={<ProtectedRoute requiredPermission="hr.report.read"><HrReports /></ProtectedRoute>} />
-        <Route path="hr/exit" element={<ExitManagement />} />
-        <Route path="hr/settings" element={<HrSettings />} />
+        <Route path="hr/exit" element={<ProtectedRoute requiredPermission="hr.exit.read"><ExitManagement /></ProtectedRoute>} />
+        <Route path="hr/settings" element={<ProtectedRoute requiredPermission="hr.hr_settings.read"><HrSettings /></ProtectedRoute>} />
+
+        {/* Access Control */}
+        <Route
+          path="access-control/users"
+          element={
+            <ProtectedRoute requiredPermission="admin.user.read">
+              <AccessControlUsers />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="access-control/permission-matrix"
+          element={
+            <ProtectedRoute requiredPermission="admin.role.read">
+              <PermissionMatrix />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="access-control/policies"
+          element={
+            <ProtectedRoute requiredPermission="admin.policy.read">
+              <Policies />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="access-control/access-requests"
+          element={
+            <ProtectedRoute requiredPermission="admin.access_request.read">
+              <AccessRequests />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="access-control/delegations"
+          element={
+            <ProtectedRoute requiredPermission="admin.delegation.manage">
+              <Delegations />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="access-control/emergency-access"
+          element={
+            <ProtectedRoute requiredPermission="admin.emergency_access.approve">
+              <EmergencyAccess />
+            </ProtectedRoute>
+          }
+        />
       </Route>
 
       {/* Employee routes */}

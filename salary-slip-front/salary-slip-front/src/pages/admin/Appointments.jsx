@@ -66,7 +66,7 @@ function firstPresent(...values) {
 
 function normalizeAppointment(item, index) {
   let displayStatus;
-  const isApproved = Boolean(item.emp_code) || Number(item.checkbox) === 1 || String(item.status) === '1' || item.status === 'Approved';
+  const isApproved = Boolean(item.emp_code) || Number(item.checkbox) === 1 || String(item.status) === '1' || item.status === 'Approved' || item.type === 'pending_employee';
   
   if (isApproved) {
     displayStatus = "Approved";

@@ -10,8 +10,10 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
+use App\Services\Authorization\SchemaSupport;
 use App\Support\AadhaarReference;
 use App\Support\AuthSession;
+use Illuminate\Support\Facades\DB;
 use Tymon\JWTAuth\Facades\JWTAuth;
 
 class AuthController extends Controller
@@ -48,10 +50,25 @@ class AuthController extends Controller
             return response()->json(['status' => false, 'message' => 'Account is deactivated'], 403);
         }
 
+        if ($denial = $this->accountDenial($user)) {
+            try {
+                JWTAuth::invalidate($token);
+            } catch (\Throwable $e) {
+                report($e);
+            }
+
+            $this->recordLoginEvent($request, $user, 'failed', $denial['reason']);
+
+            return response()->json(['status' => false, 'message' => $denial['message']], 403);
+        }
+
         if ((int) $user->status === 2) {
             $user->status = 0;
             $user->save();
         }
+
+        $this->stampLogin($request, $user);
+        $this->recordLoginEvent($request, $user, 'success', null);
 
         // Never cacheable: this response carries a bearer token. A shared cache
         // replaying it would hand one user another user's session.
@@ -62,6 +79,66 @@ class AuthController extends Controller
             'token_type'  => 'Bearer',
             'user'        => $user,
         ]));
+    }
+
+    /**
+     * JWTAuth::attempt() only knows whether the password is right, and Access
+     * Control > Users can suspend an account without changing it, so the state
+     * has to be read after authentication and before a token is handed out.
+     *
+     * @return array{reason:string,message:string}|null
+     */
+    private function accountDenial(User $user): ?array
+    {
+        if (SchemaSupport::hasColumn('users', 'locked_at') && $user->locked_at) {
+            return ['reason' => 'account_locked', 'message' => 'This account is locked. Contact your administrator.'];
+        }
+
+        if (SchemaSupport::hasColumn('users', 'deactivated_at') && $user->deactivated_at) {
+            return ['reason' => 'account_deactivated', 'message' => 'This account is deactivated. Contact your administrator.'];
+        }
+
+        return null;
+    }
+
+    private function stampLogin(Request $request, User $user): void
+    {
+        if (!SchemaSupport::hasColumn('users', 'last_login_at')) {
+            return;
+        }
+
+        $values = ['last_login_at' => now()];
+
+        if (SchemaSupport::hasColumn('users', 'last_login_ip')) {
+            $values['last_login_ip'] = substr((string) $request->ip(), 0, 45);
+        }
+
+        try {
+            DB::table('users')->where('id', $user->id)->update($values);
+        } catch (\Throwable $e) {
+            report($e);
+        }
+    }
+
+    private function recordLoginEvent(Request $request, ?User $user, string $result, ?string $reason): void
+    {
+        if (!SchemaSupport::hasTable('login_events')) {
+            return;
+        }
+
+        try {
+            DB::table('login_events')->insert([
+                'user_id' => $user?->id,
+                'email' => substr((string) ($user?->email ?: $request->input('email')), 0, 190),
+                'result' => $result,
+                'reason' => $reason,
+                'ip' => substr((string) $request->ip(), 0, 45),
+                'user_agent' => substr((string) $request->userAgent(), 0, 500),
+                'created_at' => now(),
+            ]);
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 
     public function me()

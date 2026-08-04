@@ -24,6 +24,7 @@ import {
   Calendar,
   ChevronDown,
   Briefcase,
+  ShieldCheck,
 } from "lucide-react";
 
 function getAdminNav(companyId, user, isAllCompanies, isModuleAvailable = () => true) {
@@ -111,6 +112,38 @@ function getAdminNav(companyId, user, isAllCompanies, isModuleAvailable = () => 
         { to: "/admin/hr/exit", label: "Exit Management" },
         { to: "/admin/hr/reports", label: "HR Reports" },
         { to: "/admin/hr/settings", label: "HR Settings" },
+      ],
+    });
+  }
+
+  /*
+   * Access Control.
+   *
+   * Gated on the module probe as well as the permission, for the reason the HR
+   * block gives above: the matrix is built from the authorization catalog, so
+   * before that schema is migrated the screen can only fail. Only the entries
+   * with a working API behind them appear — the rest of the console
+   * (policies, access requests, delegations, reviews) is added as each one
+   * gains its endpoints, rather than shipped now as menu items that lead
+   * nowhere.
+   */
+  if ((rawRole === 0 || hasAccess("admin.role.read") || hasAccess("admin.user.read")) && isModuleAvailable("authorization")) {
+    nav.push({
+      label: "Access Control",
+      icon: ShieldCheck,
+      subItems: [
+        ...(hasAccess("admin.user.read") || rawRole === 0
+          ? [{ to: "/admin/access-control/users", label: "Users" }] : []),
+        ...(hasAccess("admin.role.read") || rawRole === 0
+          ? [{ to: "/admin/access-control/permission-matrix", label: "Permission Matrix" }] : []),
+        ...(hasAccess("admin.policy.read") || rawRole === 0
+          ? [{ to: "/admin/access-control/policies", label: "Policies" }] : []),
+        ...(hasAccess("admin.access_request.read") || rawRole === 0
+          ? [{ to: "/admin/access-control/access-requests", label: "Access Requests" }] : []),
+        ...(hasAccess("admin.delegation.manage") || rawRole === 0
+          ? [{ to: "/admin/access-control/delegations", label: "Delegations" }] : []),
+        ...(hasAccess("admin.emergency_access.approve") || rawRole === 0
+          ? [{ to: "/admin/access-control/emergency-access", label: "Emergency Access" }] : []),
       ],
     });
   }

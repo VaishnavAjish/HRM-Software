@@ -21,6 +21,9 @@ class RbacSeeder extends Seeder
             'admin.authorization.analytics.read',
             'admin.permission.read', 'admin.permission.create', 'admin.permission.update', 'admin.permission.delete',
             'admin.role.read', 'admin.role.create', 'admin.role.update', 'admin.role.delete', 'admin.role.clone', 'admin.role.assign',
+            'admin.user.read', 'admin.user.create', 'admin.user.update', 'admin.user.delete',
+            'admin.user.lock', 'admin.user.unlock', 'admin.user.assign_role',
+            'admin.user.assign_permission', 'admin.user.reset_password',
             'admin.policy.read', 'admin.policy.create', 'admin.policy.update', 'admin.policy.publish', 'admin.policy.rollback',
             'admin.access_request.read', 'admin.access_request.approve', 'admin.access_request.revoke',
             'admin.emergency_access.approve', 'admin.delegation.manage', 'admin.access_review.manage',
@@ -110,6 +113,7 @@ class RbacSeeder extends Seeder
         $adminCodes = array_values(array_filter(array_keys($permissions), fn ($code) =>
             !str_starts_with($code, 'admin.authorization.') &&
             !str_starts_with($code, 'admin.policy.') &&
+            !in_array($code, ['admin.user.assign_permission', 'admin.user.delete'], true) &&
             !str_contains($code, '.aadhaar.reveal') &&
             !str_contains($code, '.bank_account.reveal')
         ));

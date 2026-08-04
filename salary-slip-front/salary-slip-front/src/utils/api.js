@@ -664,6 +664,186 @@ export const authorizationApi = {
   },
 };
 
+/*
+ * Administers permissions, rather than deciding them.
+ *
+ * Kept apart from authorizationApi on purpose: that one answers "may the
+ * signed-in user do this?" and is called on nearly every screen, while these
+ * change what roles grant and are reachable only from Access Control.
+ */
+export const authorizationAdminApi = {
+  getRoles(accessToken, tokenType = "Bearer", search = "") {
+    const query = search ? `?search=${encodeURIComponent(search)}` : "";
+    return apiRequest(`/v1/roles${query}`, { headers: authHeaders(accessToken, tokenType) });
+  },
+
+  getMatrix(roleId, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/roles/${roleId}/matrix`, { headers: authHeaders(accessToken, tokenType) });
+  },
+
+  // Only changed cells are sent. The grid holds hundreds; posting all of them
+  // would let one administrator's save revert another's concurrent edit.
+  saveMatrix(roleId, changes, businessReason, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/roles/${roleId}/matrix`, {
+      method: "PUT", headers: authHeaders(accessToken, tokenType),
+      body: JSON.stringify({ changes, businessReason }),
+    });
+  },
+
+  cloneRole(roleId, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/roles/${roleId}/clone`, {
+      method: "POST", headers: authHeaders(accessToken, tokenType),
+      body: JSON.stringify(payload),
+    });
+  },
+
+  simulate(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest("/v1/authorization/simulate", {
+      method: "POST", headers: authHeaders(accessToken, tokenType),
+      body: JSON.stringify(payload),
+    });
+  },
+
+  getAudit(accessToken, tokenType = "Bearer", limit = 20) {
+    return apiRequest(`/v1/authorization/audit?limit=${limit}`, {
+      headers: authHeaders(accessToken, tokenType),
+    });
+  },
+
+  lookupUsers(query, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/user-lookup?q=${encodeURIComponent(query)}`, {
+      headers: authHeaders(accessToken, tokenType),
+    });
+  },
+};
+
+export const accessLifecycleApi = {
+  listDelegations(accessToken, tokenType = "Bearer", params = {}) {
+    const query = new URLSearchParams(params).toString();
+    return apiRequest(`/v1/delegations${query ? `?${query}` : ""}`, {
+      headers: authHeaders(accessToken, tokenType),
+    });
+  },
+
+  createDelegation(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest("/v1/delegations", {
+      method: "POST", headers: authHeaders(accessToken, tokenType),
+      body: JSON.stringify(payload),
+    });
+  },
+
+  revokeDelegation(id, reason, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/delegations/${id}/revoke`, {
+      method: "POST", headers: authHeaders(accessToken, tokenType),
+      body: JSON.stringify({ reason }),
+    });
+  },
+};
+
+function userQuery(filters = {}) {
+  const params = new URLSearchParams();
+
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === "") return;
+    params.append(key, value);
+  });
+
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
+
+/*
+ * Kept apart from authorizationApi for the reason that one is kept apart from
+ * the decision endpoints: these administer accounts rather than answering "may
+ * the signed-in user do this?", and only Access Control > Users calls them.
+ */
+export const adminUserApi = {
+  list(filters, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/admin/users${userQuery(filters)}`, {
+      headers: authHeaders(accessToken, tokenType),
+    });
+  },
+
+  get(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/admin/users/${id}`, { headers: authHeaders(accessToken, tokenType) });
+  },
+
+  filterOptions(accessToken, tokenType = "Bearer") {
+    return apiRequest("/v1/admin/users/filter-options", {
+      headers: authHeaders(accessToken, tokenType),
+    });
+  },
+
+  create(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest("/v1/admin/users", {
+      method: "POST", headers: authHeaders(accessToken, tokenType),
+      body: JSON.stringify(payload),
+    });
+  },
+
+  update(id, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/admin/users/${id}`, {
+      method: "PUT", headers: authHeaders(accessToken, tokenType),
+      body: JSON.stringify(payload),
+    });
+  },
+
+  remove(id, reason, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/admin/users/${id}`, {
+      method: "DELETE", headers: authHeaders(accessToken, tokenType),
+      body: JSON.stringify({ reason }),
+    });
+  },
+
+  action(id, action, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/admin/users/${id}/${action}`, {
+      method: "POST", headers: authHeaders(accessToken, tokenType),
+      body: JSON.stringify(payload ?? {}),
+    });
+  },
+
+  auditLogs(id, accessToken, tokenType = "Bearer", limit = 50) {
+    return apiRequest(`/v1/admin/users/${id}/audit-logs?limit=${limit}`, {
+      headers: authHeaders(accessToken, tokenType),
+    });
+  },
+
+  bulk(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest("/v1/admin/users/bulk", {
+      method: "POST", headers: authHeaders(accessToken, tokenType),
+      body: JSON.stringify(payload),
+    });
+  },
+
+  // Streamed as a file rather than JSON, so it bypasses apiRequest's parser.
+  async export(filters, format, accessToken, tokenType = "Bearer") {
+    const response = await fetch(
+      `${baseUrl}/api/v1/admin/users/export${userQuery({ ...filters, format })}`,
+      { headers: { Accept: "*/*", ...authHeaders(accessToken, tokenType) }, cache: "no-store" },
+    );
+
+    if (!response.ok) {
+      let data = null;
+      try {
+        data = await response.json();
+      } catch {
+        // A non-JSON error body is still a failure; the status carries enough.
+      }
+
+      const error = new Error(extractErrorMessage(data));
+      error.status = response.status;
+
+      if (response.status === 401) {
+        window.dispatchEvent(new CustomEvent("auth:unauthorized"));
+      }
+
+      throw error;
+    }
+
+    return response.blob();
+  },
+};
+
 export const documentApi = {
   // Catalogue for the Document Type selector, grouped by category.
   getTypes(accessToken, tokenType = "Bearer") {

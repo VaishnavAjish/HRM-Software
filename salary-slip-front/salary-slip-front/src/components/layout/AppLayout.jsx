@@ -20,6 +20,7 @@ const pageTitles = {
   "/admin/form16": "Form 16",
   "/admin/reports": "Reports",
   "/admin/settings": "Settings",
+  "/admin/access-control/users": "Access Control - Users",
   "/admin/profile": "Profile",
   "/employee": "Dashboard",
   "/employee/payslips": "Payslips",

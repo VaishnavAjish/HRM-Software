@@ -14,6 +14,9 @@ use App\Http\Controllers\Api\V1\DocumentController as V1DocumentController;
 use App\Http\Controllers\Api\V1\AppointmentController as V1AppointmentController;
 use App\Http\Controllers\Api\V1\AadhaarExportController as V1AadhaarExportController;
 use App\Http\Controllers\Api\V1\Authorization\AuthorizationController as V1AuthorizationController;
+use App\Http\Controllers\Api\V1\Authorization\PermissionMatrixController as V1PermissionMatrixController;
+use App\Http\Controllers\Api\V1\Authorization\UserLookupController as V1UserLookupController;
+use App\Http\Controllers\Api\V1\Admin\UserController as V1AdminUserController;
 use App\Support\AadhaarExportAccess;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\SalariesSlipController;
@@ -27,10 +30,6 @@ use App\Http\Controllers\Admin\Hr\OfferController;
 use App\Http\Controllers\Admin\Hr\AssetController;
 use App\Http\Controllers\Admin\Hr\PerformanceController;
 use App\Http\Controllers\Admin\Hr\HrReportController;
-
-Route::get("gautampithadiya", function(){
-    return "Gautam";
-});
 
 Route::get('/user', function (Request $request) {
     return $request->user();
@@ -72,9 +71,9 @@ Route::get('/check-emp-code/{code}', [AuthController::class, 'checkEmpCode'])
  * admin,agent mirrors /appointment/update, which was already gated this way.
  */
 Route::middleware(['jwt.auth', 'role:admin,agent'])->group(function () {
-    Route::post('/appointment', [UserController::class, 'appointmentStore']);
-    Route::get('/appointment', [UserController::class, 'getAppointment']);
-    Route::get('/appointment/check-emp-code', [UserController::class, 'checkEmployeeCode']);
+    Route::post('/appointment', [UserController::class, 'appointmentStore'])->middleware('permission:hr.appointment.create');
+    Route::get('/appointment', [UserController::class, 'getAppointment'])->middleware('permission:hr.appointment.read');
+    Route::get('/appointment/check-emp-code', [UserController::class, 'checkEmployeeCode'])->middleware('permission:hr.appointment.read');
 });
 
 // Dev/maintenance utilities — destructive or environment-mutating, so they
@@ -87,7 +86,7 @@ Route::middleware(['jwt.auth', 'role:admin'])->group(function () {
         Artisan::call('route:clear');
         Artisan::call('view:clear');
         return "gautam Pithadiya";
-    });
+    })->middleware('permission:admin.configuration.update');
 
     Route::get('/fix-units', function (Request $request) {
         \App\Models\User::whereNull('unit')->orWhere('unit', '')
@@ -97,7 +96,7 @@ Route::middleware(['jwt.auth', 'role:admin'])->group(function () {
             ->whereIn('company_code', ['silverstar', 'silver-star'])
             ->update(['unit' => 'Daduk']);
         return "Fixed units";
-    });
+    })->middleware('permission:admin.configuration.update');
 
 });
 
@@ -136,17 +135,95 @@ Route::middleware('jwt.auth')->group(function () {
         Route::get('me', [V1AuthorizationController::class, 'me']);
         Route::post('check', [V1AuthorizationController::class, 'check'])->middleware('throttle:120,1');
         Route::post('check-batch', [V1AuthorizationController::class, 'checkBatch'])->middleware('throttle:60,1');
+
+        /*
+         * Administration surface for the Permission Matrix screen.
+         *
+         * Simulation runs the production engine against another user's
+         * identity, so it discloses what that user can reach and is gated on
+         * its own permission rather than on read access to the matrix.
+         */
+        Route::post('simulate', [V1PermissionMatrixController::class, 'simulate'])
+            ->middleware(['throttle:60,1', 'permission:admin.authorization.simulate']);
+        Route::get('audit', [V1PermissionMatrixController::class, 'audit'])
+            ->middleware('permission:admin.authorization.audit.read');
     });
+
+    Route::prefix('v1/roles')->group(function () {
+        Route::get('/', [V1PermissionMatrixController::class, 'roles'])
+            ->middleware('permission:admin.role.read');
+        Route::get('{role}/matrix', [V1PermissionMatrixController::class, 'show'])
+            ->whereNumber('role')->middleware('permission:admin.role.read');
+        Route::put('{role}/matrix', [V1PermissionMatrixController::class, 'update'])
+            ->whereNumber('role')->middleware('permission:admin.role.update');
+        Route::post('{role}/clone', [V1PermissionMatrixController::class, 'clone'])
+            ->whereNumber('role')->middleware('permission:admin.role.clone');
+    });
+
+    Route::get('v1/user-lookup', [V1UserLookupController::class, 'index'])
+        ->middleware(['throttle:60,1', 'permission:admin.role.read']);
+
+    /*
+     * Access Control > Users.
+     *
+     * module.schema runs first for the reason RequireModuleSchema documents: the
+     * screen reads the authorization catalog and the role assignment tables, so a
+     * deployment without them can only fail, and an unavailable module must not
+     * read as an authorization failure.
+     */
+    Route::prefix('v1/admin/users')->middleware('module.schema:authorization')->group(function () {
+        Route::get('/', [V1AdminUserController::class, 'index'])
+            ->middleware('permission:admin.user.read');
+        Route::get('summary', [V1AdminUserController::class, 'summary'])
+            ->middleware('permission:admin.user.read');
+        Route::get('filter-options', [V1AdminUserController::class, 'filterOptions'])
+            ->middleware('permission:admin.user.read');
+        Route::get('export', [V1AdminUserController::class, 'export'])
+            ->middleware(['throttle:20,1', 'permission:admin.user.read']);
+        Route::post('bulk', [V1AdminUserController::class, 'bulk'])
+            ->middleware(['throttle:20,1', 'permission:admin.user.update']);
+
+        Route::get('{id}', [V1AdminUserController::class, 'show'])
+            ->whereNumber('id')->middleware('permission:admin.user.read');
+        Route::get('{id}/audit-logs', [V1AdminUserController::class, 'auditLogs'])
+            ->whereNumber('id')->middleware('permission:admin.user.read');
+        Route::post('/', [V1AdminUserController::class, 'store'])
+            ->middleware(['throttle:30,1', 'permission:admin.user.create']);
+        Route::put('{id}', [V1AdminUserController::class, 'update'])
+            ->whereNumber('id')->middleware('permission:admin.user.update');
+        Route::delete('{id}', [V1AdminUserController::class, 'destroy'])
+            ->whereNumber('id')->middleware('permission:admin.user.delete');
+
+        Route::post('{id}/lock', [V1AdminUserController::class, 'lock'])
+            ->whereNumber('id')->middleware('permission:admin.user.lock');
+        Route::post('{id}/unlock', [V1AdminUserController::class, 'unlock'])
+            ->whereNumber('id')->middleware('permission:admin.user.unlock');
+        Route::post('{id}/activate', [V1AdminUserController::class, 'activate'])
+            ->whereNumber('id')->middleware('permission:admin.user.update');
+        Route::post('{id}/deactivate', [V1AdminUserController::class, 'deactivate'])
+            ->whereNumber('id')->middleware('permission:admin.user.update');
+        Route::post('{id}/reset-password', [V1AdminUserController::class, 'resetPassword'])
+            ->whereNumber('id')->middleware(['throttle:20,1', 'permission:admin.user.reset_password']);
+        Route::post('{id}/assign-role', [V1AdminUserController::class, 'assignRole'])
+            ->whereNumber('id')->middleware('permission:admin.user.assign_role');
+        Route::post('{id}/assign-permissions', [V1AdminUserController::class, 'assignPermissions'])
+            ->whereNumber('id')->middleware('permission:admin.user.assign_permission');
+    });
+
+    /*
+     * Governance, policy and access-lifecycle routes were removed with their
+     * controllers. Restore the controller before re-adding a group here.
+     */
 
     // Legacy document endpoints (local storage, flat document_uploads table).
     // Superseded by /v1/documents below — kept only so existing clients keep
     // working until they are migrated.
     Route::group(['prefix' => 'documents'], function () {
-        Route::get('types', [DocumentController::class, 'types']);
-        Route::post('preview-name', [DocumentController::class, 'previewName']);
-        Route::post('/', [DocumentController::class, 'store']);
-        Route::get('/', [DocumentController::class, 'index']);
-        Route::delete('{id}', [DocumentController::class, 'destroy'])->middleware('role:admin');
+        Route::get('types', [DocumentController::class, 'types'])->middleware('permission:document.file.read');
+        Route::post('preview-name', [DocumentController::class, 'previewName'])->middleware('permission:document.file.read');
+        Route::post('/', [DocumentController::class, 'store'])->middleware('permission:document.file.upload');
+        Route::get('/', [DocumentController::class, 'index'])->middleware('permission:document.file.read');
+        Route::delete('{id}', [DocumentController::class, 'destroy'])->middleware(['role:admin', 'permission:document.file.delete']);
     });
 
     // S3-backed document API. Every endpoint enforces RBAC and record-level
@@ -183,9 +260,13 @@ Route::middleware('jwt.auth')->group(function () {
         Route::post('{appointmentId}/complete', [V1AppointmentController::class, 'complete'])->whereNumber('appointmentId')->middleware('permission:hr.appointment.approve');
 
         // The only route that returns a complete Aadhaar number. POST so it is
-        // not cached or prefetched, throttled because it is an obvious target
-        // for enumeration, and gated on appointments.view_full_aadhaar inside
-        // the controller — every attempt is audited either way.
+        // not cached or prefetched, and throttled because it is an obvious
+        // target for enumeration. Disclosure is gated on record access alone,
+        // not on a separate reveal permission — see App\Support\AadhaarAccess
+        // for why the second gate was deliberately removed. Taking the number
+        // out of the application (print/PDF) is a different decision and does
+        // require its own grant; see AadhaarExportAccess. Every attempt is
+        // audited either way.
         Route::post('{appointmentId}/aadhaar/reveal', [V1AppointmentController::class, 'revealAadhaar'])
             ->whereNumber('appointmentId')
             ->middleware('throttle:10,1');
@@ -193,11 +274,12 @@ Route::middleware('jwt.auth')->group(function () {
         // The Aadhaar number comes from the appointment record, so the client
         // never sends (and cannot influence) it.
         Route::get('{appointmentId}/documents', [V1AppointmentController::class, 'documents'])
-            ->whereNumber('appointmentId');
+            ->whereNumber('appointmentId')
+            ->middleware('permission:document.file.read');
 
         Route::post('{appointmentId}/documents', [V1DocumentController::class, 'storeForAppointment'])
             ->whereNumber('appointmentId')
-            ->middleware('throttle:30,1');
+            ->middleware(['throttle:30,1', 'permission:document.file.upload']);
     });
 
     /*
@@ -239,13 +321,13 @@ Route::middleware('jwt.auth')->group(function () {
     Route::get('/department/get', [AdminController::class, "getDepartment"]);
 
     Route::middleware('role:admin')->group(function () {
-        Route::post('/account-master', [UserController::class, 'accountMaster']);
-        Route::post('register', [AuthController::class, 'register']);
-        Route::get('admin-dashboard', [AdminController::class, 'dashboard']);
+        Route::post('/account-master', [UserController::class, 'accountMaster'])->middleware('permission:hr.employee.import');
+        Route::post('register', [AuthController::class, 'register'])->middleware('permission:hr.employee.create');
+        Route::get('admin-dashboard', [AdminController::class, 'dashboard'])->middleware('permission:hr.dashboard.read');
         Route::group(["prefix" => "admin/salary-slip"], function(){
-            Route::get('import-columns', [AdminController::class, 'importColumns']);
-            Route::post('store', [AdminController::class, 'salarySlipImport']);
-            Route::get("delete", [AdminController::class, "salaryDelete"]);
+            Route::get('import-columns', [AdminController::class, 'importColumns'])->middleware('permission:payroll.payslip.create');
+            Route::post('store', [AdminController::class, 'salarySlipImport'])->middleware('permission:payroll.payslip.create');
+            Route::get("delete", [AdminController::class, "salaryDelete"])->middleware('permission:payroll.payslip.delete');
         });
         Route::group(["prefix" => "department"], function(){
             Route::post('store', [AdminController::class, 'storeDepartment'])->middleware('permission:hr.department.create');
@@ -255,7 +337,7 @@ Route::middleware('jwt.auth')->group(function () {
         Route::group(["prefix" => "employee"], function(){
             Route::get('get', [UserController::class, 'index'])->middleware('permission:hr.employee.read');
             Route::get('show/{id}', [UserController::class, 'show'])->middleware('permission:hr.employee.read');
-            Route::get('import-columns', [UserController::class, 'importColumns']);
+            Route::get('import-columns', [UserController::class, 'importColumns'])->middleware('permission:hr.employee.import');
             Route::post('store', [UserController::class, 'store'])->middleware('permission:hr.employee.create');
             Route::put('edit/{id}', [UserController::class, 'update'])->middleware('permission:hr.employee.update');
             Route::get('delete/{id}', [UserController::class, 'destroy'])->middleware('permission:hr.employee.delete');
@@ -278,7 +360,7 @@ Route::middleware('jwt.auth')->group(function () {
         // Lets the client leave a module out of the navigation rather than
         // offer a menu item that can only fail. No permission gate: it reports
         // what exists, not what the caller may do.
-        Route::get('modules', [ModuleAvailabilityController::class, 'index']);
+        Route::get('modules', [ModuleAvailabilityController::class, 'index'])->middleware('permission:admin.configuration.read');
 
         // Gated on schema, not just permission: the thirteen HR tables are not
         // in production yet, and without this every route below is a 500.
@@ -359,6 +441,9 @@ Route::middleware('jwt.auth')->group(function () {
             Route::group(["prefix" => "reports"], function () {
                 Route::get('generate', [HrReportController::class, 'generate'])->middleware('permission:hr.report.read');
             });
+
+            // The exit-management and hr-settings controllers were removed with
+            // their module. Restore them before re-adding these groups.
         });
 
         /*
@@ -373,21 +458,21 @@ Route::middleware('jwt.auth')->group(function () {
          * editing them has been withdrawn.
          */
         Route::group(["prefix" => "rbac"], function () {
-            Route::get('settings', [SettingsController::class, 'index']);
-            Route::put('settings', [SettingsController::class, 'update']);
+            Route::get('settings', [SettingsController::class, 'index'])->middleware('permission:admin.configuration.read');
+            Route::put('settings', [SettingsController::class, 'update'])->middleware('permission:admin.configuration.update');
 
-            Route::get('user-roles', [UserRoleController::class, 'index']);
+            Route::get('user-roles', [UserRoleController::class, 'index'])->middleware('permission:admin.role.read');
         });
 
-        Route::get('upload-batches/{type}', [UploadBatchController::class, 'index']);
-        Route::get('upload-batches/{type}/{id}', [UploadBatchController::class, 'show']);
-        Route::delete('upload-batches/{type}/{id}', [UploadBatchController::class, 'destroy']);
+        Route::get('upload-batches/{type}', [UploadBatchController::class, 'index'])->middleware('permission:payroll.payslip.read');
+        Route::get('upload-batches/{type}/{id}', [UploadBatchController::class, 'show'])->middleware('permission:payroll.payslip.read');
+        Route::delete('upload-batches/{type}/{id}', [UploadBatchController::class, 'destroy'])->middleware('permission:payroll.payslip.delete');
 
-        Route::post('/appointment/create-account', [UserController::class, 'createAppointmentAccount']);
-        Route::get('/agents', [UserController::class, 'getAgents']);
-        Route::put('/agents/{id}', [UserController::class, 'updateAgent']);
-        Route::delete('/agents/{id}', [UserController::class, 'deleteAgent']);
-        Route::delete('/trial-form/delete/{id}', [UserController::class, 'deleteTrialForm']);
+        Route::post('/appointment/create-account', [UserController::class, 'createAppointmentAccount'])->middleware('permission:hr.employee.create');
+        Route::get('/agents', [UserController::class, 'getAgents'])->middleware('permission:hr.employee.read');
+        Route::put('/agents/{id}', [UserController::class, 'updateAgent'])->middleware('permission:hr.employee.update');
+        Route::delete('/agents/{id}', [UserController::class, 'deleteAgent'])->middleware('permission:hr.employee.delete');
+        Route::delete('/trial-form/delete/{id}', [UserController::class, 'deleteTrialForm'])->middleware('permission:recruitment.trial_form.delete');
     });
 
     Route::middleware('role:admin,agent')->group(function () {
@@ -404,10 +489,10 @@ Route::middleware('jwt.auth')->group(function () {
         });
     });
 
-    Route::get('dashboard', [UserController::class, 'dashboard'])->middleware('role:employee');
+    Route::get('dashboard', [UserController::class, 'dashboard'])->middleware(['role:employee', 'permission:self.payslip.read']);
 
     // Both the agent portal and the admin Appointments page use this to edit a candidate
-    Route::post('/appointment/update', [UserController::class, 'updateUser'])->middleware('role:admin,agent');
+    Route::post('/appointment/update', [UserController::class, 'updateUser'])->middleware(['role:admin,agent', 'permission:hr.appointment.update']);
 
-    Route::get('/agent/candidates', [UserController::class, 'getAgentCandidates'])->middleware('role:agent');
+    Route::get('/agent/candidates', [UserController::class, 'getAgentCandidates'])->middleware(['role:agent', 'permission:recruitment.candidate.read']);
 });
