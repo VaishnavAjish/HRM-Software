@@ -8,7 +8,6 @@ use App\Models\SalarySlip;
 use App\Models\UploadBatch;
 use App\Models\User;
 use Illuminate\Http\Request;
-use Maatwebsite\Excel\Facades\Excel;
 
 class AdminController extends Controller
 {

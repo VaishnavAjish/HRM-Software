@@ -16,15 +16,7 @@ import {
   ArrowRight,
   XCircle,
   PauseCircle,
-  UserPlus,
-  Search,
-  Star,
   Users,
-  Code2,
-  Trophy,
-  Award,
-  Send,
-  PartyPopper,
   List as ListIcon,
   LayoutGrid,
   Eye,
@@ -42,41 +34,24 @@ import useHrFilters from "./hiring/useHrFilters";
 import HiringFilterBar from "./hiring/HiringFilterBar";
 import { runBulk } from "./hiring/bulkActions";
 import CandidateDrawer from "./hiring/CandidateDrawer";
+import {
+  MAIN_STAGES, TERMINAL_STAGES, ALL_COLUMNS, STAGE_INDEX, STAGE_GROUPS,
+  TAB_STAGE_KEYS, stageLabel, stageColor, nextMainStage,
+} from "./hiring/stageMeta";
 
 const inputClass =
   "w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500";
 
-/* ─────────────────── Pipeline stage definitions ─────────────────── */
-
-/** Ordered main-flow stages (excludes terminal ones) */
-const MAIN_STAGES = [
-  { key: "applied",              label: "Applied",              color: "#6366f1", icon: UserPlus },
-  { key: "screening",            label: "Screening",            color: "#8b5cf6", icon: Search },
-  { key: "shortlisted",          label: "Shortlisted",          color: "#0ea5e9", icon: Star },
-  { key: "hr_interview",         label: "HR Interview",         color: "#06b6d4", icon: Users },
-  { key: "technical_interview",  label: "Tech Interview",       color: "#10b981", icon: Code2 },
-  { key: "final_interview",      label: "Final Interview",      color: "#f59e0b", icon: Trophy },
-  { key: "selected",             label: "Selected",             color: "#22c55e", icon: Award },
-  { key: "offer_sent",           label: "Offer Sent",           color: "#84cc16", icon: Send },
-  { key: "offer_accepted",       label: "Offer Accepted",       color: "#16a34a", icon: PartyPopper },
-];
-
-const TERMINAL_STAGES = [
-  { key: "rejected", label: "Rejected", color: "#ef4444", icon: XCircle },
-  { key: "on_hold",  label: "On Hold",  color: "#f59e0b", icon: PauseCircle },
-];
-
-const ALL_COLUMNS = [...MAIN_STAGES, ...TERMINAL_STAGES];
-
-const STAGE_INDEX = Object.fromEntries(MAIN_STAGES.map((s, i) => [s.key, i]));
-
-/** Visual clusters — turns 11 flat columns into meaningful, navigable sections */
-const STAGE_GROUPS = [
-  { label: "Sourcing",        keys: ["applied", "screening", "shortlisted"] },
-  { label: "Interviews",      keys: ["hr_interview", "technical_interview", "final_interview"] },
-  { label: "Offer & Closing", keys: ["selected", "offer_sent", "offer_accepted"] },
-  { label: "Terminal",        keys: ["rejected", "on_hold"] },
-];
+/**
+ * The Candidates tab only owns the sourcing funnel — Applied through
+ * Shortlisted (plus rejecting/holding someone during that window). Once a
+ * candidate reaches an interview stage, the Interview tab owns them; once
+ * they're Selected, the Offer tab owns them; once the offer is accepted, the
+ * Onboarding tab owns them. This is enforced by scoping every fetch here to
+ * CANDIDATES_TAB_STAGES rather than by hiding rows client-side.
+ */
+const CANDIDATES_TAB_STAGES = TAB_STAGE_KEYS.candidates;
+const CANDIDATES_TAB_GROUPS = STAGE_GROUPS.filter((g) => g.label === "Sourcing" || g.label === "Terminal");
 
 const PRIORITY_VARIANT  = { high: "red", medium: "yellow", low: "gray" };
 const PRIORITY_DOT      = { high: "bg-red-500", medium: "bg-yellow-400", low: "bg-gray-400" };
@@ -86,22 +61,6 @@ const EMPTY_FORM = {
   current_company: "", current_designation: "", skills: "", source: "other",
   priority: "medium", notes: "",
 };
-
-/* ─────────────────── Helpers ─────────────────── */
-
-function stageLabel(key) {
-  return ALL_COLUMNS.find((s) => s.key === key)?.label ?? key;
-}
-
-function stageColor(key) {
-  return ALL_COLUMNS.find((s) => s.key === key)?.color ?? "#6b7280";
-}
-
-function nextMainStage(currentKey) {
-  const idx = STAGE_INDEX[currentKey];
-  if (idx === undefined || idx >= MAIN_STAGES.length - 1) return null;
-  return MAIN_STAGES[idx + 1];
-}
 
 /* ─────────────────── Root component ─────────────────── */
 
@@ -169,7 +128,11 @@ export default function CandidatePipeline({ people = [] }) {
         page: listPage,
         per_page: listPerPage,
         search: debouncedSearch || undefined,
-        stage: stageFilter || undefined,
+        // Only the stages this tab owns — a specific pick within that set,
+        // or every stage in the set when nothing's picked. Never "all stages
+        // ever", since interview/offer/onboarding candidates belong to their
+        // own tabs now.
+        stage: (stageFilter && CANDIDATES_TAB_STAGES.includes(stageFilter) ? stageFilter : CANDIDATES_TAB_STAGES.join(",")),
         requisition_id: requisitionFilter || undefined,
       })
       .then((res) => {
@@ -402,13 +365,14 @@ export default function CandidatePipeline({ people = [] }) {
         fields={filterFields}
         requisitions={requisitions}
         people={people}
-        statusOptions={ALL_COLUMNS.map((c) => ({ value: c.key, label: c.label }))}
+        statusOptions={ALL_COLUMNS.filter((c) => CANDIDATES_TAB_STAGES.includes(c.key)).map((c) => ({ value: c.key, label: c.label }))}
         priorityOptions={[{ value: "low", label: "Low" }, { value: "medium", label: "Medium" }, { value: "high", label: "High" }]}
         bulkBar={view !== "board" ? (
           <>
+            {/* Includes "HR Interview" as the one allowed hand-off target — bulk-transferring shortlisted candidates to the Interview tab. */}
             <select className="text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1" value="" onChange={(e) => bulkMoveStage(e.target.value)}>
               <option value="">Move to stage…</option>
-              {ALL_COLUMNS.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
+              {ALL_COLUMNS.filter((c) => CANDIDATES_TAB_STAGES.includes(c.key) || c.key === "hr_interview").map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
             </select>
             <button onClick={() => bulkExportSelected("excel")} className="text-xs font-semibold text-gray-600 dark:text-gray-300 hover:underline">Export Excel</button>
             <button onClick={() => bulkExportSelected("csv")} className="text-xs font-semibold text-gray-600 dark:text-gray-300 hover:underline">Export CSV</button>
@@ -434,7 +398,7 @@ export default function CandidatePipeline({ people = [] }) {
         />
       ) : loading ? (
         <div className="space-y-4">
-          {STAGE_GROUPS.map((group) => (
+          {CANDIDATES_TAB_GROUPS.map((group) => (
             <div key={group.label} className="grid gap-3" style={{ gridTemplateColumns: `repeat(${group.keys.length}, minmax(0, 1fr))` }}>
               {group.keys.map((key) => <div key={key} className="skeleton h-64 rounded-2xl" />)}
             </div>
@@ -446,7 +410,7 @@ export default function CandidatePipeline({ people = [] }) {
               the available width instead of the whole board scrolling
               sideways. 4 groups × up to 3 columns each fits any viewport. */}
           <div className="space-y-4">
-            {STAGE_GROUPS.map((group) => (
+            {CANDIDATES_TAB_GROUPS.map((group) => (
               <div key={group.label}>
                 <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 px-1 mb-1.5">
                   {group.label}

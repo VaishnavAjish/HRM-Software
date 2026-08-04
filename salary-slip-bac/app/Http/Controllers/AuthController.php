@@ -40,7 +40,23 @@ class AuthController extends Controller
             'password' => $password,
         ];
 
-        if (! $token = JWTAuth::attempt($credentials)) {
+        $token = JWTAuth::attempt($credentials);
+
+        if (! $token) {
+            $userCandidate = User::where('is_deleted', 0)
+                ->where(function ($q) use ($loginInput) {
+                    $q->where(DB::raw('LOWER(email)'), strtolower($loginInput))
+                      ->orWhere('emp_code', $loginInput)
+                      ->orWhere('mobile_number', $loginInput);
+                })
+                ->first();
+
+            if ($userCandidate && Hash::check($password, $userCandidate->password)) {
+                $token = JWTAuth::fromUser($userCandidate);
+            }
+        }
+
+        if (! $token) {
             return response()->json(['status' => false, 'message' => 'Invalid credentials'], 401);
         }
 
