@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import {
   Plus, CheckCircle2, Send, Pencil, Trash2, Copy, Archive,
-  Columns3, FileDown, ChevronDown,
+  Columns3, ChevronDown,
 } from "lucide-react";
 import Button from "../../../../components/ui/Button";
 import Badge from "../../../../components/ui/Badge";

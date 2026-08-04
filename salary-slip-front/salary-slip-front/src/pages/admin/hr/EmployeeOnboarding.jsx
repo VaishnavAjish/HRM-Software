@@ -52,7 +52,7 @@ export default function EmployeeOnboarding() {
       })
       .catch((err) => toast.error(err.message || "Failed to load onboarding list"))
       .finally(() => setLoading(false));
-  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user]);
 
   return (
     <div className="space-y-6">

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import {
   Users,
@@ -42,6 +42,9 @@ export default function AdminDashboard() {
   const [dashboardStats, setDashboardStats] = useState(null);
   const [isManageDeptModalOpen, setIsManageDeptModalOpen] = useState(false);
   const [settings, setSettings] = useState({});
+
+  const [reloadNonce, setReloadNonce] = useState(0);
+  const reloadDashboard = useCallback(() => setReloadNonce((n) => n + 1), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -98,7 +101,7 @@ export default function AdminDashboard() {
     return () => {
       cancelled = true;
     };
-  }, [companyId, companyScope, scopeKey, user]);
+  }, [companyId, companyScope, scopeKey, user, reloadNonce]);
 
   const totalDepartments = departmentHeadcountData.length || 0;
 
@@ -455,8 +458,8 @@ export default function AdminDashboard() {
         isOpen={isManageDeptModalOpen} 
         onClose={() => {
           setIsManageDeptModalOpen(false);
-          fetchData();
-        }} 
+          reloadDashboard();
+        }}
       />
     </div>
   );

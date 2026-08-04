@@ -5,7 +5,6 @@ import {
   PauseCircle, XCircle, Check, X,
 } from "lucide-react";
 import Badge from "../../../components/ui/Badge";
-import Button from "../../../components/ui/Button";
 import Modal from "../../../components/ui/Modal";
 import { SkeletonTable } from "../../../components/ui/Skeleton";
 import { useAuth } from "../../../context/AuthContext";
@@ -14,7 +13,6 @@ import { downloadTablePDF } from "../../../utils/exportUtils";
 import { stageLabel, stageColor } from "./hiring/stageMeta";
 
 const smallInputClass = "rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1 text-xs text-gray-900 dark:text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500";
-const inputClass = "w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500";
 
 const STATUS_VARIANT = {
   draft: "gray", pending_approval: "yellow", approved: "blue", released: "purple",

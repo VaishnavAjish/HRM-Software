@@ -1020,7 +1020,7 @@ export default function Appointments() {
         matchesDepartment
       );
     });
-  }, [appointments, search, statusFilter, monthFilter, yearFilter, departmentFilter]);
+  }, [appointments, search, statusFilter, monthFilter, yearFilter, departmentFilter, isAgentUser]);
 
   const counts = useMemo(
     () => ({

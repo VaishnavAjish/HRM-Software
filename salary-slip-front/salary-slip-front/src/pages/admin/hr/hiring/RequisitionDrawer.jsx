@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Pencil, Info, Clock, Users, BarChart3 } from "lucide-react";
 import Drawer, { CollapsibleSection } from "../../../../components/ui/Drawer";
 import Badge from "../../../../components/ui/Badge";
@@ -14,21 +14,22 @@ const STATUS_VARIANT = {
  * JobRequisitionController::show — never precomputed for the whole table).
  */
 export default function RequisitionDrawer({ requisition, onClose, onEdit }) {
-  const candidates = requisition?.candidates || [];
+  const candidates = useMemo(() => requisition?.candidates || [], [requisition]);
+  const [openedAt] = useState(() => Date.now());
 
   const analytics = useMemo(() => {
     if (!requisition) return null;
     const daysOpen = requisition.created_at
-      ? Math.floor((Date.now() - new Date(requisition.created_at)) / 86400000)
+      ? Math.floor((openedAt - new Date(requisition.created_at)) / 86400000)
       : null;
-    const today = new Date().toDateString();
+    const today = new Date(openedAt).toDateString();
     const applicationsToday = candidates.filter((c) => c.created_at && new Date(c.created_at).toDateString() === today).length;
     const stageBreakdown = candidates.reduce((acc, c) => {
       acc[c.stage] = (acc[c.stage] || 0) + 1;
       return acc;
     }, {});
     return { daysOpen, applicationsToday, stageBreakdown };
-  }, [requisition, candidates]);
+  }, [requisition, candidates, openedAt]);
 
   const timeline = requisition ? [
     { label: "Created", at: requisition.created_at },

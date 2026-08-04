@@ -22,7 +22,6 @@ const MASKED = "XXXX XXXX 8793";
 const appointmentRow = {
   id: 104,
   name: "Parth R Patel",
-  emp_code: "EMP1025",
   email: "parth@example.com",
   mobile_number: "7878787878",
   company_code: "nidhi-impex",

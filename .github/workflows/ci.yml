@@ -142,7 +142,7 @@ jobs:
 
       - name: Lint ratchet
         run: |
-          BASELINE=43
+          BASELINE=11
           COUNT=$(node -e "const r=require('./eslint-report.json');console.log(r.reduce((n,f)=>n+f.errorCount,0))")
           echo "eslint errors: $COUNT (baseline $BASELINE)"
           if [ "$COUNT" -gt "$BASELINE" ]; then

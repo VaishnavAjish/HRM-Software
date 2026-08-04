@@ -111,7 +111,7 @@ export default function CandidatePipeline({ people = [] }) {
       .then((res) => { if (res.status) setColumns(res.data || {}); })
       .catch((err) => toast.error(err.message || "Failed to load pipeline"))
       .finally(() => setLoading(false)),
-  [user, companyScope, requisitionFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+  [user, companyScope, requisitionFilter]);
 
   useEffect(() => {
     if (!user?.accessToken || view !== "board") return;
