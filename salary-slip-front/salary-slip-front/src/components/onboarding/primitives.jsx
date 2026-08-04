@@ -1,22 +1,4 @@
-const AVATAR_COLORS = [
-  "#4f46e5", "#0891b2", "#c026d3", "#ea580c",
-  "#059669", "#7c3aed", "#db2777", "#0284c7",
-];
-
-export function avatarColor(name = "") {
-  const sum = [...name].reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
-  return AVATAR_COLORS[sum % AVATAR_COLORS.length];
-}
-
-export function initials(name = "") {
-  return name
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((w) => w[0])
-    .join("")
-    .toUpperCase();
-}
+import { avatarColor, initials, toneForPercent } from "./format";
 
 export function Avatar({ name = "", size = 30 }) {
   return (
@@ -78,12 +60,6 @@ const BAR_TONES = {
   warn: "bg-amber-500",
   bad: "bg-rose-600 dark:bg-rose-500",
 };
-
-export function toneForPercent(pct) {
-  if (pct >= 85) return "ok";
-  if (pct >= 55) return "brand";
-  return "warn";
-}
 
 export function ProgressBar({ value = 0, tone, showLabel = true }) {
   const pct = Math.max(0, Math.min(100, Math.round(value)));

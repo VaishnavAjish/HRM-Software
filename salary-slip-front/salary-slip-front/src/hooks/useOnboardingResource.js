@@ -6,29 +6,39 @@ export function useOnboardingResource(loader, deps = []) {
   const accessToken = user?.accessToken;
   const tokenType = user?.tokenType || "Bearer";
 
-  const [state, setState] = useState({ data: null, source: null, loading: true, error: null });
+  const [nonce, setNonce] = useState(0);
+  const key = `${accessToken || ""}|${tokenType}|${JSON.stringify(deps)}|${nonce}`;
 
-  const run = useCallback(() => {
+  const [result, setResult] = useState({ key: null, data: null, source: null, error: null });
+
+  useEffect(() => {
     let active = true;
-    setState((s) => ({ ...s, loading: true, error: null }));
 
     Promise.resolve(loader(accessToken, tokenType))
       .then((res) => {
-        if (active) setState({ data: res.data, source: res.source, loading: false, error: null });
+        if (active) setResult({ key, data: res.data, source: res.source, error: null });
       })
       .catch((err) => {
-        if (active) setState({ data: null, source: null, loading: false, error: err });
+        if (active) setResult({ key, data: null, source: null, error: err });
       });
 
     return () => {
       active = false;
     };
+    // loader is redefined every render by design; `key` already encodes every
+    // input that should trigger a refetch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accessToken, tokenType, ...deps]);
+  }, [key]);
 
-  useEffect(() => run(), [run]);
+  const reload = useCallback(() => setNonce((n) => n + 1), []);
 
-  return { ...state, reload: run };
+  return {
+    data: result.key === key ? result.data : null,
+    source: result.key === key ? result.source : null,
+    error: result.key === key ? result.error : null,
+    loading: result.key !== key,
+    reload,
+  };
 }
 
 export default useOnboardingResource;

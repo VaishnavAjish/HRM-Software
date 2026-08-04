@@ -8,9 +8,8 @@ import {
   ProgressBar,
   Sparkline,
   StatusPill,
-  initials,
-  toneForPercent,
 } from "./primitives";
+import { initials, toneForPercent } from "./format";
 import { DOCUMENTS } from "../../utils/onboardingMocks";
 
 describe("initials", () => {
