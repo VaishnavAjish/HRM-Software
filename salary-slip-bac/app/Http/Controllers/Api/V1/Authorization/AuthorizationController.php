@@ -88,37 +88,43 @@ class AuthorizationController extends Controller
     public function me(Request $request)
     {
         $actor = auth('api')->user();
-        $permissions = Permission::query()
-            ->when(
-                SchemaSupport::hasColumn('permissions', 'is_active'),
-                fn ($q) => $q->where('is_active', true)
-            )
-            ->orderBy(SchemaSupport::hasColumn('permissions', 'code') ? 'code' : 'name')
-            ->limit(1000)
-            ->get();
-        $decisions = [];
-        $shadow = $this->flags->enabled('authorization_shadow_mode', $actor->company_code, true);
-        foreach ($permissions as $permission) {
-            $code = $permission->code ?: $permission->name;
-            $decision = $this->authorization->decide($actor, $code, [
-                'resource_type' => $permission->resource,
-                'company_code' => $actor->company_code,
-            ], ['audit' => false]);
-            $decisions[$code] = [
-                'allowed' => $decision->allowed || ($shadow && ($decision->legacyDecision['allowed'] ?? false)),
-                'engineAllowed' => $decision->allowed,
-                'state' => $decision->effectiveState,
-                'obligations' => $decision->obligations,
-                'shadowFallback' => !$decision->allowed && $shadow && ($decision->legacyDecision['allowed'] ?? false),
+        $cacheKey = 'user_me_snapshot:' . $actor->id . ':' . ($actor->role ?? 'none');
+
+        $data = $this->cache->remember($cacheKey, $actor->company_code, function () use ($actor) {
+            $permissions = Permission::query()
+                ->when(
+                    SchemaSupport::hasColumn('permissions', 'is_active'),
+                    fn ($q) => $q->where('is_active', true)
+                )
+                ->orderBy(SchemaSupport::hasColumn('permissions', 'code') ? 'code' : 'name')
+                ->limit(1000)
+                ->get();
+            $decisions = [];
+            $shadow = $this->flags->enabled('authorization_shadow_mode', $actor->company_code, true);
+            foreach ($permissions as $permission) {
+                $code = $permission->code ?: $permission->name;
+                $decision = $this->authorization->decide($actor, $code, [
+                    'resource_type' => $permission->resource,
+                    'company_code' => $actor->company_code,
+                ], ['audit' => false]);
+                $decisions[$code] = [
+                    'allowed' => $decision->allowed || ($shadow && ($decision->legacyDecision['allowed'] ?? false)),
+                    'engineAllowed' => $decision->allowed,
+                    'state' => $decision->effectiveState,
+                    'obligations' => $decision->obligations,
+                    'shadowFallback' => !$decision->allowed && $shadow && ($decision->legacyDecision['allowed'] ?? false),
+                ];
+            }
+            return [
+                'authorizationVersion' => 'v2',
+                'cacheVersion' => $this->cache->version($actor->company_code),
+                'permissions' => $decisions,
+                'roles' => $this->roleSnapshot($actor),
+                'featureFlags' => $this->flagSnapshot($actor->company_code),
             ];
-        }
-        return response()->json(['success' => true, 'data' => [
-            'authorizationVersion' => 'v2',
-            'cacheVersion' => $this->cache->version($actor->company_code),
-            'permissions' => $decisions,
-            'roles' => $this->roleSnapshot($actor),
-            'featureFlags' => $this->flagSnapshot($actor->company_code),
-        ]]);
+        }, 300);
+
+        return response()->json(['success' => true, 'data' => $data]);
     }
 
     public function flags(Request $request)
