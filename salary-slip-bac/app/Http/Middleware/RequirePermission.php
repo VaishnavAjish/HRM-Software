@@ -25,6 +25,15 @@ class RequirePermission
             return response()->json(['success' => false, 'error' => ['code' => 'AUTHENTICATION_REQUIRED', 'message' => 'Authentication required.']], 401);
         }
 
+        // Super administrators bypass the permission gate entirely — no schema
+        // probe, no engine call, no lookup. This mirrors the engine's own
+        // short-circuit so a route that never reaches the engine (e.g. blocked
+        // by an unmigrated schema) still admits the root account.
+        if ($actor->isSuperAdmin()) {
+            $request->attributes->set('authorization_super_admin', true);
+            return $next($request);
+        }
+
         $resource = [
             'resource_type' => $request->route()?->getName() ?: $request->path(),
             'id' => $request->route('id') ?? $request->route('userId') ?? $request->route('appointmentId'),

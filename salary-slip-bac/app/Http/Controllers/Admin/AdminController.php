@@ -20,6 +20,7 @@ class AdminController extends Controller
                 $q->whereNull('type')
                   ->orWhereNotIn('type', ['appointment', 'agent']);
             });
+        \App\Support\HiddenAccounts::exclude($userQuery, 'users');
         $slipQuery = SalarySlip::query();
 
         $userAuth = auth('api')->user();

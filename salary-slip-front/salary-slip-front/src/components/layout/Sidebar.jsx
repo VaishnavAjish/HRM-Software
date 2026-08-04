@@ -135,6 +135,8 @@ function getAdminNav(companyId, user, isAllCompanies, isModuleAvailable = () => 
         ...(hasAccess("admin.user.read") || rawRole === 0
           ? [{ to: "/admin/access-control/users", label: "Users" }] : []),
         ...(hasAccess("admin.role.read") || rawRole === 0
+          ? [{ to: "/admin/access-control/roles", label: "Roles" }] : []),
+        ...(hasAccess("admin.role.read") || rawRole === 0
           ? [{ to: "/admin/access-control/permission-matrix", label: "Permission Matrix" }] : []),
         ...(hasAccess("admin.policy.read") || rawRole === 0
           ? [{ to: "/admin/access-control/policies", label: "Policies" }] : []),

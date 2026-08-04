@@ -1,0 +1,1 @@
+const e={"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"};function o(r){return String(r??"").replace(/[&<>"']/g,t=>e[t])}function c(r){const t=String(r??"").trim();if(!t)return"";try{const n=new URL(t,window.location.origin);if(["http:","https:","data:"].includes(n.protocol))return t}catch{return""}return""}export{o as e,c as s};

@@ -36,7 +36,7 @@ class PermissionMatrixController extends Controller
     /** Roles for the selector. */
     public function roles(Request $request)
     {
-        $query = Role::query()
+        $query = \App\Support\SystemRoles::exclude(Role::query())
             ->when($request->filled('search'), fn ($q) => $q->where(function ($inner) use ($request) {
                 $term = '%' . $request->string('search') . '%';
                 $inner->where('name', 'like', $term)->orWhere('code', 'like', $term);

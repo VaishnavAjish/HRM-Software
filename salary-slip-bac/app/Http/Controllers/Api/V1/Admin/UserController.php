@@ -35,11 +35,26 @@ class UserController extends Controller
 
     private const BULK_ACTIONS = ['activate', 'deactivate', 'lock', 'unlock', 'delete', 'assign-role'];
 
+    /**
+     * A cell that begins with a formula trigger character is interpreted as
+     * an expression by spreadsheet applications, so a value planted in the
+     * database (name, department, ...) could run a formula/DDE payload in
+     * whoever's machine opens the export. Neutralise those cells by prefixing
+     * them with a single quote so they are read as literal text.
+     */
+    private static function sanitizeCsvCell(string $value): string
+    {
+        if (in_array($value[0] ?? '', ['=', '+', '-', '@', "\t", "\r"], true)) {
+            return "'".$value;
+        }
+
+        return $value;
+    }
+
     public function __construct(
         private readonly UserDirectory $directory,
         private readonly UserAccountService $accounts,
-    ) {
-    }
+    ) {}
 
     public function index(Request $request)
     {
@@ -83,11 +98,11 @@ class UserController extends Controller
         $actor = auth('api')->user();
         $user = User::query()->find($id);
 
-        if (!$user) {
+        if (! $user || ($this->isConcealed($actor, $user))) {
             return $this->error('NOT_FOUND', 'User not found.', 404);
         }
 
-        if (!$this->directory->scopeAllows($actor, $user)) {
+        if (! $this->directory->scopeAllows($actor, $user)) {
             return $this->error('PERMISSION_DENIED', 'That user is outside the companies you administer.', 403);
         }
 
@@ -158,7 +173,7 @@ class UserController extends Controller
         $actor = auth('api')->user();
         $user = User::query()->find($id);
 
-        if (!$user) {
+        if (! $user) {
             return $this->error('NOT_FOUND', 'User not found.', 404);
         }
 
@@ -188,7 +203,7 @@ class UserController extends Controller
         $actor = auth('api')->user();
         $user = User::query()->find($id);
 
-        if (!$user) {
+        if (! $user) {
             return $this->error('NOT_FOUND', 'User not found.', 404);
         }
 
@@ -239,7 +254,7 @@ class UserController extends Controller
         $actor = auth('api')->user();
         $user = User::query()->find($id);
 
-        if (!$user) {
+        if (! $user) {
             return $this->error('NOT_FOUND', 'User not found.', 404);
         }
 
@@ -269,7 +284,7 @@ class UserController extends Controller
         $actor = auth('api')->user();
         $user = User::query()->find($id);
 
-        if (!$user) {
+        if (! $user) {
             return $this->error('NOT_FOUND', 'User not found.', 404);
         }
 
@@ -299,7 +314,7 @@ class UserController extends Controller
         $actor = auth('api')->user();
         $user = User::query()->find($id);
 
-        if (!$user) {
+        if (! $user) {
             return $this->error('NOT_FOUND', 'User not found.', 404);
         }
 
@@ -318,11 +333,11 @@ class UserController extends Controller
         $actor = auth('api')->user();
         $user = User::query()->find($id);
 
-        if (!$user) {
+        if (! $user || $this->isConcealed($actor, $user)) {
             return $this->error('NOT_FOUND', 'User not found.', 404);
         }
 
-        if (!$this->directory->scopeAllows($actor, $user)) {
+        if (! $this->directory->scopeAllows($actor, $user)) {
             return $this->error('PERMISSION_DENIED', 'That user is outside the companies you administer.', 403);
         }
 
@@ -341,7 +356,7 @@ class UserController extends Controller
     public function bulk(Request $request)
     {
         $data = $request->validate([
-            'action' => ['required', 'string', 'in:' . implode(',', self::BULK_ACTIONS)],
+            'action' => ['required', 'string', 'in:'.implode(',', self::BULK_ACTIONS)],
             'userIds' => ['required', 'array', 'min:1', 'max:500'],
             'userIds.*' => ['integer'],
             'reason' => ['nullable', 'string', 'max:1000'],
@@ -353,7 +368,7 @@ class UserController extends Controller
             return $this->error('VALIDATION_FAILED', 'A reason of at least 5 characters is required for this action.', 422);
         }
 
-        if ($data['action'] === 'assign-role' && !array_key_exists('roleIds', $data)) {
+        if ($data['action'] === 'assign-role' && ! array_key_exists('roleIds', $data)) {
             return $this->error('VALIDATION_FAILED', 'roleIds is required when assigning roles.', 422);
         }
 
@@ -365,8 +380,9 @@ class UserController extends Controller
         foreach (array_unique($data['userIds']) as $userId) {
             $user = User::query()->find($userId);
 
-            if (!$user) {
+            if (! $user) {
                 $skipped[] = ['id' => $userId, 'reason' => 'Not found'];
+
                 continue;
             }
 
@@ -374,6 +390,7 @@ class UserController extends Controller
 
             if ($this->guardTarget($actor, $user, $data['action'] === 'delete', $destructive)) {
                 $skipped[] = ['id' => $userId, 'reason' => 'Not permitted'];
+
                 continue;
             }
 
@@ -407,7 +424,7 @@ class UserController extends Controller
 
                 foreach ($rows as $row) {
                     fputcsv($handle, array_map(
-                        static fn (string $key) => (string) ($row[$key] ?? ''),
+                        static fn (string $key) => self::sanitizeCsvCell((string) ($row[$key] ?? '')),
                         array_keys(self::EXPORT_COLUMNS)
                     ));
                 }
@@ -420,7 +437,7 @@ class UserController extends Controller
             fwrite($handle, '<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"></head><body><table border="1"><tr>');
 
             foreach (self::EXPORT_COLUMNS as $label) {
-                fwrite($handle, '<th>' . htmlspecialchars($label, ENT_QUOTES) . '</th>');
+                fwrite($handle, '<th>'.htmlspecialchars($label, ENT_QUOTES).'</th>');
             }
 
             fwrite($handle, '</tr>');
@@ -429,7 +446,7 @@ class UserController extends Controller
                 fwrite($handle, '<tr>');
 
                 foreach (array_keys(self::EXPORT_COLUMNS) as $key) {
-                    fwrite($handle, '<td>' . htmlspecialchars((string) ($row[$key] ?? ''), ENT_QUOTES) . '</td>');
+                    fwrite($handle, '<td>'.htmlspecialchars((string) ($row[$key] ?? ''), ENT_QUOTES).'</td>');
                 }
 
                 fwrite($handle, '</tr>');
@@ -441,7 +458,7 @@ class UserController extends Controller
 
         return response()->streamDownload(
             $callback,
-            'access-control-users-' . now()->format('Ymd-His') . '.' . $extension,
+            'access-control-users-'.now()->format('Ymd-His').'.'.$extension,
             [
                 'Content-Type' => $extension === 'csv'
                     ? 'text/csv; charset=UTF-8'
@@ -455,7 +472,7 @@ class UserController extends Controller
         $actor = auth('api')->user();
         $user = User::query()->find($id);
 
-        if (!$user) {
+        if (! $user) {
             return $this->error('NOT_FOUND', 'User not found.', 404);
         }
 
@@ -463,7 +480,7 @@ class UserController extends Controller
             return $guard;
         }
 
-        if (!$this->directory->supportsAdministration()) {
+        if (! $this->directory->supportsAdministration()) {
             return $this->error('MODULE_SCHEMA_NOT_READY', 'User administration columns are not present in this database yet.', 503);
         }
 
@@ -474,7 +491,14 @@ class UserController extends Controller
 
     private function guardTarget(User $actor, User $target, bool $isDelete = false, bool $destructive = false)
     {
-        if (!$this->directory->scopeAllows($actor, $target)) {
+        // A hidden or protected account is not addressable by anyone but a super
+        // admin. 404 rather than 403 so the response cannot confirm the account
+        // exists to a probe iterating ids.
+        if (($target->isHidden() || $target->isProtected()) && ! $actor->isSuperAdmin()) {
+            return $this->error('NOT_FOUND', 'User not found.', 404);
+        }
+
+        if (! $this->directory->scopeAllows($actor, $target)) {
             return $this->error('PERMISSION_DENIED', 'That user is outside the companies you administer.', 403);
         }
 
@@ -506,7 +530,7 @@ class UserController extends Controller
 
         $codes = array_values(array_filter(array_map('trim', explode(',', (string) $actor->company_code))));
 
-        if ($codes && !in_array($companyCode, $codes, true)) {
+        if ($codes && ! in_array($companyCode, $codes, true)) {
             return $this->error('PERMISSION_DENIED', 'That company is outside the companies you administer.', 403);
         }
 
@@ -515,7 +539,7 @@ class UserController extends Controller
 
     private function guardSensitiveRoles(User $actor, array $roleIds)
     {
-        if ((int) $actor->role === 0 || !$roleIds || !SchemaSupport::hasColumn('roles', 'code')) {
+        if ((int) $actor->role === 0 || ! $roleIds || ! SchemaSupport::hasColumn('roles', 'code')) {
             return null;
         }
 
@@ -560,7 +584,7 @@ class UserController extends Controller
     {
         $names = array_values(array_filter([$user->department, $user->hastak_department]));
 
-        if (!$names || !SchemaSupport::hasTable('departments')) {
+        if (! $names || ! SchemaSupport::hasTable('departments')) {
             return array_map(static fn ($name) => ['id' => null, 'name' => $name], $names);
         }
 
@@ -619,7 +643,7 @@ class UserController extends Controller
             }
         }
 
-        if (!$user->manager_name) {
+        if (! $user->manager_name) {
             return null;
         }
 
@@ -634,7 +658,7 @@ class UserController extends Controller
 
     private function effectivePermissions(User $user): array
     {
-        if (!SchemaSupport::hasTable('role_permissions') || !SchemaSupport::hasTable('user_roles')) {
+        if (! SchemaSupport::hasTable('role_permissions') || ! SchemaSupport::hasTable('user_roles')) {
             return [];
         }
 
@@ -681,6 +705,11 @@ class UserController extends Controller
         ksort($effective);
 
         return array_values($effective);
+    }
+
+    private function isConcealed(User $actor, User $target): bool
+    {
+        return ($target->isHidden() || $target->isProtected()) && ! $actor->isSuperAdmin();
     }
 
     private function error(string $code, string $message, int $status)

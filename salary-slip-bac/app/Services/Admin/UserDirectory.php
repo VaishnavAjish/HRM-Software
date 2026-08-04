@@ -185,7 +185,7 @@ class UserDirectory
         $roles = [];
 
         if (SchemaSupport::hasTable('roles')) {
-            $query = DB::table('roles')->orderBy('name');
+            $query = \App\Support\SystemRoles::exclude(DB::table('roles'))->orderBy('name');
 
             if (SchemaSupport::hasColumn('roles', 'status')) {
                 $query->where('status', 'ACTIVE');
@@ -395,6 +395,13 @@ class UserDirectory
 
     private function applyScope(Builder $query, User $actor, array $filters): void
     {
+        // Hidden system accounts are excluded from every path — list, summary,
+        // filter options, hr count and export all funnel through here. This is
+        // stronger than the super-admin visibility toggle below: the
+        // includeSuperAdmins filter can reveal role-0 accounts, but never a
+        // hidden one.
+        \App\Support\HiddenAccounts::exclude($query, 'users');
+
         $role = (int) $actor->role;
 
         if ($role === 2) {

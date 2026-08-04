@@ -28,6 +28,8 @@ class UserLookupController extends Controller
                 return $q->whereIn('company_code', array_filter(array_map('trim', explode(',', (string) $actor->company_code))));
             });
 
+        \App\Support\HiddenAccounts::exclude($query, 'users');
+
         if (!empty($data['ids'])) {
             $query->whereIn('id', $data['ids']);
         } elseif ($term !== '') {

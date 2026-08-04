@@ -823,6 +823,66 @@ export const policyApi = {
   },
 };
 
+/*
+ * Access Control > Roles: role records and their lifecycle.
+ *
+ * Permission-to-role editing lives on authorizationAdminApi (the matrix); this
+ * manages the roles themselves. The protected SYSTEM_SUPER_ADMIN role is never
+ * returned here — the backend conceals it — so it can neither be listed nor
+ * changed from this screen.
+ */
+export const roleApi = {
+  summary(accessToken, tokenType = "Bearer") {
+    return apiRequest("/v1/roles/summary", { headers: authHeaders(accessToken, tokenType) });
+  },
+
+  list(accessToken, tokenType = "Bearer", params = {}) {
+    const query = new URLSearchParams(
+      Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== ""))
+    ).toString();
+    return apiRequest(`/v1/roles/manage${query ? `?${query}` : ""}`, {
+      headers: authHeaders(accessToken, tokenType),
+    });
+  },
+
+  get(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/roles/${id}`, { headers: authHeaders(accessToken, tokenType) });
+  },
+
+  create(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest("/v1/roles", {
+      method: "POST", headers: authHeaders(accessToken, tokenType),
+      body: JSON.stringify(payload),
+    });
+  },
+
+  update(id, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/roles/${id}`, {
+      method: "PUT", headers: authHeaders(accessToken, tokenType),
+      body: JSON.stringify(payload),
+    });
+  },
+
+  remove(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/roles/${id}`, {
+      method: "DELETE", headers: authHeaders(accessToken, tokenType),
+    });
+  },
+
+  transition(id, action, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/roles/${id}/${action}`, {
+      method: "POST", headers: authHeaders(accessToken, tokenType),
+    });
+  },
+
+  clone(id, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/roles/${id}/clone`, {
+      method: "POST", headers: authHeaders(accessToken, tokenType),
+      body: JSON.stringify(payload),
+    });
+  },
+};
+
 function userQuery(filters = {}) {
   const params = new URLSearchParams();
 

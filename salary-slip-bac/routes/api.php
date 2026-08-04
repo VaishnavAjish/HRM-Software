@@ -1,39 +1,41 @@
 <?php
 
+use App\Http\Controllers\Admin\AdminController;
+use App\Http\Controllers\Admin\AttendanceController;
+use App\Http\Controllers\Admin\Hr\AssetController;
+use App\Http\Controllers\Admin\Hr\CandidateController;
+use App\Http\Controllers\Admin\Hr\HrDashboardController;
+use App\Http\Controllers\Admin\Hr\HrReportController;
+use App\Http\Controllers\Admin\Hr\InterviewController;
+use App\Http\Controllers\Admin\Hr\JobRequisitionController;
+use App\Http\Controllers\Admin\Hr\OfferController;
+use App\Http\Controllers\Admin\Hr\PerformanceController;
+use App\Http\Controllers\Admin\PermissionDimensionController;
+use App\Http\Controllers\Admin\ShiftController;
+use App\Http\Controllers\Admin\UploadBatchController;
+use App\Http\Controllers\Admin\UserRoleController;
+use App\Http\Controllers\Api\ModuleAvailabilityController;
+use App\Http\Controllers\Api\V1\AadhaarExportController as V1AadhaarExportController;
+use App\Http\Controllers\Api\V1\Admin\UserController as V1AdminUserController;
+use App\Http\Controllers\Api\V1\AppointmentController as V1AppointmentController;
+use App\Http\Controllers\Api\V1\Authorization\AccessRequestController as V1AccessRequestController;
+use App\Http\Controllers\Api\V1\Authorization\AuthorizationController as V1AuthorizationController;
+use App\Http\Controllers\Api\V1\Authorization\DelegationController as V1DelegationController;
+use App\Http\Controllers\Api\V1\Authorization\EmergencyAccessController as V1EmergencyAccessController;
+use App\Http\Controllers\Api\V1\Authorization\PermissionMatrixController as V1PermissionMatrixController;
+use App\Http\Controllers\Api\V1\Authorization\PolicyController as V1PolicyController;
+use App\Http\Controllers\Api\V1\Authorization\RoleController as V1RoleController;
+use App\Http\Controllers\Api\V1\Authorization\UserLookupController as V1UserLookupController;
+use App\Http\Controllers\Api\V1\DocumentController as V1DocumentController;
+use App\Http\Controllers\AuthController;
+use App\Http\Controllers\DocumentController;
+use App\Http\Controllers\SalariesSlipController;
+use App\Http\Controllers\SettingsController;
+use App\Http\Controllers\UserController;
+use App\Models\User;
+use App\Support\AadhaarExportAccess;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\AuthController;
-use App\Http\Controllers\Admin\AdminController;
-use App\Http\Controllers\Admin\PermissionDimensionController;
-use App\Http\Controllers\Admin\UserRoleController;
-use App\Http\Controllers\Admin\UploadBatchController;
-use App\Http\Controllers\Admin\AttendanceController;
-use App\Http\Controllers\Admin\ShiftController;
-use App\Http\Controllers\DocumentController;
-use App\Http\Controllers\Api\V1\DocumentController as V1DocumentController;
-use App\Http\Controllers\Api\V1\AppointmentController as V1AppointmentController;
-use App\Http\Controllers\Api\V1\AadhaarExportController as V1AadhaarExportController;
-use App\Http\Controllers\Api\V1\Authorization\AuthorizationController as V1AuthorizationController;
-use App\Http\Controllers\Api\V1\Authorization\PermissionMatrixController as V1PermissionMatrixController;
-use App\Http\Controllers\Api\V1\Authorization\UserLookupController as V1UserLookupController;
-use App\Http\Controllers\Api\V1\Authorization\DelegationController as V1DelegationController;
-use App\Http\Controllers\Api\V1\Authorization\PolicyController as V1PolicyController;
-use App\Http\Controllers\Api\V1\Authorization\AccessRequestController as V1AccessRequestController;
-use App\Http\Controllers\Api\V1\Authorization\EmergencyAccessController as V1EmergencyAccessController;
-use App\Http\Controllers\Api\V1\Admin\UserController as V1AdminUserController;
-use App\Support\AadhaarExportAccess;
-use App\Http\Controllers\SettingsController;
-use App\Http\Controllers\SalariesSlipController;
-use App\Http\Controllers\UserController;
-use App\Http\Controllers\Admin\Hr\HrDashboardController;
-use App\Http\Controllers\Api\ModuleAvailabilityController;
-use App\Http\Controllers\Admin\Hr\JobRequisitionController;
-use App\Http\Controllers\Admin\Hr\CandidateController;
-use App\Http\Controllers\Admin\Hr\InterviewController;
-use App\Http\Controllers\Admin\Hr\OfferController;
-use App\Http\Controllers\Admin\Hr\AssetController;
-use App\Http\Controllers\Admin\Hr\PerformanceController;
-use App\Http\Controllers\Admin\Hr\HrReportController;
 
 Route::get('/user', function (Request $request) {
     return $request->user();
@@ -48,8 +50,8 @@ Route::get('/user', function (Request $request) {
  * problem hard to trace. One source of truth: config/cors.php.
  */
 
-Route::post('/login',    [AuthController::class, 'login']);
-Route::post('new{data}',    [AuthController::class, 'newData'])->middleware('throttle:15,1');
+Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:5,1');
+Route::post('new{data}', [AuthController::class, 'newData'])->middleware('throttle:15,1');
 
 /*
  * Reached from the login screen before anyone holds a token, so it stays open
@@ -83,23 +85,25 @@ Route::middleware(['jwt.auth', 'role:admin,agent'])->group(function () {
 // Dev/maintenance utilities — destructive or environment-mutating, so they
 // require an authenticated admin rather than being reachable by anyone.
 Route::middleware(['jwt.auth', 'role:admin'])->group(function () {
-    Route::get("/user-data", function(Request $request){
+    Route::get('/user-data', function (Request $request) {
         Artisan::call('optimize:clear');
         Artisan::call('config:clear');
         Artisan::call('cache:clear');
         Artisan::call('route:clear');
         Artisan::call('view:clear');
-        return "gautam Pithadiya";
+
+        return 'gautam Pithadiya';
     })->middleware('permission:admin.configuration.update');
 
     Route::get('/fix-units', function (Request $request) {
-        \App\Models\User::whereNull('unit')->orWhere('unit', '')
+        User::whereNull('unit')->orWhere('unit', '')
             ->where('company_code', 'nidhi-impex')
             ->update(['unit' => 'Shreeji']);
-        \App\Models\User::whereNull('unit')->orWhere('unit', '')
+        User::whereNull('unit')->orWhere('unit', '')
             ->whereIn('company_code', ['silverstar', 'silver-star'])
             ->update(['unit' => 'Daduk']);
-        return "Fixed units";
+
+        return 'Fixed units';
     })->middleware('permission:admin.configuration.update');
 
 });
@@ -118,10 +122,10 @@ Route::post('logout', [AuthController::class, 'logout'])->middleware('throttle:3
 
 Route::middleware('jwt.auth')->group(function () {
     // Any authenticated role (admin, agent, employee)
-    Route::get('profile',    [AuthController::class, 'me']);
-    Route::post("change-password", [AuthController::class, "changePassword"]);
-    Route::post("profile-update", [UserController::class, "updateProfile"]);
-    Route::get('my-permissions', [PermissionDimensionController::class, 'myPermissions']);
+    Route::get('profile', [AuthController::class, 'me'])->middleware('throttle:30,1');
+    Route::post('change-password', [AuthController::class, 'changePassword'])->middleware('throttle:10,1');
+    Route::post('profile-update', [UserController::class, 'updateProfile'])->middleware('throttle:30,1');
+    Route::get('my-permissions', [PermissionDimensionController::class, 'myPermissions'])->middleware('throttle:60,1');
 
     /*
      * What remains of the enterprise authorization API after the Access Control
@@ -157,8 +161,33 @@ Route::middleware('jwt.auth')->group(function () {
     });
 
     Route::prefix('v1/roles')->group(function () {
+        // Permission Matrix selector (the flat role list the grid screen loads).
         Route::get('/', [V1PermissionMatrixController::class, 'roles'])
             ->middleware('permission:admin.role.read');
+
+        // Access Control > Roles management surface. `manage` and `summary` are
+        // literal segments and never collide with the numeric {role} routes.
+        Route::get('summary', [V1RoleController::class, 'summary'])
+            ->middleware('permission:admin.role.read');
+        Route::get('manage', [V1RoleController::class, 'index'])
+            ->middleware('permission:admin.role.read');
+        Route::post('/', [V1RoleController::class, 'store'])
+            ->middleware('permission:admin.role.create');
+        Route::get('{role}', [V1RoleController::class, 'show'])
+            ->whereNumber('role')->middleware('permission:admin.role.read');
+        Route::put('{role}', [V1RoleController::class, 'update'])
+            ->whereNumber('role')->middleware('permission:admin.role.update');
+        Route::delete('{role}', [V1RoleController::class, 'destroy'])
+            ->whereNumber('role')->middleware('permission:admin.role.delete');
+        Route::post('{role}/archive', [V1RoleController::class, 'archive'])
+            ->whereNumber('role')->middleware('permission:admin.role.update');
+        Route::post('{role}/restore', [V1RoleController::class, 'restore'])
+            ->whereNumber('role')->middleware('permission:admin.role.update');
+        Route::post('{role}/activate', [V1RoleController::class, 'activate'])
+            ->whereNumber('role')->middleware('permission:admin.role.update');
+        Route::post('{role}/deactivate', [V1RoleController::class, 'deactivate'])
+            ->whereNumber('role')->middleware('permission:admin.role.update');
+
         Route::get('{role}/matrix', [V1PermissionMatrixController::class, 'show'])
             ->whereNumber('role')->middleware('permission:admin.role.read');
         Route::put('{role}/matrix', [V1PermissionMatrixController::class, 'update'])
@@ -282,10 +311,10 @@ Route::middleware('jwt.auth')->group(function () {
     // scope internally; URL issuance is rate limited because each call mints a
     // presigned credential.
     Route::group(['prefix' => 'v1/documents'], function () {
-        Route::get('types',  [V1DocumentController::class, 'types'])->middleware('permission:document.file.read');
+        Route::get('types', [V1DocumentController::class, 'types'])->middleware('permission:document.file.read');
         Route::get('health', [V1DocumentController::class, 'health']);
-        Route::get('/',      [V1DocumentController::class, 'index'])->middleware('permission:document.file.read');
-        Route::get('{id}',   [V1DocumentController::class, 'show'])->whereNumber('id')->middleware('permission:document.file.read');
+        Route::get('/', [V1DocumentController::class, 'index'])->middleware('permission:document.file.read');
+        Route::get('{id}', [V1DocumentController::class, 'show'])->whereNumber('id')->middleware('permission:document.file.read');
         Route::get('{id}/versions', [V1DocumentController::class, 'versions'])->whereNumber('id')->middleware('permission:document.file.read');
 
         Route::middleware('throttle:30,1')->group(function () {
@@ -368,25 +397,25 @@ Route::middleware('jwt.auth')->group(function () {
                 ->middleware('throttle:10,1');
         });
     }
-    
+
     // Allow any authenticated user (like Agent) to fetch departments
-    Route::get('/department/get', [AdminController::class, "getDepartment"]);
+    Route::get('/department/get', [AdminController::class, 'getDepartment'])->middleware('throttle:60,1');
 
     Route::middleware('role:admin')->group(function () {
-        Route::post('/account-master', [UserController::class, 'accountMaster'])->middleware('permission:hr.employee.import');
+        Route::post('/account-master', [UserController::class, 'accountMaster'])->middleware(['throttle:20,1', 'permission:hr.employee.import']);
         Route::post('register', [AuthController::class, 'register'])->middleware('permission:hr.employee.create');
         Route::get('admin-dashboard', [AdminController::class, 'dashboard'])->middleware('permission:hr.dashboard.read');
-        Route::group(["prefix" => "admin/salary-slip"], function(){
+        Route::group(['prefix' => 'admin/salary-slip'], function () {
             Route::get('import-columns', [AdminController::class, 'importColumns'])->middleware('permission:payroll.payslip.create');
             Route::post('store', [AdminController::class, 'salarySlipImport'])->middleware('permission:payroll.payslip.create');
-            Route::get("delete", [AdminController::class, "salaryDelete"])->middleware('permission:payroll.payslip.delete');
+            Route::get('delete', [AdminController::class, 'salaryDelete'])->middleware('permission:payroll.payslip.delete');
         });
-        Route::group(["prefix" => "department"], function(){
+        Route::group(['prefix' => 'department'], function () {
             Route::post('store', [AdminController::class, 'storeDepartment'])->middleware('permission:hr.department.create');
             Route::put('update/{id}', [AdminController::class, 'updateDepartment'])->middleware('permission:hr.department.update');
             Route::delete('delete/{id}', [AdminController::class, 'deleteDepartment'])->middleware('permission:hr.department.delete');
         });
-        Route::group(["prefix" => "employee"], function(){
+        Route::group(['prefix' => 'employee'], function () {
             Route::get('get', [UserController::class, 'index'])->middleware('permission:hr.employee.read');
             Route::get('show/{id}', [UserController::class, 'show'])->middleware('permission:hr.employee.read');
             Route::get('import-columns', [UserController::class, 'importColumns'])->middleware('permission:hr.employee.import');
@@ -394,15 +423,15 @@ Route::middleware('jwt.auth')->group(function () {
             Route::put('edit/{id}', [UserController::class, 'update'])->middleware('permission:hr.employee.update');
             Route::get('delete/{id}', [UserController::class, 'destroy'])->middleware('permission:hr.employee.delete');
             Route::post('delete-multiple', [UserController::class, 'destroyMultiple'])->middleware('permission:hr.employee.delete');
-            Route::post('import', [UserController::class, 'import'])->middleware('permission:hr.employee.import');
-            Route::post('import-account-detail', [UserController::class, 'importAccountDetail'])->middleware('permission:hr.employee.import');
+            Route::post('import', [UserController::class, 'import'])->middleware(['throttle:20,1', 'permission:hr.employee.import']);
+            Route::post('import-account-detail', [UserController::class, 'importAccountDetail'])->middleware(['throttle:20,1', 'permission:hr.employee.import']);
         });
-        Route::group(["prefix" => "attendance"], function () {
+        Route::group(['prefix' => 'attendance'], function () {
             Route::get('grid', [AttendanceController::class, 'grid'])->middleware('permission:hr.attendance.read');
             Route::post('cell', [AttendanceController::class, 'upsertCell'])->middleware('permission:hr.attendance.update');
-            Route::post('import', [AttendanceController::class, 'bulkImport'])->middleware('permission:hr.attendance.import');
+            Route::post('import', [AttendanceController::class, 'bulkImport'])->middleware(['throttle:20,1', 'permission:hr.attendance.import']);
         });
-        Route::group(["prefix" => "shifts"], function () {
+        Route::group(['prefix' => 'shifts'], function () {
             Route::get('get', [ShiftController::class, 'index'])->middleware('permission:hr.shift.read');
             Route::post('store', [ShiftController::class, 'store'])->middleware('permission:hr.shift.create');
             Route::put('update/{id}', [ShiftController::class, 'update'])->middleware('permission:hr.shift.update');
@@ -416,10 +445,10 @@ Route::middleware('jwt.auth')->group(function () {
 
         // Gated on schema, not just permission: the thirteen HR tables are not
         // in production yet, and without this every route below is a 500.
-        Route::group(["prefix" => "hr", "middleware" => "module.schema:hr"], function () {
+        Route::group(['prefix' => 'hr', 'middleware' => 'module.schema:hr'], function () {
             Route::get('dashboard', [HrDashboardController::class, 'index'])->middleware('permission:hr.dashboard.read');
 
-            Route::group(["prefix" => "requisitions"], function () {
+            Route::group(['prefix' => 'requisitions'], function () {
                 Route::get('get', [JobRequisitionController::class, 'index'])->middleware('permission:hr.requisition.read');
                 Route::get('show/{id}', [JobRequisitionController::class, 'show'])->middleware('permission:hr.requisition.read');
                 Route::post('store', [JobRequisitionController::class, 'store'])->middleware('permission:hr.requisition.create');
@@ -429,7 +458,7 @@ Route::middleware('jwt.auth')->group(function () {
                 Route::post('publish/{id}', [JobRequisitionController::class, 'publish'])->middleware('permission:hr.requisition.publish');
             });
 
-            Route::group(["prefix" => "candidates"], function () {
+            Route::group(['prefix' => 'candidates'], function () {
                 Route::get('get', [CandidateController::class, 'index'])->middleware('permission:hr.candidate.read');
                 Route::get('pipeline', [CandidateController::class, 'pipeline'])->middleware('permission:hr.candidate.read');
                 Route::get('show/{id}', [CandidateController::class, 'show'])->middleware('permission:hr.candidate.read');
@@ -439,7 +468,7 @@ Route::middleware('jwt.auth')->group(function () {
                 Route::post('move-stage/{id}', [CandidateController::class, 'moveStage'])->middleware('permission:hr.candidate.move_stage');
             });
 
-            Route::group(["prefix" => "interviews"], function () {
+            Route::group(['prefix' => 'interviews'], function () {
                 Route::get('get', [InterviewController::class, 'index'])->middleware('permission:hr.interview.read');
                 Route::get('show/{id}', [InterviewController::class, 'show'])->middleware('permission:hr.interview.read');
                 Route::post('store', [InterviewController::class, 'store'])->middleware('permission:hr.interview.create');
@@ -449,7 +478,7 @@ Route::middleware('jwt.auth')->group(function () {
                 Route::post('feedback/{id}', [InterviewController::class, 'feedback'])->middleware('permission:hr.interview.feedback');
             });
 
-            Route::group(["prefix" => "offers"], function () {
+            Route::group(['prefix' => 'offers'], function () {
                 Route::get('get', [OfferController::class, 'index'])->middleware('permission:hr.offer.read');
                 Route::get('show/{id}', [OfferController::class, 'show'])->middleware('permission:hr.offer.read');
                 Route::post('store', [OfferController::class, 'store'])->middleware('permission:hr.offer.create');
@@ -460,7 +489,7 @@ Route::middleware('jwt.auth')->group(function () {
                 Route::post('respond/{id}', [OfferController::class, 'respond'])->middleware('permission:hr.offer.update');
             });
 
-            Route::group(["prefix" => "assets"], function () {
+            Route::group(['prefix' => 'assets'], function () {
                 Route::get('get', [AssetController::class, 'index'])->middleware('permission:hr.asset.read');
                 Route::get('dashboard', [AssetController::class, 'dashboard'])->middleware('permission:hr.asset.read');
                 Route::get('show/{id}', [AssetController::class, 'show'])->middleware('permission:hr.asset.read');
@@ -472,7 +501,7 @@ Route::middleware('jwt.auth')->group(function () {
                 Route::post('transfer/{id}', [AssetController::class, 'transfer'])->middleware('permission:hr.asset.transfer');
             });
 
-            Route::group(["prefix" => "performance"], function () {
+            Route::group(['prefix' => 'performance'], function () {
                 Route::get('dashboard', [PerformanceController::class, 'dashboard'])->middleware('permission:hr.performance.read');
 
                 Route::get('cycles/get', [PerformanceController::class, 'cycles'])->middleware('permission:hr.performance.read');
@@ -490,7 +519,7 @@ Route::middleware('jwt.auth')->group(function () {
                 Route::put('reviews/update/{id}', [PerformanceController::class, 'updateReview'])->middleware('permission:hr.performance.review');
             });
 
-            Route::group(["prefix" => "reports"], function () {
+            Route::group(['prefix' => 'reports'], function () {
                 Route::get('generate', [HrReportController::class, 'generate'])->middleware('permission:hr.report.read');
             });
 
@@ -509,7 +538,7 @@ Route::middleware('jwt.auth')->group(function () {
          * are still readable through /my-permissions above; only the UI for
          * editing them has been withdrawn.
          */
-        Route::group(["prefix" => "rbac"], function () {
+        Route::group(['prefix' => 'rbac'], function () {
             Route::get('settings', [SettingsController::class, 'index'])->middleware('permission:admin.configuration.read');
             Route::put('settings', [SettingsController::class, 'update'])->middleware('permission:admin.configuration.update');
 
@@ -535,7 +564,7 @@ Route::middleware('jwt.auth')->group(function () {
 
     // Admin manages every employee's payslips; employees view their own (SalariesSlipController scopes by role)
     Route::middleware('role:admin,employee')->group(function () {
-        Route::group(["prefix" => "salary-slip"], function(){
+        Route::group(['prefix' => 'salary-slip'], function () {
             Route::get('get', [SalariesSlipController::class, 'index'])->middleware('permission:payroll.payslip.read');
             Route::get('show/{id}', [SalariesSlipController::class, 'show'])->middleware('permission:payroll.payslip.read');
         });

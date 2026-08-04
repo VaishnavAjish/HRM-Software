@@ -4,16 +4,17 @@ namespace App\Http\Controllers;
 
 use App\Mail\PortalOtpMail;
 use App\Models\User;
+use App\Services\Authorization\SchemaSupport;
+use App\Support\AadhaarDisclosure;
+use App\Support\AadhaarReference;
+use App\Support\AuthSession;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
-use App\Services\Authorization\SchemaSupport;
-use App\Support\AadhaarReference;
-use App\Support\AuthSession;
-use Illuminate\Support\Facades\DB;
 use Tymon\JWTAuth\Facades\JWTAuth;
 
 class AuthController extends Controller
@@ -21,7 +22,7 @@ class AuthController extends Controller
     public function login(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'email'    => 'required',
+            'email' => 'required',
             'password' => 'required',
         ]);
 
@@ -39,14 +40,14 @@ class AuthController extends Controller
             'password' => $password,
         ];
 
-        if (!$token = JWTAuth::attempt($credentials)) {
+        if (! $token = JWTAuth::attempt($credentials)) {
             return response()->json(['status' => false, 'message' => 'Invalid credentials'], 401);
         }
 
         JWTAuth::setToken($token);
         $user = JWTAuth::authenticate();
 
-        if (!$user || $user->is_deleted == 1) {
+        if (! $user || $user->is_deleted == 1) {
             return response()->json(['status' => false, 'message' => 'Account is deactivated'], 403);
         }
 
@@ -73,11 +74,11 @@ class AuthController extends Controller
         // Never cacheable: this response carries a bearer token. A shared cache
         // replaying it would hand one user another user's session.
         return AuthSession::noStore(response()->json([
-            'status'      => true,
-            'message'     => 'Login successful',
-            'token'       => $token,
-            'token_type'  => 'Bearer',
-            'user'        => $user,
+            'status' => true,
+            'message' => 'Login successful',
+            'token' => $token,
+            'token_type' => 'Bearer',
+            'user' => $user,
         ]));
     }
 
@@ -103,7 +104,7 @@ class AuthController extends Controller
 
     private function stampLogin(Request $request, User $user): void
     {
-        if (!SchemaSupport::hasColumn('users', 'last_login_at')) {
+        if (! SchemaSupport::hasColumn('users', 'last_login_at')) {
             return;
         }
 
@@ -122,7 +123,7 @@ class AuthController extends Controller
 
     private function recordLoginEvent(Request $request, ?User $user, string $result, ?string $reason): void
     {
-        if (!SchemaSupport::hasTable('login_events')) {
+        if (! SchemaSupport::hasTable('login_events')) {
             return;
         }
 
@@ -144,14 +145,14 @@ class AuthController extends Controller
     public function me()
     {
         $user = auth('api')->user();
-        if (!$user) {
+        if (! $user) {
             return response()->json(['status' => false, 'message' => 'User not found'], 404);
         }
 
         // Your own profile: you own this identity document, so the complete
         // number is disclosed without needing a grant. toArray() still hides the
         // raw column; aadhaar_full is added explicitly.
-        $payload = \App\Support\AadhaarDisclosure::attach(
+        $payload = AadhaarDisclosure::attach(
             $user->toArray(),
             $user,
             $user,
@@ -183,7 +184,7 @@ class AuthController extends Controller
     {
         $revoked = AuthSession::revokeCurrentToken();
 
-        if (!$revoked) {
+        if (! $revoked) {
             // Already logged without the token by AuthSession. The client is
             // still told to discard its session — a blacklist that is refusing
             // writes must not keep the user signed in.
@@ -199,8 +200,8 @@ class AuthController extends Controller
     public function register(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'name'     => 'required',
-            'email'    => 'required|email|unique:users',
+            'name' => 'required',
+            'email' => 'required|email|unique:users',
             'password' => 'required|min:6',
         ]);
 
@@ -208,7 +209,17 @@ class AuthController extends Controller
             return response()->json(['status' => false, 'message' => $validator->errors()->first()], 422);
         }
 
-        $role = (int) ($request->role ?? 1);
+        $actingUser = auth('api')->user();
+        $requestedRole = (int) ($request->role ?? 3);
+
+        // SECURITY FIX: Prevent privilege escalation.
+        // Only a Super Admin (role 0) may create Admin (1) or Super Admin (0) accounts.
+        // Agents (4) are created by Admins but never by this endpoint's role param.
+        if (in_array($requestedRole, [0, 1], true)) {
+            if (! $actingUser || (int) $actingUser->role !== 0) {
+                return response()->json(['status' => false, 'message' => 'Only a Super Admin can create Admin/Super Admin accounts'], 403);
+            }
+        }
 
         // An account scoped to more than one company must be a Master admin
         // (role 1) — AdminController::dashboard() and the other admin-scoped
@@ -220,15 +231,15 @@ class AuthController extends Controller
         // never be silently promoted to Admin just for spanning companies.
         $companyCode = trim((string) $request->company_code);
         $companyCount = $companyCode === '' ? 0 : count(array_filter(array_map('trim', explode(',', $companyCode))));
-        if ($companyCount > 1 && $role !== 4) {
-            $role = 1;
+        if ($companyCount > 1 && $requestedRole !== 4) {
+            $requestedRole = 1;
         }
 
         $user = User::create([
-            'name'         => $request->name,
-            'email'        => $request->email,
-            'password'     => $request->password,
-            'role'         => $role,
+            'name' => $request->name,
+            'email' => $request->email,
+            'password' => $request->password,
+            'role' => $requestedRole,
             'company_code' => $request->company_code,
             // This is the only creation path for RBAC admin/agent accounts —
             // they log in with email + password directly, never claim an
@@ -238,23 +249,23 @@ class AuthController extends Controller
             // into the Appointments list. UserController::store already
             // avoids this for the employee-creation path by forcing a code;
             // mirror that here.
-            'emp_code'     => strtoupper(Str::random(8)),
+            'emp_code' => strtoupper(Str::random(8)),
             // Role 4 (Agent) isn't excluded by role in UserController::index
             // (View Employees) the way Admin/Super Admin are — only its
             // `type` is checked there, and 'agent' is the value the rest of
             // the app already keys off (e.g. added_by scoping). Without it,
             // fixing the emp_code above would have made agents newly leak
             // into View Employees instead of Appointments.
-            'type'         => $role === 4 ? 'agent' : null,
+            'type' => $requestedRole === 4 ? 'agent' : null,
         ]);
 
         $token = JWTAuth::fromUser($user);
 
         return response()->json([
-            'status'  => true,
+            'status' => true,
             'message' => 'User registered successfully',
-            'token'   => $token,
-            'user'    => $user,
+            'token' => $token,
+            'user' => $user,
         ]);
     }
 
@@ -263,8 +274,8 @@ class AuthController extends Controller
         $user = auth('api')->user();
 
         $validator = Validator::make($request->all(), [
-            'password'        => 'required',
-            'new_password'    => 'required|min:6',
+            'password' => 'required',
+            'new_password' => 'required|min:6',
             'confirm_password' => 'required|same:new_password',
         ]);
 
@@ -272,7 +283,7 @@ class AuthController extends Controller
             return response()->json(['status' => false, 'message' => $validator->errors()->first()], 422);
         }
 
-        if (!Hash::check($request->password, $user->password)) {
+        if (! Hash::check($request->password, $user->password)) {
             return response()->json(['status' => false, 'message' => 'Current password is incorrect'], 422);
         }
 
@@ -289,12 +300,12 @@ class AuthController extends Controller
             return response()->json([
                 'status' => true,
                 'company_code' => $emp->company_code,
-                'unit' => $emp->unit
+                'unit' => $emp->unit,
             ]);
         }
+
         return response()->json(['status' => false, 'message' => 'Not found'], 404);
     }
-
 
     public function newData(Request $request)
     {
@@ -343,14 +354,14 @@ class AuthController extends Controller
     {
         $emp = $this->findEmployeeForReset($request);
 
-        if (!$emp || !$emp->verification_token || !$emp->verification_token_expires_at) {
+        if (! $emp || ! $emp->verification_token || ! $emp->verification_token_expires_at) {
             return null;
         }
         if (now()->greaterThan($emp->verification_token_expires_at)) {
             return null;
         }
         $submitted = (string) $request->verification_token;
-        if ($submitted === '' || !hash_equals($emp->verification_token, hash('sha256', $submitted))) {
+        if ($submitted === '' || ! hash_equals($emp->verification_token, hash('sha256', $submitted))) {
             return null;
         }
 
@@ -369,7 +380,7 @@ class AuthController extends Controller
         }
 
         $emp = $this->findEmployeeForReset($request);
-        if (!$emp) {
+        if (! $emp) {
             return response()->json(['status' => false, 'message' => 'Employee not found'], 404);
         }
         if ($emp->is_deleted == 1) {
@@ -394,7 +405,7 @@ class AuthController extends Controller
                 ?? $request->mobile_number
         ));
 
-        if (!AadhaarReference::isValid($submittedAadhaar)) {
+        if (! AadhaarReference::isValid($submittedAadhaar)) {
             return response()->json(['status' => false, 'message' => 'Enter a valid 12-digit Aadhar card number'], 422);
         }
 
@@ -406,16 +417,20 @@ class AuthController extends Controller
             (string) ($emp->encrypted_aadhaar_number ?? $emp->getRawOriginal('aadhar_card_no'))
         );
 
-        if ($onFileAadhaar !== '' && $onFileAadhaar !== $submittedAadhaar) {
+        // SECURITY FIX: Never auto-accept a first-claim Aadhaar.
+        // If no Aadhaar is on file, the employee cannot self-serve password reset.
+        // They must contact their administrator to configure a recovery method.
+        if ($onFileAadhaar === '') {
+            return response()->json([
+                'status' => false,
+                'message' => 'No recovery method configured. Contact your administrator to set up password recovery.',
+            ], 422);
+        }
+
+        if ($onFileAadhaar !== $submittedAadhaar) {
             return response()->json(['status' => false, 'message' => 'Details do not match our records'], 422);
         }
 
-        // First-time claim: nothing on file yet to check against, so capture
-        // what was submitted. Once set, future attempts are cross-checked
-        // against these values.
-        if ($onFileAadhaar === '') {
-            $emp->aadhar_card_no = $submittedAadhaar;
-        }
         if (empty($emp->address) && $request->filled('address')) {
             $emp->address = $request->address;
         }
@@ -457,7 +472,7 @@ class AuthController extends Controller
             return response()->json(['status' => false, 'message' => $validator->errors()->first()], 422);
         }
 
-        // A step-1 identity check (emp_code + mobile, see verifyEmployeeIdentity)
+        // A step-1 identity check (emp_code + Aadhaar, see verifyEmployeeIdentity)
         // may have just run and handed back a verification_token. That's what
         // lets a first-time employee with no email on file yet "claim" one
         // here, instead of the plain findUserByEmail() lookup below failing
@@ -475,23 +490,31 @@ class AuthController extends Controller
             }
         }
 
-        if (!$emp) {
+        if (! $emp) {
             $emp = $this->findUserByEmail($request);
         }
-        if (!$emp) {
+        if (! $emp) {
             return response()->json(['status' => false, 'message' => 'Email not found in our records.'], 404);
         }
 
-        $otp = (string) random_int(1000, 9999);
+        $otp = (string) random_int(100000, 999999); // 6-digit OTP
 
         try {
             Mail::to($emp->email)->send(new PortalOtpMail($otp, $emp->name ?? 'there'));
         } catch (\Throwable $e) {
-            Log::error('Failed to send OTP email: ' . $e->getMessage());
+            Log::error('Failed to send OTP email: '.$e->getMessage());
+
             return response()->json(['status' => false, 'message' => 'Could not send OTP email. Please try again later.'], 500);
         }
 
-        $emp->otp = $otp;
+        // Store OTP as hash with expiry and attempt counter (JSON in otp column)
+        $otpData = [
+            'hash' => Hash::make($otp),
+            'expires_at' => now()->addMinutes(10)->toISOString(),
+            'attempts' => 0,
+            'verified' => false,
+        ];
+        $emp->otp = json_encode($otpData);
         $emp->save();
 
         return response()->json(['status' => true, 'message' => 'OTP sent to email']);
@@ -501,7 +524,7 @@ class AuthController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'email' => 'required|email',
-            'otp' => 'required',
+            'otp' => 'required|digits:6',
         ]);
 
         if ($validator->fails()) {
@@ -509,9 +532,38 @@ class AuthController extends Controller
         }
 
         $emp = $this->findUserByEmail($request);
-        if (!$emp || !$emp->otp || (string) $emp->otp !== (string) $request->otp) {
+        if (! $emp || ! $emp->otp) {
             return response()->json(['status' => false, 'message' => 'Invalid OTP'], 422);
         }
+
+        $otpData = json_decode($emp->otp, true);
+        if (! $otpData || ! isset($otpData['hash'], $otpData['expires_at'], $otpData['attempts'])) {
+            return response()->json(['status' => false, 'message' => 'Invalid OTP'], 422);
+        }
+
+        // Check expiry
+        if (now()->greaterThan($otpData['expires_at'])) {
+            return response()->json(['status' => false, 'message' => 'OTP expired. Please request a new one.'], 422);
+        }
+
+        // Check attempts
+        if ($otpData['attempts'] >= 5) {
+            return response()->json(['status' => false, 'message' => 'Too many attempts. Please request a new OTP.'], 422);
+        }
+
+        // Verify hash
+        if (! Hash::check($request->otp, $otpData['hash'])) {
+            $otpData['attempts']++;
+            $emp->otp = json_encode($otpData);
+            $emp->save();
+
+            return response()->json(['status' => false, 'message' => 'Invalid OTP'], 422);
+        }
+
+        // Mark as verified
+        $otpData['verified'] = true;
+        $emp->otp = json_encode($otpData);
+        $emp->save();
 
         return response()->json(['status' => true, 'message' => 'OTP verified']);
     }
@@ -520,7 +572,7 @@ class AuthController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'email' => 'required|email',
-            'password' => 'required|min:6',
+            'password' => 'required|min:8',
         ]);
 
         if ($validator->fails()) {
@@ -528,7 +580,17 @@ class AuthController extends Controller
         }
 
         $emp = $this->findUserByEmail($request);
-        if (!$emp || !$emp->otp) {
+        if (! $emp || ! $emp->otp) {
+            return response()->json(['status' => false, 'message' => 'Verification expired. Please request a new OTP.'], 422);
+        }
+
+        $otpData = json_decode($emp->otp, true);
+        if (! $otpData || ! isset($otpData['verified']) || ! $otpData['verified']) {
+            return response()->json(['status' => false, 'message' => 'OTP not verified. Please verify the OTP first.'], 422);
+        }
+
+        // Check expiry even for verified OTP
+        if (isset($otpData['expires_at']) && now()->greaterThan($otpData['expires_at'])) {
             return response()->json(['status' => false, 'message' => 'Verification expired. Please request a new OTP.'], 422);
         }
 

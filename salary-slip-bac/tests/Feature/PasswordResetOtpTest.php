@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Mail\PortalOtpMail;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
@@ -11,16 +12,12 @@ use Tests\TestCase;
 /**
  * The email-OTP password reset (POST /new{data}, type 1 → 2 → 3).
  *
- * Step 3, setNewPasswordAfterVerification(), checks only that an OTP exists on
- * the row:
- *
- *     if (!$emp || !$emp->otp) { ...422... }
- *     $emp->password = $request->password;
- *
- * It never compares the submitted OTP against the stored one — and the React
- * client does not send one at that step either (setNewPassword posts just
- * { password, email, type: 3 }). The code is mailed to the account owner and
- * then never required, so possession of it is not actually part of the reset.
+ * Step 1 emails a 6-digit OTP and stores only its hash (with an expiry, an
+ * attempt counter and a verified flag) on the row. Step 2 checks the submitted
+ * code against that hash and marks the reset verified. Step 3,
+ * setNewPasswordAfterVerification(), refuses to change the password until the
+ * OTP has been verified — the code mailed to the owner is required, not just
+ * the existence of a pending reset.
  *
  * The route is public and throttled at 15/min.
  */
@@ -50,8 +47,13 @@ class PasswordResetOtpTest extends TestCase
         $this->postJson('/api/new-email', ['email' => $user->email, 'type' => 1])
             ->assertOk();
 
-        $otp = $user->fresh()->otp;
-        $this->assertNotNull($otp, 'step 1 did not store an OTP');
+        $otp = null;
+        Mail::assertSent(PortalOtpMail::class, function (PortalOtpMail $mail) use (&$otp) {
+            $otp = $mail->otp;
+
+            return true;
+        });
+        $this->assertNotNull($otp, 'step 1 did not email an OTP');
 
         $this->postJson('/api/new-email-otp', ['email' => $user->email, 'otp' => $otp, 'type' => 2])
             ->assertOk();
@@ -62,7 +64,7 @@ class PasswordResetOtpTest extends TestCase
         $this->assertTrue(Hash::check('chosen-by-owner', $user->fresh()->password));
     }
 
-    public function test_step_three_does_not_require_the_code_that_was_emailed(): void
+    public function test_step_three_requires_a_verified_otp(): void
     {
         Mail::fake();
         $user = $this->employee();
@@ -71,37 +73,36 @@ class PasswordResetOtpTest extends TestCase
         // email address. The code goes to the account owner's inbox.
         $this->postJson('/api/new-email', ['email' => $user->email, 'type' => 1])->assertOk();
 
-        // Step 2 is simply skipped, and no OTP is supplied here.
+        // Step 2 is skipped, so no OTP has been verified for this reset.
         $response = $this->resetPassword([
             'email' => $user->email,
             'password' => 'attacker-chosen',
             'type' => 3,
         ]);
 
-        $response->assertOk();
+        $response->assertStatus(422);
 
         $this->assertTrue(
-            Hash::check('attacker-chosen', $user->fresh()->password),
-            'the password was NOT changed — step 3 verified the OTP after all'
+            Hash::check('original-password', $user->fresh()->password),
+            'the password was changed without a verified OTP'
         );
     }
 
-    public function test_an_incorrect_code_is_accepted_at_step_three(): void
+    public function test_an_incorrect_code_is_refused_at_step_three(): void
     {
         Mail::fake();
         $user = $this->employee();
         $this->postJson('/api/new-email', ['email' => $user->email, 'type' => 1])->assertOk();
 
-        // Supplying a deliberately wrong OTP changes nothing, because the
-        // value is not read at this step.
+        // No OTP has been verified, so an unverified reset is refused.
         $this->resetPassword([
             'email' => $user->email,
             'otp' => '0000',
             'password' => 'attacker-chosen',
             'type' => 3,
-        ])->assertOk();
+        ])->assertStatus(422);
 
-        $this->assertTrue(Hash::check('attacker-chosen', $user->fresh()->password));
+        $this->assertTrue(Hash::check('original-password', $user->fresh()->password));
     }
 
     public function test_step_two_does_check_the_code(): void

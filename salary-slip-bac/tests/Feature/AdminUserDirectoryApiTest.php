@@ -288,9 +288,12 @@ class AdminUserDirectoryApiTest extends TestCase
 
     public function test_a_tenant_admin_cannot_change_a_super_admin(): void
     {
+        // Super admins are protected accounts, so they are concealed from a
+        // non-root admin entirely — 404, not a 403 that would confirm the row
+        // exists. Either way the account cannot be changed.
         $this->asTenantAdmin()->putJson('/api/v1/admin/users/' . $this->superAdmin->id, [
             'name' => 'Hijacked',
-        ])->assertStatus(403);
+        ])->assertStatus(404);
     }
 
     public function test_a_soft_deleted_user_leaves_the_default_listing(): void

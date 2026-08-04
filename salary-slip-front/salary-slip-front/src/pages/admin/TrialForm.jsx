@@ -35,6 +35,7 @@ import { authApi } from "../../utils/api";
 import { exportNodeToPdf } from "../../utils/pdfUtils";
 import TrialFormModal from "../auth/TrialFormModal";
 import AppointmentModal from "../auth/AppointmentModal";
+import { escapeHtml } from "../../utils/html";
 
 function firstPresent(...values) {
   return values.find((value) => value !== undefined && value !== null) ?? "";
@@ -389,9 +390,11 @@ export default function TrialForm() {
     [forms],
   );
 
+  const isAgentUser = user?.type === "agent" || user?.role === "agent" || Number(user?.role) === 4;
+
   const displayedForms = useMemo(
-    () => forms.filter((f) => f.status !== "Approved"),
-    [forms],
+    () => forms.filter((f) => isAgentUser || f.status !== "Approved"),
+    [forms, isAgentUser],
   );
 
   const handleDownloadPDF = async () => {
@@ -436,7 +439,7 @@ export default function TrialForm() {
       `<!DOCTYPE html><html><head>
         <base href="${document.baseURI}">
         ${appStyles}
-        <title>Trial Form – ${selected?.name || ""}</title>
+        <title>Trial Form – ${escapeHtml(selected?.name)}</title>
         <style>
           *, *::before, *::after { box-sizing: border-box; }
           html, body { margin: 0; padding: 0; background: white; font-family: sans-serif; }

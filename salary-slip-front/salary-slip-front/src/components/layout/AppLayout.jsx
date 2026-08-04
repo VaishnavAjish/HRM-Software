@@ -21,6 +21,7 @@ const pageTitles = {
   "/admin/reports": "Reports",
   "/admin/settings": "Settings",
   "/admin/access-control/users": "Access Control - Users",
+  "/admin/access-control/roles": "Access Control - Roles",
   "/admin/profile": "Profile",
   "/employee": "Dashboard",
   "/employee/payslips": "Payslips",
@@ -30,6 +31,13 @@ const pageTitles = {
   "/agent": "Dashboard",
   "/agent/trial-forms": "Trial Form",
   "/agent/appointments": "Appointment Form",
+  "/admin/hr": "HR Dashboard",
+  "/admin/hr/hiring": "Hiring",
+  "/admin/hr/assets": "Asset Allocation",
+  "/admin/hr/performance": "Performance Matrix",
+  "/admin/hr/exit": "Exit Management",
+  "/admin/hr/reports": "HR Reports",
+  "/admin/hr/settings": "HR Settings",
 };
 
 const SIDEBAR_WIDTH = 280;

@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\DocumentException;
 use App\Models\DocumentUpload;
 use App\Models\User;
+use App\Services\Documents\DocumentService;
 use App\Services\DocumentStorageService;
 use App\Support\AuditLogger;
 use App\Support\DocumentType;
@@ -21,17 +23,17 @@ class DocumentController extends Controller
             foreach ($types as $slug => $label) {
                 $categories[] = [
                     'category' => $category,
-                    'value'    => $slug,
-                    'label'    => $label,
+                    'value' => $slug,
+                    'label' => $label,
                 ];
             }
         }
 
         return response()->json([
             'status' => true,
-            'data'   => $categories,
-            'meta'   => [
-                'max_bytes'          => DocumentStorageService::MAX_BYTES,
+            'data' => $categories,
+            'meta' => [
+                'max_bytes' => DocumentStorageService::MAX_BYTES,
                 'allowed_extensions' => DocumentStorageService::ALLOWED_EXTENSIONS,
             ],
         ]);
@@ -44,14 +46,19 @@ class DocumentController extends Controller
     public function previewName(Request $request)
     {
         $request->validate([
-            'user_id'       => 'nullable|integer|exists:users,id',
+            'user_id' => 'nullable|integer|exists:users,id',
             'document_type' => 'required|string',
-            'file_name'     => 'required|string|max:255',
+            'file_name' => 'required|string|max:255',
         ]);
 
         $owner = $this->resolveOwner($request);
 
-        if (!$owner) {
+        if (! $owner) {
+            return response()->json(['status' => false, 'message' => 'Employee not found'], 404);
+        }
+
+        // SECURITY FIX: Enforce actor's scope on document preview.
+        if (! $this->canAccessOwner($owner)) {
             return response()->json(['status' => false, 'message' => 'Employee not found'], 404);
         }
 
@@ -61,10 +68,10 @@ class DocumentController extends Controller
 
         return response()->json([
             'status' => true,
-            'data'   => [
+            'data' => [
                 'generated_name' => DocumentStorageService::previewName($owner, $type, $request->file_name),
-                'document_type'  => $type,
-                'version'        => DocumentStorageService::nextVersion($owner->id, $type),
+                'document_type' => $type,
+                'version' => DocumentStorageService::nextVersion($owner->id, $type),
             ],
         ]);
     }
@@ -72,14 +79,19 @@ class DocumentController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'user_id'       => 'nullable|integer|exists:users,id',
+            'user_id' => 'nullable|integer|exists:users,id',
             'document_type' => 'required|string',
-            'file'          => 'required|file',
+            'file' => 'required|file',
         ]);
 
         $owner = $this->resolveOwner($request);
 
-        if (!$owner) {
+        if (! $owner) {
+            return response()->json(['status' => false, 'message' => 'Employee not found'], 404);
+        }
+
+        // SECURITY FIX: Enforce actor's scope on document upload.
+        if (! $this->canAccessOwner($owner)) {
             return response()->json(['status' => false, 'message' => 'Employee not found'], 404);
         }
 
@@ -92,7 +104,7 @@ class DocumentController extends Controller
                 // Same S3 pipeline as /v1/documents, mapped back onto this
                 // endpoint's original response shape so existing callers keep
                 // working while everything lands in the bucket.
-                $version = \App\Services\Documents\DocumentService::make()->upload(
+                $version = DocumentService::make()->upload(
                     $request->file('file'),
                     $owner,
                     $type,
@@ -101,17 +113,17 @@ class DocumentController extends Controller
                 );
 
                 $document = (object) [
-                    'id'             => $version->id,
-                    'user_id'        => $owner->id,
-                    'emp_code'       => $owner->emp_code,
-                    'document_type'  => $type,
-                    'original_name'  => $version->original_file_name,
+                    'id' => $version->id,
+                    'user_id' => $owner->id,
+                    'emp_code' => $owner->emp_code,
+                    'document_type' => $type,
+                    'original_name' => $version->original_file_name,
                     'generated_name' => $version->generated_file_name,
-                    'version'        => $version->version,
-                    'size'           => $version->file_size,
-                    'mime_type'      => $version->mime_type,
-                    'checksum'       => $version->checksum,
-                    'storage_path'   => null, // private object — no direct path
+                    'version' => $version->version,
+                    'size' => $version->file_size,
+                    'mime_type' => $version->mime_type,
+                    'checksum' => $version->checksum,
+                    'storage_path' => null, // private object — no direct path
                 ];
             } else {
                 $document = DocumentStorageService::store(
@@ -121,7 +133,7 @@ class DocumentController extends Controller
                     optional(auth('api')->user())->id
                 );
             }
-        } catch (\App\Exceptions\DocumentException $e) {
+        } catch (DocumentException $e) {
             return response()->json(['status' => false, 'message' => $e->getMessage()], $e->status);
         } catch (RuntimeException $e) {
             return response()->json(['status' => false, 'message' => $e->getMessage()], 422);
@@ -129,15 +141,15 @@ class DocumentController extends Controller
 
         // Who/when/IP/device come from AuditLogger; the rest is document detail.
         AuditLogger::log($request, 'UPLOAD', 'Documents', null, [
-            'document_id'    => $document->id,
-            'user_id'        => $document->user_id,
-            'emp_code'       => $document->emp_code,
-            'document_type'  => $document->document_type,
-            'original_name'  => $document->original_name,
+            'document_id' => $document->id,
+            'user_id' => $document->user_id,
+            'emp_code' => $document->emp_code,
+            'document_type' => $document->document_type,
+            'original_name' => $document->original_name,
             'generated_name' => $document->generated_name,
-            'version'        => $document->version,
-            'size'           => $document->size,
-            'checksum'       => $document->checksum,
+            'version' => $document->version,
+            'size' => $document->size,
+            'checksum' => $document->checksum,
         ]);
 
         return response()->json(['status' => true, 'message' => 'Document uploaded', 'data' => $document], 201);
@@ -150,6 +162,21 @@ class DocumentController extends Controller
     public function index(Request $request)
     {
         $query = DocumentUpload::query()->with('user:id,name,emp_code');
+
+        // SECURITY FIX: Scope document list to actor's company/unit.
+        $userAuth = auth('api')->user();
+        if ($userAuth) {
+            if ((int) $userAuth->role === 1) {
+                $query->where('company_code', $userAuth->company_code);
+            } elseif ((int) $userAuth->role === 2) {
+                $query->where('company_code', $userAuth->company_code)
+                    ->where('unit', $userAuth->unit);
+            } elseif ((int) $userAuth->role === 4 || $userAuth->type === 'agent') {
+                $query->where('added_by', $userAuth->id);
+            } elseif ((int) $userAuth->role !== 0) {
+                $query->whereRaw('1 = 0');
+            }
+        }
 
         if ($search = $request->query('search')) {
             $query->where(function ($q) use ($search) {
@@ -184,7 +211,7 @@ class DocumentController extends Controller
 
         // Default to the current version of each document; pass all_versions=1
         // to see the full history.
-        if (!$request->boolean('all_versions')) {
+        if (! $request->boolean('all_versions')) {
             $query->latestVersions();
         }
 
@@ -193,11 +220,11 @@ class DocumentController extends Controller
 
         return response()->json([
             'status' => true,
-            'data'   => $documents->items(),
-            'meta'   => [
-                'total'      => $documents->total(),
-                'page'       => $documents->currentPage(),
-                'limit'      => $documents->perPage(),
+            'data' => $documents->items(),
+            'meta' => [
+                'total' => $documents->total(),
+                'page' => $documents->currentPage(),
+                'limit' => $documents->perPage(),
                 'totalPages' => $documents->lastPage(),
             ],
         ]);
@@ -207,7 +234,13 @@ class DocumentController extends Controller
     {
         $document = DocumentUpload::find($id);
 
-        if (!$document) {
+        if (! $document) {
+            return response()->json(['status' => false, 'message' => 'Document not found'], 404);
+        }
+
+        // SECURITY FIX: Enforce actor's scope on document delete.
+        $owner = User::find($document->user_id);
+        if (! $owner || ! $this->canAccessOwner($owner)) {
             return response()->json(['status' => false, 'message' => 'Document not found'], 404);
         }
 
@@ -218,10 +251,10 @@ class DocumentController extends Controller
         }
 
         AuditLogger::log($request, 'DELETE', 'Documents', [
-            'document_id'    => $document->id,
+            'document_id' => $document->id,
             'generated_name' => $document->generated_name,
-            'document_type'  => $document->document_type,
-            'emp_code'       => $document->emp_code,
+            'document_type' => $document->document_type,
+            'emp_code' => $document->emp_code,
         ], null);
 
         $document->delete();
@@ -241,5 +274,32 @@ class DocumentController extends Controller
         }
 
         return auth('api')->user();
+    }
+
+    /**
+     * SECURITY FIX: Check if the authenticated user can access the given owner.
+     * Mirrors the scoping logic in UserController::inManagedScope.
+     */
+    private function canAccessOwner(User $owner): bool
+    {
+        $userAuth = auth('api')->user();
+        if (! $userAuth) {
+            return false;
+        }
+        if ((int) $userAuth->role === 0) {
+            return true;
+        }
+        if ((int) $userAuth->role === 1) {
+            return $owner->company_code === $userAuth->company_code;
+        }
+        if ((int) $userAuth->role === 2) {
+            return $owner->company_code === $userAuth->company_code
+                && $owner->unit === $userAuth->unit;
+        }
+        if ((int) $userAuth->role === 4 || $userAuth->type === 'agent') {
+            return $owner->added_by === $userAuth->id;
+        }
+
+        return false;
     }
 }

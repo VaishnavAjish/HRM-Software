@@ -10,6 +10,7 @@ import { PrintableTrialForm } from "../../components/forms/PrintableTrialForm";
 import { normalizeTrialForm } from "../../components/forms/trial-form-helpers";
 import toast from "react-hot-toast";
 import { getAadhaarDisplayValue } from "../../utils/aadhaar";
+import { escapeHtml, safeImageSrc } from "../../utils/html";
 
 export default function AgentDashboard() {
   const { user } = useAuth();
@@ -232,12 +233,12 @@ export default function AgentDashboard() {
           <div class="doc-page">
             <div class="doc-page-header">
               <span class="doc-page-title">${label}</span>
-              <span class="doc-page-name">${normalizedData?.fullName || normalizedData?.name || ""}</span>
+              <span class="doc-page-name">${escapeHtml(normalizedData?.fullName || normalizedData?.name)}</span>
             </div>
             <div class="doc-page-body">
-              <img src="${normalizedData.documents[key]}" alt="${label}" />
+              <img src="${safeImageSrc(normalizedData.documents[key])}" alt="${label}" />
             </div>
-            <div class="doc-page-footer">${label} — ${normalizedData?.fullName || normalizedData?.name || ""}</div>
+            <div class="doc-page-footer">${label} — ${escapeHtml(normalizedData?.fullName || normalizedData?.name)}</div>
           </div>
         `
         )
@@ -266,7 +267,7 @@ export default function AgentDashboard() {
         `<!DOCTYPE html><html><head>
           <base href="${document.baseURI}">
           ${appStyles}
-          <title>${pageTitle} – ${nameString}</title>
+          <title>${pageTitle} – ${escapeHtml(nameString)}</title>
           <style>
             *, *::before, *::after { box-sizing: border-box; }
             html, body { margin: 0; padding: 0; background: white; font-family: sans-serif; }

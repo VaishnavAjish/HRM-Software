@@ -2,12 +2,78 @@
 
 namespace App\Models;
 
+use App\Exceptions\ProtectedAccountException;
 use App\Services\Authorization\SchemaSupport;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Tymon\JWTAuth\Contracts\JWTSubject;
 
 class User extends Authenticatable implements JWTSubject
 {
+    /**
+     * A write to a protected system account is refused unless the actor is
+     * itself a super administrator. The hidden-account flags are excluded from
+     * $fillable below, so this is the second line of defence: even a
+     * hand-rolled ->update() cannot flip is_hidden/is_protected on a protected
+     * row, or change a protected account, from an ordinary admin's session.
+     *
+     * A null actor (console commands, seeders, queued jobs) is trusted — those
+     * run outside a request and are how the account is provisioned in the first
+     * place. Every mutation route is behind jwt.auth, so a null actor never
+     * occurs on a real API write.
+     */
+    protected static function booted(): void
+    {
+        static::updating(function (self $user) {
+            if ($user->isProtected() && !self::actorMaySteward()) {
+                throw new ProtectedAccountException();
+            }
+        });
+
+        static::deleting(function (self $user) {
+            if ($user->isProtected() && !self::actorMaySteward()) {
+                throw new ProtectedAccountException('This account cannot be deleted.');
+            }
+        });
+    }
+
+    private static function actorMaySteward(): bool
+    {
+        $actor = auth('api')->user();
+
+        if ($actor === null) {
+            return true;
+        }
+
+        return $actor instanceof self && $actor->isSuperAdmin();
+    }
+
+    public function isSuperAdmin(): bool
+    {
+        return (int) $this->role === 0 || (bool) $this->getAttribute('is_super_admin');
+    }
+
+    public function isHidden(): bool
+    {
+        return (bool) $this->getAttribute('is_hidden');
+    }
+
+    public function isSystemAccount(): bool
+    {
+        return (bool) $this->getAttribute('is_system_account') || $this->isSuperAdmin();
+    }
+
+    /** Super admins are inherently protected even before the flag is set. */
+    public function isProtected(): bool
+    {
+        return (bool) $this->getAttribute('is_protected') || $this->isSuperAdmin();
+    }
+
+    /** Exclude hidden accounts from an Eloquent query. */
+    public function scopeVisible($query)
+    {
+        return \App\Support\HiddenAccounts::exclude($query, $this->getTable());
+    }
+
     protected $fillable = [
         'name', 'email', 'password', 'otp', 'status', 'role', 'emp_code', 'company_code', 'unit',
         'mobile_number', 'dob', 'photo', 'address', 'is_deleted',
@@ -34,6 +100,7 @@ class User extends Authenticatable implements JWTSubject
     protected $hidden = [
         'password', 'remember_token',
         'encrypted_aadhaar_number', 'aadhar_card_no',
+        'is_super_admin', 'is_hidden', 'is_system_account', 'is_protected',
     ];
 
     protected $appends = ['aadhaar_masked', 'has_aadhaar'];
@@ -47,6 +114,10 @@ class User extends Authenticatable implements JWTSubject
             'encrypted_aadhaar_number' => 'encrypted',
             'aadhaar_extracted_at' => 'datetime',
             'aadhaar_verified_at' => 'datetime',
+            'is_super_admin' => 'boolean',
+            'is_hidden' => 'boolean',
+            'is_system_account' => 'boolean',
+            'is_protected' => 'boolean',
         ];
     }
 

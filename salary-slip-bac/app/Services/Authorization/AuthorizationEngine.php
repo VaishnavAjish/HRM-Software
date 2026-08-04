@@ -59,6 +59,18 @@ class AuthorizationEngine
             ), $requestContext, $started);
         }
 
+        // Super administrators bypass the whole evaluation: no role graph, no
+        // policy scan, no scope match. The one check kept above is isActive() —
+        // a deleted or disabled row is refused even here, though a super admin
+        // cannot be deactivated. The decision is still recorded by finish(), so
+        // the bypass is auditable rather than silent.
+        if ($actor->isSuperAdmin()) {
+            return $this->finish($actor, $permissionCode, $resourceData, new AuthorizationDecision(
+                true, 'SUPER_ADMIN_BYPASS', effectiveState: 'ALLOW',
+                legacyDecision: ['allowed' => true, 'reasonCode' => 'SUPER_ADMIN']
+            ), $requestContext, $started);
+        }
+
         if (! $this->scopes->tenantMatches($tenantId, $resourceTenant, $global)) {
             return $this->finish($actor, $permissionCode, $resourceData, new AuthorizationDecision(
                 false, 'TENANT_ACCESS_DENIED', effectiveState: 'DENY'

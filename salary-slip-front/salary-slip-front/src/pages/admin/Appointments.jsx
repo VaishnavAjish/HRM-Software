@@ -48,6 +48,7 @@ import {
   clearAppointmentRouteState,
 } from "../auth/appointmentRouteState";
 import { getCompanyUnits } from "../../config/companyConfig";
+import { escapeHtml, safeImageSrc } from "../../utils/html";
 
 const inputCls =
   "w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-brand-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white";
@@ -976,11 +977,13 @@ export default function Appointments() {
     return Array.from(set).sort((a, b) => b - a);
   }, [appointments]);
 
+  const isAgentUser = user?.type === "agent" || user?.role === "agent" || Number(user?.role) === 4;
+
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
     return appointments.filter((item) => {
-      // Exclude approved forms from the pending table view once approved
-      if (item.status === "Approved") return false;
+      // Exclude approved forms from table view ONLY for admin users (agents see all their submitted forms)
+      if (!isAgentUser && item.status === "Approved") return false;
       const matchesSearch =
         !query ||
         [
@@ -1097,12 +1100,12 @@ export default function Appointments() {
         <div class="doc-page">
           <div class="doc-page-header">
             <span class="doc-page-title">${label}</span>
-            <span class="doc-page-name">${selected?.fullName || ""}</span>
+            <span class="doc-page-name">${escapeHtml(selected?.fullName)}</span>
           </div>
           <div class="doc-page-body">
-            <img src="${selected.documents[key]}" alt="${label}" />
+            <img src="${safeImageSrc(selected.documents[key])}" alt="${label}" />
           </div>
-          <div class="doc-page-footer">${label} — ${selected?.fullName || ""}</div>
+          <div class="doc-page-footer">${label} — ${escapeHtml(selected?.fullName)}</div>
         </div>
       `,
       )
@@ -1129,7 +1132,7 @@ export default function Appointments() {
       `<!DOCTYPE html><html><head>
         <base href="${document.baseURI}">
         ${appStyles}
-        <title>Appointment – ${selected?.fullName || ""}</title>
+        <title>Appointment – ${escapeHtml(selected?.fullName)}</title>
         <style>
           *, *::before, *::after { box-sizing: border-box; }
           html, body { margin: 0; padding: 0; background: white; font-family: sans-serif; }

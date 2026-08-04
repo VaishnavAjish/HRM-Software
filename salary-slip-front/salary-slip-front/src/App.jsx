@@ -45,6 +45,7 @@ const AdminProfile = lazy(() => import("./pages/admin/AdminProfile"));
 const Settings = lazy(() => import("./pages/admin/Settings"));
 const PermissionMatrix = lazy(() => import("./pages/admin/PermissionMatrix"));
 const AccessControlUsers = lazy(() => import("./pages/admin/accessControl/AccessControlUsers"));
+const Roles = lazy(() => import("./pages/admin/accessControl/Roles"));
 const Policies = lazy(() => import("./pages/admin/accessControl/Policies"));
 const AccessRequests = lazy(() => import("./pages/admin/accessControl/AccessRequests"));
 const Delegations = lazy(() => import("./pages/admin/accessControl/Delegations"));
@@ -205,6 +206,14 @@ function AppRoutes() {
           element={
             <ProtectedRoute requiredPermission="admin.user.read">
               <AccessControlUsers />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="access-control/roles"
+          element={
+            <ProtectedRoute requiredPermission="admin.role.read">
+              <Roles />
             </ProtectedRoute>
           }
         />

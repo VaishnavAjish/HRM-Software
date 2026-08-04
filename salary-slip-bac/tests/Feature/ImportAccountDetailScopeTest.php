@@ -12,16 +12,11 @@ use Tests\TestCase;
 /**
  * Company scoping of the bank-details import.
  *
- * UserController::importAccountDetail matches on the employee code alone:
- *
- *     User::where('emp_code', $rowData['emp_code'])->update([...])
- *
- * There is no company filter and no ->first(), so every row sharing that code
- * is rewritten — across companies. emp_code carries no unique constraint, and
- * the same code legitimately exists in more than one company.
- *
- * Recorded here before porting; the Node implementation scopes the update to
- * the caller's companies.
+ * UserController::importAccountDetail matches on the employee code and, since
+ * the scope fix, applies that match only to rows the acting admin manages
+ * (same company for a role-1 master). emp_code carries no unique constraint,
+ * and the same code legitimately exists in more than one company — so the
+ * update must never reach another company's row.
  */
 class ImportAccountDetailScopeTest extends TestCase
 {
@@ -82,10 +77,10 @@ class ImportAccountDetailScopeTest extends TestCase
     }
 
     /**
-     * The behaviour in question: an admin of one company rewrites the bank
-     * details of another company's employee who happens to share a code.
+     * The behaviour in question: an admin of one company must not rewrite the
+     * bank details of another company's employee who happens to share a code.
      */
-    public function test_it_also_rewrites_another_companys_employee(): void
+    public function test_it_does_not_rewrite_another_companys_employee(): void
     {
         $admin = $this->admin('nidhi-impex');
         $ours = $this->employee('nidhi-impex', '1138');
@@ -97,14 +92,14 @@ class ImportAccountDetailScopeTest extends TestCase
             ])->assertOk();
 
         $this->assertSame('New Bank', $ours->fresh()->bank_name);
+        $this->assertSame('999999', $ours->fresh()->bank_account_no);
 
-        // Documented as-is. Change this assertion only alongside a fix.
         $this->assertSame(
-            'New Bank',
+            'Original Bank',
             $theirs->fresh()->bank_name,
-            'the cross-company row was left alone — importAccountDetail may have been scoped'
+            'the cross-company row was rewritten — importAccountDetail must be scoped'
         );
-        $this->assertSame('999999', $theirs->fresh()->bank_account_no);
+        $this->assertSame('111111', $theirs->fresh()->bank_account_no);
     }
 
     public function test_a_row_without_an_employee_code_is_ignored(): void

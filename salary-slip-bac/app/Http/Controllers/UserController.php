@@ -2,15 +2,19 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\User;
+use App\Exceptions\DocumentException;
+use App\Models\Document;
 use App\Models\SalarySlip;
 use App\Models\UploadBatch;
-use App\Exceptions\DocumentException;
-use App\Services\DocumentStorageService;
+use App\Models\User;
 use App\Services\Documents\DocumentService;
+use App\Services\DocumentStorageService;
+use App\Support\AadhaarDisclosure;
 use App\Support\AadhaarReference;
 use App\Support\AuditLogger;
 use App\Support\DocumentType;
+use App\Support\HiddenAccounts;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
@@ -19,6 +23,8 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Maatwebsite\Excel\Facades\Excel;
+use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Shared\Date;
 use RuntimeException;
 
 class UserController extends Controller
@@ -43,9 +49,9 @@ class UserController extends Controller
     private const SELF_PROFILE_FIELDS = [
         'name', 'email', 'mobile_number', 'dob', 'address', 'photo',
         'city', 'district', 'state', 'pin',
-        'aadhar_card_no', 'pan_card_no', 'bank_name', 'bank_ifsc_code', 
+        'aadhar_card_no', 'pan_card_no', 'bank_name', 'bank_ifsc_code',
         'bank_account_no', 'pf_no', 'esi_no',
-        'gender', 'department', 'designation', 'joining_date'
+        'gender', 'department', 'designation', 'joining_date',
     ];
 
     /**
@@ -84,19 +90,19 @@ class UserController extends Controller
 
     private function photoUploadRules(): array
     {
-        return ['photo' => 'nullable|image|mimes:jpeg,jpg,png,webp|max:' . $this->maxUploadKb()];
+        return ['photo' => 'nullable|image|mimes:jpeg,jpg,png,webp|max:'.$this->maxUploadKb()];
     }
 
     /** Scanned ID documents — unlike photo these may also be PDFs. */
     private function documentUploadRules(): array
     {
         $max = $this->maxUploadKb();
-        $rule = 'nullable|file|mimes:jpeg,jpg,png,webp,pdf|max:' . $max;
+        $rule = 'nullable|file|mimes:jpeg,jpg,png,webp,pdf|max:'.$max;
 
         return [
-            'adhar_image'  => $rule,
-            'pan_image'    => $rule,
-            'check_image'  => $rule,
+            'adhar_image' => $rule,
+            'pan_image' => $rule,
+            'check_image' => $rule,
             'account_book' => $rule,
         ];
     }
@@ -115,7 +121,7 @@ class UserController extends Controller
         if ($postMax > 0 && $contentLength > $postMax && empty($request->all()) && empty($request->allFiles())) {
             throw ValidationException::withMessages([
                 'files' => 'The upload was too large for the server to accept (limit '
-                    . round($postMax / 1048576, 1) . ' MB in total). Please upload smaller files.',
+                    .round($postMax / 1048576, 1).' MB in total). Please upload smaller files.',
             ]);
         }
     }
@@ -166,8 +172,8 @@ class UserController extends Controller
 
         return new User([
             'aadhar_card_no' => $aadhaar,
-            'emp_code'       => $empCode ?: ($aadhaar ? null : $this->pendingOwnerRef($request)),
-            'name'           => $name ?: null,
+            'emp_code' => $empCode ?: ($aadhaar ? null : $this->pendingOwnerRef($request)),
+            'name' => $name ?: null,
         ]);
     }
 
@@ -185,7 +191,7 @@ class UserController extends Controller
      */
     private function withSafeAadhaar(array $data): array
     {
-        if (!array_key_exists('aadhar_card_no', $data)) {
+        if (! array_key_exists('aadhar_card_no', $data)) {
             return $data;
         }
 
@@ -194,7 +200,7 @@ class UserController extends Controller
         // Scalar-only: an array or object here is malformed input, never a number.
         $digits = is_scalar($incoming) ? AadhaarReference::normalise((string) $incoming) : '';
 
-        if (!AadhaarReference::isValid($digits)) {
+        if (! AadhaarReference::isValid($digits)) {
             unset($data['aadhar_card_no']);
 
             return $data;
@@ -261,13 +267,13 @@ class UserController extends Controller
             ?: $request->input('mobile_number')
             ?: $request->input('punching_no');
 
-        if (!$seed) {
+        if (! $seed) {
             // Nothing identifying at all — keep this submission's files together
             // without colliding with anyone else's.
-            $seed = json_encode($request->except(self::FILE_UPLOAD_FIELDS)) . microtime(true);
+            $seed = json_encode($request->except(self::FILE_UPLOAD_FIELDS)).microtime(true);
         }
 
-        return 'PENDING' . strtoupper(substr(sha1((string) $seed), 0, 10));
+        return 'PENDING'.strtoupper(substr(sha1((string) $seed), 0, 10));
     }
 
     /**
@@ -290,7 +296,7 @@ class UserController extends Controller
         $uploadedBy = optional(auth('api')->user())->id;
 
         foreach (array_intersect(self::FILE_UPLOAD_FIELDS, $allowedFields) as $field) {
-            if (!$request->hasFile($field)) {
+            if (! $request->hasFile($field)) {
                 continue;
             }
 
@@ -330,7 +336,11 @@ class UserController extends Controller
      */
     private function inManagedScope($userAuth, User $employee): bool
     {
-        if (!$userAuth) {
+        if (! $userAuth) {
+            return true;
+        }
+        // Super admins manage every company.
+        if ((int) $userAuth->role === 0) {
             return true;
         }
         if ((int) $userAuth->role === 1) {
@@ -340,7 +350,12 @@ class UserController extends Controller
             return $employee->company_code === $userAuth->company_code
                 && $employee->unit === $userAuth->unit;
         }
-        return true;
+        // SECURITY FIX: Agents (role 4 / type=agent) are scoped to records they created.
+        if ((int) $userAuth->role === 4 || $userAuth->type === 'agent') {
+            return $employee->added_by === $userAuth->id;
+        }
+
+        return false;
     }
 
     /**
@@ -351,7 +366,7 @@ class UserController extends Controller
      */
     private function guardPrivilegedFields($userAuth, array $data): array
     {
-        if (!$userAuth || (int) $userAuth->role === 0) {
+        if (! $userAuth || (int) $userAuth->role === 0) {
             return $data;
         }
 
@@ -374,7 +389,7 @@ class UserController extends Controller
         $query = User::where('is_deleted', 0)
             ->whereNotIn('role', [0, 1, 2]);
 
-        if ($status !== null && (int)$status === 2) {
+        if ($status !== null && (int) $status === 2) {
             $query->where('type', 'pending_employee')
                 ->where('status', 2);
         } else {
@@ -382,7 +397,7 @@ class UserController extends Controller
                 ->where('emp_code', '!=', '')
                 ->where(function ($q) {
                     $q->whereNull('type')
-                      ->orWhereNotIn('type', ['appointment', 'agent', 'pending_employee']);
+                        ->orWhereNotIn('type', ['appointment', 'agent', 'pending_employee']);
                 });
             if ($status !== null) {
                 $query->where('status', $status);
@@ -391,7 +406,7 @@ class UserController extends Controller
 
         $userAuth = auth('api')->user();
         if ($userAuth && ((int) $userAuth->role === 1 || (int) $userAuth->role === 0)) {
-            $requested = $request->company_code && !in_array($request->company_code, ['all', 'all-companies'])
+            $requested = $request->company_code && ! in_array($request->company_code, ['all', 'all-companies'])
                 ? array_filter(array_map('trim', explode(',', $request->company_code)))
                 : [];
 
@@ -411,7 +426,7 @@ class UserController extends Controller
             $query->where('company_code', $userAuth->company_code)->where('unit', $userAuth->unit);
         } elseif ($request->company_code) {
             $codes = explode(',', $request->company_code);
-            if (!in_array('all', $codes) && !in_array('all-companies', $codes)) {
+            if (! in_array('all', $codes) && ! in_array('all-companies', $codes)) {
                 $query->whereIn('company_code', $codes);
             }
         }
@@ -421,8 +436,8 @@ class UserController extends Controller
         if ($request->search) {
             $query->where(function ($q) use ($request) {
                 $q->where('name', 'like', "%{$request->search}%")
-                  ->orWhere('emp_code', 'like', "%{$request->search}%")
-                  ->orWhere('email', 'like', "%{$request->search}%");
+                    ->orWhere('emp_code', 'like', "%{$request->search}%")
+                    ->orWhere('email', 'like', "%{$request->search}%");
             });
         }
 
@@ -442,7 +457,7 @@ class UserController extends Controller
         $rows = collect($employees->items())->map(function (User $employee) use ($userAuth, &$disclosed) {
             $data = $employee->attributesToArray();
 
-            $full = \App\Support\AadhaarDisclosure::fullFor($employee, $userAuth);
+            $full = AadhaarDisclosure::fullFor($employee, $userAuth);
 
             if ($full !== null) {
                 $data['aadhaar_full'] = $full;
@@ -452,7 +467,7 @@ class UserController extends Controller
             return $data;
         })->all();
 
-        \App\Support\AadhaarDisclosure::auditListDisclosure(
+        AadhaarDisclosure::auditListDisclosure(
             $userAuth,
             $disclosed,
             'EMPLOYEE_LIST_FULL_AADHAAR_DISCLOSED',
@@ -461,15 +476,15 @@ class UserController extends Controller
 
         return response()->json([
             'status' => true,
-            'data'   => [
+            'data' => [
                 'users' => [
-                    'data'         => $rows,
-                    'total'        => $employees->total(),
-                    'per_page'     => $employees->perPage(),
+                    'data' => $rows,
+                    'total' => $employees->total(),
+                    'per_page' => $employees->perPage(),
                     'current_page' => $employees->currentPage(),
-                    'last_page'    => $employees->lastPage(),
+                    'last_page' => $employees->lastPage(),
                 ],
-                'active_users'   => $activeCount,
+                'active_users' => $activeCount,
                 'inactive_users' => $inactiveCount,
             ],
         ]);
@@ -478,10 +493,10 @@ class UserController extends Controller
     public function show($id, Request $request)
     {
         $employee = User::find($id);
-        if (!$employee) {
+        if (! $employee) {
             return response()->json(['status' => false, 'message' => 'Employee not found'], 404);
         }
-        
+
         $userAuth = auth('api')->user();
         if ($userAuth) {
             if ((int) $userAuth->role === 1 && $employee->company_code !== $userAuth->company_code) {
@@ -494,7 +509,7 @@ class UserController extends Controller
         // Single-record details: disclose the full number to the owner or to any
         // actor allowed to reach the record. The scope checks above have already
         // turned an out-of-company request into a 404.
-        $payload = \App\Support\AadhaarDisclosure::attach(
+        $payload = AadhaarDisclosure::attach(
             $employee->toArray(),
             $employee,
             $userAuth,
@@ -516,18 +531,35 @@ class UserController extends Controller
         $isPrivileged = in_array((int) $requestedRole, [0, 1], true);
         if ($isPrivileged) {
             $actingUser = auth('api')->user();
-            if (!$actingUser || (int) $actingUser->role !== 0) {
+            if (! $actingUser || (int) $actingUser->role !== 0) {
                 return response()->json(['status' => false, 'message' => 'Only a Super Admin can create Admin/Super Admin accounts'], 403);
             }
         }
 
+        $actingUser = auth('api')->user();
+        $requestedCompanyCode = trim((string) $request->company_code);
+
+        // SECURITY FIX: Validate company_code against actor's scope.
+        if ($actingUser && (int) $actingUser->role !== 0) {
+            if ((int) $actingUser->role === 1) {
+                $allowed = array_filter(array_map('trim', explode(',', (string) $actingUser->company_code)));
+                if (! in_array($requestedCompanyCode, $allowed, true)) {
+                    return response()->json(['status' => false, 'message' => 'Company code not allowed for your account'], 403);
+                }
+            } elseif ((int) $actingUser->role === 2) {
+                if ($requestedCompanyCode !== $actingUser->company_code) {
+                    return response()->json(['status' => false, 'message' => 'Company code not allowed for your account'], 403);
+                }
+            }
+        }
+
         $validator = Validator::make($request->all(), [
-            'name'     => 'required',
-            'email'    => $isPrivileged ? 'required|email|unique:users' : 'nullable|email|unique:users',
-            'password' => $isPrivileged ? 'required|min:6' : 'nullable',
+            'name' => 'required',
+            'email' => $isPrivileged ? 'required|email|unique:users' : 'nullable|email|unique:users',
+            'password' => $isPrivileged ? 'required|min:8' : 'nullable|min:8',
             'emp_code' => 'nullable|unique:users',
             'company_code' => 'required',
-            'unit'     => in_array($request->input('role'), [0, 1, 4, '0', '1', '4'], true) ? 'nullable' : 'required',
+            'unit' => in_array($request->input('role'), [0, 1, 4, '0', '1', '4'], true) ? 'nullable' : 'required',
         ]);
 
         if ($validator->fails()) {
@@ -535,7 +567,8 @@ class UserController extends Controller
         }
 
         $data = $request->all();
-        $data['password'] = $request->password ?? '12345678';
+        // SECURITY FIX: Generate a cryptographically random default password instead of '12345678'.
+        $data['password'] = $request->password ?? bin2hex(random_bytes(16));
         $data['role'] = $request->role ?? 3;
         $data['emp_code'] = $request->emp_code ?: strtoupper(Str::random(8));
         // Normalise to digits, and never store a partial number.
@@ -561,12 +594,12 @@ class UserController extends Controller
     public function update($id, Request $request)
     {
         $employee = User::find($id);
-        if (!$employee) {
+        if (! $employee) {
             return response()->json(['status' => false, 'message' => 'Employee not found'], 404);
         }
 
         $userAuth = auth('api')->user();
-        if (!$this->inManagedScope($userAuth, $employee)) {
+        if (! $this->inManagedScope($userAuth, $employee)) {
             return response()->json(['status' => false, 'message' => 'Employee not found'], 404);
         }
 
@@ -617,11 +650,11 @@ class UserController extends Controller
     public function destroy($id, Request $request)
     {
         $employee = User::find($id);
-        if (!$employee) {
+        if (! $employee) {
             return response()->json(['status' => false, 'message' => 'Employee not found'], 404);
         }
 
-        if (!$this->inManagedScope(auth('api')->user(), $employee)) {
+        if (! $this->inManagedScope(auth('api')->user(), $employee)) {
             return response()->json(['status' => false, 'message' => 'Employee not found'], 404);
         }
 
@@ -633,7 +666,7 @@ class UserController extends Controller
     public function destroyMultiple(Request $request)
     {
         $ids = $request->input('ids', []);
-        if (!is_array($ids) || empty($ids)) {
+        if (! is_array($ids) || empty($ids)) {
             return response()->json(['status' => false, 'message' => 'No IDs provided'], 400);
         }
 
@@ -677,15 +710,15 @@ class UserController extends Controller
     private function deleteAudited(User $employee, Request $request): void
     {
         $snapshot = [
-            'id'           => $employee->id,
-            'name'         => $employee->name,
-            'emp_code'     => $employee->emp_code,
-            'email'        => $employee->email,
-            'role'         => $employee->role,
+            'id' => $employee->id,
+            'name' => $employee->name,
+            'emp_code' => $employee->emp_code,
+            'email' => $employee->email,
+            'role' => $employee->role,
             'company_code' => $employee->company_code,
-            'unit'         => $employee->unit,
-            'department'   => $employee->department,
-            'type'         => $employee->type,
+            'unit' => $employee->unit,
+            'department' => $employee->department,
+            'type' => $employee->type,
             'joining_date' => $employee->joining_date,
         ];
 
@@ -703,17 +736,17 @@ class UserController extends Controller
 
         if ($request->company_code) {
             $codes = explode(',', $request->company_code);
-            if (!in_array('all', $codes) && !in_array('all-companies', $codes)) {
+            if (! in_array('all', $codes) && ! in_array('all-companies', $codes)) {
                 $slips->whereIn('company_code', $codes);
             }
         }
 
         return response()->json([
             'status' => true,
-            'data'   => [
+            'data' => [
                 'total_slips' => $slips->count(),
-                'recent_slips'=> $slips->orderBy('id', 'desc')->take(5)->get(),
-                'user'        => $user,
+                'recent_slips' => $slips->orderBy('id', 'desc')->take(5)->get(),
+                'user' => $user,
             ],
         ]);
     }
@@ -763,6 +796,7 @@ class UserController extends Controller
         if (stripos($msg, 'Integrity constraint violation') !== false || stripos($msg, 'UNIQUE constraint failed') !== false) {
             return 'This row conflicts with an existing record';
         }
+
         return 'Could not save this row due to a database error';
     }
 
@@ -774,7 +808,7 @@ class UserController extends Controller
 
         if (is_numeric($val) && $val > 10000 && $val < 60000) {
             try {
-                return \Carbon\Carbon::instance(\PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject($val))->toDateString();
+                return Carbon::instance(Date::excelToDateTimeObject($val))->toDateString();
             } catch (\Throwable $e) {
                 // fallback
             }
@@ -800,14 +834,14 @@ class UserController extends Controller
 
         foreach ($formats as $fmt) {
             try {
-                return \Carbon\Carbon::createFromFormat($fmt, $val)->toDateString();
+                return Carbon::createFromFormat($fmt, $val)->toDateString();
             } catch (\Throwable $e) {
                 // continue
             }
         }
 
         try {
-            return \Carbon\Carbon::parse($val)->toDateString();
+            return Carbon::parse($val)->toDateString();
         } catch (\Throwable $e) {
             return null;
         }
@@ -825,6 +859,7 @@ class UserController extends Controller
         if (in_array($unit, ['shreeji', 'shreeji building'], true)) {
             return 'nidhi-impex';
         }
+
         return null;
     }
 
@@ -832,7 +867,7 @@ class UserController extends Controller
     {
         // 1. Employee Code
         if (isset($rowData['emp_code'])) {
-            $val = trim((string)$rowData['emp_code']);
+            $val = trim((string) $rowData['emp_code']);
             if (str_ends_with($val, '.0')) {
                 $val = substr($val, 0, -2);
             }
@@ -841,7 +876,7 @@ class UserController extends Controller
 
         // 2. Mobile Number
         if (isset($rowData['mobile_number'])) {
-            $val = trim((string)$rowData['mobile_number']);
+            $val = trim((string) $rowData['mobile_number']);
             if (str_ends_with($val, '.0')) {
                 $val = substr($val, 0, -2);
             }
@@ -850,8 +885,8 @@ class UserController extends Controller
 
         // 3. Email
         if (isset($rowData['email'])) {
-            $email = strtolower(trim((string)$rowData['email']));
-            if ($email === '0' || $email === '0.0' || $email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $email = strtolower(trim((string) $rowData['email']));
+            if ($email === '0' || $email === '0.0' || $email === '' || ! filter_var($email, FILTER_VALIDATE_EMAIL)) {
                 $rowData['email'] = null;
             } else {
                 $rowData['email'] = $email;
@@ -860,7 +895,7 @@ class UserController extends Controller
 
         // 4. Aadhaar Card Number
         if (isset($rowData['aadhar_card_no'])) {
-            $val = trim((string)$rowData['aadhar_card_no']);
+            $val = trim((string) $rowData['aadhar_card_no']);
             if (str_ends_with($val, '.0')) {
                 $val = substr($val, 0, -2);
             }
@@ -869,12 +904,12 @@ class UserController extends Controller
 
         // 5. PAN Card Number
         if (isset($rowData['pan_card_no'])) {
-            $rowData['pan_card_no'] = strtoupper(preg_replace('/\s+/', '', (string)$rowData['pan_card_no']));
+            $rowData['pan_card_no'] = strtoupper(preg_replace('/\s+/', '', (string) $rowData['pan_card_no']));
         }
 
         // 6. Bank Account No
         if (isset($rowData['bank_account_no'])) {
-            $val = trim((string)$rowData['bank_account_no']);
+            $val = trim((string) $rowData['bank_account_no']);
             if (str_ends_with($val, '.0')) {
                 $val = substr($val, 0, -2);
             }
@@ -883,12 +918,12 @@ class UserController extends Controller
 
         // 7. Bank IFSC Code
         if (isset($rowData['bank_ifsc_code'])) {
-            $rowData['bank_ifsc_code'] = strtoupper(preg_replace('/\s+/', '', (string)$rowData['bank_ifsc_code']));
+            $rowData['bank_ifsc_code'] = strtoupper(preg_replace('/\s+/', '', (string) $rowData['bank_ifsc_code']));
         }
 
         // 8. Gender
         if (isset($rowData['gender'])) {
-            $gender = strtolower(trim((string)$rowData['gender']));
+            $gender = strtolower(trim((string) $rowData['gender']));
             if ($gender === 'm' || $gender === 'male') {
                 $rowData['gender'] = 'Male';
             } elseif ($gender === 'f' || $gender === 'female') {
@@ -903,7 +938,7 @@ class UserController extends Controller
         // 9. Company Code
         $comp = null;
         if (isset($rowData['company_code'])) {
-            $comp = strtolower(trim((string)$rowData['company_code']));
+            $comp = strtolower(trim((string) $rowData['company_code']));
             $comp = str_replace(' ', '-', $comp);
             if (in_array($comp, ['silver', 'silverstar', 'silver-star', 'silver-star-jewels'], true)) {
                 $comp = 'silver-star';
@@ -917,7 +952,7 @@ class UserController extends Controller
         // 10. Unit
         $unitVal = null;
         if (isset($rowData['unit'])) {
-            $unitVal = trim((string)$rowData['unit']);
+            $unitVal = trim((string) $rowData['unit']);
             $lowerUnit = strtolower($unitVal);
             if ($lowerUnit === 'daduk' || $lowerUnit === 'dhaduk') {
                 $unitVal = 'Daduk';
@@ -930,7 +965,7 @@ class UserController extends Controller
         }
 
         // If company_code is not resolved yet, infer it from the unique Unit
-        if (empty($comp) && !empty($unitVal)) {
+        if (empty($comp) && ! empty($unitVal)) {
             $comp = $this->resolveCompanyFromUnit($unitVal);
         }
 
@@ -960,22 +995,22 @@ class UserController extends Controller
             if (is_string($rowsData)) {
                 $rowsData = json_decode($rowsData, true) ?? [];
             }
-            if (!is_array($rowsData)) {
+            if (! is_array($rowsData)) {
                 $rowsData = [];
             }
-            $fileName = 'json-import-' . now()->format('Ymd_His') . '.json';
+            $fileName = 'json-import-'.now()->format('Ymd_His').'.json';
         } else {
             $request->validate(['file' => 'required|file']);
             $file = $request->file('file');
             $mapping = $request->mapping ? json_decode($request->mapping, true) : [];
 
             try {
-                $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($file->getPathname());
+                $spreadsheet = IOFactory::load($file->getPathname());
                 $rows = $spreadsheet->getActiveSheet()->toArray();
                 $header = array_shift($rows);
 
                 foreach ($rows as $rowIndex => $row) {
-                    if (!array_filter($row, fn ($v) => $v !== null && $v !== '')) {
+                    if (! array_filter($row, fn ($v) => $v !== null && $v !== '')) {
                         continue;
                     }
                     $row = array_slice(array_pad($row, count($header), null), 0, count($header));
@@ -990,7 +1025,7 @@ class UserController extends Controller
                     $rowsData[] = $rowData;
                 }
             } catch (\Throwable $e) {
-                return response()->json(['status' => false, 'message' => 'Import failed: ' . $e->getMessage()], 500);
+                return response()->json(['status' => false, 'message' => 'Import failed: '.$e->getMessage()], 500);
             }
             $fileName = $file->getClientOriginalName();
         }
@@ -1007,29 +1042,29 @@ class UserController extends Controller
         $emails = array_filter(array_map('trim', array_column($rowsData, 'email')));
 
         $existingEmpCodes = [];
-        if (!empty($empCodes)) {
+        if (! empty($empCodes)) {
             $existingEmpCodes = User::whereIn('emp_code', $empCodes)
                 ->where('is_deleted', 0)
                 ->select('emp_code', 'company_code')
                 ->get()
                 ->groupBy('emp_code')
-                ->map(fn($group) => $group->pluck('company_code')->toArray())
+                ->map(fn ($group) => $group->pluck('company_code')->toArray())
                 ->toArray();
         }
 
         $existingEmails = [];
-        if (!empty($emails)) {
+        if (! empty($emails)) {
             $existingEmails = User::whereIn('email', $emails)
                 ->where('is_deleted', 0)
                 ->pluck('email')
-                ->map(fn($e) => strtolower(trim($e)))
+                ->map(fn ($e) => strtolower(trim($e)))
                 ->toArray();
         }
 
         $hashedPasswordsCache = [];
 
         // Wrap the insertion loop in a single DB transaction for optimal performance
-        \Illuminate\Support\Facades\DB::beginTransaction();
+        DB::beginTransaction();
 
         try {
             foreach ($rowsData as $rowIndex => $rowData) {
@@ -1057,6 +1092,7 @@ class UserController extends Controller
                     $reason = 'Missing employee code';
                     $skipped[] = "Row {$excelRowNum}: {$reason}";
                     $rowReports[] = ['row_number' => $excelRowNum, 'status' => 'failed', 'reason' => $reason, 'row_data' => $rowData];
+
                     continue;
                 }
                 $rowData['emp_code'] = $empCode;
@@ -1066,6 +1102,7 @@ class UserController extends Controller
                     $reason = "Employee code '{$empCode}' already exists in the system";
                     $skipped[] = "Row {$excelRowNum}: {$reason}";
                     $rowReports[] = ['row_number' => $excelRowNum, 'status' => 'failed', 'reason' => $reason, 'row_data' => $rowData];
+
                     continue;
                 }
 
@@ -1074,13 +1111,14 @@ class UserController extends Controller
                     $reason = "Email '{$email}' is already used by another employee";
                     $skipped[] = "Row {$excelRowNum}: {$reason}";
                     $rowReports[] = ['row_number' => $excelRowNum, 'status' => 'failed', 'reason' => $reason, 'row_data' => $rowData];
+
                     continue;
                 }
 
                 $providedPassword = $rowData['password'] ?? '';
                 $rawPassword = $providedPassword !== '' ? $providedPassword : '12345678';
-                if (!isset($hashedPasswordsCache[$rawPassword])) {
-                    $hashedPasswordsCache[$rawPassword] = \Illuminate\Support\Facades\Hash::make($rawPassword);
+                if (! isset($hashedPasswordsCache[$rawPassword])) {
+                    $hashedPasswordsCache[$rawPassword] = Hash::make($rawPassword);
                 }
                 $rowData['password'] = $hashedPasswordsCache[$rawPassword];
                 $rowData['status'] = 0;
@@ -1091,7 +1129,7 @@ class UserController extends Controller
                     $rowReports[] = ['row_number' => $excelRowNum, 'status' => 'passed', 'reason' => null, 'row_data' => $rowData];
 
                     // Track newly inserted in-memory
-                    if (!isset($existingEmpCodes[$empCode])) {
+                    if (! isset($existingEmpCodes[$empCode])) {
                         $existingEmpCodes[$empCode] = [];
                     }
                     $existingEmpCodes[$empCode][] = $companyOfRow;
@@ -1134,18 +1172,19 @@ class UserController extends Controller
                     $batchId = $batch->id;
                 }
             } catch (\Throwable $e) {
-                \Log::error('Failed to record employee import batch: ' . $e->getMessage());
+                \Log::error('Failed to record employee import batch: '.$e->getMessage());
             }
 
-            \Illuminate\Support\Facades\DB::commit();
+            DB::commit();
         } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\DB::rollBack();
-            return response()->json(['status' => false, 'message' => 'Import failed: ' . $e->getMessage()], 500);
+            DB::rollBack();
+
+            return response()->json(['status' => false, 'message' => 'Import failed: '.$e->getMessage()], 500);
         }
 
         $message = "$imported employees imported";
         if ($skipped) {
-            $message .= '; ' . count($skipped) . ' row(s) skipped';
+            $message .= '; '.count($skipped).' row(s) skipped';
         }
 
         return response()->json([
@@ -1162,29 +1201,44 @@ class UserController extends Controller
         $request->validate(['file' => 'required|file']);
 
         $imported = 0;
+        $skipped = 0;
         $file = $request->file('file');
+        $userAuth = auth('api')->user();
 
         try {
-            $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($file->getPathname());
+            $spreadsheet = IOFactory::load($file->getPathname());
             $rows = $spreadsheet->getActiveSheet()->toArray();
             $header = array_shift($rows);
 
             foreach ($rows as $row) {
                 $rowData = array_combine($header, $row);
                 if (isset($rowData['emp_code'])) {
-                    User::where('emp_code', $rowData['emp_code'])->update([
-                        'bank_name'       => $rowData['bank_name'] ?? null,
+                    $employee = User::where('emp_code', $rowData['emp_code'])->first();
+                    if (! $employee) {
+                        $skipped++;
+
+                        continue;
+                    }
+                    // SECURITY FIX: Enforce actor's company/unit scope.
+                    if (! $this->inManagedScope($userAuth, $employee)) {
+                        $skipped++;
+
+                        continue;
+                    }
+
+                    $employee->update([
+                        'bank_name' => $rowData['bank_name'] ?? null,
                         'bank_account_no' => $rowData['bank_account_no'] ?? null,
-                        'bank_ifsc_code'  => $rowData['bank_ifsc_code'] ?? null,
+                        'bank_ifsc_code' => $rowData['bank_ifsc_code'] ?? null,
                     ]);
                     $imported++;
                 }
             }
         } catch (\Exception $e) {
-            return response()->json(['status' => false, 'message' => 'Import failed: ' . $e->getMessage()], 500);
+            return response()->json(['status' => false, 'message' => 'Import failed: '.$e->getMessage()], 500);
         }
 
-        return response()->json(['status' => true, 'message' => "$imported account details imported"]);
+        return response()->json(['status' => true, 'message' => "$imported account details imported".($skipped ? " ($skipped skipped due to scope)" : '')]);
     }
 
     /**
@@ -1214,10 +1268,10 @@ class UserController extends Controller
         $targetId = $request->id;
         if ($targetId) {
             $employee = User::find($targetId);
-            if (!$employee) {
+            if (! $employee) {
                 return response()->json(['status' => false, 'message' => 'Employee not found'], 404);
             }
-            if (!$this->inManagedScope($userAuth, $employee)) {
+            if (! $this->inManagedScope($userAuth, $employee)) {
                 return response()->json(['status' => false, 'message' => 'Employee not found'], 404);
             }
             $newEmpCode = isset($data['emp_code']) ? trim((string) $data['emp_code']) : null;
@@ -1264,6 +1318,7 @@ class UserController extends Controller
                 }
             }
             $this->applyUpdate($employee, $data);
+
             return response()->json(['status' => true, 'message' => 'Employee updated', 'user' => $employee->fresh()]);
         }
 
@@ -1271,16 +1326,18 @@ class UserController extends Controller
         if ($empCode) {
             $employee = User::where('emp_code', $empCode)->first();
             if ($employee) {
-                if (!$this->inManagedScope($userAuth, $employee)) {
+                if (! $this->inManagedScope($userAuth, $employee)) {
                     return response()->json(['status' => false, 'message' => 'Employee not found'], 404);
                 }
                 $this->applyUpdate($employee, $data);
+
                 return response()->json(['status' => true, 'message' => 'Employee updated', 'user' => $employee->fresh()]);
             }
         }
 
         if ($userAuth) {
             $this->applyUpdate($userAuth, $data);
+
             return response()->json(['status' => true, 'message' => 'Profile updated', 'user' => $userAuth->fresh()]);
         }
 
@@ -1297,14 +1354,14 @@ class UserController extends Controller
     public function updateProfile(Request $request)
     {
         $user = auth('api')->user();
-        if (!$user) {
+        if (! $user) {
             return response()->json(['status' => false, 'message' => 'Unauthenticated'], 401);
         }
 
         $this->assertPostNotTruncated($request);
 
         $rules = array_merge($this->photoUploadRules(), [
-            'email' => ['nullable', 'email', 'unique:users,email,' . $user->id],
+            'email' => ['nullable', 'email', 'unique:users,email,'.$user->id],
         ]);
 
         $request->validate($rules);
@@ -1325,7 +1382,7 @@ class UserController extends Controller
         $data = $this->withSafeAadhaar($data);
 
         // If the employee is currently pending, mark them as active once they update their profile
-        if ((int)$user->status === 2) {
+        if ((int) $user->status === 2) {
             $data['status'] = 0;
         }
 
@@ -1336,7 +1393,7 @@ class UserController extends Controller
 
     public function createAppointmentAccount(Request $request)
     {
-        $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
+        $validator = Validator::make($request->all(), [
             'name' => 'required',
             'email' => 'required|email|unique:users',
             'mobile_number' => 'required|unique:users',
@@ -1376,7 +1433,7 @@ class UserController extends Controller
         }
         $employee = $query->first();
 
-        if (!$employee) {
+        if (! $employee) {
             return response()->json(['status' => true, 'exists' => false]);
         }
 
@@ -1446,10 +1503,10 @@ class UserController extends Controller
         }
 
         if ($trialForm) {
-            if (!isset($data['photo']) && $trialForm->photo) {
+            if (! isset($data['photo']) && $trialForm->photo) {
                 $data['photo'] = $trialForm->photo;
             }
-            if (!isset($data['adhar_image']) && $trialForm->adhar_image) {
+            if (! isset($data['adhar_image']) && $trialForm->adhar_image) {
                 $data['adhar_image'] = $trialForm->adhar_image;
             }
         }
@@ -1458,8 +1515,8 @@ class UserController extends Controller
         if ($empCode) {
             $employee = User::where('emp_code', $empCode)->first();
             if ($employee) {
-                $validator = \Illuminate\Support\Facades\Validator::make($data, [
-                    'email' => 'nullable|email|unique:users,email,' . $employee->id,
+                $validator = Validator::make($data, [
+                    'email' => 'nullable|email|unique:users,email,'.$employee->id,
                 ]);
 
                 if ($validator->fails()) {
@@ -1470,11 +1527,12 @@ class UserController extends Controller
                 if ($trialForm) {
                     $trialForm->update(['processed' => 1]);
                 }
+
                 return response()->json(['status' => true, 'message' => 'Appointment form updated']);
             }
         }
 
-        $validator = \Illuminate\Support\Facades\Validator::make($data, [
+        $validator = Validator::make($data, [
             'email' => 'nullable|email|unique:users',
         ]);
 
@@ -1509,9 +1567,9 @@ class UserController extends Controller
         $query = User::where('added_by', $request->user()->id)
             ->where(function ($q) {
                 $q->whereNull('type')
-                  ->orWhere('type', '')
-                  ->orWhere('type', '!=', 'trial')
-                  ->orWhere('processed', 0);
+                    ->orWhere('type', '')
+                    ->orWhere('type', '!=', 'trial')
+                    ->orWhere('processed', 0);
             });
         $actor = $request->user();
         $disclosed = 0;
@@ -1522,7 +1580,7 @@ class UserController extends Controller
         $candidates = $query->orderBy('id', 'desc')->get()->map(function (User $candidate) use ($actor, &$disclosed) {
             $data = $candidate->attributesToArray();
 
-            $full = \App\Support\AadhaarDisclosure::fullFor($candidate, $actor);
+            $full = AadhaarDisclosure::fullFor($candidate, $actor);
 
             if ($full !== null) {
                 $data['aadhaar_full'] = $full;
@@ -1532,7 +1590,7 @@ class UserController extends Controller
             return $data;
         });
 
-        \App\Support\AadhaarDisclosure::auditListDisclosure(
+        AadhaarDisclosure::auditListDisclosure(
             $actor,
             $disclosed,
             'AGENT_CANDIDATE_LIST_FULL_AADHAAR_DISCLOSED'
@@ -1544,38 +1602,51 @@ class UserController extends Controller
     public function getAppointment(Request $request)
     {
         $userAuth = auth('api')->user();
-        
-        $query = User::where(function($q) {
-                // Genuine pending or approved appointments, plus legacy/untyped records that
-                // haven't been assigned an emp_code yet. Once a record has both
-                // a null/empty type AND an emp_code, it has already "graduated"
-                // into a full employee and belongs on the Employees page only.
-                $q->whereIn('type', ['appointment', 'pending_employee'])
-                  ->orWhere(function($q2) {
-                      $q2->where(function($q3) {
-                          $q3->whereNull('type')->orWhere('type', '');
-                      })->where(function($q4) {
-                          $q4->whereNull('emp_code')->orWhere('emp_code', '');
-                      });
-                  });
-            })
-            ->where(function($q) {
+
+        $query = User::where(function ($q) {
+            // Genuine pending or approved appointments, plus legacy/untyped records that
+            // haven't been assigned an emp_code yet. Once a record has both
+            // a null/empty type AND an emp_code, it has already "graduated"
+            // into a full employee and belongs on the Employees page only.
+            $q->whereIn('type', ['appointment', 'pending_employee'])
+                ->orWhere(function ($q2) {
+                    $q2->where(function ($q3) {
+                        $q3->whereNull('type')->orWhere('type', '');
+                    })->where(function ($q4) {
+                        $q4->whereNull('emp_code')->orWhere('emp_code', '');
+                    });
+                });
+        })
+            ->where(function ($q) {
                 $q->where('role', '!=', 0)->orWhereNull('role');
             })
             ->with('addedBy:id,name,email,emp_code');
+        HiddenAccounts::exclude($query, 'users');
 
         if ($userAuth && $userAuth->type === 'agent') {
             $query->where('added_by', $userAuth->id);
         } elseif ($userAuth && ((int) $userAuth->role === 1 || (int) $userAuth->role === 0)) {
-            if ($request->company_code && !in_array($request->company_code, ['all', 'all-companies'])) {
-                $codes = array_filter(array_map('trim', explode(',', $request->company_code)));
+            $own = array_filter(array_map('trim', explode(',', (string) $userAuth->company_code)));
+            if ($request->company_code && ! in_array($request->company_code, ['all', 'all-companies'])) {
+                $requested = array_filter(array_map('trim', explode(',', $request->company_code)));
+                $codes = (int) $userAuth->role === 0
+                    ? $requested
+                    : array_intersect($requested, $own);
+            } else {
+                $codes = (int) $userAuth->role === 0
+                    ? []
+                    : $own;
+            }
+            if ($codes) {
                 $query->whereIn('company_code', $codes);
+            } elseif ((int) $userAuth->role !== 0) {
+                $query->whereRaw('1 = 0');
             }
         } elseif ($userAuth && (int) $userAuth->role === 2) {
             $query->where('company_code', $userAuth->company_code)->where('unit', $userAuth->unit);
         } elseif ($request->company_code) {
             $codes = explode(',', $request->company_code);
-            if (!in_array('all', $codes) && !in_array('all-companies', $codes)) {
+            if (! in_array('all', $codes) && ! in_array('all-companies', $codes)) {
                 $query->whereIn('company_code', $codes);
             }
         }
@@ -1599,7 +1670,7 @@ class UserController extends Controller
                 ? $item->addedBy->only(['id', 'name', 'email', 'emp_code'])
                 : null;
 
-            $full = \App\Support\AadhaarDisclosure::fullFor($item, $userAuth);
+            $full = AadhaarDisclosure::fullFor($item, $userAuth);
 
             if ($full !== null) {
                 $data['aadhaar_full'] = $full;
@@ -1613,7 +1684,7 @@ class UserController extends Controller
 
         // One entry for the request, with a count and no values. Auditing per row
         // would turn one page view into hundreds of inserts and bury the trail.
-        \App\Support\AadhaarDisclosure::auditListDisclosure(
+        AadhaarDisclosure::auditListDisclosure(
             $userAuth,
             $disclosed,
             'APPOINTMENT_LIST_FULL_AADHAAR_DISCLOSED',
@@ -1622,7 +1693,7 @@ class UserController extends Controller
 
         return response()->json([
             'status' => true,
-            'data'   => [
+            'data' => [
                 'appointments' => $appointments,
             ],
         ]);
@@ -1644,7 +1715,7 @@ class UserController extends Controller
     private function attachAppointmentPhotos($rows)
     {
         $missingIds = $rows
-            ->filter(fn ($row) => empty($row['photo']) && !empty($row['id']))
+            ->filter(fn ($row) => empty($row['photo']) && ! empty($row['id']))
             ->pluck('id')
             ->all();
 
@@ -1652,7 +1723,7 @@ class UserController extends Controller
             return $rows;
         }
 
-        $documents = \App\Models\Document::visible()
+        $documents = Document::visible()
             ->where('document_type', 'PHOTOGRAPH')
             ->whereIn('user_id', $missingIds)
             ->with('currentVersionRecord')
@@ -1669,7 +1740,7 @@ class UserController extends Controller
             $document = $documents->get($row['id'] ?? null);
             $version = $document?->currentVersionRecord;
 
-            if (!$document || !$version || !$document->isReadable()) {
+            if (! $document || ! $version || ! $document->isReadable()) {
                 return $row;
             }
 
@@ -1694,12 +1765,12 @@ class UserController extends Controller
         $rowReports = [];
 
         try {
-            $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($request->file('file')->getPathname());
+            $spreadsheet = IOFactory::load($request->file('file')->getPathname());
             $rows = $spreadsheet->getActiveSheet()->toArray();
             $header = array_shift($rows);
 
             foreach ($rows as $rowIndex => $row) {
-                if (!array_filter($row, fn ($v) => $v !== null && $v !== '')) {
+                if (! array_filter($row, fn ($v) => $v !== null && $v !== '')) {
                     continue; // blank row
                 }
 
@@ -1711,13 +1782,14 @@ class UserController extends Controller
                     $reason = 'Missing employee code';
                     $skipped[] = "Row {$excelRowNum}: {$reason}";
                     $rowReports[] = ['row_number' => $excelRowNum, 'status' => 'failed', 'reason' => $reason, 'row_data' => $rowData];
+
                     continue;
                 }
 
                 $updateData = [
-                    'bank_name'       => $rowData['bank_name'] ?? null,
+                    'bank_name' => $rowData['bank_name'] ?? null,
                     'bank_account_no' => $rowData['bank_account_no'] ?? null,
-                    'bank_ifsc_code'  => $rowData['bank_ifsc_code'] ?? null,
+                    'bank_ifsc_code' => $rowData['bank_ifsc_code'] ?? null,
                 ];
                 $query = User::where('emp_code', $rowData['emp_code'])
                     ->where('company_code', $company_code);
@@ -1736,7 +1808,7 @@ class UserController extends Controller
                 }
             }
         } catch (\Throwable $e) {
-            return response()->json(['status' => false, 'message' => 'Import failed: ' . $e->getMessage()], 500);
+            return response()->json(['status' => false, 'message' => 'Import failed: '.$e->getMessage()], 500);
         }
 
         $batchId = null;
@@ -1754,12 +1826,12 @@ class UserController extends Controller
             $batch->rows()->createMany($rowReports);
             $batchId = $batch->id;
         } catch (\Throwable $e) {
-            \Log::error('Failed to record account-master import batch: ' . $e->getMessage());
+            \Log::error('Failed to record account-master import batch: '.$e->getMessage());
         }
 
         $message = "$imported records updated";
         if ($skipped) {
-            $message .= '; ' . count($skipped) . ' row(s) skipped';
+            $message .= '; '.count($skipped).' row(s) skipped';
         }
 
         return response()->json([
@@ -1785,18 +1857,18 @@ class UserController extends Controller
         if (empty($data['password'])) {
             $data['password'] = '12345678';
         }
-        
+
         $userAuth = auth('api')->user();
         if ($userAuth && $userAuth->type === 'agent' && empty($data['id'])) {
             $data['added_by'] = $userAuth->id;
         }
-        
+
         $data = $this->withSafeAadhaar($data);
 
         $trialForm = User::create($data);
 
         $files = $this->storeUploadedFiles($request, ['photo', 'adhar_image'], $trialForm);
-        if (!empty($files)) {
+        if (! empty($files)) {
             $trialForm->update($files);
         }
 
@@ -1810,7 +1882,7 @@ class UserController extends Controller
         $query = User::where('type', 'trial');
 
         if ($userAuth && ((int) $userAuth->role === 1 || (int) $userAuth->role === 0)) {
-            if ($request->company_code && !in_array($request->company_code, ['all', 'all-companies'])) {
+            if ($request->company_code && ! in_array($request->company_code, ['all', 'all-companies'])) {
                 $codes = array_filter(array_map('trim', explode(',', $request->company_code)));
                 $query->whereIn('company_code', $codes);
             }
@@ -1818,7 +1890,7 @@ class UserController extends Controller
             $query->where('company_code', $userAuth->company_code)->where('unit', $userAuth->unit);
         } elseif ($request->company_code) {
             $codes = explode(',', $request->company_code);
-            if (!in_array('all', $codes) && !in_array('all-companies', $codes)) {
+            if (! in_array('all', $codes) && ! in_array('all-companies', $codes)) {
                 $query->whereIn('company_code', $codes);
             }
         }
@@ -1829,15 +1901,16 @@ class UserController extends Controller
         $disclosed = 0;
         $trialForms = $query->orderBy('id', 'desc')->get();
         $trialForms->transform(function ($item) use ($userAuth, &$disclosed) {
-            $full = \App\Support\AadhaarDisclosure::fullFor($item, $userAuth);
+            $full = AadhaarDisclosure::fullFor($item, $userAuth);
             if ($full) {
                 $item->setAttribute('aadhaar_full', $full);
                 $disclosed++;
             }
+
             return $item;
         });
 
-        \App\Support\AadhaarDisclosure::auditListDisclosure(
+        AadhaarDisclosure::auditListDisclosure(
             $userAuth,
             $disclosed,
             'TRIAL_FORM_LIST_FULL_AADHAAR_DISCLOSED'
@@ -1845,7 +1918,7 @@ class UserController extends Controller
 
         return response()->json([
             'status' => true,
-            'data'   => $trialForms,
+            'data' => $trialForms,
         ]);
     }
 
@@ -1875,7 +1948,7 @@ class UserController extends Controller
      */
     private function findTrialFormFor(?User $actor, $id): ?User
     {
-        if (!$actor) {
+        if (! $actor) {
             return null;
         }
 
@@ -1896,7 +1969,7 @@ class UserController extends Controller
     public function updateTrialForm($id, Request $request)
     {
         $user = $this->findTrialFormFor(auth('api')->user(), $id);
-        if (!$user) {
+        if (! $user) {
             return response()->json(['status' => false, 'message' => 'Not found'], 404);
         }
 
@@ -1904,7 +1977,7 @@ class UserController extends Controller
         $data = $this->withSafeAadhaar($data);
 
         $files = $this->storeUploadedFiles($request, ['photo', 'adhar_image'], $user);
-        if (!empty($files)) {
+        if (! empty($files)) {
             $data = array_merge($data, $files);
         }
 
@@ -1918,7 +1991,7 @@ class UserController extends Controller
         // User has no SoftDeletes trait, so this is permanent — all the more
         // reason the row has to be one this caller owns.
         $user = $this->findTrialFormFor(auth('api')->user(), $id);
-        if (!$user) {
+        if (! $user) {
             return response()->json(['status' => false, 'message' => 'Not found'], 404);
         }
 
@@ -1930,11 +2003,11 @@ class UserController extends Controller
     public function getAgents(Request $request)
     {
         $userAuth = auth('api')->user();
-        
+
         $query = User::where('type', 'agent');
-        
+
         if ($userAuth && ((int) $userAuth->role === 1 || (int) $userAuth->role === 0)) {
-            $requested = $request->company_code && !in_array($request->company_code, ['all', 'all-companies'])
+            $requested = $request->company_code && ! in_array($request->company_code, ['all', 'all-companies'])
                 ? array_filter(array_map('trim', explode(',', $request->company_code)))
                 : [];
 
@@ -1954,26 +2027,27 @@ class UserController extends Controller
             $query->where('company_code', $userAuth->company_code)->where('unit', $userAuth->unit);
         } elseif ($request->company_code) {
             $codes = explode(',', $request->company_code);
-            if (!in_array('all', $codes) && !in_array('all-companies', $codes)) {
+            if (! in_array('all', $codes) && ! in_array('all-companies', $codes)) {
                 $query->whereIn('company_code', $codes);
             }
         }
-        
+
         $agents = $query->orderBy('id', 'desc')->get();
+
         return response()->json(['status' => true, 'data' => $agents]);
     }
 
     public function updateAgent($id, Request $request)
     {
         $agent = User::where('type', 'agent')->find($id);
-        if (!$agent) {
+        if (! $agent) {
             return response()->json(['status' => false, 'message' => 'Agent not found'], 404);
         }
 
-        $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
+        $validator = Validator::make($request->all(), [
             'name' => 'required',
-            'email' => 'required|email|unique:users,email,' . $agent->id,
-            'mobile_number' => 'required|unique:users,mobile_number,' . $agent->id,
+            'email' => 'required|email|unique:users,email,'.$agent->id,
+            'mobile_number' => 'required|unique:users,mobile_number,'.$agent->id,
             'company_code' => 'required',
             'unit' => 'nullable',
         ]);
@@ -1995,7 +2069,7 @@ class UserController extends Controller
     public function deleteAgent($id)
     {
         $agent = User::where('type', 'agent')->find($id);
-        if (!$agent) {
+        if (! $agent) {
             return response()->json(['status' => false, 'message' => 'Agent not found'], 404);
         }
 

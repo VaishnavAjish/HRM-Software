@@ -1,8 +1,14 @@
 <?php
 
+use App\Http\Middleware\JwtMiddleware;
+use App\Http\Middleware\RequireModuleSchema;
+use App\Http\Middleware\RequirePermission;
+use App\Http\Middleware\RoleMiddleware;
+use App\Http\Middleware\SecurityHeaders;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Request;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -17,17 +23,21 @@ return Application::configure(basePath: dirname(__DIR__))
         // array_unique) but misleading: it read like CORS was switched on here
         // rather than in config/cors.php.
         $middleware->alias([
-            'jwt.auth' => \App\Http\Middleware\JwtMiddleware::class,
-            'role' => \App\Http\Middleware\RoleMiddleware::class,
-            'permission' => \App\Http\Middleware\RequirePermission::class,
-            'module.schema' => \App\Http\Middleware\RequireModuleSchema::class,
+            'jwt.auth' => JwtMiddleware::class,
+            'role' => RoleMiddleware::class,
+            'permission' => RequirePermission::class,
+            'module.schema' => RequireModuleSchema::class,
         ]);
+
+        // Global security headers on every response
+        $middleware->append(SecurityHeaders::class);
     })
     ->withExceptions(function (Exceptions $exceptions) {
-        $exceptions->shouldRenderJsonWhen(function (\Illuminate\Http\Request $request, \Throwable $e) {
+        $exceptions->shouldRenderJsonWhen(function (Request $request, Throwable $e) {
             if ($request->is('api/*') || $request->is('api')) {
                 return true;
             }
+
             return $request->expectsJson();
         });
     })->create();
