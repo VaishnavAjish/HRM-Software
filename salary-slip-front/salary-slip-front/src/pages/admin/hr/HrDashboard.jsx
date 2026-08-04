@@ -3,13 +3,13 @@ import { Link } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
   Users, UserCheck, UserPlus, Clock, ClipboardList, Briefcase, CalendarDays, Laptop,
-  FileClock, Cake, PartyPopper, Sparkles, Plus, RefreshCw, Download, TrendingUp,
+  FileClock, Sparkles, Plus, RefreshCw, Download, TrendingUp,
   UserPlus2, FileText, Star, Award, PackageCheck, PackageX,
   AlertTriangle, CalendarClock, UsersRound, LogOut, BarChart3, FileBarChart, Wallet,
 } from "lucide-react";
 import {
   ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  Legend, PieChart, Pie, Cell, BarChart,
+  Legend, BarChart,
 } from "recharts";
 import { StatCard } from "../../../components/ui/Card";
 import Badge from "../../../components/ui/Badge";
@@ -18,8 +18,6 @@ import { useAuth } from "../../../context/AuthContext";
 import { useCompany } from "../../../context/CompanyContext";
 import { hrApi } from "../../../utils/api";
 import { downloadCSV } from "../../../utils/exportUtils";
-
-const PIE_COLORS = ["#6366f1", "#22c55e", "#f59e0b", "#ef4444", "#0ea5e9", "#a855f7", "#64748b"];
 
 const STAGE_LABELS = {
   applied: "Applied", screening: "Screening", shortlisted: "Shortlisted",

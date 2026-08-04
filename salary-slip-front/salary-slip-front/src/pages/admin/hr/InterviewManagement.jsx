@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import {
   CalendarClock, Video, MapPin, Phone, XCircle, PauseCircle, MessageSquareText,
-  RotateCcw, ArrowRight, Check, X,
+  RotateCcw, ArrowRight, CalendarPlus,
 } from "lucide-react";
 import Badge from "../../../components/ui/Badge";
 import Button from "../../../components/ui/Button";
@@ -12,7 +12,6 @@ import { useAuth } from "../../../context/AuthContext";
 import { hrApi } from "../../../utils/api";
 import { stageLabel, stageColor, nextMainStage } from "./hiring/stageMeta";
 
-const smallInputClass = "rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1 text-xs text-gray-900 dark:text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500";
 const inputClass = "w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500";
 
 const STATUS_VARIANT = { scheduled: "blue", completed: "green", cancelled: "red", rescheduled: "yellow", no_show: "gray" };
@@ -26,6 +25,7 @@ const INTERVIEW_STAGES = ["hr_interview", "technical_interview", "final_intervie
 const ROUND_NAME_BY_STAGE = { hr_interview: "HR", technical_interview: "Technical", final_interview: "Final" };
 
 const EMPTY_FEEDBACK = { rating: 4, recommendation: "yes", strengths: "", concerns: "", notes: "" };
+const EMPTY_SCHEDULE = { scheduled_at: "", duration_minutes: 30, mode: "video", meeting_link: "", notes: "" };
 
 /** The interview that belongs to a candidate's *current* round — not any
  *  earlier round they already finished on the way here. */
@@ -47,6 +47,9 @@ export default function InterviewManagement() {
   const [feedback, setFeedback] = useState(EMPTY_FEEDBACK);
   const [rescheduleTarget, setRescheduleTarget] = useState(null);
   const [rescheduleAt, setRescheduleAt] = useState("");
+  const [scheduleTarget, setScheduleTarget] = useState(null);
+  const [scheduleForm, setScheduleForm] = useState(EMPTY_SCHEDULE);
+  const [scheduling, setScheduling] = useState(false);
 
   const loadInterviews = () =>
     hrApi.getInterviews(user?.accessToken, user?.tokenType, { per_page: 100 })
@@ -84,16 +87,36 @@ export default function InterviewManagement() {
     }
   };
 
-  /** Fired from a roster row's inline form — no separate "pick a candidate"
-   *  modal, since the row already knows who and which round. */
-  const scheduleFor = async (candidate, payload) => {
-    const res = await hrApi.storeInterview(
-      { candidate_id: candidate.id, requisition_id: candidate.requisition_id || null, duration_minutes: 30, notes: "", ...payload },
-      user?.accessToken, user?.tokenType
-    );
-    if (!res.status) throw new Error(res.message);
-    toast.success("Interview scheduled");
-    loadInterviews();
+  const openSchedule = (candidate) => {
+    setScheduleTarget(candidate);
+    setScheduleForm(EMPTY_SCHEDULE);
+  };
+
+  /** No "pick a candidate" dropdown — the row you clicked "Schedule" from
+   *  already tells us who and which round; the modal just collects the
+   *  round's own details. */
+  const submitSchedule = async () => {
+    if (!scheduleForm.scheduled_at) { toast.error("Pick a date & time"); return; }
+    setScheduling(true);
+    try {
+      const res = await hrApi.storeInterview(
+        {
+          candidate_id: scheduleTarget.id,
+          requisition_id: scheduleTarget.requisition_id || null,
+          round_name: ROUND_NAME_BY_STAGE[scheduleTarget.stage] || "HR",
+          ...scheduleForm,
+        },
+        user?.accessToken, user?.tokenType
+      );
+      if (!res.status) throw new Error(res.message);
+      toast.success("Interview scheduled");
+      setScheduleTarget(null);
+      loadInterviews();
+    } catch (err) {
+      toast.error(err.message || "Failed to schedule");
+    } finally {
+      setScheduling(false);
+    }
   };
 
   const cancelInterview = async (id) => {
@@ -128,7 +151,7 @@ export default function InterviewManagement() {
   return (
     <div className="space-y-6">
       <p className="text-sm text-gray-500 dark:text-gray-400">
-        Every candidate who's been shortlisted lands here — set a round's date &amp; time right on their row, then advance them once it's done
+        Every candidate who's been shortlisted lands here — schedule their round, then advance them once it's done
       </p>
 
       <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
@@ -157,7 +180,7 @@ export default function InterviewManagement() {
                     candidate={c}
                     interview={currentRoundInterview(c, interviews)}
                     busy={advancingId === c.id}
-                    onSchedule={scheduleFor}
+                    onOpenSchedule={openSchedule}
                     onAdvance={advanceCandidate}
                     onFeedback={(iv) => { setFeedbackTarget(iv); setFeedback(EMPTY_FEEDBACK); }}
                     onReschedule={(iv) => { setRescheduleTarget(iv); setRescheduleAt(""); }}
@@ -169,6 +192,22 @@ export default function InterviewManagement() {
           </div>
         )}
       </div>
+
+      <Modal isOpen={!!scheduleTarget} onClose={() => setScheduleTarget(null)}
+        title={`Schedule ${ROUND_NAME_BY_STAGE[scheduleTarget?.stage] || ""} Interview — ${scheduleTarget?.name || ""}`} size="lg"
+        footer={<div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setScheduleTarget(null)}>Cancel</Button><Button onClick={submitSchedule} disabled={scheduling}>{scheduling ? "Scheduling..." : "Schedule"}</Button></div>}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Field label="Date & Time" required><input type="datetime-local" className={inputClass} value={scheduleForm.scheduled_at} onChange={(e) => setScheduleForm({ ...scheduleForm, scheduled_at: e.target.value })} /></Field>
+          <Field label="Duration (minutes)"><input type="number" className={inputClass} value={scheduleForm.duration_minutes} onChange={(e) => setScheduleForm({ ...scheduleForm, duration_minutes: e.target.value })} /></Field>
+          <Field label="Mode">
+            <select className={inputClass} value={scheduleForm.mode} onChange={(e) => setScheduleForm({ ...scheduleForm, mode: e.target.value })}>
+              <option value="video">Video</option><option value="onsite">Onsite</option><option value="phone">Phone</option>
+            </select>
+          </Field>
+          <Field label="Meeting Link / Location"><input className={inputClass} value={scheduleForm.meeting_link} onChange={(e) => setScheduleForm({ ...scheduleForm, meeting_link: e.target.value })} /></Field>
+          <Field label="Notes" full><textarea rows={2} className={inputClass} value={scheduleForm.notes} onChange={(e) => setScheduleForm({ ...scheduleForm, notes: e.target.value })} /></Field>
+        </div>
+      </Modal>
 
       <Modal isOpen={!!feedbackTarget} onClose={() => setFeedbackTarget(null)} title={`Feedback — ${feedbackTarget?.candidate?.name || ""}`}
         footer={<div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setFeedbackTarget(null)}>Cancel</Button><Button onClick={submitFeedback}>Submit</Button></div>}>
@@ -195,34 +234,15 @@ export default function InterviewManagement() {
   );
 }
 
-/** One row per candidate. No detour through a separate "schedule" modal —
- *  the round's date/time/mode are filled in right here, since the row
- *  already knows the candidate and which round they're on. */
-function RosterRow({ candidate, interview, busy, onSchedule, onAdvance, onFeedback, onReschedule, onCancel }) {
-  const [scheduling, setScheduling] = useState(false);
-  const [dt, setDt] = useState("");
-  const [mode, setMode] = useState("video");
-  const [link, setLink] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-
+/** One row per candidate. "Schedule Interview" opens a proper modal — the
+ *  row already tells the modal who and which round, so there's no
+ *  candidate picker in it, just the round's own details. */
+function RosterRow({ candidate, interview, busy, onOpenSchedule, onAdvance, onFeedback, onReschedule, onCancel }) {
   const next = nextMainStage(candidate.stage);
   const ModeIcon = interview ? (MODE_ICON[interview.mode] || Video) : null;
   const avgRating = interview?.feedback?.length
     ? (interview.feedback.reduce((s, f) => s + (f.rating || 0), 0) / interview.feedback.length).toFixed(1)
     : null;
-
-  const submit = async () => {
-    if (!dt) { toast.error("Pick a date & time"); return; }
-    setSubmitting(true);
-    try {
-      await onSchedule(candidate, { scheduled_at: dt, mode, meeting_link: link });
-      setScheduling(false); setDt(""); setLink("");
-    } catch (err) {
-      toast.error(err.message || "Failed to schedule");
-    } finally {
-      setSubmitting(false);
-    }
-  };
 
   return (
     <tr className="hover:bg-gray-50 dark:hover:bg-gray-700/30 align-top">
@@ -247,23 +267,12 @@ function RosterRow({ candidate, interview, busy, onSchedule, onAdvance, onFeedba
             {interview.scheduled_at ? new Date(interview.scheduled_at).toLocaleString() : "—"}
             {ModeIcon && <ModeIcon size={14} className="flex-shrink-0 ml-1" />}
           </div>
-        ) : scheduling ? (
-          <div className="flex flex-wrap items-center gap-1.5">
-            <input type="datetime-local" value={dt} onChange={(e) => setDt(e.target.value)} className={smallInputClass} />
-            <select value={mode} onChange={(e) => setMode(e.target.value)} className={smallInputClass}>
-              <option value="video">Video</option><option value="onsite">Onsite</option><option value="phone">Phone</option>
-            </select>
-            <input placeholder="Meeting link (optional)" value={link} onChange={(e) => setLink(e.target.value)} className={`${smallInputClass} w-32`} />
-            <button title="Save" onClick={submit} disabled={submitting} className="p-1.5 rounded-lg text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 disabled:opacity-40">
-              <Check size={14} />
-            </button>
-            <button title="Cancel" onClick={() => setScheduling(false)} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700">
-              <X size={14} />
-            </button>
-          </div>
         ) : (
-          <button onClick={() => setScheduling(true)} className="flex items-center gap-1 text-xs font-semibold text-brand-600 hover:underline">
-            <CalendarClock size={13} /> Set date &amp; time
+          <button
+            onClick={() => onOpenSchedule(candidate)}
+            className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20 border border-brand-100 dark:border-brand-900/40"
+          >
+            <CalendarPlus size={13} /> Schedule Interview
           </button>
         )}
       </td>
