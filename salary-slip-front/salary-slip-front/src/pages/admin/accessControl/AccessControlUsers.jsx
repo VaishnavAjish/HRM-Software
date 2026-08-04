@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
@@ -7,7 +8,7 @@ import {
   Unlock, KeyRound, Trash2, Eye, Pencil, ChevronDown, History, Loader2,
 } from "lucide-react";
 import Button from "../../../components/ui/Button";
-import Card, { StatCard } from "../../../components/ui/Card";
+import Card from "../../../components/ui/Card";
 import Badge from "../../../components/ui/Badge";
 import Modal from "../../../components/ui/Modal";
 import Pagination from "../../../components/ui/Pagination";
@@ -27,6 +28,7 @@ const STATUS_TONE = { ACTIVE: "green", INACTIVE: "yellow", LOCKED: "red", DELETE
 const BLANK_FILTERS = {
   name: "", empCode: "", email: "", mobile: "", department: "", designation: "",
   branch: "", roleId: "", status: "", userType: "", createdFrom: "", createdTo: "",
+  includeSuperAdmins: "",
 };
 
 const BLANK_USER = {
@@ -65,6 +67,31 @@ function formatDate(value, withTime = false) {
   return withTime ? date.toLocaleString() : date.toLocaleDateString();
 }
 
+const TILE_TONES = {
+  blue: "text-brand-600 dark:text-brand-400",
+  green: "text-green-600 dark:text-green-400",
+  yellow: "text-amber-600 dark:text-amber-400",
+  red: "text-red-600 dark:text-red-400",
+  purple: "text-purple-600 dark:text-purple-400",
+};
+
+/*
+ * Nine counters do not warrant nine full StatCards — at that count the shared
+ * card's icon tile and padding push the table below the fold. This is the same
+ * information at a density that fits one row.
+ */
+function SummaryTile({ title, value, icon, color }) {
+  return (
+    <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-2.5 py-2 dark:border-gray-700 dark:bg-gray-800">
+      <span className={`flex-shrink-0 ${TILE_TONES[color] ?? TILE_TONES.blue}`}>{icon}</span>
+      <div className="min-w-0">
+        <p className="truncate text-[11px] leading-tight text-gray-500 dark:text-gray-400">{title}</p>
+        <p className="text-base font-semibold leading-tight text-gray-900 dark:text-white">{value}</p>
+      </div>
+    </div>
+  );
+}
+
 function Breadcrumb() {
   return (
     <nav aria-label="Breadcrumb" className="text-xs text-gray-500 dark:text-gray-400">
@@ -98,17 +125,36 @@ function Avatar({ user }) {
   );
 }
 
+const MENU_WIDTH = 224;
+
 function RowMenu({ user, can, onAction }) {
   const [open, setOpen] = useState(false);
-  const boxRef = useRef(null);
+  const [coords, setCoords] = useState(null);
+  const anchorRef = useRef(null);
+  const menuRef = useRef(null);
 
+  // The menu is portalled to <body>: the table now scrolls in both axes, and a
+  // dropdown rendered inside that container would be clipped by it.
   useEffect(() => {
+    if (!open) return undefined;
+
     const close = (event) => {
-      if (boxRef.current && !boxRef.current.contains(event.target)) setOpen(false);
+      if (anchorRef.current?.contains(event.target)) return;
+      if (menuRef.current?.contains(event.target)) return;
+      setOpen(false);
     };
+    const dismiss = () => setOpen(false);
+
     document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, []);
+    window.addEventListener("resize", dismiss);
+    window.addEventListener("scroll", dismiss, true);
+
+    return () => {
+      document.removeEventListener("mousedown", close);
+      window.removeEventListener("resize", dismiss);
+      window.removeEventListener("scroll", dismiss, true);
+    };
+  }, [open]);
 
   const items = [
     { key: "view", label: "View", icon: Eye, allowed: true },
@@ -124,14 +170,35 @@ function RowMenu({ user, can, onAction }) {
     { key: "delete", label: "Delete", icon: Trash2, allowed: can("admin.user.delete") && user.status !== "DELETED", danger: true },
   ].filter((item) => item.allowed);
 
+  const toggle = () => {
+    if (open) {
+      setOpen(false);
+      return;
+    }
+
+    const rect = anchorRef.current.getBoundingClientRect();
+    const height = Math.min(items.length * 36 + 8, 340);
+    const opensUpward = rect.bottom + height > window.innerHeight;
+
+    setCoords({
+      top: opensUpward ? Math.max(8, rect.top - height - 4) : rect.bottom + 4,
+      left: Math.max(8, Math.min(rect.right - MENU_WIDTH, window.innerWidth - MENU_WIDTH - 8)),
+    });
+    setOpen(true);
+  };
+
   return (
-    <div ref={boxRef} className="relative inline-block text-left">
-      <Button size="sm" variant="outline" onClick={() => setOpen((value) => !value)}>
+    <span ref={anchorRef} className="inline-block text-left">
+      <Button size="sm" variant="outline" onClick={toggle}>
         Actions <ChevronDown size={14} />
       </Button>
 
-      {open && (
-        <div className="absolute right-0 z-30 mt-1 w-56 overflow-hidden rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-600 dark:bg-gray-800">
+      {open && coords && createPortal(
+        <div
+          ref={menuRef}
+          style={{ top: coords.top, left: coords.left, width: MENU_WIDTH }}
+          className="fixed z-[1100] overflow-hidden rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-600 dark:bg-gray-800"
+        >
           {items.map(({ key, label, icon: Icon, danger }) => (
             <button
               key={key}
@@ -144,9 +211,10 @@ function RowMenu({ user, can, onAction }) {
               <Icon size={14} /> {label}
             </button>
           ))}
-        </div>
+        </div>,
+        document.body,
       )}
-    </div>
+    </span>
   );
 }
 
@@ -854,38 +922,20 @@ export default function AccessControlUsers() {
   };
 
   const cards = [
-    { title: "Total Users", value: summary?.total ?? 0, icon: <UsersIcon size={20} />, color: "blue" },
-    { title: "Active", value: summary?.active ?? 0, icon: <UserCheck size={20} />, color: "green" },
-    { title: "Inactive", value: summary?.inactive ?? 0, icon: <UserX size={20} />, color: "yellow" },
-    { title: "Locked", value: summary?.locked ?? 0, icon: <Lock size={20} />, color: "red" },
-    { title: "Super Admin", value: summary?.superAdmin ?? 0, icon: <ShieldCheck size={20} />, color: "purple" },
-    { title: "Admin", value: summary?.admin ?? 0, icon: <Shield size={20} />, color: "blue" },
-    { title: "HR", value: summary?.hr ?? 0, icon: <Briefcase size={20} />, color: "purple" },
-    { title: "Employee", value: summary?.employee ?? 0, icon: <UserIcon size={20} />, color: "green" },
-    { title: "Agent", value: summary?.agent ?? 0, icon: <Headset size={20} />, color: "yellow" },
+    { title: "Total Users", value: summary?.total ?? 0, icon: <UsersIcon size={16} />, color: "blue" },
+    { title: "Active", value: summary?.active ?? 0, icon: <UserCheck size={16} />, color: "green" },
+    { title: "Inactive", value: summary?.inactive ?? 0, icon: <UserX size={16} />, color: "yellow" },
+    { title: "Locked", value: summary?.locked ?? 0, icon: <Lock size={16} />, color: "red" },
+    { title: "Super Admin", value: summary?.superAdmin ?? 0, icon: <ShieldCheck size={16} />, color: "purple" },
+    { title: "Admin", value: summary?.admin ?? 0, icon: <Shield size={16} />, color: "blue" },
+    { title: "HR", value: summary?.hr ?? 0, icon: <Briefcase size={16} />, color: "purple" },
+    { title: "Employee", value: summary?.employee ?? 0, icon: <UserIcon size={16} />, color: "green" },
+    { title: "Agent", value: summary?.agent ?? 0, icon: <Headset size={16} />, color: "yellow" },
   ];
 
   return (
-    <div className="space-y-5">
+    <div className="min-w-0 max-w-full space-y-5">
       <Breadcrumb />
-
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Users</h1>
-          <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-            Every account that can sign in, with the roles and permissions it carries.
-          </p>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" onClick={reload}><RefreshCw size={16} /> Refresh</Button>
-          <Button variant="secondary" onClick={() => download("csv")}><Download size={16} /> CSV</Button>
-          <Button variant="secondary" onClick={() => download("excel")}><Download size={16} /> Excel</Button>
-          {can("admin.user.create") && (
-            <Button onClick={() => setDialog({ kind: "create" })}><Plus size={16} /> New User</Button>
-          )}
-        </div>
-      </header>
 
       {meta.administrationReady === false && (
         <Card className="border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20">
@@ -896,25 +946,31 @@ export default function AccessControlUsers() {
         </Card>
       )}
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
-        {cards.map((card) => <StatCard key={card.title} compact {...card} />)}
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5 xl:grid-cols-9">
+        {cards.map((card) => <SummaryTile key={card.title} {...card} />)}
       </div>
 
       <Card>
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
           <SearchBar
-            className="flex-1"
+            className="w-full lg:w-[350px] lg:flex-none"
             value={search}
             onChange={changeSearch}
-            placeholder="Search name, employee ID, username, email, mobile, department…"
+            placeholder="Search name, employee ID, username, email…"
           />
 
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 lg:ml-auto">
             <Button variant="secondary" onClick={() => setShowFilters((value) => !value)}>
               <Filter size={16} /> Filters{activeFilterCount ? ` (${activeFilterCount})` : ""}
             </Button>
             {(activeFilterCount > 0 || search) && (
               <Button variant="ghost" onClick={clearFilters}><X size={16} /> Clear</Button>
+            )}
+            <Button variant="secondary" onClick={reload}><RefreshCw size={16} /> Refresh</Button>
+            <Button variant="secondary" onClick={() => download("csv")}><Download size={16} /> CSV</Button>
+            <Button variant="secondary" onClick={() => download("excel")}><Download size={16} /> Excel</Button>
+            {can("admin.user.create") && (
+              <Button onClick={() => setDialog({ kind: "create" })}><Plus size={16} /> New User</Button>
             )}
           </div>
         </div>
@@ -993,6 +1049,28 @@ export default function AccessControlUsers() {
               <span className={labelClass}>Created to</span>
               <input type="date" className={inputClass} value={filters.createdTo} onChange={setFilter("createdTo")} />
             </label>
+
+            <label className="flex items-center gap-2 sm:col-span-2 lg:col-span-4">
+              <input
+                type="checkbox"
+                checked={Boolean(filters.includeSuperAdmins)}
+                onChange={(event) => {
+                  setLoading(true);
+                  setPage(1);
+                  setFilters((current) => ({
+                    ...current,
+                    includeSuperAdmins: event.target.checked ? "1" : "",
+                  }));
+                }}
+                className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+              />
+              <span className="text-sm text-gray-700 dark:text-gray-200">
+                Show super admin accounts
+                <span className="ml-1 text-xs text-gray-500 dark:text-gray-400">
+                  (platform identities, hidden by default)
+                </span>
+              </span>
+            </label>
           </div>
         )}
       </Card>
@@ -1030,9 +1108,9 @@ export default function AccessControlUsers() {
         )}
 
         {!loading && rows.length > 0 && (
-          <div className="overflow-x-auto">
+          <div className="w-full max-w-full overflow-auto max-h-[calc(100vh-320px)] min-h-[240px]">
             <table className="w-full min-w-[1280px] text-sm">
-              <thead>
+              <thead className="sticky top-0 z-10 bg-white dark:bg-gray-800">
                 <tr className="border-b border-gray-200 text-left dark:border-gray-700">
                   <th scope="col" className="w-10 px-3 py-3">
                     <input

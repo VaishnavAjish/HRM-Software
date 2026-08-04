@@ -42,7 +42,7 @@ function firstPresent(...values) {
 
 function normalizeTrialForm(item, index) {
   let displayStatus;
-  if (Number(item.checkbox) === 1) {
+  if (Number(item.checkbox) === 1 || Number(item.processed) === 1) {
     displayStatus = "Approved";
   } else {
     const rawStatus = String(firstPresent(item.status, item.form_status, "0"));
@@ -386,6 +386,11 @@ export default function TrialForm() {
       approved: forms.filter((f) => f.status === "Approved").length,
       rejected: forms.filter((f) => f.status === "Rejected").length,
     }),
+    [forms],
+  );
+
+  const displayedForms = useMemo(
+    () => forms.filter((f) => f.status !== "Approved"),
     [forms],
   );
 
@@ -1139,7 +1144,7 @@ export default function TrialForm() {
             >
               <AgGridReact
                 ref={gridRef}
-                rowData={forms}
+                rowData={displayedForms}
                 columnDefs={columnDefs}
                 defaultColDef={defaultColDef}
                 getRowId={(params) => String(params.data.id)}

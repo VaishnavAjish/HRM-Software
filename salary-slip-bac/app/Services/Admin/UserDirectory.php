@@ -59,6 +59,7 @@ class UserDirectory
         $query = DB::table('users');
 
         $this->applyScope($query, $actor, $filters);
+        $this->applyVisibility($query, $filters);
         $this->applyStatus($query, $filters);
         $this->applySearch($query, $filters);
         $this->applyFields($query, $filters);
@@ -66,6 +67,26 @@ class UserDirectory
         $this->applyDates($query, $filters);
 
         return $query;
+    }
+
+    /**
+     * Super admin accounts stay out of the directory unless they are asked for.
+     * They are platform identities rather than staff, and listing them beside
+     * 340 employees invites an accidental lock or password reset on the one
+     * account that can undo it. The summary still counts them, so the card
+     * reports the real number.
+     */
+    public function includesSuperAdmins(array $filters): bool
+    {
+        return filter_var($filters['includeSuperAdmins'] ?? false, FILTER_VALIDATE_BOOLEAN)
+            || strtoupper(trim((string) ($filters['userType'] ?? ''))) === self::TYPE_SUPER_ADMIN;
+    }
+
+    private function applyVisibility(Builder $query, array $filters): void
+    {
+        if (!$this->includesSuperAdmins($filters)) {
+            $query->where('users.role', '!=', 0);
+        }
     }
 
     public function paginate(User $actor, array $filters): array

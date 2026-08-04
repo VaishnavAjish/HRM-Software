@@ -21,8 +21,24 @@ class AuthorizationEngine
         private readonly ScopeMatcher $scopes,
         private readonly AuthorizationCache $cache,
         private readonly FeatureFlags $flags,
-    ) {
-    }
+    ) {}
+
+    /**
+     * Per-request memoization.
+     *
+     * A single request (e.g. the permission snapshot builder that resolves every
+     * permission for a user) can call decide() hundreds of times for the same
+     * actor, and decide() itself recomputes the role graph on every branch that
+     * needs it. These three values depend only on the actor and the read-only
+     * RBAC tables, which cannot change within a request, so caching them here
+     * once turns an O(permissions × roles × queries) snapshot into the same work
+     * the single role graph already did.
+     */
+    private array $roleContextCache = [];
+
+    private array $globalActorCache = [];
+
+    private array $policiesCache = [];
 
     public function decide(
         User $actor,
@@ -37,13 +53,13 @@ class AuthorizationEngine
         $resourceTenant = $this->scopes->tenant($resourceData);
         $global = $this->isGlobalActor($actor);
 
-        if (!$this->isActive($actor)) {
+        if (! $this->isActive($actor)) {
             return $this->finish($actor, $permissionCode, $resourceData, new AuthorizationDecision(
                 false, 'SUBJECT_DISABLED', effectiveState: 'DENY'
             ), $requestContext, $started);
         }
 
-        if (!$this->scopes->tenantMatches($tenantId, $resourceTenant, $global)) {
+        if (! $this->scopes->tenantMatches($tenantId, $resourceTenant, $global)) {
             return $this->finish($actor, $permissionCode, $resourceData, new AuthorizationDecision(
                 false, 'TENANT_ACCESS_DENIED', effectiveState: 'DENY'
             ), $requestContext, $started);
@@ -129,11 +145,11 @@ class AuthorizationEngine
             ->select(array_merge(
                 ['permissions.id', 'user_permissions.is_denied'],
                 array_map(
-                    fn (string $c) => 'permissions.' . $c,
+                    fn (string $c) => 'permissions.'.$c,
                     SchemaSupport::present('permissions', ['code'])
                 ),
                 array_map(
-                    fn (string $c) => 'user_permissions.' . $c,
+                    fn (string $c) => 'user_permissions.'.$c,
                     SchemaSupport::present('user_permissions', ['conditions', 'obligations'])
                 )
             ))
@@ -152,7 +168,7 @@ class AuthorizationEngine
         }
 
         foreach ($this->roleContexts($actor) as $roleContext) {
-            if (!$global && !$this->scopes->matches(
+            if (! $global && ! $this->scopes->matches(
                 $roleContext['scope_type'], $roleContext['scope_id'], $context['subject'], $resource
             )) {
                 continue;
@@ -181,11 +197,16 @@ class AuthorizationEngine
 
     private function roleContexts(User $actor): array
     {
+        $key = $actor->id;
+        if (isset($this->roleContextCache[$key])) {
+            return $this->roleContextCache[$key];
+        }
+
         $contexts = [];
         if (SchemaSupport::hasTable('authorization_role_assignments')) {
             $assignments = AuthorizationRoleAssignment::active()->with('role')->where('user_id', $actor->id)->get();
             foreach ($assignments as $assignment) {
-                if (!$assignment->role || !$assignment->role->is_active || $assignment->role->status !== 'ACTIVE') {
+                if (! $assignment->role || ! $assignment->role->is_active || $assignment->role->status !== 'ACTIVE') {
                     continue;
                 }
                 $contexts[] = [
@@ -208,8 +229,8 @@ class AuthorizationEngine
             ];
         }
 
-        if (!SchemaSupport::hasTable('authorization_role_inheritances')) {
-            return $contexts;
+        if (! SchemaSupport::hasTable('authorization_role_inheritances')) {
+            return $this->roleContextCache[$key] = $contexts;
         }
 
         $queue = $contexts;
@@ -240,7 +261,8 @@ class AuthorizationEngine
             }
             $queue = $next;
         }
-        return $contexts;
+
+        return $this->roleContextCache[$key] = $contexts;
     }
 
     private function rolePermissionRows(int $roleId, string $permissionCode, bool $inherited)
@@ -258,7 +280,7 @@ class AuthorizationEngine
             ->select(array_merge(
                 ['permissions.id as permission_id'],
                 array_map(
-                    fn (string $c) => 'role_permissions.' . $c,
+                    fn (string $c) => 'role_permissions.'.$c,
                     SchemaSupport::present('role_permissions', ['effect', 'conditions', 'obligations'])
                 )
             ))->get();
@@ -282,15 +304,16 @@ class AuthorizationEngine
      */
     private function wherePermissionCode($query, string $permissionCode, bool $allowWildcards = false): void
     {
-        if (!SchemaSupport::hasColumn('permissions', 'code')) {
+        if (! SchemaSupport::hasColumn('permissions', 'code')) {
             $query->where('permissions.name', $permissionCode);
+
             return;
         }
 
         $query->where(function ($q) use ($permissionCode, $allowWildcards) {
             $q->where('permissions.code', $permissionCode)
                 ->orWhere('permissions.name', $permissionCode);
-            if (!$allowWildcards) {
+            if (! $allowWildcards) {
                 return;
             }
             $q->orWhere('permissions.code', '*');
@@ -306,10 +329,10 @@ class AuthorizationEngine
     private function whereValid($query, string $table, $now): void
     {
         if (SchemaSupport::hasColumn($table, 'valid_from')) {
-            $query->where(fn ($q) => $q->whereNull($table . '.valid_from')->orWhere($table . '.valid_from', '<=', $now));
+            $query->where(fn ($q) => $q->whereNull($table.'.valid_from')->orWhere($table.'.valid_from', '<=', $now));
         }
         if (SchemaSupport::hasColumn($table, 'valid_until')) {
-            $query->where(fn ($q) => $q->whereNull($table . '.valid_until')->orWhere($table . '.valid_until', '>', $now));
+            $query->where(fn ($q) => $q->whereNull($table.'.valid_until')->orWhere($table.'.valid_until', '>', $now));
         }
     }
 
@@ -321,32 +344,36 @@ class AuthorizationEngine
         ?string $tenantId,
         bool $global
     ): array {
-        if (!SchemaSupport::hasTable('authorization_policies')) {
+        if (! SchemaSupport::hasTable('authorization_policies')) {
             return [];
         }
         $roleCodes = array_values(array_unique(array_column($this->roleContexts($actor), 'role_code')));
         $resourceType = $resource['resource_type'] ?? $this->permissionResource($permissionCode);
         $matched = [];
-        $policies = AuthorizationPolicy::active()
-            ->where(fn ($q) => $q->whereNull('tenant_id')->orWhere('tenant_id', $tenantId))
-            ->orderByDesc('priority')->get();
+        $policyKey = $tenantId ?: 'global';
+        if (! isset($this->policiesCache[$policyKey])) {
+            $this->policiesCache[$policyKey] = AuthorizationPolicy::active()
+                ->where(fn ($q) => $q->whereNull('tenant_id')->orWhere('tenant_id', $tenantId))
+                ->orderByDesc('priority')->get();
+        }
+        $policies = $this->policiesCache[$policyKey];
 
         foreach ($policies as $policy) {
-            if (!$this->listMatches($policy->actions, $permissionCode)) {
+            if (! $this->listMatches($policy->actions, $permissionCode)) {
                 continue;
             }
-            if (!$this->listMatches($policy->resources, $resourceType)) {
+            if (! $this->listMatches($policy->resources, $resourceType)) {
                 continue;
             }
-            if (!$this->subjectMatches($policy->subjects, $actor, $roleCodes)) {
+            if (! $this->subjectMatches($policy->subjects, $actor, $roleCodes)) {
                 continue;
             }
-            if (!$global && !$this->scopes->matches($policy->scope_type, $policy->scope_id, $context['subject'], $resource)) {
+            if (! $global && ! $this->scopes->matches($policy->scope_type, $policy->scope_id, $context['subject'], $resource)) {
                 continue;
             }
             try {
                 $this->conditions->validate($policy->conditions);
-                if (!$this->conditions->evaluate($policy->conditions, $context)) {
+                if (! $this->conditions->evaluate($policy->conditions, $context)) {
                     continue;
                 }
             } catch (Throwable) {
@@ -359,6 +386,7 @@ class AuthorizationEngine
                 'inherited' => false,
             ];
         }
+
         return $matched;
     }
 
@@ -369,7 +397,7 @@ class AuthorizationEngine
             ['table' => 'authorization_delegations', 'user_column' => 'delegate_id', 'type' => 'DELEGATION'],
             ['table' => 'authorization_emergency_grants', 'user_column' => 'user_id', 'type' => 'EMERGENCY_ACCESS'],
         ] as $definition) {
-            if (!SchemaSupport::hasTable($definition['table'])) {
+            if (! SchemaSupport::hasTable($definition['table'])) {
                 continue;
             }
             $rows = DB::table($definition['table'])
@@ -380,10 +408,10 @@ class AuthorizationEngine
                 ->get();
             foreach ($rows as $row) {
                 $codes = $this->json($row->permission_codes) ?: [];
-                if (!$this->listMatches($codes, $permissionCode)) {
+                if (! $this->listMatches($codes, $permissionCode)) {
                     continue;
                 }
-                if (!$this->scopes->matches($row->scope_type, $row->scope_id, $context['subject'], $resource)) {
+                if (! $this->scopes->matches($row->scope_type, $row->scope_id, $context['subject'], $resource)) {
                     continue;
                 }
                 $sources[] = [
@@ -392,14 +420,16 @@ class AuthorizationEngine
                 ];
             }
         }
+
         return $sources;
     }
 
     private function relationships(User $actor, array $resource, ?string $tenantId): array
     {
-        if (!SchemaSupport::hasTable('authorization_relationships') || empty($resource['id'])) {
+        if (! SchemaSupport::hasTable('authorization_relationships') || empty($resource['id'])) {
             return [];
         }
+
         return DB::table('authorization_relationships')
             ->where('subject_type', 'user')->where('subject_id', (string) $actor->id)
             ->where('resource_type', $resource['resource_type'] ?? 'record')
@@ -425,9 +455,10 @@ class AuthorizationEngine
             'employee' => Str::startsWith($permissionCode, ['self.', 'payroll.payslip.read', 'hr.profile.']),
             default => false,
         };
-        if ($allowed && !$this->scopes->tenantMatches($actor->company_code, $this->scopes->tenant($resource), false)) {
+        if ($allowed && ! $this->scopes->tenantMatches($actor->company_code, $this->scopes->tenant($resource), false)) {
             $allowed = false;
         }
+
         return ['allowed' => $allowed, 'reasonCode' => $allowed ? 'LEGACY_ROLE_ALLOW' : 'LEGACY_DEFAULT_DENY'];
     }
 
@@ -467,18 +498,24 @@ class AuthorizationEngine
                 report($e);
             }
         }
+
         return $decision;
     }
 
     private function isGlobalActor(User $actor): bool
     {
+        if (isset($this->globalActorCache[$actor->id])) {
+            return $this->globalActorCache[$actor->id];
+        }
+
         if ((int) $actor->role === 0) {
-            return true;
+            return $this->globalActorCache[$actor->id] = true;
         }
-        if (!SchemaSupport::hasTable('authorization_role_assignments')) {
-            return false;
+        if (! SchemaSupport::hasTable('authorization_role_assignments')) {
+            return $this->globalActorCache[$actor->id] = false;
         }
-        return AuthorizationRoleAssignment::active()
+
+        return $this->globalActorCache[$actor->id] = AuthorizationRoleAssignment::active()
             ->where('user_id', $actor->id)->where('scope_type', 'GLOBAL')
             ->whereHas('role', fn ($q) => $q->where('is_active', true)->where('status', 'ACTIVE'))
             ->exists();
@@ -486,7 +523,7 @@ class AuthorizationEngine
 
     private function isActive(User $actor): bool
     {
-        return !$actor->is_deleted && in_array((string) $actor->status, ['0', 'ACTIVE'], true);
+        return ! $actor->is_deleted && in_array((string) $actor->status, ['0', 'ACTIVE'], true);
     }
 
     private function subjectArray(User $actor): array
@@ -505,6 +542,7 @@ class AuthorizationEngine
             $data['resource_type'] ??= class_basename($resource);
             $data['id'] ??= $resource->getKey();
         }
+
         return array_merge($data, $context['resource'] ?? []);
     }
 
@@ -529,12 +567,13 @@ class AuthorizationEngine
                 return true;
             }
         }
+
         return false;
     }
 
     private function subjectMatches(?array $subjects, User $actor, array $roleCodes): bool
     {
-        if (!$subjects) {
+        if (! $subjects) {
             return true;
         }
         if (in_array($actor->id, Arr::wrap($subjects['userIds'] ?? []), false)) {
@@ -543,6 +582,7 @@ class AuthorizationEngine
         if (array_intersect($roleCodes, Arr::wrap($subjects['roleCodes'] ?? []))) {
             return true;
         }
+
         return in_array($this->legacyRole($actor), Arr::wrap($subjects['types'] ?? []), true);
     }
 
@@ -560,12 +600,13 @@ class AuthorizationEngine
                 }
             }
         }
+
         return $merged;
     }
 
     private function conditional(array $matches): bool
     {
-        return collect($matches)->contains(fn ($match) => !empty($match['conditions']));
+        return collect($matches)->contains(fn ($match) => ! empty($match['conditions']));
     }
 
     private function inheritedOnly(array $sources): bool
@@ -579,8 +620,9 @@ class AuthorizationEngine
         $wildcards = [];
         while (count($parts) > 1) {
             array_pop($parts);
-            $wildcards[] = implode('.', $parts) . '.*';
+            $wildcards[] = implode('.', $parts).'.*';
         }
+
         return $wildcards;
     }
 
@@ -588,6 +630,7 @@ class AuthorizationEngine
     {
         $parts = explode('.', $code);
         array_pop($parts);
+
         return implode('.', $parts) ?: $code;
     }
 
@@ -596,6 +639,7 @@ class AuthorizationEngine
         if ($value === null || $value === '') {
             return null;
         }
+
         return is_array($value) ? $value : json_decode((string) $value, true);
     }
 
@@ -607,6 +651,7 @@ class AuthorizationEngine
         if (in_array((int) $actor->role, [0, 1, 2], true) || strtolower((string) $actor->role) === 'admin') {
             return 'admin';
         }
+
         return 'employee';
     }
 }

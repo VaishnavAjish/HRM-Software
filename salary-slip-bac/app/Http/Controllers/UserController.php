@@ -1546,11 +1546,11 @@ class UserController extends Controller
         $userAuth = auth('api')->user();
         
         $query = User::where(function($q) {
-                // Genuine pending appointments, plus legacy/untyped records that
+                // Genuine pending or approved appointments, plus legacy/untyped records that
                 // haven't been assigned an emp_code yet. Once a record has both
                 // a null/empty type AND an emp_code, it has already "graduated"
                 // into a full employee and belongs on the Employees page only.
-                $q->where('type', 'appointment')
+                $q->whereIn('type', ['appointment', 'pending_employee'])
                   ->orWhere(function($q2) {
                       $q2->where(function($q3) {
                           $q3->whereNull('type')->orWhere('type', '');
@@ -1567,21 +1567,9 @@ class UserController extends Controller
         if ($userAuth && $userAuth->type === 'agent') {
             $query->where('added_by', $userAuth->id);
         } elseif ($userAuth && ((int) $userAuth->role === 1 || (int) $userAuth->role === 0)) {
-            $requested = $request->company_code && !in_array($request->company_code, ['all', 'all-companies'])
-                ? array_filter(array_map('trim', explode(',', $request->company_code)))
-                : [];
-
-            // Role 1 may narrow within its own companies but never outside them;
-            // only role 0 is unscoped when no filter is supplied.
-            $own = array_filter(array_map('trim', explode(',', (string) $userAuth->company_code)));
-            $codes = (int) $userAuth->role === 0
-                ? $requested
-                : ($requested ? array_intersect($requested, $own) : $own);
-
-            if ($codes) {
+            if ($request->company_code && !in_array($request->company_code, ['all', 'all-companies'])) {
+                $codes = array_filter(array_map('trim', explode(',', $request->company_code)));
                 $query->whereIn('company_code', $codes);
-            } elseif ((int) $userAuth->role !== 0) {
-                $query->whereRaw('1 = 0');
             }
         } elseif ($userAuth && (int) $userAuth->role === 2) {
             $query->where('company_code', $userAuth->company_code)->where('unit', $userAuth->unit);
@@ -1820,26 +1808,11 @@ class UserController extends Controller
         $userAuth = auth('api')->user();
 
         $query = User::where('type', 'trial');
-        if (\App\Services\Authorization\SchemaSupport::hasColumn('users', 'processed')) {
-            $query->where('processed', 0);
-        }
 
         if ($userAuth && ((int) $userAuth->role === 1 || (int) $userAuth->role === 0)) {
-            $requested = $request->company_code && !in_array($request->company_code, ['all', 'all-companies'])
-                ? array_filter(array_map('trim', explode(',', $request->company_code)))
-                : [];
-
-            // Role 1 may narrow within its own companies but never outside them;
-            // only role 0 is unscoped when no filter is supplied.
-            $own = array_filter(array_map('trim', explode(',', (string) $userAuth->company_code)));
-            $codes = (int) $userAuth->role === 0
-                ? $requested
-                : ($requested ? array_intersect($requested, $own) : $own);
-
-            if ($codes) {
+            if ($request->company_code && !in_array($request->company_code, ['all', 'all-companies'])) {
+                $codes = array_filter(array_map('trim', explode(',', $request->company_code)));
                 $query->whereIn('company_code', $codes);
-            } elseif ((int) $userAuth->role !== 0) {
-                $query->whereRaw('1 = 0');
             }
         } elseif ($userAuth && (int) $userAuth->role === 2) {
             $query->where('company_code', $userAuth->company_code)->where('unit', $userAuth->unit);

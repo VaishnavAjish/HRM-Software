@@ -3,6 +3,16 @@ import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 import { execSync } from "child_process";
+import path from "path";
+
+// On Windows, import.meta.url and process.cwd() can resolve to different
+// drive letters when the project lives on a mapped network share (e.g. both
+// F:\ and Z:\ point to the same UNC path). Vite computes the HTML fileName
+// as path.relative(config.root, htmlId). If root and htmlId are on different
+// drive letters, path.relative() returns an absolute path and Rollup rejects
+// it with "fileName must not be absolute". Fix: always anchor root to
+// process.cwd() so both root and the HTML id use the same drive letter.
+const projectRoot = process.cwd();
 
 let gitBranch = "master";
 try {
@@ -41,7 +51,8 @@ const APP_COLOR =
       : "indigo";
 
 export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, process.cwd(), "VITE_");
+  // Pass projectRoot (not process.cwd()) so loadEnv uses the same base.
+  const env = loadEnv(mode, projectRoot, "VITE_");
 
   const PROD_API_URL =
     gitBranch === "nidhi-impex"
@@ -51,6 +62,7 @@ export default defineConfig(({ mode }) => {
         : env.VITE_PROD_URL_MASTER;
 
   return {
+    root: projectRoot,
     define: {
       __COMPANY_MODE__: JSON.stringify(COMPANY_MODE),
       __PROD_API_URL__: JSON.stringify(PROD_API_URL || ""),
@@ -59,7 +71,33 @@ export default defineConfig(({ mode }) => {
     },
     plugins: [
       react(),
+      // ── Windows mapped-drive path normaliser ─────────────────────────────
+      // When F:\ and Z:\ both point to the same network share, Vite's internal
+      // module resolution can resolve index.html through the Z: drive even
+      // though process.cwd() (and therefore config.root) is on F:. Vite then
+      // computes:  path.relative(F:\root, Z:\...\index.html) → absolute Z:\...
+      // which Rollup 4 rejects as a fileName. This plugin intercepts any HTML
+      // module id that arrives on a different drive letter and rewrites it to
+      // use projectRoot's drive so the id and root are always consistent.
       {
+        name: "normalize-html-drive-letter",
+        enforce: "pre",
+        resolveId(source) {
+          if (!path.isAbsolute(source)) return null;
+          if (!source.match(/\.html$/i)) return null;
+          const rootDrive = projectRoot.match(/^([A-Za-z]:)/)?.[1];
+          const srcDrive  = source.match(/^([A-Za-z]:)/)?.[1];
+          if (rootDrive && srcDrive && rootDrive.toLowerCase() !== srcDrive.toLowerCase()) {
+            // Replace the drive letter prefix; keep the rest of the path identical.
+            const normalized = rootDrive + source.slice(2);
+            return { id: normalized };
+          }
+          return null;
+        },
+      },
+      // ─────────────────────────────────────────────────────────────────────
+      {
+
         name: "html-title",
         transformIndexHtml(html) {
           return html.replace(
@@ -153,8 +191,14 @@ export default defineConfig(({ mode }) => {
       include: ["react-is"],
     },
     build: {
-      outDir: gitBranch,
+      outDir: path.resolve(projectRoot, gitBranch),
       rollupOptions: {
+        // Explicitly pin the HTML entry to the same drive letter as
+        // process.cwd() (F:). Without this, Vite resolves index.html
+        // through a different code path that returns the Z: mapped drive
+        // letter, causing path.relative(F:\root, Z:\index.html) to return
+        // an absolute path — which Rollup 4+ rejects as a fileName.
+        input: path.resolve(projectRoot, "index.html"),
         output: {
           manualChunks: {
             "ag-grid": ["ag-grid-community", "ag-grid-react"],

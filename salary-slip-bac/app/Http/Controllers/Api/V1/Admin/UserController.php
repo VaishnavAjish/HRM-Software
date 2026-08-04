@@ -56,6 +56,7 @@ class UserController extends Controller
                 'total' => $page['total'],
                 'lastPage' => $page['lastPage'],
                 'administrationReady' => $this->directory->supportsAdministration(),
+                'includesSuperAdmins' => $this->directory->includesSuperAdmins($filters),
             ],
             'summary' => $this->directory->summary($actor, $filters),
         ]);
@@ -545,6 +546,7 @@ class UserController extends Controller
             'roleId' => $request->query('roleId'),
             'status' => $request->query('status'),
             'userType' => $request->query('userType'),
+            'includeSuperAdmins' => $request->query('includeSuperAdmins'),
             'createdFrom' => $request->query('createdFrom'),
             'createdTo' => $request->query('createdTo'),
             'sortBy' => $request->query('sortBy'),

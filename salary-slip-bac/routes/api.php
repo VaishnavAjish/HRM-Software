@@ -136,7 +136,10 @@ Route::middleware('jwt.auth')->group(function () {
      * with the screens that were its only caller.
      */
     Route::prefix('v1/authorization')->group(function () {
-        Route::get('me', [V1AuthorizationController::class, 'me']);
+        // The permission snapshot is expensive to build (see AuthorizationController::me)
+        // and it is served from a cache afterwards, so it is throttled on the same
+        // per-IP basis as the other decision endpoints rather than left unlimited.
+        Route::get('me', [V1AuthorizationController::class, 'me'])->middleware('throttle:30,1');
         Route::post('check', [V1AuthorizationController::class, 'check'])->middleware('throttle:120,1');
         Route::post('check-batch', [V1AuthorizationController::class, 'checkBatch'])->middleware('throttle:60,1');
 

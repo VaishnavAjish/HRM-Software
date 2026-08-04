@@ -20,8 +20,7 @@ class AuthorizationController extends Controller
         private readonly AuthorizationEngine $authorization,
         private readonly AuthorizationCache $cache,
         private readonly FeatureFlags $flags,
-    ) {
-    }
+    ) {}
 
     public function check(Request $request)
     {
@@ -36,6 +35,7 @@ class AuthorizationController extends Controller
             $data['resource'] ?? [],
             $data['context'] ?? []
         );
+
         return response()->json(['success' => true, 'data' => $decision->toArray()]);
     }
 
@@ -61,6 +61,7 @@ class AuthorizationController extends Controller
                 )->toArray(),
             ];
         }
+
         return response()->json(['success' => true, 'data' => ['results' => $results]]);
     }
 
@@ -79,6 +80,7 @@ class AuthorizationController extends Controller
             $data['resource'] ?? [],
             array_merge($data['context'] ?? [], ['business_reason' => 'AUTHORIZATION_SIMULATION'])
         );
+
         return response()->json(['success' => true, 'data' => [
             'subject' => ['id' => $subject->id, 'name' => $subject->name, 'companyCode' => $subject->company_code],
             'decision' => $decision->toArray(),
@@ -88,6 +90,35 @@ class AuthorizationController extends Controller
     public function me(Request $request)
     {
         $actor = auth('api')->user();
+        $tenantId = $this->snapshotTenant($actor);
+
+        /*
+         * Building this snapshot resolves every permission through the full
+         * engine — hundreds of decide() calls, each firing several queries — so
+         * an uncached rebuild on every page load is the single largest cost in
+         * the login/restore path. It is cached per user, keyed by the
+         * authorization cache version, so any role/permission/flag/grant change
+         * (which invalidates that version) busts it immediately; a per-user key
+         * also keeps one actor's grants out of someone else's snapshot. See
+         * AuthorizationCache for the invalidation contract.
+         */
+        $payload = $this->cache->remember(
+            'snapshot:user:'.$actor->id,
+            $tenantId,
+            fn () => $this->buildSnapshot($actor, $tenantId),
+            300
+        );
+
+        return response()->json(['success' => true, 'data' => $payload]);
+    }
+
+    /**
+     * The permission snapshot for a single user.
+     *
+     * Extracted from me() so the engine work sits inside the cache closure.
+     */
+    private function buildSnapshot(User $actor, ?string $tenantId): array
+    {
         $permissions = Permission::query()
             ->when(
                 SchemaSupport::hasColumn('permissions', 'is_active'),
@@ -97,7 +128,7 @@ class AuthorizationController extends Controller
             ->limit(1000)
             ->get();
         $decisions = [];
-        $shadow = $this->flags->enabled('authorization_shadow_mode', $actor->company_code, true);
+        $shadow = $this->flags->enabled('authorization_shadow_mode', $tenantId, true);
         foreach ($permissions as $permission) {
             $code = $permission->code ?: $permission->name;
             $decision = $this->authorization->decide($actor, $code, [
@@ -109,16 +140,32 @@ class AuthorizationController extends Controller
                 'engineAllowed' => $decision->allowed,
                 'state' => $decision->effectiveState,
                 'obligations' => $decision->obligations,
-                'shadowFallback' => !$decision->allowed && $shadow && ($decision->legacyDecision['allowed'] ?? false),
+                'shadowFallback' => ! $decision->allowed && $shadow && ($decision->legacyDecision['allowed'] ?? false),
             ];
         }
-        return response()->json(['success' => true, 'data' => [
+
+        return [
             'authorizationVersion' => 'v2',
-            'cacheVersion' => $this->cache->version($actor->company_code),
+            'cacheVersion' => $this->cache->version($tenantId),
             'permissions' => $decisions,
             'roles' => $this->roleSnapshot($actor),
             'featureFlags' => $this->flagSnapshot($actor->company_code),
-        ]]);
+        ];
+    }
+
+    /**
+     * The cache tenant for the snapshot.
+     *
+     * A super-admin style account usually has a null / "all-companies"
+     * company_code. Collapsing those onto the global cache key means any
+     * authorization invalidation — which always bumps the global version —
+     * busts their snapshot, so a system-role change is never served stale.
+     */
+    private function snapshotTenant(User $actor): ?string
+    {
+        $code = trim((string) $actor->company_code);
+
+        return in_array($code, ['', 'all-companies', 'all'], true) ? null : $code;
     }
 
     public function flags(Request $request)
@@ -142,6 +189,7 @@ class AuthorizationController extends Controller
             $this->flags->forget($key, $tenant === '*' ? null : $tenant);
         }
         $this->cache->invalidate($tenant === '*' ? null : $tenant);
+
         return response()->json(['success' => true, 'data' => $this->flagSnapshot($tenant)]);
     }
 
@@ -180,6 +228,7 @@ class AuthorizationController extends Controller
             'authorization_policy_builder', 'authorization_access_requests',
             'authorization_emergency_access',
         ];
+
         return collect($keys)->mapWithKeys(fn ($key) => [
             $key => $this->flags->enabled($key, $tenantId, false),
         ])->all();

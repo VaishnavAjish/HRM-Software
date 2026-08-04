@@ -58,8 +58,17 @@ export default function AppLayout() {
         isCollapsed={isCollapsed}
         onCollapse={() => setIsCollapsed(!isCollapsed)}
       />
+      {/*
+        Padding, not margin. Sidebar is position:fixed, so it occupies no space
+        in this flex row and this column resolves to the full container width —
+        a left *margin* then pushed its right edge past the viewport by exactly
+        the sidebar width. The outer overflow-hidden hid the page scrollbar, but
+        <main> still measured that much wider than the visible area, so every
+        wide table produced a horizontal scrollbar under the whole content area.
+        Padding is inside the border box, so the width still resolves to 100%.
+      */}
       <div
-        className={`flex-1 flex flex-col min-w-0 transition-all duration-300 lg:ml-[var(--sidebar-width)] bg-gray-50 dark:bg-[var(--sidebar-bg)]`}
+        className={`flex-1 flex flex-col min-w-0 transition-all duration-300 lg:pl-[var(--sidebar-width)] bg-gray-50 dark:bg-[var(--sidebar-bg)]`}
         style={{ "--sidebar-width": `${isCollapsed ? 80 : SIDEBAR_WIDTH}px` }}
       >
         <Header 

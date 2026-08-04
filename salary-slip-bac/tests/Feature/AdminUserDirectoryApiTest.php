@@ -449,6 +449,44 @@ class AdminUserDirectoryApiTest extends TestCase
         $this->assertNotEmpty($data['roles']);
     }
 
+    public function test_super_admins_are_hidden_from_the_listing_by_default(): void
+    {
+        $response = $this->asRoot()->getJson('/api/v1/admin/users')->assertOk();
+
+        $this->assertNotContains('Root', array_column($response->json('data'), 'name'));
+        $this->assertFalse($response->json('meta.includesSuperAdmins'));
+
+        $this->assertSame(1, $response->json('summary.superAdmin'));
+        $this->assertSame(4, $response->json('summary.total'));
+    }
+
+    public function test_the_toggle_reveals_super_admins(): void
+    {
+        $response = $this->asRoot()->getJson('/api/v1/admin/users?includeSuperAdmins=1')->assertOk();
+
+        $this->assertContains('Root', array_column($response->json('data'), 'name'));
+        $this->assertTrue($response->json('meta.includesSuperAdmins'));
+    }
+
+    public function test_filtering_by_super_admin_user_type_reveals_them_without_the_toggle(): void
+    {
+        $response = $this->asRoot()->getJson('/api/v1/admin/users?userType=SUPER_ADMIN')->assertOk();
+
+        $this->assertSame(['Root'], array_column($response->json('data'), 'name'));
+    }
+
+    public function test_the_export_hides_super_admins_by_default(): void
+    {
+        $body = $this->asRoot()->get('/api/v1/admin/users/export?format=csv')->assertOk()->streamedContent();
+        $this->assertStringNotContainsString('E-ROOT', $body);
+
+        $withThem = $this->asRoot()
+            ->get('/api/v1/admin/users/export?format=csv&includeSuperAdmins=1')
+            ->assertOk()
+            ->streamedContent();
+        $this->assertStringContainsString('E-ROOT', $withThem);
+    }
+
     public function test_the_user_type_filter_narrows_by_legacy_account_type(): void
     {
         $response = $this->asRoot()->getJson('/api/v1/admin/users?userType=ADMIN')->assertOk();
