@@ -50,7 +50,7 @@ Route::get('/user', function (Request $request) {
  * problem hard to trace. One source of truth: config/cors.php.
  */
 
-Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:5,1');
+Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:30,1');
 Route::post('new{data}', [AuthController::class, 'newData'])->middleware('throttle:15,1');
 
 /*
