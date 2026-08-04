@@ -14,145 +14,142 @@ class AdminController extends Controller
 {
     public function dashboard(Request $request)
     {
-        $cacheKey = 'admin_dashboard:' . md5(json_encode([
-            'user' => auth('api')->id(),
-            'company' => $request->company_code,
-            'unit' => $request->unit,
-            'month' => $request->month,
-            'year' => $request->year,
-        ]));
+        $userQuery = User::where('is_deleted', 0)
+            ->where('role', '!=', 0)
+            ->where(function ($q) {
+                $q->whereNull('type')
+                  ->orWhereNotIn('type', ['appointment', 'agent']);
+            });
+        $slipQuery = SalarySlip::query();
 
-        $data = \Illuminate\Support\Facades\Cache::remember($cacheKey, 30, function () use ($request) {
-            $userQuery = User::where('is_deleted', 0)
-                ->where('role', '!=', 0)
-                ->where(function ($q) {
-                    $q->whereNull('type')
-                      ->orWhereNotIn('type', ['appointment', 'agent']);
-                });
-            $slipQuery = SalarySlip::query();
-
-            $userAuth = auth('api')->user();
-            if ($userAuth && ((int) $userAuth->role === 1 || (int) $userAuth->role === 0)) {
-                if ($request->company_code && !in_array($request->company_code, ['all', 'all-companies'])) {
-                    $codes = array_filter(array_map('trim', explode(',', $request->company_code)));
-                    $userQuery->whereIn('company_code', $codes);
-                    $slipQuery->whereIn('company_code', $codes);
-                }
-            } elseif ($userAuth && (int) $userAuth->role === 2) {
-                $userQuery->where('company_code', $userAuth->company_code)->where('unit', $userAuth->unit);
-                $slipQuery->where('company_code', $userAuth->company_code)->where('unit', $userAuth->unit);
-            } elseif ($request->company_code) {
-                $codes = explode(',', $request->company_code);
-                if (!in_array('all', $codes) && !in_array('all-companies', $codes)) {
-                    $userQuery->whereIn('company_code', $codes);
-                    $slipQuery->whereIn('company_code', $codes);
-                }
+        $userAuth = auth('api')->user();
+        if ($userAuth && ((int) $userAuth->role === 1 || (int) $userAuth->role === 0)) {
+            // Master/Super Admin view scope follows the company switcher
+            // (the request), not the admin's own stored company_code — that
+            // stored value is just where the account was created, not a
+            // restriction on what it's allowed to view.
+            if ($request->company_code && !in_array($request->company_code, ['all', 'all-companies'])) {
+                $codes = array_filter(array_map('trim', explode(',', $request->company_code)));
+                $userQuery->whereIn('company_code', $codes);
+                $slipQuery->whereIn('company_code', $codes);
             }
-            if ($request->unit) {
-                $userQuery->where('unit', $request->unit);
-                $slipQuery->where('unit', $request->unit);
+        } elseif ($userAuth && (int) $userAuth->role === 2) {
+            $userQuery->where('company_code', $userAuth->company_code)->where('unit', $userAuth->unit);
+            $slipQuery->where('company_code', $userAuth->company_code)->where('unit', $userAuth->unit);
+        } elseif ($request->company_code) {
+            $codes = explode(',', $request->company_code);
+            if (!in_array('all', $codes) && !in_array('all-companies', $codes)) {
+                $userQuery->whereIn('company_code', $codes);
+                $slipQuery->whereIn('company_code', $codes);
             }
-            if ($request->month) {
-                if (strpos($request->month, 'to') !== false) {
-                    $dates = explode('to', $request->month);
-                    if (count($dates) == 2) {
-                        $from = explode('/', $dates[0]);
-                        $to = explode('/', $dates[1]);
-                        if (count($from) == 2 && count($to) == 2) {
-                            $fromMonth = (int)$from[0];
-                            $fromYear = (int)$from[1];
-                            $toMonth = (int)$to[0];
-                            $toYear = (int)$to[1];
+        }
+        if ($request->unit) {
+            $userQuery->where('unit', $request->unit);
+            $slipQuery->where('unit', $request->unit);
+        }
+        if ($request->month) {
+            if (strpos($request->month, 'to') !== false) {
+                $dates = explode('to', $request->month);
+                if (count($dates) == 2) {
+                    $from = explode('/', $dates[0]);
+                    $to = explode('/', $dates[1]);
+                    if (count($from) == 2 && count($to) == 2) {
+                        $fromMonth = (int)$from[0];
+                        $fromYear = (int)$from[1];
+                        $toMonth = (int)$to[0];
+                        $toYear = (int)$to[1];
 
-                            $slipQuery->where(function($q) use ($fromMonth, $fromYear, $toMonth, $toYear) {
-                                $q->where(function($q1) use ($fromMonth, $fromYear) {
-                                    $q1->where('year', '>', $fromYear)
-                                       ->orWhere(function($q2) use ($fromMonth, $fromYear) {
-                                           $q2->where('year', $fromYear)->whereRaw('CAST(month AS INTEGER) >= ?', [$fromMonth]);
-                                       });
-                                })->where(function($q1) use ($toMonth, $toYear) {
-                                    $q1->where('year', '<', $toYear)
-                                       ->orWhere(function($q2) use ($toMonth, $toYear) {
-                                           $q2->where('year', $toYear)->whereRaw('CAST(month AS INTEGER) <= ?', [$toMonth]);
-                                       });
-                                });
+                        $slipQuery->where(function($q) use ($fromMonth, $fromYear, $toMonth, $toYear) {
+                            $q->where(function($q1) use ($fromMonth, $fromYear) {
+                                $q1->where('year', '>', $fromYear)
+                                   ->orWhere(function($q2) use ($fromMonth, $fromYear) {
+                                       $q2->where('year', $fromYear)->whereRaw('CAST(month AS INTEGER) >= ?', [$fromMonth]);
+                                   });
+                            })->where(function($q1) use ($toMonth, $toYear) {
+                                $q1->where('year', '<', $toYear)
+                                   ->orWhere(function($q2) use ($toMonth, $toYear) {
+                                       $q2->where('year', $toYear)->whereRaw('CAST(month AS INTEGER) <= ?', [$toMonth]);
+                                   });
                             });
-                        }
+                        });
                     }
-                } else {
-                    $slipQuery->where('month', $request->month);
                 }
+            } else {
+                $slipQuery->where('month', $request->month);
             }
-            if ($request->year) {
-                $slipQuery->where('year', $request->year);
+        }
+        if ($request->year) {
+            $slipQuery->where('year', $request->year);
+        }
+
+        $totalEmployees = $userQuery->count();
+        $activeEmployees = (clone $userQuery)->where('status', 0)->count();
+        $totalSlips = $slipQuery->count();
+        $totalSalaryPaid = (clone $slipQuery)->sum('net_payable');
+
+        $recentSlips = (clone $slipQuery)->orderBy('id', 'desc')->take(10)->get();
+
+        $batchQuery = \App\Models\UploadBatch::query();
+        if ($userAuth && ((int) $userAuth->role === 1 || (int) $userAuth->role === 0)) {
+            if ($request->company_code && !in_array($request->company_code, ['all', 'all-companies'])) {
+                $codes = array_filter(array_map('trim', explode(',', $request->company_code)));
+                $batchQuery->whereIn('company_code', $codes);
             }
-
-            $totalEmployees = $userQuery->count();
-            $activeEmployees = (clone $userQuery)->where('status', 0)->count();
-            $totalSlips = $slipQuery->count();
-            $totalSalaryPaid = (clone $slipQuery)->sum('net_payable');
-
-            $recentSlips = (clone $slipQuery)->orderBy('id', 'desc')->take(10)->get();
-
-            $batchQuery = \App\Models\UploadBatch::query();
-            if ($userAuth && ((int) $userAuth->role === 1 || (int) $userAuth->role === 0)) {
-                if ($request->company_code && !in_array($request->company_code, ['all', 'all-companies'])) {
-                    $codes = array_filter(array_map('trim', explode(',', $request->company_code)));
-                    $batchQuery->whereIn('company_code', $codes);
-                }
-            } elseif ($userAuth && (int) $userAuth->role === 2) {
-                $batchQuery->where('company_code', $userAuth->company_code)->where('unit', $userAuth->unit);
-            } elseif ($request->company_code) {
-                $codes = explode(',', $request->company_code);
-                if (!in_array('all', $codes) && !in_array('all-companies', $codes)) {
-                    $batchQuery->whereIn('company_code', $codes);
-                }
+        } elseif ($userAuth && (int) $userAuth->role === 2) {
+            $batchQuery->where('company_code', $userAuth->company_code)->where('unit', $userAuth->unit);
+        } elseif ($request->company_code) {
+            $codes = explode(',', $request->company_code);
+            if (!in_array('all', $codes) && !in_array('all-companies', $codes)) {
+                $batchQuery->whereIn('company_code', $codes);
             }
-            if ($request->unit) {
-                $batchQuery->where('unit', $request->unit);
-            }
-            $recentBatches = $batchQuery->orderBy('id', 'desc')->take(5)->get();
+        }
+        if ($request->unit) {
+            $batchQuery->where('unit', $request->unit);
+        }
+        $recentBatches = $batchQuery->orderBy('id', 'desc')->take(5)->get();
 
-            $monthlyStats = (clone $slipQuery)
-                ->selectRaw('month, year, COUNT(*) as count, SUM(net_payable) as total_net')
-                ->groupBy('year', 'month')
-                ->orderBy('year', 'desc')
-                ->orderBy('month', 'desc')
-                ->take(12)
-                ->get();
+        $monthlyStats = (clone $slipQuery)
+            ->selectRaw('month, year, COUNT(*) as count, SUM(net_payable) as total_net')
+            ->groupBy('year', 'month')
+            ->orderBy('year', 'desc')
+            ->orderBy('month', 'desc')
+            ->take(12)
+            ->get();
 
-            $allDepartments = \App\Models\Department::pluck('name')->toArray();
+        $allDepartments = \App\Models\Department::pluck('name')->toArray();
 
-            $departmentHeadcount = (clone $userQuery)
-                ->selectRaw('department, COUNT(*) as total_employees')
-                ->whereNotNull('department')
-                ->where('department', '!=', '')
-                ->groupBy('department')
-                ->get()
-                ->keyBy('department');
+        $departmentHeadcount = (clone $userQuery)
+            ->selectRaw('department, COUNT(*) as total_employees')
+            ->whereNotNull('department')
+            ->where('department', '!=', '')
+            ->groupBy('department')
+            ->get()
+            ->keyBy('department');
 
-            $departmentSalary = (clone $slipQuery)
-                ->selectRaw('department, SUM(net_payable) as total_net_payable')
-                ->whereNotNull('department')
-                ->where('department', '!=', '')
-                ->groupBy('department')
-                ->get()
-                ->keyBy('department');
+        $departmentSalary = (clone $slipQuery)
+            ->selectRaw('department, SUM(net_payable) as total_net_payable')
+            ->whereNotNull('department')
+            ->where('department', '!=', '')
+            ->groupBy('department')
+            ->get()
+            ->keyBy('department');
 
-            $usedDepartments = $departmentHeadcount->keys()->merge($departmentSalary->keys())->toArray();
-            $allDeptsMerged = array_unique(array_merge($allDepartments, $usedDepartments));
+        $usedDepartments = $departmentHeadcount->keys()->merge($departmentSalary->keys())->toArray();
+        $allDeptsMerged = array_unique(array_merge($allDepartments, $usedDepartments));
 
-            $departmentDistribution = collect($allDeptsMerged)->map(function ($deptName) use ($departmentHeadcount, $departmentSalary) {
-                $headcount = $departmentHeadcount->get($deptName);
-                $salaryData = $departmentSalary->get($deptName);
-                return [
-                    'department' => $deptName,
-                    'total_employees' => $headcount ? $headcount->total_employees : 0,
-                    'total_net_payable' => $salaryData ? $salaryData->total_net_payable : 0,
-                ];
-            })->values();
-
+        $departmentDistribution = collect($allDeptsMerged)->map(function ($deptName) use ($departmentHeadcount, $departmentSalary) {
+            $headcount = $departmentHeadcount->get($deptName);
+            $salaryData = $departmentSalary->get($deptName);
             return [
+                'department' => $deptName,
+                'total_employees' => $headcount ? $headcount->total_employees : 0,
+                'total_net_payable' => $salaryData ? $salaryData->total_net_payable : 0,
+            ];
+        })->values();
+
+        return response()->json([
+            'status' => true,
+            'data'   => [
                 'total_employee' => $totalEmployees,
                 'active_employee'=> $activeEmployees,
                 'total_slips'     => $totalSlips,
@@ -161,12 +158,7 @@ class AdminController extends Controller
                 'recent_batches' => $recentBatches,
                 'monthly_stats'   => $monthlyStats,
                 'department_distribution' => $departmentDistribution,
-            ];
-        });
-
-        return response()->json([
-            'status' => true,
-            'data'   => $data,
+            ],
         ]);
     }
 
