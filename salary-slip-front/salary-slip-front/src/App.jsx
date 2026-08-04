@@ -43,12 +43,12 @@ const AdminForm16 = lazy(() => import("./pages/admin/Form16"));
 const TdsCalculation = lazy(() => import("./pages/admin/TdsCalculation"));
 const AdminProfile = lazy(() => import("./pages/admin/AdminProfile"));
 const Settings = lazy(() => import("./pages/admin/Settings"));
-const PermissionMatrix = lazy(() => import("./pages/admin/hr/ComingSoon"));
+const PermissionMatrix = lazy(() => import("./pages/admin/PermissionMatrix"));
 const AccessControlUsers = lazy(() => import("./pages/admin/accessControl/AccessControlUsers"));
-const AccessRequests = lazy(() => import("./pages/admin/hr/ComingSoon"));
-const Delegations = lazy(() => import("./pages/admin/hr/ComingSoon"));
-const EmergencyAccess = lazy(() => import("./pages/admin/hr/ComingSoon"));
-const Policies = lazy(() => import("./pages/admin/hr/ComingSoon"));
+const Policies = lazy(() => import("./pages/admin/accessControl/Policies"));
+const AccessRequests = lazy(() => import("./pages/admin/accessControl/AccessRequests"));
+const Delegations = lazy(() => import("./pages/admin/accessControl/Delegations"));
+const EmergencyAccess = lazy(() => import("./pages/admin/accessControl/EmergencyAccess"));
 
 // Employee pages
 const EmployeeDashboard = lazy(() => import("./pages/employee/Dashboard"));

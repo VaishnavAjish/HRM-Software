@@ -979,6 +979,8 @@ export default function Appointments() {
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
     return appointments.filter((item) => {
+      // Exclude approved forms from the pending table view once approved
+      if (item.status === "Approved") return false;
       const matchesSearch =
         !query ||
         [

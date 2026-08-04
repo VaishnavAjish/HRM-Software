@@ -16,6 +16,10 @@ use App\Http\Controllers\Api\V1\AadhaarExportController as V1AadhaarExportContro
 use App\Http\Controllers\Api\V1\Authorization\AuthorizationController as V1AuthorizationController;
 use App\Http\Controllers\Api\V1\Authorization\PermissionMatrixController as V1PermissionMatrixController;
 use App\Http\Controllers\Api\V1\Authorization\UserLookupController as V1UserLookupController;
+use App\Http\Controllers\Api\V1\Authorization\DelegationController as V1DelegationController;
+use App\Http\Controllers\Api\V1\Authorization\PolicyController as V1PolicyController;
+use App\Http\Controllers\Api\V1\Authorization\AccessRequestController as V1AccessRequestController;
+use App\Http\Controllers\Api\V1\Authorization\EmergencyAccessController as V1EmergencyAccessController;
 use App\Http\Controllers\Api\V1\Admin\UserController as V1AdminUserController;
 use App\Support\AadhaarExportAccess;
 use App\Http\Controllers\SettingsController;
@@ -210,10 +214,55 @@ Route::middleware('jwt.auth')->group(function () {
             ->whereNumber('id')->middleware('permission:admin.user.assign_permission');
     });
 
+    Route::prefix('v1/delegations')->group(function () {
+        Route::get('/', [V1DelegationController::class, 'index'])
+            ->middleware('permission:admin.delegation.manage');
+        Route::post('/', [V1DelegationController::class, 'store'])
+            ->middleware(['throttle:20,1', 'permission:admin.delegation.manage']);
+        Route::post('{id}/revoke', [V1DelegationController::class, 'revoke'])
+            ->whereNumber('id')->middleware('permission:admin.delegation.manage');
+    });
+
+    Route::prefix('v1/policies')->group(function () {
+        Route::get('/', [V1PolicyController::class, 'index'])
+            ->middleware('permission:admin.policy.read');
+        Route::get('{id}', [V1PolicyController::class, 'show'])
+            ->whereNumber('id')->middleware('permission:admin.policy.read');
+        Route::post('/', [V1PolicyController::class, 'store'])
+            ->middleware('permission:admin.policy.create');
+        Route::patch('{id}', [V1PolicyController::class, 'update'])
+            ->whereNumber('id')->middleware('permission:admin.policy.update');
+        Route::post('{id}/publish', [V1PolicyController::class, 'publish'])
+            ->whereNumber('id')->middleware('permission:admin.policy.publish');
+        Route::post('{id}/rollback', [V1PolicyController::class, 'rollback'])
+            ->whereNumber('id')->middleware('permission:admin.policy.rollback');
+    });
+
     /*
-     * Governance, policy and access-lifecycle routes were removed with their
-     * controllers. Restore the controller before re-adding a group here.
+     * Raising a request is deliberately ungated: anyone signed in may ask for
+     * access. Only deciding one is a privileged action.
      */
+    Route::prefix('v1/access-requests')->group(function () {
+        Route::get('/', [V1AccessRequestController::class, 'index'])
+            ->middleware('permission:admin.access_request.read');
+        Route::post('/', [V1AccessRequestController::class, 'store'])
+            ->middleware('throttle:20,1');
+        Route::post('{id}/approve', [V1AccessRequestController::class, 'approve'])
+            ->whereNumber('id')->middleware('permission:admin.access_request.approve');
+        Route::post('{id}/reject', [V1AccessRequestController::class, 'reject'])
+            ->whereNumber('id')->middleware('permission:admin.access_request.approve');
+        Route::post('{id}/revoke', [V1AccessRequestController::class, 'revoke'])
+            ->whereNumber('id')->middleware('permission:admin.access_request.revoke');
+    });
+
+    Route::prefix('v1/emergency-access')->group(function () {
+        Route::get('/', [V1EmergencyAccessController::class, 'index'])
+            ->middleware('permission:admin.emergency_access.approve');
+        Route::post('/', [V1EmergencyAccessController::class, 'store'])
+            ->middleware(['throttle:10,1', 'permission:admin.emergency_access.approve']);
+        Route::post('{id}/revoke', [V1EmergencyAccessController::class, 'revoke'])
+            ->whereNumber('id')->middleware('permission:admin.emergency_access.approve');
+    });
 
     // Legacy document endpoints (local storage, flat document_uploads table).
     // Superseded by /v1/documents below — kept only so existing clients keep

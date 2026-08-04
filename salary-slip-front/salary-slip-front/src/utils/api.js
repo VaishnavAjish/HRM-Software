@@ -738,6 +738,89 @@ export const accessLifecycleApi = {
       body: JSON.stringify({ reason }),
     });
   },
+
+  listRequests(accessToken, tokenType = "Bearer", params = {}) {
+    const query = new URLSearchParams(params).toString();
+    return apiRequest(`/v1/access-requests${query ? `?${query}` : ""}`, {
+      headers: authHeaders(accessToken, tokenType),
+    });
+  },
+
+  createRequest(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest("/v1/access-requests", {
+      method: "POST", headers: authHeaders(accessToken, tokenType),
+      body: JSON.stringify(payload),
+    });
+  },
+
+  decideRequest(id, action, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/access-requests/${id}/${action}`, {
+      method: "POST", headers: authHeaders(accessToken, tokenType),
+      body: JSON.stringify(payload),
+    });
+  },
+
+  listEmergencyGrants(accessToken, tokenType = "Bearer", params = {}) {
+    const query = new URLSearchParams(params).toString();
+    return apiRequest(`/v1/emergency-access${query ? `?${query}` : ""}`, {
+      headers: authHeaders(accessToken, tokenType),
+    });
+  },
+
+  createEmergencyGrant(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest("/v1/emergency-access", {
+      method: "POST", headers: authHeaders(accessToken, tokenType),
+      body: JSON.stringify(payload),
+    });
+  },
+
+  revokeEmergencyGrant(id, reason, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/emergency-access/${id}/revoke`, {
+      method: "POST", headers: authHeaders(accessToken, tokenType),
+      body: JSON.stringify({ reason }),
+    });
+  },
+};
+
+export const policyApi = {
+  list(accessToken, tokenType = "Bearer", params = {}) {
+    const query = new URLSearchParams(params).toString();
+    return apiRequest(`/v1/policies${query ? `?${query}` : ""}`, {
+      headers: authHeaders(accessToken, tokenType),
+    });
+  },
+
+  get(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/policies/${id}`, { headers: authHeaders(accessToken, tokenType) });
+  },
+
+  create(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest("/v1/policies", {
+      method: "POST", headers: authHeaders(accessToken, tokenType),
+      body: JSON.stringify(payload),
+    });
+  },
+
+  update(id, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/policies/${id}`, {
+      method: "PATCH", headers: authHeaders(accessToken, tokenType),
+      body: JSON.stringify(payload),
+    });
+  },
+
+  publish(id, businessReason, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/policies/${id}/publish`, {
+      method: "POST", headers: authHeaders(accessToken, tokenType),
+      body: JSON.stringify({ businessReason }),
+    });
+  },
+
+  rollback(id, version, businessReason, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/policies/${id}/rollback`, {
+      method: "POST", headers: authHeaders(accessToken, tokenType),
+      body: JSON.stringify({ version, businessReason }),
+    });
+  },
 };
 
 function userQuery(filters = {}) {
