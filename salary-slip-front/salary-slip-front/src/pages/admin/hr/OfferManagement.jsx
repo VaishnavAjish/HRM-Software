@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { Plus, CheckCircle2, Send, ThumbsUp, ThumbsDown, History, FileDown, Trash2 } from "lucide-react";
+import { Plus, CheckCircle2, Send, ThumbsUp, ThumbsDown, History, FileDown, Trash2, Briefcase, GraduationCap, PauseCircle, XCircle } from "lucide-react";
 import Button from "../../../components/ui/Button";
 import Badge from "../../../components/ui/Badge";
 import Modal from "../../../components/ui/Modal";
@@ -16,6 +16,8 @@ const STATUS_VARIANT = {
   accepted: "green", rejected: "red", expired: "gray", withdrawn: "red",
 };
 
+const PRIORITY_DOT = { high: "bg-red-500", medium: "bg-yellow-400", low: "bg-gray-400" };
+
 const EMPTY_FORM = { candidate_id: "", designation: "", ctc_annual: "", joining_date: "", expiry_date: "", notes: "" };
 const EMPTY_BREAKUP = [{ label: "Basic", amount: "" }, { label: "HRA", amount: "" }, { label: "Allowances", amount: "" }];
 
@@ -24,6 +26,9 @@ export default function OfferManagement() {
   const [loading, setLoading] = useState(true);
   const [offers, setOffers] = useState([]);
   const [candidates, setCandidates] = useState([]);
+  const [awaitingOffer, setAwaitingOffer] = useState([]);
+  const [awaitingLoading, setAwaitingLoading] = useState(true);
+  const [actingId, setActingId] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [breakup, setBreakup] = useState(EMPTY_BREAKUP);
@@ -51,13 +56,48 @@ export default function OfferManagement() {
     return load();
   };
 
+  // This tab owns Selected → Offer Sent → Offer Accepted. "Selected" is the
+  // hand-off point from the Interview tab: a candidate lands here as soon as
+  // they're marked Selected, whether or not an offer's been drafted yet.
+  const loadCandidates = useCallback(() => {
+    if (!user?.accessToken) return;
+    setAwaitingLoading(true);
+    hrApi.getCandidates(user.accessToken, user.tokenType, { per_page: 100, stage: "selected,offer_sent" })
+      .then((res) => { if (res.status) setCandidates(res.data?.data || res.data || []); })
+      .catch(() => {})
+      .finally(() => setAwaitingLoading(false));
+  }, [user]);
+
   useEffect(() => {
     if (!user?.accessToken) return;
     load();
-    hrApi.getCandidates(user.accessToken, user.tokenType, { per_page: 100, stage: "selected,offer_sent" })
-      .then((res) => res.status && setCandidates(res.data?.data || res.data || []))
-      .catch(() => {});
+    loadCandidates();
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // "Awaiting Offer" = Selected candidates with no offer drafted for them yet.
+  useEffect(() => {
+    const withOffer = new Set(offers.map((o) => String(o.candidate_id)));
+    setAwaitingOffer(candidates.filter((c) => c.stage === "selected" && !withOffer.has(String(c.id))));
+  }, [candidates, offers]);
+
+  const createOfferFor = (candidate) => {
+    setForm({ ...EMPTY_FORM, candidate_id: String(candidate.id), designation: candidate.current_designation || "" });
+    setModalOpen(true);
+  };
+
+  const rejectOrHold = async (candidate, toStage) => {
+    setActingId(candidate.id);
+    try {
+      const res = await hrApi.moveCandidateStage(candidate.id, { to_stage: toStage }, user?.accessToken, user?.tokenType);
+      if (!res.status) throw new Error(res.message);
+      toast.success(toStage === "rejected" ? "Marked Rejected" : "Marked On Hold");
+      loadCandidates();
+    } catch (err) {
+      toast.error(err.message || "Failed to update stage");
+    } finally {
+      setActingId(null);
+    }
+  };
 
   const addBreakupRow = () => setBreakup([...breakup, { label: "", amount: "" }]);
   const removeBreakupRow = (i) => setBreakup(breakup.filter((_, idx) => idx !== i));
@@ -69,7 +109,7 @@ export default function OfferManagement() {
     try {
       const salary_breakup = Object.fromEntries(breakup.filter((r) => r.label).map((r) => [r.label, Number(r.amount) || 0]));
       const res = await hrApi.storeOffer({ ...form, salary_breakup }, user?.accessToken, user?.tokenType);
-      if (res.status) { toast.success("Offer created"); setModalOpen(false); setForm(EMPTY_FORM); setBreakup(EMPTY_BREAKUP); reload(); }
+      if (res.status) { toast.success("Offer created"); setModalOpen(false); setForm(EMPTY_FORM); setBreakup(EMPTY_BREAKUP); reload(); loadCandidates(); }
     } catch (err) {
       toast.error(err.message || "Failed to create offer");
     } finally {
@@ -118,10 +158,56 @@ export default function OfferManagement() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <p className="text-sm text-gray-500 dark:text-gray-400">Draft, approve, release and track offers</p>
+        <p className="text-sm text-gray-500 dark:text-gray-400">Every candidate marked Selected in Interviews lands here — drafting, approving, releasing and tracking offers all happen in this tab</p>
         <Button icon={<Plus size={16} />} onClick={() => setModalOpen(true)}>New Offer</Button>
       </div>
 
+      {/* ── Selected candidates without a drafted offer yet ── */}
+      <div>
+        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">Awaiting Offer</h2>
+        {awaitingLoading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3"><div className="skeleton h-32 rounded-2xl" /></div>
+        ) : awaitingOffer.length === 0 ? (
+          <p className="text-sm text-gray-400 dark:text-gray-500 bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 text-center py-6">
+            No one is waiting on an offer right now — candidates show up here once marked Selected in Interviews.
+          </p>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {awaitingOffer.map((c) => {
+              const busy = actingId === c.id;
+              return (
+                <div key={c.id} className="rounded-xl border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 p-2.5">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span className={`w-2 h-2 rounded-full flex-shrink-0 ${PRIORITY_DOT[c.priority] || "bg-gray-400"}`} />
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{c.name}</p>
+                  </div>
+                  {c.requisition?.title && (
+                    <p className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 truncate"><Briefcase size={11} /> {c.requisition.title}</p>
+                  )}
+                  <p className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 mb-2"><GraduationCap size={11} /> {c.experience_years ?? 0} yrs</p>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => createOfferFor(c)}
+                      className="flex-1 flex items-center justify-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-lg text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20 border border-brand-100 dark:border-brand-900/40"
+                    >
+                      <Plus size={12} /> Create Offer
+                    </button>
+                    <button title="Hold" disabled={busy} onClick={() => rejectOrHold(c, "on_hold")} className="p-1.5 rounded-lg text-yellow-600 hover:bg-yellow-50 dark:hover:bg-yellow-900/20 disabled:opacity-40">
+                      <PauseCircle size={13} />
+                    </button>
+                    <button title="Reject" disabled={busy} onClick={() => rejectOrHold(c, "rejected")} className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-40">
+                      <XCircle size={13} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <div>
+        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">Offers</h2>
       <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
         {loading ? (
           <div className="p-6"><SkeletonTable rows={6} /></div>
@@ -177,6 +263,7 @@ export default function OfferManagement() {
             </table>
           </div>
         )}
+      </div>
       </div>
 
       <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title="New Offer" size="lg"

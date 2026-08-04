@@ -30,5 +30,12 @@ uploads/
 *.log
 coverage/
 
+# Database dumps / snapshots (may contain PII — never commit)
+*.bak
+*.sqlite
+*.sqlite.*
+*.dump
+*.pgsql
+
 temp_deploy/
 *.zip

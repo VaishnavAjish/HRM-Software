@@ -1,17 +1,25 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { Plus, CalendarClock, Video, MapPin, Phone, XCircle, MessageSquareText, RotateCcw } from "lucide-react";
+import { Plus, CalendarClock, Video, MapPin, Phone, XCircle, PauseCircle, MessageSquareText, RotateCcw, ArrowRight, Briefcase, GraduationCap } from "lucide-react";
 import Button from "../../../components/ui/Button";
 import Badge from "../../../components/ui/Badge";
 import Modal from "../../../components/ui/Modal";
 import { SkeletonTable } from "../../../components/ui/Skeleton";
 import { useAuth } from "../../../context/AuthContext";
 import { hrApi } from "../../../utils/api";
+import { stageLabel, nextMainStage } from "./hiring/stageMeta";
 
 const inputClass = "w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500";
 
 const STATUS_VARIANT = { scheduled: "blue", completed: "green", cancelled: "red", rescheduled: "yellow", no_show: "gray" };
 const MODE_ICON = { video: Video, onsite: MapPin, phone: Phone };
+const PRIORITY_DOT = { high: "bg-red-500", medium: "bg-yellow-400", low: "bg-gray-400" };
+
+/** Everything this tab owns: a candidate lands here once Shortlisted hands
+ *  them off, and leaves once they're advanced to Selected (Offer tab) or
+ *  rejected/held. Matches STAGE_GROUPS["Interviews"] in stageMeta.js. */
+const INTERVIEW_STAGES = ["hr_interview", "technical_interview", "final_interview"];
+const ROUND_NAME_BY_STAGE = { hr_interview: "HR", technical_interview: "Technical", final_interview: "Final" };
 
 const EMPTY_FORM = { candidate_id: "", round_name: "HR", scheduled_at: "", duration_minutes: 30, mode: "video", meeting_link: "", notes: "" };
 const EMPTY_FEEDBACK = { rating: 4, recommendation: "yes", strengths: "", concerns: "", notes: "" };
@@ -21,6 +29,9 @@ export default function InterviewManagement() {
   const [loading, setLoading] = useState(true);
   const [interviews, setInterviews] = useState([]);
   const [candidates, setCandidates] = useState([]);
+  const [roster, setRoster] = useState([]);
+  const [rosterLoading, setRosterLoading] = useState(true);
+  const [advancingId, setAdvancingId] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
@@ -50,13 +61,45 @@ export default function InterviewManagement() {
     return load();
   };
 
+  /** The roster of candidates this tab currently owns — everyone in an
+   *  interview stage, regardless of whether a round is scheduled yet. */
+  const loadRoster = useCallback(() => {
+    if (!user?.accessToken) return;
+    setRosterLoading(true);
+    hrApi.getCandidates(user.accessToken, user.tokenType, { per_page: 100, stage: INTERVIEW_STAGES.join(",") })
+      .then((res) => { if (res.status) setRoster(res.data?.data || res.data || []); })
+      .catch((err) => toast.error(err.message || "Failed to load candidates"))
+      .finally(() => setRosterLoading(false));
+  }, [user]);
+
   useEffect(() => {
     if (!user?.accessToken) return;
     load();
-    hrApi.getCandidates(user.accessToken, user.tokenType, { per_page: 100, stage: "applied,screening,shortlisted,hr_interview,technical_interview,final_interview" })
-      .then((res) => res.status && setCandidates(res.data?.data || res.data || []))
-      .catch(() => {});
+    loadRoster();
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // The "Schedule Interview" dropdown only offers candidates this tab owns —
+  // scheduling someone still in Sourcing is the Candidates tab's job.
+  useEffect(() => { setCandidates(roster); }, [roster]);
+
+  const scheduleFor = (candidate) => {
+    setForm({ ...EMPTY_FORM, candidate_id: String(candidate.id), round_name: ROUND_NAME_BY_STAGE[candidate.stage] || "HR" });
+    setModalOpen(true);
+  };
+
+  const advanceCandidate = async (candidate, toStage) => {
+    setAdvancingId(candidate.id);
+    try {
+      const res = await hrApi.moveCandidateStage(candidate.id, { to_stage: toStage }, user?.accessToken, user?.tokenType);
+      if (!res.status) throw new Error(res.message);
+      toast.success(toStage === "rejected" || toStage === "on_hold" ? `Marked ${stageLabel(toStage)}` : `Moved to ${stageLabel(toStage)}`);
+      loadRoster();
+    } catch (err) {
+      toast.error(err.message || "Failed to update stage");
+    } finally {
+      setAdvancingId(null);
+    }
+  };
 
   const save = async () => {
     if (!form.candidate_id || !form.scheduled_at) { toast.error("Candidate and date/time are required"); return; }
@@ -103,10 +146,85 @@ export default function InterviewManagement() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <p className="text-sm text-gray-500 dark:text-gray-400">Scheduling, feedback and scorecards for every round</p>
+        <p className="text-sm text-gray-500 dark:text-gray-400">Every candidate who's been shortlisted lands here — scheduling, feedback, and advancing through rounds all happen in this tab</p>
         <Button icon={<Plus size={16} />} onClick={() => setModalOpen(true)}>Schedule Interview</Button>
       </div>
 
+      {/* ── Candidates currently in the interview process ── */}
+      <div>
+        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">Candidates in Interview</h2>
+        {rosterLoading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {INTERVIEW_STAGES.map((s) => <div key={s} className="skeleton h-40 rounded-2xl" />)}
+          </div>
+        ) : roster.length === 0 ? (
+          <p className="text-sm text-gray-400 dark:text-gray-500 bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 text-center py-8">
+            No candidates in the interview process right now — they show up here once shortlisted from the Candidates tab.
+          </p>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {INTERVIEW_STAGES.map((stageKey) => {
+              const stageCandidates = roster.filter((c) => c.stage === stageKey);
+              return (
+                <div key={stageKey} className="rounded-2xl border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden">
+                  <div className="px-3 py-2.5 flex items-center justify-between border-b border-gray-100 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-900/20">
+                    <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">{stageLabel(stageKey)}</span>
+                    <Badge variant="gray">{stageCandidates.length}</Badge>
+                  </div>
+                  <div className="p-2 space-y-2 max-h-80 overflow-y-auto">
+                    {stageCandidates.length === 0 ? (
+                      <p className="text-xs text-gray-400 text-center py-6">No candidates</p>
+                    ) : stageCandidates.map((c) => {
+                      const next = nextMainStage(c.stage);
+                      const busy = advancingId === c.id;
+                      return (
+                        <div key={c.id} className="rounded-xl border border-gray-100 dark:border-gray-700 p-2.5">
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <span className={`w-2 h-2 rounded-full flex-shrink-0 ${PRIORITY_DOT[c.priority] || "bg-gray-400"}`} />
+                            <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{c.name}</p>
+                          </div>
+                          {c.requisition?.title && (
+                            <p className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 truncate"><Briefcase size={11} /> {c.requisition.title}</p>
+                          )}
+                          <p className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 mb-2"><GraduationCap size={11} /> {c.experience_years ?? 0} yrs</p>
+                          <div className="flex items-center gap-1">
+                            <button
+                              title={`Schedule ${ROUND_NAME_BY_STAGE[stageKey]} round`}
+                              onClick={() => scheduleFor(c)}
+                              className="flex-1 flex items-center justify-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-lg text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20 border border-brand-100 dark:border-brand-900/40"
+                            >
+                              <CalendarClock size={12} /> Schedule
+                            </button>
+                            {next && (
+                              <button
+                                title={`Move to ${next.label}`}
+                                disabled={busy}
+                                onClick={() => advanceCandidate(c, next.key)}
+                                className="p-1.5 rounded-lg text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 disabled:opacity-40"
+                              >
+                                <ArrowRight size={13} />
+                              </button>
+                            )}
+                            <button title="Hold" disabled={busy} onClick={() => advanceCandidate(c, "on_hold")} className="p-1.5 rounded-lg text-yellow-600 hover:bg-yellow-50 dark:hover:bg-yellow-900/20 disabled:opacity-40">
+                              <PauseCircle size={13} />
+                            </button>
+                            <button title="Reject" disabled={busy} onClick={() => advanceCandidate(c, "rejected")} className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-40">
+                              <XCircle size={13} />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <div>
+        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">Scheduled Rounds</h2>
       <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
         {loading ? (
           <div className="p-6"><SkeletonTable rows={6} /></div>
@@ -160,6 +278,7 @@ export default function InterviewManagement() {
             </table>
           </div>
         )}
+      </div>
       </div>
 
       <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title="Schedule Interview" size="lg"

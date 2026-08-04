@@ -70,7 +70,7 @@ const OTP_BOX_STAGGER_MS = 90;
 /* ── Correct-OTP dial sequence. These mirror the animation durations in
       index.css (.otp-slot-gather / .otp-orbit-spinning / .otp-check-burst),
       so the phase timers below never cut an animation short. ── */
-const OTP_GATHER_MS = 600; // row → 12/3/6/9 o'clock
+const OTP_GATHER_MS = 600; // row → evenly spaced around the dial
 const OTP_SPIN_MS = 1200; // full orbit around the dial
 const OTP_ORBIT_MS = OTP_GATHER_MS + OTP_SPIN_MS;
 const OTP_CHECK_MS = 950; // digits fade + checkmark burst, then redirect
@@ -80,30 +80,39 @@ const OTP_ROW_PITCH = OTP_BOX_SIZE + 12; // box + gap-3
 const OTP_DIAL_RADIUS = 70;
 const OTP_STAGE_HEIGHT = OTP_DIAL_RADIUS * 2 + OTP_BOX_SIZE + 16;
 
-// The four digits land at 12, 3, 6 and 9 o'clock, in that order.
-const OTP_CLOCK_POSITIONS = [
-  { x: 0, y: -OTP_DIAL_RADIUS },
-  { x: OTP_DIAL_RADIUS, y: 0 },
-  { x: 0, y: OTP_DIAL_RADIUS },
-  { x: -OTP_DIAL_RADIUS, y: 0 },
-];
+/* The server issues six digits (random_int(100000, 999999)) and validates
+   `digits:6`. This constant drives every box, index and length check below so
+   the two ends cannot drift apart again. */
+export const OTP_LENGTH = 6;
 
-/* ─── 4-box OTP Input ─── */
+const OTP_SLOTS = Array.from({ length: OTP_LENGTH }, (_, i) => i);
+
+const OTP_BLANK = " ".repeat(OTP_LENGTH);
+
+/* Evenly spaced around the dial starting at twelve o'clock. */
+const OTP_CLOCK_POSITIONS = OTP_SLOTS.map((i) => {
+  const angle = (Math.PI * 2 * i) / OTP_LENGTH - Math.PI / 2;
+  return {
+    x: Math.round(Math.cos(angle) * OTP_DIAL_RADIUS),
+    y: Math.round(Math.sin(angle) * OTP_DIAL_RADIUS),
+  };
+});
+
 function OtpInput({ value, onChange, status = "idle" }) {
   const refs = useRef([]);
   const disabled = status !== "idle";
 
   const handleChange = (e, i) => {
     const digit = e.target.value.replace(/\D/, "").slice(-1);
-    const arr = value.padEnd(4, " ").split("");
+    const arr = value.padEnd(OTP_LENGTH, " ").split("");
     arr[i] = digit || " ";
     onChange(arr.join(""));
-    if (digit && i < 3) refs.current[i + 1]?.focus();
+    if (digit && i < OTP_LENGTH - 1) refs.current[i + 1]?.focus();
   };
 
   const handleKey = (e, i) => {
     if (e.key === "Backspace") {
-      const arr = value.padEnd(4, " ").split("");
+      const arr = value.padEnd(OTP_LENGTH, " ").split("");
       arr[i] = " ";
       onChange(arr.join(""));
       if (i > 0) refs.current[i - 1]?.focus();
@@ -114,9 +123,9 @@ function OtpInput({ value, onChange, status = "idle" }) {
     const pasted = e.clipboardData
       .getData("text")
       .replace(/\D/g, "")
-      .slice(0, 4);
-    onChange(pasted.padEnd(4, " "));
-    refs.current[Math.min(pasted.length, 3)]?.focus();
+      .slice(0, OTP_LENGTH);
+    onChange(pasted.padEnd(OTP_LENGTH, " "));
+    refs.current[Math.min(pasted.length, OTP_LENGTH - 1)]?.focus();
     e.preventDefault();
   };
 
@@ -133,7 +142,7 @@ function OtpInput({ value, onChange, status = "idle" }) {
       : "border-gray-200 dark:border-gray-600";
 
   // Once the OTP checks out the row breaks apart into a clock dial: the digits
-  // swing out to 12/3/6/9, orbit together, then dissolve into the checkmark.
+  // swing out around the dial, orbit together, then dissolve into the checkmark.
   const onDial = status === "orbit" || status === "success";
 
   return (
@@ -146,15 +155,15 @@ function OtpInput({ value, onChange, status = "idle" }) {
           <div
             className={`otp-orbit ${status === "orbit" ? "otp-orbit-spinning" : ""}`}
           >
-            {[0, 1, 2, 3].map((i) => {
+            {OTP_SLOTS.map((i) => {
               const pos = OTP_CLOCK_POSITIONS[i];
-              const ch = (value || "    ")[i];
+              const ch = (value || OTP_BLANK)[i];
               return (
                 <div
                   key={i}
                   className={`otp-slot ${status === "orbit" ? "otp-slot-gather" : ""}`}
                   style={{
-                    "--otp-row-x": `${(i - 1.5) * OTP_ROW_PITCH}px`,
+                    "--otp-row-x": `${(i - (OTP_LENGTH - 1) / 2) * OTP_ROW_PITCH}px`,
                     "--otp-clock-x": `${pos.x}px`,
                     "--otp-clock-y": `${pos.y}px`,
                     // The gather animation holds this position via `forwards`;
@@ -189,17 +198,19 @@ function OtpInput({ value, onChange, status = "idle" }) {
         </>
       ) : (
         <div
-          className="flex gap-3 justify-center my-2"
+          className="flex gap-2 sm:gap-3 justify-center my-2"
           style={{ perspective: "600px" }}
         >
-          {[0, 1, 2, 3].map((i) => {
-            const ch = (value || "    ")[i];
+          {OTP_SLOTS.map((i) => {
+            const ch = (value || OTP_BLANK)[i];
             return (
               <input
                 key={i}
                 ref={(el) => (refs.current[i] = el)}
                 type="text"
                 inputMode="numeric"
+                autoComplete={i === 0 ? "one-time-code" : "off"}
+                aria-label={`Digit ${i + 1} of ${OTP_LENGTH}`}
                 maxLength={1}
                 value={ch === " " || !ch ? "" : ch}
                 onChange={(e) => handleChange(e, i)}
@@ -207,7 +218,7 @@ function OtpInput({ value, onChange, status = "idle" }) {
                 onPaste={handlePaste}
                 disabled={disabled}
                 style={{ animationDelay: `${i * OTP_BOX_STAGGER_MS}ms` }}
-                className={`w-14 h-14 text-center text-2xl font-bold bg-gray-50 dark:bg-gray-700 border-2 rounded-xl text-gray-900 dark:text-white focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 dark:focus:ring-brand-900/40 transition-all disabled:cursor-not-allowed ${boxStateClass} ${boxAnimClass}`}
+                className={`w-11 h-12 sm:w-14 sm:h-14 text-center text-xl sm:text-2xl font-bold bg-gray-50 dark:bg-gray-700 border-2 rounded-xl text-gray-900 dark:text-white focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 dark:focus:ring-brand-900/40 transition-all disabled:cursor-not-allowed ${boxStateClass} ${boxAnimClass}`}
               />
             );
           })}
@@ -261,7 +272,7 @@ export default function Login() {
   // Step 2 — email + OTP (formerly Step 1)
   const [emailInput, setEmailInput] = useState("");
   const [otpSent, setOtpSent] = useState(false);
-  const [otp, setOtp] = useState("    ");
+  const [otp, setOtp] = useState(OTP_BLANK);
   const [otpErr, setOtpErr] = useState("");
   const [sendLoading, setSendLoading] = useState(false);
   const [otpVerifyLoading, setOtpVerifyLoading] = useState(false);
@@ -299,7 +310,7 @@ export default function Login() {
     setCodeResolved(false);
     setEmailInput("");
     setOtpSent(false);
-    setOtp("    ");
+    setOtp(OTP_BLANK);
     setOtpErr("");
     setOtpAnim("idle");
     setNewPass("");
@@ -419,7 +430,7 @@ export default function Login() {
         company_code: fCompanyId,
         unit: fUnit,
       });
-      setOtp("    ");
+      setOtp(OTP_BLANK);
       setOtpVerifyLoading(false);
       setOtpAnim("idle");
       setOtpSent(true);
@@ -435,7 +446,7 @@ export default function Login() {
   /* ── Step 2 (OTP verification) → go to step 3 ── */
   const handleVerifyOtp = async () => {
     const entered = otp.replace(/\s/g, "");
-    if (entered.length < 4) {
+    if (entered.length < OTP_LENGTH) {
       setOtpErr("Please enter the 4-digit OTP");
       return;
     }
@@ -472,7 +483,7 @@ export default function Login() {
       // finish falling, plus a small buffer, before clearing the boxes.
       otpTimers.current.push(
         setTimeout(() => {
-          setOtp("    ");
+          setOtp(OTP_BLANK);
           setOtpAnim("idle");
           setOtpVerifyLoading(false);
         }, 3 * OTP_BOX_STAGGER_MS + 500 + 100),
@@ -527,7 +538,7 @@ export default function Login() {
       setCodeResolved(false);
       setEmailInput("");
       setOtpSent(false);
-      setOtp("    ");
+      setOtp(OTP_BLANK);
       setOtpErr("");
       setOtpVerifyLoading(false);
       setNewPass("");
@@ -839,7 +850,7 @@ export default function Login() {
                         onChange={(e) => {
                           setEmailInput(e.target.value);
                           setOtpSent(false);
-                          setOtp("    ");
+                          setOtp(OTP_BLANK);
                         }}
                         placeholder="Enter your email"
                         type="email"
@@ -872,7 +883,7 @@ export default function Login() {
                           onClick={() => {
                             clearOtpTimers();
                             setOtpSent(false);
-                            setOtp("    ");
+                            setOtp(OTP_BLANK);
                             setOtpVerifyLoading(false);
                             setOtpAnim("idle");
                             setEmailInput("");
@@ -910,7 +921,7 @@ export default function Login() {
                       <button
                         onClick={handleVerifyOtp}
                         disabled={
-                          otp.replace(/\s/g, "").length < 4 || otpVerifyLoading
+                          otp.replace(/\s/g, "").length < OTP_LENGTH || otpVerifyLoading
                         }
                         className={`w-full py-2.5 text-white rounded-xl font-semibold text-sm transition-colors flex items-center justify-center gap-2 shadow-sm ${
                           otpAnim === "orbit" || otpAnim === "success"

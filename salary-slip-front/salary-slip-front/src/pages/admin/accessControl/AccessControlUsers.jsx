@@ -21,7 +21,11 @@ import { adminUserApi } from "../../../utils/api";
 const inputClass =
   "w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500";
 
+const compactInputClass =
+  "w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2.5 py-1.5 text-xs text-gray-900 dark:text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500";
+
 const labelClass = "mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400";
+const compactLabelClass = "mb-1 block text-[11px] font-semibold text-gray-600 dark:text-gray-400";
 
 const STATUS_TONE = { ACTIVE: "green", INACTIVE: "yellow", LOCKED: "red", DELETED: "gray" };
 
@@ -957,21 +961,23 @@ export default function AccessControlUsers() {
       </div>
 
       <Card>
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-          <SearchBar
-            className="w-full lg:w-[350px] lg:flex-none"
-            value={search}
-            onChange={changeSearch}
-            placeholder="Search name, employee ID, username, email…"
-          />
-
-          <div className="flex flex-wrap gap-2 lg:ml-auto">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center justify-between">
+          <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
+            <SearchBar
+              className="w-full sm:w-[320px] lg:flex-none"
+              value={search}
+              onChange={changeSearch}
+              placeholder="Search name, employee ID, username, email…"
+            />
             <Button variant="secondary" onClick={() => setShowFilters((value) => !value)}>
               <Filter size={16} /> Filters{activeFilterCount ? ` (${activeFilterCount})` : ""}
             </Button>
             {(activeFilterCount > 0 || search) && (
               <Button variant="ghost" onClick={clearFilters}><X size={16} /> Clear</Button>
             )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 lg:ml-auto">
             <Button variant="secondary" onClick={reload}><RefreshCw size={16} /> Refresh</Button>
             <Button variant="secondary" onClick={() => download("csv")}><Download size={16} /> CSV</Button>
             <Button variant="secondary" onClick={() => download("excel")}><Download size={16} /> Excel</Button>
@@ -982,56 +988,39 @@ export default function AccessControlUsers() {
         </div>
 
         {showFilters && (
-          <div className="mt-4 grid gap-3 border-t border-gray-200 pt-4 dark:border-gray-700 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mt-3 grid gap-2.5 border-t border-gray-200 pt-3 dark:border-gray-700 sm:grid-cols-2 lg:grid-cols-4">
             <label className="block">
-              <span className={labelClass}>Name</span>
-              <input type="text" className={inputClass} value={filters.name} onChange={setFilter("name")} />
-            </label>
-            <label className="block">
-              <span className={labelClass}>Employee ID</span>
-              <input type="text" className={inputClass} value={filters.empCode} onChange={setFilter("empCode")} />
-            </label>
-            <label className="block">
-              <span className={labelClass}>Email</span>
-              <input type="text" className={inputClass} value={filters.email} onChange={setFilter("email")} />
-            </label>
-            <label className="block">
-              <span className={labelClass}>Mobile</span>
-              <input type="text" className={inputClass} value={filters.mobile} onChange={setFilter("mobile")} />
-            </label>
-
-            <label className="block">
-              <span className={labelClass}>Department</span>
-              <select className={inputClass} value={filters.department} onChange={setFilter("department")}>
+              <span className={compactLabelClass}>Department</span>
+              <select className={compactInputClass} value={filters.department} onChange={setFilter("department")}>
                 <option value="">All</option>
                 {(options?.departments ?? []).map((item) => <option key={item} value={item}>{item}</option>)}
               </select>
             </label>
             <label className="block">
-              <span className={labelClass}>Designation</span>
-              <select className={inputClass} value={filters.designation} onChange={setFilter("designation")}>
+              <span className={compactLabelClass}>Designation</span>
+              <select className={compactInputClass} value={filters.designation} onChange={setFilter("designation")}>
                 <option value="">All</option>
                 {(options?.designations ?? []).map((item) => <option key={item} value={item}>{item}</option>)}
               </select>
             </label>
             <label className="block">
-              <span className={labelClass}>Branch</span>
-              <select className={inputClass} value={filters.branch} onChange={setFilter("branch")}>
+              <span className={compactLabelClass}>Branch</span>
+              <select className={compactInputClass} value={filters.branch} onChange={setFilter("branch")}>
                 <option value="">All</option>
                 {(options?.branches ?? []).map((item) => <option key={item} value={item}>{item}</option>)}
               </select>
             </label>
             <label className="block">
-              <span className={labelClass}>Role</span>
-              <select className={inputClass} value={filters.roleId} onChange={setFilter("roleId")}>
+              <span className={compactLabelClass}>Role</span>
+              <select className={compactInputClass} value={filters.roleId} onChange={setFilter("roleId")}>
                 <option value="">All</option>
                 {(options?.roles ?? []).map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}
               </select>
             </label>
 
             <label className="block">
-              <span className={labelClass}>Status</span>
-              <select className={inputClass} value={filters.status} onChange={setFilter("status")}>
+              <span className={compactLabelClass}>Status</span>
+              <select className={compactInputClass} value={filters.status} onChange={setFilter("status")}>
                 <option value="">All</option>
                 {(options?.statuses ?? ["ACTIVE", "INACTIVE", "LOCKED", "DELETED"]).map((item) => (
                   <option key={item} value={item}>{item}</option>
@@ -1039,8 +1028,8 @@ export default function AccessControlUsers() {
               </select>
             </label>
             <label className="block">
-              <span className={labelClass}>User Type</span>
-              <select className={inputClass} value={filters.userType} onChange={setFilter("userType")}>
+              <span className={compactLabelClass}>User Type</span>
+              <select className={compactInputClass} value={filters.userType} onChange={setFilter("userType")}>
                 <option value="">All</option>
                 {(options?.userTypes ?? Object.keys(USER_TYPE_LABEL)).map((item) => (
                   <option key={item} value={item}>{USER_TYPE_LABEL[item] ?? item}</option>
@@ -1048,12 +1037,12 @@ export default function AccessControlUsers() {
               </select>
             </label>
             <label className="block">
-              <span className={labelClass}>Created from</span>
-              <input type="date" className={inputClass} value={filters.createdFrom} onChange={setFilter("createdFrom")} />
+              <span className={compactLabelClass}>Created from</span>
+              <input type="date" className={compactInputClass} value={filters.createdFrom} onChange={setFilter("createdFrom")} />
             </label>
             <label className="block">
-              <span className={labelClass}>Created to</span>
-              <input type="date" className={inputClass} value={filters.createdTo} onChange={setFilter("createdTo")} />
+              <span className={compactLabelClass}>Created to</span>
+              <input type="date" className={compactInputClass} value={filters.createdTo} onChange={setFilter("createdTo")} />
             </label>
 
             <label className="flex items-center gap-2 sm:col-span-2 lg:col-span-4">
