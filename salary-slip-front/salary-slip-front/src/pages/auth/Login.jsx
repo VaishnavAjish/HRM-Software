@@ -447,7 +447,7 @@ export default function Login() {
   const handleVerifyOtp = async () => {
     const entered = otp.replace(/\s/g, "");
     if (entered.length < OTP_LENGTH) {
-      setOtpErr("Please enter the 4-digit OTP");
+      setOtpErr(`Please enter the ${OTP_LENGTH}-digit OTP`);
       return;
     }
 
@@ -901,7 +901,7 @@ export default function Login() {
                     <div className="space-y-3 pt-2">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3 text-center">
-                          Enter 4-digit OTP
+                          Enter {OTP_LENGTH}-digit OTP
                         </label>
                         <OtpInput value={otp} onChange={setOtp} status={otpAnim} />
                       </div>

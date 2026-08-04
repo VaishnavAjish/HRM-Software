@@ -46,9 +46,28 @@ const toInt = (v: unknown): number => {
   return Number.isNaN(n) ? 0 : n;
 };
 
-/** Matches PHP's random_int(1000, 9999) — a four-digit code. */
+/**
+ * Length of a portal OTP. Must stay equal to Laravel's
+ * `random_int(100000, 999999)` in AuthController::sendPasswordResetOtp and to
+ * OTP_LENGTH in the React Login page — all three are the same code travelling
+ * between an email, a form and a comparison.
+ */
+export const OTP_LENGTH = 6;
+
+/**
+ * Matches PHP's random_int(100000, 999999) — a six-digit code.
+ *
+ * This generated four digits until 2026-08-04, while Laravel had already moved
+ * to six. Nobody noticed because Laravel is the deployed backend and it is the
+ * one that sends the mail, so the two never ran side by side. The moment the
+ * Node backend is deployed it would mail a four-digit code into a six-box form
+ * that refuses to submit until all six are filled — an account recovery flow
+ * that cannot be completed.
+ */
 export function generateOtp(random: () => number = Math.random): string {
-  return String(1000 + Math.floor(random() * 9000));
+  const min = 10 ** (OTP_LENGTH - 1);
+  const span = 9 * min;
+  return String(min + Math.floor(random() * span));
 }
 
 /**

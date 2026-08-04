@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   PasswordResetService,
   generateOtp,
+  OTP_LENGTH,
   type PasswordResetRepository,
   type ResetUserRow,
   type PasswordHasher,
@@ -61,14 +62,29 @@ beforeEach(() => {
     { id: 1, email: EMAIL, name: 'Victim', otp: null, status: '0', is_deleted: '0' },
   ]);
   mailer = new FakeMailer();
-  service = new PasswordResetService(repo, mailer, hasher, () => '4821');
+  service = new PasswordResetService(repo, mailer, hasher, () => '482137');
 });
 
 describe('generateOtp', () => {
-  it('produces a four-digit code, like random_int(1000, 9999)', () => {
-    expect(generateOtp(() => 0)).toBe('1000');
-    expect(generateOtp(() => 0.9999999)).toBe('9999');
-    expect(generateOtp()).toMatch(/^\d{4}$/);
+  it('produces a six-digit code, like random_int(100000, 999999)', () => {
+    expect(generateOtp(() => 0)).toBe('100000');
+    expect(generateOtp(() => 0.9999999)).toBe('999999');
+    expect(generateOtp()).toMatch(/^\d{6}$/);
+  });
+
+  // The regression that prompted this: a generator one digit-count out from
+  // the form it feeds produces a code the user cannot submit.
+  it('agrees with the length the login form and Laravel both expect', () => {
+    expect(OTP_LENGTH).toBe(6);
+    for (const r of [0, 0.1, 0.5, 0.9, 0.9999999]) {
+      expect(generateOtp(() => r)).toHaveLength(OTP_LENGTH);
+    }
+  });
+
+  it('never emits a leading zero, which a numeric input would silently eat', () => {
+    for (const r of [0, 0.0001, 0.5, 0.9999999]) {
+      expect(generateOtp(() => r).startsWith('0')).toBe(false);
+    }
   });
 });
 
@@ -76,8 +92,8 @@ describe('step 1 — send', () => {
   it('emails the code and stores it', async () => {
     await expect(service.sendOtp(EMAIL)).resolves.toEqual({ message: 'OTP sent to email' });
 
-    expect(mailer.sent).toEqual([{ to: EMAIL, otp: '4821', name: 'Victim' }]);
-    expect(repo.otps).toEqual([{ id: 1, otp: '4821' }]);
+    expect(mailer.sent).toEqual([{ to: EMAIL, otp: '482137', name: 'Victim' }]);
+    expect(repo.otps).toEqual([{ id: 1, otp: '482137' }]);
   });
 
   it('reports an unknown address as PHP does', async () => {
@@ -100,26 +116,26 @@ describe('step 1 — send', () => {
 describe('step 2 — verify', () => {
   it('accepts the right code', async () => {
     await service.sendOtp(EMAIL);
-    await expect(service.verifyOtp(EMAIL, '4821')).resolves.toEqual({ message: 'OTP verified' });
+    await expect(service.verifyOtp(EMAIL, '482137')).resolves.toEqual({ message: 'OTP verified' });
   });
 
   it('rejects the wrong code', async () => {
     await service.sendOtp(EMAIL);
-    await expect(service.verifyOtp(EMAIL, '0000')).rejects.toMatchObject({
+    await expect(service.verifyOtp(EMAIL, '000000')).rejects.toMatchObject({
       statusCode: 422,
       message: 'Invalid OTP',
     });
   });
 
   it('rejects when no code is outstanding', async () => {
-    await expect(service.verifyOtp(EMAIL, '4821')).rejects.toMatchObject({ statusCode: 422 });
+    await expect(service.verifyOtp(EMAIL, '482137')).rejects.toMatchObject({ statusCode: 422 });
   });
 
   it('does not consume the code', async () => {
     await service.sendOtp(EMAIL);
-    await service.verifyOtp(EMAIL, '4821');
+    await service.verifyOtp(EMAIL, '482137');
     // Verifying twice is legitimate; only step 3 clears it.
-    await expect(service.verifyOtp(EMAIL, '4821')).resolves.toBeDefined();
+    await expect(service.verifyOtp(EMAIL, '482137')).resolves.toBeDefined();
   });
 });
 
@@ -127,7 +143,7 @@ describe('step 3 — set password', () => {
   it('accepts the correct code', async () => {
     await service.sendOtp(EMAIL);
 
-    await expect(service.setPassword(EMAIL, 'chosen-by-owner', '4821')).resolves.toEqual({
+    await expect(service.setPassword(EMAIL, 'chosen-by-owner', '482137')).resolves.toEqual({
       message: 'Password reset successfully',
     });
     expect(repo.completed).toEqual([{ id: 1, hashed: 'hashed:chosen-by-owner', activate: false }]);
@@ -139,7 +155,7 @@ describe('step 3 — set password', () => {
     await service.sendOtp(EMAIL);
 
     // PHP accepts this: it never compares the value.
-    await expect(service.setPassword(EMAIL, 'attacker-chosen', '0000')).rejects.toMatchObject({
+    await expect(service.setPassword(EMAIL, 'attacker-chosen', '000000')).rejects.toMatchObject({
       statusCode: 422,
       message: 'Invalid OTP',
     });
@@ -158,7 +174,7 @@ describe('step 3 — set password', () => {
   });
 
   it('still refuses when no reset was requested', async () => {
-    await expect(service.setPassword(EMAIL, 'attacker-chosen', '4821')).rejects.toMatchObject({
+    await expect(service.setPassword(EMAIL, 'attacker-chosen', '482137')).rejects.toMatchObject({
       statusCode: 422,
       message: 'Verification expired. Please request a new OTP.',
     });
@@ -168,10 +184,10 @@ describe('step 3 — set password', () => {
 
   it('makes the code single-use', async () => {
     await service.sendOtp(EMAIL);
-    await service.setPassword(EMAIL, 'first', '4821');
+    await service.setPassword(EMAIL, 'first', '482137');
 
     // Leaving it set would allow unlimited resets from one delivered code.
-    await expect(service.setPassword(EMAIL, 'second', '4821')).rejects.toMatchObject({
+    await expect(service.setPassword(EMAIL, 'second', '482137')).rejects.toMatchObject({
       statusCode: 422,
     });
   });
@@ -179,7 +195,7 @@ describe('step 3 — set password', () => {
   it('clears status 2 as PHP does', async () => {
     repo.rows[0]!.status = '2';
     await service.sendOtp(EMAIL);
-    await service.setPassword(EMAIL, 'chosen', '4821');
+    await service.setPassword(EMAIL, 'chosen', '482137');
 
     expect(repo.completed[0]!.activate).toBe(true);
   });
@@ -188,7 +204,7 @@ describe('step 3 — set password', () => {
     repo.rows[0]!.is_deleted = '1';
     await service.sendOtp(EMAIL);
 
-    await expect(service.setPassword(EMAIL, 'chosen', '4821')).rejects.toMatchObject({
+    await expect(service.setPassword(EMAIL, 'chosen', '482137')).rejects.toMatchObject({
       statusCode: 403,
     });
   });
@@ -196,7 +212,7 @@ describe('step 3 — set password', () => {
   it('hashes the password rather than storing it raw', async () => {
     const spy = vi.spyOn(hasher, 'make');
     await service.sendOtp(EMAIL);
-    await service.setPassword(EMAIL, 'plaintext-here', '4821');
+    await service.setPassword(EMAIL, 'plaintext-here', '482137');
 
     expect(spy).toHaveBeenCalledWith('plaintext-here');
     expect(repo.completed[0]!.hashed).not.toBe('plaintext-here');
