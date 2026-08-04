@@ -66,6 +66,14 @@ import { useAuthorization } from "./hooks/useAuthorization";
 // HR module
 const HrDashboard = lazy(() => import("./pages/admin/hr/HrDashboard"));
 const HiringProcess = lazy(() => import("./pages/admin/hr/HiringProcess"));
+const OnboardingDashboard = lazy(() => import("./pages/admin/hr/onboarding/OnboardingDashboard"));
+const OnboardingJourneys = lazy(() => import("./pages/admin/hr/onboarding/OnboardingJourneys"));
+const WelcomePortal = lazy(() => import("./pages/admin/hr/onboarding/WelcomePortal"));
+const DocumentCollection = lazy(() => import("./pages/admin/hr/onboarding/DocumentCollection"));
+const OnboardingTraining = lazy(() => import("./pages/admin/hr/onboarding/OnboardingTraining"));
+const ItAssets = lazy(() => import("./pages/admin/hr/onboarding/ItAssets"));
+const OnboardingChecklists = lazy(() => import("./pages/admin/hr/onboarding/OnboardingChecklists"));
+const PolicyAcceptance = lazy(() => import("./pages/admin/hr/onboarding/PolicyAcceptance"));
 const AssetAllocation = lazy(() => import("./pages/admin/hr/AssetAllocation"));
 const PerformanceMatrix = lazy(() => import("./pages/admin/hr/PerformanceMatrix"));
 const HrReports = lazy(() => import("./pages/admin/hr/HrReports"));
@@ -195,6 +203,14 @@ function AppRoutes() {
         <Route path="hr" element={<ProtectedRoute requiredPermission="hr.dashboard.read"><HrDashboard /></ProtectedRoute>} />
         <Route path="hr/hiring" element={<ProtectedRoute requiredPermission="hr.requisition.read"><HiringProcess /></ProtectedRoute>} />
         <Route path="hr/assets" element={<ProtectedRoute requiredPermission="hr.asset.read"><AssetAllocation /></ProtectedRoute>} />
+        <Route path="hr/onboarding" element={<ProtectedRoute requiredPermission="hr.onboarding.journey.read"><OnboardingDashboard /></ProtectedRoute>} />
+        <Route path="hr/onboarding/journeys" element={<ProtectedRoute requiredPermission="hr.onboarding.journey.read"><OnboardingJourneys /></ProtectedRoute>} />
+        <Route path="hr/onboarding/welcome" element={<ProtectedRoute requiredPermission="hr.onboarding.journey.read"><WelcomePortal /></ProtectedRoute>} />
+        <Route path="hr/onboarding/documents" element={<ProtectedRoute requiredPermission="hr.onboarding.document.read"><DocumentCollection /></ProtectedRoute>} />
+        <Route path="hr/onboarding/training" element={<ProtectedRoute requiredPermission="hr.onboarding.training.read"><OnboardingTraining /></ProtectedRoute>} />
+        <Route path="hr/onboarding/assets" element={<ProtectedRoute requiredPermission="hr.onboarding.asset.read"><ItAssets /></ProtectedRoute>} />
+        <Route path="hr/onboarding/checklists" element={<ProtectedRoute requiredPermission="hr.onboarding.task.read"><OnboardingChecklists /></ProtectedRoute>} />
+        <Route path="hr/onboarding/policies" element={<ProtectedRoute requiredPermission="hr.onboarding.policy.read"><PolicyAcceptance /></ProtectedRoute>} />
         <Route path="hr/performance" element={<ProtectedRoute requiredPermission="hr.performance.read"><PerformanceMatrix /></ProtectedRoute>} />
         <Route path="hr/reports" element={<ProtectedRoute requiredPermission="hr.report.read"><HrReports /></ProtectedRoute>} />
         <Route path="hr/exit" element={<ProtectedRoute requiredPermission="hr.exit.read"><ExitManagement /></ProtectedRoute>} />

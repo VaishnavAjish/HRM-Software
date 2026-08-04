@@ -46,6 +46,27 @@ const EMPTY_FORM = {
   adhar_image: null,
 };
 
+const DEFAULT_DEPARTMENTS = [
+  "4P DEPT",
+  "ACCOUNT",
+  "BLOCKING DEPT",
+  "CUTTING",
+  "IT",
+  "OFFICE",
+  "POLISH-01 (MFG)",
+  "POLISH-02 (MFG)",
+  "POLISH-03 (MFG)",
+  "POLISH-05 (MFG)",
+  "POLISH-07 (MFG)",
+  "POLISH-11 (MFG)",
+  "POLISH-14 (MFG)",
+  "POLISH-15 (MFG)",
+  "PRICING DEPT",
+  "PRODUCTION",
+  "QUALITY",
+  "SECURITY",
+];
+
 // ─── Shared input class ────────────────────────────────────────────────────────
 const inputCls =
   "w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-[13px] font-semibold uppercase text-black outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100";
@@ -202,6 +223,15 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
     fetchDepts();
     return () => { mounted = false; };
   }, [isOpen, user?.accessToken, user?.tokenType]);
+
+  const allDepartments = Array.from(
+    new Set([
+      ...departmentsList,
+      ...DEFAULT_DEPARTMENTS,
+      formData.department,
+      formData.hastak_department,
+    ].filter(Boolean))
+  ).sort((a, b) => a.localeCompare(b));
 
   const fieldValidators = [
     {
@@ -628,7 +658,7 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
                 error={errors.department}
                 options={[
                   { value: "", label: "SELECT DEPARTMENT" },
-                  ...departmentsList.map((d) => ({ value: d, label: d.toUpperCase() })),
+                  ...allDepartments.map((d) => ({ value: d, label: String(d).toUpperCase() })),
                 ]}
               />
               <FullField
@@ -741,7 +771,7 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
                 onChange={handleChange}
                 options={[
                   { value: "", label: "SELECT HASTAK DEPARTMENT" },
-                  ...departmentsList.map((d) => ({ value: d, label: d.toUpperCase() })),
+                  ...allDepartments.map((d) => ({ value: d, label: String(d).toUpperCase() })),
                 ]}
               />
               <FullField

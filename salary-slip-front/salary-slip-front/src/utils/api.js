@@ -92,7 +92,7 @@ export function parseApiJsonResponse(text) {
   }
 }
 
-async function apiRequest(path, options = {}) {
+export async function apiRequest(path, options = {}) {
   const isFormData = options.body instanceof FormData;
 
   // Use CapacitorHttp for native builds to bypass CORS issues.
@@ -1910,5 +1910,16 @@ export const hrApi = {
   // Reports
   generateReport(type, filters = {}, accessToken, tokenType = "Bearer") {
     return apiRequest(`/hr/reports/generate${hrQuery({ type, ...filters })}`, { headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+
+  // Exit management
+  getResignations(accessToken, tokenType = "Bearer", filters = {}) {
+    return apiRequest(`/hr/exit/get${hrQuery(filters)}`, { headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+  storeResignation(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest("/hr/exit/store", { method: "POST", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(payload) });
+  },
+  updateResignationStatus(id, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/exit/status/${id}`, { method: "PUT", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(payload) });
   },
 };

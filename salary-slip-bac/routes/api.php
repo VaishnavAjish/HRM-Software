@@ -4,6 +4,7 @@ use App\Http\Controllers\Admin\AdminController;
 use App\Http\Controllers\Admin\AttendanceController;
 use App\Http\Controllers\Admin\Hr\AssetController;
 use App\Http\Controllers\Admin\Hr\CandidateController;
+use App\Http\Controllers\Admin\Hr\ExitManagementController;
 use App\Http\Controllers\Admin\Hr\HrDashboardController;
 use App\Http\Controllers\Admin\Hr\HrReportController;
 use App\Http\Controllers\Admin\Hr\InterviewController;
@@ -523,8 +524,14 @@ Route::middleware('jwt.auth')->group(function () {
                 Route::get('generate', [HrReportController::class, 'generate'])->middleware('permission:hr.report.read');
             });
 
-            // The exit-management and hr-settings controllers were removed with
-            // their module. Restore them before re-adding these groups.
+            Route::group(['prefix' => 'exit'], function () {
+                Route::get('get', [ExitManagementController::class, 'index'])->middleware('permission:hr.exit.read');
+                Route::post('store', [ExitManagementController::class, 'store'])->middleware('permission:hr.exit.create');
+                Route::put('status/{id}', [ExitManagementController::class, 'updateStatus'])->middleware('permission:hr.exit.update');
+            });
+
+            // hr-settings' controller was removed with its module. Restore it
+            // before re-adding this group.
         });
 
         /*

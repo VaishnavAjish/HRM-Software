@@ -1,1 +1,0 @@
-import{j as e}from"./index-4IUJpc4v.js";import{C as t}from"./ComingSoon-pP_Vs1oH.js";import"./ag-grid-vh0ptRm1.js";function a(){return e.jsx(t,{title:"Exit Management",description:"Knowledge transfer, clearance, final settlement and experience/relieving letter generation are coming in a future update."})}export{a as default};

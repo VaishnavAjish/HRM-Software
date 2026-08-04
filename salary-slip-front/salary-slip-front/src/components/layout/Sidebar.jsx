@@ -107,6 +107,10 @@ function getAdminNav(companyId, user, isAllCompanies, isModuleAvailable = () => 
       subItems: [
         { to: "/admin/hr", label: "HR Dashboard" },
         { to: "/admin/hr/hiring", label: "Hiring" },
+        { to: "/admin/hr/onboarding", label: "Onboarding" },
+        { to: "/admin/hr/onboarding/documents", label: "Documents" },
+        { to: "/admin/hr/onboarding/checklists", label: "Checklists" },
+        { to: "/admin/hr/onboarding/policies", label: "Policies" },
         { to: "/admin/hr/assets", label: "Asset Allocation" },
         { to: "/admin/hr/performance", label: "Performance Matrix" },
         { to: "/admin/hr/exit", label: "Exit Management" },

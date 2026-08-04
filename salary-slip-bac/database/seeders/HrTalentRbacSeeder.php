@@ -40,9 +40,11 @@ class HrTalentRbacSeeder extends Seeder
 
         'hr.report.read', 'hr.report.export',
 
+        'hr.exit.read', 'hr.exit.create', 'hr.exit.update',
+
         // Placeholder read-only codes for the not-yet-built shell sections.
         'hr.onboarding.read', 'hr.lifecycle.read', 'hr.separation.read',
-        'hr.exit.read', 'hr.org_insights.read', 'hr.hr_settings.read',
+        'hr.org_insights.read', 'hr.hr_settings.read',
     ];
 
     public function run(): void

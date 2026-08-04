@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
-import { Plus, Trophy, TrendingDown, Star, ArrowUpCircle, GraduationCap, Target } from "lucide-react";
+import { Plus, Trophy, TrendingDown, Star, ArrowUpCircle, GraduationCap, Target, Medal } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
 import Button from "../../../components/ui/Button";
 import Badge from "../../../components/ui/Badge";
@@ -144,6 +144,21 @@ export default function PerformanceMatrix() {
     return grid;
   }, [dashboard]);
 
+  // Who's actually performing well, not just a count — pulled straight from
+  // the reviews already fetched for this cycle, no extra request needed.
+  const ratedReviews = useMemo(
+    () => reviews.filter((r) => r.review_type === "manager" && r.overall_rating != null),
+    [reviews]
+  );
+  const topPerformers = useMemo(
+    () => [...ratedReviews].sort((a, b) => b.overall_rating - a.overall_rating).slice(0, 6),
+    [ratedReviews]
+  );
+  const needsAttention = useMemo(
+    () => [...ratedReviews].filter((r) => r.overall_rating < 3).sort((a, b) => a.overall_rating - b.overall_rating).slice(0, 6),
+    [ratedReviews]
+  );
+
   const cards = dashboard?.cards || {};
 
   return (
@@ -184,6 +199,23 @@ export default function PerformanceMatrix() {
             <StatCard title="Promotion Eligible" value={cards.promotion_eligible ?? 0} icon={<ArrowUpCircle size={20} />} color="blue" compact />
             <StatCard title="Training Required" value={cards.training_required ?? 0} icon={<GraduationCap size={20} />} color="purple" compact />
             <StatCard title="Goal Completion %" value={`${cards.goal_completion_pct ?? 0}%`} icon={<Target size={20} />} color="blue" compact />
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+            <RankedEmployeeList
+              title="Top Performing Employees"
+              icon={<Trophy size={16} className="text-green-500" />}
+              emptyText="No manager reviews with a rating yet"
+              rows={topPerformers}
+              tone="positive"
+            />
+            <RankedEmployeeList
+              title="Needs Attention"
+              icon={<TrendingDown size={16} className="text-red-500" />}
+              emptyText="No one currently rated below 3"
+              rows={needsAttention}
+              tone="negative"
+            />
           </div>
 
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
@@ -378,6 +410,39 @@ export default function PerformanceMatrix() {
           </div>
         </div>
       </Modal>
+    </div>
+  );
+}
+
+/** Names, not just a count — ranked by overall_rating, using whatever
+ *  manager reviews are already loaded for the current cycle. */
+function RankedEmployeeList({ title, icon, emptyText, rows, tone }) {
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6 shadow-sm">
+      <h3 className="text-base font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">{icon} {title}</h3>
+      {rows.length === 0 ? (
+        <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">{emptyText}</p>
+      ) : (
+        <div className="space-y-1">
+          {rows.map((r, i) => (
+            <div key={r.id} className="flex items-center gap-3 py-2 border-b border-gray-50 dark:border-gray-700/50 last:border-0">
+              <span className="w-5 flex-shrink-0 text-center">
+                {i < 3 ? <Medal size={16} className={i === 0 ? "text-yellow-500" : i === 1 ? "text-gray-400" : "text-amber-700"} /> : <span className="text-xs text-gray-400">{i + 1}</span>}
+              </span>
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-brand-500 to-indigo-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                {r.user?.name?.[0]?.toUpperCase() ?? "?"}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{r.user?.name || "—"}</p>
+                {r.user?.designation && <p className="text-xs text-gray-400 truncate">{r.user.designation}</p>}
+              </div>
+              <span className={`flex items-center gap-1 text-sm font-bold flex-shrink-0 ${tone === "positive" ? "text-green-600 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}>
+                <Star size={13} fill="currentColor" /> {Number(r.overall_rating).toFixed(1)}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
