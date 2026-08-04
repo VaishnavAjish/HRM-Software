@@ -92,34 +92,41 @@ function SummaryTile({ title, value, icon, color }) {
   );
 }
 
-function Breadcrumb() {
-  return (
-    <nav aria-label="Breadcrumb" className="text-xs text-gray-500 dark:text-gray-400">
-      <ol className="flex flex-wrap items-center gap-1.5">
-        <li><Link to="/admin" className="hover:text-brand-600 dark:hover:text-brand-400">Dashboard</Link></li>
-        <li aria-hidden="true">›</li>
-        <li>
-          <Link to="/admin/access-control/permission-matrix" className="hover:text-brand-600 dark:hover:text-brand-400">
-            Access Control
-          </Link>
-        </li>
-        <li aria-hidden="true">›</li>
-        <li aria-current="page" className="font-medium text-gray-700 dark:text-gray-200">Users</li>
-      </ol>
-    </nav>
-  );
+function formatMobile(value) {
+  if (!value || value === "0" || value === 0 || value === "0000000000") return "—";
+  return String(value);
 }
 
 function Avatar({ user }) {
-  if (user.photo) {
-    return <img src={user.photo} alt="" loading="lazy" className="h-9 w-9 flex-shrink-0 rounded-full object-cover" />;
+  const photoUrl = user.photo || user.avatar || user.profile_photo || user.user_photo || user.photo_url;
+  if (photoUrl && typeof photoUrl === "string" && photoUrl.trim() !== "") {
+    return (
+      <img
+        src={photoUrl}
+        alt=""
+        loading="lazy"
+        className="h-9 w-9 flex-shrink-0 rounded-full object-cover border border-gray-200 shadow-sm dark:border-gray-700"
+        onError={(e) => {
+          e.target.style.display = "none";
+          if (e.target.nextElementSibling) {
+            e.target.nextElementSibling.style.display = "flex";
+          }
+        }}
+      />
+    );
   }
 
   const initials = String(user.name || "?")
-    .split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
 
   return (
-    <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-brand-100 text-xs font-semibold text-brand-700 dark:bg-brand-900/40 dark:text-brand-300">
+    <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-brand-100 text-xs font-bold text-brand-700 dark:bg-brand-900/40 dark:text-brand-300 border border-brand-200/50 shadow-sm">
       {initials || "?"}
     </span>
   );
@@ -935,7 +942,6 @@ export default function AccessControlUsers() {
 
   return (
     <div className="min-w-0 max-w-full space-y-5">
-      <Breadcrumb />
 
       {meta.administrationReady === false && (
         <Card className="border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20">
@@ -1108,11 +1114,11 @@ export default function AccessControlUsers() {
         )}
 
         {!loading && rows.length > 0 && (
-          <div className="w-full max-w-full overflow-auto max-h-[calc(100vh-320px)] min-h-[240px]">
-            <table className="w-full min-w-[1280px] text-sm">
-              <thead className="sticky top-0 z-10 bg-white dark:bg-gray-800">
-                <tr className="border-b border-gray-200 text-left dark:border-gray-700">
-                  <th scope="col" className="w-10 px-3 py-3">
+          <div className="w-full max-w-full overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm max-h-[calc(100vh-320px)] min-h-[240px]">
+            <table className="w-full min-w-[1400px] text-sm text-left border-collapse">
+              <thead className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">
+                <tr>
+                  <th scope="col" className="w-12 px-4 py-3.5 text-center">
                     <input
                       type="checkbox"
                       aria-label="Select all rows"
@@ -1121,39 +1127,39 @@ export default function AccessControlUsers() {
                       className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
                     />
                   </th>
-                  <th scope="col" className="px-3 py-3 font-semibold text-gray-700 dark:text-gray-200">Photo</th>
+                  <th scope="col" className="w-14 px-3 py-3.5 text-center">Photo</th>
                   {[["empCode", "Employee ID"], ["name", "Full Name"]].map(([key, label]) => (
-                    <th key={key} scope="col" className="px-3 py-3 font-semibold text-gray-700 dark:text-gray-200">
-                      <button type="button" onClick={() => sortBy(key)} className="inline-flex items-center gap-1 hover:text-brand-600">
+                    <th key={key} scope="col" className="px-4 py-3.5 whitespace-nowrap">
+                      <button type="button" onClick={() => sortBy(key)} className="inline-flex items-center gap-1.5 hover:text-brand-600 transition-colors">
                         {label}{sort.by === key ? (sort.dir === "asc" ? " ↑" : " ↓") : ""}
                       </button>
                     </th>
                   ))}
-                  <th scope="col" className="px-3 py-3 font-semibold text-gray-700 dark:text-gray-200">Username</th>
-                  <th scope="col" className="px-3 py-3 font-semibold text-gray-700 dark:text-gray-200">Email</th>
-                  <th scope="col" className="px-3 py-3 font-semibold text-gray-700 dark:text-gray-200">Mobile</th>
-                  <th scope="col" className="px-3 py-3 font-semibold text-gray-700 dark:text-gray-200">Department</th>
-                  <th scope="col" className="px-3 py-3 font-semibold text-gray-700 dark:text-gray-200">Designation</th>
-                  <th scope="col" className="px-3 py-3 font-semibold text-gray-700 dark:text-gray-200">Branch</th>
-                  <th scope="col" className="px-3 py-3 font-semibold text-gray-700 dark:text-gray-200">Role</th>
-                  <th scope="col" className="px-3 py-3 font-semibold text-gray-700 dark:text-gray-200">Status</th>
-                  <th scope="col" className="px-3 py-3 font-semibold text-gray-700 dark:text-gray-200">
-                    <button type="button" onClick={() => sortBy("lastLoginAt")} className="inline-flex items-center gap-1 hover:text-brand-600">
+                  <th scope="col" className="px-4 py-3.5 whitespace-nowrap">Username</th>
+                  <th scope="col" className="px-4 py-3.5 whitespace-nowrap">Email</th>
+                  <th scope="col" className="px-4 py-3.5 whitespace-nowrap">Mobile</th>
+                  <th scope="col" className="px-4 py-3.5 whitespace-nowrap">Department</th>
+                  <th scope="col" className="px-4 py-3.5 whitespace-nowrap">Designation</th>
+                  <th scope="col" className="px-4 py-3.5 whitespace-nowrap">Branch</th>
+                  <th scope="col" className="px-4 py-3.5 whitespace-nowrap">Role</th>
+                  <th scope="col" className="px-4 py-3.5 whitespace-nowrap">Status</th>
+                  <th scope="col" className="px-4 py-3.5 whitespace-nowrap">
+                    <button type="button" onClick={() => sortBy("lastLoginAt")} className="inline-flex items-center gap-1.5 hover:text-brand-600 transition-colors">
                       Last Login{sort.by === "lastLoginAt" ? (sort.dir === "asc" ? " ↑" : " ↓") : ""}
                     </button>
                   </th>
-                  <th scope="col" className="px-3 py-3 font-semibold text-gray-700 dark:text-gray-200">
-                    <button type="button" onClick={() => sortBy("createdAt")} className="inline-flex items-center gap-1 hover:text-brand-600">
+                  <th scope="col" className="px-4 py-3.5 whitespace-nowrap">
+                    <button type="button" onClick={() => sortBy("createdAt")} className="inline-flex items-center gap-1.5 hover:text-brand-600 transition-colors">
                       Created{sort.by === "createdAt" ? (sort.dir === "asc" ? " ↑" : " ↓") : ""}
                     </button>
                   </th>
-                  <th scope="col" className="px-3 py-3 text-right font-semibold text-gray-700 dark:text-gray-200">Actions</th>
+                  <th scope="col" className="px-4 py-3.5 text-right whitespace-nowrap">Actions</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-700/60 bg-white dark:bg-gray-800">
                 {rows.map((row) => (
-                  <tr key={row.id} className="border-b border-gray-100 dark:border-gray-700/60">
-                    <td className="px-3 py-2.5">
+                  <tr key={row.id} className="hover:bg-gray-50/70 dark:hover:bg-gray-700/40 transition-colors">
+                    <td className="px-4 py-3 text-center align-middle">
                       <input
                         type="checkbox"
                         aria-label={`Select ${row.name}`}
@@ -1162,30 +1168,30 @@ export default function AccessControlUsers() {
                         className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
                       />
                     </td>
-                    <td className="px-3 py-2.5"><Avatar user={row} /></td>
-                    <td className="px-3 py-2.5 font-mono text-xs text-gray-700 dark:text-gray-300">{row.empCode || "—"}</td>
-                    <td className="px-3 py-2.5">
+                    <td className="px-3 py-3 align-middle"><Avatar user={row} /></td>
+                    <td className="px-4 py-3 align-middle font-mono text-xs font-semibold whitespace-nowrap text-gray-900 dark:text-gray-100">{row.empCode || "—"}</td>
+                    <td className="px-4 py-3 align-middle whitespace-nowrap">
                       <button
                         type="button"
                         onClick={() => setDrawerId(row.id)}
-                        className="font-medium text-gray-900 hover:text-brand-600 dark:text-gray-100 dark:hover:text-brand-400"
+                        className="font-semibold text-gray-900 hover:text-brand-600 dark:text-gray-100 dark:hover:text-brand-400 transition-colors"
                       >
                         {row.name}
                       </button>
                     </td>
-                    <td className="px-3 py-2.5 text-gray-600 dark:text-gray-400">{row.username || "—"}</td>
-                    <td className="px-3 py-2.5 text-gray-600 dark:text-gray-400">{row.email || "—"}</td>
-                    <td className="px-3 py-2.5 text-gray-600 dark:text-gray-400">{row.mobile || "—"}</td>
-                    <td className="px-3 py-2.5 text-gray-600 dark:text-gray-400">{row.department || "—"}</td>
-                    <td className="px-3 py-2.5 text-gray-600 dark:text-gray-400">{row.designation || "—"}</td>
-                    <td className="px-3 py-2.5 text-gray-600 dark:text-gray-400">{row.branch || "—"}</td>
-                    <td className="px-3 py-2.5"><Badge variant="blue">{row.roleLabel}</Badge></td>
-                    <td className="px-3 py-2.5">
+                    <td className="px-4 py-3 align-middle whitespace-nowrap text-gray-600 dark:text-gray-300">{row.username || "—"}</td>
+                    <td className="px-4 py-3 align-middle whitespace-nowrap text-gray-600 dark:text-gray-300">{row.email || "—"}</td>
+                    <td className="px-4 py-3 align-middle whitespace-nowrap text-gray-600 dark:text-gray-300">{formatMobile(row.mobile)}</td>
+                    <td className="px-4 py-3 align-middle whitespace-nowrap text-gray-600 dark:text-gray-300">{row.department || "—"}</td>
+                    <td className="px-4 py-3 align-middle whitespace-nowrap text-gray-600 dark:text-gray-300">{row.designation || "—"}</td>
+                    <td className="px-4 py-3 align-middle whitespace-nowrap text-gray-600 dark:text-gray-300">{row.branch || "—"}</td>
+                    <td className="px-4 py-3 align-middle whitespace-nowrap"><Badge variant="blue">{row.roleLabel}</Badge></td>
+                    <td className="px-4 py-3 align-middle whitespace-nowrap">
                       <Badge variant={STATUS_TONE[row.status] ?? "gray"}>{row.status}</Badge>
                     </td>
-                    <td className="px-3 py-2.5 text-xs text-gray-500 dark:text-gray-400">{formatDate(row.lastLoginAt, true)}</td>
-                    <td className="px-3 py-2.5 text-xs text-gray-500 dark:text-gray-400">{formatDate(row.createdAt)}</td>
-                    <td className="px-3 py-2.5 text-right">
+                    <td className="px-4 py-3 align-middle whitespace-nowrap text-xs text-gray-500 dark:text-gray-400">{formatDate(row.lastLoginAt, true)}</td>
+                    <td className="px-4 py-3 align-middle whitespace-nowrap text-xs text-gray-500 dark:text-gray-400">{formatDate(row.createdAt)}</td>
+                    <td className="px-4 py-3 align-middle text-right whitespace-nowrap">
                       <RowMenu user={row} can={can} onAction={runAction} />
                     </td>
                   </tr>
