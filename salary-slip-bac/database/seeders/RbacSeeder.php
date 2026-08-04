@@ -147,6 +147,7 @@ class RbacSeeder extends Seeder
             }
         }
 
+        $this->populateCatalog($permissions);
         $this->migrateLegacyAssignments($roles);
     }
 
@@ -225,5 +226,134 @@ class RbacSeeder extends Seeder
         return str_contains($code, '.reveal') || str_contains($code, '.delete') ||
             str_contains($code, '.approve') || str_contains($code, '.configure') ||
             str_contains($code, '.publish') || str_contains($code, '.rollback');
+    }
+
+    private function populateCatalog(array $permissions): void
+    {
+        if (!Schema::hasTable('authorization_resource_actions')) {
+            return;
+        }
+
+        $modulesMeta = [
+            'Authorization Administration' => ['code' => 'admin', 'name' => 'Access Control', 'order' => 10],
+            'HR' => ['code' => 'hr', 'name' => 'Human Resources', 'order' => 20],
+            'Payroll' => ['code' => 'payroll', 'name' => 'Payroll Management', 'order' => 30],
+            'Recruitment' => ['code' => 'recruitment', 'name' => 'Recruitment & Hiring', 'order' => 40],
+            'Documents' => ['code' => 'document', 'name' => 'Document Management', 'order' => 50],
+            'Workflow' => ['code' => 'workflow', 'name' => 'Workflows & Approvals', 'order' => 60],
+            'UI and Analytics' => ['code' => 'ui', 'name' => 'Dashboards & Analytics', 'order' => 70],
+            'Self Service' => ['code' => 'self', 'name' => 'Employee Self Service', 'order' => 80],
+        ];
+
+        $actionsMeta = [
+            'read' => ['name' => 'View', 'category' => 'READ', 'primary' => true, 'order' => 10],
+            'create' => ['name' => 'Create', 'category' => 'WRITE', 'primary' => true, 'order' => 20],
+            'update' => ['name' => 'Update', 'category' => 'WRITE', 'primary' => true, 'order' => 30],
+            'delete' => ['name' => 'Delete', 'category' => 'DESTRUCTIVE', 'primary' => true, 'order' => 40],
+            'execute' => ['name' => 'Execute', 'category' => 'WRITE', 'primary' => true, 'order' => 50],
+            'approve' => ['name' => 'Approve', 'category' => 'GOVERNANCE', 'primary' => false, 'order' => 60],
+            'export' => ['name' => 'Export', 'category' => 'READ', 'primary' => false, 'order' => 70],
+            'import' => ['name' => 'Import', 'category' => 'WRITE', 'primary' => false, 'order' => 80],
+            'print' => ['name' => 'Print', 'category' => 'READ', 'primary' => false, 'order' => 90],
+            'reveal' => ['name' => 'Reveal', 'category' => 'SENSITIVE', 'primary' => false, 'order' => 100],
+            'assign' => ['name' => 'Assign', 'category' => 'WRITE', 'primary' => false, 'order' => 110],
+            'clone' => ['name' => 'Clone', 'category' => 'WRITE', 'primary' => false, 'order' => 120],
+            'lock' => ['name' => 'Lock', 'category' => 'GOVERNANCE', 'primary' => false, 'order' => 130],
+            'unlock' => ['name' => 'Unlock', 'category' => 'GOVERNANCE', 'primary' => false, 'order' => 140],
+            'assign_role' => ['name' => 'Assign Role', 'category' => 'GOVERNANCE', 'primary' => false, 'order' => 150],
+            'assign_permission' => ['name' => 'Assign Permission', 'category' => 'GOVERNANCE', 'primary' => false, 'order' => 160],
+            'reset_password' => ['name' => 'Reset Password', 'category' => 'SENSITIVE', 'primary' => false, 'order' => 170],
+            'configure' => ['name' => 'Configure', 'category' => 'GOVERNANCE', 'primary' => false, 'order' => 180],
+            'simulate' => ['name' => 'Simulate', 'category' => 'READ', 'primary' => false, 'order' => 190],
+            'publish' => ['name' => 'Publish', 'category' => 'GOVERNANCE', 'primary' => false, 'order' => 200],
+            'rollback' => ['name' => 'Rollback', 'category' => 'GOVERNANCE', 'primary' => false, 'order' => 210],
+            'manage' => ['name' => 'Manage', 'category' => 'WRITE', 'primary' => false, 'order' => 220],
+            'view' => ['name' => 'View', 'category' => 'READ', 'primary' => true, 'order' => 10],
+            'start' => ['name' => 'Start', 'category' => 'WRITE', 'primary' => false, 'order' => 230],
+            'submit' => ['name' => 'Submit', 'category' => 'WRITE', 'primary' => false, 'order' => 240],
+            'reject' => ['name' => 'Reject', 'category' => 'GOVERNANCE', 'primary' => false, 'order' => 250],
+            'cancel' => ['name' => 'Cancel', 'category' => 'WRITE', 'primary' => false, 'order' => 260],
+            'reopen' => ['name' => 'Reopen', 'category' => 'WRITE', 'primary' => false, 'order' => 270],
+            'override' => ['name' => 'Override', 'category' => 'SENSITIVE', 'primary' => false, 'order' => 280],
+        ];
+
+        foreach (self::CATALOGUE as $groupName => $codes) {
+            $modInfo = $modulesMeta[$groupName] ?? ['code' => \Illuminate\Support\Str::slug($groupName), 'name' => $groupName, 'order' => 99];
+
+            DB::table('authorization_modules')->updateOrInsert(
+                ['tenant_id' => null, 'code' => $modInfo['code']],
+                ['name' => $modInfo['name'], 'description' => $groupName, 'display_order' => $modInfo['order'], 'is_active' => true, 'updated_at' => now(), 'created_at' => now()]
+            );
+
+            $moduleId = DB::table('authorization_modules')->whereNull('tenant_id')->where('code', $modInfo['code'])->value('id');
+
+            foreach ($codes as $code) {
+                if (!isset($permissions[$code])) {
+                    continue;
+                }
+                $permission = $permissions[$code];
+
+                $parts = explode('.', $code);
+                $actionCode = array_pop($parts);
+                $resourceCode = implode('.', $parts);
+
+                $lastPart = end($parts);
+                $resourceName = ucwords(str_replace(['.', '_'], ' ', $lastPart));
+
+                DB::table('authorization_resources')->updateOrInsert(
+                    ['code' => $resourceCode],
+                    [
+                        'module_id' => $moduleId,
+                        'name' => $resourceName,
+                        'description' => $resourceName . ' resource',
+                        'resource_type' => 'ENTITY',
+                        'is_sensitive' => $permission->is_sensitive,
+                        'display_order' => 10,
+                        'is_active' => true,
+                        'updated_at' => now(),
+                        'created_at' => now(),
+                    ]
+                );
+
+                $resourceId = DB::table('authorization_resources')->where('code', $resourceCode)->value('id');
+
+                $actMeta = $actionsMeta[$actionCode] ?? [
+                    'name' => ucwords(str_replace('_', ' ', $actionCode)),
+                    'category' => 'WRITE',
+                    'primary' => false,
+                    'order' => 500,
+                ];
+
+                DB::table('authorization_actions')->updateOrInsert(
+                    ['code' => $actionCode],
+                    [
+                        'name' => $actMeta['name'],
+                        'category' => $actMeta['category'],
+                        'is_sensitive' => in_array($actMeta['category'], ['SENSITIVE', 'DESTRUCTIVE'], true),
+                        'is_primary_column' => $actMeta['primary'],
+                        'display_order' => $actMeta['order'],
+                        'is_active' => true,
+                        'updated_at' => now(),
+                        'created_at' => now(),
+                    ]
+                );
+
+                $actionId = DB::table('authorization_actions')->where('code', $actionCode)->value('id');
+
+                DB::table('authorization_resource_actions')->updateOrInsert(
+                    [
+                        'resource_id' => $resourceId,
+                        'action_id' => $actionId,
+                    ],
+                    [
+                        'permission_id' => $permission->id,
+                        'requires_approval' => false,
+                        'is_sensitive' => (bool) $permission->is_sensitive,
+                        'updated_at' => now(),
+                        'created_at' => now(),
+                    ]
+                );
+            }
+        }
     }
 }

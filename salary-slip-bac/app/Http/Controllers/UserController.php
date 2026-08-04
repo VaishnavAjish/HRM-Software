@@ -1116,7 +1116,10 @@ class UserController extends Controller
                 }
 
                 $providedPassword = $rowData['password'] ?? '';
-                $rawPassword = $providedPassword !== '' ? $providedPassword : '12345678';
+                // SECURITY FIX: never fall back to a shared default; each row
+                // without a password gets a unique random one (recoverable via
+                // the OTP reset flow).
+                $rawPassword = $providedPassword !== '' ? $providedPassword : bin2hex(random_bytes(16));
                 if (! isset($hashedPasswordsCache[$rawPassword])) {
                     $hashedPasswordsCache[$rawPassword] = Hash::make($rawPassword);
                 }
@@ -1540,7 +1543,9 @@ class UserController extends Controller
             return response()->json(['status' => false, 'message' => $validator->errors()->first()], 422);
         }
 
-        $data['password'] = '12345678';
+        // SECURITY FIX: a random credential rather than the shared default;
+        // the owner recovers it through the OTP reset flow.
+        $data['password'] = bin2hex(random_bytes(16));
         $data['role'] = 3;
         $data['type'] = 'appointment';
 
@@ -1853,9 +1858,10 @@ class UserController extends Controller
         // account instead of a regular (role 3) candidate record.
         $data['role'] = 3;
 
-        // If password is required by DB, give a default
+        // If password is required by DB, give a random one — never a shared
+        // default, which would leave every trial record on the same credential.
         if (empty($data['password'])) {
-            $data['password'] = '12345678';
+            $data['password'] = bin2hex(random_bytes(16));
         }
 
         $userAuth = auth('api')->user();
