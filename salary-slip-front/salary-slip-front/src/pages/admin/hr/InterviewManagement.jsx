@@ -1,14 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { Plus, CalendarClock, Video, MapPin, Phone, XCircle, PauseCircle, MessageSquareText, RotateCcw, ArrowRight, Briefcase, GraduationCap } from "lucide-react";
-import Button from "../../../components/ui/Button";
+import {
+  CalendarClock, Video, MapPin, Phone, XCircle, PauseCircle, MessageSquareText,
+  RotateCcw, ArrowRight, Check, X,
+} from "lucide-react";
 import Badge from "../../../components/ui/Badge";
+import Button from "../../../components/ui/Button";
 import Modal from "../../../components/ui/Modal";
 import { SkeletonTable } from "../../../components/ui/Skeleton";
 import { useAuth } from "../../../context/AuthContext";
 import { hrApi } from "../../../utils/api";
-import { stageLabel, nextMainStage } from "./hiring/stageMeta";
+import { stageLabel, stageColor, nextMainStage } from "./hiring/stageMeta";
 
+const smallInputClass = "rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1 text-xs text-gray-900 dark:text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500";
 const inputClass = "w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500";
 
 const STATUS_VARIANT = { scheduled: "blue", completed: "green", cancelled: "red", rescheduled: "yellow", no_show: "gray" };
@@ -21,45 +25,33 @@ const PRIORITY_DOT = { high: "bg-red-500", medium: "bg-yellow-400", low: "bg-gra
 const INTERVIEW_STAGES = ["hr_interview", "technical_interview", "final_interview"];
 const ROUND_NAME_BY_STAGE = { hr_interview: "HR", technical_interview: "Technical", final_interview: "Final" };
 
-const EMPTY_FORM = { candidate_id: "", round_name: "HR", scheduled_at: "", duration_minutes: 30, mode: "video", meeting_link: "", notes: "" };
 const EMPTY_FEEDBACK = { rating: 4, recommendation: "yes", strengths: "", concerns: "", notes: "" };
+
+/** The interview that belongs to a candidate's *current* round — not any
+ *  earlier round they already finished on the way here. */
+function currentRoundInterview(candidate, interviews) {
+  const roundName = ROUND_NAME_BY_STAGE[candidate.stage];
+  const matches = interviews.filter(
+    (iv) => String(iv.candidate_id) === String(candidate.id) && (iv.round_name || "").toLowerCase() === (roundName || "").toLowerCase()
+  );
+  return matches.reduce((latest, iv) => (!latest || iv.id > latest.id ? iv : latest), null);
+}
 
 export default function InterviewManagement() {
   const { user } = useAuth();
-  const [loading, setLoading] = useState(true);
   const [interviews, setInterviews] = useState([]);
-  const [candidates, setCandidates] = useState([]);
   const [roster, setRoster] = useState([]);
   const [rosterLoading, setRosterLoading] = useState(true);
   const [advancingId, setAdvancingId] = useState(null);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [form, setForm] = useState(EMPTY_FORM);
-  const [saving, setSaving] = useState(false);
   const [feedbackTarget, setFeedbackTarget] = useState(null);
   const [feedback, setFeedback] = useState(EMPTY_FEEDBACK);
   const [rescheduleTarget, setRescheduleTarget] = useState(null);
   const [rescheduleAt, setRescheduleAt] = useState("");
 
-  /**
-   * Raises no spinner of its own — every state update happens in a promise
-   * continuation. `loading` starts true, so the mount fetch needs none, and
-   * turning it on from the effect was a synchronous setState that cost a
-   * cascading render before the request had even been sent. Callers refetching
-   * over an already-rendered list use reload().
-   */
-  const load = () =>
-    hrApi
-      .getInterviews(user?.accessToken, user?.tokenType, { per_page: 100 })
-      .then((res) => {
-        if (res.status) setInterviews(res.data?.data || res.data || []);
-      })
-      .catch((err) => toast.error(err.message || "Failed to load interviews"))
-      .finally(() => setLoading(false));
-
-  const reload = () => {
-    setLoading(true);
-    return load();
-  };
+  const loadInterviews = () =>
+    hrApi.getInterviews(user?.accessToken, user?.tokenType, { per_page: 100 })
+      .then((res) => { if (res.status) setInterviews(res.data?.data || res.data || []); })
+      .catch((err) => toast.error(err.message || "Failed to load interviews"));
 
   /** The roster of candidates this tab currently owns — everyone in an
    *  interview stage, regardless of whether a round is scheduled yet. */
@@ -74,18 +66,9 @@ export default function InterviewManagement() {
 
   useEffect(() => {
     if (!user?.accessToken) return;
-    load();
+    loadInterviews();
     loadRoster();
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // The "Schedule Interview" dropdown only offers candidates this tab owns —
-  // scheduling someone still in Sourcing is the Candidates tab's job.
-  useEffect(() => { setCandidates(roster); }, [roster]);
-
-  const scheduleFor = (candidate) => {
-    setForm({ ...EMPTY_FORM, candidate_id: String(candidate.id), round_name: ROUND_NAME_BY_STAGE[candidate.stage] || "HR" });
-    setModalOpen(true);
-  };
 
   const advanceCandidate = async (candidate, toStage) => {
     setAdvancingId(candidate.id);
@@ -101,24 +84,23 @@ export default function InterviewManagement() {
     }
   };
 
-  const save = async () => {
-    if (!form.candidate_id || !form.scheduled_at) { toast.error("Candidate and date/time are required"); return; }
-    setSaving(true);
-    try {
-      const res = await hrApi.storeInterview(form, user?.accessToken, user?.tokenType);
-      if (res.status) { toast.success("Interview scheduled"); setModalOpen(false); setForm(EMPTY_FORM); reload(); }
-    } catch (err) {
-      toast.error(err.message || "Failed to schedule interview");
-    } finally {
-      setSaving(false);
-    }
+  /** Fired from a roster row's inline form — no separate "pick a candidate"
+   *  modal, since the row already knows who and which round. */
+  const scheduleFor = async (candidate, payload) => {
+    const res = await hrApi.storeInterview(
+      { candidate_id: candidate.id, requisition_id: candidate.requisition_id || null, duration_minutes: 30, notes: "", ...payload },
+      user?.accessToken, user?.tokenType
+    );
+    if (!res.status) throw new Error(res.message);
+    toast.success("Interview scheduled");
+    loadInterviews();
   };
 
-  const cancel = async (id) => {
-    if (!window.confirm("Cancel this interview?")) return;
+  const cancelInterview = async (id) => {
+    if (!window.confirm("Cancel this round?")) return;
     try {
       const res = await hrApi.deleteInterview(id, user?.accessToken, user?.tokenType);
-      if (res.status) { toast.success("Interview cancelled"); reload(); }
+      if (res.status) { toast.success("Interview cancelled"); loadInterviews(); }
     } catch (err) {
       toast.error(err.message || "Failed to cancel");
     }
@@ -128,7 +110,7 @@ export default function InterviewManagement() {
     if (!rescheduleAt) { toast.error("Pick a new date/time"); return; }
     try {
       const res = await hrApi.rescheduleInterview(rescheduleTarget.id, { scheduled_at: rescheduleAt }, user?.accessToken, user?.tokenType);
-      if (res.status) { toast.success("Interview rescheduled"); setRescheduleTarget(null); setRescheduleAt(""); reload(); }
+      if (res.status) { toast.success("Interview rescheduled"); setRescheduleTarget(null); setRescheduleAt(""); loadInterviews(); }
     } catch (err) {
       toast.error(err.message || "Failed to reschedule");
     }
@@ -137,7 +119,7 @@ export default function InterviewManagement() {
   const submitFeedback = async () => {
     try {
       const res = await hrApi.submitInterviewFeedback(feedbackTarget.id, feedback, user?.accessToken, user?.tokenType);
-      if (res.status) { toast.success("Feedback submitted"); setFeedbackTarget(null); setFeedback(EMPTY_FEEDBACK); reload(); }
+      if (res.status) { toast.success("Feedback submitted"); setFeedbackTarget(null); setFeedback(EMPTY_FEEDBACK); loadInterviews(); }
     } catch (err) {
       toast.error(err.message || "Failed to submit feedback");
     }
@@ -145,91 +127,17 @@ export default function InterviewManagement() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <p className="text-sm text-gray-500 dark:text-gray-400">Every candidate who's been shortlisted lands here — scheduling, feedback, and advancing through rounds all happen in this tab</p>
-        <Button icon={<Plus size={16} />} onClick={() => setModalOpen(true)}>Schedule Interview</Button>
-      </div>
+      <p className="text-sm text-gray-500 dark:text-gray-400">
+        Every candidate who's been shortlisted lands here — set a round's date &amp; time right on their row, then advance them once it's done
+      </p>
 
-      {/* ── Candidates currently in the interview process ── */}
-      <div>
-        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">Candidates in Interview</h2>
+      <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
         {rosterLoading ? (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {INTERVIEW_STAGES.map((s) => <div key={s} className="skeleton h-40 rounded-2xl" />)}
-          </div>
+          <div className="p-6"><SkeletonTable rows={6} /></div>
         ) : roster.length === 0 ? (
-          <p className="text-sm text-gray-400 dark:text-gray-500 bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 text-center py-8">
+          <p className="text-center py-16 text-sm text-gray-500 dark:text-gray-400">
             No candidates in the interview process right now — they show up here once shortlisted from the Candidates tab.
           </p>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {INTERVIEW_STAGES.map((stageKey) => {
-              const stageCandidates = roster.filter((c) => c.stage === stageKey);
-              return (
-                <div key={stageKey} className="rounded-2xl border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden">
-                  <div className="px-3 py-2.5 flex items-center justify-between border-b border-gray-100 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-900/20">
-                    <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">{stageLabel(stageKey)}</span>
-                    <Badge variant="gray">{stageCandidates.length}</Badge>
-                  </div>
-                  <div className="p-2 space-y-2 max-h-80 overflow-y-auto">
-                    {stageCandidates.length === 0 ? (
-                      <p className="text-xs text-gray-400 text-center py-6">No candidates</p>
-                    ) : stageCandidates.map((c) => {
-                      const next = nextMainStage(c.stage);
-                      const busy = advancingId === c.id;
-                      return (
-                        <div key={c.id} className="rounded-xl border border-gray-100 dark:border-gray-700 p-2.5">
-                          <div className="flex items-center gap-1.5 mb-1">
-                            <span className={`w-2 h-2 rounded-full flex-shrink-0 ${PRIORITY_DOT[c.priority] || "bg-gray-400"}`} />
-                            <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{c.name}</p>
-                          </div>
-                          {c.requisition?.title && (
-                            <p className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 truncate"><Briefcase size={11} /> {c.requisition.title}</p>
-                          )}
-                          <p className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 mb-2"><GraduationCap size={11} /> {c.experience_years ?? 0} yrs</p>
-                          <div className="flex items-center gap-1">
-                            <button
-                              title={`Schedule ${ROUND_NAME_BY_STAGE[stageKey]} round`}
-                              onClick={() => scheduleFor(c)}
-                              className="flex-1 flex items-center justify-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-lg text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20 border border-brand-100 dark:border-brand-900/40"
-                            >
-                              <CalendarClock size={12} /> Schedule
-                            </button>
-                            {next && (
-                              <button
-                                title={`Move to ${next.label}`}
-                                disabled={busy}
-                                onClick={() => advanceCandidate(c, next.key)}
-                                className="p-1.5 rounded-lg text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 disabled:opacity-40"
-                              >
-                                <ArrowRight size={13} />
-                              </button>
-                            )}
-                            <button title="Hold" disabled={busy} onClick={() => advanceCandidate(c, "on_hold")} className="p-1.5 rounded-lg text-yellow-600 hover:bg-yellow-50 dark:hover:bg-yellow-900/20 disabled:opacity-40">
-                              <PauseCircle size={13} />
-                            </button>
-                            <button title="Reject" disabled={busy} onClick={() => advanceCandidate(c, "rejected")} className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-40">
-                              <XCircle size={13} />
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      <div>
-        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">Scheduled Rounds</h2>
-      <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
-        {loading ? (
-          <div className="p-6"><SkeletonTable rows={6} /></div>
-        ) : interviews.length === 0 ? (
-          <p className="text-center py-16 text-sm text-gray-500 dark:text-gray-400">No interviews scheduled yet</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -238,70 +146,29 @@ export default function InterviewManagement() {
                   <th className="text-left px-4 py-3">Candidate</th>
                   <th className="text-left px-4 py-3">Round</th>
                   <th className="text-left px-4 py-3">Schedule</th>
-                  <th className="text-left px-4 py-3">Mode</th>
                   <th className="text-left px-4 py-3">Status</th>
-                  <th className="text-left px-4 py-3">Avg Rating</th>
                   <th className="text-right px-4 py-3">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                {interviews.map((iv) => {
-                  const ModeIcon = MODE_ICON[iv.mode] || Video;
-                  const avgRating = iv.feedback?.length ? (iv.feedback.reduce((s, f) => s + (f.rating || 0), 0) / iv.feedback.length).toFixed(1) : "—";
-                  return (
-                    <tr key={iv.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
-                      <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{iv.candidate?.name}</td>
-                      <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{iv.round_name}</td>
-                      <td className="px-4 py-3 text-gray-600 dark:text-gray-300 flex items-center gap-1.5">
-                        <CalendarClock size={14} /> {iv.scheduled_at ? new Date(iv.scheduled_at).toLocaleString() : "—"}
-                      </td>
-                      <td className="px-4 py-3 text-gray-600 dark:text-gray-300"><span className="inline-flex items-center gap-1 capitalize"><ModeIcon size={14} /> {iv.mode}</span></td>
-                      <td className="px-4 py-3"><Badge variant={STATUS_VARIANT[iv.status] || "gray"}>{iv.status?.replace("_", " ")}</Badge></td>
-                      <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{avgRating}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <button title="Submit feedback" onClick={() => { setFeedbackTarget(iv); setFeedback(EMPTY_FEEDBACK); }} className="p-1.5 rounded-lg text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20">
-                            <MessageSquareText size={15} />
-                          </button>
-                          <button title="Reschedule" onClick={() => { setRescheduleTarget(iv); setRescheduleAt(""); }} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700">
-                            <RotateCcw size={15} />
-                          </button>
-                          <button title="Cancel" onClick={() => cancel(iv.id)} className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20">
-                            <XCircle size={15} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
+                {roster.map((c) => (
+                  <RosterRow
+                    key={c.id}
+                    candidate={c}
+                    interview={currentRoundInterview(c, interviews)}
+                    busy={advancingId === c.id}
+                    onSchedule={scheduleFor}
+                    onAdvance={advanceCandidate}
+                    onFeedback={(iv) => { setFeedbackTarget(iv); setFeedback(EMPTY_FEEDBACK); }}
+                    onReschedule={(iv) => { setRescheduleTarget(iv); setRescheduleAt(""); }}
+                    onCancel={cancelInterview}
+                  />
+                ))}
               </tbody>
             </table>
           </div>
         )}
       </div>
-      </div>
-
-      <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title="Schedule Interview" size="lg"
-        footer={<div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? "Scheduling..." : "Schedule"}</Button></div>}>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Field label="Candidate" required full>
-            <select className={inputClass} value={form.candidate_id} onChange={(e) => setForm({ ...form, candidate_id: e.target.value })}>
-              <option value="">— Select candidate —</option>
-              {candidates.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          </Field>
-          <Field label="Round Name" required><input className={inputClass} value={form.round_name} onChange={(e) => setForm({ ...form, round_name: e.target.value })} placeholder="HR / Technical / Manager / Final" /></Field>
-          <Field label="Date & Time" required><input type="datetime-local" className={inputClass} value={form.scheduled_at} onChange={(e) => setForm({ ...form, scheduled_at: e.target.value })} /></Field>
-          <Field label="Duration (minutes)"><input type="number" className={inputClass} value={form.duration_minutes} onChange={(e) => setForm({ ...form, duration_minutes: e.target.value })} /></Field>
-          <Field label="Mode">
-            <select className={inputClass} value={form.mode} onChange={(e) => setForm({ ...form, mode: e.target.value })}>
-              <option value="video">Video</option><option value="onsite">Onsite</option><option value="phone">Phone</option>
-            </select>
-          </Field>
-          <Field label="Meeting Link / Location" full><input className={inputClass} value={form.meeting_link} onChange={(e) => setForm({ ...form, meeting_link: e.target.value })} /></Field>
-          <Field label="Notes" full><textarea rows={2} className={inputClass} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></Field>
-        </div>
-      </Modal>
 
       <Modal isOpen={!!feedbackTarget} onClose={() => setFeedbackTarget(null)} title={`Feedback — ${feedbackTarget?.candidate?.name || ""}`}
         footer={<div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setFeedbackTarget(null)}>Cancel</Button><Button onClick={submitFeedback}>Submit</Button></div>}>
@@ -325,6 +192,114 @@ export default function InterviewManagement() {
         <Field label="New Date & Time"><input type="datetime-local" className={inputClass} value={rescheduleAt} onChange={(e) => setRescheduleAt(e.target.value)} /></Field>
       </Modal>
     </div>
+  );
+}
+
+/** One row per candidate. No detour through a separate "schedule" modal —
+ *  the round's date/time/mode are filled in right here, since the row
+ *  already knows the candidate and which round they're on. */
+function RosterRow({ candidate, interview, busy, onSchedule, onAdvance, onFeedback, onReschedule, onCancel }) {
+  const [scheduling, setScheduling] = useState(false);
+  const [dt, setDt] = useState("");
+  const [mode, setMode] = useState("video");
+  const [link, setLink] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const next = nextMainStage(candidate.stage);
+  const ModeIcon = interview ? (MODE_ICON[interview.mode] || Video) : null;
+  const avgRating = interview?.feedback?.length
+    ? (interview.feedback.reduce((s, f) => s + (f.rating || 0), 0) / interview.feedback.length).toFixed(1)
+    : null;
+
+  const submit = async () => {
+    if (!dt) { toast.error("Pick a date & time"); return; }
+    setSubmitting(true);
+    try {
+      await onSchedule(candidate, { scheduled_at: dt, mode, meeting_link: link });
+      setScheduling(false); setDt(""); setLink("");
+    } catch (err) {
+      toast.error(err.message || "Failed to schedule");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <tr className="hover:bg-gray-50 dark:hover:bg-gray-700/30 align-top">
+      <td className="px-4 py-3">
+        <div className="flex items-center gap-2">
+          <span className={`w-2 h-2 rounded-full flex-shrink-0 mt-1 ${PRIORITY_DOT[candidate.priority] || "bg-gray-400"}`} />
+          <div>
+            <p className="font-medium text-gray-900 dark:text-white">{candidate.name}</p>
+            {candidate.requisition?.title && <p className="text-xs text-gray-400">{candidate.requisition.title}</p>}
+          </div>
+        </div>
+      </td>
+      <td className="px-4 py-3">
+        <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ backgroundColor: `${stageColor(candidate.stage)}1a`, color: stageColor(candidate.stage) }}>
+          {stageLabel(candidate.stage)}
+        </span>
+      </td>
+      <td className="px-4 py-3">
+        {interview ? (
+          <div className="flex items-center gap-1.5 text-gray-600 dark:text-gray-300">
+            <CalendarClock size={14} className="flex-shrink-0" />
+            {interview.scheduled_at ? new Date(interview.scheduled_at).toLocaleString() : "—"}
+            {ModeIcon && <ModeIcon size={14} className="flex-shrink-0 ml-1" />}
+          </div>
+        ) : scheduling ? (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <input type="datetime-local" value={dt} onChange={(e) => setDt(e.target.value)} className={smallInputClass} />
+            <select value={mode} onChange={(e) => setMode(e.target.value)} className={smallInputClass}>
+              <option value="video">Video</option><option value="onsite">Onsite</option><option value="phone">Phone</option>
+            </select>
+            <input placeholder="Meeting link (optional)" value={link} onChange={(e) => setLink(e.target.value)} className={`${smallInputClass} w-32`} />
+            <button title="Save" onClick={submit} disabled={submitting} className="p-1.5 rounded-lg text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 disabled:opacity-40">
+              <Check size={14} />
+            </button>
+            <button title="Cancel" onClick={() => setScheduling(false)} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700">
+              <X size={14} />
+            </button>
+          </div>
+        ) : (
+          <button onClick={() => setScheduling(true)} className="flex items-center gap-1 text-xs font-semibold text-brand-600 hover:underline">
+            <CalendarClock size={13} /> Set date &amp; time
+          </button>
+        )}
+      </td>
+      <td className="px-4 py-3">
+        {interview && <Badge variant={STATUS_VARIANT[interview.status] || "gray"}>{interview.status?.replace("_", " ")}</Badge>}
+        {avgRating && <span className="ml-2 text-xs text-gray-400 dark:text-gray-500">★ {avgRating}</span>}
+      </td>
+      <td className="px-4 py-3">
+        <div className="flex items-center justify-end gap-1">
+          {interview && (
+            <>
+              <button title="Submit feedback" onClick={() => onFeedback(interview)} className="p-1.5 rounded-lg text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20">
+                <MessageSquareText size={14} />
+              </button>
+              <button title="Reschedule" onClick={() => onReschedule(interview)} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700">
+                <RotateCcw size={14} />
+              </button>
+              <button title="Cancel round" onClick={() => onCancel(interview.id)} className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20">
+                <XCircle size={14} />
+              </button>
+            </>
+          )}
+          {next && (
+            <button title={`Move to ${next.label}`} disabled={busy} onClick={() => onAdvance(candidate, next.key)} className="p-1.5 rounded-lg text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 disabled:opacity-40">
+              <ArrowRight size={14} />
+            </button>
+          )}
+          <button title="Hold" disabled={busy} onClick={() => onAdvance(candidate, "on_hold")} className="p-1.5 rounded-lg text-yellow-600 hover:bg-yellow-50 dark:hover:bg-yellow-900/20 disabled:opacity-40">
+            <PauseCircle size={14} />
+          </button>
+          <button title="Reject" disabled={busy} onClick={() => onAdvance(candidate, "rejected")} className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-40">
+            <XCircle size={14} />
+          </button>
+        </div>
+      </td>
+    </tr>
   );
 }
 
