@@ -1,4 +1,4 @@
-import * as XLSX from "xlsx";
+import { saveJsonToXlsx, downloadCsvFile } from "./excel";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import {
@@ -9,22 +9,11 @@ import {
 import { buildPayslipData, COMPANY_DETAILS } from "./payslipUtils";
 
 export function downloadExcel(rows, filename) {
-  const ws = XLSX.utils.json_to_sheet(rows);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
-  XLSX.writeFile(wb, `${filename}.xlsx`);
+  saveJsonToXlsx(`${filename}.xlsx`, "Sheet1", rows);
 }
 
 export function downloadCSV(rows, filename) {
-  const ws = XLSX.utils.json_to_sheet(rows);
-  const csv = XLSX.utils.sheet_to_csv(ws);
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${filename}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadCsvFile(`${filename}.csv`, rows);
 }
 
 export function downloadTablePDF({ title, subtitle, columns, rows, filename }) {

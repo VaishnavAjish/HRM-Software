@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { Check, FileSpreadsheet, X, Upload, FileText } from "lucide-react";
 import ModernDatePicker from "../../components/ModernDatePicker";
 import toast from "react-hot-toast";
-import { authApi, resolveWriteCompanyId } from "../../utils/api";
+import { authApi, salaryApi, resolveWriteCompanyId } from "../../utils/api";
 import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";
 import { getCompanyUnits } from "../../config/companyConfig";
@@ -58,7 +58,7 @@ const SectionHeader = ({ title }) => (
 );
 
 // ─── Full-width field (spans both columns) ────────────────────────────────────
-const FullField = ({ label, name, value, onChange, error, type = "text", textarea, disabled }) => (
+const FullField = ({ label, name, value, onChange, error, type = "text", textarea, select, options, disabled }) => (
   <div className="col-span-1 sm:col-span-2 flex flex-col gap-1">
     {/* htmlFor/id so the label actually names the control for screen readers. */}
     <label
@@ -67,7 +67,22 @@ const FullField = ({ label, name, value, onChange, error, type = "text", textare
     >
       {label}
     </label>
-    {textarea ? (
+    {select ? (
+      <select
+        id={`trial-${name}`}
+        name={name}
+        value={value}
+        onChange={onChange}
+        disabled={disabled}
+        className={`${inputCls} disabled:bg-gray-100 disabled:text-gray-500 disabled:border-gray-200`}
+      >
+        {(options || []).map((o) => (
+          <option key={o.value ?? o} value={o.value ?? o}>
+            {o.label ?? o}
+          </option>
+        ))}
+      </select>
+    ) : textarea ? (
       <textarea
         id={`trial-${name}`}
         name={name}
@@ -164,6 +179,29 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
+
+  const [departmentsList, setDepartmentsList] = useState([]);
+
+  useEffect(() => {
+    let mounted = true;
+    if (!isOpen) return;
+    const fetchDepts = async () => {
+      try {
+        const res = await salaryApi.getDepartments(
+          user?.accessToken,
+          user?.tokenType
+        );
+        if (mounted && res?.data) {
+          const names = res.data.map((d) => (typeof d === "string" ? d : d.name)).filter(Boolean);
+          setDepartmentsList(names);
+        }
+      } catch (err) {
+        console.error("Failed to fetch departments in TrialFormModal", err);
+      }
+    };
+    fetchDepts();
+    return () => { mounted = false; };
+  }, [isOpen, user?.accessToken, user?.tokenType]);
 
   const fieldValidators = [
     {
@@ -583,10 +621,15 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
 
               <FullField
                 label="Department"
+                select
                 name="department"
                 value={formData.department}
                 onChange={handleChange}
                 error={errors.department}
+                options={[
+                  { value: "", label: "SELECT DEPARTMENT" },
+                  ...departmentsList.map((d) => ({ value: d, label: d.toUpperCase() })),
+                ]}
               />
               <FullField
                 label="Name of Employee"
@@ -692,9 +735,14 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
               />
               <FullField
                 label="Hastak Department"
+                select
                 name="hastak_department"
                 value={formData.hastak_department}
                 onChange={handleChange}
+                options={[
+                  { value: "", label: "SELECT HASTAK DEPARTMENT" },
+                  ...departmentsList.map((d) => ({ value: d, label: d.toUpperCase() })),
+                ]}
               />
               <FullField
                 label="Contractor"

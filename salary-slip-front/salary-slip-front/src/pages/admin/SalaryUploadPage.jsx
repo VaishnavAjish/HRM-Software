@@ -8,7 +8,7 @@ import {
   Upload,
   CloudUpload,
 } from "lucide-react";
-import * as XLSX from "xlsx";
+import { parseSheetToRows, saveAoaToXlsx, buildXlsxBuffer } from "../../utils/excel";
 import Button from "../../components/ui/Button";
 import { salaryApi } from "../../utils/api";
 import { useAuth } from "../../context/AuthContext";
@@ -97,44 +97,20 @@ export default function SalaryUploadPage() {
       setTemplateLoading(false);
     }
 
-    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, template.sheetName || "Salary Slip");
-    
     const formattedMonth = MONTHS[parseInt(selectedMonth, 10) - 1].toLowerCase();
     const fileName = `${selectedCompanyId}_salary_${formattedMonth}_${selectedYear}.xlsx`;
-    XLSX.writeFile(wb, fileName);
+    saveAoaToXlsx(fileName, template.sheetName || "Salary Slip", [headers, ...rows]);
     toast.success("Template downloaded successfully");
   };
 
   // Excel parsing for preview
-  const parseExcelPreview = (file) => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        try {
-          const data = new Uint8Array(e.target.result);
-          const workbook = XLSX.read(data, { type: "array" });
-          const sheetName = workbook.SheetNames[0];
-          const worksheet = workbook.Sheets[sheetName];
-          const allRows = XLSX.utils.sheet_to_json(worksheet, {
-            header: 1,
-            defval: "",
-          });
-          const [headerRow = [], ...dataRows] = allRows;
-          resolve({
-            sheetName,
-            headers: headerRow.map(String),
-            rows: dataRows,
-            totalRows: dataRows.length,
-          });
-        } catch {
-          reject(new Error("Could not read file. Make sure it is a valid Excel file."));
-        }
-      };
-      reader.onerror = () => reject(new Error("Failed to read file."));
-      reader.readAsArrayBuffer(file);
-    });
+  const parseExcelPreview = async (file) => {
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      return await parseSheetToRows(arrayBuffer);
+    } catch {
+      throw new Error("Could not read file. Make sure it is a valid Excel file.");
+    }
   };
 
   const validateAndSetFile = async (file) => {
@@ -186,11 +162,8 @@ export default function SalaryUploadPage() {
   // Rows may have been hand-edited or had bad rows deleted in the validation
   // step, so the sheet actually sent to the backend is rebuilt from that
   // final data rather than re-uploading the original file untouched.
-  const buildFileFromRows = (headers, dataRows) => {
-    const ws = XLSX.utils.aoa_to_sheet([headers, ...dataRows]);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, uploadPreview?.sheetName || "Salary Slip");
-    const buffer = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+  const buildFileFromRows = async (headers, dataRows) => {
+    const buffer = await buildXlsxBuffer(uploadPreview?.sheetName || "Salary Slip", [headers, ...dataRows]);
     return new File([buffer], selectedFile?.name || "salary_upload.xlsx", {
       type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     });
@@ -204,7 +177,7 @@ export default function SalaryUploadPage() {
 
     setUploading(true);
     try {
-      const fileToUpload = buildFileFromRows(uploadPreview.headers, finalRows);
+      const fileToUpload = await buildFileFromRows(uploadPreview.headers, finalRows);
       const res = await salaryApi.uploadSalarySlip(
         fileToUpload,
         user?.accessToken,

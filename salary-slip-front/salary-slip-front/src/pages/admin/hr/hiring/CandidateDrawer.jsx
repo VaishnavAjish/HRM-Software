@@ -1,6 +1,6 @@
 import {
   Mail, Phone as PhoneIcon, MapPin, Clock, Trash2, ArrowRight, ChevronRight,
-  CheckCircle2, Circle, XCircle, PauseCircle, User2, CalendarClock, FileText, StickyNote,
+  CheckCircle2, Circle, XCircle, PauseCircle, User2, CalendarClock, FileText, StickyNote, Lock,
 } from "lucide-react";
 import Drawer, { CollapsibleSection } from "../../../../components/ui/Drawer";
 import Badge from "../../../../components/ui/Badge";
@@ -8,23 +8,41 @@ import Button from "../../../../components/ui/Button";
 
 const PRIORITY_VARIANT = { high: "red", medium: "yellow", low: "gray" };
 
+/** Which tab a candidate belongs to once they've moved past this drawer's owning tab — only used for the "manage them elsewhere" banner. */
+function ownerTabLabel(stage) {
+  if (["hr_interview", "technical_interview", "final_interview"].includes(stage)) return "Interviews";
+  if (["selected", "offer_sent"].includes(stage)) return "Offers";
+  if (stage === "offer_accepted") return "Onboarding";
+  return null;
+}
+
 /**
  * Replaces the old CandidateDetailModal — same stage-progress/terminal-
  * actions/delete behavior, reorganized into collapsible sections plus three
  * new ones (Timeline, Interviews, Offer) populated from whatever
  * CandidateController::show() already eager-loads (stageHistory, interviews,
  * offers) — no new backend call shape, just data that wasn't being shown.
+ *
+ * `ownedStages`, when passed, restricts advance/terminal actions to
+ * candidates currently in one of those stages — the full stage timeline
+ * still renders for context, but once a candidate has moved past the
+ * calling tab's ownership boundary (e.g. Shortlisted → HR Interview), every
+ * action here is disabled instead of letting this tab keep driving their
+ * progress. Omit it for a tab with no such restriction.
  */
 export default function CandidateDrawer({
   candidate, loadingDetail, onClose, onAdvance, onDelete, advancing,
-  mainStages, terminalStages, stageIndex,
+  mainStages, terminalStages, stageIndex, ownedStages,
 }) {
   if (!candidate) return <Drawer isOpen={false} onClose={onClose} />;
+
+  const canProcess = !ownedStages || ownedStages.includes(candidate.stage);
+  const owner = !canProcess ? ownerTabLabel(candidate.stage) : null;
 
   const currentIdx = stageIndex[candidate.stage];
   const isTerminal = terminalStages.some((s) => s.key === candidate.stage);
   const nextIdx = isTerminal ? -1 : (currentIdx === undefined ? 0 : currentIdx + 1);
-  const next = !isTerminal && nextIdx < mainStages.length ? mainStages[nextIdx] : null;
+  const next = canProcess && !isTerminal && nextIdx < mainStages.length ? mainStages[nextIdx] : null;
 
   const stageHistory = candidate.stageHistory || [];
   const interviews = candidate.interviews || [];
@@ -54,6 +72,14 @@ export default function CandidateDrawer({
       }
     >
       <div className="space-y-3">
+        {!canProcess && (
+          <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-700/40 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2">
+            <Lock size={13} className="flex-shrink-0 text-gray-400" />
+            {owner
+              ? <span>This candidate has moved on — manage their next steps from the <strong>{owner}</strong> tab.</span>
+              : <span>This candidate is no longer active in this tab's process.</span>}
+          </div>
+        )}
         <div className="flex items-start gap-3">
           <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-brand-500 to-indigo-600 flex items-center justify-center text-white font-bold flex-shrink-0">
             {candidate.name?.[0]?.toUpperCase() ?? "?"}
@@ -114,7 +140,7 @@ export default function CandidateDrawer({
                         </p>
                         {isCurrent && <p className="text-[11px] text-brand-600 dark:text-brand-400 font-medium">Current stage</p>}
                       </div>
-                      {i === nextIdx && !isTerminal && (
+                      {canProcess && i === nextIdx && !isTerminal && (
                         <button
                           onClick={() => onAdvance(candidate.id, stage.key)}
                           className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-lg transition-colors"
@@ -135,12 +161,13 @@ export default function CandidateDrawer({
             <div className="flex gap-2">
               {terminalStages.map((stage) => {
                 const isActive = candidate.stage === stage.key;
+                const disabled = isActive || !canProcess;
                 return (
                   <button
                     key={stage.key}
-                    onClick={() => !isActive && onAdvance(candidate.id, stage.key)}
-                    disabled={isActive}
-                    className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors border ${isActive ? "cursor-default" : "hover:opacity-80 cursor-pointer"}`}
+                    onClick={() => !disabled && onAdvance(candidate.id, stage.key)}
+                    disabled={disabled}
+                    className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors border ${disabled ? "cursor-not-allowed opacity-50" : "hover:opacity-80 cursor-pointer"}`}
                     style={{ backgroundColor: isActive ? `${stage.color}22` : "transparent", borderColor: `${stage.color}44`, color: stage.color }}
                   >
                     {stage.key === "rejected" ? <XCircle size={13} /> : <PauseCircle size={13} />}

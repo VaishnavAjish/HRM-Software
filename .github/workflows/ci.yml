@@ -363,6 +363,35 @@ jobs:
           echo "history clean"
 
   # ---------------------------------------------------------------------------
+  # Post-deploy smoke, not a PR gate: it inspects what is actually being served,
+  # so it can only pass after a deploy has happened. Run it manually after
+  # shipping, or wire it into the deploy job.
+  #
+  # This is the check that was missing on 2026-08-04. Every source file was
+  # correct and every test passed while production served a bundle built before
+  # the OTP length changed — a six-digit code arriving in a four-box form.
+  deployed-smoke:
+    name: Deployed — OTP length matches backend
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: salary-slip-node/package-lock.json
+
+      - name: Install
+        working-directory: salary-slip-node
+        run: npm ci && npx prisma generate
+
+      - name: Compare the served bundle against the backend
+        working-directory: salary-slip-node
+        run: npx tsx scripts/check-deployed-otp.ts ${{ vars.DEPLOYED_ORIGIN || 'https://niss.pro' }}
+
+  # ---------------------------------------------------------------------------
   gate:
     name: Deployment gate
     runs-on: ubuntu-latest

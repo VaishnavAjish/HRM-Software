@@ -453,7 +453,10 @@ export default function AdminDashboard() {
 
       <ManageDepartmentsModal 
         isOpen={isManageDeptModalOpen} 
-        onClose={() => setIsManageDeptModalOpen(false)} 
+        onClose={() => {
+          setIsManageDeptModalOpen(false);
+          fetchData();
+        }} 
       />
     </div>
   );

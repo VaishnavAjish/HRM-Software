@@ -7,7 +7,7 @@ import {
   Loader2,
   Calendar,
 } from "lucide-react";
-import * as XLSX from "xlsx";
+import { parseSheetToRows, saveAoaToXlsx } from "../../utils/excel";
 import Button from "../../components/ui/Button";
 import { salaryApi } from "../../utils/api";
 import { useAuth } from "../../context/AuthContext";
@@ -154,38 +154,18 @@ export default function DailyAttendance() {
     const headers = ["Employee Code", "Employee Name", ...dayList.map(String)];
     const rows = employees.map((emp) => [emp.emp_code ?? "", emp.name ?? "", ...dayList.map(() => "")]);
 
-    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Attendance");
     const monthLabel = MONTHS[parseInt(selectedMonth, 10) - 1].toLowerCase();
-    XLSX.writeFile(wb, `${selectedCompanyId}_attendance_${monthLabel}_${selectedYear}.xlsx`);
+    saveAoaToXlsx(`${selectedCompanyId}_attendance_${monthLabel}_${selectedYear}.xlsx`, "Attendance", [headers, ...rows]);
     toast.success("Template downloaded — fill P/A/H/L per day and upload it back");
   };
 
-  const parseExcelPreview = (file) => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        try {
-          const data = new Uint8Array(e.target.result);
-          const workbook = XLSX.read(data, { type: "array" });
-          const sheetName = workbook.SheetNames[0];
-          const worksheet = workbook.Sheets[sheetName];
-          const allRows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
-          const [headerRow = [], ...dataRows] = allRows;
-          resolve({
-            sheetName,
-            headers: headerRow.map(String),
-            rows: dataRows,
-            totalRows: dataRows.length,
-          });
-        } catch {
-          reject(new Error("Could not read file. Make sure it is a valid Excel file."));
-        }
-      };
-      reader.onerror = () => reject(new Error("Failed to read file."));
-      reader.readAsArrayBuffer(file);
-    });
+  const parseExcelPreview = async (file) => {
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      return await parseSheetToRows(arrayBuffer);
+    } catch {
+      throw new Error("Could not read file. Make sure it is a valid Excel file.");
+    }
   };
 
   const validateAndSetFile = async (file) => {

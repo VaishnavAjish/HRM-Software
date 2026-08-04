@@ -29,7 +29,7 @@ import { salaryApi } from "../../utils/api";
 import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";
 import { getCompanyConfig, COMPANY_OPTIONS } from "../../config/companyConfig";
-import * as XLSX from "xlsx";
+import { saveAoaToXlsx } from "../../utils/excel";
 
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
@@ -317,10 +317,7 @@ export default function AttendanceView() {
       r.emp_code, r.name, r.department || "—", targetDateStr,
       r.checkIn, r.checkOut, r.dayStatus.toUpperCase(),
     ]);
-    const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Attendance");
-    XLSX.writeFile(wb, `attendance_${targetDateStr}.xlsx`);
+    saveAoaToXlsx(`attendance_${targetDateStr}.xlsx`, "Attendance", [headers, ...data]);
     toast.success("Excel exported successfully!");
   };
 

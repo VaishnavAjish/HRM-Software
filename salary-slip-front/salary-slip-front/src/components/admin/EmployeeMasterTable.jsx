@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "react-hot-toast";
-import * as XLSX from "xlsx";
+import { saveJsonToXlsx } from "../../utils/excel";
 import {
   Search, Eye, Pencil, Trash2, Lock, Unlock, X,
   Users, Loader2, Filter, RotateCcw, Download, CloudUpload,
@@ -397,10 +397,7 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
       "Joining Date": r.joining_date || "",
       "Trial Date": r.trial_date || "",
     }));
-    const ws = XLSX.utils.json_to_sheet(sheetRows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Employee Master");
-    XLSX.writeFile(wb, `employee_master_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    saveJsonToXlsx(`employee_master_${new Date().toISOString().slice(0, 10)}.xlsx`, "Employee Master", sheetRows);
   };
 
   const cellInputCls =

@@ -601,6 +601,31 @@ class AdminController extends Controller
 
     public function getDepartment(Request $request)
     {
+        $existingDeptNames = Department::pluck('name')->map(fn($n) => trim(strtolower($n)))->toArray();
+
+        $userDepts = \App\Models\User::whereNotNull('department')
+            ->where('department', '!=', '')
+            ->distinct()
+            ->pluck('department')
+            ->toArray();
+
+        $slipDepts = \Illuminate\Support\Facades\DB::table('salary_slips')
+            ->whereNotNull('department')
+            ->where('department', '!=', '')
+            ->distinct()
+            ->pluck('department')
+            ->toArray();
+
+        $allUsed = array_unique(array_merge($userDepts, $slipDepts));
+
+        foreach ($allUsed as $deptName) {
+            $normalized = trim($deptName);
+            if ($normalized !== '' && !in_array(strtolower($normalized), $existingDeptNames, true)) {
+                Department::create(['name' => $normalized]);
+                $existingDeptNames[] = strtolower($normalized);
+            }
+        }
+
         $departments = Department::orderBy('name')->get();
         return response()->json(['status' => true, 'data' => $departments]);
     }
@@ -623,8 +648,14 @@ class AdminController extends Controller
             return response()->json(['status' => false, 'message' => 'Department not found'], 404);
         }
 
+        $oldName = $department->name;
         $department->name = $request->name;
         $department->save();
+
+        if ($oldName && $oldName !== $request->name) {
+            \App\Models\User::where('department', $oldName)->update(['department' => $request->name]);
+            \Illuminate\Support\Facades\DB::table('salary_slips')->where('department', $oldName)->update(['department' => $request->name]);
+        }
 
         return response()->json(['status' => true, 'message' => 'Department updated', 'data' => $department]);
     }

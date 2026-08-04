@@ -43,15 +43,16 @@ const inputClass =
   "w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500";
 
 /**
- * The Candidates tab only owns the sourcing funnel — Applied through
+ * The Candidates tab is the master roster — it lists everyone, at any
+ * stage. But it only *processes* the sourcing funnel: Applied through
  * Shortlisted (plus rejecting/holding someone during that window). Once a
- * candidate reaches an interview stage, the Interview tab owns them; once
- * they're Selected, the Offer tab owns them; once the offer is accepted, the
- * Onboarding tab owns them. This is enforced by scoping every fetch here to
- * CANDIDATES_TAB_STAGES rather than by hiding rows client-side.
+ * candidate reaches an interview stage, the Interview tab owns their next
+ * moves; once Selected, the Offer tab; once the offer's accepted, Onboarding.
+ * A candidate outside CANDIDATES_TAB_STAGES still shows up here, just with
+ * every advance/reject/hold/drag action disabled — see canAct().
  */
 const CANDIDATES_TAB_STAGES = TAB_STAGE_KEYS.candidates;
-const CANDIDATES_TAB_GROUPS = STAGE_GROUPS.filter((g) => g.label === "Sourcing" || g.label === "Terminal");
+const canAct = (stage) => CANDIDATES_TAB_STAGES.includes(stage);
 
 const PRIORITY_VARIANT  = { high: "red", medium: "yellow", low: "gray" };
 const PRIORITY_DOT      = { high: "bg-red-500", medium: "bg-yellow-400", low: "bg-gray-400" };
@@ -128,11 +129,11 @@ export default function CandidatePipeline({ people = [] }) {
         page: listPage,
         per_page: listPerPage,
         search: debouncedSearch || undefined,
-        // Only the stages this tab owns — a specific pick within that set,
-        // or every stage in the set when nothing's picked. Never "all stages
-        // ever", since interview/offer/onboarding candidates belong to their
-        // own tabs now.
-        stage: (stageFilter && CANDIDATES_TAB_STAGES.includes(stageFilter) ? stageFilter : CANDIDATES_TAB_STAGES.join(",")),
+        // The Candidates tab lists every candidate regardless of stage — it's
+        // the master roster. Ownership is enforced by disabling actions on
+        // rows outside CANDIDATES_TAB_STAGES (see canAct below), not by
+        // hiding them; HR still needs to see where someone ended up.
+        stage: stageFilter || undefined,
         requisition_id: requisitionFilter || undefined,
       })
       .then((res) => {
@@ -365,7 +366,7 @@ export default function CandidatePipeline({ people = [] }) {
         fields={filterFields}
         requisitions={requisitions}
         people={people}
-        statusOptions={ALL_COLUMNS.filter((c) => CANDIDATES_TAB_STAGES.includes(c.key)).map((c) => ({ value: c.key, label: c.label }))}
+        statusOptions={ALL_COLUMNS.map((c) => ({ value: c.key, label: c.label }))}
         priorityOptions={[{ value: "low", label: "Low" }, { value: "medium", label: "Medium" }, { value: "high", label: "High" }]}
         bulkBar={view !== "board" ? (
           <>
@@ -398,7 +399,7 @@ export default function CandidatePipeline({ people = [] }) {
         />
       ) : loading ? (
         <div className="space-y-4">
-          {CANDIDATES_TAB_GROUPS.map((group) => (
+          {STAGE_GROUPS.map((group) => (
             <div key={group.label} className="grid gap-3" style={{ gridTemplateColumns: `repeat(${group.keys.length}, minmax(0, 1fr))` }}>
               {group.keys.map((key) => <div key={key} className="skeleton h-64 rounded-2xl" />)}
             </div>
@@ -410,7 +411,7 @@ export default function CandidatePipeline({ people = [] }) {
               the available width instead of the whole board scrolling
               sideways. 4 groups × up to 3 columns each fits any viewport. */}
           <div className="space-y-4">
-            {CANDIDATES_TAB_GROUPS.map((group) => (
+            {STAGE_GROUPS.map((group) => (
               <div key={group.label}>
                 <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 px-1 mb-1.5">
                   {group.label}
@@ -504,6 +505,7 @@ export default function CandidatePipeline({ people = [] }) {
         mainStages={MAIN_STAGES}
         terminalStages={TERMINAL_STAGES}
         stageIndex={STAGE_INDEX}
+        ownedStages={CANDIDATES_TAB_STAGES}
       />
     </div>
   );
@@ -527,7 +529,7 @@ function CandidateListView({
         <div className="divide-y divide-gray-100 dark:divide-gray-700">
           {candidates.map((c) => {
             const isTerminal = ["rejected", "on_hold"].includes(c.stage);
-            const next = !isTerminal ? nextMainStage(c.stage) : null;
+            const next = !isTerminal && canAct(c.stage) ? nextMainStage(c.stage) : null;
             return (
               <div key={c.id} className="flex items-center gap-3 px-4 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/30 cursor-pointer" onClick={() => onOpenDetail(c)}>
                 <input type="checkbox" checked={selectedIds.includes(c.id)} onChange={(e) => { e.stopPropagation(); onToggleSelected(c.id); }} onClick={(e) => e.stopPropagation()} />
@@ -539,10 +541,12 @@ function CandidateListView({
                 <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0" style={{ backgroundColor: `${stageColor(c.stage)}1a`, color: stageColor(c.stage) }}>
                   {stageLabel(c.stage)}
                 </span>
-                {next && (
+                {next ? (
                   <button title={`Move to ${next.label}`} onClick={(e) => { e.stopPropagation(); onAdvance(c.id, next.key); }} className="p-1 rounded-lg text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20 flex-shrink-0">
                     <ArrowRight size={14} />
                   </button>
+                ) : !canAct(c.stage) && (
+                  <span title="Managed in another tab now" className="p-1 flex-shrink-0 text-gray-300 dark:text-gray-600"><Lock size={13} /></span>
                 )}
               </div>
             );
@@ -568,7 +572,7 @@ function CandidateListView({
             <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
               {candidates.map((c) => {
                 const isTerminal = ["rejected", "on_hold"].includes(c.stage);
-                const next = !isTerminal ? nextMainStage(c.stage) : null;
+                const next = !isTerminal && canAct(c.stage) ? nextMainStage(c.stage) : null;
                 return (
                   <tr key={c.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30 cursor-pointer" onClick={() => onOpenDetail(c)}>
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
@@ -678,7 +682,8 @@ function KanbanColumn({ column, candidates, onOpenDetail, onAdvance, fluid }) {
 /* ─────────────────── Draggable wrapper ─────────────────── */
 
 function DraggableCandidateCard({ candidate, isTerminal, onOpenDetail, onAdvance }) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: candidate.id });
+  const locked = !canAct(candidate.stage);
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: candidate.id, disabled: locked });
   const style = transform
     ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`, opacity: isDragging ? 0.35 : 1 }
     : undefined;
@@ -688,7 +693,8 @@ function DraggableCandidateCard({ candidate, isTerminal, onOpenDetail, onAdvance
       <CandidateCard
         candidate={candidate}
         isTerminal={isTerminal}
-        dragHandleProps={{ ...listeners, ...attributes }}
+        locked={locked}
+        dragHandleProps={locked ? {} : { ...listeners, ...attributes }}
         onOpenDetail={onOpenDetail}
         onAdvance={onAdvance}
       />
@@ -698,8 +704,8 @@ function DraggableCandidateCard({ candidate, isTerminal, onOpenDetail, onAdvance
 
 /* ─────────────────── Candidate Card ─────────────────── */
 
-function CandidateCard({ candidate, dragging, isTerminal, dragHandleProps = {}, onOpenDetail, onAdvance }) {
-  const next = !isTerminal ? nextMainStage(candidate.stage) : null;
+function CandidateCard({ candidate, dragging, isTerminal, locked, dragHandleProps = {}, onOpenDetail, onAdvance }) {
+  const next = !isTerminal && !locked ? nextMainStage(candidate.stage) : null;
   const currentIdx = STAGE_INDEX[candidate.stage];
   const totalMain  = MAIN_STAGES.length;
   const isMain     = currentIdx !== undefined;

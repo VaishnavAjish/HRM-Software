@@ -30,6 +30,7 @@
     "ag-grid-community": "^35.2.1",
     "ag-grid-react": "^35.2.1",
     "cross-env": "^10.1.0",
+    "exceljs": "^4.4.0",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.7",
@@ -43,8 +44,7 @@
     "react-tailwindcss-datepicker": "^2.0.0",
     "react-to-print": "^3.3.0",
     "recharts": "^3.8.1",
-    "vite-plugin-pwa": "^1.2.0",
-    "xlsx": "^0.18.5"
+    "vite-plugin-pwa": "^1.2.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
