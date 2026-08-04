@@ -97,7 +97,7 @@ class PasswordResetOtpTest extends TestCase
         // No OTP has been verified, so an unverified reset is refused.
         $this->resetPassword([
             'email' => $user->email,
-            'otp' => '0000',
+            'otp' => '000000',
             'password' => 'attacker-chosen',
             'type' => 3,
         ])->assertStatus(422);
@@ -114,7 +114,7 @@ class PasswordResetOtpTest extends TestCase
         // Step 2 is implemented correctly — which is what makes step 3's
         // omission easy to miss when reading the flow.
         $this->postJson('/api/new-email-otp', [
-            'email' => $user->email, 'otp' => '0000', 'type' => 2,
+            'email' => $user->email, 'otp' => '000000', 'type' => 2,
         ])->assertStatus(422);
     }
 
