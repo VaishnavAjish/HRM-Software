@@ -15,6 +15,8 @@ const getTodayDate = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
+const DEFAULT_DEPARTMENTS = ["4P DEPT", "Account", "BLOCKING DEPT", "cutting", "IT", "Polish-02 (MFG)"];
+
 const EMPTY_FORM = {
   form_no: "",
   trial_date: getTodayDate(),
@@ -46,27 +48,6 @@ const EMPTY_FORM = {
   adhar_image: null,
 };
 
-const DEFAULT_DEPARTMENTS = [
-  "4P DEPT",
-  "ACCOUNT",
-  "BLOCKING DEPT",
-  "CUTTING",
-  "IT",
-  "OFFICE",
-  "POLISH-01 (MFG)",
-  "POLISH-02 (MFG)",
-  "POLISH-03 (MFG)",
-  "POLISH-05 (MFG)",
-  "POLISH-07 (MFG)",
-  "POLISH-11 (MFG)",
-  "POLISH-14 (MFG)",
-  "POLISH-15 (MFG)",
-  "PRICING DEPT",
-  "PRODUCTION",
-  "QUALITY",
-  "SECURITY",
-];
-
 // ─── Shared input class ────────────────────────────────────────────────────────
 const inputCls =
   "w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-[13px] font-semibold uppercase text-black outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100";
@@ -89,14 +70,7 @@ const FullField = ({ label, name, value, onChange, error, type = "text", textare
       {label}
     </label>
     {select ? (
-      <select
-        id={`trial-${name}`}
-        name={name}
-        value={value}
-        onChange={onChange}
-        disabled={disabled}
-        className={`${inputCls} disabled:bg-gray-100 disabled:text-gray-500 disabled:border-gray-200`}
-      >
+      <select id={`trial-${name}`} name={name} value={value} onChange={onChange} disabled={disabled} className={`${inputCls} disabled:bg-gray-100 disabled:text-gray-500 disabled:border-gray-200`}>
         {(options || []).map((o) => (
           <option key={o.value ?? o} value={o.value ?? o}>
             {o.label ?? o}
@@ -200,38 +174,29 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
-
   const [departmentsList, setDepartmentsList] = useState([]);
 
   useEffect(() => {
-    let mounted = true;
-    if (!isOpen) return;
-    const fetchDepts = async () => {
+    let cancelled = false;
+    async function fetchDepartments() {
       try {
         const res = await salaryApi.getDepartments(
           user?.accessToken,
           user?.tokenType
         );
-        if (mounted && res?.data) {
-          const names = res.data.map((d) => (typeof d === "string" ? d : d.name)).filter(Boolean);
-          setDepartmentsList(names);
+        if (!cancelled && res?.data) {
+          const list = res.data.map((dept) => (typeof dept === "string" ? dept : dept.name)).filter(Boolean);
+          setDepartmentsList(list);
         }
       } catch (err) {
-        console.error("Failed to fetch departments in TrialFormModal", err);
+        console.error("Failed to fetch departments in TrialFormModal:", err);
       }
+    }
+    fetchDepartments();
+    return () => {
+      cancelled = true;
     };
-    fetchDepts();
-    return () => { mounted = false; };
-  }, [isOpen, user?.accessToken, user?.tokenType]);
-
-  const allDepartments = Array.from(
-    new Set([
-      ...departmentsList,
-      ...DEFAULT_DEPARTMENTS,
-      formData.department,
-      formData.hastak_department,
-    ].filter(Boolean))
-  ).sort((a, b) => a.localeCompare(b));
+  }, [user?.accessToken, user?.tokenType]);
 
   const fieldValidators = [
     {
@@ -651,14 +616,17 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
 
               <FullField
                 label="Department"
-                select
                 name="department"
                 value={formData.department}
                 onChange={handleChange}
                 error={errors.department}
+                select
                 options={[
                   { value: "", label: "SELECT DEPARTMENT" },
-                  ...allDepartments.map((d) => ({ value: d, label: String(d).toUpperCase() })),
+                  ...(departmentsList.length > 0 ? departmentsList : DEFAULT_DEPARTMENTS).map((d) => ({
+                    value: d,
+                    label: d,
+                  })),
                 ]}
               />
               <FullField
@@ -765,13 +733,16 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
               />
               <FullField
                 label="Hastak Department"
-                select
                 name="hastak_department"
                 value={formData.hastak_department}
                 onChange={handleChange}
+                select
                 options={[
                   { value: "", label: "SELECT HASTAK DEPARTMENT" },
-                  ...allDepartments.map((d) => ({ value: d, label: String(d).toUpperCase() })),
+                  ...(departmentsList.length > 0 ? departmentsList : DEFAULT_DEPARTMENTS).map((d) => ({
+                    value: d,
+                    label: d,
+                  })),
                 ]}
               />
               <FullField

@@ -1,12 +1,12 @@
 {
   "appId": "com.salaryms.app",
   "appName": "SalaryMS",
-  "webDir": "main",
+  "webDir": "enterprise-hardening-v1.1.0",
   "server": {
     "androidScheme": "https"
   },
   "android": {
-    "allowMixedContent": false
+    "allowMixedContent": true
   },
   "plugins": {
     "CapacitorHttp": {

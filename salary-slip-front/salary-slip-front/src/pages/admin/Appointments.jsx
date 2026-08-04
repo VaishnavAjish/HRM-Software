@@ -39,7 +39,8 @@ import Modal from "../../components/ui/Modal";
 import { SkeletonTable } from "../../components/ui/Skeleton";
 import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";
-import { authApi, salaryApi } from "../../utils/api";
+import { authApi, salaryApi, appointmentV1Api, documentV1Api } from "../../utils/api";
+import DocumentViewerModal from "../../components/documents/DocumentViewerModal";
 import PrintableForm from "../../components/forms/PrintableForm";
 import { exportNodeToPdf } from "../../utils/pdfUtils";
 import AppointmentModal from "../auth/AppointmentModal";
@@ -353,15 +354,81 @@ function DocLightbox({ doc, onClose }) {
   );
 }
 
-function DocumentsSection({ documents }) {
+function DocumentsSection({ documents, v1Docs = [], loading = false }) {
+  const [viewingDoc, setViewingDoc] = useState(null);
   const [lightbox, setLightbox] = useState(null);
+
+  if (v1Docs && v1Docs.length > 0) {
+    return (
+      <>
+        <DocumentViewerModal
+          document={viewingDoc}
+          open={Boolean(viewingDoc)}
+          onClose={() => setViewingDoc(null)}
+        />
+        <div className="mt-6 border-t border-gray-200 dark:border-gray-700 pt-5">
+          <div className="flex items-center gap-2 mb-4">
+            <FileText size={15} className="text-brand-600 dark:text-brand-400" />
+            <h3 className="text-sm font-bold text-gray-800 dark:text-gray-200">
+              Uploaded Documents ({v1Docs.length})
+            </h3>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+            {v1Docs.map((doc) => {
+              const label = doc.documentLabel || doc.documentType;
+              const fileName = doc.currentVersion?.originalFileName || doc.documentType;
+              const mime = doc.currentVersion?.mimeType || "";
+              const isPdf = mime.includes("pdf") || String(fileName).toLowerCase().endsWith(".pdf");
+
+              return (
+                <div key={doc.documentId || doc.id} className="flex flex-col">
+                  <button
+                    type="button"
+                    onClick={() => setViewingDoc(doc)}
+                    className="relative group rounded-xl border-2 border-gray-200 dark:border-gray-700 hover:border-brand-400 dark:hover:border-brand-500 overflow-hidden transition cursor-pointer bg-gray-50 dark:bg-gray-800"
+                    style={{ aspectRatio: "4/3" }}
+                  >
+                    <div className="w-full h-full flex flex-col items-center justify-center gap-1.5 p-3 text-center">
+                      <FileText size={24} className={isPdf ? "text-red-500" : "text-brand-600 dark:text-brand-400"} />
+                      <span className="text-[11px] font-bold text-gray-800 dark:text-gray-200 line-clamp-1">
+                        {label}
+                      </span>
+                      <span className="text-[9px] text-gray-400 truncate max-w-full">
+                        {fileName}
+                      </span>
+                    </div>
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition flex items-center justify-center opacity-0 group-hover:opacity-100">
+                      <div className="bg-white dark:bg-gray-800 rounded-full p-2 shadow">
+                        <Eye size={14} className="text-gray-700 dark:text-gray-200" />
+                      </div>
+                    </div>
+                  </button>
+                  <span className="mt-1.5 text-center text-[11px] font-semibold text-gray-600 dark:text-gray-300">
+                    {label}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="mt-6 border-t border-gray-200 dark:border-gray-700 pt-5 flex items-center gap-2 text-sm text-gray-500">
+        <Loader2 size={16} className="animate-spin" /> Loading uploaded documents…
+      </div>
+    );
+  }
 
   // Stored values are S3 object keys (or legacy uploads/… paths); resolve them
   // to a usable URL up front so both the thumbnail and the lightbox get the
   // same one, and a server-local path renders as "not uploaded" rather than a
   // broken image.
   const resolved = Object.fromEntries(
-    Object.keys(DOC_LABELS).map((key) => [key, getEmployeePhotoUrl(documents[key])]),
+    Object.keys(DOC_LABELS).map((key) => [key, getEmployeePhotoUrl(documents?.[key])]),
   );
   const hasAny = Object.values(resolved).some(Boolean);
 
@@ -861,6 +928,51 @@ export default function Appointments() {
   // Why the grid is empty, when it is empty because something failed.
   const [loadError, setLoadError] = useState(null);
   const [selected, setSelected] = useState(null);
+  const [v1Docs, setV1Docs] = useState([]);
+  const [v1DocsLoading, setV1DocsLoading] = useState(false);
+  const [photoUrlFromV1, setPhotoUrlFromV1] = useState(null);
+
+  useEffect(() => {
+    if (!selected?.id) {
+      setV1Docs([]);
+      setPhotoUrlFromV1(null);
+      return undefined;
+    }
+
+    let mounted = true;
+    setV1DocsLoading(true);
+
+    (async () => {
+      try {
+        const res = await appointmentV1Api.listDocuments(selected.id, user?.accessToken, user?.tokenType);
+        if (!mounted) return;
+        const items = res?.data?.items || [];
+        setV1Docs(items);
+
+        if (!selected.photo) {
+          const photoDoc = items.find((d) => d.documentType === "PHOTOGRAPH");
+          if (photoDoc) {
+            try {
+              const photoRes = await documentV1Api.viewUrl(photoDoc.documentId, null, user?.accessToken, user?.tokenType);
+              if (mounted && photoRes?.data?.url) {
+                setPhotoUrlFromV1(photoRes.data.url);
+              }
+            } catch (pErr) {
+              console.warn("Could not fetch photo URL from V1 document:", pErr);
+            }
+          }
+        }
+      } catch (err) {
+        if (mounted) console.warn("Failed to load V1 documents for view modal:", err);
+      } finally {
+        if (mounted) setV1DocsLoading(false);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, [selected?.id, selected?.photo, user?.accessToken, user?.tokenType]);
   const [gridLightbox, setGridLightbox] = useState(null);
   const [createAccountOpen, setCreateAccountOpen] = useState(false);
   const [addFormOpen, setAddFormOpen] = useState(false);
@@ -1044,13 +1156,11 @@ export default function Appointments() {
 
     return {
       ...selected,
-      // Marks output that carries a complete identity number. Not a permission
-      // check — anyone reading this page is already authorised — but a sheet found
-      // on a desk should say what it is.
+      photo: selected.photo || photoUrlFromV1 || null,
       containsFullAadhaar: isCompleteAadhaar(selected.aadharNo),
       printedBy: user?.name || "",
     };
-  }, [selected, user?.name]);
+  }, [selected, photoUrlFromV1, user?.name]);
 
   /**
    * The appointment PDF, rendered from the same view model as the screen.
@@ -1077,7 +1187,7 @@ export default function Appointments() {
     }
   };
 
-  const openPrintWindow = (node) => {
+  const openPrintWindow = async (node) => {
     if (!node) return;
 
     const win = window.open("", "_blank", "width=1000,height=750");
@@ -1086,26 +1196,64 @@ export default function Appointments() {
       return;
     }
 
-    // Build one page per existing document
-    const DOC_PRINT_FIELDS = [
-      { key: "adhar_image", label: "Aadhar Card" },
-      { key: "pan_image", label: "PAN Card" },
-      { key: "check_image", label: "Cheque" },
-    ];
-    const docPages = DOC_PRINT_FIELDS.filter(
-      ({ key }) => selected?.documents?.[key],
-    )
+    const printablePages = [];
+
+    if (v1Docs && v1Docs.length > 0) {
+      for (const doc of v1Docs) {
+        const label = doc.documentLabel || doc.documentType;
+        const mime = doc.currentVersion?.mimeType || "";
+        const isImage = mime.startsWith("image/");
+        try {
+          const res = await documentV1Api.viewUrl(doc.documentId, null, user?.accessToken, user?.tokenType);
+          const url = res?.data?.url;
+          if (url) {
+            printablePages.push({
+              label,
+              url,
+              isImage,
+            });
+          }
+        } catch (e) {
+          console.warn(`Could not fetch view url for doc ${doc.documentId}:`, e);
+        }
+      }
+    } else if (selected?.documents) {
+      const DOC_PRINT_FIELDS = [
+        { key: "adhar_image", label: "Aadhar Card" },
+        { key: "pan_image", label: "PAN Card" },
+        { key: "check_image", label: "Cheque" },
+        { key: "account_book", label: "Bank Passbook" },
+      ];
+      DOC_PRINT_FIELDS.forEach(({ key, label }) => {
+        const raw = selected.documents[key];
+        if (raw) {
+          const url = getEmployeePhotoUrl(raw);
+          if (url) {
+            printablePages.push({
+              label,
+              url,
+              isImage: !isPdfUrl(url),
+            });
+          }
+        }
+      });
+    }
+
+    const docPages = printablePages
       .map(
-        ({ key, label }) => `
+        ({ label, url, isImage }) => `
         <div class="doc-page">
           <div class="doc-page-header">
-            <span class="doc-page-title">${label}</span>
+            <span class="doc-page-title">${escapeHtml(label)}</span>
             <span class="doc-page-name">${escapeHtml(selected?.fullName)}</span>
           </div>
           <div class="doc-page-body">
-            <img src="${safeImageSrc(selected.documents[key])}" alt="${label}" />
+            ${isImage
+              ? `<img src="${escapeHtml(url)}" alt="${escapeHtml(label)}" />`
+              : `<iframe src="${escapeHtml(url)}" title="${escapeHtml(label)}" style="width:100%;height:220mm;border:none;"></iframe>`
+            }
           </div>
-          <div class="doc-page-footer">${label} — ${escapeHtml(selected?.fullName)}</div>
+          <div class="doc-page-footer">${escapeHtml(label)} — ${escapeHtml(selected?.fullName)}</div>
         </div>
       `,
       )
@@ -1197,11 +1345,6 @@ export default function Appointments() {
               -webkit-print-color-adjust: exact;
             }
             [data-appointment-print-form] {
-              /* 0.84 still overflowed a single A4 page for most real
-                 submissions (longer address/family-member rows push it
-                 past one sheet), stranding the unit/signature line alone
-                 on a second, otherwise-blank page. 0.72 leaves enough
-                 headroom to fit reliably on one page. */
               zoom: 0.72;
               width: 850px !important;
               max-width: none !important;
@@ -2261,7 +2404,7 @@ export default function Appointments() {
               <ResponsiveDetailsForm data={detailsView} />
             </div>
 
-            <DocumentsSection documents={selected.documents} />
+            <DocumentsSection documents={selected.documents} v1Docs={v1Docs} loading={v1DocsLoading} />
           </>
         )}
       </Modal>

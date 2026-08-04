@@ -188,7 +188,17 @@ export default defineConfig(({ mode }) => {
       port: 5175,
     },
     optimizeDeps: {
-      include: ["react-is"],
+      // Explicitly pre-bundled instead of left to lazy discovery. Vite
+      // normally finds a dependency the first time some page imports it and
+      // re-optimizes on the fly — but exceljs/jspdf are large, deeply nested
+      // CJS packages pulled in transitively by utils/exportUtils.js, which a
+      // growing number of pages import. Each newly-touched page that reached
+      // exportUtils for the first time in a dev session was re-triggering
+      // that lazy optimization mid-session, which raced with the page's own
+      // dynamic import and surfaced as "504 Outdated Optimize Dep" /
+      // "Failed to fetch dynamically imported module". Listing them here
+      // means they're bundled once, upfront, on server start.
+      include: ["react-is", "exceljs", "jspdf", "jspdf-autotable"],
     },
     build: {
       outDir: path.resolve(projectRoot, gitBranch),

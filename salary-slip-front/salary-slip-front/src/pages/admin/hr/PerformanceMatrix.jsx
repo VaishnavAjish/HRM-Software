@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
-import { Plus, Trophy, TrendingDown, Star, ArrowUpCircle, GraduationCap, Target, Medal } from "lucide-react";
+import { Plus, Trophy, TrendingDown, Star, ArrowUpCircle, GraduationCap, Target, Medal, Users } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
 import Button from "../../../components/ui/Button";
 import Badge from "../../../components/ui/Badge";
@@ -40,15 +40,27 @@ export default function PerformanceMatrix() {
   const [reviewForm, setReviewForm] = useState(EMPTY_REVIEW);
   const [competencies, setCompetencies] = useState(EMPTY_COMPETENCIES);
 
+  // A "cycle" is just an internal grouping for goals/reviews — nobody
+  // should have to configure one before seeing their team's performance.
+  // If none exists yet, one is provisioned silently here; the picker only
+  // shows up once there's more than one to choose between.
   useEffect(() => {
     if (!user?.accessToken) return;
-    hrApi.getPerformanceCycles(user.accessToken, user.tokenType).then((res) => {
-      if (res.status) {
-        setCycles(res.data || []);
-        if (res.data?.length && !cycleId) setCycleId(res.data[0].id);
+    hrApi.getPerformanceCycles(user.accessToken, user.tokenType).then(async (res) => {
+      if (!res.status) return;
+      let list = res.data || [];
+      if (list.length === 0) {
+        const year = new Date().getFullYear();
+        const created = await hrApi.storePerformanceCycle(
+          { name: `Performance ${year}`, period_start: `${year}-01-01`, period_end: `${year}-12-31`, type: "annual" },
+          user.accessToken, user.tokenType
+        ).catch(() => null);
+        if (created?.status) list = [created.data];
       }
+      setCycles(list);
+      if (list.length && !cycleId) setCycleId(list[0].id);
     }).catch(() => {});
-    salaryApi.getAllEmployees(user.accessToken, user.tokenType, { limit: 1000 }, companyScope)
+    salaryApi.getAllEmployees(user.accessToken, user.tokenType, { status: "Active", limit: 1000 }, companyScope)
       .then((res) => setEmployees(res?.data?.users?.data ?? res?.data?.users ?? []))
       .catch(() => {});
   }, [user, scopeKey]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -159,6 +171,21 @@ export default function PerformanceMatrix() {
     [ratedReviews]
   );
 
+  // Every active employee, not just the ones already reviewed — this is
+  // the actual roster, so rating someone new is one click away instead of
+  // requiring you to already know who's missing a review.
+  const employeeRoster = useMemo(() => {
+    const byUser = new Map(ratedReviews.map((r) => [String(r.user_id), r]));
+    return employees.map((e) => ({ employee: e, review: byUser.get(String(e.id)) || null }))
+      .sort((a, b) => (b.review?.overall_rating ?? -1) - (a.review?.overall_rating ?? -1));
+  }, [employees, ratedReviews]);
+
+  const openRateModal = (employeeId) => {
+    setReviewForm({ ...EMPTY_REVIEW, user_id: String(employeeId) });
+    setCompetencies(EMPTY_COMPETENCIES);
+    setReviewModalOpen(true);
+  };
+
   const cards = dashboard?.cards || {};
 
   return (
@@ -166,14 +193,20 @@ export default function PerformanceMatrix() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-xl font-bold text-gray-900 dark:text-white">Performance Matrix</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">KPI/KRA/OKR goals, reviews, bell curve and 9-box calibration</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Who's performing, who needs attention, and why</p>
         </div>
+        {/* Cycles are bookkeeping, not a gate — a default one is created
+            automatically, so the picker only shows once there's an actual
+            choice to make. The link to add another period stays available. */}
         <div className="flex items-center gap-2">
-          <select className={inputClass + " w-48"} value={cycleId} onChange={(e) => setCycleId(e.target.value)}>
-            {cycles.length === 0 && <option value="">No cycles yet</option>}
-            {cycles.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-          <Button variant="secondary" icon={<Plus size={16} />} onClick={() => setCycleModalOpen(true)}>New Cycle</Button>
+          {cycles.length > 1 && (
+            <select className={inputClass + " w-48"} value={cycleId} onChange={(e) => setCycleId(e.target.value)}>
+              {cycles.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          )}
+          <button onClick={() => setCycleModalOpen(true)} className="text-xs font-semibold text-gray-500 hover:text-brand-600 dark:text-gray-400 whitespace-nowrap">
+            + New review period
+          </button>
         </div>
       </div>
 
@@ -186,9 +219,7 @@ export default function PerformanceMatrix() {
         ))}
       </div>
 
-      {!cycleId ? (
-        <p className="text-center py-16 text-sm text-gray-500 dark:text-gray-400">Create a performance cycle to get started</p>
-      ) : loading ? (
+      {loading || !cycleId ? (
         <SkeletonTable rows={6} />
       ) : tab === "overview" ? (
         <div className="space-y-6">
@@ -199,6 +230,61 @@ export default function PerformanceMatrix() {
             <StatCard title="Promotion Eligible" value={cards.promotion_eligible ?? 0} icon={<ArrowUpCircle size={20} />} color="blue" compact />
             <StatCard title="Training Required" value={cards.training_required ?? 0} icon={<GraduationCap size={20} />} color="purple" compact />
             <StatCard title="Goal Completion %" value={`${cards.goal_completion_pct ?? 0}%`} icon={<Target size={20} />} color="blue" compact />
+          </div>
+
+          {/* Every active employee, ranked by rating with a one-click way to
+              rate whoever hasn't been yet — the actual point of this page. */}
+          <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
+              <Users size={16} className="text-brand-600" />
+              <h3 className="text-base font-bold text-gray-900 dark:text-white">Employees</h3>
+            </div>
+            {employeeRoster.length === 0 ? (
+              <p className="text-center py-12 text-sm text-gray-500 dark:text-gray-400">No active employees found</p>
+            ) : (
+              <div className="overflow-x-auto max-h-[420px] overflow-y-auto">
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 bg-gray-50 dark:bg-gray-700/50 text-xs uppercase text-gray-500 dark:text-gray-400">
+                    <tr>
+                      <th className="text-left px-6 py-2.5">Employee</th>
+                      <th className="text-left px-6 py-2.5">Rating</th>
+                      <th className="text-right px-6 py-2.5">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
+                    {employeeRoster.map(({ employee, review }) => (
+                      <tr key={employee.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
+                        <td className="px-6 py-2.5">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-brand-500 to-indigo-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                              {employee.name?.[0]?.toUpperCase() ?? "?"}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-medium text-gray-900 dark:text-white truncate">{employee.name}</p>
+                              {employee.designation && <p className="text-xs text-gray-400 truncate">{employee.designation}</p>}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-2.5">
+                          {review ? (
+                            <span className="flex items-center gap-1 text-sm font-semibold text-gray-700 dark:text-gray-200">
+                              <Star size={13} className="text-yellow-500" fill="currentColor" /> {Number(review.overall_rating).toFixed(1)}
+                            </span>
+                          ) : (
+                            <Badge variant="gray">Not rated</Badge>
+                          )}
+                        </td>
+                        <td className="px-6 py-2.5 text-right">
+                          <button onClick={() => openRateModal(employee.id)} className="text-xs font-semibold text-brand-600 hover:underline">
+                            {review ? "Re-rate" : "Rate"}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
