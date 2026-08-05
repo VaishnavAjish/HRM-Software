@@ -1667,7 +1667,7 @@ class UserController extends Controller
             $like = '%' . str_replace(['%', '_'], ['\%', '\_'], $search) . '%';
             $query->where(function ($q) use ($like) {
                 foreach (['name', 'emp_code', 'mobile_number', 'unit', 'pan_card_no'] as $column) {
-                    $q->orWhere($column, 'ILIKE', $like);
+                    $q->orWhere($column, 'LIKE', $like);
                 }
             });
         }
@@ -1781,6 +1781,13 @@ class UserController extends Controller
             ->keyBy('user_id');
 
         if ($documents->isEmpty()) {
+            return $rows;
+        }
+
+        // When storage provider is S3, avoid generating presigned URLs in a loop
+        // during list endpoints as 50+ sequential AWS network calls cause Gateway Timeouts.
+        // The frontend fetches V1 document URLs on-demand when an item is opened.
+        if (config('documents.provider') === 's3') {
             return $rows;
         }
 
