@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Download, Filter, Plus } from "lucide-react";
+import { AlertTriangle, Download, Filter, Plus } from "lucide-react";
 import Button from "../../../../components/ui/Button";
 import { SkeletonTable } from "../../../../components/ui/Skeleton";
 import Stepper from "../../../../components/onboarding/Stepper";
@@ -9,6 +9,7 @@ import SlideOver from "../../../../components/onboarding/SlideOver";
 import PageHeader, { PreviewBanner } from "../../../../components/onboarding/PageHeader";
 import {
   BarList,
+  EmptyState,
   Eyebrow,
   KpiTile,
   Person,
@@ -28,7 +29,7 @@ const STATUS = {
 };
 
 export default function OnboardingDashboard() {
-  const { data, source, loading } = useOnboardingResource(
+  const { data, source, loading, error, reload } = useOnboardingResource(
     (token, type) => onboardingApi.getDashboard(token, type),
     [],
   );
@@ -67,6 +68,19 @@ export default function OnboardingDashboard() {
 
       {loading ? (
         <SkeletonTable rows={6} />
+      ) : error || !data ? (
+        <SectionCard>
+          <EmptyState
+            icon={AlertTriangle}
+            title="Couldn't load the onboarding dashboard"
+            description="The server didn't return any data. Please try again."
+            action={
+              <Button variant="secondary" size="sm" onClick={reload}>
+                Retry
+              </Button>
+            }
+          />
+        </SectionCard>
       ) : (
         <>
           <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
