@@ -6,6 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\StoreUserRequest;
 use App\Http\Requests\Admin\UpdateUserRequest;
 use App\Models\User;
+use App\Support\RoleHierarchy;
+use App\Support\RoleAudit;
+use App\Models\Role;
 use App\Services\Admin\UserAccountService;
 use App\Services\Admin\UserDirectory;
 use App\Services\Authorization\SchemaSupport;
@@ -292,6 +295,10 @@ class UserController extends Controller
             return $guard;
         }
 
+        if ($guard = $this->guardTargetUserRoles($actor, $user)) {
+            return $guard;
+        }
+
         if ($guard = $this->guardSensitiveRoles($actor, $data['roleIds'])) {
             return $guard;
         }
@@ -400,7 +407,18 @@ class UserController extends Controller
                 'lock' => $this->accounts->lock($user, $actor, (string) $reason),
                 'unlock' => $this->accounts->unlock($user, $actor, (string) ($reason ?: 'Bulk unlock')),
                 'delete' => $this->accounts->softDelete($user, $actor, $reason),
-                'assign-role' => $this->accounts->assignRoles($user, $data['roleIds'] ?? [], $actor, $reason),
+                // The bulk path called guardTarget() but never
+                // guardSensitiveRoles(), so it could grant any role at all --
+                // the hidden identity included -- to a list of users in one
+                // request. Both guards now apply on every iteration.
+                'assign-role' => (function () use ($actor, $user, $data, $reason) {
+                    if ($this->guardTargetUserRoles($actor, $user)
+                        || $this->guardSensitiveRoles($actor, $data['roleIds'] ?? [])) {
+                        return null;
+                    }
+
+                    return $this->accounts->assignRoles($user, $data['roleIds'] ?? [], $actor, $reason);
+                })(),
             };
 
             $applied[] = (int) $userId;
@@ -537,20 +555,58 @@ class UserController extends Controller
         return null;
     }
 
+    /**
+     * Every role being granted must sit below the actor's tier.
+     *
+     * This replaced a hard-coded deny-list of ['super_administrator',
+     * 'security_administrator']. That list omitted tenant_administrator, so an
+     * administrator could grant the administrator role to anyone, themselves
+     * included. Comparing tiers cannot be defeated by a role the list never
+     * anticipated.
+     */
     private function guardSensitiveRoles(User $actor, array $roleIds)
     {
-        if ((int) $actor->role === 0 || ! $roleIds || ! SchemaSupport::hasColumn('roles', 'code')) {
+        if (! $roleIds) {
             return null;
         }
 
-        $blocked = DB::table('roles')
-            ->whereIn('id', $roleIds)
-            ->whereIn('code', ['super_administrator', 'security_administrator'])
-            ->exists();
+        $roles = Role::query()->whereIn('id', array_map('intval', $roleIds))->get();
 
-        return $blocked
-            ? $this->error('PERMISSION_DENIED', 'Only a super administrator may assign that role.', 403)
-            : null;
+        foreach ($roles as $role) {
+            if (! RoleHierarchy::canAssignRole($actor, $role)) {
+                RoleAudit::denied(request(), $actor, 'ROLE_ASSIGNMENT_FORBIDDEN', $role);
+
+                return response()->json([
+                    'success' => false,
+                    'code' => 'ROLE_ASSIGNMENT_FORBIDDEN',
+                    'message' => 'You do not have permission to assign this role.',
+                ], 403);
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The subject of the change must also be below the actor's tier.
+     *
+     * Guards demotion and removal, not only granting: without it an
+     * administrator could strip the administrator role from a peer, crossing
+     * the same boundary in the opposite direction.
+     */
+    private function guardTargetUserRoles(User $actor, User $target)
+    {
+        if (RoleHierarchy::canManageUserRoles($actor, $target)) {
+            return null;
+        }
+
+        RoleAudit::denied(request(), $actor, 'TARGET_USER_ROLE_PROTECTED');
+
+        return response()->json([
+            'success' => false,
+            'code' => 'TARGET_USER_ROLE_PROTECTED',
+            'message' => "You do not have permission to modify this user's role.",
+        ], 403);
     }
 
     private function filters(Request $request): array

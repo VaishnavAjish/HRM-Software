@@ -4,7 +4,15 @@ const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.s
 
 function cellToPrimitive(value) {
   if (value === null || value === undefined) return "";
-  if (value instanceof Date) return value;
+  if (value instanceof Date) {
+    // ISO (YYYY-MM-DD) rather than a locale string: Carbon::parse() on the
+    // backend reads it unambiguously, and a raw Date object here isn't a
+    // valid React child — rendering it directly crashed the preview table.
+    const y = value.getFullYear();
+    const m = String(value.getMonth() + 1).padStart(2, "0");
+    const d = String(value.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
   if (typeof value === "object") {
     if (Array.isArray(value.richText)) {
       return value.richText.map((t) => t?.text ?? "").join("");

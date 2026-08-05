@@ -48,6 +48,12 @@ class RequireModuleSchema
             'performance_goals',
             'performance_reviews',
         ],
+        'tickets' => [
+            'ticket_categories',
+            'tickets',
+            'ticket_messages',
+            'ticket_activity_logs',
+        ],
     ];
 
     public function handle(Request $request, Closure $next, string $module)

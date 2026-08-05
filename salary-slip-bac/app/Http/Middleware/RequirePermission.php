@@ -4,8 +4,10 @@ namespace App\Http\Middleware;
 
 use App\Services\Authorization\AuthorizationEngine;
 use App\Services\Authorization\FeatureFlags;
+use App\Services\Authorization\PermissionEnforcementPolicy;
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 class RequirePermission
@@ -15,6 +17,7 @@ class RequirePermission
     public function __construct(
         private readonly AuthorizationEngine $authorization,
         private readonly FeatureFlags $flags,
+        private readonly PermissionEnforcementPolicy $enforcement,
     ) {
     }
 
@@ -74,7 +77,24 @@ class RequirePermission
         ]);
 
         if (!$decision->allowed) {
-            $shadow = $this->flags->enabled('authorization_shadow_mode', $actor->company_code, true);
+            $enforced = $this->enforcement->isEnforced(
+                $permission,
+                $request->route()?->getName(),
+                $actor->company_code
+            );
+            $shadow = !$enforced && $this->flags->enabled('authorization_shadow_mode', $actor->company_code, true);
+
+            if ($shadow && ($decision->legacyDecision['allowed'] ?? false)) {
+                Log::channel(config('logging.default'))->info('authorization.shadow_would_deny', [
+                    'permission' => $permission,
+                    'route' => $request->route()?->getName() ?: $request->path(),
+                    'actor_id' => $actor->id,
+                    'tenant' => $actor->company_code,
+                    'would_deny' => true,
+                    'request_id' => $request->header('X-Request-Id'),
+                ]);
+            }
+
             if (!($shadow && ($decision->legacyDecision['allowed'] ?? false))) {
                 return response()->json([
                     'success' => false,

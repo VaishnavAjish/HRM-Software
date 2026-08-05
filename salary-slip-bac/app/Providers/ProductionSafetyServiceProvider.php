@@ -34,8 +34,21 @@ class ProductionSafetyServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Event::listen(CommandStarting::class, function (CommandStarting $event): void {
-            // RefreshDatabase runs migrate:fresh on the test database by design.
-            if ($this->app->environment('testing')) {
+            // RefreshDatabase runs migrate:fresh on the test database by design,
+            // so the testing environment is exempt — but ONLY once the
+            // connection really is a test database.
+            //
+            // On 2026-08-05 `php artisan migrate:fresh --env=testing` dropped
+            // the development database. niss_hrms_test is configured in
+            // phpunit.xml, which applies to PHPUnit runs and not to artisan, and
+            // there is no .env.testing — so the flag switched the environment
+            // (disabling this guard) while DB_DATABASE still resolved from .env
+            // to niss_hrms. The exemption was the whole vulnerability: it
+            // trusted the environment name to imply the database.
+            // The exemption depends on the DATABASE, not the environment name.
+            // APP_ENV is a flag anyone can pass on the command line; the
+            // connection is the thing that actually gets dropped.
+            if ($this->onTestDatabase()) {
                 return;
             }
 
@@ -57,6 +70,35 @@ class ProductionSafetyServiceProvider extends ServiceProvider
 
             $this->block($command, $raw);
         });
+    }
+
+    /**
+     * Is the live connection actually pointed at a test database?
+     *
+     * Name-based on purpose: it must hold for any deployment without needing a
+     * list of protected databases, and it fails closed — an unrecognised name
+     * is treated as real data.
+     */
+    private function onTestDatabase(): bool
+    {
+        $database = (string) config('database.connections.'
+            . config('database.default') . '.database');
+
+        // Fail CLOSED. An empty or unresolved name previously returned true,
+        // which is how the exemption leaked: anything the check could not read
+        // was treated as disposable. Only an in-memory SQLite database is
+        // inherently safe.
+        if ($database === '') {
+            return false;
+        }
+
+        if ($database === ':memory:') {
+            return true;
+        }
+
+        $name = strtolower(basename(str_replace(DIRECTORY_SEPARATOR, '/', $database)));
+
+        return str_contains($name, 'test');
     }
 
     private function overrideGranted(): bool

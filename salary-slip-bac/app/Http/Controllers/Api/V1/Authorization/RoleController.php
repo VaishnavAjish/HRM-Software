@@ -62,7 +62,43 @@ class RoleController extends Controller
 
     public function store(StoreRoleRequest $request): JsonResponse
     {
-        $role = $this->roles->create($request->payload());
+        $actor = auth('api')->user();
+        $payload = $request->payload();
+
+        // A reserved code carries a tier by definition — creating one would
+        // manufacture an Admin or the internal identity out of a plain create
+        // request. Uniqueness does not cover this: it only blocks a duplicate,
+        // so a code absent from this deployment would otherwise be mintable.
+        if (RoleHierarchy::isReservedCode($payload['code'] ?? null)
+            || RoleHierarchy::isReservedCode($payload['name'] ?? null)) {
+            RoleAudit::denied(request(), $actor, 'ROLE_CLASS_CREATION_FORBIDDEN');
+
+            return response()->json([
+                'success' => false,
+                'code' => 'ROLE_CLASS_CREATION_FORBIDDEN',
+                'message' => 'You do not have permission to create this type of role.',
+            ], 403);
+        }
+
+        // Everything a client can create is CUSTOM: the tier is decided by the
+        // code, and reserved codes were just refused. The check is kept explicit
+        // so raising an actor's creatable set does not silently widen this.
+        if (!RoleHierarchy::canCreateRoleClass($actor, RoleHierarchy::CUSTOM)) {
+            RoleAudit::denied(request(), $actor, 'ROLE_CLASS_CREATION_FORBIDDEN');
+
+            return response()->json([
+                'success' => false,
+                'code' => 'ROLE_CLASS_CREATION_FORBIDDEN',
+                'message' => 'You do not have permission to create this type of role.',
+            ], 403);
+        }
+
+        // Tenant is resolved from the authenticated identity, never accepted
+        // from the browser, so a forged tenantId cannot place a role in someone
+        // else's tenant.
+        unset($payload['tenantId']);
+
+        $role = $this->roles->create($payload);
 
         return response()->json(['success' => true, 'data' => $this->roles->present($role)], 201);
     }
@@ -106,7 +142,12 @@ class RoleController extends Controller
             return $this->conflict('This role is protected and cannot be deleted.', 'ROLE_PROTECTED');
         }
 
-        if ($model->is_system) {
+        // is_system blocks the Admin tier for an administrator, not for the
+        // super administrator. The super administrator owns every visible tier
+        // including Admin and Security Administrator, so a system flag is not a
+        // reason to refuse them. The protected code check above still stands and
+        // is what keeps the internal identity undeletable by anyone.
+        if ($model->is_system && ! auth('api')->user()?->isSuperAdmin()) {
             return $this->conflict('System roles cannot be deleted.', 'ROLE_IS_SYSTEM');
         }
 
@@ -167,7 +208,7 @@ class RoleController extends Controller
             return $this->conflict('This role is protected and cannot change status.', 'ROLE_PROTECTED');
         }
 
-        if ($model->is_system) {
+        if ($model->is_system && ! auth('api')->user()?->isSuperAdmin()) {
             return $this->conflict('System roles cannot change status.', 'ROLE_IS_SYSTEM');
         }
 

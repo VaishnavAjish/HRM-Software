@@ -33,6 +33,7 @@ const pageTitles = {
   "/agent/appointments": "Appointment Form",
   "/admin/hr": "HR Dashboard",
   "/admin/hr/hiring": "Hiring",
+  "/admin/hr/interviews": "Interviews",
   "/admin/hr/assets": "Asset Allocation",
   "/admin/hr/performance": "Performance Matrix",
   "/admin/hr/exit": "Exit Management",

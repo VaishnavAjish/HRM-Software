@@ -13,7 +13,7 @@ import { SkeletonTable } from "../../../components/ui/Skeleton";
 import StatusBadge from "../../../components/authorization/StatusBadge";
 import { useAuth } from "../../../context/AuthContext";
 import { useAuthorization } from "../../../hooks/useAuthorization";
-import { canManageRoles } from "../../../utils/roleAccess";
+import { canManageRoles, isSuperAdminUser } from "../../../utils/roleAccess";
 import { roleApi } from "../../../utils/api";
 
 const inputBase =
@@ -44,6 +44,10 @@ export default function Roles() {
   const { user } = useAuth();
   const { can } = useAuthorization();
   const manageRoles = canManageRoles(user);
+  // The super administrator owns every visible tier, so a System role is
+  // not a reason to hide status and delete actions from them. The backend
+  // applies the same rule; the hidden identity is never in this list.
+  const systemRolesEditable = isSuperAdminUser(user);
   const navigate = useNavigate();
   const token = user?.accessToken;
   const tokenType = user?.tokenType || "Bearer";
@@ -283,17 +287,17 @@ export default function Roles() {
                             <Copy size={14} /> Clone
                           </Button>
                         )}
-                        {manageRoles && can("admin.role.update") && !role.isSystem && role.status !== "ARCHIVED" && (
+                        {manageRoles && can("admin.role.update") && (systemRolesEditable || !role.isSystem) && role.status !== "ARCHIVED" && (
                           role.isActive
                             ? <Button size="sm" variant="outline" onClick={() => transition(role, "deactivate", "deactivated")}><PowerOff size={14} /> Deactivate</Button>
                             : <Button size="sm" variant="outline" onClick={() => transition(role, "activate", "activated")}><Power size={14} /> Activate</Button>
                         )}
-                        {manageRoles && can("admin.role.update") && !role.isSystem && (
+                        {manageRoles && can("admin.role.update") && (systemRolesEditable || !role.isSystem) && (
                           role.status === "ARCHIVED"
                             ? <Button size="sm" variant="outline" onClick={() => transition(role, "restore", "restored")}><ArchiveRestore size={14} /> Restore</Button>
                             : <Button size="sm" variant="outline" onClick={() => transition(role, "archive", "archived")}><Archive size={14} /> Archive</Button>
                         )}
-                        {manageRoles && can("admin.role.delete") && !role.isSystem && role.assignedUserCount === 0 && (
+                        {manageRoles && can("admin.role.delete") && (systemRolesEditable || !role.isSystem) && role.assignedUserCount === 0 && (
                           <Button size="sm" variant="danger" onClick={() => remove(role)}><Trash2 size={14} /> Delete</Button>
                         )}
                       </div>

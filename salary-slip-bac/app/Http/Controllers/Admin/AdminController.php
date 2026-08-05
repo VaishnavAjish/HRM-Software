@@ -423,7 +423,20 @@ class AdminController extends Controller
                 // blank department, which breaks anything that groups by it.
                 $employee = User::where('emp_code', $empCodeRaw)
                     ->where('company_code', $company_code)
+                    ->where('is_deleted', 0)
                     ->first();
+
+                if (!$employee) {
+                    $reason = "Employee code '{$empCodeRaw}' was not found in this company's employee list";
+                    $skipped[] = "Row {$excelRowNum}: {$reason}";
+                    $rowReports[] = [
+                        'row_number' => $excelRowNum,
+                        'status' => 'failed',
+                        'reason' => $reason,
+                        'row_data' => $canonical,
+                    ];
+                    continue;
+                }
 
                 $basic = self::numOrNull($canonical['basic'] ?? null) ?? 0;
                 $hra = self::numOrNull($canonical['hra'] ?? null) ?? 0;

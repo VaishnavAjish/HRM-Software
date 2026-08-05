@@ -258,6 +258,28 @@ export const salaryApi = {
     });
   },
 
+  getForm16Employees(
+    accessToken,
+    tokenType = "Bearer",
+    page = 1,
+    limit = 15,
+    filters = {},
+    companyId,
+  ) {
+    const params = new URLSearchParams({ page, limit });
+    Object.entries(mergeCompanyFilters(filters, companyId)).forEach(
+      ([key, value]) => {
+        if (!value) return;
+        params.set(key, value);
+      },
+    );
+    return apiRequest(`/admin/form16/employees?${params}`, {
+      headers: accessToken
+        ? { Authorization: `${tokenType} ${accessToken}` }
+        : {},
+    });
+  },
+
   getAllSlips(accessToken, tokenType = "Bearer", filters = {}, companyId) {
     const params = new URLSearchParams({ no_pagination: 1 });
     Object.entries(mergeCompanyFilters(filters, companyId)).forEach(
@@ -1795,6 +1817,25 @@ export const hrApi = {
     return apiRequest(`/hr/quizzes/delete/${id}`, { method: "DELETE", headers: hrAuthHeaders(accessToken, tokenType) });
   },
 
+  // Quiz attempts (HR side — assigning a quiz to a candidate and reading
+  // back the score and proctoring trail). The candidate's own runner talks
+  // to publicQuizApi below, which is deliberately unauthenticated.
+  getQuizAttempts(accessToken, tokenType = "Bearer", filters = {}) {
+    return apiRequest(`/hr/quiz-attempts/get${hrQuery(filters)}`, { headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+  getQuizAttempt(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/quiz-attempts/show/${id}`, { headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+  getAssignableCandidates(accessToken, tokenType = "Bearer", filters = {}) {
+    return apiRequest(`/hr/quiz-attempts/candidates${hrQuery(filters)}`, { headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+  assignQuiz(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest("/hr/quiz-attempts/store", { method: "POST", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(payload) });
+  },
+  revokeQuizAttempt(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/quiz-attempts/delete/${id}`, { method: "DELETE", headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+
   // Candidates
   getCandidates(accessToken, tokenType = "Bearer", filters = {}) {
     return apiRequest(`/hr/candidates/get${hrQuery(filters)}`, { headers: hrAuthHeaders(accessToken, tokenType) });
@@ -1963,5 +2004,112 @@ export const hrApi = {
   },
   reviewCandidateDocument(id, decision, remarks, accessToken, tokenType = "Bearer") {
     return apiRequest(`/hr/candidates/documents/review/${id}/${decision}`, { method: "POST", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify({ remarks }) });
+  },
+};
+
+/*
+ * The candidate-facing quiz runner. Deliberately has no auth header: a
+ * candidate is not a user and has no login, so the per-attempt token in the
+ * URL is the only credential. Kept separate from hrApi so it's obvious at a
+ * glance which calls are unauthenticated.
+ */
+export const publicQuizApi = {
+  get(token) {
+    return apiRequest(`/quiz/${token}`);
+  },
+  start(token) {
+    return apiRequest(`/quiz/${token}/start`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+  },
+  saveProgress(token, answers) {
+    return apiRequest(`/quiz/${token}/progress`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ answers }),
+    });
+  },
+  logEvent(token, type, detail, countsAsViolation = true) {
+    return apiRequest(`/quiz/${token}/event`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type, detail, counts_as_violation: countsAsViolation }),
+    });
+  },
+  submit(token, answers) {
+    return apiRequest(`/quiz/${token}/submit`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ answers }),
+    });
+  },
+};
+
+/**
+ * Support tickets.
+ *
+ * One client for employees and staff alike: the endpoints are shared and the
+ * server decides what each caller may see (Ticket::scopeVisibleTo). Nothing here
+ * branches on role — a client-side rule would only ever drift from it.
+ */
+export const ticketApi = {
+  getCategories(accessToken, tokenType = "Bearer") {
+    return apiRequest(`/tickets/categories`, { headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+
+  getDashboard(accessToken, tokenType = "Bearer", filters = {}) {
+    return apiRequest(`/tickets/dashboard${hrQuery(filters)}`, { headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+
+  // `mine` means "raised by me" for an employee and "assigned to me" for staff.
+  getTickets(accessToken, tokenType = "Bearer", filters = {}) {
+    return apiRequest(`/tickets/get${hrQuery(filters)}`, { headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+
+  getTicket(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/tickets/show/${id}`, { headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+
+  createTicket(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest("/tickets/store", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...hrAuthHeaders(accessToken, tokenType) },
+      body: JSON.stringify(payload),
+    });
+  },
+
+  reply(id, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/tickets/${id}/reply`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...hrAuthHeaders(accessToken, tokenType) },
+      body: JSON.stringify(payload),
+    });
+  },
+
+  reopen(id, reason, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/tickets/${id}/reopen`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...hrAuthHeaders(accessToken, tokenType) },
+      body: JSON.stringify({ reason }),
+    });
+  },
+
+  // Staff only — gated with role:admin on the server.
+  getAssignees(accessToken, tokenType = "Bearer") {
+    return apiRequest(`/tickets/assignees`, { headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+
+  assign(id, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/tickets/${id}/assign`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", ...hrAuthHeaders(accessToken, tokenType) },
+      body: JSON.stringify(payload),
+    });
+  },
+
+  updateStatus(id, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/tickets/${id}/status`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", ...hrAuthHeaders(accessToken, tokenType) },
+      body: JSON.stringify(payload),
+    });
   },
 };

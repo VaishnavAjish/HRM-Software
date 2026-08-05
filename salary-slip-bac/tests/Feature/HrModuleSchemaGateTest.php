@@ -157,6 +157,30 @@ class HrModuleSchemaGateTest extends TestCase
         );
     }
 
+
+    /**
+     * Put the schema back.
+     *
+     * dropHrSchema() removes thirteen tables to reproduce an unmigrated
+     * deployment. RefreshDatabase wraps each test in a transaction, but these
+     * drops run with foreign-key constraints disabled and did not reliably roll
+     * back — later test classes then failed with 42P01 on tables this one
+     * removed, and the suite total moved between runs depending on order.
+     * Rebuilding here makes the class leave the database as it found it.
+     */
+    protected function tearDown(): void
+    {
+        try {
+            if (! Schema::hasTable('candidates')) {
+                $this->artisan('migrate:fresh', ['--force' => true])->run();
+            }
+        } catch (\Throwable) {
+            // Never let cleanup mask the assertion failure that matters.
+        }
+
+        parent::tearDown();
+    }
+
     /**
      * Reproduce production: no HR tables at all.
      *

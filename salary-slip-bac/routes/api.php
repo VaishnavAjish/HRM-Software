@@ -12,8 +12,10 @@ use App\Http\Controllers\Admin\Hr\InterviewController;
 use App\Http\Controllers\Admin\Hr\JobRequisitionController;
 use App\Http\Controllers\Admin\Hr\OfferController;
 use App\Http\Controllers\Admin\Hr\PerformanceController;
+use App\Http\Controllers\Admin\Hr\QuizAttemptController;
 use App\Http\Controllers\Admin\Hr\TrainingQuizController;
 use App\Http\Controllers\Admin\Hr\OnboardingController;
+use App\Http\Controllers\PublicQuizController;
 use App\Http\Controllers\Admin\PermissionDimensionController;
 use App\Http\Controllers\Admin\ShiftController;
 use App\Http\Controllers\Admin\UploadBatchController;
@@ -35,6 +37,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\SalariesSlipController;
 use App\Http\Controllers\SettingsController;
+use App\Http\Controllers\TicketController;
 use App\Http\Controllers\UserController;
 use App\Models\User;
 use App\Support\AadhaarExportAccess;
@@ -405,6 +408,37 @@ Route::middleware('jwt.auth')->group(function () {
     // Allow any authenticated user (like Agent) to fetch departments
     Route::get('/department/get', [AdminController::class, 'getDepartment'])->middleware('throttle:60,1');
 
+    /*
+     * Support tickets.
+     *
+     * Not split into admin/ and employee/ trees: these are the same rows seen
+     * through different scopes, and Ticket::scopeVisibleTo is the one place that
+     * decides which. The staff-only actions (assign, status, the assignee list)
+     * are gated with role:admin — which RoleMiddleware resolves to roles 0/1/2,
+     * the same set TicketController treats as staff.
+     *
+     * module.schema:tickets runs first for the reason the HR block gives above:
+     * before the migration lands these routes can only 500, and a 503 "being set
+     * up" is both truthful and something the client already handles.
+     */
+    Route::group(['prefix' => 'tickets', 'middleware' => 'module.schema:tickets'], function () {
+        Route::get('categories', [TicketController::class, 'categories']);
+        Route::get('dashboard', [TicketController::class, 'dashboard'])->middleware('permission:self.ticket.read');
+        Route::get('get', [TicketController::class, 'index'])->middleware('permission:self.ticket.read');
+        Route::get('show/{id}', [TicketController::class, 'show'])->whereNumber('id')->middleware('permission:self.ticket.read');
+
+        // Throttled: raising a ticket writes a row and burns a ticket number.
+        Route::post('store', [TicketController::class, 'store'])->middleware(['throttle:20,1', 'permission:self.ticket.create']);
+        Route::post('{id}/reply', [TicketController::class, 'reply'])->whereNumber('id')->middleware(['throttle:60,1', 'permission:self.ticket.create']);
+        Route::post('{id}/reopen', [TicketController::class, 'reopen'])->whereNumber('id')->middleware(['throttle:20,1', 'permission:self.ticket.create']);
+
+        Route::middleware('role:admin')->group(function () {
+            Route::get('assignees', [TicketController::class, 'assignees'])->middleware('permission:support.ticket.assign');
+            Route::put('{id}/assign', [TicketController::class, 'assign'])->whereNumber('id')->middleware('permission:support.ticket.assign');
+            Route::put('{id}/status', [TicketController::class, 'updateStatus'])->whereNumber('id')->middleware('permission:support.ticket.update');
+        });
+    });
+
     Route::middleware('role:admin')->group(function () {
         Route::post('/account-master', [UserController::class, 'accountMaster'])->middleware(['throttle:20,1', 'permission:hr.employee.import']);
         Route::post('register', [AuthController::class, 'register'])->middleware('permission:hr.employee.create');
@@ -413,6 +447,9 @@ Route::middleware('jwt.auth')->group(function () {
             Route::get('import-columns', [AdminController::class, 'importColumns'])->middleware('permission:payroll.payslip.create');
             Route::post('store', [AdminController::class, 'salarySlipImport'])->middleware('permission:payroll.payslip.create');
             Route::get('delete', [AdminController::class, 'salaryDelete'])->middleware('permission:payroll.payslip.delete');
+        });
+        Route::group(['prefix' => 'admin/form16'], function () {
+            Route::get('employees', [SalariesSlipController::class, 'index'])->middleware('permission:payroll.form16.read');
         });
         Route::group(['prefix' => 'department'], function () {
             Route::post('store', [AdminController::class, 'storeDepartment'])->middleware('permission:hr.department.create');
@@ -468,6 +505,17 @@ Route::middleware('jwt.auth')->group(function () {
                 Route::post('store', [TrainingQuizController::class, 'store'])->middleware('permission:hr.training.create');
                 Route::put('update/{id}', [TrainingQuizController::class, 'update'])->middleware('permission:hr.training.update');
                 Route::delete('delete/{id}', [TrainingQuizController::class, 'destroy'])->middleware('permission:hr.training.delete');
+            });
+
+            // Assigning an interview quiz to a candidate and reading back the
+            // score + proctoring trail. The candidate's own runner is public
+            // (see the token routes at the bottom of this file).
+            Route::group(['prefix' => 'quiz-attempts'], function () {
+                Route::get('get', [QuizAttemptController::class, 'index'])->middleware('permission:hr.training.read');
+                Route::get('show/{id}', [QuizAttemptController::class, 'show'])->middleware('permission:hr.training.read');
+                Route::get('candidates', [QuizAttemptController::class, 'assignableCandidates'])->middleware('permission:hr.training.read');
+                Route::post('store', [QuizAttemptController::class, 'store'])->middleware('permission:hr.training.create');
+                Route::delete('delete/{id}', [QuizAttemptController::class, 'destroy'])->middleware('permission:hr.training.delete');
             });
 
             Route::group(['prefix' => 'onboarding'], function () {
@@ -611,3 +659,17 @@ Route::middleware('jwt.auth')->group(function () {
 
     Route::get('/agent/candidates', [UserController::class, 'getAgentCandidates'])->middleware(['role:agent', 'permission:recruitment.candidate.read']);
 });
+
+/*
+ * Candidate-facing interview quiz. Candidates are not users and have no
+ * login, so these routes sit outside the jwt.auth group and the per-attempt
+ * access token is the only credential. Throttled accordingly, and the
+ * controller never serialises the answer key or trusts a client-sent score.
+ */
+Route::group(['prefix' => 'quiz'], function () {
+    Route::get('{token}', [PublicQuizController::class, 'show'])->middleware('throttle:60,1');
+    Route::post('{token}/start', [PublicQuizController::class, 'start'])->middleware('throttle:20,1');
+    Route::post('{token}/progress', [PublicQuizController::class, 'saveProgress'])->middleware('throttle:120,1');
+    Route::post('{token}/event', [PublicQuizController::class, 'logEvent'])->middleware('throttle:240,1');
+    Route::post('{token}/submit', [PublicQuizController::class, 'submit'])->middleware('throttle:20,1');
+})->where(['token' => '[A-Za-z0-9]{64}']);

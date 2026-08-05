@@ -1,0 +1,285 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\Ticket;
+use App\Models\TicketCategory;
+use App\Models\User;
+use App\Support\TicketNumber;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use PHPUnit\Framework\Attributes\Test;
+use Tests\TestCase;
+
+class TicketWorkflowTest extends TestCase
+{
+    use RefreshDatabase;
+
+    private User $employee;
+
+    private User $admin;
+
+    private User $otherCompanyAdmin;
+
+    private TicketCategory $category;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->employee = $this->makeUser(['role' => 3, 'company_code' => 'nidhi-impex', 'unit' => 'Shreeji', 'department' => 'IT']);
+        $this->admin = $this->makeUser(['role' => 1, 'company_code' => 'nidhi-impex,silver-star']);
+        $this->otherCompanyAdmin = $this->makeUser(['role' => 1, 'company_code' => 'acme']);
+
+        $this->category = TicketCategory::create([
+            'name' => 'IT Support', 'slug' => 'it-support-test',
+            'default_department' => 'IT', 'is_active' => true, 'sort_order' => 10,
+        ]);
+    }
+
+    private function makeUser(array $attributes): User
+    {
+        return User::create(array_merge([
+            'name' => 'Ticket Test User',
+            'email' => uniqid('ticket-', true).'@example.test',
+            'password' => 'password',
+            'emp_code' => strtoupper(substr(uniqid(), -8)),
+            'role' => 3,
+            'company_code' => 'nidhi-impex',
+            'status' => 0,
+            'is_deleted' => 0,
+        ], $attributes));
+    }
+
+    private function raiseTicket(?User $as = null): array
+    {
+        $actor = $as ?: $this->employee;
+
+        return $this->withToken(auth('api')->login($actor))
+            ->postJson('/api/tickets/store', [
+                'category_id' => $this->category->id,
+                'subject' => 'Laptop will not boot',
+                'description' => 'It powers on and then shuts down after a few seconds.',
+                'priority' => 'high',
+            ])->json();
+    }
+
+    #[Test]
+    public function an_employee_can_raise_a_ticket_and_gets_a_formatted_number(): void
+    {
+        $response = $this->withToken(auth('api')->login($this->employee))
+            ->postJson('/api/tickets/store', [
+                'category_id' => $this->category->id,
+                'subject' => 'Laptop will not boot',
+                'description' => 'It powers on and then shuts down.',
+                'priority' => 'high',
+            ]);
+
+        $response->assertCreated()->assertJsonPath('status', true);
+
+        $ticket = Ticket::firstOrFail();
+
+        $this->assertMatchesRegularExpression('/^TKT-\d{4}-\d{6}$/', $ticket->ticket_number);
+        $this->assertSame(Ticket::STATUS_OPEN, $ticket->status);
+        // Tenancy is taken from the signed-in employee, never the payload.
+        $this->assertSame('nidhi-impex', $ticket->company_code);
+        $this->assertSame('Shreeji', $ticket->unit);
+        $this->assertDatabaseHas('ticket_activity_logs', ['ticket_id' => $ticket->id, 'action' => 'CREATED']);
+    }
+
+    #[Test]
+    public function ticket_numbers_are_unique_under_repeated_allocation(): void
+    {
+        $numbers = [];
+        for ($i = 0; $i < 25; $i++) {
+            $numbers[] = DB::transaction(fn () => TicketNumber::next(2026));
+        }
+
+        $this->assertCount(25, array_unique($numbers));
+        $this->assertSame('TKT-2026-000001', $numbers[0]);
+        $this->assertSame('TKT-2026-000025', $numbers[24]);
+    }
+
+    #[Test]
+    public function an_employee_sees_only_their_own_tickets(): void
+    {
+        $this->raiseTicket();
+
+        $stranger = $this->makeUser(['role' => 3, 'company_code' => 'nidhi-impex']);
+        $this->raiseTicket($stranger);
+
+        $response = $this->withToken(auth('api')->login($this->employee))
+            ->getJson('/api/tickets/get');
+
+        $response->assertOk();
+        $this->assertCount(1, $response->json('data.data'));
+    }
+
+    #[Test]
+    public function an_employee_cannot_open_someone_elses_ticket(): void
+    {
+        $stranger = $this->makeUser(['role' => 3, 'company_code' => 'nidhi-impex']);
+        $this->raiseTicket($stranger);
+        $ticket = Ticket::firstOrFail();
+
+        $this->withToken(auth('api')->login($this->employee))
+            ->getJson("/api/tickets/show/{$ticket->id}")
+            ->assertNotFound();
+    }
+
+    /**
+     * The multi-company case that broke elsewhere in this app: an admin whose
+     * company_code is a comma list must see both companies, not zero.
+     */
+    #[Test]
+    public function a_multi_company_admin_sees_tickets_from_every_company_they_hold(): void
+    {
+        $this->raiseTicket();
+
+        $silverEmployee = $this->makeUser(['role' => 3, 'company_code' => 'silver-star', 'unit' => 'Daduk']);
+        $this->raiseTicket($silverEmployee);
+
+        $response = $this->withToken(auth('api')->login($this->admin))
+            ->getJson('/api/tickets/get');
+
+        $response->assertOk();
+        $this->assertCount(2, $response->json('data.data'));
+    }
+
+    #[Test]
+    public function an_admin_from_another_company_sees_nothing(): void
+    {
+        $this->raiseTicket();
+
+        $response = $this->withToken(auth('api')->login($this->otherCompanyAdmin))
+            ->getJson('/api/tickets/get');
+
+        $response->assertOk();
+        $this->assertCount(0, $response->json('data.data'));
+    }
+
+    #[Test]
+    public function assigning_moves_an_open_ticket_to_assigned(): void
+    {
+        $this->raiseTicket();
+        $ticket = Ticket::firstOrFail();
+
+        $this->withToken(auth('api')->login($this->admin))
+            ->putJson("/api/tickets/{$ticket->id}/assign", ['assigned_to' => $this->admin->id])
+            ->assertOk();
+
+        $ticket->refresh();
+        $this->assertSame(Ticket::STATUS_ASSIGNED, $ticket->status);
+        $this->assertSame($this->admin->id, $ticket->assigned_to);
+    }
+
+    #[Test]
+    public function a_ticket_cannot_be_assigned_to_an_employee_account(): void
+    {
+        $this->raiseTicket();
+        $ticket = Ticket::firstOrFail();
+
+        $this->withToken(auth('api')->login($this->admin))
+            ->putJson("/api/tickets/{$ticket->id}/assign", ['assigned_to' => $this->employee->id])
+            ->assertStatus(422);
+    }
+
+    #[Test]
+    public function an_out_of_order_status_change_is_rejected(): void
+    {
+        $this->raiseTicket();
+        $ticket = Ticket::firstOrFail();
+
+        // open -> closed skips the work entirely.
+        $this->withToken(auth('api')->login($this->admin))
+            ->putJson("/api/tickets/{$ticket->id}/status", ['status' => Ticket::STATUS_CLOSED])
+            ->assertStatus(422);
+
+        $this->assertSame(Ticket::STATUS_OPEN, $ticket->fresh()->status);
+    }
+
+    #[Test]
+    public function a_closed_ticket_is_read_only(): void
+    {
+        $this->raiseTicket();
+        $ticket = Ticket::firstOrFail();
+        $ticket->forceFill(['status' => Ticket::STATUS_CLOSED, 'closed_at' => now()])->save();
+
+        $this->withToken(auth('api')->login($this->employee))
+            ->postJson("/api/tickets/{$ticket->id}/reply", ['message' => 'One more thing'])
+            ->assertStatus(422);
+
+        $this->withToken(auth('api')->login($this->admin))
+            ->putJson("/api/tickets/{$ticket->id}/status", ['status' => Ticket::STATUS_IN_PROGRESS])
+            ->assertStatus(422);
+    }
+
+    #[Test]
+    public function an_employee_can_reopen_a_resolved_ticket_inside_the_window(): void
+    {
+        $this->raiseTicket();
+        $ticket = Ticket::firstOrFail();
+        $ticket->forceFill(['status' => Ticket::STATUS_RESOLVED, 'resolved_at' => now()->subDay()])->save();
+
+        $this->withToken(auth('api')->login($this->employee))
+            ->postJson("/api/tickets/{$ticket->id}/reopen", ['reason' => 'The problem came back.'])
+            ->assertOk();
+
+        $this->assertSame(Ticket::STATUS_REOPENED, $ticket->fresh()->status);
+        // The reason joins the conversation, not just the audit trail.
+        $this->assertDatabaseHas('ticket_messages', ['ticket_id' => $ticket->id, 'message' => 'The problem came back.']);
+    }
+
+    #[Test]
+    public function reopening_is_refused_once_the_window_has_passed(): void
+    {
+        $this->raiseTicket();
+        $ticket = Ticket::firstOrFail();
+        $ticket->forceFill([
+            'status' => Ticket::STATUS_RESOLVED,
+            'resolved_at' => now()->subDays(Ticket::REOPEN_WINDOW_DAYS + 3),
+        ])->save();
+
+        $this->withToken(auth('api')->login($this->employee))
+            ->postJson("/api/tickets/{$ticket->id}/reopen", ['reason' => 'Still broken.'])
+            ->assertStatus(422);
+    }
+
+    #[Test]
+    public function internal_notes_are_never_returned_to_the_employee(): void
+    {
+        $this->raiseTicket();
+        $ticket = Ticket::firstOrFail();
+
+        $this->withToken(auth('api')->login($this->admin))
+            ->postJson("/api/tickets/{$ticket->id}/reply", [
+                'message' => 'Employee has done this before — check the asset log.',
+                'is_internal' => true,
+            ])->assertCreated();
+
+        $employeeView = $this->withToken(auth('api')->login($this->employee))
+            ->getJson("/api/tickets/show/{$ticket->id}")->json('data.messages');
+
+        $this->assertCount(0, $employeeView);
+
+        $adminView = $this->withToken(auth('api')->login($this->admin))
+            ->getJson("/api/tickets/show/{$ticket->id}")->json('data.messages');
+
+        $this->assertCount(1, $adminView);
+    }
+
+    #[Test]
+    public function an_employee_cannot_reach_the_staff_only_actions(): void
+    {
+        $this->raiseTicket();
+        $ticket = Ticket::firstOrFail();
+
+        $this->withToken(auth('api')->login($this->employee))
+            ->putJson("/api/tickets/{$ticket->id}/status", ['status' => Ticket::STATUS_RESOLVED])
+            ->assertForbidden();
+
+        $this->withToken(auth('api')->login($this->employee))
+            ->putJson("/api/tickets/{$ticket->id}/assign", ['assigned_to' => $this->admin->id])
+            ->assertForbidden();
+    }
+}

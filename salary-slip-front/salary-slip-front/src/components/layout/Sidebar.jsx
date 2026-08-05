@@ -25,6 +25,7 @@ import {
   ChevronDown,
   Briefcase,
   ShieldCheck,
+  LifeBuoy,
 } from "lucide-react";
 
 function getAdminNav(companyId, user, isAllCompanies, isModuleAvailable = () => true) {
@@ -42,7 +43,7 @@ function getAdminNav(companyId, user, isAllCompanies, isModuleAvailable = () => 
     dashboard: "ui.admin.dashboard.view", appointments: "ui.admin.appointments.view",
     trial_form: "recruitment.trial_form.read", employees: "ui.admin.employees.view",
     salary: "ui.admin.salary.view", attendance: "ui.admin.attendance.view",
-    tds: "payroll.payslip.read", form16: "payroll.payslip.read",
+    tds: "ui.admin.tds.view", form16: "ui.admin.form16.view",
   };
   const canPage = (legacyKey) => hasAccess(pagePermission[legacyKey] || legacyKey) || (!user?.authorization && hasAccess(legacyKey));
 
@@ -79,7 +80,7 @@ function getAdminNav(companyId, user, isAllCompanies, isModuleAvailable = () => 
       icon: Calendar,
       subItems: [
         { to: "/admin/attendance", label: "View Attendance" },
-        { to: "/admin/attendance/shift", label: "Shift" }
+        ...(hasAccess("hr.shift.read") ? [{ to: "/admin/attendance/shift", label: "Shift" }] : []),
       ]
     }] : []),
   ];
@@ -107,6 +108,7 @@ function getAdminNav(companyId, user, isAllCompanies, isModuleAvailable = () => 
       subItems: [
         { to: "/admin/hr", label: "HR Dashboard" },
         { to: "/admin/hr/hiring", label: "Hiring" },
+        { to: "/admin/hr/interviews", label: "Interviews" },
         { to: "/admin/hr/onboarding", label: "Onboarding" },
         { to: "/admin/hr/onboarding/documents", label: "Documents" },
 
@@ -118,6 +120,16 @@ function getAdminNav(companyId, user, isAllCompanies, isModuleAvailable = () => 
         { to: "/admin/hr/settings", label: "HR Settings" },
       ],
     });
+  }
+
+  /*
+   * Support tickets. Gated on the module probe as well as the permission, for
+   * the reason the HR block gives above: before the ticket migration lands,
+   * every route under /tickets answers 503, and a permanently "being set up"
+   * menu item is indistinguishable from a broken one.
+   */
+  if ((rawRole === 0 || hasAccess("support.ticket.read")) && isModuleAvailable("tickets")) {
+    nav.push({ to: "/admin/tickets", label: "Tickets", icon: LifeBuoy });
   }
 
   /*
@@ -163,6 +175,14 @@ const employeeNav = [
   { to: "/employee", label: "Dashboard", icon: LayoutDashboard, end: true },
   { to: "/employee/payslips", label: "Payslips", icon: FileText },
   { to: "/employee/form16", label: "Form 16", icon: Receipt },
+  {
+    label: "Tickets",
+    icon: LifeBuoy,
+    subItems: [
+      { to: "/employee/tickets/new", label: "Raise Ticket" },
+      { to: "/employee/tickets", label: "My Tickets" },
+    ],
+  },
   { to: "/employee/profile", label: "Profile", icon: UserCircle },
   { to: "/employee/appointment", label: "Appointment Form", icon: ClipboardList },
 ];
@@ -241,9 +261,12 @@ export default function Sidebar({ open, onClose, width, isCollapsed, onCollapse 
       }
     });
     const isProfileComplete = (filled === fields.length);
-    const baseNav = isProfileComplete 
-      ? employeeNav 
-      : employeeNav.filter(item => item.to === "/employee/profile");
+    const baseNav = (isProfileComplete
+      ? employeeNav
+      : employeeNav.filter(item => item.to === "/employee/profile")
+    // Same module probe the admin side applies: without the ticket tables the
+    // pages behind these two entries can only fail.
+    ).filter(item => item.label !== "Tickets" || isModuleAvailable("tickets"));
 
     const keyMap = {
       "/employee": "employee_dashboard",

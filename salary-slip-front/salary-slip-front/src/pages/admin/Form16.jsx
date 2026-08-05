@@ -82,7 +82,7 @@ export default function AdminForm16() {
       if (isFirst) setLoading(true);
       else setLoadingMore(true);
       try {
-        const res = await salaryApi.getSlips(
+        const res = await salaryApi.getForm16Employees(
           user?.accessToken,
           user?.tokenType,
           page,

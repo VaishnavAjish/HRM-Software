@@ -51,12 +51,17 @@ const AccessRequests = lazy(() => import("./pages/admin/accessControl/AccessRequ
 const Delegations = lazy(() => import("./pages/admin/accessControl/Delegations"));
 const EmergencyAccess = lazy(() => import("./pages/admin/accessControl/EmergencyAccess"));
 
+// Support tickets — one staff queue, two employee screens.
+const AdminTickets = lazy(() => import("./pages/admin/Tickets"));
+
 // Employee pages
 const EmployeeDashboard = lazy(() => import("./pages/employee/Dashboard"));
 const Payslips = lazy(() => import("./pages/employee/Payslips"));
 const EmployeeForm16 = lazy(() => import("./pages/employee/Form16"));
 const Profile = lazy(() => import("./pages/employee/Profile"));
 const EmployeeAppointment = lazy(() => import("./pages/employee/EmployeeAppointment"));
+const RaiseTicket = lazy(() => import("./pages/employee/RaiseTicket"));
+const MyTickets = lazy(() => import("./pages/employee/MyTickets"));
 
 // Agent pages
 const AgentDashboard = lazy(() => import("./pages/agent/AgentDashboard"));
@@ -80,6 +85,8 @@ const HrReports = lazy(() => import("./pages/admin/hr/HrReports"));
 const ExitManagement = lazy(() => import("./pages/admin/hr/ExitManagement"));
 const HrSettings = lazy(() => import("./pages/admin/hr/HrSettings"));
 const TrainingQuizPage = lazy(() => import("./pages/admin/hr/TrainingQuizPage"));
+const InterviewHub = lazy(() => import("./pages/admin/hr/InterviewHub"));
+const CandidateQuiz = lazy(() => import("./pages/public/CandidateQuiz"));
 
 function RouteLoader() {
   return (
@@ -175,6 +182,14 @@ function AppRoutes() {
         }
       />
 
+      {/*
+        Candidate interview quiz. Public by necessity — a candidate is not a
+        user and has no login, so the per-attempt token in the URL is the
+        credential. Rendered outside AppLayout so there's no sidebar/header
+        to navigate away with mid-assessment.
+      */}
+      <Route path="/quiz/:token" element={<CandidateQuiz />} />
+
       {/* Admin routes */}
       <Route
         path="/admin"
@@ -189,20 +204,59 @@ function AppRoutes() {
         <Route path="employees/add" element={<AddEmployeePage />} />
         <Route path="salary" element={<SalaryManagement />} />
         <Route path="salary/upload" element={<SalaryUploadPage />} />
-        <Route path="attendance" element={<AttendanceView />} />
-        <Route path="attendance/shift" element={<ShiftManagement />} />
+        <Route
+          path="attendance"
+          element={
+            <ProtectedRoute requiredRole="admin" requiredPermission="ui.admin.attendance.view">
+              <AttendanceView />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="attendance/shift"
+          element={
+            <ProtectedRoute requiredRole="admin" requiredPermission="hr.shift.read">
+              <ShiftManagement />
+            </ProtectedRoute>
+          }
+        />
         <Route path="appointments" element={<Appointments />} />
         <Route path="admins" element={<Settings />} />
 
         <Route path="trial-form" element={<TrialForm />} />
-        <Route path="tds/calculation" element={<TdsCalculation />} />
-        <Route path="form16" element={<AdminForm16 />} />
+        <Route
+          path="tds/calculation"
+          element={
+            <ProtectedRoute requiredRole="admin" requiredPermission="ui.admin.tds.view">
+              <TdsCalculation />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="form16"
+          element={
+            <ProtectedRoute requiredRole="admin" requiredPermission="ui.admin.form16.view">
+              <AdminForm16 />
+            </ProtectedRoute>
+          }
+        />
         <Route path="reports" element={<Reports />} />
         <Route path="profile" element={<AdminProfile />} />
+
+        {/* Support tickets */}
+        <Route
+          path="tickets"
+          element={
+            <ProtectedRoute requiredRole="admin" requiredPermission="support.ticket.read">
+              <AdminTickets />
+            </ProtectedRoute>
+          }
+        />
 
         {/* HR module */}
         <Route path="hr" element={<ProtectedRoute requiredPermission="hr.dashboard.read"><HrDashboard /></ProtectedRoute>} />
         <Route path="hr/hiring" element={<ProtectedRoute requiredPermission="hr.requisition.read"><HiringProcess /></ProtectedRoute>} />
+        <Route path="hr/interviews" element={<ProtectedRoute requiredPermission="hr.interview.read"><InterviewHub /></ProtectedRoute>} />
         <Route path="hr/assets" element={<ProtectedRoute requiredPermission="hr.asset.read"><AssetAllocation /></ProtectedRoute>} />
         <Route path="hr/onboarding" element={<ProtectedRoute requiredPermission="hr.onboarding.journey.read"><OnboardingDashboard /></ProtectedRoute>} />
         <Route path="hr/onboarding/journeys" element={<ProtectedRoute requiredPermission="hr.onboarding.journey.read"><OnboardingJourneys /></ProtectedRoute>} />
@@ -291,6 +345,9 @@ function AppRoutes() {
         <Route path="form16" element={<EmployeeForm16 />} />
         <Route path="profile" element={<Profile />} />
         <Route path="appointment" element={<EmployeeAppointment />} />
+        {/* "new" before the list so it is not swallowed as a ticket id. */}
+        <Route path="tickets/new" element={<RaiseTicket />} />
+        <Route path="tickets" element={<MyTickets />} />
       </Route>
 
       {/* Agent routes */}

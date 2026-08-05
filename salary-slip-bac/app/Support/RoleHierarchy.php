@@ -140,6 +140,64 @@ class RoleHierarchy
         }
     }
 
+    /**
+     * Codes that carry a tier by definition and may never be minted here.
+     *
+     * Creating a role whose code is `super_admin` would classify it
+     * INTERNAL_SUPER_ADMIN through CODE_CLASS — a tier no request may
+     * manufacture. `tenant_administrator` is reserved for the same reason at
+     * the Admin tier. Uniqueness alone does not protect these: it only stops a
+     * duplicate, so a code absent from a given deployment would be creatable.
+     */
+    public static function reservedCodes(): array
+    {
+        return array_keys(self::CODE_CLASS);
+    }
+
+    /**
+     * Compare codes the way a database would, after stripping the tricks.
+     *
+     * Unicode confusables and zero-width characters are removed, whitespace and
+     * separators collapsed, then the result is casefolded. `ADMIN`, ` admin `,
+     * `admin-`, and `super-administrator` all normalise onto their reserved
+     * form so none of them slips past a naive string compare.
+     */
+    public static function normaliseCode(?string $code): string
+    {
+        $value = (string) $code;
+
+        // Invisible formatting characters are removed outright — a zero-width
+        // space inside "super_admin" is not a word break, it is a disguise.
+        $value = preg_replace('/\p{Cf}/u', '', $value) ?? $value;
+
+        // Whitespace and hyphens ARE word breaks, so they become the canonical
+        // separator rather than vanishing: deleting them turned "super admin"
+        // into "superadmin", which no longer matched the reserved code and let
+        // the variant through.
+        $value = preg_replace('/[\p{Zs}\s-]+/u', '_', $value) ?? $value;
+
+        $value = preg_replace('/[^A-Za-z0-9_.]/u', '', $value) ?? $value;
+        $value = preg_replace('/_+/', '_', $value) ?? $value;
+        $value = trim($value, '_.');
+
+        return mb_strtolower($value);
+    }
+
+    public static function isReservedCode(?string $code): bool
+    {
+        return in_array(self::normaliseCode($code), self::reservedCodes(), true);
+    }
+
+    /** May this actor create a role in this class? */
+    public static function canCreateRoleClass(?User $actor, string $class): bool
+    {
+        if ($class === self::INTERNAL_SUPER_ADMIN) {
+            return false;
+        }
+
+        return in_array($class, self::MANAGEABLE[self::actorClass($actor)] ?? [], true);
+    }
+
     public static function canAccessRoleManagement(?User $actor): bool
     {
         return self::MANAGEABLE[self::actorClass($actor)] !== [];
@@ -176,6 +234,103 @@ class RoleHierarchy
         }
 
         return in_array($targetClass, self::MANAGEABLE[self::actorClass($actor)] ?? [], true);
+    }
+
+    /**
+     * May this actor grant this role to somebody?
+     *
+     * Assignment is the same escalation as management by another route: handing
+     * a user the administrator role gives them everything an administrator can
+     * do, so it is gated on the same tier comparison rather than on a list of
+     * role codes. A code list is what previously let this through — it named
+     * super_administrator and security_administrator and simply omitted
+     * tenant_administrator, so an administrator could grant the administrator
+     * role, including to themselves.
+     */
+    public static function canAssignRole(?User $actor, ?Role $role): bool
+    {
+        if (! self::canManage($actor, $role)) {
+            return false;
+        }
+
+        // Tier alone is not sufficient for granting.
+        //
+        // security_administrator carries no mapped code, so it classifies as
+        // CUSTOM — a tier an administrator may manage. It is nonetheless a
+        // SYSTEM role holding the security permission set, and the deny-list
+        // this check replaced blocked it by name. Keying on the is_system and
+        // is_sensitive flags restores that protection and generalises it to any
+        // sensitive role, rather than to the two codes someone remembered.
+        if ($actor !== null && $actor->isSuperAdmin()) {
+            return true;
+        }
+
+        return ! (bool) $role->getAttribute('is_system')
+            && ! (bool) $role->getAttribute('is_sensitive');
+    }
+
+    /**
+     * The tier of the highest role a user holds.
+     *
+     * Highest, not first: a user carrying both Employee and Admin is an
+     * administrator, and reading whichever row the database returned first
+     * would classify them as an employee and expose them to modification by
+     * their peers. The account's own super-admin flag outranks any role row.
+     */
+    public static function userClass(?User $user): string
+    {
+        if ($user === null) {
+            return self::CUSTOM;
+        }
+
+        if ($user->isSuperAdmin()) {
+            return self::INTERNAL_SUPER_ADMIN;
+        }
+
+        $highest = self::CUSTOM;
+        $highestRank = -1;
+
+        try {
+            foreach ($user->roles()->get() as $role) {
+                $class = self::classOf($role);
+                $rank = self::RANKS[$class] ?? 0;
+                if ($rank > $highestRank) {
+                    $highestRank = $rank;
+                    $highest = $class;
+                }
+            }
+        } catch (\Throwable) {
+            // No pivot table — fall through to the numeric role below.
+        }
+
+        if ((self::RANKS[$highest] ?? 0) < self::RANKS[self::ADMIN] && (int) $user->role === 1) {
+            return self::ADMIN;
+        }
+
+        return $highest;
+    }
+
+    /**
+     * May this actor change this user's roles at all?
+     *
+     * Guards the subject as well as the grant. Without it an administrator
+     * blocked from granting the administrator role could still strip it from a
+     * peer, or demote them, which is the same boundary crossed in the opposite
+     * direction.
+     */
+    public static function canManageUserRoles(?User $actor, ?User $target): bool
+    {
+        if ($actor === null || $target === null) {
+            return false;
+        }
+
+        // Nobody edits their own tier here. Changing your own roles is how a
+        // single request turns into self-promotion.
+        if ((int) $actor->id === (int) $target->id) {
+            return false;
+        }
+
+        return in_array(self::userClass($target), self::MANAGEABLE[self::actorClass($actor)] ?? [], true);
     }
 
     /** Capability flags for the browser. Never the internal class itself. */

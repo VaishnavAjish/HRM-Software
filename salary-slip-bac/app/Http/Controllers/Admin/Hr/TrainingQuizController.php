@@ -13,7 +13,8 @@ class TrainingQuizController extends Controller
 
     public function index(Request $request)
     {
-        $query = TrainingQuiz::with(['requisition', 'creator']);
+        $query = TrainingQuiz::with(['requisition', 'creator', 'interview.candidate'])
+            ->withCount('attempts');
         $this->applyCompanyScope($query, $request);
 
         if ($request->search) {
@@ -45,7 +46,11 @@ class TrainingQuizController extends Controller
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
             'requisition_id' => 'nullable|exists:job_requisitions,id',
+            'interview_id' => 'nullable|exists:interviews,id',
             'passing_score' => 'nullable|integer|min:0|max:100',
+            'duration_minutes' => 'nullable|integer|min:1|max:480',
+            'max_violations' => 'nullable|integer|min:1|max:20',
+            'is_active' => 'nullable|boolean',
             'questions' => 'required|array',
             'questions.*.text' => 'required|string',
             'questions.*.options' => 'required|array|min:2',
@@ -74,7 +79,11 @@ class TrainingQuizController extends Controller
             'title' => 'sometimes|required|string|max:255',
             'description' => 'nullable|string',
             'requisition_id' => 'nullable|exists:job_requisitions,id',
+            'interview_id' => 'nullable|exists:interviews,id',
             'passing_score' => 'nullable|integer|min:0|max:100',
+            'duration_minutes' => 'nullable|integer|min:1|max:480',
+            'max_violations' => 'nullable|integer|min:1|max:20',
+            'is_active' => 'nullable|boolean',
             'questions' => 'sometimes|required|array',
             'questions.*.text' => 'required|string',
             'questions.*.options' => 'required|array|min:2',

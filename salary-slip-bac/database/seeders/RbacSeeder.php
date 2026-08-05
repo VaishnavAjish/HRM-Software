@@ -43,6 +43,7 @@ class RbacSeeder extends Seeder
         'Payroll' => [
             'payroll.payslip.read', 'payroll.payslip.create', 'payroll.payslip.update', 'payroll.payslip.delete',
             'payroll.run.execute', 'payroll.run.approve', 'payroll.report.export', 'payroll.report.print',
+            'payroll.form16.read',
         ],
         'Recruitment' => [
             'recruitment.candidate.read', 'recruitment.candidate.create', 'recruitment.candidate.update',
@@ -62,6 +63,7 @@ class RbacSeeder extends Seeder
         'UI and Analytics' => [
             'ui.admin.dashboard.view', 'ui.admin.employees.view', 'ui.admin.appointments.view',
             'ui.admin.salary.view', 'ui.admin.attendance.view', 'ui.admin.reports.view',
+            'ui.admin.tds.view', 'ui.admin.form16.view',
             'ui.admin.authorization.view', 'ui.agent.dashboard.view', 'ui.employee.dashboard.view',
             'dashboard.hr.employee_count.view', 'dashboard.payroll.total_cost.view',
             'admin.configuration.read', 'admin.configuration.update',

@@ -144,8 +144,8 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
       const [trialRes, appointmentRes, pendingRes, employeeRes] = await Promise.all([
         authApi.getTrialForms(user?.accessToken, user?.tokenType, companyScope),
         authApi.getAppointmentForms(user?.accessToken, user?.tokenType, companyScope),
-        salaryApi.getAllEmployees(user?.accessToken, user?.tokenType, { status: "2", per_page: 100 }, companyScope),
-        salaryApi.getAllEmployees(user?.accessToken, user?.tokenType, { per_page: 100 }, companyScope),
+        salaryApi.getAllEmployees(user?.accessToken, user?.tokenType, { status: "2", limit: 1000 }, companyScope),
+        salaryApi.getAllEmployees(user?.accessToken, user?.tokenType, { limit: 1000 }, companyScope),
       ]);
 
       const trialRows = (trialRes?.data || []).map((r) => ({ ...r, __stage: "trial" }));

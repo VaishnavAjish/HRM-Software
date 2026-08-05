@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import {
   Plus, CheckCircle2, Send, Pencil, Trash2, Copy, Archive,
-  Columns3, ChevronDown,
+  Columns3, ChevronDown, ClipboardCopy, RotateCcw,
 } from "lucide-react";
 import Button from "../../../../components/ui/Button";
 import Badge from "../../../../components/ui/Badge";
@@ -33,6 +33,44 @@ const PRIORITY_OPTIONS = [
   { value: "low", label: "Low" }, { value: "medium", label: "Medium" },
   { value: "high", label: "High" }, { value: "urgent", label: "Urgent" },
 ];
+const EMPLOYMENT_TYPE_LABEL = {
+  full_time: "Full Time", part_time: "Part Time", contract: "Contract", intern: "Intern",
+};
+const PRIORITY_LABEL = { low: "Low", medium: "Medium", high: "High", urgent: "Urgent" };
+
+// Pure client-side formatting from whatever's on the form right now — no
+// backend call, nothing persisted. Just a proper-looking JD a recruiter can
+// keep editing here and copy out for posting elsewhere.
+function buildJdTemplate(f) {
+  const lines = [];
+  lines.push((f.title || "Untitled Role").toUpperCase());
+  const metaBits = [
+    f.designation || null,
+    EMPLOYMENT_TYPE_LABEL[f.employment_type] || null,
+    f.openings ? `${f.openings} opening${Number(f.openings) === 1 ? "" : "s"}` : null,
+  ].filter(Boolean);
+  if (metaBits.length) lines.push(metaBits.join(" · "));
+  lines.push("");
+  lines.push("ABOUT THE ROLE");
+  lines.push(f.description?.trim() || "—");
+  lines.push("");
+  lines.push("KEY REQUIREMENTS");
+  lines.push(f.requirements?.trim() || "—");
+  if (f.min_experience || f.max_experience) {
+    lines.push(`Experience: ${f.min_experience || "0"}–${f.max_experience || f.min_experience || "0"} years`);
+  }
+  lines.push("");
+  lines.push("COMPENSATION & LOGISTICS");
+  lines.push(
+    f.salary_min || f.salary_max
+      ? `Salary: ₹${Number(f.salary_min || 0).toLocaleString("en-IN")} – ₹${Number(f.salary_max || 0).toLocaleString("en-IN")} per annum`
+      : "Salary: Not disclosed",
+  );
+  lines.push(`Employment Type: ${EMPLOYMENT_TYPE_LABEL[f.employment_type] || "—"}`);
+  if (f.target_closing_date) lines.push(`Target Closing Date: ${f.target_closing_date}`);
+  lines.push(`Priority: ${PRIORITY_LABEL[f.priority] || "—"}`);
+  return lines.join("\n");
+}
 const STATUS_VARIANT = {
   draft: "gray", pending_approval: "yellow", approved: "blue",
   posted: "green", on_hold: "yellow", closed: "gray", cancelled: "red",
@@ -74,6 +112,15 @@ export default function RequisitionsTab({ departments = [], people = [] }) {
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [drawerTarget, setDrawerTarget] = useState(null);
+
+  // Live JD preview: regenerated from the form on every change until the
+  // recruiter edits it directly, at which point their wording wins until
+  // they explicitly ask to rebuild it.
+  const [jdText, setJdText] = useState(() => buildJdTemplate(EMPTY_FORM));
+  const [jdEdited, setJdEdited] = useState(false);
+  useEffect(() => {
+    if (!jdEdited) setJdText(buildJdTemplate(form));
+  }, [form, jdEdited]);
 
   const [visibleCols, setVisibleCols] = useState(() => {
     try { return JSON.parse(localStorage.getItem(VISIBLE_COLS_KEY)) || ALL_COLUMNS.map((c) => c.key); }
@@ -124,7 +171,7 @@ export default function RequisitionsTab({ departments = [], people = [] }) {
     return r;
   }, [rows, hr.filters.hiringManagerId, hr.filters.priority, hr.filters.dateFrom, hr.filters.dateTo, hr.filters.sort]);
 
-  const openCreate = () => { setEditing(null); setForm(EMPTY_FORM); setModalOpen(true); };
+  const openCreate = () => { setEditing(null); setForm(EMPTY_FORM); setJdEdited(false); setModalOpen(true); };
   const openEdit = (r) => {
     setEditing(r);
     setForm({
@@ -133,6 +180,7 @@ export default function RequisitionsTab({ departments = [], people = [] }) {
       max_experience: r.max_experience ?? "", salary_min: r.salary_min ?? "", salary_max: r.salary_max ?? "",
       description: r.description || "", requirements: r.requirements || "", target_closing_date: r.target_closing_date || "",
     });
+    setJdEdited(false);
     setModalOpen(true);
   };
 
@@ -380,32 +428,71 @@ export default function RequisitionsTab({ departments = [], people = [] }) {
         </div>
       </div>
 
-      <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={editing ? "Edit Requisition" : "New Requisition"} size="lg"
+      <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={editing ? "Edit Requisition" : "New Requisition"} size="xl"
         footer={<div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? "Saving..." : "Save"}</Button></div>}>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Field label="Title" required><input className={inputClass} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></Field>
-          <Field label="Designation"><input className={inputClass} value={form.designation} onChange={(e) => setForm({ ...form, designation: e.target.value })} /></Field>
-          <Field label="Employment Type">
-            <select className={inputClass} value={form.employment_type} onChange={(e) => setForm({ ...form, employment_type: e.target.value })}>
-              <option value="full_time">Full Time</option>
-              <option value="part_time">Part Time</option>
-              <option value="contract">Contract</option>
-              <option value="intern">Intern</option>
-            </select>
-          </Field>
-          <Field label="Openings"><input type="number" min="1" className={inputClass} value={form.openings} onChange={(e) => setForm({ ...form, openings: e.target.value })} /></Field>
-          <Field label="Priority">
-            <select className={inputClass} value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>
-              <option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="urgent">Urgent</option>
-            </select>
-          </Field>
-          <Field label="Target Closing Date"><input type="date" className={inputClass} value={form.target_closing_date || ""} onChange={(e) => setForm({ ...form, target_closing_date: e.target.value })} /></Field>
-          <Field label="Min Experience (yrs)"><input type="number" step="0.5" className={inputClass} value={form.min_experience} onChange={(e) => setForm({ ...form, min_experience: e.target.value })} /></Field>
-          <Field label="Max Experience (yrs)"><input type="number" step="0.5" className={inputClass} value={form.max_experience} onChange={(e) => setForm({ ...form, max_experience: e.target.value })} /></Field>
-          <Field label="Salary Min"><input type="number" className={inputClass} value={form.salary_min} onChange={(e) => setForm({ ...form, salary_min: e.target.value })} /></Field>
-          <Field label="Salary Max"><input type="number" className={inputClass} value={form.salary_max} onChange={(e) => setForm({ ...form, salary_max: e.target.value })} /></Field>
-          <Field label="Description" full><textarea rows={3} className={inputClass} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
-          <Field label="Requirements" full><textarea rows={3} className={inputClass} value={form.requirements} onChange={(e) => setForm({ ...form, requirements: e.target.value })} /></Field>
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
+          <div className="lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 gap-4 content-start">
+            <Field label="Title" required><input className={inputClass} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></Field>
+            <Field label="Designation"><input className={inputClass} value={form.designation} onChange={(e) => setForm({ ...form, designation: e.target.value })} /></Field>
+            <Field label="Employment Type">
+              <select className={inputClass} value={form.employment_type} onChange={(e) => setForm({ ...form, employment_type: e.target.value })}>
+                <option value="full_time">Full Time</option>
+                <option value="part_time">Part Time</option>
+                <option value="contract">Contract</option>
+                <option value="intern">Intern</option>
+              </select>
+            </Field>
+            <Field label="Openings"><input type="number" min="1" className={inputClass} value={form.openings} onChange={(e) => setForm({ ...form, openings: e.target.value })} /></Field>
+            <Field label="Priority">
+              <select className={inputClass} value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>
+                <option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="urgent">Urgent</option>
+              </select>
+            </Field>
+            <Field label="Target Closing Date"><input type="date" className={inputClass} value={form.target_closing_date || ""} onChange={(e) => setForm({ ...form, target_closing_date: e.target.value })} /></Field>
+            <Field label="Min Experience (yrs)"><input type="number" step="0.5" className={inputClass} value={form.min_experience} onChange={(e) => setForm({ ...form, min_experience: e.target.value })} /></Field>
+            <Field label="Max Experience (yrs)"><input type="number" step="0.5" className={inputClass} value={form.max_experience} onChange={(e) => setForm({ ...form, max_experience: e.target.value })} /></Field>
+            <Field label="Salary Min"><input type="number" className={inputClass} value={form.salary_min} onChange={(e) => setForm({ ...form, salary_min: e.target.value })} /></Field>
+            <Field label="Salary Max"><input type="number" className={inputClass} value={form.salary_max} onChange={(e) => setForm({ ...form, salary_max: e.target.value })} /></Field>
+            <Field label="Description" full><textarea rows={3} className={inputClass} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
+            <Field label="Requirements" full><textarea rows={3} className={inputClass} value={form.requirements} onChange={(e) => setForm({ ...form, requirements: e.target.value })} /></Field>
+          </div>
+
+          <div className="lg:col-span-2">
+            <div className="flex h-full flex-col rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">Job Description Preview</span>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    title="Rebuild from the details on the left"
+                    onClick={() => { setJdEdited(false); setJdText(buildJdTemplate(form)); }}
+                    className="flex items-center gap-1 text-[11px] font-semibold text-brand-600 hover:underline dark:text-brand-400"
+                  >
+                    <RotateCcw size={12} /> Regenerate
+                  </button>
+                  <button
+                    type="button"
+                    title="Copy to clipboard"
+                    onClick={() => {
+                      navigator.clipboard.writeText(jdText);
+                      toast.success("JD copied to clipboard");
+                    }}
+                    className="flex items-center gap-1 text-[11px] font-semibold text-gray-500 hover:underline dark:text-gray-400"
+                  >
+                    <ClipboardCopy size={12} /> Copy
+                  </button>
+                </div>
+              </div>
+              <textarea
+                value={jdText}
+                onChange={(e) => { setJdText(e.target.value); setJdEdited(true); }}
+                className="min-h-[380px] flex-1 w-full resize-none rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2.5 font-mono text-[12.5px] leading-relaxed text-gray-800 dark:text-gray-100 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+              />
+              <p className="mt-1.5 text-[10.5px] text-gray-400 dark:text-gray-500">
+                Auto-generated from the details on the left — edit freely, or hit Regenerate to rebuild it from the current values.
+              </p>
+            </div>
+          </div>
         </div>
       </Modal>
 

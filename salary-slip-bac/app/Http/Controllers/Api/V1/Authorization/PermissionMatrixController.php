@@ -8,6 +8,9 @@ use App\Services\Authorization\AuthorizationCache;
 use App\Services\Authorization\AuthorizationEngine;
 use App\Services\Authorization\PermissionMatrixBuilder;
 use App\Services\Authorization\SchemaSupport;
+use App\Support\RoleAudit;
+use App\Support\RoleHierarchy;
+use App\Support\SystemRoles;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -67,8 +70,51 @@ class PermissionMatrixController extends Controller
         return response()->json(['success' => true, 'data' => $roles]);
     }
 
+
+    /**
+     * Per-target authorisation for the matrix surface.
+     *
+     * The route middleware established only that the caller manages *some*
+     * tier. Editing a role's permissions is editing what that role can do, so
+     * it needs the same target check as editing the role itself — otherwise an
+     * administrator blocked from updating the Admin role could simply grant
+     * itself everything through the Admin role's matrix instead.
+     *
+     * The hidden identity answers 404 rather than 403: its existence is not
+     * something this surface confirms.
+     */
+    private function denyUnlessManageable(Role $role): ?\Illuminate\Http\JsonResponse
+    {
+        $actor = auth('api')->user();
+
+        if (SystemRoles::isProtected($role)) {
+            RoleAudit::denied(request(), $actor, 'HIDDEN_ROLE_ACCESS_BLOCKED', $role);
+
+            return response()->json([
+                'success' => false,
+                'error' => ['code' => 'NOT_FOUND', 'message' => 'Role not found.'],
+            ], 404);
+        }
+
+        if (RoleHierarchy::canManage($actor, $role)) {
+            return null;
+        }
+
+        RoleAudit::denied(request(), $actor, 'ROLE_MANAGEMENT_FORBIDDEN', $role);
+
+        return response()->json([
+            'success' => false,
+            'code' => 'ROLE_MANAGEMENT_FORBIDDEN',
+            'message' => 'You do not have permission to manage this role.',
+        ], 403);
+    }
+
     public function show(Role $role)
     {
+        if ($denied = $this->denyUnlessManageable($role)) {
+            return $denied;
+        }
+
         return response()->json(['success' => true, 'data' => $this->matrix->build($role)]);
     }
 
@@ -81,6 +127,10 @@ class PermissionMatrixController extends Controller
      */
     public function update(Request $request, Role $role)
     {
+        if ($denied = $this->denyUnlessManageable($role)) {
+            return $denied;
+        }
+
         $data = $request->validate([
             'changes' => ['required', 'array', 'min:1', 'max:500'],
             'changes.*.permissionCode' => ['required', 'string', 'max:190'],
@@ -185,6 +235,10 @@ class PermissionMatrixController extends Controller
      */
     public function clone(Request $request, Role $role)
     {
+        if ($denied = $this->denyUnlessManageable($role)) {
+            return $denied;
+        }
+
         $data = $request->validate([
             'name' => ['required', 'string', 'max:190', Rule::unique('roles', 'name')],
             'code' => ['nullable', 'string', 'max:190', Rule::unique('roles', 'code')],

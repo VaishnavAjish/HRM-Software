@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Role;
 use App\Models\User;
+use App\Support\RoleHierarchy;
 use App\Services\Authorization\FeatureFlags;
 use Database\Seeders\AdminUserManagementPermissionSeeder;
 use Database\Seeders\RbacSeeder;
@@ -314,5 +315,301 @@ class RoleManagementApiTest extends TestCase
             ->assertJsonStructure(['assignedUserCount']);
 
         $this->assertDatabaseHas('roles', ['id' => $role->id]);
+    }
+
+    /* ---- creation-class escalation (the highest-priority hole) ---------- */
+
+    public function test_an_administrator_cannot_mint_a_reserved_code(): void
+    {
+        // super_admin is absent from this database, so uniqueness does not stop
+        // it - and RoleHierarchy maps that code to the internal identity.
+        $this->asTenantAdmin()
+            ->postJson('/api/v1/roles', ['name' => 'Minted Root', 'code' => 'super_admin'])
+            ->assertStatus(403)
+            ->assertJson(['code' => 'ROLE_CLASS_CREATION_FORBIDDEN']);
+
+        $this->assertDatabaseMissing('roles', ['code' => 'super_admin']);
+    }
+
+    public function test_reserved_code_normalisation_defeats_casing_and_separators(): void
+    {
+        $zeroWidth = "super\xE2\x80\x8B_admin";
+
+        foreach (['SUPER_ADMIN', ' super admin ', 'super-admin', 'Super_Admin', $zeroWidth] as $variant) {
+            $this->assertTrue(
+                RoleHierarchy::isReservedCode($variant),
+                "[{$variant}] must normalise onto a reserved code"
+            );
+        }
+
+        $this->assertFalse(RoleHierarchy::isReservedCode('floor_supervisor'));
+    }
+
+    public function test_the_super_admin_also_cannot_mint_the_internal_identity(): void
+    {
+        $this->asAdmin()
+            ->postJson('/api/v1/roles', ['name' => 'Second Root', 'code' => 'super_admin'])
+            ->assertStatus(403)
+            ->assertJson(['code' => 'ROLE_CLASS_CREATION_FORBIDDEN']);
+    }
+
+    public function test_a_client_supplied_tenant_is_ignored_on_create(): void
+    {
+        $this->asTenantAdmin()
+            ->postJson('/api/v1/roles', ['name' => 'Scoped Role', 'tenantId' => 'someone-elses-tenant'])
+            ->assertStatus(201);
+
+        $this->assertDatabaseMissing('roles', [
+            'name' => 'Scoped Role', 'tenant_id' => 'someone-elses-tenant',
+        ]);
+    }
+
+    public function test_an_unknown_code_always_classifies_as_custom(): void
+    {
+        // role_class=ADMIN written straight into the row, but the code is
+        // unknown, so the class is CUSTOM and the row confers no authority.
+        $role = Role::create([
+            'name' => 'Looks Important', 'code' => 'looks_important', 'role_class' => 'ADMIN',
+            'status' => 'ACTIVE', 'is_active' => true, 'is_system' => false,
+        ]);
+
+        $this->assertSame('CUSTOM', RoleHierarchy::classOf($role->fresh()));
+    }
+
+    /* ---- clone and matrix target authorisation -------------------------- */
+
+    public function test_an_administrator_cannot_clone_or_open_the_admin_matrix(): void
+    {
+        $admin = Role::query()->where('code', 'tenant_administrator')->firstOrFail();
+
+        $this->asTenantAdmin()->getJson("/api/v1/roles/{$admin->id}/matrix")
+            ->assertStatus(403)->assertJson(['code' => 'ROLE_MANAGEMENT_FORBIDDEN']);
+
+        $this->asTenantAdmin()->putJson("/api/v1/roles/{$admin->id}/matrix", ['changes' => []])
+            ->assertStatus(403);
+
+        $this->asTenantAdmin()->postJson("/api/v1/roles/{$admin->id}/clone", ['name' => 'Admin Copy'])
+            ->assertStatus(403);
+
+        $this->assertDatabaseMissing('roles', ['name' => 'Admin Copy']);
+    }
+
+    public function test_an_administrator_may_still_open_a_lower_matrix(): void
+    {
+        $custom = Role::query()->where('code', 'hr_manager')->firstOrFail();
+
+        $this->asTenantAdmin()->getJson("/api/v1/roles/{$custom->id}/matrix")->assertOk();
+    }
+
+    public function test_the_hidden_identity_answers_404_on_the_matrix(): void
+    {
+        $hidden = Role::query()->where('code', 'super_administrator')->firstOrFail();
+
+        $this->asAdmin()->getJson("/api/v1/roles/{$hidden->id}/matrix")->assertStatus(404);
+        $this->asTenantAdmin()->getJson("/api/v1/roles/{$hidden->id}/matrix")->assertStatus(404);
+    }
+
+    /* ---- user role assignment: the escalation the deny-list allowed ------ */
+
+    private function makeEmployee(string $suffix): User
+    {
+        return User::create([
+            'name' => 'Worker ' . $suffix, 'email' => "w{$suffix}@test.local",
+            'password' => 'secret1234', 'emp_code' => 'E-W' . $suffix,
+            'role' => 3, 'company_code' => 'nidhi-impex', 'status' => 0,
+        ]);
+    }
+
+    public function test_an_administrator_cannot_grant_the_admin_role(): void
+    {
+        $victim = $this->makeEmployee('A1');
+        $adminRole = Role::query()->where('code', 'tenant_administrator')->firstOrFail();
+
+        $this->asTenantAdmin()
+            ->postJson("/api/v1/admin/users/{$victim->id}/assign-role", ['roleIds' => [$adminRole->id]])
+            ->assertStatus(403)
+            ->assertJson(['code' => 'ROLE_ASSIGNMENT_FORBIDDEN']);
+
+        $this->assertDatabaseMissing('user_roles', [
+            'user_id' => $victim->id, 'role_id' => $adminRole->id,
+        ]);
+    }
+
+    public function test_an_administrator_cannot_grant_the_hidden_identity(): void
+    {
+        $victim = $this->makeEmployee('A2');
+        $hidden = Role::query()->where('code', 'super_administrator')->firstOrFail();
+
+        $this->asTenantAdmin()
+            ->postJson("/api/v1/admin/users/{$victim->id}/assign-role", ['roleIds' => [$hidden->id]])
+            ->assertStatus(403);
+
+        $this->assertDatabaseMissing('user_roles', [
+            'user_id' => $victim->id, 'role_id' => $hidden->id,
+        ]);
+    }
+
+    public function test_an_administrator_may_grant_a_lower_role(): void
+    {
+        $victim = $this->makeEmployee('A3');
+        $custom = Role::query()->where('code', 'hr_manager')->firstOrFail();
+
+        $this->asTenantAdmin()
+            ->postJson("/api/v1/admin/users/{$victim->id}/assign-role", ['roleIds' => [$custom->id]])
+            ->assertStatus(200);
+
+        $this->assertDatabaseHas('user_roles', [
+            'user_id' => $victim->id, 'role_id' => $custom->id,
+        ]);
+    }
+
+    public function test_an_administrator_cannot_modify_their_own_roles(): void
+    {
+        $custom = Role::query()->where('code', 'hr_manager')->firstOrFail();
+
+        $this->asTenantAdmin()
+            ->postJson("/api/v1/admin/users/{$this->admin->id}/assign-role", ['roleIds' => [$custom->id]])
+            ->assertStatus(403)
+            ->assertJson(['code' => 'TARGET_USER_ROLE_PROTECTED']);
+    }
+
+    public function test_an_administrator_cannot_strip_roles_from_a_peer(): void
+    {
+        $peer = User::create([
+            'name' => 'Peer Admin', 'email' => 'peer@test.local', 'password' => 'secret1234',
+            'emp_code' => 'E-PEER', 'role' => 1, 'company_code' => 'nidhi-impex', 'status' => 0,
+        ]);
+        $this->grantRole($peer, 'tenant_administrator');
+
+        // Demotion crosses the same boundary as promotion, in reverse.
+        $this->asTenantAdmin()
+            ->postJson("/api/v1/admin/users/{$peer->id}/assign-role", ['roleIds' => []])
+            ->assertStatus(403)
+            ->assertJson(['code' => 'TARGET_USER_ROLE_PROTECTED']);
+    }
+
+    public function test_the_bulk_endpoint_enforces_the_same_hierarchy(): void
+    {
+        $victim = $this->makeEmployee('A4');
+        $adminRole = Role::query()->where('code', 'tenant_administrator')->firstOrFail();
+
+        // This path previously ran guardTarget() but never guardSensitiveRoles(),
+        // so it could grant any role to a list of users in one request.
+        $this->asTenantAdmin()->postJson('/api/v1/admin/users/bulk', [
+            'action' => 'assign-role',
+            'userIds' => [$victim->id],
+            'roleIds' => [$adminRole->id],
+        ]);
+
+        $this->assertDatabaseMissing('user_roles', [
+            'user_id' => $victim->id, 'role_id' => $adminRole->id,
+        ]);
+    }
+
+    public function test_a_user_is_classified_by_their_highest_role(): void
+    {
+        $mixed = $this->makeEmployee('A5');
+        $this->grantRole($mixed, 'employee');
+        $this->grantRole($mixed, 'tenant_administrator');
+
+        // Reading whichever row came back first would classify this account as
+        // an employee and expose it to modification by its peers.
+        $this->assertSame(
+            RoleHierarchy::ADMIN,
+            RoleHierarchy::userClass($mixed->fresh()),
+            'highest role must win, not the first row returned'
+        );
+    }
+
+    public function test_the_super_admin_may_still_grant_the_admin_role(): void
+    {
+        $victim = $this->makeEmployee('A6');
+        $adminRole = Role::query()->where('code', 'tenant_administrator')->firstOrFail();
+
+        $this->asAdmin()
+            ->postJson("/api/v1/admin/users/{$victim->id}/assign-role", ['roleIds' => [$adminRole->id]])
+            ->assertStatus(200);
+
+        $this->assertDatabaseHas('user_roles', [
+            'user_id' => $victim->id, 'role_id' => $adminRole->id,
+        ]);
+    }
+
+    /* ---- the super admin owns every visible tier ------------------------ */
+
+    public function test_the_super_admin_can_delete_a_system_role(): void
+    {
+        $security = Role::query()->where('code', 'security_administrator')->firstOrFail();
+        $this->assertTrue((bool) $security->is_system, 'precondition: flagged system');
+
+        $this->asAdmin()->deleteJson("/api/v1/roles/{$security->id}")->assertOk();
+
+        $this->assertDatabaseMissing('roles', ['id' => $security->id]);
+    }
+
+    public function test_the_super_admin_can_delete_the_admin_tier(): void
+    {
+        $admin = Role::query()->where('code', 'tenant_administrator')->firstOrFail();
+
+        // setUp() assigns this role to the test administrator, and the
+        // assigned-users rule outranks the tier rule. Detach first so the test
+        // exercises the tier boundary rather than the dependency check.
+        DB::table('user_roles')->where('role_id', $admin->id)->delete();
+        DB::table('authorization_role_assignments')->where('role_id', $admin->id)->delete();
+
+        $this->asAdmin()->deleteJson("/api/v1/roles/{$admin->id}")->assertOk();
+
+        $this->assertDatabaseMissing('roles', ['id' => $admin->id]);
+    }
+
+    public function test_the_super_admin_can_change_a_system_roles_status(): void
+    {
+        $security = Role::query()->where('code', 'security_administrator')->firstOrFail();
+
+        $this->asAdmin()->postJson("/api/v1/roles/{$security->id}/deactivate")->assertOk();
+        $this->assertDatabaseHas('roles', ['id' => $security->id, 'status' => 'INACTIVE']);
+
+        $this->asAdmin()->postJson("/api/v1/roles/{$security->id}/activate")->assertOk();
+        $this->assertDatabaseHas('roles', ['id' => $security->id, 'status' => 'ACTIVE']);
+    }
+
+    public function test_an_administrator_still_cannot_delete_a_system_role(): void
+    {
+        $security = Role::query()->where('code', 'security_administrator')->firstOrFail();
+
+        // Refused with ROLE_IS_SYSTEM rather than a hierarchy 403:
+        // security_administrator carries no mapped code, so it classifies as
+        // CUSTOM and passes the tier check. The system flag is what stops it,
+        // and that flag is only waived for the super administrator.
+        $this->asTenantAdmin()->deleteJson("/api/v1/roles/{$security->id}")
+            ->assertStatus(409)
+            ->assertJson(['code' => 'ROLE_IS_SYSTEM']);
+
+        $this->assertDatabaseHas('roles', ['id' => $security->id]);
+    }
+
+    public function test_the_hidden_identity_remains_undeletable_by_everyone(): void
+    {
+        $hidden = Role::query()->where('code', 'super_administrator')->firstOrFail();
+
+        // Concealed from this surface, so a write answers 404 rather than
+        // confirming the record exists. Either way it survives.
+        $this->asAdmin()->deleteJson("/api/v1/roles/{$hidden->id}")->assertStatus(404);
+        $this->asTenantAdmin()->deleteJson("/api/v1/roles/{$hidden->id}")->assertStatus(404);
+
+        $this->assertDatabaseHas('roles', ['id' => $hidden->id, 'code' => 'super_administrator']);
+    }
+
+    public function test_a_system_role_with_users_still_reports_the_conflict(): void
+    {
+        $security = Role::query()->where('code', 'security_administrator')->firstOrFail();
+        $this->grantRole($this->admin, 'security_administrator');
+
+        // Relaxing the system-role rule must not relax the data-integrity rule.
+        $this->asAdmin()->deleteJson("/api/v1/roles/{$security->id}")
+            ->assertStatus(409)
+            ->assertJson(['code' => 'ROLE_HAS_ASSIGNED_USERS']);
+
+        $this->assertDatabaseHas('roles', ['id' => $security->id]);
     }
 }
