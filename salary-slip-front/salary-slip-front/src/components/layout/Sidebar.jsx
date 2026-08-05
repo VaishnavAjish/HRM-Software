@@ -115,6 +115,7 @@ function getAdminNav(companyId, user, isAllCompanies, isModuleAvailable = () => 
         { to: "/admin/hr/performance", label: "Performance Matrix" },
         { to: "/admin/hr/exit", label: "Exit Management" },
         { to: "/admin/hr/reports", label: "HR Reports" },
+        { to: "/admin/hr/training", label: "Training" },
         { to: "/admin/hr/settings", label: "HR Settings" },
       ],
     });

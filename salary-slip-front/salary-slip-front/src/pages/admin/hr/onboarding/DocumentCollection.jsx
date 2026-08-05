@@ -15,6 +15,7 @@ import {
 } from "../../../../components/onboarding/primitives";
 import { onboardingApi } from "../../../../utils/onboardingApi";
 import { useOnboardingResource } from "../../../../hooks/useOnboardingResource";
+import { useAuth } from "../../../../context/AuthContext";
 
 const DOC_STATUS = {
   VERIFIED: ["Verified", "ok"],
@@ -33,7 +34,8 @@ const KIND_COLOR = {
 };
 
 export default function DocumentCollection() {
-  const { data, source, loading } = useOnboardingResource(
+  const { user } = useAuth();
+  const { data, source, loading, reload } = useOnboardingResource(
     (token, type) => onboardingApi.getDocuments(token, type),
     [],
   );
@@ -49,14 +51,24 @@ export default function DocumentCollection() {
 
   const count = (s) => (s === "ALL" ? documents.length : documents.filter((d) => d.status === s).length);
 
-  const review = (decision) => {
+  const review = async (decision) => {
     if (decision === "reject" && !remarks.trim()) {
       toast.error("Add a remark so the owner knows what to fix.");
       return;
     }
-    toast.success(decision === "approve" ? "Document verified" : "Document rejected");
-    setPreview(null);
-    setRemarks("");
+    try {
+      const res = await onboardingApi.reviewDocument(preview.id, decision, remarks, user.accessToken, user.tokenType);
+      if (res.status) {
+        toast.success(decision === "approve" ? "Document verified" : "Document rejected");
+        setPreview(null);
+        setRemarks("");
+        reload();
+      } else {
+        toast.error(res.message || "Failed to update document status.");
+      }
+    } catch (err) {
+      toast.error(err.message || "Failed to update document status.");
+    }
   };
 
   return (

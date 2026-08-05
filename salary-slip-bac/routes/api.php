@@ -11,6 +11,8 @@ use App\Http\Controllers\Admin\Hr\InterviewController;
 use App\Http\Controllers\Admin\Hr\JobRequisitionController;
 use App\Http\Controllers\Admin\Hr\OfferController;
 use App\Http\Controllers\Admin\Hr\PerformanceController;
+use App\Http\Controllers\Admin\Hr\TrainingQuizController;
+use App\Http\Controllers\Admin\Hr\OnboardingController;
 use App\Http\Controllers\Admin\PermissionDimensionController;
 use App\Http\Controllers\Admin\ShiftController;
 use App\Http\Controllers\Admin\UploadBatchController;
@@ -457,6 +459,22 @@ Route::middleware('jwt.auth')->group(function () {
                 Route::delete('delete/{id}', [JobRequisitionController::class, 'destroy'])->middleware('permission:hr.requisition.delete');
                 Route::post('approve/{id}', [JobRequisitionController::class, 'approve'])->middleware('permission:hr.requisition.approve');
                 Route::post('publish/{id}', [JobRequisitionController::class, 'publish'])->middleware('permission:hr.requisition.publish');
+            });
+
+            Route::group(['prefix' => 'quizzes'], function () {
+                Route::get('get', [TrainingQuizController::class, 'index'])->middleware('permission:hr.training.read');
+                Route::get('show/{id}', [TrainingQuizController::class, 'show'])->middleware('permission:hr.training.read');
+                Route::post('store', [TrainingQuizController::class, 'store'])->middleware('permission:hr.training.create');
+                Route::put('update/{id}', [TrainingQuizController::class, 'update'])->middleware('permission:hr.training.update');
+                Route::delete('delete/{id}', [TrainingQuizController::class, 'destroy'])->middleware('permission:hr.training.delete');
+            });
+
+            Route::group(['prefix' => 'onboarding'], function () {
+                Route::get('dashboard', [OnboardingController::class, 'dashboard'])->middleware('permission:hr.onboarding.journey.read');
+                Route::get('journeys', [OnboardingController::class, 'journeys'])->middleware('permission:hr.onboarding.journey.read');
+                Route::get('journeys/{id}', [OnboardingController::class, 'showJourney'])->middleware('permission:hr.onboarding.journey.read');
+                Route::get('documents', [OnboardingController::class, 'documents'])->middleware('permission:hr.onboarding.document.read');
+                Route::post('documents/{id}/{decision}', [OnboardingController::class, 'reviewDocument'])->middleware('permission:hr.onboarding.document.read');
             });
 
             Route::group(['prefix' => 'candidates'], function () {

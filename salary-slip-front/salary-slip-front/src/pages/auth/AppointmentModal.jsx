@@ -1,13 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   ChevronRight,
   RefreshCw,
   AlertCircle,
+  Printer,
   X,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import ModernDatePicker from "../../components/ModernDatePicker";
+import PrintableForm from "../../components/forms/PrintableForm";
 import { authApi, salaryApi, appointmentV1Api, resolveWriteCompanyId } from "../../utils/api";
 import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";
@@ -338,6 +340,7 @@ const AppointmentModal = ({
   // which survive the removal of the old combined submit.
 
   const [photoPreview, setPhotoPreview] = useState("");
+  const printFormRef = useRef(null);
   const [errors, setErrors] = useState({});
   const [showConfirmTransfer, setShowConfirmTransfer] = useState(false);
   const [checkingEmpCode, setCheckingEmpCode] = useState(false);
@@ -497,6 +500,141 @@ const AppointmentModal = ({
     const res = await authApi.submitAppointmentForm(payload, user?.accessToken, user?.tokenType);
 
     return res?.data?.id ?? null;
+  };
+
+  /**
+   * Maps the live form state into PrintableForm's view model, so the printed
+   * sheet always matches whatever is currently on screen — including unsaved
+   * edits — rather than requiring a save first.
+   */
+  const buildPrintData = () => {
+    const fullName = `${formData.name.first} ${formData.name.mid} ${formData.name.surname}`
+      .replace(/\s+/g, " ")
+      .trim();
+    const aadhaarDigits = normaliseAadhaar(formData.aadhar_card_no);
+    const appointmentId = savedAppointmentId || (isEditMode ? initialData?.id : null);
+
+    return {
+      photo: photoPreview || null,
+      empCode: formData.emp_code,
+      joiningDate: formData.joining_date,
+      department: formData.department,
+      designation: formData.designation,
+      managerName: formData.manager_name,
+      salary: formData.salary,
+      empMobile: formData.mobile_number,
+      empWhatsapp: formData.emp_whatsapp_no,
+      punchingNo: formData.punching_no,
+      fullName,
+      email: formData.email,
+      address: formData.address,
+      village: formData.village,
+      taluka: formData.taluka,
+      district: formData.district,
+      dob: formData.dob,
+      birthPlace: formData.birth_place,
+      gender: formData.gender,
+      cast: formData.cast,
+      maritalStatus: formData.marital_status,
+      bloodGroup: formData.blood_group,
+      refName: formData.reference_name,
+      refMobile: formData.reference_mobile_no,
+      aadharNo: formData.aadhar_card_no,
+      bankName: formData.bank_name,
+      panNo: formData.pan_card_no,
+      ifscCode: formData.bank_ifsc_code,
+      education: formData.education,
+      accountNo: formData.bank_account_no,
+      companyId: formData.company_code,
+      unitName: formData.unit,
+      signature: formData.emp_signature,
+      members: formData.members,
+      containsFullAadhaar: aadhaarDigits.length === 12,
+      printedBy: user?.name || "",
+      appointmentNumber: appointmentId ? `APT-${String(appointmentId).padStart(6, "0")}` : "",
+    };
+  };
+
+  /**
+   * Opens a dedicated print window with the same hidden PrintableForm node
+   * used elsewhere in the app (Appointments admin page), so printed output
+   * stays visually consistent across the whole app instead of relying on
+   * print styles for the live edit form (which still shows input chrome).
+   */
+  const handlePrint = () => {
+    const node = printFormRef.current;
+    if (!node) return;
+
+    const win = window.open("", "_blank", "width=1000,height=750");
+    if (!win) {
+      toast.error("Please allow pop-ups to print the appointment form");
+      return;
+    }
+
+    let cssText = "";
+    try {
+      for (const sheet of document.styleSheets) {
+        try {
+          for (const rule of sheet.cssRules) cssText += rule.cssText + "\n";
+        } catch {
+          // Cross-origin stylesheet — skip, print degrades to unstyled.
+        }
+      }
+    } catch {
+      // Enumerating stylesheets can throw; still open the window.
+    }
+
+    win.document.write(
+      `<!DOCTYPE html><html><head>
+        <base href="${document.baseURI}">
+        <style>${cssText}</style>
+        <title>Appointment Form</title>
+        <style>
+          *, *::before, *::after { box-sizing: border-box; }
+          html, body { margin: 0; padding: 0; background: white; font-family: sans-serif; }
+          [data-appointment-print-form] { box-shadow: none !important; }
+          @media print {
+            @page { size: A4 portrait; margin: 4mm; }
+            html, body {
+              margin: 0 !important;
+              padding: 0 !important;
+              print-color-adjust: exact;
+              -webkit-print-color-adjust: exact;
+            }
+            [data-appointment-print-form] {
+              zoom: 0.72;
+              width: 850px !important;
+              max-width: none !important;
+              box-shadow: none !important;
+              border: 1px dotted #555 !important;
+            }
+          }
+        </style>
+      </head><body>${node.outerHTML}</body></html>`,
+    );
+    win.document.close();
+
+    const printWhenReady = async () => {
+      await win.document.fonts?.ready;
+      await Promise.all(
+        Array.from(win.document.images).map((image) =>
+          image.complete
+            ? Promise.resolve()
+            : new Promise((resolve) => {
+                image.onload = resolve;
+                image.onerror = resolve;
+              }),
+        ),
+      );
+      win.focus();
+      win.print();
+    };
+
+    if (win.document.readyState === "complete") {
+      printWhenReady();
+    } else {
+      win.addEventListener("load", printWhenReady, { once: true });
+    }
   };
 
   const handleSaveAndNext = async () => {
@@ -1495,7 +1633,15 @@ const AppointmentModal = ({
                 render inline on mobile, see the `isMobile` checks above and
                 below), so hiding this button didn't just look wrong, it made
                 the Documents step permanently unreachable on a phone. */}
-            <div className="mt-4 flex justify-center sm:justify-end">
+            <div className="mt-4 flex flex-col sm:flex-row justify-center sm:justify-end gap-2">
+              <button
+                type="button"
+                onClick={handlePrint}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-2.5 border border-gray-300 text-gray-700 text-sm font-semibold rounded-lg hover:bg-gray-50 transition"
+              >
+                <Printer size={16} />
+                Print
+              </button>
               <button
                 type="button"
                 onClick={handleSaveAndNext}
@@ -1650,6 +1796,12 @@ const AppointmentModal = ({
         </div>,
         document.body,
       )}
+
+      {/* Off-screen — exists only so handlePrint has a real DOM node (with the
+          same markup used elsewhere in the app) to clone into the print window. */}
+      <div className="fixed -left-[9999px] top-0" aria-hidden="true">
+        <PrintableForm data={buildPrintData()} formRef={printFormRef} />
+      </div>
     </>
   );
 };

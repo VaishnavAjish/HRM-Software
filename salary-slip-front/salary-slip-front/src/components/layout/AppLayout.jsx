@@ -37,6 +37,7 @@ const pageTitles = {
   "/admin/hr/performance": "Performance Matrix",
   "/admin/hr/exit": "Exit Management",
   "/admin/hr/reports": "HR Reports",
+  "/admin/hr/training": "Training",
   "/admin/hr/settings": "HR Settings",
 };
 

@@ -1778,6 +1778,23 @@ export const hrApi = {
     return apiRequest(`/hr/requisitions/publish/${id}`, { method: "POST", headers: hrAuthHeaders(accessToken, tokenType) });
   },
 
+  // Quizzes
+  getQuizzes(accessToken, tokenType = "Bearer", filters = {}) {
+    return apiRequest(`/hr/quizzes/get${hrQuery(filters)}`, { headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+  getQuiz(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/quizzes/show/${id}`, { headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+  storeQuiz(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest("/hr/quizzes/store", { method: "POST", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(payload) });
+  },
+  updateQuiz(id, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/quizzes/update/${id}`, { method: "PUT", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(payload) });
+  },
+  deleteQuiz(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/quizzes/delete/${id}`, { method: "DELETE", headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+
   // Candidates
   getCandidates(accessToken, tokenType = "Bearer", filters = {}) {
     return apiRequest(`/hr/candidates/get${hrQuery(filters)}`, { headers: hrAuthHeaders(accessToken, tokenType) });

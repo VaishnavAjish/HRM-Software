@@ -79,6 +79,7 @@ const PerformanceMatrix = lazy(() => import("./pages/admin/hr/PerformanceMatrix"
 const HrReports = lazy(() => import("./pages/admin/hr/HrReports"));
 const ExitManagement = lazy(() => import("./pages/admin/hr/ExitManagement"));
 const HrSettings = lazy(() => import("./pages/admin/hr/HrSettings"));
+const TrainingQuizPage = lazy(() => import("./pages/admin/hr/TrainingQuizPage"));
 
 function RouteLoader() {
   return (
@@ -214,6 +215,7 @@ function AppRoutes() {
         <Route path="hr/performance" element={<ProtectedRoute requiredPermission="hr.performance.read"><PerformanceMatrix /></ProtectedRoute>} />
         <Route path="hr/reports" element={<ProtectedRoute requiredPermission="hr.report.read"><HrReports /></ProtectedRoute>} />
         <Route path="hr/exit" element={<ProtectedRoute requiredPermission="hr.exit.read"><ExitManagement /></ProtectedRoute>} />
+        <Route path="hr/training" element={<ProtectedRoute requiredPermission="hr.training.read"><TrainingQuizPage /></ProtectedRoute>} />
         <Route path="hr/settings" element={<ProtectedRoute requiredPermission="hr.hr_settings.read"><HrSettings /></ProtectedRoute>} />
 
         {/* Access Control */}
