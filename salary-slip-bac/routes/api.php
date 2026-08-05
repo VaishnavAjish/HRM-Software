@@ -4,6 +4,7 @@ use App\Http\Controllers\Admin\AdminController;
 use App\Http\Controllers\Admin\AttendanceController;
 use App\Http\Controllers\Admin\Hr\AssetController;
 use App\Http\Controllers\Admin\Hr\CandidateController;
+use App\Http\Controllers\Admin\Hr\CandidateDocumentController;
 use App\Http\Controllers\Admin\Hr\ExitManagementController;
 use App\Http\Controllers\Admin\Hr\HrDashboardController;
 use App\Http\Controllers\Admin\Hr\HrReportController;
@@ -485,6 +486,13 @@ Route::middleware('jwt.auth')->group(function () {
                 Route::put('update/{id}', [CandidateController::class, 'update'])->middleware('permission:hr.candidate.update');
                 Route::delete('delete/{id}', [CandidateController::class, 'destroy'])->middleware('permission:hr.candidate.delete');
                 Route::post('move-stage/{id}', [CandidateController::class, 'moveStage'])->middleware('permission:hr.candidate.move_stage');
+
+                // Lightweight document storage for a candidate — a real
+                // upload endpoint, unlike the stubbed/fabricated documents
+                // the Onboarding module generates when none exist.
+                Route::get('documents/get/{id}', [CandidateDocumentController::class, 'index'])->middleware('permission:hr.candidate.read');
+                Route::post('documents/store/{id}', [CandidateDocumentController::class, 'store'])->middleware('permission:hr.candidate.update');
+                Route::delete('documents/delete/{id}', [CandidateDocumentController::class, 'destroy'])->middleware('permission:hr.candidate.update');
             });
 
             Route::group(['prefix' => 'interviews'], function () {

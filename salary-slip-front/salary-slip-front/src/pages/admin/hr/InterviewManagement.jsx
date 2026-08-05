@@ -10,7 +10,7 @@ import Modal from "../../../components/ui/Modal";
 import { SkeletonTable } from "../../../components/ui/Skeleton";
 import { useAuth } from "../../../context/AuthContext";
 import { hrApi } from "../../../utils/api";
-import { stageLabel, stageColor } from "./hiring/stageMeta";
+import { stageLabel } from "./hiring/stageMeta";
 
 const inputClass = "w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500";
 
@@ -158,7 +158,7 @@ export default function InterviewManagement() {
   return (
     <div className="space-y-6">
       <p className="text-sm text-gray-500 dark:text-gray-400">
-        Every candidate who's been shortlisted lands here — schedule their round, then advance them once it's done
+        Every candidate who's been shortlisted lands here — schedule their interview, then proceed with a decision once it's done
       </p>
 
       <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
@@ -174,7 +174,6 @@ export default function InterviewManagement() {
               <thead className="bg-gray-50 dark:bg-gray-700/50 text-xs uppercase text-gray-500 dark:text-gray-400">
                 <tr>
                   <th className="text-left px-4 py-3">Candidate</th>
-                  <th className="text-left px-4 py-3">Round</th>
                   <th className="text-left px-4 py-3">Schedule</th>
                   <th className="text-left px-4 py-3">Status</th>
                   <th className="text-right px-4 py-3">Actions</th>
@@ -186,9 +185,8 @@ export default function InterviewManagement() {
                     key={c.id}
                     candidate={c}
                     interview={currentRoundInterview(c, interviews)}
-                    busy={advancingId === c.id}
                     onOpenSchedule={openSchedule}
-                    onAdvance={advanceCandidate}
+                    onOpenProceed={openProceed}
                     onFeedback={(iv) => { setFeedbackTarget(iv); setFeedback(EMPTY_FEEDBACK); }}
                     onReschedule={(iv) => { setRescheduleTarget(iv); setRescheduleAt(""); }}
                     onCancel={cancelInterview}
@@ -201,7 +199,7 @@ export default function InterviewManagement() {
       </div>
 
       <Modal isOpen={!!scheduleTarget} onClose={() => setScheduleTarget(null)}
-        title={`Schedule ${ROUND_NAME_BY_STAGE[scheduleTarget?.stage] || ""} Interview — ${scheduleTarget?.name || ""}`} size="lg"
+        title={`Schedule Interview — ${scheduleTarget?.name || ""}`} size="lg"
         footer={<div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setScheduleTarget(null)}>Cancel</Button><Button onClick={submitSchedule} disabled={scheduling}>{scheduling ? "Scheduling..." : "Schedule"}</Button></div>}>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Field label="Date & Time" required><input type="datetime-local" className={inputClass} value={scheduleForm.scheduled_at} onChange={(e) => setScheduleForm({ ...scheduleForm, scheduled_at: e.target.value })} /></Field>
@@ -213,6 +211,48 @@ export default function InterviewManagement() {
           </Field>
           <Field label="Meeting Link / Location"><input className={inputClass} value={scheduleForm.meeting_link} onChange={(e) => setScheduleForm({ ...scheduleForm, meeting_link: e.target.value })} /></Field>
           <Field label="Notes" full><textarea rows={2} className={inputClass} value={scheduleForm.notes} onChange={(e) => setScheduleForm({ ...scheduleForm, notes: e.target.value })} /></Field>
+        </div>
+      </Modal>
+
+      <Modal isOpen={!!proceedTarget} onClose={() => setProceedTarget(null)} title={`Proceed — ${proceedTarget?.name || ""}`} size="lg">
+        <div className="space-y-4">
+          <Field label="Interview Notes / Description" full>
+            <textarea
+              rows={4}
+              className={inputClass}
+              placeholder="How did the interview go? Strengths, concerns, reasoning for the decision…"
+              value={proceedNotes}
+              onChange={(e) => setProceedNotes(e.target.value)}
+            />
+          </Field>
+
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={() => submitProceed("selected")}
+              disabled={proceeding}
+              className="flex flex-col items-center gap-1.5 py-4 rounded-xl border-2 border-green-200 dark:border-green-900/50 bg-green-50 dark:bg-green-900/10 hover:bg-green-100 dark:hover:bg-green-900/20 text-green-700 dark:text-green-400 font-semibold transition-colors disabled:opacity-50"
+            >
+              <ThumbsUp size={22} /> Select
+            </button>
+            <button
+              onClick={() => submitProceed("rejected")}
+              disabled={proceeding}
+              className="flex flex-col items-center gap-1.5 py-4 rounded-xl border-2 border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-900/10 hover:bg-red-100 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400 font-semibold transition-colors disabled:opacity-50"
+            >
+              <ThumbsDown size={22} /> Reject
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between pt-1">
+            <button
+              onClick={() => submitProceed("on_hold")}
+              disabled={proceeding}
+              className="flex items-center gap-1.5 text-xs font-semibold text-yellow-600 hover:underline disabled:opacity-50"
+            >
+              <PauseCircle size={13} /> Put on hold instead
+            </button>
+            <Button variant="secondary" onClick={() => setProceedTarget(null)}>Cancel</Button>
+          </div>
         </div>
       </Modal>
 
@@ -244,8 +284,7 @@ export default function InterviewManagement() {
 /** One row per candidate. "Schedule Interview" opens a proper modal — the
  *  row already tells the modal who and which round, so there's no
  *  candidate picker in it, just the round's own details. */
-function RosterRow({ candidate, interview, busy, onOpenSchedule, onAdvance, onFeedback, onReschedule, onCancel }) {
-  const next = nextMainStage(candidate.stage);
+function RosterRow({ candidate, interview, onOpenSchedule, onOpenProceed, onFeedback, onReschedule, onCancel }) {
   const ModeIcon = interview ? (MODE_ICON[interview.mode] || Video) : null;
   const avgRating = interview?.feedback?.length
     ? (interview.feedback.reduce((s, f) => s + (f.rating || 0), 0) / interview.feedback.length).toFixed(1)
@@ -261,11 +300,6 @@ function RosterRow({ candidate, interview, busy, onOpenSchedule, onAdvance, onFe
             {candidate.requisition?.title && <p className="text-xs text-gray-400">{candidate.requisition.title}</p>}
           </div>
         </div>
-      </td>
-      <td className="px-4 py-3">
-        <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ backgroundColor: `${stageColor(candidate.stage)}1a`, color: stageColor(candidate.stage) }}>
-          {stageLabel(candidate.stage)}
-        </span>
       </td>
       <td className="px-4 py-3">
         {interview ? (
@@ -302,17 +336,7 @@ function RosterRow({ candidate, interview, busy, onOpenSchedule, onAdvance, onFe
               </button>
             </>
           )}
-          {next && (
-            <button title={`Move to ${next.label}`} disabled={busy} onClick={() => onAdvance(candidate, next.key)} className="p-1.5 rounded-lg text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 disabled:opacity-40">
-              <ArrowRight size={14} />
-            </button>
-          )}
-          <button title="Hold" disabled={busy} onClick={() => onAdvance(candidate, "on_hold")} className="p-1.5 rounded-lg text-yellow-600 hover:bg-yellow-50 dark:hover:bg-yellow-900/20 disabled:opacity-40">
-            <PauseCircle size={14} />
-          </button>
-          <button title="Reject" disabled={busy} onClick={() => onAdvance(candidate, "rejected")} className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-40">
-            <XCircle size={14} />
-          </button>
+          <Button size="sm" onClick={() => onOpenProceed(candidate)}>Proceed</Button>
         </div>
       </td>
     </tr>

@@ -1949,4 +1949,16 @@ export const hrApi = {
   updateResignationStatus(id, payload, accessToken, tokenType = "Bearer") {
     return apiRequest(`/hr/exit/status/${id}`, { method: "PUT", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(payload) });
   },
+
+  // Candidate documents — a real upload endpoint, unlike the Onboarding
+  // module's fabricated/stubbed document records.
+  getCandidateDocuments(candidateId, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/candidates/documents/get/${candidateId}`, { headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+  uploadCandidateDocument(candidateId, formData, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/candidates/documents/store/${candidateId}`, { method: "POST", headers: hrAuthHeaders(accessToken, tokenType), body: formData });
+  },
+  deleteCandidateDocument(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/candidates/documents/delete/${id}`, { method: "DELETE", headers: hrAuthHeaders(accessToken, tokenType) });
+  },
 };

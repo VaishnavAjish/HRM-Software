@@ -274,18 +274,18 @@ function DocThumb({ url, label, onPreview }) {
 function StatusBadge({ status }) {
   if (status === "Approved")
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2.5 py-1 text-xs font-bold text-green-700 dark:bg-green-900/20 dark:text-green-400">
+      <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2.5 py-1 text-xs font-bold text-green-800 dark:bg-green-900/20 dark:text-green-300">
         <CheckCircle2 size={11} /> Approved
       </span>
     );
   if (status === "Rejected")
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2.5 py-1 text-xs font-bold text-red-700 dark:bg-red-900/20 dark:text-red-400">
+      <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2.5 py-1 text-xs font-bold text-red-800 dark:bg-red-900/20 dark:text-red-300">
         <XCircle size={11} /> Rejected
       </span>
     );
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-700 dark:bg-amber-900/20 dark:text-amber-400">
+    <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
       <Clock size={11} /> Pending
     </span>
   );
@@ -2167,20 +2167,20 @@ export default function Appointments() {
           {
             label: "Pending",
             value: counts.pending,
-            color: "text-amber-600 dark:text-amber-400",
+            color: "text-amber-800 dark:text-amber-300 font-bold",
             bg: "bg-white dark:bg-gray-800",
             border:
-              "border-l-4 border-l-amber-400 border-gray-200 dark:border-gray-700",
-            labelCls: "text-amber-600 dark:text-amber-400",
+              "border-l-4 border-l-amber-500 border-gray-200 dark:border-gray-700",
+            labelCls: "text-amber-800 dark:text-amber-300 font-semibold",
           },
           {
             label: "Approved",
             value: counts.approved,
-            color: "text-green-600 dark:text-green-400",
+            color: "text-green-800 dark:text-green-300 font-bold",
             bg: "bg-white dark:bg-gray-800",
             border:
-              "border-l-4 border-l-green-400 border-gray-200 dark:border-gray-700",
-            labelCls: "text-green-600 dark:text-green-400",
+              "border-l-4 border-l-green-500 border-gray-200 dark:border-gray-700",
+            labelCls: "text-green-800 dark:text-green-300 font-semibold",
           },
           {
             label: "Rejected",
