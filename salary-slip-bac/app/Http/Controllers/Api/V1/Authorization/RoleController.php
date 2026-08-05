@@ -3,9 +3,13 @@
 namespace App\Http\Controllers\Api\V1\Authorization;
 
 use App\Http\Controllers\Controller;
+use App\Models\Role;
 use App\Http\Requests\Authorization\StoreRoleRequest;
 use App\Http\Requests\Authorization\UpdateRoleRequest;
 use App\Services\Authorization\RoleManagementService;
+use App\Support\ProtectedRoles;
+use App\Support\RoleHierarchy;
+use App\Support\RoleAudit;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -71,6 +75,10 @@ class RoleController extends Controller
             return $this->notFound();
         }
 
+        if ($denied = $this->denyUnlessManageable($model, 'update')) {
+            return $denied;
+        }
+
         $updated = $this->roles->update($model, $request->payload());
 
         return response()->json(['success' => true, 'data' => $this->roles->present($updated)]);
@@ -84,13 +92,32 @@ class RoleController extends Controller
             return $this->notFound();
         }
 
+        if ($denied = $this->denyUnlessManageable($model, 'delete')) {
+            return $denied;
+        }
+
+        // Protection is checked by CODE first, not only by the is_system flag.
+        // is_system is a mutable column: an UPDATE that clears it would strip
+        // the super administrator of protection while leaving it fully
+        // privileged. The code cannot be edited into a role that lacks it.
+        if (ProtectedRoles::isProtected($model)) {
+            RoleAudit::denied(request(), auth('api')->user(), 'ROLE_PROTECTED', $model);
+
+            return $this->conflict('This role is protected and cannot be deleted.', 'ROLE_PROTECTED');
+        }
+
         if ($model->is_system) {
-            return $this->conflict('System roles cannot be deleted.');
+            return $this->conflict('System roles cannot be deleted.', 'ROLE_IS_SYSTEM');
         }
 
         $assigned = $this->roles->assignedUserCount($model);
         if ($assigned > 0) {
-            return $this->conflict("This role is assigned to {$assigned} user(s). Archive it instead of deleting.");
+            return response()->json([
+                'success' => false,
+                'code' => 'ROLE_HAS_ASSIGNED_USERS',
+                'message' => 'This role is assigned to users. Reassign those users before deleting the role.',
+                'assignedUserCount' => $assigned,
+            ], 409);
         }
 
         $this->roles->delete($model);
@@ -126,13 +153,53 @@ class RoleController extends Controller
             return $this->notFound();
         }
 
+        if ($denied = $this->denyUnlessManageable($model, $status)) {
+            return $denied;
+        }
+
+        // Deactivating or archiving the super administrator locks every
+        // administrator out of role management permanently, since this surface
+        // is the only way back in. Refused for everyone, the acting super
+        // administrator included.
+        if (ProtectedRoles::isProtected($model)) {
+            RoleAudit::denied(request(), auth('api')->user(), 'ROLE_PROTECTED', $model);
+
+            return $this->conflict('This role is protected and cannot change status.', 'ROLE_PROTECTED');
+        }
+
         if ($model->is_system) {
-            return $this->conflict('System roles cannot change status.');
+            return $this->conflict('System roles cannot change status.', 'ROLE_IS_SYSTEM');
         }
 
         $updated = $this->roles->setStatus($model, $status, $isActive);
 
         return response()->json(['success' => true, 'data' => $this->roles->present($updated)]);
+    }
+
+
+    /**
+     * Per-target authorisation. The middleware only established that the caller
+     * may manage *something*; this decides whether they may manage *this*.
+     *
+     * 403 rather than 404 here: the target is a role the caller can already see
+     * in the list, so its existence is not a secret. The hidden internal
+     * identity never reaches this method — find() conceals it and answers 404.
+     */
+    private function denyUnlessManageable(Role $target, string $operation): ?JsonResponse
+    {
+        $actor = auth('api')->user();
+
+        if (RoleHierarchy::canManage($actor, $target)) {
+            return null;
+        }
+
+        RoleAudit::denied(request(), $actor, 'ROLE_MANAGEMENT_FORBIDDEN', $target);
+
+        return response()->json([
+            'success' => false,
+            'code' => 'ROLE_MANAGEMENT_FORBIDDEN',
+            'message' => 'You do not have permission to manage this role.',
+        ], 403);
     }
 
     private function notFound(): JsonResponse
@@ -143,11 +210,13 @@ class RoleController extends Controller
         ], 404);
     }
 
-    private function conflict(string $message): JsonResponse
+    private function conflict(string $message, string $code = 'CONFLICT'): JsonResponse
     {
         return response()->json([
             'success' => false,
-            'error' => ['code' => 'CONFLICT', 'message' => $message],
+            'code' => $code,
+            'message' => $message,
+            'error' => ['code' => $code, 'message' => $message],
         ], 409);
     }
 }

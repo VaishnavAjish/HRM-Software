@@ -39,6 +39,14 @@ const pageTitles = {
   "/admin/hr/reports": "HR Reports",
   "/admin/hr/training": "Training",
   "/admin/hr/settings": "HR Settings",
+  "/admin/hr/onboarding": "Onboarding",
+  "/admin/hr/onboarding/journeys": "Onboarding Journeys",
+  "/admin/hr/onboarding/welcome": "Welcome Portal",
+  "/admin/hr/onboarding/documents": "Onboarding Documents",
+  "/admin/hr/onboarding/training": "Onboarding Training",
+  "/admin/hr/onboarding/assets": "IT Assets",
+  "/admin/hr/onboarding/checklists": "Onboarding Checklists",
+  "/admin/hr/onboarding/policies": "Policy Acceptance",
 };
 
 const SIDEBAR_WIDTH = 280;

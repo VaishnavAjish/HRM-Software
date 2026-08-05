@@ -115,6 +115,13 @@ class AuthController extends Controller
             return ['reason' => 'account_deactivated', 'message' => 'This account is deactivated. Contact your administrator.'];
         }
 
+        // resignation_date is the employee's last working day (see
+        // ExitManagementController::store). Once it has passed, they've
+        // actually left, so their account can no longer log in.
+        if ($user->resignation_date && now()->toDateString() >= (string) $user->resignation_date) {
+            return ['reason' => 'account_resigned', 'message' => 'This account has been deactivated following resignation. Contact HR if this is unexpected.'];
+        }
+
         return null;
     }
 

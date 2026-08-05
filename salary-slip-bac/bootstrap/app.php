@@ -3,6 +3,8 @@
 use App\Http\Middleware\JwtMiddleware;
 use App\Http\Middleware\RequireModuleSchema;
 use App\Http\Middleware\RequirePermission;
+use App\Http\Middleware\RequireRoleManager;
+use App\Http\Middleware\RequireSuperAdmin;
 use App\Http\Middleware\RoleMiddleware;
 use App\Http\Middleware\SecurityHeaders;
 use Illuminate\Foundation\Application;
@@ -27,6 +29,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'role' => RoleMiddleware::class,
             'permission' => RequirePermission::class,
             'module.schema' => RequireModuleSchema::class,
+            'super.admin' => RequireSuperAdmin::class,
+            'role.manager' => RequireRoleManager::class,
         ]);
 
         // Global security headers on every response

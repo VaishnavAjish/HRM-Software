@@ -29,6 +29,7 @@ class OnboardingController extends Controller
         $candidatesQuery = Candidate::where('stage', 'offer_accepted');
         $this->applyCompanyScope($candidatesQuery, $request);
         $candidates = $candidatesQuery->get();
+        $candidates->load('requisition.department');
 
         $totalCandidates = $candidates->count();
         $candidateIds = $candidates->pluck('id')->toArray();
@@ -93,6 +94,33 @@ class OnboardingController extends Controller
             }
         }
 
+        // Every offer-accepted candidate, grouped by the job they were hired
+        // for — not just whoever happens to join today. This is the
+        // authoritative "who's onboarding right now, for which role" view.
+        $byJob = [];
+        foreach ($candidates as $c) {
+            $offer = $offers->firstWhere('candidate_id', $c->id);
+            $docs = $documents->where('candidate_id', $c->id);
+            $progress = $docs->count() ? (int) round($docs->where('status', 'VERIFIED')->count() / $docs->count() * 100) : 0;
+            $job = $c->requisition?->designation ?? $offer?->designation ?? 'Unassigned role';
+
+            $byJob[$job][] = [
+                'id' => $c->id,
+                'name' => $c->name ?? 'Candidate',
+                'code' => 'CND' . str_pad($c->id, 5, '0', STR_PAD_LEFT),
+                'role' => $job,
+                'dept' => $c->requisition?->department?->name ?? 'General',
+                'joiningDate' => $offer?->joining_date ? Carbon::parse($offer->joining_date)->format('d M Y') : 'TBD',
+                'progress' => $progress,
+                'status' => $progress === 100 && $docs->count() > 0 ? 'PROBATION' : ($progress > 0 ? 'IN_PROGRESS' : 'PRE_BOARDING'),
+            ];
+        }
+        $candidatesByJob = [];
+        foreach ($byJob as $job => $list) {
+            $candidatesByJob[] = ['job' => $job, 'candidates' => $list];
+        }
+        usort($candidatesByJob, fn ($a, $b) => count($b['candidates']) <=> count($a['candidates']));
+
         $funnel = [
             ['label' => 'Offer accepted', 'value' => $totalCandidates, 'tone' => 'brand'],
             ['label' => 'Documents uploaded', 'value' => $documents->pluck('candidate_id')->unique()->count(), 'tone' => 'brand'],
@@ -135,6 +163,7 @@ class OnboardingController extends Controller
             'kpis' => $kpis,
             'joiningWeek' => $joiningWeek,
             'todayJoining' => $todayJoining,
+            'candidatesByJob' => $candidatesByJob,
             'funnel' => $funnel,
             'byDepartment' => $byDept,
             'weekly' => [

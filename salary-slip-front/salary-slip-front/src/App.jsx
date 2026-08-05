@@ -208,10 +208,10 @@ function AppRoutes() {
         <Route path="hr/onboarding/journeys" element={<ProtectedRoute requiredPermission="hr.onboarding.journey.read"><OnboardingJourneys /></ProtectedRoute>} />
         <Route path="hr/onboarding/welcome" element={<ProtectedRoute requiredPermission="hr.onboarding.journey.read"><WelcomePortal /></ProtectedRoute>} />
         <Route path="hr/onboarding/documents" element={<ProtectedRoute requiredPermission="hr.onboarding.document.read"><DocumentCollection /></ProtectedRoute>} />
-        <Route path="hr/onboarding/training" element={<ProtectedRoute requiredPermission="hr.onboarding.training.read"><OnboardingTraining /></ProtectedRoute>} />
-        <Route path="hr/onboarding/assets" element={<ProtectedRoute requiredPermission="hr.onboarding.asset.read"><ItAssets /></ProtectedRoute>} />
-        <Route path="hr/onboarding/checklists" element={<ProtectedRoute requiredPermission="hr.onboarding.task.read"><OnboardingChecklists /></ProtectedRoute>} />
-        <Route path="hr/onboarding/policies" element={<ProtectedRoute requiredPermission="hr.onboarding.policy.read"><PolicyAcceptance /></ProtectedRoute>} />
+        <Route path="hr/onboarding/training" element={<ProtectedRoute requiredPermission="hr.onboarding.read"><OnboardingTraining /></ProtectedRoute>} />
+        <Route path="hr/onboarding/assets" element={<ProtectedRoute requiredPermission="hr.onboarding.read"><ItAssets /></ProtectedRoute>} />
+        <Route path="hr/onboarding/checklists" element={<ProtectedRoute requiredPermission="hr.onboarding.read"><OnboardingChecklists /></ProtectedRoute>} />
+        <Route path="hr/onboarding/policies" element={<ProtectedRoute requiredPermission="hr.onboarding.read"><PolicyAcceptance /></ProtectedRoute>} />
         <Route path="hr/performance" element={<ProtectedRoute requiredPermission="hr.performance.read"><PerformanceMatrix /></ProtectedRoute>} />
         <Route path="hr/reports" element={<ProtectedRoute requiredPermission="hr.report.read"><HrReports /></ProtectedRoute>} />
         <Route path="hr/exit" element={<ProtectedRoute requiredPermission="hr.exit.read"><ExitManagement /></ProtectedRoute>} />

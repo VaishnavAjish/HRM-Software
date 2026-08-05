@@ -11,6 +11,20 @@ class SalariesSlipController extends Controller
     {
         $query = SalarySlip::query();
 
+        // resignation_date is the employee's last working day (see
+        // ExitManagementController::store). Once it has passed, exclude
+        // their slips from the salary download list entirely.
+        $query->where(function ($q) {
+            $q->whereNull('emp_code')
+                ->orWhereNotIn('emp_code', function ($sub) {
+                    $sub->select('emp_code')
+                        ->from('users')
+                        ->whereNotNull('emp_code')
+                        ->whereNotNull('resignation_date')
+                        ->whereDate('resignation_date', '<=', now()->toDateString());
+                });
+        });
+
         $user = auth('api')->user();
         if ($user && (int) $user->role !== 0 && (int) $user->role !== 1 && (int) $user->role !== 2) {
             // Non-admins may only ever see their own salary slips, regardless

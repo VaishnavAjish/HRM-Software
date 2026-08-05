@@ -13,10 +13,12 @@ import { SkeletonTable } from "../../../components/ui/Skeleton";
 import StatusBadge from "../../../components/authorization/StatusBadge";
 import { useAuth } from "../../../context/AuthContext";
 import { useAuthorization } from "../../../hooks/useAuthorization";
+import { canManageRoles } from "../../../utils/roleAccess";
 import { roleApi } from "../../../utils/api";
 
-const inputClass =
-  "w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500";
+const inputBase =
+  "rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500";
+const inputClass = `w-full ${inputBase}`;
 const labelClass = "mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400";
 
 const BLANK = {
@@ -29,9 +31,11 @@ const ROLE_TYPES = ["BUSINESS", "OPERATIONAL", "SYSTEM"];
 
 function Tile({ label, value }) {
   return (
-    <div className="rounded-xl border border-gray-200 bg-white px-4 py-3 dark:border-gray-700 dark:bg-gray-800">
-      <p className="text-xs font-medium text-gray-500 dark:text-gray-400">{label}</p>
-      <p className="mt-1 text-xl font-bold text-gray-900 dark:text-white">{value ?? "—"}</p>
+    <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 dark:border-gray-700 dark:bg-gray-800">
+      <p className="truncate text-[11px] font-medium text-gray-500 dark:text-gray-400">{label}</p>
+      <p className="mt-0.5 text-base font-bold leading-tight tabular-nums text-gray-900 dark:text-white">
+        {value ?? "—"}
+      </p>
     </div>
   );
 }
@@ -39,6 +43,7 @@ function Tile({ label, value }) {
 export default function Roles() {
   const { user } = useAuth();
   const { can } = useAuthorization();
+  const manageRoles = canManageRoles(user);
   const navigate = useNavigate();
   const token = user?.accessToken;
   const tokenType = user?.tokenType || "Bearer";
@@ -184,12 +189,12 @@ export default function Roles() {
             Create and manage the roles your organization assigns. Edit what a role grants from the Permission Matrix.
           </p>
         </div>
-        {can("admin.role.create") && (
+        {manageRoles && can("admin.role.create") && (
           <Button onClick={openCreate}><Plus size={16} /> New Role</Button>
         )}
       </header>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+      <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
         <Tile label="Total" value={summary?.total} />
         <Tile label="Active" value={summary?.active} />
         <Tile label="Inactive" value={summary?.inactive} />
@@ -208,13 +213,13 @@ export default function Roles() {
             onChange={(event) => { setLoading(true); setSearch(event.target.value); }}
           />
         </div>
-        <select className={`${inputClass} w-auto`} value={status} onChange={(event) => { setLoading(true); setStatus(event.target.value); }}>
+        <select className={inputBase} value={status} onChange={(event) => { setLoading(true); setStatus(event.target.value); }}>
           <option value="">All statuses</option>
           <option value="ACTIVE">Active</option>
           <option value="INACTIVE">Inactive</option>
           <option value="ARCHIVED">Archived</option>
         </select>
-        <select className={`${inputClass} w-auto`} value={type} onChange={(event) => { setLoading(true); setType(event.target.value); }}>
+        <select className={inputBase} value={type} onChange={(event) => { setLoading(true); setType(event.target.value); }}>
           <option value="">All types</option>
           <option value="System">System</option>
           <option value="Custom">Custom</option>
@@ -263,32 +268,32 @@ export default function Roles() {
                     <td className="px-4 py-3"><StatusBadge status={role.status} /></td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap justify-end gap-1.5">
-                        {can("admin.role.update") && (
+                        {manageRoles && can("admin.role.update") && (
                           <Button size="sm" variant="outline" onClick={() => navigate("/admin/access-control/permission-matrix")}>
                             <SlidersHorizontal size={14} /> Permissions
                           </Button>
                         )}
-                        {can("admin.role.update") && (
+                        {manageRoles && can("admin.role.update") && (
                           <Button size="sm" variant="outline" onClick={() => openEdit(role)}>
                             <Pencil size={14} /> Edit
                           </Button>
                         )}
-                        {can("admin.role.clone") && (
+                        {manageRoles && can("admin.role.clone") && (
                           <Button size="sm" variant="outline" onClick={() => openClone(role)}>
                             <Copy size={14} /> Clone
                           </Button>
                         )}
-                        {can("admin.role.update") && !role.isSystem && role.status !== "ARCHIVED" && (
+                        {manageRoles && can("admin.role.update") && !role.isSystem && role.status !== "ARCHIVED" && (
                           role.isActive
                             ? <Button size="sm" variant="outline" onClick={() => transition(role, "deactivate", "deactivated")}><PowerOff size={14} /> Deactivate</Button>
                             : <Button size="sm" variant="outline" onClick={() => transition(role, "activate", "activated")}><Power size={14} /> Activate</Button>
                         )}
-                        {can("admin.role.update") && !role.isSystem && (
+                        {manageRoles && can("admin.role.update") && !role.isSystem && (
                           role.status === "ARCHIVED"
                             ? <Button size="sm" variant="outline" onClick={() => transition(role, "restore", "restored")}><ArchiveRestore size={14} /> Restore</Button>
                             : <Button size="sm" variant="outline" onClick={() => transition(role, "archive", "archived")}><Archive size={14} /> Archive</Button>
                         )}
-                        {can("admin.role.delete") && !role.isSystem && role.assignedUserCount === 0 && (
+                        {manageRoles && can("admin.role.delete") && !role.isSystem && role.assignedUserCount === 0 && (
                           <Button size="sm" variant="danger" onClick={() => remove(role)}><Trash2 size={14} /> Delete</Button>
                         )}
                       </div>

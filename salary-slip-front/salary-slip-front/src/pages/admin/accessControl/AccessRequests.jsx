@@ -10,8 +10,9 @@ import { useAuth } from "../../../context/AuthContext";
 import { useAuthorization } from "../../../hooks/useAuthorization";
 import { accessLifecycleApi } from "../../../utils/api";
 
-const inputClass =
-  "w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500";
+const inputBase =
+  "rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500";
+const inputClass = `w-full ${inputBase}`;
 
 const labelClass = "mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400";
 
@@ -106,7 +107,7 @@ export default function AccessRequests() {
 
         <div className="flex flex-wrap gap-2">
           <select
-            className={`${inputClass} w-auto`}
+            className={inputBase}
             value={statusFilter}
             onChange={(event) => { setLoading(true); setStatusFilter(event.target.value); }}
           >

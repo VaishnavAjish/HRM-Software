@@ -9,6 +9,9 @@ const DOT_TONES = {
 };
 
 export default function Timeline({ items = [] }) {
+  if (items.length === 0) {
+    return <p className="text-[12.5px] text-gray-400 dark:text-gray-500">No recent activity.</p>;
+  }
   return (
     <ol className="flex flex-col">
       {items.map((item, i) => (

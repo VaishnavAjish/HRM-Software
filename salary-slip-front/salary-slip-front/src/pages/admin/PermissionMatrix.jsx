@@ -49,8 +49,14 @@ export default function PermissionMatrix() {
         const list = res?.data ?? [];
         setRoles(list);
         setRoleId((current) => current ?? list[0]?.id ?? null);
+        // With no role there is nothing for the matrix effect to fetch, so it
+        // returns before its finally() and the skeleton would never clear.
+        if (!list.length) setLoading(false);
       })
-      .catch((err) => toast.error(err.message || "Could not load roles"));
+      .catch((err) => {
+        setLoading(false);
+        toast.error(err.message || "Could not load roles");
+      });
   }, [token, tokenType]);
 
   useEffect(() => {
@@ -337,7 +343,7 @@ export default function PermissionMatrix() {
                 onSelectCell={setSelectedCell}
                 onCycleCell={cycleCell}
                 pendingChanges={pending}
-                readOnly={Boolean(selectedRole?.isSystem) && Number(user?.role) !== 0}
+                readOnly={Boolean(selectedRole?.isSystem) && Number(user?.rawRole) !== 0}
               />
             )}
 

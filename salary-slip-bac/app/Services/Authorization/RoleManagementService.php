@@ -3,6 +3,7 @@
 namespace App\Services\Authorization;
 
 use App\Models\Role;
+use App\Support\RoleHierarchy;
 use App\Support\SystemRoles;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -59,7 +60,8 @@ class RoleManagementService
 
     public function summary(): array
     {
-        $base = fn () => SystemRoles::exclude(DB::table('roles'));
+        // Counters must agree with the table: same concealment, same tier scope.
+        $base = fn () => $this->scopeToActor(SystemRoles::exclude(DB::table('roles')));
 
         $total = $base()->count();
         $active = SchemaSupport::hasColumn('roles', 'is_active') ? $base()->where('is_active', true)->count() : $total;
@@ -215,7 +217,42 @@ class RoleManagementService
 
     private function baseQuery()
     {
-        return SystemRoles::exclude(Role::query());
+        return $this->scopeToActor(SystemRoles::exclude(Role::query()));
+    }
+
+    /**
+     * A caller sees only the tiers they may manage.
+     *
+     * Filtering happens in SQL, not after the fact in the client: an
+     * administrator must not receive Admin rows at all, because "returned but
+     * hidden by the browser" is the same as returned. The hidden internal
+     * identity is already excluded by SystemRoles::exclude() above; this narrows
+     * further by tier.
+     *
+     * Roles predating the role_class backfill have NULL, so the classes are
+     * matched by code as well — otherwise an un-migrated database would show an
+     * administrator nothing at all.
+     */
+    private function scopeToActor($query)
+    {
+        $actor = auth('api')->user();
+        $manageable = RoleHierarchy::MANAGEABLE[RoleHierarchy::actorClass($actor)] ?? [];
+
+        if ($manageable === []) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        if (in_array(RoleHierarchy::ADMIN, $manageable, true)) {
+            return $query;
+        }
+
+        // Not permitted to see the Admin tier.
+        return $query->where(function ($inner) {
+            $inner->where(function ($q) {
+                $q->whereNull('roles.role_class')
+                    ->orWhere('roles.role_class', '!=', RoleHierarchy::ADMIN);
+            })->whereNotIn('roles.code', ['tenant_administrator']);
+        });
     }
 
     private function serialize(Role $role): array

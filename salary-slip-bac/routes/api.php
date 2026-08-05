@@ -176,28 +176,28 @@ Route::middleware('jwt.auth')->group(function () {
         Route::get('manage', [V1RoleController::class, 'index'])
             ->middleware('permission:admin.role.read');
         Route::post('/', [V1RoleController::class, 'store'])
-            ->middleware('permission:admin.role.create');
+            ->middleware(['role.manager', 'permission:admin.role.create']);
         Route::get('{role}', [V1RoleController::class, 'show'])
             ->whereNumber('role')->middleware('permission:admin.role.read');
         Route::put('{role}', [V1RoleController::class, 'update'])
-            ->whereNumber('role')->middleware('permission:admin.role.update');
+            ->whereNumber('role')->middleware(['role.manager', 'permission:admin.role.update']);
         Route::delete('{role}', [V1RoleController::class, 'destroy'])
-            ->whereNumber('role')->middleware('permission:admin.role.delete');
+            ->whereNumber('role')->middleware(['role.manager', 'permission:admin.role.delete']);
         Route::post('{role}/archive', [V1RoleController::class, 'archive'])
-            ->whereNumber('role')->middleware('permission:admin.role.update');
+            ->whereNumber('role')->middleware(['role.manager', 'permission:admin.role.update']);
         Route::post('{role}/restore', [V1RoleController::class, 'restore'])
-            ->whereNumber('role')->middleware('permission:admin.role.update');
+            ->whereNumber('role')->middleware(['role.manager', 'permission:admin.role.update']);
         Route::post('{role}/activate', [V1RoleController::class, 'activate'])
-            ->whereNumber('role')->middleware('permission:admin.role.update');
+            ->whereNumber('role')->middleware(['role.manager', 'permission:admin.role.update']);
         Route::post('{role}/deactivate', [V1RoleController::class, 'deactivate'])
-            ->whereNumber('role')->middleware('permission:admin.role.update');
+            ->whereNumber('role')->middleware(['role.manager', 'permission:admin.role.update']);
 
         Route::get('{role}/matrix', [V1PermissionMatrixController::class, 'show'])
             ->whereNumber('role')->middleware('permission:admin.role.read');
         Route::put('{role}/matrix', [V1PermissionMatrixController::class, 'update'])
-            ->whereNumber('role')->middleware('permission:admin.role.update');
+            ->whereNumber('role')->middleware(['role.manager', 'permission:admin.role.update']);
         Route::post('{role}/clone', [V1PermissionMatrixController::class, 'clone'])
-            ->whereNumber('role')->middleware('permission:admin.role.clone');
+            ->whereNumber('role')->middleware(['role.manager', 'permission:admin.role.clone']);
     });
 
     Route::get('v1/user-lookup', [V1UserLookupController::class, 'index'])

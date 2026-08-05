@@ -16,6 +16,7 @@ class RoleManagementApiTest extends TestCase
     use RefreshDatabase;
 
     private User $admin;
+    private User $superAdmin;
 
     protected function setUp(): void
     {
@@ -31,6 +32,16 @@ class RoleManagementApiTest extends TestCase
         ]);
 
         $this->grantRole($this->admin, 'tenant_administrator');
+
+        // Role mutation is gated on being the super administrator, not on
+        // holding admin.role.*, so the positive cases need a role-0 account.
+        // $admin stays a tenant administrator on purpose: it is the subject of
+        // the denial tests below.
+        $this->superAdmin = User::create([
+            'name' => 'Root', 'email' => 'root@test.local', 'password' => 'secret1234',
+            'emp_code' => 'E-ROOT', 'role' => 0, 'company_code' => 'nidhi-impex', 'status' => 0,
+        ]);
+        $this->grantRole($this->superAdmin, 'tenant_administrator');
     }
 
     private function disableShadowMode(): void
@@ -55,6 +66,12 @@ class RoleManagementApiTest extends TestCase
     }
 
     private function asAdmin(): static
+    {
+        return $this->withToken(auth('api')->login($this->superAdmin));
+    }
+
+    /** A tenant administrator: every role permission, but not the super admin. */
+    private function asTenantAdmin(): static
     {
         return $this->withToken(auth('api')->login($this->admin));
     }
@@ -166,5 +183,136 @@ class RoleManagementApiTest extends TestCase
 
         $this->asAdmin()->deleteJson("/api/v1/roles/{$tenantAdmin->id}")->assertStatus(409);
         $this->assertDatabaseHas('roles', ['id' => $tenantAdmin->id]);
+    }
+
+    /*
+     * The point of the super-admin gate: a tenant administrator holds every
+     * admin.role.* permission and still cannot mutate a role. If these ever
+     * pass with 2xx, the permission check has been allowed to authorise its
+     * own escalation again.
+     */
+    /*
+     * The hierarchy: an administrator manages the tiers below it and nothing
+     * else. These pin both halves — what Admin may do, and the boundary it must
+     * not cross — because a rule that only tests the denial can be satisfied by
+     * denying everything.
+     */
+    public function test_an_administrator_may_manage_lower_roles(): void
+    {
+        $this->asTenantAdmin()
+            ->postJson('/api/v1/roles', ['name' => 'Floor Supervisor', 'roleType' => 'BUSINESS'])
+            ->assertStatus(201);
+
+        $custom = Role::query()->where('code', 'hr_manager')->firstOrFail();
+
+        $this->asTenantAdmin()
+            ->putJson("/api/v1/roles/{$custom->id}", ['name' => 'People Manager'])
+            ->assertStatus(200);
+    }
+
+    public function test_an_administrator_cannot_manage_the_admin_tier(): void
+    {
+        $admin = Role::query()->where('code', 'tenant_administrator')->firstOrFail();
+
+        foreach ([
+            ['putJson', "/api/v1/roles/{$admin->id}", ['name' => 'Renamed Admin']],
+            ['deleteJson', "/api/v1/roles/{$admin->id}", []],
+            ['postJson', "/api/v1/roles/{$admin->id}/archive", []],
+            ['postJson', "/api/v1/roles/{$admin->id}/deactivate", []],
+        ] as [$method, $url, $payload]) {
+            $this->asTenantAdmin()->{$method}($url, $payload)
+                ->assertStatus(403)
+                ->assertJson(['code' => 'ROLE_MANAGEMENT_FORBIDDEN']);
+        }
+
+        $this->assertDatabaseHas('roles', ['id' => $admin->id, 'name' => 'Admin']);
+    }
+
+    public function test_an_administrator_does_not_see_the_admin_tier_in_the_list(): void
+    {
+        $body = $this->asTenantAdmin()->getJson('/api/v1/roles/manage')->assertOk()->json();
+        $codes = collect($body['data'] ?? [])->pluck('code')->all();
+
+        $this->assertNotContains('tenant_administrator', $codes, 'Admin tier must not be listed');
+        $this->assertNotContains('super_administrator', $codes, 'hidden identity must not be listed');
+        $this->assertContains('hr_manager', $codes, 'lower tiers must still be listed');
+    }
+
+    public function test_the_super_admin_sees_the_admin_tier_but_never_itself(): void
+    {
+        $body = $this->asAdmin()->getJson('/api/v1/roles/manage')->assertOk()->json();
+        $codes = collect($body['data'] ?? [])->pluck('code')->all();
+
+        $this->assertContains('tenant_administrator', $codes);
+        $this->assertNotContains('super_administrator', $codes);
+    }
+
+    public function test_an_employee_is_refused_the_role_management_surface(): void
+    {
+        $employee = User::create([
+            'name' => 'Worker', 'email' => 'worker@test.local', 'password' => 'secret1234',
+            'emp_code' => 'E-WRK', 'role' => 3, 'company_code' => 'nidhi-impex', 'status' => 0,
+        ]);
+
+        $this->withToken(auth('api')->login($employee))
+            ->postJson('/api/v1/roles', ['name' => 'Nope', 'roleType' => 'BUSINESS'])
+            ->assertStatus(403)
+            ->assertJson(['code' => 'ROLE_MANAGEMENT_FORBIDDEN']);
+    }
+
+    public function test_a_role_merely_named_super_admin_grants_nothing(): void
+    {
+        // Identity is the code, never the display name. A role whose name
+        // reads as the super administrator must not confer its access.
+        // An exact duplicate is impossible anyway — roles_name_unique blocks
+        // it — so the near-miss name is the case actually worth pinning.
+        $impostor = Role::create([
+            'name' => 'Super Admin (Operations)', 'code' => 'not_really_super', 'role_type' => 'BUSINESS',
+            'status' => 'ACTIVE', 'is_active' => true, 'is_system' => false,
+        ]);
+        $user = User::create([
+            'name' => 'Impostor', 'email' => 'imp@test.local', 'password' => 'secret1234',
+            'emp_code' => 'E-IMP', 'role' => 1, 'company_code' => 'nidhi-impex', 'status' => 0,
+        ]);
+        $this->grantRole($user, 'not_really_super');
+
+        $this->withToken(auth('api')->login($user))
+            ->postJson('/api/v1/roles', ['name' => 'Nope', 'roleType' => 'BUSINESS'])
+            ->assertStatus(403);
+
+        $this->assertNotNull($impostor->id);
+    }
+
+    public function test_the_protected_role_cannot_be_deactivated_or_archived_even_by_the_super_admin(): void
+    {
+        $protected = Role::query()->where('code', 'super_administrator')->firstOrFail();
+
+        // Concealed from this surface entirely, so every write answers 404
+        // rather than confirming the record exists.
+        foreach (['archive', 'deactivate'] as $action) {
+            $status = $this->asAdmin()
+                ->postJson("/api/v1/roles/{$protected->id}/{$action}")
+                ->getStatusCode();
+
+            $this->assertContains($status, [404, 409], "{$action} must not succeed");
+        }
+
+        $this->assertDatabaseHas('roles', ['id' => $protected->id, 'status' => 'ACTIVE']);
+    }
+
+    public function test_deleting_an_assigned_role_reports_the_assigned_count(): void
+    {
+        $role = Role::create([
+            'name' => 'Busy', 'code' => 'busy_role', 'role_type' => 'BUSINESS',
+            'status' => 'ACTIVE', 'is_active' => true, 'is_system' => false,
+        ]);
+        $this->grantRole($this->admin, 'busy_role');
+
+        $this->asAdmin()->deleteJson("/api/v1/roles/{$role->id}")
+            ->assertStatus(409)
+            ->assertJson(['success' => false, 'code' => 'ROLE_HAS_ASSIGNED_USERS'])
+            ->assertJsonStructure(['assignedUserCount']);
+
+        $this->assertDatabaseHas('roles', ['id' => $role->id]);
     }
 }

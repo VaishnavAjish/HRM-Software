@@ -39,7 +39,14 @@ class ExitManagementController extends Controller
             'notes' => 'nullable|string',
         ]);
 
-        $noticeDays = $data['notice_period_days'] ?? self::DEFAULT_NOTICE_DAYS;
+        $hasOpenResignation = EmployeeResignation::where('user_id', $data['user_id'])
+            ->where('status', '!=', 'withdrawn')
+            ->exists();
+        if ($hasOpenResignation) {
+            return response()->json(['status' => false, 'message' => 'This employee already has a resignation on record'], 422);
+        }
+
+        $noticeDays = (int) ($data['notice_period_days'] ?? self::DEFAULT_NOTICE_DAYS);
         $lastWorkingDay = $data['last_working_day'] ?? now()->parse($data['resignation_date'])->addDays($noticeDays)->toDateString();
 
         $context = $this->defaultCompanyContext($request);

@@ -49,6 +49,13 @@ function isActive(row) {
   return row.status === 0 || row.status === "0";
 }
 
+// resignation_date is the employee's last working day (see ExitManagementController::store).
+// Once it has passed, they've actually left, so the badge should read "Resigned"
+// regardless of the raw status code, which HR may not have updated yet.
+function isResigned(row) {
+  return Boolean(row.resignation_date) && String(row.resignation_date).slice(0, 10) <= new Date().toISOString().slice(0, 10);
+}
+
 // Rows come from four different endpoints (trial, appointment, pending,
 // employee) but all of them carry the same raw `photo` field, so one
 // resolver/fallback works across every stage.
@@ -397,7 +404,7 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
       "Designation": r.designation || "",
       "Company": getCompanyConfig(r.company_code)?.label || r.company_code || "",
       "Unit": r.unit || "",
-      "Status": isActive(r) ? "Active" : r.status === 2 || r.status === "2" ? "Pending" : "Inactive",
+      "Status": isResigned(r) ? "Resigned" : isActive(r) ? "Active" : r.status === 2 || r.status === "2" ? "Pending" : "Inactive",
       "Joining Date": r.joining_date || "",
       "Trial Date": r.trial_date || "",
     }));
@@ -569,12 +576,14 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
                       <Badge variant={
                         row.__stage === "trial" ? "gray"
                         : row.__stage === "appointment" ? "blue"
+                        : isResigned(row) ? "red"
                         : active ? "green"
                         : (row.status === 2 || row.status === "2") ? "yellow"
                         : "red"
                       }>
                         {row.__stage === "trial" ? "Trial"
                         : row.__stage === "appointment" ? "Appointment"
+                        : isResigned(row) ? "Resigned"
                         : active ? "Active"
                         : (row.status === 2 || row.status === "2") ? "Pending"
                         : "Inactive"}
@@ -701,12 +710,14 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
                           <Badge variant={
                             row.__stage === "trial" ? "gray"
                             : row.__stage === "appointment" ? "blue"
+                            : isResigned(row) ? "red"
                             : active ? "green"
                             : (row.status === 2 || row.status === "2") ? "yellow"
                             : "red"
                           }>
                             {row.__stage === "trial" ? "Trial"
                             : row.__stage === "appointment" ? "Appointment"
+                            : isResigned(row) ? "Resigned"
                             : active ? "Active"
                             : (row.status === 2 || row.status === "2") ? "Pending"
                             : "Inactive"}

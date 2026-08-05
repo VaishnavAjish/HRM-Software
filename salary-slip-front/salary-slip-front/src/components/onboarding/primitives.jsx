@@ -106,6 +106,9 @@ export function Sparkline({ values = [], width = 104, height = 30, color = "rgb(
 }
 
 export function BarList({ items = [] }) {
+  if (items.length === 0) {
+    return <p className="text-[12.5px] text-gray-400 dark:text-gray-500">Nothing to show yet.</p>;
+  }
   const max = Math.max(...items.map((i) => i.value), 1);
   return (
     <div className="flex flex-col gap-2.5">

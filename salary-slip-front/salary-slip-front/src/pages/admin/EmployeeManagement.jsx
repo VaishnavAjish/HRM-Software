@@ -119,6 +119,10 @@ function mapEmployee(item) {
 
   const isActive = String(item.status) === "0";
   const isPending = String(item.status) === "2";
+  // resignation_date is the employee's last working day (see ExitManagementController::store).
+  // Once it has passed, they've actually left, so the badge should read "Resigned"
+  // regardless of the raw status code, which HR may not have updated yet.
+  const isResigned = Boolean(item.resignation_date) && String(item.resignation_date).slice(0, 10) <= new Date().toISOString().slice(0, 10);
   const roleValue = String(item.role);
   const loginRole =
     roleValue === "0"
@@ -141,7 +145,7 @@ function mapEmployee(item) {
     companyLabel: getCompanyConfig(item.company_code)?.label || "-",
     unit: item.unit ?? "",
     department: item.department ?? "",
-    status: isPending ? "Pending" : isActive ? "Active" : "Inactive",
+    status: isResigned ? "Resigned" : isPending ? "Pending" : isActive ? "Active" : "Inactive",
     loginRole,
     agentCompany: item.company_code === "nidhi-impex,silverstar" || item.company_code === "all" ? "" : item.company_code,
     avatar,

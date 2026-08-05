@@ -10,7 +10,8 @@ import { useAuth } from "../../../context/AuthContext";
 import { useCompany } from "../../../context/CompanyContext";
 import { hrApi, salaryApi } from "../../../utils/api";
 
-const inputClass = "w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500";
+const inputBase = "rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500";
+const inputClass = `w-full ${inputBase}`;
 
 const STATUS_VARIANT = {
   submitted: "yellow", approved: "blue", notice_period: "purple",
@@ -56,6 +57,14 @@ export default function ExitManagement() {
   }, [user, scopeKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { if (user?.accessToken) reload(); }, [statusFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A withdrawn resignation clears the way for a fresh one, but any other
+  // status (submitted through exited) means this person already has a
+  // resignation on record and shouldn't be selectable again.
+  const resignedUserIds = new Set(
+    resignations.filter((r) => r.status !== "withdrawn").map((r) => r.user_id ?? r.user?.id)
+  );
+  const selectableEmployees = employees.filter((e) => !resignedUserIds.has(e.id));
 
   const cards = {
     active: resignations.filter((r) => !TERMINAL_STATUSES.includes(r.status)).length,
@@ -129,7 +138,7 @@ export default function ExitManagement() {
       </div>
 
       <div className="flex items-center gap-2">
-        <select className={`${inputClass} w-auto`} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+        <select className={inputBase} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
           <option value="">All Statuses</option>
           {Object.entries(STATUS_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
@@ -197,7 +206,7 @@ export default function ExitManagement() {
           <Field label="Employee" required full>
             <select className={inputClass} value={form.user_id} onChange={(e) => setForm({ ...form, user_id: e.target.value })}>
               <option value="">— Select employee —</option>
-              {employees.map((e) => <option key={e.id} value={e.id}>{e.name} {e.emp_code ? `(${e.emp_code})` : ""}</option>)}
+              {selectableEmployees.map((e) => <option key={e.id} value={e.id}>{e.name} {e.emp_code ? `(${e.emp_code})` : ""}</option>)}
             </select>
           </Field>
           <Field label="Resignation Date" required><input type="date" className={inputClass} value={form.resignation_date} onChange={(e) => setForm({ ...form, resignation_date: e.target.value })} /></Field>
