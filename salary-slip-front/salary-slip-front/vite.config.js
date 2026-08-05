@@ -108,6 +108,7 @@ export default defineConfig(({ mode }) => {
       },
       VitePWA({
         registerType: "autoUpdate",
+        injectRegister: "script-defer",
 
         // assets to include in the precache manifest
         includeAssets: ["favicon.svg", "pwa-192.svg", "pwa-512.svg"],

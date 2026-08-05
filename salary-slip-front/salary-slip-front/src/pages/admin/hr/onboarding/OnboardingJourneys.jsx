@@ -1,6 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Download, Plus, Users } from "lucide-react";
 import Button from "../../../../components/ui/Button";
+import Badge from "../../../../components/ui/Badge";
 import { SkeletonTable } from "../../../../components/ui/Skeleton";
 import DataTable from "../../../../components/onboarding/DataTable";
 import SlideOver from "../../../../components/onboarding/SlideOver";
@@ -17,6 +18,9 @@ import {
 } from "../../../../components/onboarding/primitives";
 import { onboardingApi } from "../../../../utils/onboardingApi";
 import { useOnboardingResource } from "../../../../hooks/useOnboardingResource";
+import { useAuth } from "../../../../context/AuthContext";
+import { hrApi } from "../../../../utils/api";
+import { stageLabel, stageColor } from "../hiring/stageMeta";
 
 const STATUS = {
   PRE_BOARDING: ["Pre-boarding", "info"],
@@ -26,12 +30,36 @@ const STATUS = {
 };
 
 export default function OnboardingJourneys() {
+  const { user } = useAuth();
   const { data, source, loading } = useOnboardingResource(
     (token, type) => onboardingApi.getJourneys(token, type),
     [],
   );
   const [filter, setFilter] = useState("ALL");
   const [selected, setSelected] = useState(null);
+
+  // Also of interest here, even though they're not "journeys" yet — the
+  // wider pipeline outcome for anyone past the Interview stage: candidates
+  // who were Selected (heading into Offers) or ultimately Rejected. Uses the
+  // same stable /hr/candidates endpoint every other Hiring tab uses, not the
+  // Onboarding module's own (partly stubbed) backend.
+  const [selectedCandidates, setSelectedCandidates] = useState([]);
+  const [rejectedCandidates, setRejectedCandidates] = useState([]);
+  const [pipelineLoading, setPipelineLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user?.accessToken) return;
+    Promise.all([
+      hrApi.getCandidates(user.accessToken, user.tokenType, { per_page: 50, stage: "selected" }),
+      hrApi.getCandidates(user.accessToken, user.tokenType, { per_page: 50, stage: "rejected" }),
+    ])
+      .then(([selRes, rejRes]) => {
+        if (selRes.status) setSelectedCandidates(selRes.data?.data || selRes.data || []);
+        if (rejRes.status) setRejectedCandidates(rejRes.data?.data || rejRes.data || []);
+      })
+      .catch(() => {})
+      .finally(() => setPipelineLoading(false));
+  }, [user]);
 
   const journeys = useMemo(() => data || [], [data]);
 
@@ -166,6 +194,60 @@ export default function OnboardingJourneys() {
           />
         </SectionCard>
       )}
+
+      {/* Wider pipeline context — not "journeys" yet, but useful to see who
+          made it to Selected (heading into Offers) or was ultimately
+          Rejected, without leaving the Onboarding module. */}
+      <div className="grid grid-cols-12 gap-4">
+        <div className="col-span-12 lg:col-span-6">
+          <SectionCard title="Selected — awaiting offer / joining">
+            <div className="flex flex-col gap-2.5 p-4">
+              {pipelineLoading ? (
+                <p className="text-[12.5px] text-gray-400">Loading…</p>
+              ) : selectedCandidates.length === 0 ? (
+                <EmptyState icon={Users} title="No one currently Selected" description="Candidates marked Selected in Interviews show up here." />
+              ) : (
+                selectedCandidates.map((c) => (
+                  <div key={c.id} className="flex items-center gap-3">
+                    <Person name={c.name} meta={c.email || c.phone || ""} />
+                    <div className="ml-auto flex items-center gap-2">
+                      {c.requisition?.title && <small className="text-[11.5px] text-gray-400">{c.requisition.title}</small>}
+                      <span
+                        className="rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                        style={{ backgroundColor: `${stageColor(c.stage)}1a`, color: stageColor(c.stage) }}
+                      >
+                        {stageLabel(c.stage)}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </SectionCard>
+        </div>
+
+        <div className="col-span-12 lg:col-span-6">
+          <SectionCard title="Rejected">
+            <div className="flex flex-col gap-2.5 p-4">
+              {pipelineLoading ? (
+                <p className="text-[12.5px] text-gray-400">Loading…</p>
+              ) : rejectedCandidates.length === 0 ? (
+                <EmptyState icon={Users} title="No rejected candidates" description="Anyone rejected at any stage shows up here for the record." />
+              ) : (
+                rejectedCandidates.map((c) => (
+                  <div key={c.id} className="flex items-center gap-3">
+                    <Person name={c.name} meta={c.email || c.phone || ""} />
+                    <div className="ml-auto flex items-center gap-2">
+                      {c.requisition?.title && <small className="text-[11.5px] text-gray-400">{c.requisition.title}</small>}
+                      <Badge variant="red">Rejected</Badge>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </SectionCard>
+        </div>
+      </div>
 
       <SlideOver
         open={Boolean(selected)}

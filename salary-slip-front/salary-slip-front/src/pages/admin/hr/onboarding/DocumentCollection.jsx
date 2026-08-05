@@ -138,11 +138,6 @@ export default function DocumentCollection() {
       <PageHeader
         title="Document collection"
         subtitle={`${count("PENDING")} awaiting review · ${count("REJECTED")} rejected · ${count("EXPIRING")} expiring soon`}
-        actions={
-          <Button size="sm" icon={<Upload size={15} />}>
-            Upload
-          </Button>
-        }
       />
 
       {source === "preview" ? <PreviewBanner /> : null}
