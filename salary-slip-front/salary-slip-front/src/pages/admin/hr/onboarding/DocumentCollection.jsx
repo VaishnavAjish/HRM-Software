@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
-import { Camera, FileText, Trash2, Upload } from "lucide-react";
+import { Camera, FileText, ThumbsDown, ThumbsUp, Trash2, Upload } from "lucide-react";
 import Button from "../../../../components/ui/Button";
 import { SkeletonTable } from "../../../../components/ui/Skeleton";
 import SlideOver from "../../../../components/onboarding/SlideOver";
@@ -102,6 +102,15 @@ export default function DocumentCollection() {
       if (res.status) { toast.success("Document deleted"); loadUploadedDocs(selectedEmployeeId); }
     } catch (err) {
       toast.error(err.message || "Failed to delete");
+    }
+  };
+
+  const reviewUploadedDoc = async (id, decision) => {
+    try {
+      const res = await hrApi.reviewCandidateDocument(id, decision, undefined, user.accessToken, user.tokenType);
+      if (res.status) { toast.success(decision === "approve" ? "Document verified" : "Document rejected"); loadUploadedDocs(selectedEmployeeId); }
+    } catch (err) {
+      toast.error(err.message || "Failed to update document status");
     }
   };
 
@@ -282,6 +291,19 @@ export default function DocumentCollection() {
                           {d.original_filename} · {d.uploaded_by?.name || "—"}
                         </small>
                       </div>
+                      <StatusPill tone={d.status === "VERIFIED" ? "ok" : d.status === "REJECTED" ? "bad" : "warn"}>
+                        {DOC_STATUS[d.status]?.[0] || d.status}
+                      </StatusPill>
+                      {d.status === "PENDING" && (
+                        <>
+                          <button title="Verify" onClick={() => reviewUploadedDoc(d.id, "approve")} className="p-1.5 rounded-lg text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20">
+                            <ThumbsUp size={14} />
+                          </button>
+                          <button title="Reject" onClick={() => reviewUploadedDoc(d.id, "reject")} className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20">
+                            <ThumbsDown size={14} />
+                          </button>
+                        </>
+                      )}
                       <button title="Delete" onClick={() => removeUploadedDoc(d.id)} className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20">
                         <Trash2 size={14} />
                       </button>

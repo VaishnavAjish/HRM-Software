@@ -19,7 +19,6 @@ import {
 } from "../../../../components/onboarding/primitives";
 import { onboardingApi } from "../../../../utils/onboardingApi";
 import { useOnboardingResource } from "../../../../hooks/useOnboardingResource";
-import { JOURNEYS } from "../../../../utils/onboardingMocks";
 
 const STATUS = {
   PRE_BOARDING: ["Pre-boarding", "info"],
@@ -33,15 +32,22 @@ export default function OnboardingDashboard() {
     (token, type) => onboardingApi.getDashboard(token, type),
     [],
   );
+  // There's no real policy-acceptance system behind this yet — this always
+  // falls back to preview/mock data (no live endpoint exists), so it's
+  // flagged separately rather than silently shown as if it were real.
+  const { data: policies, source: policiesSource } = useOnboardingResource(
+    (token, type) => onboardingApi.getPolicies(token, type),
+    [],
+  );
   const [detail, setDetail] = useState(null);
 
-  const today = JOURNEYS.filter((j) => j.joiningDate === "04 Aug" || j.joiningDate === "05 Aug");
+  const today = data?.todayJoining || [];
 
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
         title="Onboarding overview"
-        subtitle="42 active journeys across 6 departments · week of 04 August 2026"
+        subtitle={data ? `${data.kpis?.find((k) => k.key === "pending_onboarding")?.value ?? 0} pending onboarding across ${data.byDepartment?.length || 0} department${data.byDepartment?.length === 1 ? "" : "s"}` : ""}
         actions={
           <>
             <Button variant="secondary" size="sm" icon={<Filter size={15} />}>
@@ -110,6 +116,11 @@ export default function OnboardingDashboard() {
 
             <div className="col-span-12 lg:col-span-7">
               <SectionCard title="Today's joining">
+                {today.length === 0 ? (
+                  <div className="p-4">
+                    <p className="text-[12.5px] text-gray-400 dark:text-gray-500">No one has an accepted offer joining today.</p>
+                  </div>
+                ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-[13px]">
                     <thead>
@@ -151,6 +162,7 @@ export default function OnboardingDashboard() {
                     </tbody>
                   </table>
                 </div>
+                )}
               </SectionCard>
             </div>
 
@@ -182,22 +194,23 @@ export default function OnboardingDashboard() {
               <SectionCard
                 title="Policy acceptance"
                 action={
-                  <Link
-                    to="/admin/hr/onboarding/policies"
-                    className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
-                  >
-                    All policies
-                  </Link>
+                  <div className="flex items-center gap-2">
+                    {policiesSource === "preview" && (
+                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                        Preview data
+                      </span>
+                    )}
+                    <Link
+                      to="/admin/hr/onboarding/policies"
+                      className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+                    >
+                      All policies
+                    </Link>
+                  </div>
                 }
               >
                 <div className="flex flex-col gap-3 p-4">
-                  {[
-                    { title: "Employee Handbook", version: "v4.2", accepted: 38, total: 45 },
-                    { title: "Code of Conduct", version: "v2.1", accepted: 41, total: 45 },
-                    { title: "Information Security", version: "v3.0", accepted: 33, total: 45 },
-                    { title: "POSH Policy", version: "v2.0", accepted: 44, total: 45 },
-                    { title: "Data Privacy & DPDP", version: "v1.3", accepted: 29, total: 45 },
-                  ].map((p) => (
+                  {(policies || []).slice(0, 5).map((p) => (
                     <div key={p.title}>
                       <div className="mb-1 flex items-baseline gap-2">
                         <b className="text-[12.5px] font-semibold">{p.title}</b>

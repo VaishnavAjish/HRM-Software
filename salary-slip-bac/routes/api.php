@@ -492,6 +492,7 @@ Route::middleware('jwt.auth')->group(function () {
                 // the Onboarding module generates when none exist.
                 Route::get('documents/get/{id}', [CandidateDocumentController::class, 'index'])->middleware('permission:hr.candidate.read');
                 Route::post('documents/store/{id}', [CandidateDocumentController::class, 'store'])->middleware('permission:hr.candidate.update');
+                Route::post('documents/review/{id}/{decision}', [CandidateDocumentController::class, 'review'])->middleware('permission:hr.candidate.update');
                 Route::delete('documents/delete/{id}', [CandidateDocumentController::class, 'destroy'])->middleware('permission:hr.candidate.update');
             });
 

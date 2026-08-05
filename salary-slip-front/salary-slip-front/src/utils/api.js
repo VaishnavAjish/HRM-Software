@@ -1961,4 +1961,7 @@ export const hrApi = {
   deleteCandidateDocument(id, accessToken, tokenType = "Bearer") {
     return apiRequest(`/hr/candidates/documents/delete/${id}`, { method: "DELETE", headers: hrAuthHeaders(accessToken, tokenType) });
   },
+  reviewCandidateDocument(id, decision, remarks, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/candidates/documents/review/${id}/${decision}`, { method: "POST", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify({ remarks }) });
+  },
 };
