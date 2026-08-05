@@ -14,8 +14,12 @@ return new class extends Migration
             $table->string('document_type');
             $table->string('original_filename');
             $table->string('file_path');
+            $table->string('status')->default('PENDING'); // PENDING, VERIFIED, REJECTED
             $table->foreignId('uploaded_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->foreignId('reviewed_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->timestamp('reviewed_at')->nullable();
             $table->text('notes')->nullable();
+            $table->text('review_notes')->nullable();
             $table->timestamps();
 
             $table->index('candidate_id');

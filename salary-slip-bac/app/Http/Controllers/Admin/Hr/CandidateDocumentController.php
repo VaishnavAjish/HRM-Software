@@ -23,7 +23,7 @@ class CandidateDocumentController extends Controller
             return response()->json(['status' => false, 'message' => 'Candidate not found'], 404);
         }
 
-        $documents = CandidateDocument::with('uploadedBy')
+        $documents = CandidateDocument::with(['uploadedBy', 'reviewedBy'])
             ->where('candidate_id', $candidateId)
             ->orderByDesc('id')
             ->get();
@@ -51,11 +51,36 @@ class CandidateDocumentController extends Controller
             'document_type' => $data['document_type'],
             'original_filename' => $request->file('file')->getClientOriginalName(),
             'file_path' => $path,
+            'status' => 'PENDING',
             'uploaded_by' => auth('api')->id(),
             'notes' => $data['notes'] ?? null,
         ]);
 
         return response()->json(['status' => true, 'message' => 'Document uploaded', 'data' => $document], 201);
+    }
+
+    /** Real verify/reject — replaces the fabricated-document review flow the
+     *  Onboarding module used to run against auto-generated stub records. */
+    public function review(Request $request, $id, $decision)
+    {
+        $document = CandidateDocument::find($id);
+        if (!$document) {
+            return response()->json(['status' => false, 'message' => 'Document not found'], 404);
+        }
+        if (!in_array($decision, ['approve', 'reject'], true)) {
+            return response()->json(['status' => false, 'message' => 'Invalid decision'], 422);
+        }
+
+        $data = $request->validate(['remarks' => 'nullable|string']);
+
+        $document->update([
+            'status' => $decision === 'approve' ? 'VERIFIED' : 'REJECTED',
+            'reviewed_by' => auth('api')->id(),
+            'reviewed_at' => now(),
+            'review_notes' => $data['remarks'] ?? null,
+        ]);
+
+        return response()->json(['status' => true, 'message' => 'Document ' . ($decision === 'approve' ? 'verified' : 'rejected'), 'data' => $document]);
     }
 
     public function destroy($id)

@@ -8,8 +8,16 @@ use Illuminate\Support\Facades\Storage;
 class CandidateDocument extends Model
 {
     protected $fillable = [
-        'candidate_id', 'document_type', 'original_filename', 'file_path', 'uploaded_by', 'notes',
+        'candidate_id', 'document_type', 'original_filename', 'file_path', 'status',
+        'uploaded_by', 'reviewed_by', 'reviewed_at', 'notes', 'review_notes',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'reviewed_at' => 'datetime',
+        ];
+    }
 
     protected $appends = ['url'];
 
@@ -21,6 +29,11 @@ class CandidateDocument extends Model
     public function uploadedBy()
     {
         return $this->belongsTo(User::class, 'uploaded_by');
+    }
+
+    public function reviewedBy()
+    {
+        return $this->belongsTo(User::class, 'reviewed_by');
     }
 
     public function getUrlAttribute(): ?string
