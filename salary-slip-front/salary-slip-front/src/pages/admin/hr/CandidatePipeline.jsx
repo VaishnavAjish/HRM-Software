@@ -370,10 +370,10 @@ export default function CandidatePipeline({ people = [] }) {
         priorityOptions={[{ value: "low", label: "Low" }, { value: "medium", label: "Medium" }, { value: "high", label: "High" }]}
         bulkBar={view !== "board" ? (
           <>
-            {/* Includes "HR Interview" as the one allowed hand-off target — bulk-transferring shortlisted candidates to the Interview tab. */}
+            {/* Includes "Interview" as the one allowed hand-off target — bulk-transferring shortlisted candidates to the Interview tab. */}
             <select className="text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1" value="" onChange={(e) => bulkMoveStage(e.target.value)}>
               <option value="">Move to stage…</option>
-              {ALL_COLUMNS.filter((c) => CANDIDATES_TAB_STAGES.includes(c.key) || c.key === "hr_interview").map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
+              {ALL_COLUMNS.filter((c) => CANDIDATES_TAB_STAGES.includes(c.key) || c.key === "interview").map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
             </select>
             <button onClick={() => bulkExportSelected("excel")} className="text-xs font-semibold text-gray-600 dark:text-gray-300 hover:underline">Export Excel</button>
             <button onClick={() => bulkExportSelected("csv")} className="text-xs font-semibold text-gray-600 dark:text-gray-300 hover:underline">Export CSV</button>

@@ -21,8 +21,7 @@ import { downloadCSV } from "../../../utils/exportUtils";
 
 const STAGE_LABELS = {
   applied: "Applied", screening: "Screening", shortlisted: "Shortlisted",
-  hr_interview: "HR Interview", technical_interview: "Technical Interview",
-  final_interview: "Final Interview", selected: "Selected", offer_sent: "Offer Sent",
+  interview: "Interview", selected: "Selected", offer_sent: "Offer Sent",
   offer_accepted: "Offer Accepted", rejected: "Rejected", on_hold: "On Hold",
 };
 

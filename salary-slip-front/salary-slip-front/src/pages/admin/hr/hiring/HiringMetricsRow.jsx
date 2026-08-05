@@ -8,8 +8,7 @@ import { hrApi } from "../../../../utils/api";
 // CandidatePipeline.jsx without importing it, so this row has no dependency
 // on the Candidates tab's internals.
 const ACTIVE_CANDIDATE_STAGES = [
-  "applied", "screening", "shortlisted", "hr_interview",
-  "technical_interview", "final_interview", "selected", "offer_sent", "offer_accepted",
+  "applied", "screening", "shortlisted", "interview", "selected", "offer_sent", "offer_accepted",
 ];
 const OFFERS_PENDING_STATUSES = "draft,pending_approval,approved,released";
 

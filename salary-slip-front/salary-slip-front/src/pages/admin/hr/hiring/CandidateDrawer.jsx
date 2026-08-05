@@ -10,7 +10,7 @@ const PRIORITY_VARIANT = { high: "red", medium: "yellow", low: "gray" };
 
 /** Which tab a candidate belongs to once they've moved past this drawer's owning tab — only used for the "manage them elsewhere" banner. */
 function ownerTabLabel(stage) {
-  if (["hr_interview", "technical_interview", "final_interview"].includes(stage)) return "Interviews";
+  if (stage === "interview") return "Interviews";
   if (["selected", "offer_sent"].includes(stage)) return "Offers";
   if (stage === "offer_accepted") return "Onboarding";
   return null;

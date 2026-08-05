@@ -440,12 +440,11 @@ class UserController extends Controller
             });
         }
 
-        $total = (clone $query)->count();
-        $activeCount = (clone $query)->where('status', 0)->count();
-        $inactiveCount = $total - $activeCount;
-
         $perPage = $request->limit ?? 15;
         $employees = $query->orderBy('id', 'desc')->paginate($perPage);
+        $total = $employees->total();
+        $activeCount = $total;
+        $inactiveCount = 0;
 
         // The employee table shows the complete Aadhaar, so the paginated rows
         // carry it. Same reasoning as the appointment list: the query above is

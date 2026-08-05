@@ -13,8 +13,8 @@ class CandidateController extends Controller
     use ScopesCompany;
 
     private const STAGES = [
-        'applied', 'screening', 'shortlisted', 'hr_interview', 'technical_interview',
-        'final_interview', 'selected', 'offer_sent', 'offer_accepted', 'rejected', 'on_hold',
+        'applied', 'screening', 'shortlisted', 'interview',
+        'selected', 'offer_sent', 'offer_accepted', 'rejected', 'on_hold',
     ];
 
     public function index(Request $request)

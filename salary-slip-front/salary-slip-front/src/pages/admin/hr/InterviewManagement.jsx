@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import {
   CalendarClock, Video, MapPin, Phone, XCircle, PauseCircle, MessageSquareText,
-  RotateCcw, ArrowRight, CalendarPlus,
+  RotateCcw, CalendarPlus, ThumbsUp, ThumbsDown,
 } from "lucide-react";
 import Badge from "../../../components/ui/Badge";
 import Button from "../../../components/ui/Button";
@@ -10,7 +10,7 @@ import Modal from "../../../components/ui/Modal";
 import { SkeletonTable } from "../../../components/ui/Skeleton";
 import { useAuth } from "../../../context/AuthContext";
 import { hrApi } from "../../../utils/api";
-import { stageLabel, stageColor, nextMainStage } from "./hiring/stageMeta";
+import { stageLabel, stageColor } from "./hiring/stageMeta";
 
 const inputClass = "w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500";
 
@@ -19,21 +19,18 @@ const MODE_ICON = { video: Video, onsite: MapPin, phone: Phone };
 const PRIORITY_DOT = { high: "bg-red-500", medium: "bg-yellow-400", low: "bg-gray-400" };
 
 /** Everything this tab owns: a candidate lands here once Shortlisted hands
- *  them off, and leaves once they're advanced to Selected (Offer tab) or
- *  rejected/held. Matches STAGE_GROUPS["Interviews"] in stageMeta.js. */
-const INTERVIEW_STAGES = ["hr_interview", "technical_interview", "final_interview"];
-const ROUND_NAME_BY_STAGE = { hr_interview: "HR", technical_interview: "Technical", final_interview: "Final" };
+ *  them off, and leaves once they're proceeded to Selected (Offer tab) or
+ *  rejected/held. Matches STAGE_GROUPS["Interview"] in stageMeta.js. There's
+ *  a single "interview" stage — no separate HR/Technical/Final rounds. */
+const INTERVIEW_STAGES = ["interview"];
 
 const EMPTY_FEEDBACK = { rating: 4, recommendation: "yes", strengths: "", concerns: "", notes: "" };
 const EMPTY_SCHEDULE = { scheduled_at: "", duration_minutes: 30, mode: "video", meeting_link: "", notes: "" };
 
-/** The interview that belongs to a candidate's *current* round — not any
- *  earlier round they already finished on the way here. */
+/** The candidate's latest interview — there's only one round type now, so
+ *  no round-name matching is needed, just the most recent one on file. */
 function currentRoundInterview(candidate, interviews) {
-  const roundName = ROUND_NAME_BY_STAGE[candidate.stage];
-  const matches = interviews.filter(
-    (iv) => String(iv.candidate_id) === String(candidate.id) && (iv.round_name || "").toLowerCase() === (roundName || "").toLowerCase()
-  );
+  const matches = interviews.filter((iv) => String(iv.candidate_id) === String(candidate.id));
   return matches.reduce((latest, iv) => (!latest || iv.id > latest.id ? iv : latest), null);
 }
 
@@ -42,7 +39,6 @@ export default function InterviewManagement() {
   const [interviews, setInterviews] = useState([]);
   const [roster, setRoster] = useState([]);
   const [rosterLoading, setRosterLoading] = useState(true);
-  const [advancingId, setAdvancingId] = useState(null);
   const [feedbackTarget, setFeedbackTarget] = useState(null);
   const [feedback, setFeedback] = useState(EMPTY_FEEDBACK);
   const [rescheduleTarget, setRescheduleTarget] = useState(null);
@@ -50,6 +46,9 @@ export default function InterviewManagement() {
   const [scheduleTarget, setScheduleTarget] = useState(null);
   const [scheduleForm, setScheduleForm] = useState(EMPTY_SCHEDULE);
   const [scheduling, setScheduling] = useState(false);
+  const [proceedTarget, setProceedTarget] = useState(null);
+  const [proceedNotes, setProceedNotes] = useState("");
+  const [proceeding, setProceeding] = useState(false);
 
   const loadInterviews = () =>
     hrApi.getInterviews(user?.accessToken, user?.tokenType, { per_page: 100 })
@@ -73,17 +72,25 @@ export default function InterviewManagement() {
     loadRoster();
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const advanceCandidate = async (candidate, toStage) => {
-    setAdvancingId(candidate.id);
+  const openProceed = (candidate) => {
+    setProceedTarget(candidate);
+    setProceedNotes("");
+  };
+
+  /** One decision point instead of separate Advance/Hold/Reject buttons —
+   *  pick the outcome and write down why, in the same step. */
+  const submitProceed = async (toStage) => {
+    setProceeding(true);
     try {
-      const res = await hrApi.moveCandidateStage(candidate.id, { to_stage: toStage }, user?.accessToken, user?.tokenType);
+      const res = await hrApi.moveCandidateStage(proceedTarget.id, { to_stage: toStage, notes: proceedNotes || undefined }, user?.accessToken, user?.tokenType);
       if (!res.status) throw new Error(res.message);
-      toast.success(toStage === "rejected" || toStage === "on_hold" ? `Marked ${stageLabel(toStage)}` : `Moved to ${stageLabel(toStage)}`);
+      toast.success(toStage === "selected" ? "Candidate selected" : `Marked ${stageLabel(toStage)}`);
+      setProceedTarget(null);
       loadRoster();
     } catch (err) {
       toast.error(err.message || "Failed to update stage");
     } finally {
-      setAdvancingId(null);
+      setProceeding(false);
     }
   };
 
@@ -103,7 +110,7 @@ export default function InterviewManagement() {
         {
           candidate_id: scheduleTarget.id,
           requisition_id: scheduleTarget.requisition_id || null,
-          round_name: ROUND_NAME_BY_STAGE[scheduleTarget.stage] || "HR",
+          round_name: "Interview",
           ...scheduleForm,
         },
         user?.accessToken, user?.tokenType

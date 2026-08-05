@@ -1,5 +1,5 @@
 import {
-  UserPlus, Search, Star, Users, Code2, Trophy, Award, Send, PartyPopper, XCircle, PauseCircle,
+  UserPlus, Search, Star, Users, Award, Send, PartyPopper, XCircle, PauseCircle,
 } from "lucide-react";
 
 /**
@@ -11,15 +11,13 @@ import {
 
 /** Ordered main-flow stages (excludes terminal ones) */
 export const MAIN_STAGES = [
-  { key: "applied",              label: "Applied",              color: "#6366f1", icon: UserPlus },
-  { key: "screening",            label: "Screening",            color: "#8b5cf6", icon: Search },
-  { key: "shortlisted",          label: "Shortlisted",          color: "#0ea5e9", icon: Star },
-  { key: "hr_interview",         label: "HR Interview",         color: "#06b6d4", icon: Users },
-  { key: "technical_interview",  label: "Tech Interview",       color: "#10b981", icon: Code2 },
-  { key: "final_interview",      label: "Final Interview",      color: "#f59e0b", icon: Trophy },
-  { key: "selected",             label: "Selected",             color: "#22c55e", icon: Award },
-  { key: "offer_sent",           label: "Offer Sent",           color: "#84cc16", icon: Send },
-  { key: "offer_accepted",       label: "Offer Accepted",       color: "#16a34a", icon: PartyPopper },
+  { key: "applied",       label: "Applied",       color: "#6366f1", icon: UserPlus },
+  { key: "screening",     label: "Screening",     color: "#8b5cf6", icon: Search },
+  { key: "shortlisted",   label: "Shortlisted",   color: "#0ea5e9", icon: Star },
+  { key: "interview",     label: "Interview",     color: "#06b6d4", icon: Users },
+  { key: "selected",      label: "Selected",      color: "#22c55e", icon: Award },
+  { key: "offer_sent",    label: "Offer Sent",    color: "#84cc16", icon: Send },
+  { key: "offer_accepted", label: "Offer Accepted", color: "#16a34a", icon: PartyPopper },
 ];
 
 export const TERMINAL_STAGES = [
@@ -34,7 +32,7 @@ export const STAGE_INDEX = Object.fromEntries(MAIN_STAGES.map((s, i) => [s.key, 
 /** Visual clusters for the Candidates tab's Board view. */
 export const STAGE_GROUPS = [
   { label: "Sourcing",        keys: ["applied", "screening", "shortlisted"] },
-  { label: "Interviews",      keys: ["hr_interview", "technical_interview", "final_interview"] },
+  { label: "Interview",       keys: ["interview"] },
   { label: "Offer & Closing", keys: ["selected", "offer_sent", "offer_accepted"] },
   { label: "Terminal",        keys: ["rejected", "on_hold"] },
 ];
@@ -48,9 +46,9 @@ export const STAGE_GROUPS = [
  */
 export const TAB_STAGE_KEYS = {
   candidates: ["applied", "screening", "shortlisted", "rejected", "on_hold"],
-  interviews: ["hr_interview", "technical_interview", "final_interview", "rejected", "on_hold"],
+  interviews: ["interview", "rejected", "on_hold"],
   offers:     ["selected", "offer_sent", "offer_accepted", "rejected", "on_hold"],
-  onboarding: ["offer_accepted"],
+  onboarding: ["offer_accepted", "selected", "rejected"],
 };
 
 export function stageLabel(key) {
