@@ -165,8 +165,12 @@ class AppointmentEndpointAuthTest extends TestCase
         $response = $this->withToken(auth('api')->login($agent))->getJson('/api/appointment');
 
         $response->assertOk();
-        $rows = $response->json('data') ?? $response->json();
+        // data.appointments, not data: `data` is the envelope, so counting it
+        // counted keys rather than rows and passed no matter how many
+        // candidates the agent could actually see.
+        $rows = $response->json('data.appointments');
         $this->assertCount(1, $rows, 'an agent saw another agent\'s candidate');
+        $this->assertSame(1, $response->json('data.meta.total'));
     }
 
     public function test_an_employee_may_not_read_the_appointment_list(): void

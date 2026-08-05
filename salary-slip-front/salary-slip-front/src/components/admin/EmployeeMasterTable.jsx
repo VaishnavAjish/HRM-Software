@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "react-hot-toast";
-import { saveJsonToXlsx } from "../../utils/excel";
+import * as XLSX from "xlsx";
 import {
   Search, Eye, Pencil, Trash2, Lock, Unlock, X,
   Users, Loader2, Filter, RotateCcw, Download, CloudUpload,
@@ -309,7 +309,11 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
   // pending/employee gets a dedicated (simpler) edit form.
   const openView = (row) => {
     if (row.__stage === "trial") setTrialModalRow(row);
-    else if (row.__stage === "appointment") setAppointmentModalRow(row);
+    // A "pending" row is an already-approved appointment awaiting emp_code
+    // assignment — same underlying record, so the original Appointment Form
+    // is still the useful thing to show here, not the bare-bones employee
+    // fields (which are mostly unset until the record is fully onboarded).
+    else if (row.__stage === "appointment" || row.__stage === "pending") setAppointmentModalRow(row);
     else setViewRow(row);
   };
 
@@ -397,7 +401,10 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
       "Joining Date": r.joining_date || "",
       "Trial Date": r.trial_date || "",
     }));
-    saveJsonToXlsx(`employee_master_${new Date().toISOString().slice(0, 10)}.xlsx`, "Employee Master", sheetRows);
+    const ws = XLSX.utils.json_to_sheet(sheetRows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Employee Master");
+    XLSX.writeFile(wb, `employee_master_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
   const cellInputCls =

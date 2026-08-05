@@ -1644,8 +1644,18 @@ export const authApi = {
     });
   },
 
-  getAppointmentForms(accessToken, tokenType = "Bearer", companyId) {
+  getAppointmentForms(accessToken, tokenType = "Bearer", companyId, options = {}) {
     const params = new URLSearchParams(buildCompanyQuery(companyId));
+    Object.entries({
+      page: options.page,
+      per_page: options.perPage,
+      search: options.search,
+      status: options.status,
+    }).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== "" && value !== "All") {
+        params.append(key, value);
+      }
+    });
     const query = params.toString() ? `?${params}` : "";
 
     return apiRequest(`/appointment${query}`, {

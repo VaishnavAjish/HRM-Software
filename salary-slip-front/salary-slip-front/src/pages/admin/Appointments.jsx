@@ -49,7 +49,7 @@ import {
   clearAppointmentRouteState,
 } from "../auth/appointmentRouteState";
 import { getCompanyUnits } from "../../config/companyConfig";
-import { escapeHtml, safeImageSrc } from "../../utils/html";
+import { escapeHtml } from "../../utils/html";
 
 const inputCls =
   "w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-brand-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white";
@@ -1010,7 +1010,19 @@ export default function Appointments() {
     return () => window.removeEventListener("popstate", restoreFromUrl);
   }, []);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(100);
+  const [totalRows, setTotalRows] = useState(null);
   const statusFilter = "All";
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedSearch(search.trim());
+      setPage(1);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [search]);
   const [monthFilter, setMonthFilter] = useState("All"); // "1"-"12"
   const [yearFilter, setYearFilter] = useState("All"); // "YYYY"
   const [departmentFilter, setDepartmentFilter] = useState("All");
@@ -1045,8 +1057,10 @@ export default function Appointments() {
         user?.accessToken,
         user?.tokenType,
         companyScope,
+        { page, perPage, search: debouncedSearch, status: statusFilter },
       );
       setAppointments(getAppointmentRows(res));
+      setTotalRows(res?.data?.meta?.total ?? null);
       setLoadError(null);
     } catch (error) {
       setAppointments([]);
@@ -1068,7 +1082,7 @@ export default function Appointments() {
     }, 0);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, scopeKey]);
+  }, [user, scopeKey, page, perPage, debouncedSearch, statusFilter]);
 
   const departmentOptions = useMemo(() => {
     const set = new Set();
@@ -1092,25 +1106,14 @@ export default function Appointments() {
   const isAgentUser = user?.type === "agent" || user?.role === "agent" || Number(user?.role) === 4;
 
   const filtered = useMemo(() => {
-    const query = search.trim().toLowerCase();
     return appointments.filter((item) => {
       // Exclude approved forms from table view ONLY for admin users (agents see all their submitted forms)
       if (!isAgentUser && item.status === "Approved") return false;
-      const matchesSearch =
-        !query ||
-        [
-          item.fullName,
-          item.empCode,
-          item.department,
-          item.empMobile,
-          item.refMobile,
-          item.panNo,
-          item.aadharNo,
-          item.unitName,
-        ]
-          .join(" ")
-          .toLowerCase()
-          .includes(query);
+      // Search now runs in SQL. Re-applying it here would filter the returned
+      // page a second time against different column names — a row the server
+      // matched on mobile_number would vanish because the client compares
+      // empMobile — so the page would look emptier than the result count says.
+      const matchesSearch = true;
       const matchesStatus =
         statusFilter === "All" ||
         item.status.toLowerCase() === statusFilter.toLowerCase();
@@ -1132,7 +1135,7 @@ export default function Appointments() {
         matchesDepartment
       );
     });
-  }, [appointments, search, statusFilter, monthFilter, yearFilter, departmentFilter, isAgentUser]);
+  }, [appointments, statusFilter, monthFilter, yearFilter, departmentFilter, isAgentUser]);
 
   const counts = useMemo(
     () => ({
@@ -2258,6 +2261,54 @@ export default function Appointments() {
               onClose={closeHeaderMenu}
               onToggleFrozen={toggleHeaderFrozen}
             />
+
+            {totalRows !== null && (
+              <div className="flex flex-wrap items-center gap-3 border-t border-gray-200 px-4 py-3 text-sm dark:border-gray-700">
+                <span className="text-gray-500 dark:text-gray-400">
+                  {totalRows === 0
+                    ? "No records"
+                    : `${(page - 1) * perPage + 1}–${Math.min(page * perPage, totalRows)} of ${totalRows.toLocaleString("en-IN")}`}
+                </span>
+
+                <label className="ml-auto flex items-center gap-2 text-gray-500 dark:text-gray-400">
+                  Rows
+                  <select
+                    value={perPage}
+                    onChange={(e) => {
+                      setPerPage(Number(e.target.value));
+                      setPage(1);
+                    }}
+                    className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-sm dark:border-gray-600 dark:bg-gray-700"
+                  >
+                    {[50, 100, 250, 500].map((n) => (
+                      <option key={n} value={n}>{n}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={page <= 1 || loading}
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  >
+                    Previous
+                  </Button>
+                  <span className="px-1 text-gray-500 dark:text-gray-400">
+                    Page {page} of {Math.max(1, Math.ceil(totalRows / perPage))}
+                  </span>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={page >= Math.ceil(totalRows / perPage) || loading}
+                    onClick={() => setPage((p) => p + 1)}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
