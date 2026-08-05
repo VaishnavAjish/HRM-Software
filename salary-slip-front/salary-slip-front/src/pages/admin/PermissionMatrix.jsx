@@ -8,6 +8,10 @@ import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
 import { SkeletonTable } from "../../components/ui/Skeleton";
 import MatrixGrid from "../../components/authorization/MatrixGrid";
+import PermissionTree from "../../components/authorization/PermissionTree";
+import {
+  TYPE_LABEL, collectKeys, stateOf,
+} from "../../components/authorization/permissionTreeUtils";
 import PermissionStateIcon, {
   PermissionStateLegend,
 } from "../../components/authorization/PermissionStateIcon";
@@ -34,6 +38,7 @@ export default function PermissionMatrix() {
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState(new Set());
   const [selectedCell, setSelectedCell] = useState(null);
+  const [selectedNode, setSelectedNode] = useState(null);
   const [pending, setPending] = useState(new Map());
   const [recentChanges, setRecentChanges] = useState([]);
 
@@ -71,9 +76,14 @@ export default function PermissionMatrix() {
         if (!active) return;
         const data = res?.data;
         setMatrix(data);
-        setExpanded(new Set((data?.modules ?? []).map((m) => m.code)));
+        setExpanded(new Set([
+          ...(data?.modules ?? []).map((m) => m.code),
+          ...(data?.tree ?? []).map((n) => n.key),
+          ...(data?.tree ?? []).flatMap((n) => (n.children ?? []).map((c) => c.key)),
+        ]));
         setPending(new Map());
         setSelectedCell(null);
+        setSelectedNode(null);
       })
       .catch((err) => {
         if (active) toast.error(err.message || "Could not load the permission matrix");
@@ -210,6 +220,45 @@ export default function PermissionMatrix() {
     downloadCSV(rows, `permission-matrix-${matrix?.role?.code ?? roleId}`);
   };
 
+  /**
+   * Codes owned by the tree are dropped from the legacy grid so Employees and
+   * Attendance are not editable in two places with two different states.
+   */
+  const legacyModules = useMemo(() => {
+    if (!filtered) return [];
+    const owned = new Set(matrix?.treePermissionCodes ?? []);
+    if (owned.size === 0) return filtered.modules;
+
+    return filtered.modules
+      .map((module) => ({
+        ...module,
+        resources: module.resources
+          .map((resource) => ({
+            ...resource,
+            cells: Object.fromEntries(
+              Object.entries(resource.cells).filter(([, cell]) => !owned.has(cell.permissionCode)),
+            ),
+          }))
+          .filter((resource) => Object.keys(resource.cells).length > 0),
+      }))
+      .filter((module) => module.resources.length > 0);
+  }, [filtered, matrix]);
+
+  /** One pending entry per real permission; reverting removes the diff. */
+  const setNodes = useCallback((nodes, enabled) => {
+    setPending((previous) => {
+      const updated = new Map(previous);
+      nodes.forEach((node) => {
+        if (!node.permissionKey) return;
+        const next = enabled ? "ALLOW" : "NOT_ASSIGNED";
+        const original = node.state === "enabled" ? "ALLOW" : "NOT_ASSIGNED";
+        if (next === original) updated.delete(node.permissionKey);
+        else updated.set(node.permissionKey, next);
+      });
+      return updated;
+    });
+  }, []);
+
   const toggleModule = (code) =>
     setExpanded((previous) => {
       const updated = new Set(previous);
@@ -316,7 +365,14 @@ export default function PermissionMatrix() {
               <div className="flex items-center gap-2">
                 <Button
                   variant="secondary"
-                  onClick={() => setExpanded(new Set((matrix?.modules ?? []).map((m) => m.code)))}
+                  onClick={() =>
+                    setExpanded(
+                      new Set([
+                        ...(matrix?.modules ?? []).map((m) => m.code),
+                        ...collectKeys(matrix?.tree ?? []),
+                      ]),
+                    )
+                  }
                 >
                   <ChevronsUpDown size={16} className="mr-2" /> Expand All
                 </Button>
@@ -334,17 +390,52 @@ export default function PermissionMatrix() {
               </p>
             )}
 
-            {!loading && filtered && filtered.modules.length > 0 && (
-              <MatrixGrid
-                matrix={filtered}
-                expanded={expanded}
-                onToggleModule={toggleModule}
-                selectedCell={selectedCell}
-                onSelectCell={setSelectedCell}
-                onCycleCell={cycleCell}
-                pendingChanges={pending}
-                readOnly={Boolean(selectedRole?.isSystem) && Number(user?.rawRole) !== 0}
-              />
+            {!loading && (matrix?.tree?.length ?? 0) > 0 && (
+              <div className="border-b border-gray-200 dark:border-gray-700">
+                <div className="px-4 pt-4">
+                  <h2 className="text-sm font-semibold text-gray-900 dark:text-white">
+                    Navigation permissions
+                  </h2>
+                  <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    Modules, pages, actions and table columns as they appear in the application.
+                  </p>
+                </div>
+                <div className="mt-3 max-h-[540px] overflow-auto">
+                  <PermissionTree
+                    tree={matrix.tree}
+                    search={search}
+                    expanded={expanded}
+                    onToggleExpand={toggleModule}
+                    pending={pending}
+                    onSet={setNodes}
+                    onSelect={setSelectedNode}
+                    selectedKey={selectedNode?.key}
+                  />
+                </div>
+              </div>
+            )}
+
+            {!loading && filtered && legacyModules.length > 0 && (
+              <div>
+                <div className="px-4 pt-4">
+                  <h2 className="text-sm font-semibold text-gray-900 dark:text-white">
+                    Legacy permissions
+                  </h2>
+                  <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    Modules not yet mapped to the navigation tree.
+                  </p>
+                </div>
+                <MatrixGrid
+                  matrix={{ ...filtered, modules: legacyModules }}
+                  expanded={expanded}
+                  onToggleModule={toggleModule}
+                  selectedCell={selectedCell}
+                  onSelectCell={setSelectedCell}
+                  onCycleCell={cycleCell}
+                  pendingChanges={pending}
+                  readOnly={Boolean(selectedRole?.isSystem) && Number(user?.rawRole) !== 0}
+                />
+              </div>
             )}
 
             <div className="border-t border-gray-200 p-4 dark:border-gray-700">
@@ -356,7 +447,11 @@ export default function PermissionMatrix() {
         </div>
 
         <div className="space-y-5">
-          <PermissionDetails cell={selectedCell} pending={pending} matrix={matrix} />
+          {selectedNode ? (
+            <NodeDetails node={selectedNode} pending={pending} />
+          ) : (
+            <PermissionDetails cell={selectedCell} pending={pending} matrix={matrix} />
+          )}
           <RoleSummary summary={summary} dirty={dirty} />
           <RecentChanges changes={recentChanges} />
         </div>
@@ -490,6 +585,43 @@ function PermissionDetails({ cell, pending, matrix }) {
           This is a system role. Only a global administrator can change it.
         </p>
       )}
+    </Card>
+  );
+}
+
+function NodeDetails({ node, pending }) {
+  const grouping = !node.permissionKey;
+  const current = stateOf(node, pending);
+  const isPending = node.permissionKey && pending.has(node.permissionKey);
+
+  return (
+    <Card>
+      <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
+        <Info size={16} /> Permission Details
+      </h2>
+      <dl className="space-y-2 text-sm" data-testid="node-details">
+        <Detail label="Permission" value={node.label} />
+        <Detail label="Type" value={TYPE_LABEL[node.type] ?? node.type} />
+        <Detail label="Key" value={node.permissionKey ?? "—"} />
+        <Detail label="Parent" value={node.parentKey ?? "—"} />
+        <Detail
+          label="Requires"
+          value={(node.requiredCodes ?? []).join(" + ") || "—"}
+        />
+        <Detail label="Route" value={node.route ?? "—"} />
+        <Detail label="Sensitive" value={node.sensitive ? "Yes" : "No"} />
+        <Detail
+          label="State"
+          value={
+            grouping
+              ? "Grouping node — no direct permission record."
+              : current === "ALLOW"
+                ? "Enabled"
+                : "Not assigned"
+          }
+        />
+        {isPending && <Detail label="Pending" value="Unsaved change" />}
+      </dl>
     </Card>
   );
 }

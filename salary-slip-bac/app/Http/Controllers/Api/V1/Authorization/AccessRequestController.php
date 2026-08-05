@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Services\Authorization\AuthorizationCache;
 use App\Services\Authorization\SchemaSupport;
+use App\Support\RoleHierarchy;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -223,6 +224,16 @@ class AccessRequestController extends Controller
             return response()->json(['success' => true, 'data' => ['id' => $id, 'status' => 'PENDING']]);
         }
 
+        if (! $this->mayGrant($accessRequest, $actor)) {
+            $this->audit($id, 'PRIVILEGE_ESCALATION_BLOCKED', $accessRequest->permission_code, null, 'Role tier exceeds approver authority.');
+
+            return response()->json([
+                'success' => false,
+                'code' => 'ROLE_ASSIGNMENT_FORBIDDEN',
+                'message' => 'You are not permitted to grant this role.',
+            ], 403);
+        }
+
         $this->close($id, 'APPROVED', $actor->id, $data['decisionReason']);
         $this->applyGrant($accessRequest, $actor);
         $this->audit($id, 'APPROVE', $accessRequest->permission_code, null, $data['decisionReason']);
@@ -231,9 +242,39 @@ class AccessRequestController extends Controller
         return response()->json(['success' => true, 'data' => ['id' => $id, 'status' => 'APPROVED']]);
     }
 
+    private function mayGrant(object $accessRequest, User $actor): bool
+    {
+        if (! $accessRequest->role_id) {
+            return true;
+        }
+
+        $role = \App\Models\Role::query()->find($accessRequest->role_id);
+
+        if (! $role || ! RoleHierarchy::canAssignRole($actor, $role)) {
+            return false;
+        }
+
+        $targetId = $accessRequest->target_user_id ?: $accessRequest->requester_id;
+        $target = User::query()->find($targetId);
+
+        if (! $target) {
+            return false;
+        }
+
+        if ((int) $actor->id === (int) $target->id) {
+            return $actor->isSuperAdmin();
+        }
+
+        return RoleHierarchy::canManageUserRoles($actor, $target);
+    }
+
     /** An approved role request is only real once the assignment exists. */
     private function applyGrant(object $accessRequest, User $actor): void
     {
+        if (! $this->mayGrant($accessRequest, $actor)) {
+            return;
+        }
+
         if (!$accessRequest->role_id || !SchemaSupport::hasTable('authorization_role_assignments')) {
             return;
         }

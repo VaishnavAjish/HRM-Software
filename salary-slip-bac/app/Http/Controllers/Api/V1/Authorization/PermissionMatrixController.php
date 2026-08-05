@@ -7,7 +7,9 @@ use App\Models\Role;
 use App\Services\Authorization\AuthorizationCache;
 use App\Services\Authorization\AuthorizationEngine;
 use App\Services\Authorization\PermissionMatrixBuilder;
+use App\Services\Authorization\PermissionTreeBuilder;
 use App\Services\Authorization\SchemaSupport;
+use App\Support\PermissionRegistry;
 use App\Support\RoleAudit;
 use App\Support\RoleHierarchy;
 use App\Support\SystemRoles;
@@ -115,7 +117,15 @@ class PermissionMatrixController extends Controller
             return $denied;
         }
 
-        return response()->json(['success' => true, 'data' => $this->matrix->build($role)]);
+        $data = $this->matrix->build($role);
+
+        $trees = app(PermissionTreeBuilder::class);
+        $data['tree'] = $trees->build($role);
+        $data['treeSummary'] = $trees->summary($role);
+        $data['treeModuleKeys'] = array_column($data['tree'], 'key');
+        $data['treePermissionCodes'] = array_values(PermissionRegistry::permissionCodes());
+
+        return response()->json(['success' => true, 'data' => $data]);
     }
 
     /**
