@@ -60,7 +60,7 @@ export default function PerformanceMatrix() {
       setCycles(list);
       if (list.length && !cycleId) setCycleId(list[0].id);
     }).catch(() => {});
-    salaryApi.getAllEmployees(user.accessToken, user.tokenType, { status: "Active", limit: 1000 }, companyScope)
+    salaryApi.getAllEmployees(user.accessToken, user.tokenType, { status: "Active", per_page: 100 }, companyScope)
       .then((res) => setEmployees(res?.data?.users?.data ?? res?.data?.users ?? []))
       .catch(() => {});
   }, [user, scopeKey]); // eslint-disable-line react-hooks/exhaustive-deps

@@ -50,7 +50,7 @@ export default function ExitManagement() {
   useEffect(() => {
     if (!user?.accessToken) return;
     reload();
-    salaryApi.getAllEmployees(user.accessToken, user.tokenType, { status: "Active", limit: 1000 }, companyScope?.companyId)
+    salaryApi.getAllEmployees(user.accessToken, user.tokenType, { status: "Active", per_page: 100 }, companyScope?.companyId)
       .then((res) => setEmployees(res?.data?.users?.data ?? res?.data?.users ?? []))
       .catch(() => {});
   }, [user, scopeKey]); // eslint-disable-line react-hooks/exhaustive-deps
