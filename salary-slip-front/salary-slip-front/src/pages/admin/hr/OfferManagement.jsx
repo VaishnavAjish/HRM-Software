@@ -11,7 +11,7 @@ import { SkeletonTable } from "../../../components/ui/Skeleton";
 import { useAuth } from "../../../context/AuthContext";
 import { hrApi } from "../../../utils/api";
 import { downloadTablePDF } from "../../../utils/exportUtils";
-import { stageLabel, stageColor } from "./hiring/stageMeta";
+import { stageLabel, stageColor, promptRejectionReason } from "./hiring/stageMeta";
 
 const inputClass = "w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500";
 
@@ -66,9 +66,16 @@ export default function OfferManagement() {
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const rejectOrHold = async (candidate, toStage) => {
+    const rejectionReason = toStage === "rejected" ? promptRejectionReason() : undefined;
+    if (toStage === "rejected" && !rejectionReason) return;
+
     setActingId(candidate.id);
     try {
-      const res = await hrApi.moveCandidateStage(candidate.id, { to_stage: toStage }, user?.accessToken, user?.tokenType);
+      const res = await hrApi.moveCandidateStage(
+        candidate.id,
+        { to_stage: toStage, ...(rejectionReason ? { rejection_reason: rejectionReason } : {}) },
+        user?.accessToken, user?.tokenType,
+      );
       if (!res.status) throw new Error(res.message);
       toast.success(toStage === "rejected" ? "Marked Rejected" : "Marked On Hold");
       loadRoster();
@@ -110,7 +117,7 @@ export default function OfferManagement() {
     catch (err) { toast.error(err.message || "Failed to approve"); }
   };
   const release = async (id) => {
-    try { const res = await hrApi.releaseOffer(id, user?.accessToken, user?.tokenType); if (res.status) { toast.success("Offer released"); loadOffers(); } }
+    try { const res = await hrApi.releaseOffer(id, user?.accessToken, user?.tokenType); if (res.status) { toast.success("Offer released — emailed to the candidate"); loadOffers(); } }
     catch (err) { toast.error(err.message || "Failed to release"); }
   };
   const respond = async (id, status) => {

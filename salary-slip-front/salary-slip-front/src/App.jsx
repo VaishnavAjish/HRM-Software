@@ -266,7 +266,7 @@ function AppRoutes() {
         <Route path="hr/hiring" element={<ProtectedRoute requiredPermission="hr.requisition.read"><HiringProcess /></ProtectedRoute>} />
         {/* Interviews now lives inside the Hiring workspace as a tab; keep the old
             link working by sending it straight to that tab. */}
-        <Route path="hr/interviews" element={<Navigate to="/admin/hr/hiring?tab=interviews" replace />} />
+        <Route path="hr/interviews" element={<Navigate to="/admin/hr/hiring?tab=interview" replace />} />
         <Route path="hr/assets" element={<ProtectedRoute requiredPermission="hr.asset.read"><AssetAllocation /></ProtectedRoute>} />
         <Route path="hr/onboarding" element={<ProtectedRoute requiredPermission="hr.onboarding.journey.read"><OnboardingDashboard /></ProtectedRoute>} />
         <Route path="hr/onboarding/journeys" element={<ProtectedRoute requiredPermission="hr.onboarding.journey.read"><OnboardingJourneys /></ProtectedRoute>} />

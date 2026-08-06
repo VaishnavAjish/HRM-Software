@@ -23,9 +23,10 @@ function getResumeUrl(path) {
 
 /** Which tab a candidate belongs to once they've moved past this drawer's owning tab — only used for the "manage them elsewhere" banner. */
 function ownerTabLabel(stage) {
-  if (stage === "interview") return "Interviews";
-  if (["selected", "offer_sent"].includes(stage)) return "Offers";
-  if (stage === "offer_accepted") return "Onboarding";
+  if (stage === "assessment") return "Assessment";
+  if (stage === "interview") return "Interview";
+  if (["selected", "offer_sent"].includes(stage)) return "Offer";
+  if (stage === "offer_accepted") return "HR → Onboarding";
   return null;
 }
 

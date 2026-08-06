@@ -41,4 +41,11 @@ return [
         'token' => env('CANDIDATE_INTAKE_TOKEN'),
     ],
 
+    // Base URL of the React frontend, used to build candidate-facing links
+    // in hiring emails (e.g. the public quiz link). APP_URL above is this
+    // Laravel API's own address, not the SPA's — they're different origins.
+    // Left null-safe on purpose: if unset, emails still send with the link
+    // omitted rather than pointing somewhere wrong.
+    'frontend_url' => env('FRONTEND_URL'),
+
 ];

@@ -13,7 +13,7 @@ class Candidate extends Model
         'requisition_id', 'name', 'email', 'phone', 'experience_years',
         'current_company', 'current_designation', 'skills', 'resume_path',
         'resume_original_name', 'source', 'recruiter_id', 'priority', 'stage',
-        'rating', 'notes', 'company_code', 'unit', 'created_by',
+        'rating', 'notes', 'rejection_reason', 'company_code', 'unit', 'created_by',
     ];
 
     protected function casts(): array

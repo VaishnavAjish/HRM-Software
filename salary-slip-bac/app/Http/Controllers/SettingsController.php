@@ -26,6 +26,11 @@ class SettingsController extends Controller
         'dashboard.show_users_by_role_chart' => 'true',
         'dashboard.show_users_by_department_chart' => 'true',
         'dashboard.show_recent_activity' => 'true',
+
+        // Pasted once by HR, then appended into every generated JD's "How to
+        // Apply" section — see RequisitionsTab's buildJdTemplate. One shared
+        // form for all requisitions, per the candidate-intake design.
+        'hr.google_form_url' => '',
     ];
 
     public function index(Request $request)

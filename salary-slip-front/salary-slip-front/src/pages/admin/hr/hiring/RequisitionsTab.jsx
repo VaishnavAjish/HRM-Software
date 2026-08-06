@@ -2,16 +2,17 @@ import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import {
   Plus, CheckCircle2, Send, Pencil, Trash2, Copy, Archive,
-  Columns3, ChevronDown, ClipboardCopy, RotateCcw,
+  Columns3, ChevronDown, ClipboardCopy, RotateCcw, Link2, Check,
 } from "lucide-react";
 import Button from "../../../../components/ui/Button";
 import Badge from "../../../../components/ui/Badge";
 import Modal from "../../../../components/ui/Modal";
 import Pagination from "../../../../components/ui/Pagination";
 import { SkeletonTable } from "../../../../components/ui/Skeleton";
+import RichTextEditor from "../../../../components/ui/RichTextEditor";
 import { useAuth } from "../../../../context/AuthContext";
 import { useCompany } from "../../../../context/CompanyContext";
-import { hrApi } from "../../../../utils/api";
+import { hrApi, rbacApi } from "../../../../utils/api";
 import { downloadExcel, downloadCSV } from "../../../../utils/exportUtils";
 import useHrFilters from "./useHrFilters";
 import HiringFilterBar from "./HiringFilterBar";
@@ -38,38 +39,74 @@ const EMPLOYMENT_TYPE_LABEL = {
 };
 const PRIORITY_LABEL = { low: "Low", medium: "Medium", high: "High", urgent: "Urgent" };
 
+function escapeHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+// Description/Requirements come from RichTextEditor as HTML now, but older
+// requisitions saved before that change hold plain text — detect which and
+// only escape+linebreak the plain case, so old data still renders sanely
+// instead of showing literal tags or one unbroken paragraph.
+function richFieldToHtml(value) {
+  const v = (value || "").trim();
+  if (!v) return "";
+  if (/<[a-z][\s\S]*>/i.test(v)) return v;
+  return v.split(/\n+/).map((line) => `<p>${escapeHtml(line)}</p>`).join("");
+}
+
+/** Plain-text rendering of the JD, for the "Copy" button — job boards and
+ *  email don't render the preview's HTML, so what gets copied should be
+ *  readable as plain text, bullets and all. */
+function htmlToPlainText(html) {
+  const div = document.createElement("div");
+  div.innerHTML = html || "";
+  div.querySelectorAll("li").forEach((li) => { li.textContent = `- ${li.textContent}`; });
+  div.querySelectorAll("h1, h2, p, li, br").forEach((el) => el.after("\n"));
+  return (div.textContent || "").replace(/\n{3,}/g, "\n\n").trim();
+}
+
 // Pure client-side formatting from whatever's on the form right now — no
 // backend call, nothing persisted. Just a proper-looking JD a recruiter can
-// keep editing here and copy out for posting elsewhere.
-function buildJdTemplate(f) {
-  const lines = [];
-  lines.push((f.title || "Untitled Role").toUpperCase());
+// keep editing here and copy out for posting elsewhere. Description/
+// Requirements arrive already formatted (bold/bullets) from RichTextEditor;
+// this just wraps them with real headings instead of plain text lines.
+function buildJdTemplate(f, applyLink) {
   const metaBits = [
     f.designation || null,
     EMPLOYMENT_TYPE_LABEL[f.employment_type] || null,
     f.openings ? `${f.openings} opening${Number(f.openings) === 1 ? "" : "s"}` : null,
   ].filter(Boolean);
-  if (metaBits.length) lines.push(metaBits.join(" · "));
-  lines.push("");
-  lines.push("ABOUT THE ROLE");
-  lines.push(f.description?.trim() || "—");
-  lines.push("");
-  lines.push("KEY REQUIREMENTS");
-  lines.push(f.requirements?.trim() || "—");
-  if (f.min_experience || f.max_experience) {
-    lines.push(`Experience: ${f.min_experience || "0"}–${f.max_experience || f.min_experience || "0"} years`);
-  }
-  lines.push("");
-  lines.push("COMPENSATION & LOGISTICS");
-  lines.push(
-    f.salary_min || f.salary_max
-      ? `Salary: ₹${Number(f.salary_min || 0).toLocaleString("en-IN")} – ₹${Number(f.salary_max || 0).toLocaleString("en-IN")} per annum`
-      : "Salary: Not disclosed",
-  );
-  lines.push(`Employment Type: ${EMPLOYMENT_TYPE_LABEL[f.employment_type] || "—"}`);
-  if (f.target_closing_date) lines.push(`Target Closing Date: ${f.target_closing_date}`);
-  lines.push(`Priority: ${PRIORITY_LABEL[f.priority] || "—"}`);
-  return lines.join("\n");
+
+  const salaryLine = f.salary_min || f.salary_max
+    ? `₹${Number(f.salary_min || 0).toLocaleString("en-IN")} – ₹${Number(f.salary_max || 0).toLocaleString("en-IN")} per annum`
+    : "Not disclosed";
+
+  return `
+    <h1>${escapeHtml(f.title || "Untitled Role")}</h1>
+    ${metaBits.length ? `<p class="jd-meta">${escapeHtml(metaBits.join(" · "))}</p>` : ""}
+
+    <h2>About the Role</h2>
+    ${richFieldToHtml(f.description) || "<p>—</p>"}
+
+    <h2>Key Requirements</h2>
+    ${richFieldToHtml(f.requirements) || "<p>—</p>"}
+    ${(f.min_experience || f.max_experience)
+      ? `<p><strong>Experience:</strong> ${escapeHtml(f.min_experience || "0")}–${escapeHtml(f.max_experience || f.min_experience || "0")} years</p>`
+      : ""}
+
+    <h2>Compensation &amp; Logistics</h2>
+    <ul>
+      <li><strong>Salary:</strong> ${salaryLine}</li>
+      <li><strong>Employment Type:</strong> ${escapeHtml(EMPLOYMENT_TYPE_LABEL[f.employment_type] || "—")}</li>
+      ${f.target_closing_date ? `<li><strong>Target Closing Date:</strong> ${escapeHtml(f.target_closing_date)}</li>` : ""}
+      <li><strong>Priority:</strong> ${escapeHtml(PRIORITY_LABEL[f.priority] || "—")}</li>
+    </ul>
+
+    ${applyLink ? `
+    <h2>How to Apply</h2>
+    <p>Interested candidates can apply here: <a href="${escapeHtml(applyLink)}" target="_blank" rel="noopener noreferrer">${escapeHtml(applyLink)}</a></p>
+    ` : ""}
+  `.trim();
 }
 const STATUS_VARIANT = {
   draft: "gray", pending_approval: "yellow", approved: "blue",
@@ -116,11 +153,44 @@ export default function RequisitionsTab({ departments = [], people = [] }) {
   // Live JD preview: regenerated from the form on every change until the
   // recruiter edits it directly, at which point their wording wins until
   // they explicitly ask to rebuild it.
-  const [jdText, setJdText] = useState(() => buildJdTemplate(EMPTY_FORM));
+  const [jdText, setJdText] = useState(() => buildJdTemplate(EMPTY_FORM, ""));
   const [jdEdited, setJdEdited] = useState(false);
+
+  // One shared "how to apply" link embedded into every generated JD — the
+  // same Google Form every requisition's candidates apply through, per the
+  // candidate-intake design. Stored server-side (Settings, group "hr") so
+  // every recruiter sees the same value, not just localStorage on one machine.
+  const [applyLink, setApplyLink] = useState("");
+  const [applyLinkDraft, setApplyLinkDraft] = useState("");
+  const [applyLinkSaving, setApplyLinkSaving] = useState(false);
   useEffect(() => {
-    if (!jdEdited) setJdText(buildJdTemplate(form));
-  }, [form, jdEdited]);
+    if (!user?.accessToken) return;
+    rbacApi.getSettings(user.accessToken, user.tokenType, "hr")
+      .then((res) => {
+        const row = (res.data || []).find((s) => s.key === "hr.google_form_url");
+        if (row?.value) { setApplyLink(row.value); setApplyLinkDraft(row.value); }
+      })
+      .catch(() => {}); // no admin.configuration.read permission, or module not migrated — JD just omits the link
+  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const saveApplyLink = async () => {
+    setApplyLinkSaving(true);
+    try {
+      const res = await rbacApi.updateSettings(
+        [{ key: "hr.google_form_url", value: applyLinkDraft.trim() }],
+        user?.accessToken, user?.tokenType, "hr",
+      );
+      if (res.status) { setApplyLink(applyLinkDraft.trim()); toast.success("Application link saved"); }
+    } catch (err) {
+      toast.error(err.message || "Failed to save application link");
+    } finally {
+      setApplyLinkSaving(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!jdEdited) setJdText(buildJdTemplate(form, applyLink));
+  }, [form, jdEdited, applyLink]);
 
   const [visibleCols, setVisibleCols] = useState(() => {
     try { return JSON.parse(localStorage.getItem(VISIBLE_COLS_KEY)) || ALL_COLUMNS.map((c) => c.key); }
@@ -431,30 +501,58 @@ export default function RequisitionsTab({ departments = [], people = [] }) {
       <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={editing ? "Edit Requisition" : "New Requisition"} size="xl"
         footer={<div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? "Saving..." : "Save"}</Button></div>}>
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
-          <div className="lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 gap-4 content-start">
-            <Field label="Title" required><input className={inputClass} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></Field>
-            <Field label="Designation"><input className={inputClass} value={form.designation} onChange={(e) => setForm({ ...form, designation: e.target.value })} /></Field>
-            <Field label="Employment Type">
-              <select className={inputClass} value={form.employment_type} onChange={(e) => setForm({ ...form, employment_type: e.target.value })}>
-                <option value="full_time">Full Time</option>
-                <option value="part_time">Part Time</option>
-                <option value="contract">Contract</option>
-                <option value="intern">Intern</option>
-              </select>
-            </Field>
-            <Field label="Openings"><input type="number" min="1" className={inputClass} value={form.openings} onChange={(e) => setForm({ ...form, openings: e.target.value })} /></Field>
-            <Field label="Priority">
-              <select className={inputClass} value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>
-                <option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="urgent">Urgent</option>
-              </select>
-            </Field>
-            <Field label="Target Closing Date"><input type="date" className={inputClass} value={form.target_closing_date || ""} onChange={(e) => setForm({ ...form, target_closing_date: e.target.value })} /></Field>
-            <Field label="Min Experience (yrs)"><input type="number" step="0.5" className={inputClass} value={form.min_experience} onChange={(e) => setForm({ ...form, min_experience: e.target.value })} /></Field>
-            <Field label="Max Experience (yrs)"><input type="number" step="0.5" className={inputClass} value={form.max_experience} onChange={(e) => setForm({ ...form, max_experience: e.target.value })} /></Field>
-            <Field label="Salary Min"><input type="number" className={inputClass} value={form.salary_min} onChange={(e) => setForm({ ...form, salary_min: e.target.value })} /></Field>
-            <Field label="Salary Max"><input type="number" className={inputClass} value={form.salary_max} onChange={(e) => setForm({ ...form, salary_max: e.target.value })} /></Field>
-            <Field label="Description" full><textarea rows={3} className={inputClass} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
-            <Field label="Requirements" full><textarea rows={3} className={inputClass} value={form.requirements} onChange={(e) => setForm({ ...form, requirements: e.target.value })} /></Field>
+          <div className="lg:col-span-3 space-y-5 content-start">
+            <FormSection title="Role Basics">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Field label="Title" required><input className={inputClass} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></Field>
+                <Field label="Designation"><input className={inputClass} value={form.designation} onChange={(e) => setForm({ ...form, designation: e.target.value })} /></Field>
+                <Field label="Employment Type">
+                  <select className={inputClass} value={form.employment_type} onChange={(e) => setForm({ ...form, employment_type: e.target.value })}>
+                    <option value="full_time">Full Time</option>
+                    <option value="part_time">Part Time</option>
+                    <option value="contract">Contract</option>
+                    <option value="intern">Intern</option>
+                  </select>
+                </Field>
+                <Field label="Openings"><input type="number" min="1" className={inputClass} value={form.openings} onChange={(e) => setForm({ ...form, openings: e.target.value })} /></Field>
+                <Field label="Priority">
+                  <select className={inputClass} value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>
+                    <option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="urgent">Urgent</option>
+                  </select>
+                </Field>
+                <Field label="Target Closing Date"><input type="date" className={inputClass} value={form.target_closing_date || ""} onChange={(e) => setForm({ ...form, target_closing_date: e.target.value })} /></Field>
+              </div>
+            </FormSection>
+
+            <FormSection title="Experience & Compensation">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Field label="Min Experience (yrs)"><input type="number" step="0.5" className={inputClass} value={form.min_experience} onChange={(e) => setForm({ ...form, min_experience: e.target.value })} /></Field>
+                <Field label="Max Experience (yrs)"><input type="number" step="0.5" className={inputClass} value={form.max_experience} onChange={(e) => setForm({ ...form, max_experience: e.target.value })} /></Field>
+                <Field label="Salary Min"><input type="number" className={inputClass} value={form.salary_min} onChange={(e) => setForm({ ...form, salary_min: e.target.value })} /></Field>
+                <Field label="Salary Max"><input type="number" className={inputClass} value={form.salary_max} onChange={(e) => setForm({ ...form, salary_max: e.target.value })} /></Field>
+              </div>
+            </FormSection>
+
+            <FormSection title="Description & Requirements">
+              <div className="space-y-4">
+                <Field label="Description" full>
+                  <RichTextEditor
+                    value={form.description}
+                    onChange={(html) => setForm({ ...form, description: html })}
+                    placeholder="What this role does day-to-day…"
+                    minHeight={110}
+                  />
+                </Field>
+                <Field label="Requirements" full>
+                  <RichTextEditor
+                    value={form.requirements}
+                    onChange={(html) => setForm({ ...form, requirements: html })}
+                    placeholder="Skills, experience, must-haves…"
+                    minHeight={110}
+                  />
+                </Field>
+              </div>
+            </FormSection>
           </div>
 
           <div className="lg:col-span-2">
@@ -465,16 +563,16 @@ export default function RequisitionsTab({ departments = [], people = [] }) {
                   <button
                     type="button"
                     title="Rebuild from the details on the left"
-                    onClick={() => { setJdEdited(false); setJdText(buildJdTemplate(form)); }}
+                    onClick={() => { setJdEdited(false); setJdText(buildJdTemplate(form, applyLink)); }}
                     className="flex items-center gap-1 text-[11px] font-semibold text-brand-600 hover:underline dark:text-brand-400"
                   >
                     <RotateCcw size={12} /> Regenerate
                   </button>
                   <button
                     type="button"
-                    title="Copy to clipboard"
+                    title="Copy as plain text"
                     onClick={() => {
-                      navigator.clipboard.writeText(jdText);
+                      navigator.clipboard.writeText(htmlToPlainText(jdText));
                       toast.success("JD copied to clipboard");
                     }}
                     className="flex items-center gap-1 text-[11px] font-semibold text-gray-500 hover:underline dark:text-gray-400"
@@ -483,13 +581,33 @@ export default function RequisitionsTab({ departments = [], people = [] }) {
                   </button>
                 </div>
               </div>
-              <textarea
+
+              <div className="mb-2 flex items-center gap-1.5">
+                <Link2 size={13} className="flex-shrink-0 text-gray-400" />
+                <input
+                  className="flex-1 min-w-0 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1 text-[11px] text-gray-700 dark:text-gray-200 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                  placeholder="Careers application form link (shared across every JD)…"
+                  value={applyLinkDraft}
+                  onChange={(e) => setApplyLinkDraft(e.target.value)}
+                />
+                {applyLinkDraft !== applyLink && (
+                  <button
+                    type="button" title="Save application link" onClick={saveApplyLink} disabled={applyLinkSaving}
+                    className="flex-shrink-0 p-1.5 rounded-lg bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50"
+                  >
+                    <Check size={13} />
+                  </button>
+                )}
+              </div>
+
+              <RichTextEditor
                 value={jdText}
-                onChange={(e) => { setJdText(e.target.value); setJdEdited(true); }}
-                className="min-h-[380px] flex-1 w-full resize-none rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2.5 font-mono text-[12.5px] leading-relaxed text-gray-800 dark:text-gray-100 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                onChange={(html) => { setJdText(html); setJdEdited(true); }}
+                minHeight={340}
+                className="flex-1 [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mb-1 [&_h2]:text-sm [&_h2]:font-bold [&_h2]:uppercase [&_h2]:tracking-wide [&_h2]:text-brand-600 dark:[&_h2]:text-brand-400 [&_h2]:mt-3 [&_h2]:mb-1 [&_.jd-meta]:text-gray-500 dark:[&_.jd-meta]:text-gray-400 [&_.jd-meta]:text-xs [&_.jd-meta]:mb-2 [&_a]:text-brand-600 dark:[&_a]:text-brand-400 [&_a]:underline"
               />
               <p className="mt-1.5 text-[10.5px] text-gray-400 dark:text-gray-500">
-                Auto-generated from the details on the left — edit freely, or hit Regenerate to rebuild it from the current values.
+                Auto-generated from the details on the left — edit freely (bold/bullets included), or hit Regenerate to rebuild it from the current values.
               </p>
             </div>
           </div>
@@ -511,6 +629,17 @@ function Field({ label, required, full, children }) {
       <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">
         {label}{required && <span className="text-red-500"> *</span>}
       </label>
+      {children}
+    </div>
+  );
+}
+
+function FormSection({ title, children }) {
+  return (
+    <div>
+      <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-2 pb-1.5 border-b border-gray-100 dark:border-gray-700">
+        {title}
+      </p>
       {children}
     </div>
   );

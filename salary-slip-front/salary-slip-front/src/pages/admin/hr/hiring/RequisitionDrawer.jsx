@@ -78,13 +78,13 @@ export default function RequisitionDrawer({ requisition, onClose, onEdit }) {
             {requisition.description && (
               <div className="mt-3">
                 <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">Description</p>
-                <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-line">{requisition.description}</p>
+                <RichText html={requisition.description} />
               </div>
             )}
             {requisition.requirements && (
               <div className="mt-3">
                 <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">Requirements</p>
-                <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-line">{requisition.requirements}</p>
+                <RichText html={requisition.requirements} />
               </div>
             )}
           </CollapsibleSection>
@@ -151,6 +151,23 @@ function Detail({ label, value }) {
       <dd className="text-gray-800 dark:text-gray-100 font-medium">{value || "—"}</dd>
     </div>
   );
+}
+
+/** Description/Requirements are rich-text HTML from RichTextEditor going
+ *  forward, but requisitions saved before that change hold plain text —
+ *  render HTML as HTML, and fall back to preserving line breaks for the
+ *  plain-text case instead of collapsing it into one run-on paragraph. */
+function RichText({ html }) {
+  const isHtml = /<[a-z][\s\S]*>/i.test(html || "");
+  if (isHtml) {
+    return (
+      <div
+        className="text-sm text-gray-700 dark:text-gray-300 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_h2]:font-bold [&_h2]:mt-2"
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+    );
+  }
+  return <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-line">{html}</p>;
 }
 
 function MiniStat({ label, value }) {

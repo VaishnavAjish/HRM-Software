@@ -6,6 +6,7 @@ use App\Models\Candidate;
 use App\Models\CandidateStageHistory;
 use App\Models\JobRequisition;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -31,6 +32,38 @@ class PublicCandidateIntakeController extends Controller
         if (!$expected || !hash_equals($expected, $token)) {
             return response()->json(['status' => false, 'message' => 'Invalid intake token'], 403);
         }
+
+        // Temporary diagnostic logging while tracing the Apps Script -> here
+        // payload-loss bug. Logs exactly what Laravel received, independent
+        // of what the Apps Script's own logs claim it sent — remove once the
+        // intake is confirmed stable.
+        $rawBody = $request->getContent();
+        $jsonAll = null;
+        $jsonError = null;
+        try {
+            // Symfony's Request::json() decodes the raw body regardless of
+            // Content-Type — if the Apps Script sent a non-stringified
+            // payload (the classic UrlFetchApp mistake: contentType set to
+            // 'application/json' but `payload` left as a JS object, which
+            // Apps Script then silently form-encodes instead), this throws,
+            // and that thrown message IS the root cause.
+            $jsonAll = $request->json()->all();
+        } catch (\Throwable $e) {
+            $jsonError = $e->getMessage();
+        }
+
+        Log::info('candidate_intake.raw_request', [
+            'content_type' => $request->header('Content-Type'),
+            'content_length' => $request->header('Content-Length'),
+            // Truncated: the resume's base64 payload alone can be several MB
+            // and isn't relevant to a field-mapping bug — this is enough to
+            // see whether the body is even valid JSON and which top-level
+            // keys/values arrived.
+            'raw_body_preview' => Str::limit($rawBody, 2000),
+            'request_all' => collect($request->all())->except(['resume_base64'])->all(),
+            'json_all' => $jsonAll ? collect($jsonAll)->except(['resume_base64'])->all() : null,
+            'json_decode_error' => $jsonError,
+        ]);
 
         $data = $request->validate([
             'name' => 'required|string|max:255',

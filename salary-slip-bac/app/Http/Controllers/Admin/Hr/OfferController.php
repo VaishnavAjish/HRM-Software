@@ -3,9 +3,12 @@
 namespace App\Http\Controllers\Admin\Hr;
 
 use App\Http\Controllers\Controller;
+use App\Mail\OfferMail;
 use App\Models\Offer;
 use App\Models\OfferRevision;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 
 class OfferController extends Controller
 {
@@ -126,7 +129,30 @@ class OfferController extends Controller
 
         $offer->update(['status' => 'released', 'released_by' => auth('api')->id(), 'released_at' => now()]);
 
+        $this->sendOfferMail($offer->load('candidate'));
+
         return response()->json(['status' => true, 'message' => 'Offer released', 'data' => $offer]);
+    }
+
+    /** Best-effort — see the identical comment on QuizAttemptController::sendAssessmentInvite. */
+    private function sendOfferMail(Offer $offer): void
+    {
+        $candidate = $offer->candidate;
+        if (!$candidate || !$candidate->email) {
+            return;
+        }
+
+        try {
+            Mail::to($candidate->email)->send(new OfferMail(
+                candidateName: $candidate->name,
+                designation: $offer->designation,
+                ctcFormatted: '₹' . number_format((float) $offer->ctc_annual, 0) . ' per annum',
+                joiningDateFormatted: $offer->joining_date?->format('d M Y'),
+                expiryDateFormatted: $offer->expiry_date?->format('d M Y'),
+            ));
+        } catch (\Throwable $e) {
+            Log::error('offer_mail_failed', ['offer_id' => $offer->id, 'error' => $e->getMessage()]);
+        }
     }
 
     public function respond(Request $request, $id)

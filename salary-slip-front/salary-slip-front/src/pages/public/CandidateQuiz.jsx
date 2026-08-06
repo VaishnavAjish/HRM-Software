@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import {
-  ShieldAlert, Clock, CheckCircle2, XCircle, Maximize2, AlertTriangle, Loader2,
+  ShieldAlert, Clock, CheckCircle2, XCircle, Maximize2, AlertTriangle, Loader2, CalendarClock,
 } from "lucide-react";
 import { publicQuizApi } from "../../utils/api";
 
@@ -76,6 +76,26 @@ export default function CandidateQuiz() {
   }, [token]);
 
   useEffect(() => { load(); }, [load]);
+
+  /* ------------------------------------------------- scheduled-start gate */
+
+  // While the link is showing its "opens at X" screen, tick every second and
+  // re-check with the server the moment the clock crosses that time — the
+  // server (not this countdown) is what actually decides whether `start`
+  // succeeds, so a little client-clock drift here just means the button
+  // appears a few seconds early or late, never an actual bypass.
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  const notYetOpen = data?.status === "pending" && data?.not_yet_open;
+  useEffect(() => {
+    if (!notYetOpen) return undefined;
+    const t = setInterval(() => {
+      setNowTick(Date.now());
+      if (data?.scheduled_start_at && Date.now() >= new Date(data.scheduled_start_at).getTime()) {
+        load();
+      }
+    }, 1000);
+    return () => clearInterval(t);
+  }, [notYetOpen, data, load]);
 
   /* -------------------------------------------------- submit / terminate */
 
@@ -262,6 +282,42 @@ export default function CandidateQuiz() {
     );
   }
 
+  /* ----------------------------------------------------- not open yet */
+
+  if (notYetOpen) {
+    const target = new Date(data.scheduled_start_at).getTime();
+    const msRemaining = Math.max(0, target - nowTick);
+    const totalSeconds = Math.floor(msRemaining / 1000);
+    const days = Math.floor(totalSeconds / 86400);
+    const hours = Math.floor((totalSeconds % 86400) / 3600);
+    const mins = Math.floor((totalSeconds % 3600) / 60);
+    const secs = totalSeconds % 60;
+
+    return (
+      <Centered>
+        <div className="w-full max-w-lg rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-6 shadow-sm text-center">
+          <CalendarClock size={40} className="mx-auto text-brand-500" />
+          <h1 className="mt-3 text-xl font-semibold text-gray-900 dark:text-white">{data.quiz.title}</h1>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            Hello {data.candidate_name || "there"} — this assessment isn't open yet.
+          </p>
+          <p className="mt-4 text-sm text-gray-600 dark:text-gray-300">
+            It becomes available on <strong>{new Date(data.scheduled_start_at).toLocaleString()}</strong>
+          </p>
+          <div className="mt-4 flex justify-center gap-3">
+            {days > 0 && <TimeBox value={days} label="days" />}
+            <TimeBox value={hours} label="hrs" />
+            <TimeBox value={mins} label="min" />
+            <TimeBox value={secs} label="sec" />
+          </div>
+          <p className="mt-5 text-xs text-gray-400">
+            This page will unlock automatically the moment it opens — no need to refresh.
+          </p>
+        </div>
+      </Centered>
+    );
+  }
+
   /* -------------------------------------------------------- pre-start */
 
   if (data.status === "pending") {
@@ -417,6 +473,15 @@ function Centered({ children }) {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-4 py-10 text-center dark:bg-gray-900">
       {children}
+    </div>
+  );
+}
+
+function TimeBox({ value, label }) {
+  return (
+    <div className="rounded-xl border border-gray-200 dark:border-gray-700 px-3 py-2 min-w-[56px]">
+      <p className="text-lg font-bold tabular-nums text-gray-900 dark:text-white">{String(value).padStart(2, "0")}</p>
+      <p className="text-[10px] uppercase text-gray-400">{label}</p>
     </div>
   );
 }

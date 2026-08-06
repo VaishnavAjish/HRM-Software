@@ -13,7 +13,7 @@ class CandidateController extends Controller
     use ScopesCompany;
 
     private const STAGES = [
-        'applied', 'screening', 'shortlisted', 'interview',
+        'applied', 'screening', 'shortlisted', 'assessment', 'interview',
         'selected', 'offer_sent', 'offer_accepted', 'rejected', 'on_hold',
     ];
 
@@ -154,17 +154,24 @@ class CandidateController extends Controller
         $data = $request->validate([
             'to_stage' => 'required|in:' . implode(',', self::STAGES),
             'notes' => 'nullable|string',
+            'rejection_reason' => $request->to_stage === 'rejected' ? 'required|string|max:500' : 'nullable|string|max:500',
         ]);
 
         $fromStage = $candidate->stage;
-        $candidate->update(['stage' => $data['to_stage']]);
+        $candidate->update([
+            'stage' => $data['to_stage'],
+            // Cleared on any move that isn't a rejection, so a later
+            // rejection can't accidentally inherit a stale reason from a
+            // previous rejection/un-reject cycle.
+            'rejection_reason' => $data['to_stage'] === 'rejected' ? $data['rejection_reason'] : null,
+        ]);
 
         CandidateStageHistory::create([
             'candidate_id' => $candidate->id,
             'from_stage' => $fromStage,
             'to_stage' => $data['to_stage'],
             'changed_by' => auth('api')->id(),
-            'notes' => $data['notes'] ?? null,
+            'notes' => $data['to_stage'] === 'rejected' ? $data['rejection_reason'] : ($data['notes'] ?? null),
             'created_at' => now(),
         ]);
 

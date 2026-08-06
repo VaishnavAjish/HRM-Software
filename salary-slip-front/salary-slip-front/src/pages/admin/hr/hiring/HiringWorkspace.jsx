@@ -3,30 +3,28 @@ import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../../../../context/AuthContext";
 import { useCompany } from "../../../../context/CompanyContext";
 import { salaryApi } from "../../../../utils/api";
-import HiringMetricsRow from "./HiringMetricsRow";
 import RequisitionsTab from "./RequisitionsTab";
 import CandidatePipeline from "../CandidatePipeline";
-import InterviewHub from "../InterviewHub";
+import AssessmentTab from "./AssessmentTab";
+import InterviewManagement from "../InterviewManagement";
 import OfferManagement from "../OfferManagement";
-import EmployeeOnboarding from "../EmployeeOnboarding";
 
 const TABS = [
   { key: "requisitions", label: "Requisitions" },
   { key: "candidates", label: "Candidates" },
-  { key: "interviews", label: "Interviews" },
-  { key: "offers", label: "Offers" },
-  { key: "onboarding", label: "Onboarding" },
+  { key: "assessment", label: "Assessment" },
+  { key: "interview", label: "Interview" },
+  { key: "offer", label: "Offer" },
 ];
 
 /**
- * The Hiring workspace shell: title, live metrics row, sticky tab bar, then
- * whichever tab is active. Requisitions and Candidates get the full
- * enterprise redesign (shared filter bar, drawers); Offers/Onboarding keep
- * working exactly as before inside the same chrome until a follow-up phase
- * gives them the same treatment. Interviews uses the quiz-based InterviewHub
- * (quizzes, candidate assignment, proctoring results) rather than the plain
- * scheduling-only InterviewManagement, since that's the process HR actually
- * runs interviews through.
+ * The Hiring workspace shell: title, sticky tab bar, then whichever tab is
+ * active. The pipeline runs left to right: Requisitions/Candidates (sourcing)
+ * -> Assessment (quiz, optional) -> Interview (scheduling/feedback/decision)
+ * -> Offer (release/response). Each tab owns the candidate stages listed in
+ * stageMeta.js's TAB_STAGE_KEYS — a candidate only shows up, and can only be
+ * acted on, in the one tab that currently owns their stage. Onboarding lives
+ * on its own full HR sidebar page now, not as a tab here.
  */
 export default function HiringWorkspace() {
   const { user } = useAuth();
@@ -57,8 +55,6 @@ export default function HiringWorkspace() {
 
   return (
     <div className="space-y-4">
-      <HiringMetricsRow />
-
       <div className="sticky top-0 z-30 -mx-4 md:-mx-6 px-4 md:px-6 bg-gray-50/95 dark:bg-[var(--sidebar-bg)]/95 backdrop-blur-sm border-b border-gray-200 dark:border-gray-700">
         <div className="flex gap-1 overflow-x-auto">
           {TABS.map((t) => (
@@ -79,9 +75,9 @@ export default function HiringWorkspace() {
 
       {tab === "requisitions" && <RequisitionsTab departments={departments} people={people} />}
       {tab === "candidates" && <CandidatePipeline departments={departments} people={people} />}
-      {tab === "interviews" && <InterviewHub />}
-      {tab === "offers" && <OfferManagement />}
-      {tab === "onboarding" && <EmployeeOnboarding />}
+      {tab === "assessment" && <AssessmentTab />}
+      {tab === "interview" && <InterviewManagement />}
+      {tab === "offer" && <OfferManagement />}
     </div>
   );
 }

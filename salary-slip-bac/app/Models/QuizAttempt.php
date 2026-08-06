@@ -9,10 +9,10 @@ class QuizAttempt extends Model
 {
     protected $fillable = [
         'quiz_id', 'candidate_id', 'interview_id', 'access_token', 'status',
-        'started_at', 'submitted_at', 'link_expires_at', 'duration_minutes',
-        'answers', 'total_questions', 'correct_count', 'score', 'passed',
-        'violation_count', 'proctor_events', 'ip_address', 'user_agent',
-        'company_code', 'unit', 'created_by',
+        'started_at', 'submitted_at', 'link_expires_at', 'scheduled_start_at',
+        'duration_minutes', 'answers', 'total_questions', 'correct_count',
+        'score', 'passed', 'violation_count', 'proctor_events', 'ip_address',
+        'user_agent', 'company_code', 'unit', 'created_by',
     ];
 
     protected function casts(): array
@@ -24,7 +24,14 @@ class QuizAttempt extends Model
             'started_at' => 'datetime',
             'submitted_at' => 'datetime',
             'link_expires_at' => 'datetime',
+            'scheduled_start_at' => 'datetime',
         ];
+    }
+
+    /** True while a scheduled start gate exists and hasn't opened yet. */
+    public function notYetOpen(): bool
+    {
+        return $this->scheduled_start_at !== null && now()->lessThan($this->scheduled_start_at);
     }
 
     public function quiz()

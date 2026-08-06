@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { AlertTriangle, Briefcase, Download, Filter, Plus } from "lucide-react";
+import { AlertTriangle, Briefcase, Download, Filter, Plus, TrendingUp } from "lucide-react";
 import Button from "../../../../components/ui/Button";
 import { SkeletonTable } from "../../../../components/ui/Skeleton";
 import Stepper from "../../../../components/onboarding/Stepper";
@@ -18,6 +18,9 @@ import {
 } from "../../../../components/onboarding/primitives";
 import { onboardingApi } from "../../../../utils/onboardingApi";
 import { useOnboardingResource } from "../../../../hooks/useOnboardingResource";
+import { useAuth } from "../../../../context/AuthContext";
+import { hrApi } from "../../../../utils/api";
+import { MAIN_STAGES, TERMINAL_STAGES } from "../hiring/stageMeta";
 
 const STATUS = {
   PRE_BOARDING: ["Pre-boarding", "info"],
@@ -26,12 +29,34 @@ const STATUS = {
   COMPLETED: ["Completed", "ok"],
 };
 
+/** Every stage a candidate can be in, in pipeline order, for the full-width
+ *  overview strip — this is the whole hiring funnel, not just the
+ *  offer-accepted slice the rest of this page is scoped to. */
+const PIPELINE_STAGES = [...MAIN_STAGES, ...TERMINAL_STAGES];
+
 export default function OnboardingDashboard() {
+  const { user } = useAuth();
   const { data, source, loading, error, reload } = useOnboardingResource(
     (token, type) => onboardingApi.getDashboard(token, type),
     [],
   );
   const [detail, setDetail] = useState(null);
+
+  // The onboarding-specific data above only covers offer_accepted candidates
+  // — deliberately narrow. This is the wider "all of hiring" picture:
+  // headcount at every stage, reusing the same counts the main HR dashboard
+  // already computes (HrDashboardController::index, charts.hiring_funnel)
+  // rather than re-querying candidates a third way.
+  const [funnelCounts, setFunnelCounts] = useState(null);
+  const [funnelLoading, setFunnelLoading] = useState(true);
+  useEffect(() => {
+    if (!user?.accessToken) return;
+    hrApi.getDashboard(user.accessToken, user.tokenType)
+      .then((res) => { if (res.status) setFunnelCounts(res.data?.charts?.hiring_funnel || {}); })
+      .catch(() => {})
+      .finally(() => setFunnelLoading(false));
+  }, [user]);
+  const totalInPipeline = funnelCounts ? Object.values(funnelCounts).reduce((s, n) => s + Number(n), 0) : 0;
 
   return (
     <div className="flex flex-col gap-4">
@@ -64,6 +89,49 @@ export default function OnboardingDashboard() {
       </div>
 
       {source === "preview" ? <PreviewBanner /> : null}
+
+      <SectionCard
+        title="Hiring pipeline overview"
+        action={
+          <Link to="/admin/hr/hiring?tab=candidates" className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400">
+            Open Candidates
+          </Link>
+        }
+      >
+        <div className="p-4">
+          {funnelLoading ? (
+            <SkeletonTable rows={4} />
+          ) : totalInPipeline === 0 ? (
+            <EmptyState
+              icon={TrendingUp}
+              title="No candidates in the pipeline yet"
+              description="Once candidates start applying in Hiring → Requisitions, every stage from Applied through Offer Accepted will show up here."
+            />
+          ) : (
+            <div className="flex flex-col gap-2">
+              <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                {totalInPipeline} candidate{totalInPipeline === 1 ? "" : "s"} across the full pipeline
+              </p>
+              {PIPELINE_STAGES.map((stage) => {
+                const count = Number(funnelCounts?.[stage.key] || 0);
+                const pct = totalInPipeline ? (count / totalInPipeline) * 100 : 0;
+                return (
+                  <div key={stage.key} className="flex items-center gap-2.5">
+                    <span className="flex w-32 shrink-0 items-center gap-1.5 truncate text-xs text-gray-500 dark:text-gray-400">
+                      <i className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: stage.color }} />
+                      {stage.label}
+                    </span>
+                    <div className="h-[7px] flex-1 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
+                      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: stage.color }} />
+                    </div>
+                    <span className="w-8 text-right text-xs font-semibold tabular-nums text-gray-700 dark:text-gray-200">{count}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </SectionCard>
 
       {loading ? (
         <SkeletonTable rows={6} />
@@ -106,8 +174,7 @@ export default function OnboardingDashboard() {
                 <div className="p-4">
                   <BarList items={data.funnel} />
                   <p className="mt-3 text-[11.5px] text-gray-400 dark:text-gray-500">
-                    Largest drop-off is documents to training. Clearing pending documents moves the
-                    most people forward.
+                    {biggestDropOff(data.funnel)}
                   </p>
                 </div>
               </SectionCard>
@@ -233,4 +300,23 @@ export default function OnboardingDashboard() {
       </SlideOver>
     </div>
   );
+}
+
+/** Computed from whatever stages the backend actually returns, rather than a
+ *  hardcoded "documents to training" line — the real funnel here only has
+ *  3 stages (offer accepted / documents uploaded / documents verified), and
+ *  hardcoded copy referencing a "training" stage that doesn't exist was
+ *  actively misleading. */
+function biggestDropOff(funnel) {
+  if (!funnel || funnel.length < 2) return "Not enough data yet to spot a drop-off.";
+  let worst = null;
+  for (let i = 0; i < funnel.length - 1; i++) {
+    const from = funnel[i].value;
+    const to = funnel[i + 1].value;
+    if (from <= 0) continue;
+    const dropPct = ((from - to) / from) * 100;
+    if (!worst || dropPct > worst.dropPct) worst = { from: funnel[i].label, to: funnel[i + 1].label, dropPct };
+  }
+  if (!worst || worst.dropPct <= 0) return "No significant drop-off between stages right now.";
+  return `Largest drop-off is ${worst.from.toLowerCase()} to ${worst.to.toLowerCase()} (${Math.round(worst.dropPct)}%). Clearing that bottleneck moves the most people forward.`;
 }

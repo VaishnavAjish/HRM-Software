@@ -78,13 +78,25 @@ export default function InterviewManagement() {
   };
 
   /** One decision point instead of separate Advance/Hold/Reject buttons —
-   *  pick the outcome and write down why, in the same step. */
+   *  pick the outcome and write down why, in the same step. Rejecting
+   *  requires that write-up (backend enforces it too); Select/Hold treat it
+   *  as optional general notes. */
   const submitProceed = async (toStage) => {
+    if (toStage === "rejected" && !proceedNotes.trim()) {
+      toast.error("A reason is required to reject a candidate");
+      return;
+    }
     setProceeding(true);
     try {
-      const res = await hrApi.moveCandidateStage(proceedTarget.id, { to_stage: toStage, notes: proceedNotes || undefined }, user?.accessToken, user?.tokenType);
+      const res = await hrApi.moveCandidateStage(
+        proceedTarget.id,
+        toStage === "rejected"
+          ? { to_stage: toStage, rejection_reason: proceedNotes.trim() }
+          : { to_stage: toStage, notes: proceedNotes || undefined },
+        user?.accessToken, user?.tokenType,
+      );
       if (!res.status) throw new Error(res.message);
-      toast.success(toStage === "selected" ? "Candidate selected" : `Marked ${stageLabel(toStage)}`);
+      toast.success(toStage === "selected" ? "Candidate selected — sent to Offer" : `Marked ${stageLabel(toStage)}`);
       setProceedTarget(null);
       loadRoster();
     } catch (err) {
@@ -216,11 +228,11 @@ export default function InterviewManagement() {
 
       <Modal isOpen={!!proceedTarget} onClose={() => setProceedTarget(null)} title={`Proceed — ${proceedTarget?.name || ""}`} size="lg">
         <div className="space-y-4">
-          <Field label="Interview Notes / Description" full>
+          <Field label="Interview Notes / Reason for Rejection" full>
             <textarea
               rows={4}
               className={inputClass}
-              placeholder="How did the interview go? Strengths, concerns, reasoning for the decision…"
+              placeholder="How did the interview go? Required if rejecting — this becomes the candidate's rejection reason."
               value={proceedNotes}
               onChange={(e) => setProceedNotes(e.target.value)}
             />

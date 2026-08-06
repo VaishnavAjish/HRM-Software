@@ -657,6 +657,14 @@ export const rbacApi = {
     return apiRequest(`/rbac/settings?group=${group}`, { headers: authHeaders(accessToken, tokenType) });
   },
 
+  updateSettings(settings, accessToken, tokenType = "Bearer", group = "rbac") {
+    return apiRequest(`/rbac/settings?group=${group}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", ...authHeaders(accessToken, tokenType) },
+      body: JSON.stringify({ settings }),
+    });
+  },
+
   getUserRoles(accessToken, tokenType = "Bearer", page = 1, limit = 15, search = "", roleFilter = "") {
     const params = new URLSearchParams({
       page,

@@ -4,10 +4,14 @@ namespace App\Http\Controllers\Admin\Hr;
 
 use App\Http\Controllers\Admin\Hr\Concerns\ScopesCompany;
 use App\Http\Controllers\Controller;
+use App\Mail\AssessmentInviteMail;
 use App\Models\Candidate;
 use App\Models\QuizAttempt;
 use App\Models\TrainingQuiz;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 
 /**
@@ -91,8 +95,19 @@ class QuizAttemptController extends Controller
             'quiz_id' => 'required|exists:training_quizzes,id',
             'candidate_id' => 'required|exists:candidates,id',
             'interview_id' => 'nullable|exists:interviews,id',
+            // The candidate can't start before this — leave it blank for the
+            // existing "startable the moment the link is opened" behavior.
+            'scheduled_start_at' => 'nullable|date|after_or_equal:now',
             'link_expires_at' => 'nullable|date|after:now',
         ]);
+
+        // Validated separately from the rules above rather than via
+        // `after:scheduled_start_at`, since that comparison rule chokes when
+        // the referenced field is absent — both fields are optional here.
+        if (!empty($data['scheduled_start_at']) && !empty($data['link_expires_at'])
+            && $data['link_expires_at'] <= $data['scheduled_start_at']) {
+            return response()->json(['status' => false, 'message' => 'The link expiry must be after the scheduled start time'], 422);
+        }
 
         $quiz = TrainingQuiz::find($data['quiz_id']);
         if (!$quiz || empty($quiz->questions)) {
@@ -114,6 +129,11 @@ class QuizAttemptController extends Controller
             ], 422);
         }
 
+        // Default expiry is relative to the scheduled start (not "now") —
+        // otherwise a start time set more than 7 days out would make the
+        // link expire before its own gate ever opens.
+        $startBasis = !empty($data['scheduled_start_at']) ? Carbon::parse($data['scheduled_start_at']) : now();
+
         $context = $this->defaultCompanyContext($request);
         $attempt = QuizAttempt::create([
             'quiz_id' => $data['quiz_id'],
@@ -123,17 +143,53 @@ class QuizAttemptController extends Controller
             'status' => 'pending',
             'duration_minutes' => $quiz->duration_minutes ?: 30,
             'total_questions' => count($quiz->questions),
-            'link_expires_at' => $data['link_expires_at'] ?? now()->addDays(7),
+            'scheduled_start_at' => $data['scheduled_start_at'] ?? null,
+            'link_expires_at' => $data['link_expires_at'] ?? $startBasis->copy()->addDays(7),
             'company_code' => $context['company_code'],
             'unit' => $context['unit'],
             'created_by' => auth('api')->id(),
         ]);
 
+        $attempt->load(['quiz:id,title,duration_minutes,passing_score', 'candidate:id,name,email,requisition_id', 'candidate.requisition:id,title']);
+
+        $this->sendAssessmentInvite($attempt, $quiz);
+
         return response()->json([
             'status' => true,
             'message' => 'Quiz assigned',
-            'data' => $attempt->load(['quiz:id,title', 'candidate:id,name,email']),
+            'data' => $attempt,
         ], 201);
+    }
+
+    /**
+     * Best-effort — a mail-server hiccup shouldn't roll back or fail the
+     * assignment itself, since the attempt (and its link, visible in the UI)
+     * already exists regardless of whether the email made it out.
+     */
+    private function sendAssessmentInvite(QuizAttempt $attempt, TrainingQuiz $quiz): void
+    {
+        $candidate = $attempt->candidate;
+        if (!$candidate || !$candidate->email) {
+            return;
+        }
+
+        $frontendUrl = rtrim((string) config('services.frontend_url'), '/');
+        $quizUrl = $frontendUrl ? "{$frontendUrl}/quiz/{$attempt->access_token}" : null;
+
+        try {
+            Mail::to($candidate->email)->send(new AssessmentInviteMail(
+                candidateName: $candidate->name,
+                roleTitle: $candidate->requisition?->title ?? 'your application',
+                quizTitle: $quiz->title,
+                durationMinutes: $attempt->duration_minutes,
+                passingScore: $quiz->passing_score,
+                quizUrl: $quizUrl,
+                startsAt: $attempt->scheduled_start_at?->format('l, d M Y \a\t h:i A'),
+                expiresAt: $attempt->link_expires_at?->format('d M Y, h:i A'),
+            ));
+        } catch (\Throwable $e) {
+            Log::error('assessment_invite_mail_failed', ['attempt_id' => $attempt->id, 'error' => $e->getMessage()]);
+        }
     }
 
     /** Revoke an unfinished attempt so its link stops working. */

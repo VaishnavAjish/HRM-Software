@@ -3,10 +3,13 @@
 namespace App\Http\Controllers\Admin\Hr;
 
 use App\Http\Controllers\Controller;
+use App\Mail\InterviewScheduledMail;
 use App\Models\Interview;
 use App\Models\InterviewFeedback;
 use App\Models\InterviewPanelist;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 
 class InterviewController extends Controller
 {
@@ -76,7 +79,10 @@ class InterviewController extends Controller
             ]);
         }
 
-        return response()->json(['status' => true, 'message' => 'Interview scheduled', 'data' => $interview->load('panelists.user')], 201);
+        $interview->load(['panelists.user', 'candidate.requisition', 'requisition']);
+        $this->sendScheduleMail($interview, isReschedule: false);
+
+        return response()->json(['status' => true, 'message' => 'Interview scheduled', 'data' => $interview], 201);
     }
 
     public function update(Request $request, $id)
@@ -111,7 +117,34 @@ class InterviewController extends Controller
         $data = $request->validate(['scheduled_at' => 'required|date']);
         $interview->update(['scheduled_at' => $data['scheduled_at'], 'status' => 'rescheduled']);
 
+        $interview->load(['candidate.requisition', 'requisition']);
+        $this->sendScheduleMail($interview, isReschedule: true);
+
         return response()->json(['status' => true, 'message' => 'Interview rescheduled', 'data' => $interview]);
+    }
+
+    /** Best-effort — see the identical comment on QuizAttemptController::sendAssessmentInvite. */
+    private function sendScheduleMail(Interview $interview, bool $isReschedule): void
+    {
+        $candidate = $interview->candidate;
+        if (!$candidate || !$candidate->email) {
+            return;
+        }
+
+        try {
+            Mail::to($candidate->email)->send(new InterviewScheduledMail(
+                candidateName: $candidate->name,
+                roleTitle: $interview->requisition?->title ?? $candidate->requisition?->title ?? 'your application',
+                roundName: $interview->round_name,
+                scheduledAtFormatted: $interview->scheduled_at->format('l, d M Y \a\t h:i A'),
+                durationMinutes: $interview->duration_minutes,
+                mode: $interview->mode,
+                meetingLink: $interview->meeting_link,
+                isReschedule: $isReschedule,
+            ));
+        } catch (\Throwable $e) {
+            Log::error('interview_schedule_mail_failed', ['interview_id' => $interview->id, 'error' => $e->getMessage()]);
+        }
     }
 
     public function destroy($id)

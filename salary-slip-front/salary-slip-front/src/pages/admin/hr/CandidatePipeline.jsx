@@ -16,9 +16,6 @@ import {
   ArrowRight,
   XCircle,
   PauseCircle,
-  Users,
-  List as ListIcon,
-  LayoutGrid,
   Eye,
 } from "lucide-react";
 import Button from "../../../components/ui/Button";
@@ -36,7 +33,7 @@ import { runBulk } from "./hiring/bulkActions";
 import CandidateDrawer from "./hiring/CandidateDrawer";
 import {
   MAIN_STAGES, TERMINAL_STAGES, ALL_COLUMNS, STAGE_INDEX, STAGE_GROUPS,
-  TAB_STAGE_KEYS, stageLabel, stageColor, nextMainStage,
+  TAB_STAGE_KEYS, stageLabel, stageColor, nextMainStage, promptRejectionReason,
 } from "./hiring/stageMeta";
 
 const inputClass =
@@ -182,6 +179,12 @@ export default function CandidatePipeline({ people = [] }) {
     );
     if (!fromStage || fromStage === toStage) return;
 
+    // Rejection needs a reason server-side now — ask before moving anything,
+    // so a cancelled prompt leaves the card exactly where it was instead of
+    // snapping back after a failed request.
+    const rejectionReason = toStage === "rejected" ? promptRejectionReason() : undefined;
+    if (toStage === "rejected" && !rejectionReason) return;
+
     // optimistic update
     setColumns((prev) => {
       const moved = prev[fromStage].find((c) => String(c.id) === String(candidateId));
@@ -198,7 +201,11 @@ export default function CandidatePipeline({ people = [] }) {
     );
 
     try {
-      const res = await hrApi.moveCandidateStage(candidateId, { to_stage: toStage }, user?.accessToken, user?.tokenType);
+      const res = await hrApi.moveCandidateStage(
+        candidateId,
+        { to_stage: toStage, ...(rejectionReason ? { rejection_reason: rejectionReason } : {}) },
+        user?.accessToken, user?.tokenType,
+      );
       if (!res.status) throw new Error(res.message);
       toast.success(`Moved to ${stageLabel(toStage)}`);
     } catch (err) {
@@ -212,6 +219,9 @@ export default function CandidatePipeline({ people = [] }) {
      and/or the list page), so this one function works no matter which
      view is active. */
   const advanceTo = async (candidateId, toStage) => {
+    const rejectionReason = toStage === "rejected" ? promptRejectionReason() : undefined;
+    if (toStage === "rejected" && !rejectionReason) return;
+
     setAdvancing(true);
 
     setColumns((prev) => {
@@ -232,7 +242,11 @@ export default function CandidatePipeline({ people = [] }) {
     setDetailCandidate((prev) => (prev && String(prev.id) === String(candidateId) ? { ...prev, stage: toStage } : prev));
 
     try {
-      const res = await hrApi.moveCandidateStage(candidateId, { to_stage: toStage }, user?.accessToken, user?.tokenType);
+      const res = await hrApi.moveCandidateStage(
+        candidateId,
+        { to_stage: toStage, ...(rejectionReason ? { rejection_reason: rejectionReason } : {}) },
+        user?.accessToken, user?.tokenType,
+      );
       if (!res.status) throw new Error(res.message);
       toast.success(`Moved to ${stageLabel(toStage)}`);
     } catch (err) {
@@ -304,9 +318,17 @@ export default function CandidatePipeline({ people = [] }) {
   /* ── bulk actions (List/Compact selection) ── */
   const bulkMoveStage = (toStage) => {
     if (!toStage) return;
-    runBulk(hr.selectedIds, (id) => hrApi.moveCandidateStage(id, { to_stage: toStage }, user?.accessToken, user?.tokenType), {
-      successLabel: "moved", onDone: () => { hr.clearSelected(); reload(); },
-    });
+    const rejectionReason = toStage === "rejected" ? promptRejectionReason() : undefined;
+    if (toStage === "rejected" && !rejectionReason) return;
+    runBulk(
+      hr.selectedIds,
+      (id) => hrApi.moveCandidateStage(
+        id,
+        { to_stage: toStage, ...(rejectionReason ? { rejection_reason: rejectionReason } : {}) },
+        user?.accessToken, user?.tokenType,
+      ),
+      { successLabel: "moved", onDone: () => { hr.clearSelected(); reload(); } },
+    );
   };
   const bulkExportSelected = (format) => {
     const selected = listCandidates.filter((c) => hr.selectedIds.includes(c.id));
@@ -334,30 +356,7 @@ export default function CandidatePipeline({ people = [] }) {
     <div className="space-y-4">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden flex-shrink-0">
-            {[
-              { key: "list", label: "List", icon: ListIcon },
-              { key: "compact", label: "Compact", icon: Users },
-              { key: "board", label: "Board", icon: LayoutGrid },
-            ].map((v, i) => (
-              <button
-                key={v.key}
-                onClick={() => setView(v.key)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-colors ${i > 0 ? "border-l border-gray-200 dark:border-gray-700" : ""} ${
-                  view === v.key
-                    ? "bg-brand-600 text-white"
-                    : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
-                }`}
-              >
-                <v.icon size={15} /> {v.label}
-              </button>
-            ))}
-          </div>
-          <p className="text-sm text-gray-500 dark:text-gray-400 hidden lg:block">
-            {view === "board" ? "Drag cards or click a card to advance through stages" : "Search, filter and manage every candidate"}
-          </p>
-        </div>
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Candidates</h2>
         <Button icon={<Plus size={16} />} onClick={() => setAddOpen(true)}>Add Candidate</Button>
       </div>
 

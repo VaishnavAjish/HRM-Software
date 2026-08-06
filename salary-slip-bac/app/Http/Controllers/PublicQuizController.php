@@ -63,6 +63,8 @@ class PublicQuizController extends Controller
             ],
             'status' => $attempt->status,
             'duration_minutes' => $attempt->duration_minutes,
+            'scheduled_start_at' => $attempt->scheduled_start_at,
+            'not_yet_open' => $attempt->status === 'pending' && $attempt->notYetOpen(),
             'started_at' => $attempt->started_at,
             'deadline' => $attempt->deadline(),
             'seconds_remaining' => $attempt->deadline() ? max(0, now()->diffInSeconds($attempt->deadline(), false)) : null,
@@ -93,6 +95,12 @@ class PublicQuizController extends Controller
         }
         if ($attempt->status === 'in_progress') {
             return response()->json(['status' => true, 'message' => 'Already in progress']);
+        }
+        if ($attempt->notYetOpen()) {
+            return response()->json([
+                'status' => false,
+                'message' => 'This assessment is not open yet. It becomes available on ' . $attempt->scheduled_start_at->format('l, d M Y \a\t h:i A') . '.',
+            ], 422);
         }
         if ($attempt->link_expires_at && now()->greaterThan($attempt->link_expires_at)) {
             $attempt->update(['status' => 'expired']);
