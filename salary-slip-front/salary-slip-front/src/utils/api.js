@@ -2112,4 +2112,77 @@ export const ticketApi = {
       body: JSON.stringify(payload),
     });
   },
+
+  // Super Admin Hierarchy Override & Advanced Actions
+  overrideAction(id, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/tickets/${id}/override`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...hrAuthHeaders(accessToken, tokenType) },
+      body: JSON.stringify(payload),
+    });
+  },
+
+  transferTicket(id, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/tickets/${id}/transfer`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...hrAuthHeaders(accessToken, tokenType) },
+      body: JSON.stringify(payload),
+    });
+  },
+
+  escalateTicket(id, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/tickets/${id}/escalate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...hrAuthHeaders(accessToken, tokenType) },
+      body: JSON.stringify(payload),
+    });
+  },
+
+  stopEscalation(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/tickets/${id}/stop-escalation`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...hrAuthHeaders(accessToken, tokenType) },
+    });
+  },
+
+  resetSlaTimer(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/tickets/${id}/reset-sla`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...hrAuthHeaders(accessToken, tokenType) },
+    });
+  },
+
+  bulkOperations(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/tickets/bulk-actions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...hrAuthHeaders(accessToken, tokenType) },
+      body: JSON.stringify(payload),
+    });
+  },
+
+  getAuditLogs(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/tickets/${id}/audit-logs`, {
+      headers: hrAuthHeaders(accessToken, tokenType),
+    });
+  },
+
+  getReports(reportType, filters = {}, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/tickets/reports/${reportType}${hrQuery(filters)}`, {
+      headers: hrAuthHeaders(accessToken, tokenType),
+    });
+  },
+
+  getSlaMatrix(accessToken, tokenType = "Bearer") {
+    return apiRequest(`/tickets/sla-matrix`, {
+      headers: hrAuthHeaders(accessToken, tokenType),
+    });
+  },
+
+  updateSlaMatrix(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/tickets/sla-matrix`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", ...hrAuthHeaders(accessToken, tokenType) },
+      body: JSON.stringify(payload),
+    });
+  },
 };

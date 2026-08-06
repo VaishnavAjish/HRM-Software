@@ -174,29 +174,6 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
-  const [departmentsList, setDepartmentsList] = useState([]);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function fetchDepartments() {
-      try {
-        const res = await salaryApi.getDepartments(
-          user?.accessToken,
-          user?.tokenType
-        );
-        if (!cancelled && res?.data) {
-          const list = res.data.map((dept) => (typeof dept === "string" ? dept : dept.name)).filter(Boolean);
-          setDepartmentsList(list);
-        }
-      } catch (err) {
-        console.error("Failed to fetch departments in TrialFormModal:", err);
-      }
-    }
-    fetchDepartments();
-    return () => {
-      cancelled = true;
-    };
-  }, [user?.accessToken, user?.tokenType]);
 
   const fieldValidators = [
     {
@@ -620,14 +597,6 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
                 value={formData.department}
                 onChange={handleChange}
                 error={errors.department}
-                select
-                options={[
-                  { value: "", label: "SELECT DEPARTMENT" },
-                  ...(departmentsList.length > 0 ? departmentsList : DEFAULT_DEPARTMENTS).map((d) => ({
-                    value: d,
-                    label: d,
-                  })),
-                ]}
               />
               <FullField
                 label="Name of Employee"
@@ -736,14 +705,6 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
                 name="hastak_department"
                 value={formData.hastak_department}
                 onChange={handleChange}
-                select
-                options={[
-                  { value: "", label: "SELECT HASTAK DEPARTMENT" },
-                  ...(departmentsList.length > 0 ? departmentsList : DEFAULT_DEPARTMENTS).map((d) => ({
-                    value: d,
-                    label: d,
-                  })),
-                ]}
               />
               <FullField
                 label="Contractor"

@@ -51,8 +51,9 @@ const AccessRequests = lazy(() => import("./pages/admin/accessControl/AccessRequ
 const Delegations = lazy(() => import("./pages/admin/accessControl/Delegations"));
 const EmergencyAccess = lazy(() => import("./pages/admin/accessControl/EmergencyAccess"));
 
-// Support tickets — one staff queue, two employee screens.
+// Support tickets — staff queue, Super Admin control center, and employee screens.
 const AdminTickets = lazy(() => import("./pages/admin/Tickets"));
+const SuperAdminTicketControlCenter = lazy(() => import("./pages/admin/SuperAdminTicketControlCenter"));
 
 // Employee pages
 const EmployeeDashboard = lazy(() => import("./pages/employee/Dashboard"));
@@ -85,7 +86,6 @@ const HrReports = lazy(() => import("./pages/admin/hr/HrReports"));
 const ExitManagement = lazy(() => import("./pages/admin/hr/ExitManagement"));
 const HrSettings = lazy(() => import("./pages/admin/hr/HrSettings"));
 const TrainingQuizPage = lazy(() => import("./pages/admin/hr/TrainingQuizPage"));
-const InterviewHub = lazy(() => import("./pages/admin/hr/InterviewHub"));
 const CandidateQuiz = lazy(() => import("./pages/public/CandidateQuiz"));
 
 function RouteLoader() {
@@ -252,11 +252,21 @@ function AppRoutes() {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="tickets/control-center"
+          element={
+            <ProtectedRoute requiredRole="admin">
+              <SuperAdminTicketControlCenter />
+            </ProtectedRoute>
+          }
+        />
 
         {/* HR module */}
         <Route path="hr" element={<ProtectedRoute requiredPermission="hr.dashboard.read"><HrDashboard /></ProtectedRoute>} />
         <Route path="hr/hiring" element={<ProtectedRoute requiredPermission="hr.requisition.read"><HiringProcess /></ProtectedRoute>} />
-        <Route path="hr/interviews" element={<ProtectedRoute requiredPermission="hr.interview.read"><InterviewHub /></ProtectedRoute>} />
+        {/* Interviews now lives inside the Hiring workspace as a tab; keep the old
+            link working by sending it straight to that tab. */}
+        <Route path="hr/interviews" element={<Navigate to="/admin/hr/hiring?tab=interviews" replace />} />
         <Route path="hr/assets" element={<ProtectedRoute requiredPermission="hr.asset.read"><AssetAllocation /></ProtectedRoute>} />
         <Route path="hr/onboarding" element={<ProtectedRoute requiredPermission="hr.onboarding.journey.read"><OnboardingDashboard /></ProtectedRoute>} />
         <Route path="hr/onboarding/journeys" element={<ProtectedRoute requiredPermission="hr.onboarding.journey.read"><OnboardingJourneys /></ProtectedRoute>} />

@@ -35,4 +35,10 @@ return [
         ],
     ],
 
+    // Shared secret in the candidate-intake webhook URL — see
+    // PublicCandidateIntakeController and .env's CANDIDATE_INTAKE_TOKEN.
+    'candidate_intake' => [
+        'token' => env('CANDIDATE_INTAKE_TOKEN'),
+    ],
+
 ];

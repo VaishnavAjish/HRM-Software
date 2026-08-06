@@ -1,12 +1,25 @@
 import {
   Mail, Phone as PhoneIcon, MapPin, Clock, Trash2, ArrowRight, ChevronRight,
   CheckCircle2, Circle, XCircle, PauseCircle, User2, CalendarClock, FileText, StickyNote, Lock,
+  Download, ExternalLink, AlertTriangle,
 } from "lucide-react";
 import Drawer, { CollapsibleSection } from "../../../../components/ui/Drawer";
 import Badge from "../../../../components/ui/Badge";
 import Button from "../../../../components/ui/Button";
+import { baseUrl } from "../../../../utils/url";
 
 const PRIORITY_VARIANT = { high: "red", medium: "yellow", low: "gray" };
+
+/** Same safety rules as getEmployeePhotoUrl — a candidate's resume_path is a
+ *  server-relative `public` disk path, never a browser-loadable one as-is. */
+function getResumeUrl(path) {
+  if (!path) return "";
+  const value = String(path).trim();
+  if (!value) return "";
+  if (/^(https?:)?\/\//i.test(value)) return value;
+  if (/^[a-z]:[\\/]/i.test(value) || value.startsWith("\\\\") || /^file:/i.test(value)) return "";
+  return `${baseUrl}/storage/${value.replace(/^\/+/, "")}`;
+}
 
 /** Which tab a candidate belongs to once they've moved past this drawer's owning tab — only used for the "manage them elsewhere" banner. */
 function ownerTabLabel(stage) {
@@ -48,6 +61,10 @@ export default function CandidateDrawer({
   const interviews = candidate.interviews || [];
   const offers = candidate.offers || [];
 
+  const resumeUrl = getResumeUrl(candidate.resume_path);
+  const resumeExt = (candidate.resume_original_name || candidate.resume_path || "").split(".").pop()?.toLowerCase();
+  const isUnmatchedFormSubmission = candidate.source === "google_form" && !candidate.requisition_id;
+
   return (
     <Drawer
       isOpen={!!candidate}
@@ -80,6 +97,12 @@ export default function CandidateDrawer({
               : <span>This candidate is no longer active in this tab's process.</span>}
           </div>
         )}
+        {isUnmatchedFormSubmission && (
+          <div className="flex items-center gap-2 text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2">
+            <AlertTriangle size={13} className="flex-shrink-0" />
+            <span>Submitted via Google Form with a position that didn't match any requisition — link them to the right one manually.</span>
+          </div>
+        )}
         <div className="flex items-start gap-3">
           <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-brand-500 to-indigo-600 flex items-center justify-center text-white font-bold flex-shrink-0">
             {candidate.name?.[0]?.toUpperCase() ?? "?"}
@@ -109,6 +132,40 @@ export default function CandidateDrawer({
           )}
           {candidate.current_designation && (
             <p className="text-sm text-gray-600 dark:text-gray-300 mt-2">{candidate.current_designation} at {candidate.current_company || "—"}</p>
+          )}
+        </CollapsibleSection>
+
+        <CollapsibleSection title="Resume" icon={<FileText size={15} />}>
+          {!resumeUrl ? (
+            <p className="text-xs text-gray-400 text-center py-2">No resume on file</p>
+          ) : (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2 rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2">
+                <div className="min-w-0 flex items-center gap-2">
+                  <FileText size={16} className="flex-shrink-0 text-gray-400" />
+                  <span className="text-sm text-gray-700 dark:text-gray-200 truncate">
+                    {candidate.resume_original_name || "resume"}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <a href={resumeUrl} target="_blank" rel="noopener noreferrer" title="Open in new tab"
+                     className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700/60">
+                    <ExternalLink size={15} />
+                  </a>
+                  <a href={resumeUrl} download={candidate.resume_original_name || undefined} title="Download"
+                     className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700/60">
+                    <Download size={15} />
+                  </a>
+                </div>
+              </div>
+              {resumeExt === "pdf" ? (
+                <iframe src={resumeUrl} title="Resume preview" className="w-full h-96 rounded-lg border border-gray-200 dark:border-gray-700 bg-white" />
+              ) : (
+                <p className="text-xs text-gray-400 px-1">
+                  Inline preview is only available for PDF resumes — use "Open in new tab" to view this Word document.
+                </p>
+              )}
+            </div>
           )}
         </CollapsibleSection>
 

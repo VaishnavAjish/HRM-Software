@@ -16,6 +16,7 @@ use App\Http\Controllers\Admin\Hr\QuizAttemptController;
 use App\Http\Controllers\Admin\Hr\TrainingQuizController;
 use App\Http\Controllers\Admin\Hr\OnboardingController;
 use App\Http\Controllers\PublicQuizController;
+use App\Http\Controllers\PublicCandidateIntakeController;
 use App\Http\Controllers\Admin\PermissionDimensionController;
 use App\Http\Controllers\Admin\ShiftController;
 use App\Http\Controllers\Admin\UploadBatchController;
@@ -673,3 +674,13 @@ Route::group(['prefix' => 'quiz'], function () {
     Route::post('{token}/event', [PublicQuizController::class, 'logEvent'])->middleware('throttle:240,1');
     Route::post('{token}/submit', [PublicQuizController::class, 'submit'])->middleware('throttle:20,1');
 })->where(['token' => '[A-Za-z0-9]{64}']);
+
+/*
+ * Candidate intake from the shared Google Form (relayed by its bound Apps
+ * Script). No login is possible here either — the token in the URL is
+ * config('services.candidate_intake.token'), checked with hash_equals in the
+ * controller. Throttled to absorb a burst of applications without becoming a
+ * write-anything-anywhere endpoint.
+ */
+Route::post('candidate-intake/{token}', [PublicCandidateIntakeController::class, 'store'])
+    ->middleware(['throttle:30,1', 'module.schema:hr']);

@@ -108,7 +108,6 @@ function getAdminNav(companyId, user, isAllCompanies, isModuleAvailable = () => 
       subItems: [
         { to: "/admin/hr", label: "HR Dashboard" },
         { to: "/admin/hr/hiring", label: "Hiring" },
-        { to: "/admin/hr/interviews", label: "Interviews" },
         { to: "/admin/hr/onboarding", label: "Onboarding" },
         { to: "/admin/hr/onboarding/documents", label: "Documents" },
 
@@ -129,7 +128,11 @@ function getAdminNav(companyId, user, isAllCompanies, isModuleAvailable = () => 
    * menu item is indistinguishable from a broken one.
    */
   if ((rawRole === 0 || hasAccess("support.ticket.read")) && isModuleAvailable("tickets")) {
-    nav.push({ to: "/admin/tickets", label: "Tickets", icon: LifeBuoy });
+    if (rawRole === 0 || user?.role === "super_admin" || user?.role === "owner") {
+      nav.push({ to: "/admin/tickets/control-center", label: "Ticket Control Center", icon: LifeBuoy });
+    } else {
+      nav.push({ to: "/admin/tickets", label: "Tickets", icon: LifeBuoy });
+    }
   }
 
   /*

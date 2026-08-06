@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../../../../context/AuthContext";
 import { useCompany } from "../../../../context/CompanyContext";
 import { salaryApi } from "../../../../utils/api";
 import HiringMetricsRow from "./HiringMetricsRow";
 import RequisitionsTab from "./RequisitionsTab";
 import CandidatePipeline from "../CandidatePipeline";
-import InterviewManagement from "../InterviewManagement";
+import InterviewHub from "../InterviewHub";
 import OfferManagement from "../OfferManagement";
 import EmployeeOnboarding from "../EmployeeOnboarding";
 
@@ -20,14 +21,21 @@ const TABS = [
 /**
  * The Hiring workspace shell: title, live metrics row, sticky tab bar, then
  * whichever tab is active. Requisitions and Candidates get the full
- * enterprise redesign (shared filter bar, drawers); Interviews/Offers/
- * Onboarding keep working exactly as before inside the same chrome until a
- * follow-up phase gives them the same treatment.
+ * enterprise redesign (shared filter bar, drawers); Offers/Onboarding keep
+ * working exactly as before inside the same chrome until a follow-up phase
+ * gives them the same treatment. Interviews uses the quiz-based InterviewHub
+ * (quizzes, candidate assignment, proctoring results) rather than the plain
+ * scheduling-only InterviewManagement, since that's the process HR actually
+ * runs interviews through.
  */
 export default function HiringWorkspace() {
   const { user } = useAuth();
   const { companyScope, scopeKey } = useCompany();
-  const [tab, setTab] = useState("requisitions");
+  const [searchParams] = useSearchParams();
+  const initialTab = TABS.some((t) => t.key === searchParams.get("tab"))
+    ? searchParams.get("tab")
+    : "requisitions";
+  const [tab, setTab] = useState(initialTab);
 
   // Loaded once, shared by every tab's filter bar — avoids each tab
   // re-fetching the same department/people lookups independently.
@@ -71,7 +79,7 @@ export default function HiringWorkspace() {
 
       {tab === "requisitions" && <RequisitionsTab departments={departments} people={people} />}
       {tab === "candidates" && <CandidatePipeline departments={departments} people={people} />}
-      {tab === "interviews" && <InterviewManagement />}
+      {tab === "interviews" && <InterviewHub />}
       {tab === "offers" && <OfferManagement />}
       {tab === "onboarding" && <EmployeeOnboarding />}
     </div>
