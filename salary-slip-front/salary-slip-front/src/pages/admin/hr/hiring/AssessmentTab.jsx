@@ -8,6 +8,7 @@ import Button from "../../../../components/ui/Button";
 import Badge from "../../../../components/ui/Badge";
 import Modal from "../../../../components/ui/Modal";
 import { SkeletonTable } from "../../../../components/ui/Skeleton";
+import DatePicker from "../../../../components/ui/DatePicker";
 import { useAuth } from "../../../../context/AuthContext";
 import { hrApi } from "../../../../utils/api";
 import { TAB_STAGE_KEYS, promptRejectionReason } from "./stageMeta";
@@ -453,11 +454,11 @@ export default function AssessmentTab() {
         </Field>
         <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Field label="Available from">
-            <input type="datetime-local" className={inputClass} value={assignStartAt} onChange={(e) => setAssignStartAt(e.target.value)} />
+            <DatePicker withTime value={assignStartAt} onChange={setAssignStartAt} placeholder="Starts immediately" />
             <p className="mt-1 text-[11px] text-gray-400">Leave blank to let the candidate start immediately.</p>
           </Field>
           <Field label="Available until">
-            <input type="datetime-local" className={inputClass} value={assignExpiresAt} onChange={(e) => setAssignExpiresAt(e.target.value)} />
+            <DatePicker withTime value={assignExpiresAt} onChange={setAssignExpiresAt} placeholder="7 days after start" />
             <p className="mt-1 text-[11px] text-gray-400">Leave blank for 7 days after the start time.</p>
           </Field>
         </div>

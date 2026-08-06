@@ -8,6 +8,7 @@ import Badge from "../../../components/ui/Badge";
 import Button from "../../../components/ui/Button";
 import Modal from "../../../components/ui/Modal";
 import { SkeletonTable } from "../../../components/ui/Skeleton";
+import DatePicker from "../../../components/ui/DatePicker";
 import { useAuth } from "../../../context/AuthContext";
 import { hrApi } from "../../../utils/api";
 import { stageLabel } from "./hiring/stageMeta";
@@ -214,7 +215,9 @@ export default function InterviewManagement() {
         title={`Schedule Interview — ${scheduleTarget?.name || ""}`} size="lg"
         footer={<div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setScheduleTarget(null)}>Cancel</Button><Button onClick={submitSchedule} disabled={scheduling}>{scheduling ? "Scheduling..." : "Schedule"}</Button></div>}>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Field label="Date & Time" required><input type="datetime-local" className={inputClass} value={scheduleForm.scheduled_at} onChange={(e) => setScheduleForm({ ...scheduleForm, scheduled_at: e.target.value })} /></Field>
+          <Field label="Date & Time" required>
+            <DatePicker withTime value={scheduleForm.scheduled_at} onChange={(v) => setScheduleForm({ ...scheduleForm, scheduled_at: v })} />
+          </Field>
           <Field label="Duration (minutes)"><input type="number" className={inputClass} value={scheduleForm.duration_minutes} onChange={(e) => setScheduleForm({ ...scheduleForm, duration_minutes: e.target.value })} /></Field>
           <Field label="Mode">
             <select className={inputClass} value={scheduleForm.mode} onChange={(e) => setScheduleForm({ ...scheduleForm, mode: e.target.value })}>
@@ -287,7 +290,7 @@ export default function InterviewManagement() {
 
       <Modal isOpen={!!rescheduleTarget} onClose={() => setRescheduleTarget(null)} title="Reschedule Interview"
         footer={<div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setRescheduleTarget(null)}>Cancel</Button><Button onClick={submitReschedule}>Reschedule</Button></div>}>
-        <Field label="New Date & Time"><input type="datetime-local" className={inputClass} value={rescheduleAt} onChange={(e) => setRescheduleAt(e.target.value)} /></Field>
+        <Field label="New Date & Time"><DatePicker withTime value={rescheduleAt} onChange={setRescheduleAt} /></Field>
       </Modal>
     </div>
   );

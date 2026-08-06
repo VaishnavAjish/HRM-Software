@@ -1996,7 +1996,8 @@ export const hrApi = {
     return apiRequest("/hr/exit/store", { method: "POST", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(payload) });
   },
   updateResignationStatus(id, payload, accessToken, tokenType = "Bearer") {
-    return apiRequest(`/hr/exit/status/${id}`, { method: "PUT", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(payload) });
+    const bodyObj = typeof payload === "string" ? { status: payload } : payload;
+    return apiRequest(`/hr/exit/status/${id}`, { method: "PUT", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(bodyObj) });
   },
 
   // Candidate documents — a real upload endpoint, unlike the Onboarding

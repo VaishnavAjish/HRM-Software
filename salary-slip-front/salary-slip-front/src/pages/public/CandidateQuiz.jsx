@@ -38,6 +38,8 @@ export default function CandidateQuiz() {
   const { token } = useParams();
   const [state, setState] = useState({ loading: true, error: null, data: null });
   const [answers, setAnswers] = useState({});
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const initializedIndexRef = useRef(false);
   const [secondsLeft, setSecondsLeft] = useState(null);
   const [violations, setViolations] = useState(0);
   const [warning, setWarning] = useState(null);
@@ -54,6 +56,18 @@ export default function CandidateQuiz() {
   const data = state.data;
   const running = data?.status === "in_progress" && !result;
   useEffect(() => { runningRef.current = running; }, [running]);
+
+  // One question on screen at a time — no scrolling past to peek ahead or
+  // skip around. Runs once per attempt: if the candidate reloads mid-quiz,
+  // resume at the first unanswered question (from restored progress)
+  // instead of always snapping back to Q1.
+  useEffect(() => {
+    if (!running || initializedIndexRef.current || !data?.questions?.length) return;
+    initializedIndexRef.current = true;
+    const restored = data.answers || [];
+    const firstUnanswered = restored.findIndex((v) => v === null || v === undefined);
+    setCurrentIndex(firstUnanswered === -1 ? 0 : firstUnanswered);
+  }, [running, data]);
 
   /* ------------------------------------------------------------ load */
 
@@ -406,54 +420,79 @@ export default function CandidateQuiz() {
       )}
 
       <main className="mx-auto max-w-3xl space-y-3 px-4 py-5">
-        {data.questions.map((q, i) => (
-          <div key={i} className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
-            <p className="text-sm font-medium text-gray-900 dark:text-white">
-              <span className="mr-2 text-gray-400">Q{i + 1}.</span>{q.text}
-            </p>
-            <div className="mt-3 space-y-2">
-              {q.options.map((opt, oi) => {
-                const picked = answers[i] === oi;
-                return (
-                  <label
-                    key={oi}
-                    className={`flex cursor-pointer items-center gap-2.5 rounded-xl border px-3 py-2.5 text-sm transition ${
-                      picked
-                        ? "border-brand-500 bg-brand-50 text-brand-900 dark:bg-brand-900/20 dark:text-brand-200"
-                        : "border-gray-200 hover:border-gray-300 dark:border-gray-700 dark:hover:border-gray-600"
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name={`q-${i}`}
-                      checked={picked}
-                      onChange={() => setAnswers((a) => ({ ...a, [i]: oi }))}
-                      className="accent-brand-600"
-                    />
-                    <span className="text-gray-700 dark:text-gray-200">{opt}</span>
-                  </label>
-                );
-              })}
-            </div>
-          </div>
-        ))}
+        {(() => {
+          const q = data.questions[currentIndex];
+          if (!q) return null;
+          const isLast = currentIndex === total - 1;
+          const answered = answers[currentIndex] !== undefined;
 
-        <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            {answeredCount < total
-              ? `You have ${total - answeredCount} unanswered question${total - answeredCount === 1 ? "" : "s"}. You can still submit.`
-              : "All questions answered."}
-          </p>
-          <button
-            onClick={() => {
-              if (window.confirm("Submit your quiz? You cannot change your answers afterwards.")) doSubmit(false);
-            }}
-            disabled={submitting}
-            className="mt-3 w-full rounded-xl bg-brand-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50"
-          >
-            {submitting ? "Submitting…" : "Submit quiz"}
-          </button>
-        </div>
+          const goNext = () => {
+            if (!answered) { setWarning("Pick an answer before moving to the next question."); return; }
+            setWarning(null);
+            setCurrentIndex((i) => Math.min(total - 1, i + 1));
+          };
+
+          return (
+            <div key={currentIndex} className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+              <p className="text-xs font-semibold text-gray-400">Question {currentIndex + 1} of {total}</p>
+              <p className="mt-1 text-sm font-medium text-gray-900 dark:text-white">{q.text}</p>
+              <div className="mt-3 space-y-2">
+                {q.options.map((opt, oi) => {
+                  const picked = answers[currentIndex] === oi;
+                  return (
+                    <label
+                      key={oi}
+                      className={`flex cursor-pointer items-center gap-2.5 rounded-xl border px-3 py-2.5 text-sm transition ${
+                        picked
+                          ? "border-brand-500 bg-brand-50 text-brand-900 dark:bg-brand-900/20 dark:text-brand-200"
+                          : "border-gray-200 hover:border-gray-300 dark:border-gray-700 dark:hover:border-gray-600"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name={`q-${currentIndex}`}
+                        checked={picked}
+                        onChange={() => { setAnswers((a) => ({ ...a, [currentIndex]: oi })); setWarning(null); }}
+                        className="accent-brand-600"
+                      />
+                      <span className="text-gray-700 dark:text-gray-200">{opt}</span>
+                    </label>
+                  );
+                })}
+              </div>
+
+              <div className="mt-5 flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentIndex((i) => Math.max(0, i - 1))}
+                  disabled={currentIndex === 0}
+                  className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-600 transition hover:bg-gray-50 disabled:opacity-40 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-700/40"
+                >
+                  Back
+                </button>
+                {isLast ? (
+                  <button
+                    onClick={() => {
+                      if (!answered) { setWarning("Pick an answer before submitting."); return; }
+                      if (window.confirm("Submit your quiz? You cannot change your answers afterwards.")) doSubmit(false);
+                    }}
+                    disabled={submitting}
+                    className="flex-1 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50"
+                  >
+                    {submitting ? "Submitting…" : "Submit quiz"}
+                  </button>
+                ) : (
+                  <button
+                    onClick={goNext}
+                    disabled={!answered}
+                    className="flex-1 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50"
+                  >
+                    Next question
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })()}
       </main>
     </div>
   );

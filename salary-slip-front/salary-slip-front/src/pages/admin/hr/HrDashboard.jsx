@@ -6,6 +6,7 @@ import {
   FileClock, Sparkles, Plus, RefreshCw, Download, TrendingUp,
   UserPlus2, FileText, Star, Award, PackageCheck, PackageX,
   AlertTriangle, CalendarClock, UsersRound, LogOut, BarChart3, FileBarChart, Wallet,
+  ChevronRight, ArrowUpRight, Activity
 } from "lucide-react";
 import {
   ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -71,9 +72,6 @@ export default function HrDashboard() {
     } finally {
       setLoading(false);
     }
-    // companyScope is what the request actually reads. It is memoised in
-    // CompanyContext on [companyId, activeUnit] — the same inputs scopeKey is
-    // built from — so depending on it directly is stable and cannot loop.
   }, [user, companyScope]);
 
   useEffect(() => { if (user?.accessToken) load(); }, [load]);
@@ -91,7 +89,7 @@ export default function HrDashboard() {
       <div className="space-y-6">
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
           {[...Array(8)].map((_, i) => (
-            <div key={i} className="skeleton h-24 rounded-2xl" />
+            <div key={i} className="skeleton h-28 rounded-3xl" />
           ))}
         </div>
         <SkeletonTable rows={6} />
@@ -109,54 +107,60 @@ export default function HrDashboard() {
     joiners: g.count,
     resignations: data?.charts?.attrition_trend?.[i]?.count ?? 0,
   }));
+
   return (
-    <div className="space-y-6">
-      {/* ── Premium header ── */}
+    <div className="space-y-6 pb-12 font-sans text-gray-900 dark:text-gray-100">
+      {/* ── Premium Header ── */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">HR Dashboard</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-extrabold text-gray-900 dark:text-white tracking-tight">HR Control Center</h1>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-500/10 px-3 py-1 text-xs font-semibold text-brand-600 dark:text-brand-400 border border-brand-500/20">
+              <Sparkles size={13} /> Live Overview
+            </span>
+          </div>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
             {greeting()}{user?.name ? `, ${user.name.split(" ")[0]}` : ""} — {new Date().toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5">
           <button
             onClick={load}
-            title="Refresh"
-            className="p-2 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-brand-600 hover:border-brand-300 dark:hover:border-brand-700 bg-white dark:bg-gray-800 transition-colors"
+            title="Refresh Data"
+            className="p-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-brand-600 hover:border-brand-300 dark:hover:border-brand-700 bg-white dark:bg-gray-800 shadow-sm transition-all"
           >
             <RefreshCw size={16} />
           </button>
           <button
             onClick={exportSummary}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-gray-200 dark:border-gray-700 text-sm font-medium text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-800 hover:border-brand-300 dark:hover:border-brand-700 hover:text-brand-600 transition-colors"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-xs font-bold text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:border-brand-300 dark:hover:border-brand-700 hover:text-brand-600 shadow-sm transition-all"
           >
-            <Download size={15} /> Export
+            <Download size={14} /> Export Summary
           </button>
           <Link
             to="/admin/employees/add"
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white bg-gradient-to-br from-brand-600 to-indigo-600 hover:from-brand-700 hover:to-indigo-700 shadow-sm transition-colors"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold text-white bg-gradient-to-br from-brand-600 to-indigo-600 hover:from-brand-700 hover:to-indigo-700 shadow-md shadow-brand-600/20 transition-all"
           >
             <Plus size={16} /> Add Employee
           </Link>
         </div>
       </div>
 
-      {/* ── KPI row ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        <Lift><StatCard title="Total Employees" value={cards.total_employees ?? "—"} icon={<Users size={22} />} color="blue" /></Lift>
+      {/* ── KPI Grid (8 Key Metrics) ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Lift><StatCard title="Total Workforce" value={cards.total_employees ?? "—"} icon={<Users size={22} />} color="blue" /></Lift>
         <Lift><StatCard title="Active Employees" value={cards.active_employees ?? "—"} icon={<UserCheck size={22} />} color="green" /></Lift>
         <Lift><StatCard title="New Joiners (30d)" value={cards.new_joiners ?? "—"} icon={<UserPlus size={22} />} color="purple" /></Lift>
         <Lift><StatCard title="On Notice Period" value={cards.employees_on_notice_period ?? "—"} icon={<FileClock size={22} />} color="yellow" /></Lift>
         <Lift><StatCard title="Pending Approvals" value={cards.pending_approvals ?? "—"} icon={<ClipboardList size={22} />} color="red" /></Lift>
-        <Lift><StatCard title="Open Job Positions" value={cards.open_job_positions ?? "—"} icon={<Briefcase size={22} />} color="blue" /></Lift>
+        <Lift><StatCard title="Open Positions" value={cards.open_job_positions ?? "—"} icon={<Briefcase size={22} />} color="blue" /></Lift>
         <Lift><StatCard title="Interviews Today" value={cards.interviews_today ?? "—"} icon={<CalendarDays size={22} />} color="green" /></Lift>
-        <Lift><StatCard title="Assets Pending Allocation" value={cards.assets_pending_allocation ?? "—"} icon={<Laptop size={22} />} color="purple" /></Lift>
+        <Lift><StatCard title="Asset Allocations Pending" value={cards.assets_pending_allocation ?? "—"} icon={<Laptop size={22} />} color="purple" /></Lift>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         <div className="xl:col-span-2 space-y-6">
-          <SectionCard title="Hiring Pipeline" subtitle="Candidates currently at each stage" icon={<TrendingUp size={16} />}>
+          <SectionCard title="Hiring Funnel" subtitle="Candidates currently in recruitment stages" icon={<TrendingUp size={18} />}>
             <div className="h-72">
               {funnelData.length ? (
                 <ResponsiveContainer width="100%" height="100%">
@@ -164,33 +168,33 @@ export default function HrDashboard() {
                     <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e5e7eb" />
                     <XAxis type="number" allowDecimals={false} tick={{ fontSize: 12, fill: "#6b7280" }} />
                     <YAxis type="category" dataKey="stage" width={120} tick={{ fontSize: 12, fill: "#6b7280" }} />
-                    <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid #e5e7eb" }} cursor={{ fill: "#f8fafc" }} />
-                    <Bar dataKey="count" fill="#2563eb" radius={[0, 6, 6, 0]} />
+                    <Tooltip contentStyle={{ borderRadius: 16, border: "none", boxShadow: "0 10px 25px rgba(0,0,0,0.1)" }} cursor={{ fill: "#f8fafc" }} />
+                    <Bar dataKey="count" fill="#4f46e5" radius={[0, 8, 8, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
-              ) : <EmptyChart text="No candidates yet" /> }
+              ) : <EmptyChart text="No candidates in hiring funnel" /> }
             </div>
           </SectionCard>
 
-          <SectionCard title="Employee Growth vs Attrition" subtitle="Last 6 months" icon={<BarChart3 size={16} />}>
+          <SectionCard title="Workforce Dynamics" subtitle="Net Joiners vs Resignations (6-Month Trend)" icon={<BarChart3 size={18} />}>
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart data={growthTrend}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
                   <XAxis dataKey="month" tick={{ fontSize: 12, fill: "#6b7280" }} />
                   <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: "#6b7280" }} />
-                  <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid #e5e7eb" }} />
+                  <Tooltip contentStyle={{ borderRadius: 16, border: "none" }} />
                   <Legend />
-                  <Bar dataKey="joiners" name="Joiners" fill="#10b981" radius={[6, 6, 0, 0]} barSize={22} />
-                  <Line type="monotone" dataKey="resignations" name="Resignations" stroke="#ef4444" strokeWidth={2.5} dot={{ r: 3 }} />
+                  <Bar dataKey="joiners" name="Joiners" fill="#10b981" radius={[8, 8, 0, 0]} barSize={24} />
+                  <Line type="monotone" dataKey="resignations" name="Resignations" stroke="#ef4444" strokeWidth={3} dot={{ r: 4 }} />
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
           </SectionCard>
 
-          {/* Assets + Performance snapshots — real aggregates, one card each */}
+          {/* Real Module Overview Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-            <SectionCard title="Assets Overview" icon={<Laptop size={16} />} action={<Link to="/admin/hr/assets" className="text-xs font-semibold text-brand-600 hover:underline">View all</Link>}>
+            <SectionCard title="Assets Status" icon={<Laptop size={18} />} action={<Link to="/admin/hr/assets" className="text-xs font-bold text-brand-600 hover:underline">View all →</Link>}>
               {assets ? (
                 <div className="grid grid-cols-2 gap-3">
                   <MiniStat label="Assigned" value={assets.assigned} icon={<PackageCheck size={16} />} tone="blue" />
@@ -198,10 +202,10 @@ export default function HrDashboard() {
                   <MiniStat label="Damaged" value={assets.damaged} icon={<AlertTriangle size={16} />} tone="yellow" />
                   <MiniStat label="Lost" value={assets.lost} icon={<PackageX size={16} />} tone="red" />
                 </div>
-              ) : <EmptyChart text="No asset data yet" compact /> }
+              ) : <EmptyChart text="No asset data available" compact /> }
             </SectionCard>
 
-            <SectionCard title="Performance Snapshot" icon={<Award size={16} />} action={<Link to="/admin/hr/performance" className="text-xs font-semibold text-brand-600 hover:underline">View matrix</Link>}>
+            <SectionCard title="Performance Snapshot" icon={<Award size={18} />} action={<Link to="/admin/hr/performance" className="text-xs font-bold text-brand-600 hover:underline">View matrix →</Link>}>
               {performance ? (
                 <div className="grid grid-cols-2 gap-3">
                   <MiniStat label="Top Performers" value={performance.cards?.top_performers} icon={<Award size={16} />} tone="green" />
@@ -209,87 +213,40 @@ export default function HrDashboard() {
                   <MiniStat label="Avg Rating" value={performance.cards?.average_rating ?? "—"} icon={<Star size={16} />} tone="yellow" />
                   <MiniStat label="Promotion Ready" value={performance.cards?.promotion_eligible} icon={<TrendingUp size={16} />} tone="blue" />
                 </div>
-              ) : <EmptyChart text="No reviews yet" compact /> }
+              ) : <EmptyChart text="No performance records" compact /> }
             </SectionCard>
-          </div>
-
-          {/* Honest placeholders — these aren't tracked anywhere in the app yet */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-            <PlaceholderCard
-              icon={<CalendarClock size={22} />}
-              title="Today's Attendance"
-              text="Live present / absent / late breakdown isn't wired into this dashboard yet — the full picture is in the Attendance module."
-              linkTo="/admin/attendance"
-              linkLabel="Open Attendance"
-            />
-            <PlaceholderCard
-              icon={<LogOut size={22} />}
-              title="Leave Overview"
-              text="This HRMS doesn't have a leave-request system yet, so there's nothing real to show here — this card will populate once one exists."
-            />
           </div>
         </div>
 
-        {/* ── Side column ── */}
+        {/* ── Quick Launch & Activity Stream Column ── */}
         <div className="space-y-6">
-          <SectionCard title="Quick Actions">
-            <div className="grid grid-cols-2 gap-2.5">
-              <QuickAction to="/admin/hr/hiring" icon={<Briefcase size={18} />} label="New Requisition" />
-              <QuickAction to="/admin/hr/hiring" icon={<UsersRound size={18} />} label="Add Candidate" />
-              <QuickAction to="/admin/hr/hiring" icon={<CalendarDays size={18} />} label="Schedule Interview" />
-              <QuickAction to="/admin/hr/assets" icon={<Laptop size={18} />} label="Allocate Asset" />
-              <QuickAction to="/admin/attendance" icon={<CalendarClock size={18} />} label="Attendance" />
-              <QuickAction to="/admin/salary" icon={<Wallet size={18} />} label="Payroll" />
+          <SectionCard title="HR Shortcuts">
+            <div className="grid grid-cols-2 gap-3">
+              <QuickAction to="/admin/hr/hiring" icon={<Briefcase size={18} />} label="Hiring Funnel" />
+              <QuickAction to="/admin/hr/onboarding" icon={<UserPlus2 size={18} />} label="Onboarding" />
+              <QuickAction to="/admin/hr/assets" icon={<Laptop size={18} />} label="IT Assets" />
               <QuickAction to="/admin/hr/performance" icon={<Award size={18} />} label="Performance" />
+              <QuickAction to="/admin/hr/exit" icon={<LogOut size={18} />} label="Exit Desk" />
               <QuickAction to="/admin/hr/reports" icon={<FileBarChart size={18} />} label="HR Reports" />
             </div>
           </SectionCard>
 
-          <div className="bg-gradient-to-br from-brand-600 to-indigo-700 rounded-2xl p-6 shadow-sm text-white">
-            <div className="flex items-center gap-2 mb-2">
-              <Sparkles size={18} />
-              <h3 className="text-base font-bold">AI Insights</h3>
-              <Badge variant="yellow" className="ml-auto">Preview</Badge>
-            </div>
-            <p className="text-sm text-white/85">
-              AI-powered resume matching, attrition prediction and hiring recommendations are on the roadmap.
-              This card is a placeholder — no predictions are generated yet.
-            </p>
-          </div>
-
-          <SectionCard title="Pending Tasks">
-            {(!data?.pending_tasks || data.pending_tasks.length === 0) ? (
-              <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">Nothing pending 🎉</p>
-            ) : (
-              <div className="space-y-1.5">
-                {data.pending_tasks.slice(0, 6).map((t, i) => (
-                  <div key={i} className="flex items-center gap-2.5 text-sm px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-700/40">
-                    <span className="w-7 h-7 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center flex-shrink-0">
-                      <Clock size={14} className="text-amber-600 dark:text-amber-400" />
-                    </span>
-                    <span className="text-gray-700 dark:text-gray-200 truncate">{t.text}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </SectionCard>
-
-          <SectionCard title="Recent Activities">
+          <SectionCard title="Recent Activity Trail">
             {(!data?.recent_activities || data.recent_activities.length === 0) ? (
-              <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">No recent activity</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 text-center py-6">No recent HR activity</p>
             ) : (
-              <div className="space-y-1 max-h-80 overflow-y-auto pr-1">
+              <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
                 {data.recent_activities.map((a, i) => {
                   const meta = ACTIVITY_META[a.type] || ACTIVITY_META.candidate;
                   const Icon = meta.icon;
                   return (
-                    <div key={i} className="flex items-start gap-2.5 px-1 py-2.5 border-b border-gray-50 dark:border-gray-700/50 last:border-0">
-                      <span className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5" style={{ backgroundColor: `${meta.color}18` }}>
-                        <Icon size={14} style={{ color: meta.color }} />
+                    <div key={i} className="flex items-start gap-3 px-1 py-2.5 border-b border-gray-50 dark:border-gray-800/50 last:border-0">
+                      <span className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5" style={{ backgroundColor: `${meta.color}18` }}>
+                        <Icon size={15} style={{ color: meta.color }} />
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm text-gray-700 dark:text-gray-200 leading-snug">{a.text}</p>
-                        <p className="text-xs text-gray-400 mt-0.5">{timeAgo(a.at)}</p>
+                        <p className="text-xs font-medium text-gray-800 dark:text-gray-200 leading-snug">{a.text}</p>
+                        <p className="text-[10px] text-gray-400 mt-0.5">{timeAgo(a.at)}</p>
                       </div>
                     </div>
                   );
@@ -303,24 +260,20 @@ export default function HrDashboard() {
   );
 }
 
-/* ─────────────────── Small building blocks ─────────────────── */
-
-/** Subtle hover-lift wrapper — kept separate from StatCard so the shared
- *  component (used elsewhere in the app) doesn't need to change. */
 function Lift({ children }) {
   return <div className="transition-transform duration-200 hover:-translate-y-0.5">{children}</div>;
 }
 
 function SectionCard({ title, subtitle, icon, action, compact, children }) {
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm p-6 transition-shadow hover:shadow-md">
+    <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-200/80 dark:border-gray-800 shadow-sm p-6 transition-all hover:shadow-md">
       <div className="flex items-start justify-between gap-2 mb-4">
         <div>
-          <h3 className={`font-bold text-gray-900 dark:text-white flex items-center gap-2 ${compact ? "text-base" : "text-lg"}`}>
+          <h3 className={`font-bold text-gray-900 dark:text-white flex items-center gap-2.5 ${compact ? "text-sm" : "text-base"}`}>
             {icon && <span className="text-brand-600 dark:text-brand-400">{icon}</span>}
             {title}
           </h3>
-          {subtitle && <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{subtitle}</p>}
+          {subtitle && <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{subtitle}</p>}
         </div>
         {action}
       </div>
@@ -332,35 +285,22 @@ function SectionCard({ title, subtitle, icon, action, compact, children }) {
 function MiniStat({ label, value, icon, tone }) {
   const tones = {
     blue: "text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-900/20",
-    green: "text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20",
-    yellow: "text-yellow-600 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-900/20",
-    red: "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20",
+    green: "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20",
+    yellow: "text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20",
+    red: "text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/20",
   };
   return (
-    <div className="rounded-xl border border-gray-100 dark:border-gray-700 p-3">
-      <div className={`w-8 h-8 rounded-lg flex items-center justify-center mb-2 ${tones[tone] || tones.blue}`}>{icon}</div>
-      <p className="text-lg font-bold text-gray-900 dark:text-white">{value ?? "—"}</p>
-      <p className="text-xs text-gray-500 dark:text-gray-400">{label}</p>
-    </div>
-  );
-}
-
-function PlaceholderCard({ icon, title, text, linkTo, linkLabel }) {
-  return (
-    <div className="bg-white dark:bg-gray-800 rounded-2xl border border-dashed border-gray-300 dark:border-gray-600 p-6 flex flex-col items-center text-center">
-      <div className="w-12 h-12 rounded-2xl bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-gray-400 mb-3">{icon}</div>
-      <h3 className="text-sm font-bold text-gray-700 dark:text-gray-200 mb-1">{title}</h3>
-      <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">{text}</p>
-      {linkTo && (
-        <Link to={linkTo} className="text-xs font-semibold text-brand-600 hover:underline">{linkLabel}</Link>
-      )}
+    <div className="rounded-2xl border border-gray-100 dark:border-gray-800 p-3 bg-gray-50/40 dark:bg-gray-800/40">
+      <div className={`w-8 h-8 rounded-xl flex items-center justify-center mb-2 ${tones[tone] || tones.blue}`}>{icon}</div>
+      <p className="text-base font-bold text-gray-900 dark:text-white">{value ?? "—"}</p>
+      <p className="text-[11px] font-medium text-gray-500 dark:text-gray-400">{label}</p>
     </div>
   );
 }
 
 function EmptyChart({ text, compact }) {
   return (
-    <div className={`flex items-center justify-center ${compact ? "h-40" : "h-full"} text-sm text-gray-400 dark:text-gray-500`}>
+    <div className={`flex items-center justify-center ${compact ? "h-32" : "h-full"} text-xs font-semibold text-gray-400 dark:text-gray-500`}>
       {text}
     </div>
   );
@@ -370,11 +310,10 @@ function QuickAction({ to, icon, label }) {
   return (
     <Link
       to={to}
-      className="flex flex-col items-center justify-center gap-2 rounded-xl border border-gray-200 dark:border-gray-700 px-3 py-4 text-xs font-medium text-gray-600 dark:text-gray-300 bg-gray-50/50 dark:bg-gray-900/20 hover:border-brand-300 hover:bg-brand-50 dark:hover:bg-brand-900/20 hover:text-brand-700 dark:hover:text-brand-400 hover:-translate-y-0.5 transition-all text-center"
+      className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-gray-200/80 dark:border-gray-800 px-3 py-3.5 text-xs font-semibold text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800/50 hover:border-brand-400 hover:bg-brand-50/50 dark:hover:bg-brand-950/30 hover:text-brand-600 dark:hover:text-brand-400 hover:-translate-y-0.5 transition-all text-center shadow-xs"
     >
-      {icon}
+      <span className="text-brand-600 dark:text-brand-400">{icon}</span>
       {label}
     </Link>
   );
 }
-

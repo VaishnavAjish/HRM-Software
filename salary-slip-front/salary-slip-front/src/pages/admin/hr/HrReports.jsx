@@ -1,27 +1,26 @@
 import { useState } from "react";
 import toast from "react-hot-toast";
-import { FileSpreadsheet, FileText, FileDown, Search } from "lucide-react";
+import { FileSpreadsheet, FileText, FileDown, Search, Sparkles, Filter, CheckCircle2 } from "lucide-react";
 import Button from "../../../components/ui/Button";
+import Badge from "../../../components/ui/Badge";
 import { SkeletonTable } from "../../../components/ui/Skeleton";
 import { useAuth } from "../../../context/AuthContext";
 import { useCompany } from "../../../context/CompanyContext";
 import { hrApi } from "../../../utils/api";
 import { downloadExcel, downloadCSV, downloadTablePDF } from "../../../utils/exportUtils";
 
-const inputClass = "w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500";
+const inputClass = "w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3.5 py-2.5 text-xs font-semibold text-gray-900 dark:text-white focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none transition-all";
 
 const REPORT_TYPES = [
-  { value: "hiring", label: "Hiring Report" },
-  { value: "interview", label: "Interview Report" },
-  { value: "joining", label: "Joining Report" },
-  { value: "attrition", label: "Attrition Report" },
-  { value: "asset_allocation", label: "Asset Allocation Report" },
-  { value: "performance", label: "Performance Report" },
-  { value: "department", label: "Department Report" },
-  { value: "hr_kpi", label: "HR KPI Report" },
+  { value: "hiring", label: "Hiring & Recruitment Report" },
+  { value: "interview", label: "Interview Feedback Report" },
+  { value: "joining", label: "Employee Joining Report" },
+  { value: "attrition", label: "Exit & Attrition Report" },
+  { value: "asset_allocation", label: "IT Asset Allocation Report" },
+  { value: "performance", label: "Performance Appraisal Report" },
+  { value: "department", label: "Department Distribution Report" },
+  { value: "hr_kpi", label: "HR KPI & Metrics Summary" },
 ];
-
-const MAX_PREVIEW_ROWS = 200;
 
 export default function HrReports() {
   const { user } = useAuth();
@@ -57,73 +56,78 @@ export default function HrReports() {
   });
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-12 font-sans text-gray-900 dark:text-gray-100">
+      {/* Top Header */}
       <div>
-        <h1 className="text-xl font-bold text-gray-900 dark:text-white">HR Reports</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400">Generate and export reports across hiring, performance, assets and workforce data</p>
+        <h1 className="text-2xl font-extrabold text-gray-900 dark:text-white tracking-tight">HR Intelligence & Analytics Reports</h1>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Generate, preview, and export high-density workforce reports across hiring, assets, and performance</p>
       </div>
 
-      <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm p-6">
+      {/* Control Card */}
+      <div className="rounded-3xl border border-gray-200/80 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 items-end">
           <div>
-            <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">Report Type</label>
+            <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">Select Report Type</label>
             <select className={inputClass} value={type} onChange={(e) => { setType(e.target.value); setReport(null); }}>
               {REPORT_TYPES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">From</label>
+            <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">From Date</label>
             <input type="date" className={inputClass} value={from} onChange={(e) => setFrom(e.target.value)} />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">To</label>
+            <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">To Date</label>
             <input type="date" className={inputClass} value={to} onChange={(e) => setTo(e.target.value)} />
           </div>
-          <Button icon={<Search size={16} />} onClick={generate} disabled={loading}>{loading ? "Generating..." : "Generate"}</Button>
+          <Button icon={<Search size={15} />} onClick={generate} disabled={loading}>
+            {loading ? "Generating..." : "Generate Analytics"}
+          </Button>
         </div>
       </div>
 
       {loading && <SkeletonTable rows={8} />}
 
       {!loading && report && (
-        <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-6 py-4 border-b border-gray-100 dark:border-gray-700">
+        <div className="rounded-3xl border border-gray-200/80 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900 overflow-hidden space-y-0">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-6 py-4 border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50">
             <div>
-              <h3 className="text-base font-bold text-gray-900 dark:text-white">{reportLabel}</h3>
-              <p className="text-xs text-gray-500 dark:text-gray-400">{report.rows.length} record{report.rows.length === 1 ? "" : "s"}</p>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-bold text-gray-900 dark:text-white">{reportLabel}</h3>
+                <Badge variant="green">{report.rows.length} Records</Badge>
+              </div>
             </div>
             <div className="flex gap-2">
-              <Button variant="secondary" size="sm" icon={<FileSpreadsheet size={14} />} onClick={exportExcel}>Excel</Button>
-              <Button variant="secondary" size="sm" icon={<FileDown size={14} />} onClick={exportCsv}>CSV</Button>
-              <Button variant="secondary" size="sm" icon={<FileText size={14} />} onClick={exportPdf}>PDF</Button>
+              <Button variant="secondary" size="sm" icon={<FileSpreadsheet size={14} />} onClick={exportExcel}>Export Excel</Button>
+              <Button variant="secondary" size="sm" icon={<FileDown size={14} />} onClick={exportCsv}>Export CSV</Button>
+              <Button variant="secondary" size="sm" icon={<FileText size={14} />} onClick={exportPdf}>Export PDF</Button>
             </div>
           </div>
 
-          {report.rows.length === 0 ? (
-            <p className="text-center py-16 text-sm text-gray-500 dark:text-gray-400">No data found for the selected filters</p>
-          ) : (
-            <>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50 dark:bg-gray-700/50 text-xs uppercase text-gray-500 dark:text-gray-400">
-                    <tr>{report.columns.map((c) => <th key={c} className="text-left px-4 py-3 whitespace-nowrap">{c}</th>)}</tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                    {report.rows.slice(0, MAX_PREVIEW_ROWS).map((row, i) => (
-                      <tr key={i} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
-                        {report.columns.map((c) => <td key={c} className="px-4 py-3 text-gray-600 dark:text-gray-300 whitespace-nowrap">{String(row[c] ?? "—")}</td>)}
-                      </tr>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="border-b border-gray-100 bg-gray-50/80 uppercase text-gray-500 dark:border-gray-800 dark:bg-gray-800/50 dark:text-gray-400">
+                <tr>
+                  {report.columns.map((c) => (
+                    <th key={c} className="px-5 py-3 font-semibold whitespace-nowrap">
+                      {c.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                {report.rows.map((row, idx) => (
+                  <tr key={idx} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/40 transition-colors">
+                    {report.columns.map((c) => (
+                      <td key={c} className="px-5 py-3.5 text-gray-700 dark:text-gray-300 font-medium whitespace-nowrap">
+                        {row[c] ?? "—"}
+                      </td>
                     ))}
-                  </tbody>
-                </table>
-              </div>
-              {report.rows.length > MAX_PREVIEW_ROWS && (
-                <p className="text-xs text-gray-400 text-center py-3">
-                  Showing first {MAX_PREVIEW_ROWS} of {report.rows.length} rows — use Excel/CSV/PDF export for the full report.
-                </p>
-              )}
-            </>
-          )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>

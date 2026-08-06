@@ -8,6 +8,7 @@ import Badge from "../../../components/ui/Badge";
 import Button from "../../../components/ui/Button";
 import Modal from "../../../components/ui/Modal";
 import { SkeletonTable } from "../../../components/ui/Skeleton";
+import DatePicker from "../../../components/ui/DatePicker";
 import { useAuth } from "../../../context/AuthContext";
 import { hrApi } from "../../../utils/api";
 import { downloadTablePDF } from "../../../utils/exportUtils";
@@ -258,8 +259,8 @@ export default function OfferManagement() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Designation" required><input className={inputClass} value={form.designation} onChange={(e) => setForm({ ...form, designation: e.target.value })} /></Field>
             <Field label="CTC (Annual)" required><input type="number" className={inputClass} value={form.ctc_annual} onChange={(e) => setForm({ ...form, ctc_annual: e.target.value })} /></Field>
-            <Field label="Joining Date"><input type="date" className={inputClass} value={form.joining_date} onChange={(e) => setForm({ ...form, joining_date: e.target.value })} /></Field>
-            <Field label="Offer Expiry Date"><input type="date" className={inputClass} value={form.expiry_date} onChange={(e) => setForm({ ...form, expiry_date: e.target.value })} /></Field>
+            <Field label="Joining Date"><DatePicker value={form.joining_date} onChange={(v) => setForm({ ...form, joining_date: v })} /></Field>
+            <Field label="Offer Expiry Date"><DatePicker value={form.expiry_date} onChange={(v) => setForm({ ...form, expiry_date: v })} /></Field>
           </div>
 
           <div>

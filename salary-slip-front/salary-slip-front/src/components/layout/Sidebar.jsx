@@ -64,14 +64,14 @@ function getAdminNav(companyId, user, isAllCompanies, isModuleAvailable = () => 
       icon: Users,
       subItems: [
         { to: "/admin/employees/add", label: "Employee Master" },
-        { to: "/admin/employees", label: "View Employees" }
+        { to: "/admin/employees", label: "View Employees", end: true }
       ]
     }] : []),
     ...(canPage("salary") ? [{
       label: "Salary",
       icon: DollarSign,
       subItems: [
-        { to: "/admin/salary", label: "Month & Batch Details" },
+        { to: "/admin/salary", label: "Month & Batch Details", end: true },
         { to: "/admin/salary/upload", label: "Salary Upload" }
       ]
     }] : []),
@@ -79,7 +79,7 @@ function getAdminNav(companyId, user, isAllCompanies, isModuleAvailable = () => 
       label: "Attendance",
       icon: Calendar,
       subItems: [
-        { to: "/admin/attendance", label: "View Attendance" },
+        { to: "/admin/attendance", label: "View Attendance", end: true },
         ...(hasAccess("hr.shift.read") ? [{ to: "/admin/attendance/shift", label: "Shift" }] : []),
       ]
     }] : []),
@@ -106,7 +106,7 @@ function getAdminNav(companyId, user, isAllCompanies, isModuleAvailable = () => 
       label: "HR",
       icon: Briefcase,
       subItems: [
-        { to: "/admin/hr", label: "HR Dashboard" },
+        { to: "/admin/hr", label: "HR Dashboard", end: true },
         { to: "/admin/hr/hiring", label: "Hiring" },
         { to: "/admin/hr/onboarding", label: "Onboarding" },
         { to: "/admin/hr/onboarding/documents", label: "Documents" },
@@ -115,7 +115,6 @@ function getAdminNav(companyId, user, isAllCompanies, isModuleAvailable = () => 
         { to: "/admin/hr/performance", label: "Performance Matrix" },
         { to: "/admin/hr/exit", label: "Exit Management" },
         { to: "/admin/hr/reports", label: "HR Reports" },
-        { to: "/admin/hr/training", label: "Training" },
         { to: "/admin/hr/settings", label: "HR Settings" },
       ],
     });
@@ -365,7 +364,7 @@ export default function Sidebar({ open, onClose, width, isCollapsed, onCollapse 
           </div>
         )}
 
-        <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
+        <nav className="flex-1 space-y-1 overflow-y-auto overflow-x-hidden px-3 py-4">
           {nav.map(({ to, label, icon: Icon, end, subItems }) => {
             if (subItems) {
               const isOpen = openMenus.includes(label);

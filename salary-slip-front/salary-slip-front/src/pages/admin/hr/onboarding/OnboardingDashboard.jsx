@@ -194,7 +194,11 @@ export default function OnboardingDashboard() {
               >
                 {!data.candidatesByJob || data.candidatesByJob.length === 0 ? (
                   <div className="p-4">
-                    <p className="text-[12.5px] text-gray-400 dark:text-gray-500">No candidates are currently onboarding.</p>
+                    <EmptyState
+                      icon={Briefcase}
+                      title="No one's onboarding yet"
+                      description="This fills in automatically the moment a candidate is marked Offer Accepted in Hiring → Offer — no separate setup needed."
+                    />
                   </div>
                 ) : (
                   <div className="divide-y divide-gray-200 dark:divide-gray-800">

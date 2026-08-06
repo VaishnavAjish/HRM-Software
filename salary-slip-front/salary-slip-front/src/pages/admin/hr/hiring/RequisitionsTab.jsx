@@ -10,6 +10,7 @@ import Modal from "../../../../components/ui/Modal";
 import Pagination from "../../../../components/ui/Pagination";
 import { SkeletonTable } from "../../../../components/ui/Skeleton";
 import RichTextEditor from "../../../../components/ui/RichTextEditor";
+import DatePicker from "../../../../components/ui/DatePicker";
 import { useAuth } from "../../../../context/AuthContext";
 import { useCompany } from "../../../../context/CompanyContext";
 import { hrApi, rbacApi } from "../../../../utils/api";
@@ -520,7 +521,7 @@ export default function RequisitionsTab({ departments = [], people = [] }) {
                     <option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="urgent">Urgent</option>
                   </select>
                 </Field>
-                <Field label="Target Closing Date"><input type="date" className={inputClass} value={form.target_closing_date || ""} onChange={(e) => setForm({ ...form, target_closing_date: e.target.value })} /></Field>
+                <Field label="Target Closing Date"><DatePicker value={form.target_closing_date || ""} onChange={(v) => setForm({ ...form, target_closing_date: v })} /></Field>
               </div>
             </FormSection>
 

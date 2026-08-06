@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Search, Bookmark, X } from "lucide-react";
+import DatePicker from "../../../../components/ui/DatePicker";
 
 const inputClass =
   "rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2.5 py-1.5 text-sm text-gray-900 dark:text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500";
@@ -92,9 +93,9 @@ export default function HiringFilterBar({
 
         {has("date") && (
           <div className="flex items-center gap-1">
-            <input type="date" className={inputClass} value={filters.dateFrom} onChange={(e) => setFilter("dateFrom", e.target.value)} />
+            <div className="w-36"><DatePicker value={filters.dateFrom} onChange={(v) => setFilter("dateFrom", v)} placeholder="From" /></div>
             <span className="text-gray-400 text-xs">to</span>
-            <input type="date" className={inputClass} value={filters.dateTo} onChange={(e) => setFilter("dateTo", e.target.value)} />
+            <div className="w-36"><DatePicker value={filters.dateTo} onChange={(v) => setFilter("dateTo", v)} placeholder="To" /></div>
           </div>
         )}
 

@@ -1,11 +1,9 @@
 import { useEffect, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import Sidebar from "./Sidebar";
+import EnterpriseNav, { RAIL_WIDTH, EXPANDED_WIDTH } from "./EnterpriseNav";
 import Header from "./Header";
 
-// Kept in sync by hand with the "to"/"label" pairs in Sidebar.jsx's nav
-// definitions — the header should always show whatever the sidebar's own
-// active item is labelled.
 const pageTitles = {
   "/admin": "Dashboard",
   "/admin/appointments": "Appointment Form",
@@ -39,26 +37,23 @@ const pageTitles = {
   "/admin/hr/performance": "Performance Matrix",
   "/admin/hr/exit": "Exit Management",
   "/admin/hr/reports": "HR Reports",
-  "/admin/hr/training": "Training",
   "/admin/hr/settings": "HR Settings",
   "/admin/hr/onboarding": "Onboarding",
   "/admin/hr/onboarding/journeys": "Onboarding Journeys",
   "/admin/hr/onboarding/welcome": "Welcome Portal",
   "/admin/hr/onboarding/documents": "Onboarding Documents",
-  "/admin/hr/onboarding/training": "Onboarding Training",
   "/admin/hr/onboarding/assets": "IT Assets",
-  "/admin/hr/onboarding/checklists": "Onboarding Checklists",
-  "/admin/hr/onboarding/policies": "Policy Acceptance",
 };
 
 const SIDEBAR_WIDTH = 280;
 
 export default function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [flyoutOpen, setFlyoutOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(() => {
     return localStorage.getItem("salaryms_sidebar_collapsed") === "true";
   });
-  
+
   const location = useLocation();
   const title = pageTitles[location.pathname] || "Dashboard";
 
@@ -66,34 +61,32 @@ export default function AppLayout() {
     localStorage.setItem("salaryms_sidebar_collapsed", String(isCollapsed));
   }, [isCollapsed]);
 
+  const currentSidebarWidth = flyoutOpen ? EXPANDED_WIDTH : RAIL_WIDTH;
+
   return (
-    <div
-      className="flex h-screen overflow-hidden bg-gray-50 dark:bg-[var(--sidebar-bg)]"
-    >
-      <Sidebar
-        open={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
-        width={SIDEBAR_WIDTH}
-        isCollapsed={isCollapsed}
-        onCollapse={() => setIsCollapsed(!isCollapsed)}
-      />
-      {/*
-        Padding, not margin. Sidebar is position:fixed, so it occupies no space
-        in this flex row and this column resolves to the full container width —
-        a left *margin* then pushed its right edge past the viewport by exactly
-        the sidebar width. The outer overflow-hidden hid the page scrollbar, but
-        <main> still measured that much wider than the visible area, so every
-        wide table produced a horizontal scrollbar under the whole content area.
-        Padding is inside the border box, so the width still resolves to 100%.
-      */}
+    <div className="flex h-screen overflow-hidden bg-gray-50 dark:bg-[var(--sidebar-bg)] font-sans">
+      <div className="hidden lg:block">
+        <EnterpriseNav onFlyoutChange={setFlyoutOpen} />
+      </div>
+
+      <div className="lg:hidden">
+        <Sidebar
+          open={sidebarOpen}
+          onClose={() => setSidebarOpen(false)}
+          width={SIDEBAR_WIDTH}
+          isCollapsed={false}
+          onCollapse={() => setIsCollapsed(!isCollapsed)}
+        />
+      </div>
+
       <div
-        className={`flex-1 flex flex-col min-w-0 transition-all duration-300 lg:pl-[var(--sidebar-width)] bg-gray-50 dark:bg-[var(--sidebar-bg)]`}
-        style={{ "--sidebar-width": `${isCollapsed ? 80 : SIDEBAR_WIDTH}px` }}
+        className="flex-1 flex flex-col min-w-0 transition-[padding-left] duration-300 ease-in-out bg-gray-50 dark:bg-[var(--sidebar-bg)]"
+        style={{ paddingLeft: `${currentSidebarWidth}px` }}
       >
-        <Header 
-          onMenuClick={() => isCollapsed ? setIsCollapsed(false) : setSidebarOpen(true)} 
-          title={title} 
-          isCollapsed={isCollapsed} 
+        <Header
+          onMenuClick={() => setSidebarOpen(true)}
+          title={title}
+          isCollapsed={isCollapsed}
         />
         <main className="flex-1 overflow-y-auto p-4 md:p-6 bg-gray-50 dark:bg-[var(--sidebar-bg)]">
           <Outlet />
