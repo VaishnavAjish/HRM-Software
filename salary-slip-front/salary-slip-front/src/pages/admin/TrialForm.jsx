@@ -166,7 +166,8 @@ const PrintableTrialForm = ({ data, formRef }) => {
   const allFields = [
     { label: "Branch / Unit", value: data.unit },
     { label: "Gender", value: data.gender },
-    { label: "Department", value: data.department, full: true },
+    { label: "Department", value: data.department },
+    { label: "Designation", value: data.designation },
     { label: "Name of Employee", value: data.name, full: true },
     { label: "Address", value: data.address, full: true },
     { label: "Mobile No 1", value: data.mobileNo1 },
@@ -245,7 +246,12 @@ const PrintableTrialForm = ({ data, formRef }) => {
         <div className="hidden print:block overflow-x-auto rounded-lg border border-black flex-1">
           <table className="w-full h-full min-w-[600px] border-collapse text-[13px] [&_td]:h-8">
             <tbody>
-              <Row label="Department" value={data.department} full />
+              <tr>
+                <td className="border border-black bg-gray-50 px-3 py-2 text-[12px] font-bold uppercase text-black">Department</td>
+                <td className="border border-black px-3 py-2 text-[13px] font-medium uppercase text-black">{data.department}</td>
+                <td className="border border-black bg-gray-50 px-3 py-2 text-[12px] font-bold uppercase text-black">Designation</td>
+                <td className="border border-black px-3 py-2 text-[13px] font-medium uppercase text-black">{data.designation}</td>
+              </tr>
               <Row label="Name of Employee" value={data.name} full />
               <Row label="Address" value={data.address} full />
               <Row label="Aadhaar Number" value={data.aadharCardNo} full />

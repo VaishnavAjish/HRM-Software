@@ -521,28 +521,12 @@ class AuthController extends Controller
             $emp = $this->findUserByEmail($request);
         }
 
-        $identityVerified = $request->filled('emp_code') && $request->filled('verification_token');
-
         if (! $emp) {
-            /*
-             * An unauthenticated caller learns nothing about which addresses are
-             * registered: the reply is byte-identical whether or not the account
-             * exists, so the endpoint stops being an address oracle.
-             *
-             * A caller that already cleared the step-1 identity check still gets
-             * the specific error. They have proved who they are, and hiding it
-             * from them only leaves a first-time employee unable to tell a typo
-             * from a broken system.
-             */
-            if ($identityVerified) {
-                return response()->json(['status' => false, 'message' => 'Email not found in our records.'], 404);
-            }
-
-            // The hashing and SMTP round-trip below take real time. Returning
+            // The hashing and SMTP round-trip take real time. Returning
             // instantly here would make the timing itself the disclosure.
             usleep(random_int(180_000, 320_000));
 
-            return response()->json(['status' => true, 'message' => self::RESET_REQUEST_ACCEPTED]);
+            return response()->json(['status' => true, 'success' => true, 'message' => self::RESET_REQUEST_ACCEPTED]);
         }
 
         $otp = (string) random_int(100000, 999999); // 6-digit OTP
@@ -570,6 +554,7 @@ class AuthController extends Controller
 
             return response()->json([
                 'status' => false,
+                'success' => false,
                 'message' => 'Unable to send the verification email right now. Please try again.',
             ], 500);
         }
@@ -585,7 +570,7 @@ class AuthController extends Controller
         $emp->save();
 
         // Identical to the unknown-address reply above, deliberately.
-        return response()->json(['status' => true, 'message' => self::RESET_REQUEST_ACCEPTED]);
+        return response()->json(['status' => true, 'success' => true, 'message' => self::RESET_REQUEST_ACCEPTED]);
     }
 
     /** p***@example.com — enough to correlate a report, not enough to harvest. */
