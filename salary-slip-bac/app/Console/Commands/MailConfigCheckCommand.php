@@ -19,20 +19,35 @@ class MailConfigCheckCommand extends Command
 
     protected $description = 'Fail if mail is misconfigured for a real deployment (e.g. the log transport).';
 
-    private const NON_DELIVERING = ['log', 'array', 'null'];
+    /**
+     * Transports this deployment is allowed to use for real delivery.
+     *
+     * An allowlist, not a deny-list of `log`/`array`/`null`. A deny-list only
+     * catches the transports somebody thought of, so the next non-delivering or
+     * misconfigured driver passes the gate silently — which is the exact failure
+     * mode this command exists to prevent. Adding a provider is a deliberate
+     * edit here.
+     */
+    private const ALLOWED_PRODUCTION_MAILERS = ['smtp'];
 
     public function handle(): int
     {
         $mailer = (string) config('mail.default');
         $from = (string) config('mail.from.address');
+        $environment = app()->environment();
 
-        $this->line('Mailer: ' . $mailer);
-        $this->line('From:   ' . ($from !== '' ? $from : '(unset)'));
+        $this->line('Environment: ' . $environment);
+        $this->line('Mailer:      ' . $mailer);
+        $this->line('From:        ' . ($from !== '' ? $from : '(unset)'));
 
         $problems = [];
 
-        if (in_array($mailer, self::NON_DELIVERING, true)) {
-            $problems[] = "MAIL_MAILER={$mailer} does not deliver mail. Recipients receive nothing.";
+        if (! in_array($mailer, self::ALLOWED_PRODUCTION_MAILERS, true)) {
+            $problems[] = sprintf(
+                'MAIL_MAILER=%s is not an approved delivering transport (allowed: %s).',
+                $mailer !== '' ? $mailer : '(unset)',
+                implode(', ', self::ALLOWED_PRODUCTION_MAILERS)
+            );
         }
 
         if ($from === '') {

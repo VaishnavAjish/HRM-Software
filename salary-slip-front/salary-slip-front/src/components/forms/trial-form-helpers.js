@@ -27,6 +27,7 @@ export function normalizeTrialForm(item, index) {
     fromNo: firstPresent(item.form_no, item.fromNo),
     date: firstPresent(item.trial_date, item.date, item.created_at),
     department: firstPresent(item.department, item.dept),
+    designation: firstPresent(item.designation, item.desig),
     name: firstPresent(item.name, item.employee_name),
     address: item.address || "-",
     mobileNo1: firstPresent(item.mobile_number, item.mobileNo1),

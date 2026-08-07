@@ -19,6 +19,10 @@ use Tymon\JWTAuth\Facades\JWTAuth;
 
 class AuthController extends Controller
 {
+    /** Same reply for known and unknown addresses, so neither is disclosed. */
+    private const RESET_REQUEST_ACCEPTED =
+        'If an account exists for this email, a verification code has been sent.';
+
     public function login(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -516,22 +520,58 @@ class AuthController extends Controller
         if (! $emp) {
             $emp = $this->findUserByEmail($request);
         }
+
+        $identityVerified = $request->filled('emp_code') && $request->filled('verification_token');
+
         if (! $emp) {
-            return response()->json(['status' => false, 'message' => 'Email not found in our records.'], 404);
+            /*
+             * An unauthenticated caller learns nothing about which addresses are
+             * registered: the reply is byte-identical whether or not the account
+             * exists, so the endpoint stops being an address oracle.
+             *
+             * A caller that already cleared the step-1 identity check still gets
+             * the specific error. They have proved who they are, and hiding it
+             * from them only leaves a first-time employee unable to tell a typo
+             * from a broken system.
+             */
+            if ($identityVerified) {
+                return response()->json(['status' => false, 'message' => 'Email not found in our records.'], 404);
+            }
+
+            // The hashing and SMTP round-trip below take real time. Returning
+            // instantly here would make the timing itself the disclosure.
+            usleep(random_int(180_000, 320_000));
+
+            return response()->json(['status' => true, 'message' => self::RESET_REQUEST_ACCEPTED]);
         }
 
         $otp = (string) random_int(100000, 999999); // 6-digit OTP
 
+        // The code itself is never logged. It is a single-use credential that
+        // resets an account, so writing it to a file that operators, backups and
+        // log shippers can all read turns the log into a password store.
+        Log::info('Password reset OTP delivery initiated', [
+            'user_id' => $emp->id,
+            'email' => self::maskEmail($emp->email),
+        ]);
+
         try {
             Mail::to($emp->email)->send(new PortalOtpMail($otp, $emp->name ?? 'there'));
-            // The code itself is never logged. It is a single-use credential that
-            // resets an account, so writing it to a file that operators, backups
-            // and log shippers can all read makes the log a password store.
-            Log::info("Password reset OTP sent to {$emp->email}");
-        } catch (\Throwable $e) {
-            Log::error('Failed to send OTP email: '.$e->getMessage());
 
-            return response()->json(['status' => false, 'message' => 'Could not send OTP email. Please try again later.'], 500);
+            Log::info('Password reset OTP mail submitted', ['user_id' => $emp->id]);
+        } catch (\Throwable $e) {
+            // The exception class is enough to tell auth failure from DNS or TLS
+            // failure. Its message can carry the SMTP dialogue, including the
+            // credential the server rejected, so it is not written down.
+            Log::error('Password reset OTP delivery failed', [
+                'user_id' => $emp->id,
+                'exception' => $e::class,
+            ]);
+
+            return response()->json([
+                'status' => false,
+                'message' => 'Unable to send the verification email right now. Please try again.',
+            ], 500);
         }
 
         // Store OTP as hash with expiry and attempt counter (JSON in otp column)
@@ -544,7 +584,21 @@ class AuthController extends Controller
         $emp->otp = json_encode($otpData);
         $emp->save();
 
-        return response()->json(['status' => true, 'message' => 'OTP sent to email']);
+        // Identical to the unknown-address reply above, deliberately.
+        return response()->json(['status' => true, 'message' => self::RESET_REQUEST_ACCEPTED]);
+    }
+
+    /** p***@example.com — enough to correlate a report, not enough to harvest. */
+    private static function maskEmail(?string $email): string
+    {
+        $email = (string) $email;
+        $at = strpos($email, '@');
+
+        if ($at === false || $at === 0) {
+            return '***';
+        }
+
+        return substr($email, 0, 1) . '***' . substr($email, $at);
     }
 
     private function verifyPasswordResetOtp(Request $request)

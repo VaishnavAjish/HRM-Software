@@ -14,7 +14,13 @@ return [
     |
     */
 
-    'default' => env('MAIL_MAILER', 'log'),
+    'default' => (function () {
+        $mailer = env('MAIL_MAILER', 'log');
+        if (env('APP_ENV') === 'production' && in_array($mailer, ['log', 'array', 'null'], true) && PHP_SAPI !== 'cli') {
+            throw new \RuntimeException('MAIL_MAILER='.$mailer.' is not permitted in production. Email delivery would fail silently.');
+        }
+        return $mailer;
+    })(),
 
     /*
     |--------------------------------------------------------------------------

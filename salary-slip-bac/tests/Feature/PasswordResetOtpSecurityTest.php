@@ -85,6 +85,68 @@ class PasswordResetOtpSecurityTest extends TestCase
         $this->artisan('mail:config-check')->assertExitCode(0);
     }
 
+    public function test_an_unknown_address_is_indistinguishable_from_a_known_one(): void
+    {
+        Mail::fake();
+        $user = $this->employee();
+
+        $known = $this->requestOtp($user->email);
+        $unknown = $this->requestOtp('definitely-not-registered@test.local');
+
+        $this->assertSame($known->status(), $unknown->status(), 'Status codes must match.');
+        $this->assertSame(
+            $known->json('message'),
+            $unknown->json('message'),
+            'Reply bodies must match or the endpoint is an address oracle.'
+        );
+        $this->assertSame(
+            array_keys($known->json()),
+            array_keys($unknown->json()),
+            'Response shape must match.'
+        );
+    }
+
+    public function test_no_mail_is_sent_for_an_unknown_address(): void
+    {
+        Mail::fake();
+
+        $this->requestOtp('definitely-not-registered@test.local')->assertOk();
+
+        Mail::assertNothingSent();
+    }
+
+    public function test_an_unknown_address_creates_no_challenge(): void
+    {
+        Mail::fake();
+
+        $this->requestOtp('definitely-not-registered@test.local')->assertOk();
+
+        $this->assertDatabaseMissing('users', ['email' => 'definitely-not-registered@test.local']);
+    }
+
+    public function test_the_config_gate_allowlists_rather_than_denylists(): void
+    {
+        foreach (['log', 'array', 'null', 'sendmail', 'postmark', ''] as $mailer) {
+            config(['mail.default' => $mailer]);
+            $this->artisan('mail:config-check')
+                ->assertExitCode(1);
+        }
+    }
+
+    public function test_a_delivery_failure_does_not_report_success(): void
+    {
+        $user = $this->employee();
+
+        Mail::shouldReceive('to')->andThrow(new \RuntimeException('535 auth failed for admin@niss.pro'));
+
+        $response = $this->requestOtp($user->email);
+
+        $response->assertStatus(500);
+        $this->assertStringNotContainsString('535', (string) $response->json('message'));
+        $this->assertStringNotContainsString('admin@niss.pro', (string) $response->json('message'));
+        $this->assertNull($user->fresh()->otp, 'No challenge should exist if the mail never went out.');
+    }
+
     public function test_requesting_a_reset_sends_the_otp_mailable(): void
     {
         Mail::fake();
