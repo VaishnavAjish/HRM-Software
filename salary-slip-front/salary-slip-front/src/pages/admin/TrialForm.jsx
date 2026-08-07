@@ -59,6 +59,7 @@ function normalizeTrialForm(item, index) {
     fromNo: firstPresent(item.form_no, item.fromNo),
     date: firstPresent(item.trial_date, item.date, item.created_at),
     department: firstPresent(item.department, item.dept),
+    designation: firstPresent(item.designation, item.desig, item.designation_name),
     name: firstPresent(item.name, item.employee_name),
     address: item.address || "-",
     mobileNo1: firstPresent(item.mobile_number, item.mobileNo1),
@@ -345,7 +346,7 @@ export default function TrialForm() {
   const [deleting, setDeleting] = useState(false);
   const [statusLoading, setStatusLoading] = useState({});
   const [visibleColumns, setVisibleColumns] = useState([
-    "fromNo", "name", "department", "unit", "experience", "managerName", "status", "isPrinted",
+    "fromNo", "name", "department", "designation", "unit", "experience", "managerName", "status", "isPrinted",
   ]);
   const [showColModal, setShowColModal] = useState(false);
   const formRef = useRef(null);
@@ -557,6 +558,7 @@ export default function TrialForm() {
     { field: "fromNo", label: "Form No" },
     { field: "name", label: "Name" },
     { field: "department", label: "Department" },
+    { field: "designation", label: "Designation" },
     { field: "unit", label: "Branch" },
     { field: "experience", label: "Experience" },
     { field: "managerName", label: "Manager" },
@@ -618,6 +620,17 @@ export default function TrialForm() {
         field: "department",
         minWidth: 140,
         hide: !visibleColumns.includes("department"),
+        cellRenderer: ({ value }) => (
+          <span className="text-sm text-gray-600 dark:text-gray-300">
+            {value || "—"}
+          </span>
+        ),
+      },
+      {
+        headerName: "Designation",
+        field: "designation",
+        minWidth: 140,
+        hide: !visibleColumns.includes("designation"),
         cellRenderer: ({ value }) => (
           <span className="text-sm text-gray-600 dark:text-gray-300">
             {value || "—"}

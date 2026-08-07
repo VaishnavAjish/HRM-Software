@@ -286,8 +286,8 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
       const populated = {
         form_no: raw.form_no || "",
         trial_date: raw.trial_date || getTodayDate(),
-        department: raw.department || "",
-        designation: raw.designation || "",
+        department: raw.department || initialData.department || "",
+        designation: raw.designation || initialData.designation || "",
         name: raw.name || "",
         address: raw.address || "",
         mobile_number: raw.mobile_number || "",
