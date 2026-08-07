@@ -12,13 +12,19 @@ const PRIORITY_VARIANT = { high: "red", medium: "yellow", low: "gray" };
 
 /** Same safety rules as getEmployeePhotoUrl — a candidate's resume_path is a
  *  server-relative `public` disk path, never a browser-loadable one as-is. */
-function getResumeUrl(path) {
+function getResumeUrl(candidate) {
+  if (!candidate) return "";
+  const path = candidate.resume_path;
   if (!path) return "";
   const value = String(path).trim();
   if (!value) return "";
-  if (/^(https?:)?\/\//i.test(value)) return value;
+  if (/^(https?:)?\/\//i.test(value) || value.startsWith("data:")) return value;
   if (/^[a-z]:[\\/]/i.test(value) || value.startsWith("\\\\") || /^file:/i.test(value)) return "";
-  return `${baseUrl}/storage/${value.replace(/^\/+/, "")}`;
+  if (candidate.id) {
+    return `${baseUrl}/api/v1/candidates/${candidate.id}/resume`;
+  }
+  const cleanPath = value.replace(/^\/?(storage\/)?/i, "");
+  return `${baseUrl}/storage/${cleanPath}`;
 }
 
 /** Which tab a candidate belongs to once they've moved past this drawer's owning tab — only used for the "manage them elsewhere" banner. */
@@ -62,7 +68,7 @@ export default function CandidateDrawer({
   const interviews = candidate.interviews || [];
   const offers = candidate.offers || [];
 
-  const resumeUrl = getResumeUrl(candidate.resume_path);
+  const resumeUrl = getResumeUrl(candidate);
   const resumeExt = (candidate.resume_original_name || candidate.resume_path || "").split(".").pop()?.toLowerCase();
   const isUnmatchedFormSubmission = candidate.source === "google_form" && !candidate.requisition_id;
 
@@ -119,6 +125,7 @@ export default function CandidateDrawer({
               <Badge variant={PRIORITY_VARIANT[candidate.priority] || "gray"}>{candidate.priority} priority</Badge>
               {candidate.source && <Badge variant="gray">{candidate.source.replace("_", " ")}</Badge>}
               {candidate.rating != null && <Badge variant="blue">Score {candidate.rating}/5</Badge>}
+              {candidate.ats_score != null && <Badge variant="green">ATS {candidate.ats_score}%</Badge>}
             </div>
           </div>
         </div>
@@ -153,7 +160,7 @@ export default function CandidateDrawer({
                      className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700/60">
                     <ExternalLink size={15} />
                   </a>
-                  <a href={resumeUrl} download={candidate.resume_original_name || undefined} title="Download"
+                  <a href={`${resumeUrl}?download=1`} download={candidate.resume_original_name || undefined} title="Download"
                      className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700/60">
                     <Download size={15} />
                   </a>

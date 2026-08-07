@@ -254,7 +254,7 @@ export default function AdminDashboard() {
                 </div>
                 <div className="h-72 w-full text-sm">
                 {chartData.length > 0 ? (
-                    <ResponsiveContainer width="100%" height="100%">
+                    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={200}>
                     <LineChart data={chartData} margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
                         <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#6b7280', fontSize: 12}} dy={10} />
@@ -361,7 +361,7 @@ export default function AdminDashboard() {
                   return (
                     <>
                       <div style={{ height: 220, width: "100%" }}>
-                        <ResponsiveContainer width="100%" height="100%">
+                        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={200}>
                           <PieChart>
                             <Pie
                               data={pieData}

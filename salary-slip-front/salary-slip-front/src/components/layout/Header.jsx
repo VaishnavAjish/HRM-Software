@@ -5,6 +5,8 @@ import { useInstallPWA } from "../../hooks/useInstallPWA";
 import { useState } from "react";
 import CompanyScopeDropdown from "./CompanyScopeDropdown";
 
+import NotificationBell from "../notifications/NotificationBell";
+
 export default function Header({ onMenuClick, title, isCollapsed }) {
   const { dark, toggle } = useTheme();
   const { user, logout } = useAuth();
@@ -87,6 +89,9 @@ export default function Header({ onMenuClick, title, isCollapsed }) {
       >
         {dark ? <Sun size={18} aria-hidden="true" /> : <Moon size={18} aria-hidden="true" />}
       </button>
+
+      {/* Enterprise Notification Bell */}
+      <NotificationBell />
 
       <div className="relative">
         <button

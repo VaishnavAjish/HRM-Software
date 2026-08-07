@@ -540,6 +540,11 @@ function CandidateListView({
                 <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0" style={{ backgroundColor: `${stageColor(c.stage)}1a`, color: stageColor(c.stage) }}>
                   {stageLabel(c.stage)}
                 </span>
+                {c.ats_score != null && (
+                  <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0 bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                    ATS: {c.ats_score}%
+                  </span>
+                )}
                 {next ? (
                   <button title={`Move to ${next.label}`} onClick={(e) => { e.stopPropagation(); onAdvance(c.id, next.key); }} className="p-1 rounded-lg text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20 flex-shrink-0">
                     <ArrowRight size={14} />
@@ -564,6 +569,7 @@ function CandidateListView({
                 <th className="text-left px-4 py-3">Stage</th>
                 <th className="text-left px-4 py-3">Experience</th>
                 <th className="text-left px-4 py-3">Priority</th>
+                <th className="text-left px-4 py-3">ATS Score</th>
                 <th className="text-left px-4 py-3">Recruiter</th>
                 <th className="text-right px-4 py-3">Actions</th>
               </tr>
@@ -597,6 +603,13 @@ function CandidateListView({
                     </td>
                     <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{c.experience_years ?? 0} yrs</td>
                     <td className="px-4 py-3"><Badge variant={PRIORITY_VARIANT[c.priority] || "gray"}>{c.priority}</Badge></td>
+                    <td className="px-4 py-3">
+                      {c.ats_score != null ? (
+                        <span className="text-xs font-medium text-green-600 dark:text-green-400">{c.ats_score}%</span>
+                      ) : (
+                        <span className="text-xs text-gray-400">—</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{c.recruiter?.name || "—"}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>

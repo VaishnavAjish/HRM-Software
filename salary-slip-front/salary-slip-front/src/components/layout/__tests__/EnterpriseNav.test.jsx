@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { LayoutDashboard, Users, Calendar } from "lucide-react";
-import EnterpriseNav from "../EnterpriseNav";
+import EnterpriseNav, { RAIL_WIDTH, EXPANDED_WIDTH } from "../EnterpriseNav";
 
 const NAV = [
   { to: "/admin", label: "Dashboard", icon: LayoutDashboard, end: true },
@@ -35,140 +35,137 @@ vi.mock("../../../context/AuthContext", () => ({
   useAuth: () => ({ user: { name: "NISS Super Admin", role: "admin" }, logout }),
 }));
 
-function renderNav(route = "/admin") {
-  return render(
+function renderNav(route = "/admin", props = {}) {
+  const utils = render(
     <MemoryRouter initialEntries={[route]}>
-      <EnterpriseNav />
+      <EnterpriseNav {...props} />
     </MemoryRouter>,
   );
+  return { ...utils, rail: screen.getByLabelText("Sidebar navigation") };
+}
+
+
+/** Labels render twice while collapsed: once visibly, once in the tooltip. */
+function label(text) {
+  const hits = screen.getAllByText(text);
+  return hits.find((el) => !el.closest('[role="tooltip"]')) ?? hits[0];
 }
 
 beforeEach(() => logout.mockClear());
 
 describe("EnterpriseNav", () => {
-  it("renders one rail control per navigation item", () => {
+  it("renders every navigation item from the shared nav source", () => {
     renderNav();
-    expect(screen.getByLabelText("Dashboard")).toBeInTheDocument();
-    expect(screen.getByLabelText("Employees")).toBeInTheDocument();
-    expect(screen.getByLabelText("Attendance")).toBeInTheDocument();
+    expect(label("Dashboard")).toBeInTheDocument();
+    expect(label("Employees")).toBeInTheDocument();
+    expect(label("Attendance")).toBeInTheDocument();
   });
 
-  it("hides every flyout until an icon is clicked", () => {
-    renderNav();
-    expect(screen.queryByText("Employee Master")).not.toBeInTheDocument();
+  it("starts collapsed at the rail width", () => {
+    const { rail } = renderNav();
+    expect(rail).toHaveStyle({ width: `${RAIL_WIDTH}px` });
   });
 
-  it("opens the matching flyout on click", () => {
-    renderNav();
-    fireEvent.click(screen.getByLabelText("Employees"));
+  it("expands on hover and collapses again on leave", () => {
+    vi.useFakeTimers();
+    const { rail } = renderNav();
 
-    expect(screen.getByRole("navigation", { name: "Employees navigation" })).toBeInTheDocument();
-    expect(screen.getByText("Employee Master")).toBeInTheDocument();
-    expect(screen.getByText("View Employees")).toBeInTheDocument();
+    fireEvent.mouseEnter(rail);
+    expect(rail).toHaveStyle({ width: `${EXPANDED_WIDTH}px` });
+
+    fireEvent.mouseLeave(rail);
+    act(() => vi.advanceTimersByTime(250));
+    expect(rail).toHaveStyle({ width: `${RAIL_WIDTH}px` });
+
+    vi.useRealTimers();
   });
 
-  it("keeps only one flyout open when another module is clicked", () => {
-    renderNav();
-    fireEvent.click(screen.getByLabelText("Employees"));
-    fireEvent.click(screen.getByLabelText("Attendance"));
+  it("reports expansion to the layout so content can reflow", () => {
+    const onFlyoutChange = vi.fn();
+    const { rail } = renderNav("/admin", { onFlyoutChange });
 
-    expect(screen.queryByText("Employee Master")).not.toBeInTheDocument();
-    expect(screen.getByText("Shift")).toBeInTheDocument();
+    onFlyoutChange.mockClear();
+    fireEvent.mouseEnter(rail);
+    expect(onFlyoutChange).toHaveBeenCalledWith(true);
   });
 
-  it("closes when the same icon is clicked again", () => {
+  it("keeps sub items hidden until their section is opened", () => {
     renderNav();
-    const trigger = screen.getByLabelText("Employees");
-
-    fireEvent.click(trigger);
-    expect(screen.getByText("Employee Master")).toBeInTheDocument();
-
-    fireEvent.click(trigger);
-    expect(screen.queryByText("Employee Master")).not.toBeInTheDocument();
+    expect(screen.queryAllByText("Employee Master").find((el) => !el.closest('[role="tooltip"]')) ?? null).not.toBeInTheDocument();
   });
 
-  it("closes via the flyout close button", () => {
+  it("opens a section when its header is clicked", () => {
     renderNav();
-    fireEvent.click(screen.getByLabelText("Employees"));
-    fireEvent.click(screen.getByLabelText("Close Employees navigation"));
+    fireEvent.click(label("Employees"));
 
-    expect(screen.queryByText("Employee Master")).not.toBeInTheDocument();
+    expect(label("Employee Master")).toBeInTheDocument();
+    expect(label("View Employees")).toBeInTheDocument();
   });
 
-  it("closes on Escape", () => {
+  it("closes the section when clicked again", () => {
     renderNav();
-    fireEvent.click(screen.getByLabelText("Employees"));
-    fireEvent.keyDown(document, { key: "Escape" });
+    const header = label("Employees");
 
-    expect(screen.queryByText("Employee Master")).not.toBeInTheDocument();
+    fireEvent.click(header);
+    expect(label("Employee Master")).toBeInTheDocument();
+
+    fireEvent.click(header);
+    expect(screen.queryAllByText("Employee Master").find((el) => !el.closest('[role="tooltip"]')) ?? null).not.toBeInTheDocument();
   });
 
-  it("closes when clicking outside the navigation", () => {
+  it("allows more than one section open at a time", () => {
     renderNav();
-    fireEvent.click(screen.getByLabelText("Employees"));
-    fireEvent.mouseDown(document.body);
+    fireEvent.click(label("Employees"));
+    fireEvent.click(label("Attendance"));
 
-    expect(screen.queryByText("Employee Master")).not.toBeInTheDocument();
+    expect(label("Employee Master")).toBeInTheDocument();
+    expect(label("Shift")).toBeInTheDocument();
   });
 
-  it("closes after navigating to a sub page", () => {
-    renderNav();
-    fireEvent.click(screen.getByLabelText("Employees"));
-    fireEvent.click(screen.getByText("View Employees"));
-
-    expect(screen.queryByText("Employee Master")).not.toBeInTheDocument();
+  it("auto-opens the section owning the current route", () => {
+    renderNav("/admin/attendance/shift");
+    expect(label("Shift")).toBeInTheDocument();
   });
 
-  it("a leaf item is a link and opens no flyout", () => {
-    renderNav();
-    const dashboard = screen.getByLabelText("Dashboard");
-
-    expect(dashboard.tagName).toBe("A");
-    expect(dashboard).toHaveAttribute("href", "/admin");
-    fireEvent.click(dashboard);
-    expect(screen.queryByRole("navigation", { name: /navigation$/ })).not.toBeInTheDocument();
+  it("does not auto-open unrelated sections", () => {
+    renderNav("/admin/attendance/shift");
+    expect(screen.queryAllByText("Employee Master").find((el) => !el.closest('[role="tooltip"]')) ?? null).not.toBeInTheDocument();
   });
 
-  it("exposes aria-expanded on module triggers", () => {
+  it("renders sub items as router links preserving their routes", () => {
     renderNav();
-    const trigger = screen.getByLabelText("Employees");
+    fireEvent.click(label("Attendance"));
 
-    expect(trigger).toHaveAttribute("aria-expanded", "false");
-    fireEvent.click(trigger);
-    expect(trigger).toHaveAttribute("aria-expanded", "true");
-  });
-
-  it("marks module triggers as popup menus", () => {
-    renderNav();
-    expect(screen.getByLabelText("Attendance")).toHaveAttribute("aria-haspopup", "menu");
-  });
-
-  it("renders sub items as real router links preserving their routes", () => {
-    renderNav();
-    fireEvent.click(screen.getByLabelText("Attendance"));
-
-    expect(screen.getByText("Shift").closest("a")).toHaveAttribute(
+    expect(label("Shift").closest("a")).toHaveAttribute(
       "href",
       "/admin/attendance/shift",
     );
   });
 
-  it("offers profile, help and logout controls", () => {
+  it("renders a leaf item as a direct link with no section toggle", () => {
     renderNav();
-    expect(screen.getByLabelText("Profile")).toBeInTheDocument();
-    expect(screen.getByLabelText("Help")).toBeInTheDocument();
-    expect(screen.getByLabelText("Log out")).toBeInTheDocument();
+    const dashboard = label("Dashboard").closest("a");
+
+    expect(dashboard).toHaveAttribute("href", "/admin");
   });
 
-  it("logs out through the existing auth context", () => {
-    renderNav();
-    fireEvent.click(screen.getByLabelText("Log out"));
-    expect(logout).toHaveBeenCalledTimes(1);
+  it("marks the active leaf route", () => {
+    renderNav("/admin");
+    expect(label("Dashboard").closest("a").className).toMatch(/bg-brand-600/);
   });
 
-  it("does not render a filter box for short menus", () => {
+  it("marks the active sub route", () => {
+    renderNav("/admin/attendance/shift");
+    expect(label("Shift").closest("a").className).toMatch(/bg-brand-600/);
+  });
+
+  it("links the brand mark to the role dashboard", () => {
     renderNav();
-    fireEvent.click(screen.getByLabelText("Employees"));
-    expect(screen.queryByPlaceholderText("Filter…")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Home")).toHaveAttribute("href", "/admin");
+  });
+
+  it("exposes the sidebar as a labelled landmark", () => {
+    const { rail } = renderNav();
+    expect(rail.tagName).toBe("ASIDE");
   });
 });

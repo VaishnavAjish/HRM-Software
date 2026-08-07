@@ -461,10 +461,8 @@ export default function Sidebar({ open, onClose, width, isCollapsed, onCollapse 
         </nav>
 
         <div className="flex-shrink-0 border-t border-gray-800 px-4 py-3 text-center">
-          {/* gray-500 (#6B7280) on this near-black sidebar is 3.95:1 and fails
-              WCAG AA for normal text. gray-400 (#9CA3AF) reaches ~7.3:1. */}
           <span className="text-xs font-medium text-gray-400">
-            {isCollapsed ? "v1.1" : "Version 1.1"}
+            {isCollapsed ? "v1.2" : "Version 1.2"}
           </span>
         </div>
       </aside>

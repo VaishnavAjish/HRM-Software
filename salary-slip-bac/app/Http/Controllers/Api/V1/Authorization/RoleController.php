@@ -16,7 +16,7 @@ use Illuminate\Http\Request;
 /**
  * Metadata and lifecycle management for roles, behind Access Control > Roles.
  *
- * Permission-to-role editing stays with PermissionMatrixController; this
+ * Permission-to-role editing belongs to the Permission Matrix; this
  * controller owns the role records themselves — create, rename, archive,
  * activate, delete. The one protected SYSTEM_SUPER_ADMIN role is concealed
  * here exactly as a hidden account is on the user directory: it is never

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin\Hr;
 
+use App\Http\Controllers\Admin\Hr\Concerns\AuthorizesEmployeeTarget;
 use App\Http\Controllers\Admin\Hr\Concerns\ScopesCompany;
 use App\Http\Controllers\Controller;
 use App\Models\EmployeeResignation;
@@ -10,6 +11,7 @@ use Illuminate\Http\Request;
 
 class ExitManagementController extends Controller
 {
+    use AuthorizesEmployeeTarget;
     use ScopesCompany;
 
     private const STATUSES = ['submitted', 'approved', 'notice_period', 'cleared', 'exited', 'withdrawn'];
@@ -17,7 +19,9 @@ class ExitManagementController extends Controller
 
     public function index(Request $request)
     {
-        $query = EmployeeResignation::with(['user', 'approvedBy']);
+        // Identity columns only. The unconstrained relation returned the whole
+        // employee record for every resignation in the list.
+        $query = EmployeeResignation::with(['user:id,name,emp_code', 'approvedBy:id,name']);
         $this->applyCompanyScope($query, $request);
         if ($request->status) {
             $query->whereIn('status', explode(',', $request->status));
@@ -38,6 +42,13 @@ class ExitManagementController extends Controller
             'notice_period_days' => 'nullable|integer|min:0|max:365',
             'notes' => 'nullable|string',
         ]);
+
+        // Checked before any write. This endpoint also stamps
+        // users.resignation_date on the target, so an unscoped user_id was a
+        // cross-company write, not merely a disclosure.
+        if ($denied = $this->denyUnlessEmployeeInScope($data['user_id'])) {
+            return $denied;
+        }
 
         $hasOpenResignation = EmployeeResignation::where('user_id', $data['user_id'])
             ->where('status', '!=', 'withdrawn')
@@ -63,7 +74,7 @@ class ExitManagementController extends Controller
         // users.resignation_date, without needing a second data source.
         User::where('id', $data['user_id'])->update(['resignation_date' => $lastWorkingDay]);
 
-        return response()->json(['status' => true, 'message' => 'Resignation recorded', 'data' => $resignation->load('user')], 201);
+        return response()->json(['status' => true, 'message' => 'Resignation recorded', 'data' => $resignation], 201);
     }
 
     public function updateStatus(Request $request, $id)
@@ -77,6 +88,18 @@ class ExitManagementController extends Controller
             'status' => 'required|in:' . implode(',', self::STATUSES),
             'notes' => 'nullable|string',
         ]);
+
+        // The resignation is reached by its own id, so both it and the employee
+        // it belongs to must be in scope — otherwise another company's
+        // resignation could be approved or withdrawn through this route, and
+        // withdrawing clears users.resignation_date on that employee.
+        if ($denied = $this->denyUnlessRecordInScope($resignation)) {
+            return $denied;
+        }
+
+        if ($denied = $this->denyUnlessEmployeeInScope($resignation->user_id)) {
+            return $denied;
+        }
 
         $update = ['status' => $data['status']];
         if (array_key_exists('notes', $data)) {
@@ -95,6 +118,6 @@ class ExitManagementController extends Controller
             User::where('id', $resignation->user_id)->update(['resignation_date' => null]);
         }
 
-        return response()->json(['status' => true, 'message' => 'Status updated', 'data' => $resignation->load('user')]);
+        return response()->json(['status' => true, 'message' => 'Status updated', 'data' => $resignation]);
     }
 }

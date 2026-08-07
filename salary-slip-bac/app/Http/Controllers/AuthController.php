@@ -524,6 +524,10 @@ class AuthController extends Controller
 
         try {
             Mail::to($emp->email)->send(new PortalOtpMail($otp, $emp->name ?? 'there'));
+            // The code itself is never logged. It is a single-use credential that
+            // resets an account, so writing it to a file that operators, backups
+            // and log shippers can all read makes the log a password store.
+            Log::info("Password reset OTP sent to {$emp->email}");
         } catch (\Throwable $e) {
             Log::error('Failed to send OTP email: '.$e->getMessage());
 
@@ -554,41 +558,62 @@ class AuthController extends Controller
             return response()->json(['status' => false, 'message' => $validator->errors()->first()], 422);
         }
 
-        $emp = $this->findUserByEmail($request);
-        if (! $emp || ! $emp->otp) {
+        $found = $this->findUserByEmail($request);
+        if (! $found) {
             return response()->json(['status' => false, 'message' => 'Invalid OTP'], 422);
         }
 
-        $otpData = json_decode($emp->otp, true);
-        if (! $otpData || ! isset($otpData['hash'], $otpData['expires_at'], $otpData['attempts'])) {
-            return response()->json(['status' => false, 'message' => 'Invalid OTP'], 422);
-        }
+        /*
+         * The challenge row is read and written under a row lock.
+         *
+         * Reading the JSON, incrementing `attempts` and writing it back is a
+         * read-modify-write: two wrong guesses arriving together both read the
+         * same counter and both store the same increment, so the fifth attempt
+         * never arrives and the five-guess ceiling stops bounding anything. The
+         * lock also makes verification single-use under concurrency, so the same
+         * code cannot be redeemed twice in parallel.
+         */
+        return DB::transaction(function () use ($request, $found) {
+            $emp = User::query()->whereKey($found->id)->lockForUpdate()->first();
 
-        // Check expiry
-        if (now()->greaterThan($otpData['expires_at'])) {
-            return response()->json(['status' => false, 'message' => 'OTP expired. Please request a new one.'], 422);
-        }
+            if (! $emp || ! $emp->otp) {
+                return response()->json(['status' => false, 'message' => 'Invalid OTP'], 422);
+            }
 
-        // Check attempts
-        if ($otpData['attempts'] >= 5) {
-            return response()->json(['status' => false, 'message' => 'Too many attempts. Please request a new OTP.'], 422);
-        }
+            $otpData = json_decode($emp->otp, true);
+            if (! $otpData || ! isset($otpData['hash'], $otpData['expires_at'], $otpData['attempts'])) {
+                return response()->json(['status' => false, 'message' => 'Invalid OTP'], 422);
+            }
 
-        // Verify hash
-        if (! Hash::check($request->otp, $otpData['hash'])) {
-            $otpData['attempts']++;
+            if (now()->greaterThan($otpData['expires_at'])) {
+                return response()->json(['status' => false, 'message' => 'OTP expired. Please request a new one.'], 422);
+            }
+
+            if ($otpData['attempts'] >= 5) {
+                return response()->json(['status' => false, 'message' => 'Too many attempts. Please request a new OTP.'], 422);
+            }
+
+            if (! Hash::check($request->otp, $otpData['hash'])) {
+                $otpData['attempts']++;
+                $emp->otp = json_encode($otpData);
+                $emp->save();
+
+                Log::info('Password reset OTP verification failed', [
+                    'user_id' => $emp->id,
+                    'attempts' => $otpData['attempts'],
+                ]);
+
+                return response()->json(['status' => false, 'message' => 'Invalid OTP'], 422);
+            }
+
+            $otpData['verified'] = true;
             $emp->otp = json_encode($otpData);
             $emp->save();
 
-            return response()->json(['status' => false, 'message' => 'Invalid OTP'], 422);
-        }
+            Log::info('Password reset OTP verified', ['user_id' => $emp->id]);
 
-        // Mark as verified
-        $otpData['verified'] = true;
-        $emp->otp = json_encode($otpData);
-        $emp->save();
-
-        return response()->json(['status' => true, 'message' => 'OTP verified']);
+            return response()->json(['status' => true, 'message' => 'OTP verified']);
+        });
     }
 
     private function setNewPasswordAfterVerification(Request $request)

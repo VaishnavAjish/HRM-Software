@@ -121,19 +121,6 @@ class RoleManagementApiTest extends TestCase
             ->assertJsonPath('data.description', 'Inspects finished goods');
     }
 
-    public function test_it_clones_a_role_with_its_permissions(): void
-    {
-        $source = Role::query()->where('code', 'hr_manager')->firstOrFail();
-        $sourcePermissions = DB::table('role_permissions')->where('role_id', $source->id)->count();
-
-        $response = $this->asAdmin()->postJson("/api/v1/roles/{$source->id}/clone", [
-            'name' => 'Senior HR Manager',
-        ])->assertCreated();
-
-        $cloneId = $response->json('data.id');
-        $this->assertSame($sourcePermissions, DB::table('role_permissions')->where('role_id', $cloneId)->count());
-    }
-
     public function test_it_archives_and_restores_a_role(): void
     {
         $role = Role::create(['name' => 'Seasonal Worker', 'code' => 'seasonal_worker', 'type' => 'Custom', 'is_active' => true, 'status' => 'ACTIVE']);
@@ -374,39 +361,6 @@ class RoleManagementApiTest extends TestCase
         ]);
 
         $this->assertSame('CUSTOM', RoleHierarchy::classOf($role->fresh()));
-    }
-
-    /* ---- clone and matrix target authorisation -------------------------- */
-
-    public function test_an_administrator_cannot_clone_or_open_the_admin_matrix(): void
-    {
-        $admin = Role::query()->where('code', 'tenant_administrator')->firstOrFail();
-
-        $this->asTenantAdmin()->getJson("/api/v1/roles/{$admin->id}/matrix")
-            ->assertStatus(403)->assertJson(['code' => 'ROLE_MANAGEMENT_FORBIDDEN']);
-
-        $this->asTenantAdmin()->putJson("/api/v1/roles/{$admin->id}/matrix", ['changes' => []])
-            ->assertStatus(403);
-
-        $this->asTenantAdmin()->postJson("/api/v1/roles/{$admin->id}/clone", ['name' => 'Admin Copy'])
-            ->assertStatus(403);
-
-        $this->assertDatabaseMissing('roles', ['name' => 'Admin Copy']);
-    }
-
-    public function test_an_administrator_may_still_open_a_lower_matrix(): void
-    {
-        $custom = Role::query()->where('code', 'hr_manager')->firstOrFail();
-
-        $this->asTenantAdmin()->getJson("/api/v1/roles/{$custom->id}/matrix")->assertOk();
-    }
-
-    public function test_the_hidden_identity_answers_404_on_the_matrix(): void
-    {
-        $hidden = Role::query()->where('code', 'super_administrator')->firstOrFail();
-
-        $this->asAdmin()->getJson("/api/v1/roles/{$hidden->id}/matrix")->assertStatus(404);
-        $this->asTenantAdmin()->getJson("/api/v1/roles/{$hidden->id}/matrix")->assertStatus(404);
     }
 
     /* ---- user role assignment: the escalation the deny-list allowed ------ */

@@ -35,7 +35,7 @@ class CandidateController extends Controller
             });
         }
 
-        $candidates = $query->orderByDesc('id')->paginate($request->per_page ?? 25);
+        $candidates = $query->orderByDesc('ats_score')->orderByDesc('id')->paginate($request->per_page ?? 25);
 
         return response()->json(['status' => true, 'data' => $candidates]);
     }
@@ -48,7 +48,7 @@ class CandidateController extends Controller
             $query->where('requisition_id', $request->requisition_id);
         }
 
-        $candidates = $query->orderByDesc('id')->get();
+        $candidates = $query->orderByDesc('ats_score')->orderByDesc('id')->get();
         $columns = collect(self::STAGES)->mapWithKeys(fn ($stage) => [
             $stage => $candidates->where('stage', $stage)->values(),
         ]);
@@ -83,6 +83,7 @@ class CandidateController extends Controller
             'recruiter_id' => 'nullable|exists:users,id',
             'priority' => 'nullable|in:low,medium,high',
             'notes' => 'nullable|string',
+            'ats_score' => 'nullable|numeric|min:0|max:100',
         ]);
 
         $context = $this->defaultCompanyContext($request);
@@ -124,6 +125,7 @@ class CandidateController extends Controller
             'recruiter_id' => 'nullable|exists:users,id',
             'priority' => 'nullable|in:low,medium,high',
             'rating' => 'nullable|numeric|min:0|max:5',
+            'ats_score' => 'nullable|numeric|min:0|max:100',
             'notes' => 'nullable|string',
         ]);
 
@@ -176,5 +178,58 @@ class CandidateController extends Controller
         ]);
 
         return response()->json(['status' => true, 'message' => 'Candidate stage updated', 'data' => $candidate]);
+    }
+
+    /**
+     * Stream candidate resume directly with inline headers and iframe permission headers.
+     */
+    public function resume($id)
+    {
+        $candidate = Candidate::find($id);
+        if (!$candidate || !$candidate->resume_path) {
+            return response()->json(['status' => false, 'message' => 'Resume not found for candidate'], 404);
+        }
+
+        $path = $candidate->resume_path;
+
+        // If path is already a full URL or data URI
+        if (filter_var($path, FILTER_VALIDATE_URL)) {
+            return redirect($path);
+        }
+
+        $cleanPath = ltrim(str_replace('..', '', preg_replace('/^\/?(storage\/)?/i', '', $path)), '/');
+
+        // Search disk locations
+        $possiblePaths = [
+            storage_path('app/public/' . $cleanPath),
+            storage_path('app/' . $cleanPath),
+            storage_path('app/public/candidate-documents/' . basename($cleanPath)),
+            storage_path('app/candidate-documents/' . basename($cleanPath)),
+            public_path('storage/' . $cleanPath),
+        ];
+
+        foreach ($possiblePaths as $fullPath) {
+            if (file_exists($fullPath) && is_file($fullPath)) {
+                $ext = strtolower(pathinfo($fullPath, PATHINFO_EXTENSION));
+                $mimeType = match ($ext) {
+                    'pdf' => 'application/pdf',
+                    'doc' => 'application/msword',
+                    'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                    default => mime_content_type($fullPath) ?: 'application/octet-stream',
+                };
+
+                $filename = $candidate->resume_original_name ?: basename($fullPath);
+
+                $disposition = request()->has('download') ? 'attachment' : 'inline';
+                
+                return response()->file($fullPath, [
+                    'Content-Type' => $mimeType,
+                    'Content-Disposition' => $disposition . '; filename="' . $filename . '"',
+                    'Access-Control-Allow-Origin' => '*',
+                ]);
+            }
+        }
+
+        return response()->json(['status' => false, 'message' => 'Resume file not found on disk'], 404);
     }
 }

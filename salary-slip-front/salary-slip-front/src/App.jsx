@@ -43,7 +43,7 @@ const AdminForm16 = lazy(() => import("./pages/admin/Form16"));
 const TdsCalculation = lazy(() => import("./pages/admin/TdsCalculation"));
 const AdminProfile = lazy(() => import("./pages/admin/AdminProfile"));
 const Settings = lazy(() => import("./pages/admin/Settings"));
-const PermissionMatrix = lazy(() => import("./pages/admin/PermissionMatrix"));
+const PermissionMatrix = lazy(() => import("./features/permissionMatrix/pages/PermissionMatrixPage"));
 const AccessControlUsers = lazy(() => import("./pages/admin/accessControl/AccessControlUsers"));
 const Roles = lazy(() => import("./pages/admin/accessControl/Roles"));
 const Policies = lazy(() => import("./pages/admin/accessControl/Policies"));
@@ -373,32 +373,36 @@ function AppRoutes() {
   );
 }
 
+import { NotificationProvider } from "./context/NotificationContext";
+
 export default function App() {
   return (
     <BrowserRouter>
       <ThemeProvider>
         <AuthProvider>
           <CompanyProvider>
-            <AppRoutes />
-            <Toaster
-              position="top-right"
-              toastOptions={{
-                duration: 3000,
-                style: {
-                  background: "#1e293b",
-                  color: "#f1f5f9",
-                  border: "1px solid #334155",
-                  borderRadius: "12px",
-                  fontSize: "14px",
-                },
-                success: {
-                  iconTheme: { primary: "#22c55e", secondary: "#1e293b" },
-                },
-                error: {
-                  iconTheme: { primary: "#ef4444", secondary: "#1e293b" },
-                },
-              }}
-            />
+            <NotificationProvider>
+              <AppRoutes />
+              <Toaster
+                position="top-right"
+                toastOptions={{
+                  duration: 3000,
+                  style: {
+                    background: "#1e293b",
+                    color: "#f1f5f9",
+                    border: "1px solid #334155",
+                    borderRadius: "12px",
+                    fontSize: "14px",
+                  },
+                  success: {
+                    iconTheme: { primary: "#22c55e", secondary: "#1e293b" },
+                  },
+                  error: {
+                    iconTheme: { primary: "#ef4444", secondary: "#1e293b" },
+                  },
+                }}
+              />
+            </NotificationProvider>
           </CompanyProvider>
         </AuthProvider>
       </ThemeProvider>

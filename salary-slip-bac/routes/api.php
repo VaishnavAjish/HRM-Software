@@ -71,6 +71,10 @@ Route::post('new{data}', [AuthController::class, 'newData'])->middleware('thrott
 Route::get('/check-emp-code/{code}', [AuthController::class, 'checkEmpCode'])
     ->middleware('throttle:10,1');
 
+// Candidate Resume Streamer (Public for PDF iframe embedding & browser tabs)
+Route::get('candidates/{id}/resume', [CandidateController::class, 'resume']);
+Route::get('v1/candidates/{id}/resume', [CandidateController::class, 'resume']);
+
 /*
  * Appointment endpoints are staff-only.
  *
@@ -158,18 +162,20 @@ Route::middleware('jwt.auth')->group(function () {
         /*
          * Administration surface for the Permission Matrix screen.
          *
-         * Simulation runs the production engine against another user's
-         * identity, so it discloses what that user can reach and is gated on
-         * its own permission rather than on read access to the matrix.
+         * Simulation runs the production engine against another user's identity,
+         * so it discloses what that user can reach and is gated on its own
+         * permission rather than on read access to the matrix.
          */
         Route::post('simulate', [V1PermissionMatrixController::class, 'simulate'])
             ->middleware(['throttle:60,1', 'permission:admin.authorization.simulate']);
         Route::get('audit', [V1PermissionMatrixController::class, 'audit'])
             ->middleware('permission:admin.authorization.audit.read');
+        Route::get('validation', [V1PermissionMatrixController::class, 'validation'])
+            ->middleware('permission:admin.authorization.configure');
     });
 
     Route::prefix('v1/roles')->group(function () {
-        // Permission Matrix selector (the flat role list the grid screen loads).
+        // Permission Matrix selector (the flat role list the matrix screen loads).
         Route::get('/', [V1PermissionMatrixController::class, 'roles'])
             ->middleware('permission:admin.role.read');
 

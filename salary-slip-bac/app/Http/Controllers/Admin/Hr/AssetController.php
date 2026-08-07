@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin\Hr;
 
+use App\Http\Controllers\Admin\Hr\Concerns\AuthorizesEmployeeTarget;
 use App\Http\Controllers\Admin\Hr\Concerns\ScopesCompany;
 use App\Http\Controllers\Controller;
 use App\Models\Asset;
@@ -10,11 +11,15 @@ use Illuminate\Http\Request;
 
 class AssetController extends Controller
 {
+    use AuthorizesEmployeeTarget;
     use ScopesCompany;
 
     public function index(Request $request)
     {
-        $query = Asset::with('activeAllocation.user');
+        // Constrained to the identity columns the UI renders. The unconstrained
+        // relation embedded a complete employee record — salary, bank details,
+        // PAN — in every asset row.
+        $query = Asset::with('activeAllocation.user:id,name,emp_code');
         $this->applyCompanyScope($query, $request);
 
         if ($request->status) {
@@ -57,7 +62,7 @@ class AssetController extends Controller
 
     public function show($id)
     {
-        $asset = Asset::with(['allocations.user', 'allocations.allocatedBy'])->find($id);
+        $asset = Asset::with(['allocations.user:id,name,emp_code', 'allocations.allocatedBy:id,name'])->find($id);
         if (!$asset) {
             return response()->json(['status' => false, 'message' => 'Asset not found'], 404);
         }
@@ -136,6 +141,12 @@ class AssetController extends Controller
         if (!$asset) {
             return response()->json(['status' => false, 'message' => 'Asset not found'], 404);
         }
+        // The asset is reached by route id, which identifies it but does not
+        // authorize it.
+        if ($denied = $this->denyUnlessRecordInScope($asset)) {
+            return $denied;
+        }
+
         if ($asset->status !== 'available') {
             return response()->json(['status' => false, 'message' => 'Only available assets can be allocated'], 422);
         }
@@ -146,6 +157,13 @@ class AssetController extends Controller
             'notes' => 'nullable|string',
         ]);
 
+        // `exists:users,id` proves the employee exists, not that this actor may
+        // allocate to them. Checked before the write so a cross-company attempt
+        // cannot leave an allocation behind.
+        if ($denied = $this->denyUnlessEmployeeInScope($data['user_id'])) {
+            return $denied;
+        }
+
         $allocation = AssetAllocation::create($data + [
             'asset_id' => $asset->id,
             'allocated_by' => auth('api')->id(),
@@ -155,7 +173,10 @@ class AssetController extends Controller
 
         $asset->update(['status' => 'assigned']);
 
-        return response()->json(['status' => true, 'message' => 'Asset allocated', 'data' => $allocation->load('user')], 201);
+        // The employee relation is no longer attached: it returned the complete
+        // User record — salary, bank details, PAN — and the client only reads
+        // `status` before refetching the list.
+        return response()->json(['status' => true, 'message' => 'Asset allocated', 'data' => $allocation], 201);
     }
 
     public function returnAsset(Request $request, $id)
@@ -163,6 +184,10 @@ class AssetController extends Controller
         $asset = Asset::find($id);
         if (!$asset) {
             return response()->json(['status' => false, 'message' => 'Asset not found'], 404);
+        }
+
+        if ($denied = $this->denyUnlessRecordInScope($asset)) {
+            return $denied;
         }
 
         $allocation = AssetAllocation::where('asset_id', $asset->id)->where('status', 'active')->latest('allocated_at')->first();
@@ -199,7 +224,23 @@ class AssetController extends Controller
             'notes' => 'nullable|string',
         ]);
 
+        if ($denied = $this->denyUnlessRecordInScope($asset)) {
+            return $denied;
+        }
+
+        if ($denied = $this->denyUnlessEmployeeInScope($data['user_id'])) {
+            return $denied;
+        }
+
         $current = AssetAllocation::where('asset_id', $asset->id)->where('status', 'active')->latest('allocated_at')->first();
+
+        // A transfer moves the asset away from whoever currently holds it, so the
+        // outgoing employee has to be in scope too — otherwise an actor could
+        // take an asset off another company's employee by transferring it to one
+        // of their own.
+        if ($current && ($denied = $this->denyUnlessEmployeeInScope($current->user_id))) {
+            return $denied;
+        }
         if ($current) {
             $current->update(['status' => 'transferred', 'returned_at' => now()]);
         }
@@ -215,6 +256,6 @@ class AssetController extends Controller
 
         $asset->update(['status' => 'assigned']);
 
-        return response()->json(['status' => true, 'message' => 'Asset transferred', 'data' => $allocation->load('user')], 201);
+        return response()->json(['status' => true, 'message' => 'Asset transferred', 'data' => $allocation], 201);
     }
 }

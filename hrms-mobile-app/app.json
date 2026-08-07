@@ -1,0 +1,16 @@
+{
+  "expo": {
+    "name": "NISS Enterprise HRMS Mobile",
+    "slug": "hrms-mobile-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.niss.hrmsmobile"
+    },
+    "android": {
+      "package": "com.niss.hrmsmobile"
+    }
+  }
+}

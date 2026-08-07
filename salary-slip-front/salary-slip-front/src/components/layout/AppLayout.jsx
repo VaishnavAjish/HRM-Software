@@ -47,9 +47,12 @@ const pageTitles = {
 
 const SIDEBAR_WIDTH = 280;
 
+import NotificationDrawer from "../notifications/NotificationDrawer";
+
 export default function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [flyoutOpen, setFlyoutOpen] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(() => window.innerWidth >= 1024);
   const [isCollapsed, setIsCollapsed] = useState(() => {
     return localStorage.getItem("salaryms_sidebar_collapsed") === "true";
   });
@@ -58,10 +61,25 @@ export default function AppLayout() {
   const title = pageTitles[location.pathname] || "Dashboard";
 
   useEffect(() => {
+    const handleResize = () => {
+      setIsDesktop(window.innerWidth >= 1024);
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  // Close mobile drawer on route change
+  useEffect(() => {
+    setSidebarOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
     localStorage.setItem("salaryms_sidebar_collapsed", String(isCollapsed));
   }, [isCollapsed]);
 
-  const currentSidebarWidth = flyoutOpen ? EXPANDED_WIDTH : RAIL_WIDTH;
+  const currentSidebarWidth = isDesktop
+    ? (flyoutOpen ? EXPANDED_WIDTH : RAIL_WIDTH)
+    : 0;
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50 dark:bg-[var(--sidebar-bg)] font-sans">
@@ -92,6 +110,8 @@ export default function AppLayout() {
           <Outlet />
         </main>
       </div>
+
+      <NotificationDrawer />
     </div>
   );
 }

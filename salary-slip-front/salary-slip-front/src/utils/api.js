@@ -699,47 +699,9 @@ export const authorizationApi = {
  *
  * Kept apart from authorizationApi on purpose: that one answers "may the
  * signed-in user do this?" and is called on nearly every screen, while these
- * change what roles grant and are reachable only from Access Control.
+ * are reachable only from Access Control.
  */
 export const authorizationAdminApi = {
-  getRoles(accessToken, tokenType = "Bearer", search = "") {
-    const query = search ? `?search=${encodeURIComponent(search)}` : "";
-    return apiRequest(`/v1/roles${query}`, { headers: authHeaders(accessToken, tokenType) });
-  },
-
-  getMatrix(roleId, accessToken, tokenType = "Bearer") {
-    return apiRequest(`/v1/roles/${roleId}/matrix`, { headers: authHeaders(accessToken, tokenType) });
-  },
-
-  // Only changed cells are sent. The grid holds hundreds; posting all of them
-  // would let one administrator's save revert another's concurrent edit.
-  saveMatrix(roleId, changes, businessReason, accessToken, tokenType = "Bearer") {
-    return apiRequest(`/v1/roles/${roleId}/matrix`, {
-      method: "PUT", headers: authHeaders(accessToken, tokenType),
-      body: JSON.stringify({ changes, businessReason }),
-    });
-  },
-
-  cloneRole(roleId, payload, accessToken, tokenType = "Bearer") {
-    return apiRequest(`/v1/roles/${roleId}/clone`, {
-      method: "POST", headers: authHeaders(accessToken, tokenType),
-      body: JSON.stringify(payload),
-    });
-  },
-
-  simulate(payload, accessToken, tokenType = "Bearer") {
-    return apiRequest("/v1/authorization/simulate", {
-      method: "POST", headers: authHeaders(accessToken, tokenType),
-      body: JSON.stringify(payload),
-    });
-  },
-
-  getAudit(accessToken, tokenType = "Bearer", limit = 20) {
-    return apiRequest(`/v1/authorization/audit?limit=${limit}`, {
-      headers: authHeaders(accessToken, tokenType),
-    });
-  },
-
   lookupUsers(query, accessToken, tokenType = "Bearer") {
     return apiRequest(`/v1/user-lookup?q=${encodeURIComponent(query)}`, {
       headers: authHeaders(accessToken, tokenType),
@@ -856,8 +818,8 @@ export const policyApi = {
 /*
  * Access Control > Roles: role records and their lifecycle.
  *
- * Permission-to-role editing lives on authorizationAdminApi (the matrix); this
- * manages the roles themselves. The protected SYSTEM_SUPER_ADMIN role is never
+ * Manages the role records themselves; what a role grants is edited from the
+ * Permission Matrix. The protected SYSTEM_SUPER_ADMIN role is never
  * returned here — the backend conceals it — so it can neither be listed nor
  * changed from this screen.
  */

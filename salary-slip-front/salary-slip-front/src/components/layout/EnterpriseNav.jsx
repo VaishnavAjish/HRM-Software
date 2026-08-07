@@ -223,41 +223,10 @@ export default function EnterpriseNav({ onFlyoutChange }) {
       </div>
 
       {/* Bottom Footer */}
-      <div className="border-t border-gray-800 p-2.5 flex flex-col gap-1 flex-shrink-0">
-        <Link
-          to={`${dashboardPath === "/admin" ? "/admin" : dashboardPath}/profile`}
-          aria-label="Profile"
-          className="group relative flex h-11 w-full items-center rounded-xl px-2.5 text-gray-400 hover:bg-gray-800 hover:text-white transition-all"
-        >
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg flex-shrink-0">
-            <UserCircle size={18} />
-          </span>
-          <div
-            className={`overflow-hidden transition-all duration-300 ease-in-out ${
-              isHovered ? "max-w-[180px] opacity-100 ml-3" : "max-w-0 opacity-0 ml-0 pointer-events-none"
-            }`}
-          >
-            <span className="text-sm font-medium text-gray-300 whitespace-nowrap">Profile</span>
-          </div>
-        </Link>
-
-        <button
-          type="button"
-          onClick={logout}
-          aria-label="Log out"
-          className="group relative flex h-11 w-full items-center rounded-xl px-2.5 text-gray-400 hover:bg-rose-500/20 hover:text-rose-300 transition-all"
-        >
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg flex-shrink-0">
-            <LogOut size={18} />
-          </span>
-          <div
-            className={`overflow-hidden transition-all duration-300 ease-in-out ${
-              isHovered ? "max-w-[180px] opacity-100 ml-3" : "max-w-0 opacity-0 ml-0 pointer-events-none"
-            }`}
-          >
-            <span className="text-sm font-medium text-rose-300 whitespace-nowrap">Sign Out</span>
-          </div>
-        </button>
+      <div className="border-t border-gray-800 py-3 px-3 flex items-center justify-center flex-shrink-0">
+        <span className="text-xs font-semibold text-gray-400 whitespace-nowrap transition-all">
+          {isHovered ? "Version 1.2" : "v1.2"}
+        </span>
       </div>
     </aside>
   );
