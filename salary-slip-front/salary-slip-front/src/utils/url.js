@@ -5,6 +5,10 @@ const PROD_API_URL =
 const ENV = import.meta.env.VITE_ENV;
 
 function getDevBaseUrl() {
+  if (typeof window !== "undefined" && window.location.protocol === "https:") {
+    return window.location.origin;
+  }
+
   const envUrl = import.meta.env.VITE_API_BASE_URL;
   if (envUrl && typeof window !== "undefined" && window.location.hostname) {
     try {
@@ -29,10 +33,12 @@ function getDevBaseUrl() {
 }
 
 const rawBase =
-  ENV === "DEV"
-    ? getDevBaseUrl()
-    : ENV === "STAG"
-      ? import.meta.env.VITE_STAGING_URL
-      : PROD_API_URL;
+  typeof window !== "undefined" && window.location.protocol === "https:"
+    ? (import.meta.env.VITE_API_BASE_URL || window.location.origin)
+    : ENV === "DEV"
+      ? getDevBaseUrl()
+      : ENV === "STAG"
+        ? import.meta.env.VITE_STAGING_URL
+        : PROD_API_URL;
 
 export const baseUrl = rawBase ? rawBase.replace(/\/api\/?$/, "") : "";
