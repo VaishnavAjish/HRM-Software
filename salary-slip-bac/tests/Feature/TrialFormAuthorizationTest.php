@@ -229,4 +229,44 @@ class TrialFormAuthorizationTest extends TestCase
 
         $this->assertSame('Corrected Name', $form->fresh()->name);
     }
+
+    public function test_super_admin_filling_trial_form_sets_added_by(): void
+    {
+        $super = $this->admin('nidhi-impex', 0);
+
+        $response = $this->withToken(auth('api')->login($super))
+            ->postJson('/api/trial-form/store', [
+                'name' => 'Superadmin Candidate',
+                'mobile_number' => '9998887770',
+                'company_code' => 'nidhi-impex',
+            ]);
+
+        $response->assertOk();
+        $created = User::where('name', 'Superadmin Candidate')->first();
+        $this->assertNotNull($created);
+        $this->assertSame($super->id, (int) $created->added_by, 'trial form filled by superadmin must set added_by');
+    }
+
+    public function test_agent_only_sees_trial_forms_filled_by_themselves(): void
+    {
+        $super = $this->admin('nidhi-impex', 0);
+        $agent1 = $this->agent('nidhi-impex');
+        $agent2 = $this->agent('nidhi-impex');
+
+        $formSuper = $this->trialForm('nidhi-impex', $super);
+        $formAgent1 = $this->trialForm('nidhi-impex', $agent1);
+        $formAgent2 = $this->trialForm('nidhi-impex', $agent2);
+
+        // Agent 1 lists trial forms
+        $response1 = $this->withToken(auth('api')->login($agent1))
+            ->getJson('/api/trial-form/list');
+
+        $response1->assertOk();
+        $ids1 = collect($response1->json('data'))->pluck('id')->all();
+
+        $this->assertContains($formAgent1->id, $ids1, 'Agent 1 must see their own trial form');
+        $this->assertNotContains($formSuper->id, $ids1, 'Agent 1 must NOT see superadmin trial form');
+        $this->assertNotContains($formAgent2->id, $ids1, 'Agent 1 must NOT see Agent 2 trial form');
+    }
 }
+

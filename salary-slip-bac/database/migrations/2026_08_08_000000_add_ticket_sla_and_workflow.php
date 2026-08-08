@@ -76,9 +76,15 @@ return new class extends Migration
             DB::table('tickets')
                 ->where('priority', $priority)
                 ->whereNull('sla_due_at')
-                ->update([
-                    'sla_due_at' => DB::raw("created_at + interval '{$resolution} hours'"),
-                ]);
+                ->orderBy('id')
+                ->chunkById(100, function ($tickets) use ($resolution) {
+                    foreach ($tickets as $ticket) {
+                        $dueAt = \Illuminate\Support\Carbon::parse($ticket->created_at)->addHours($resolution);
+                        DB::table('tickets')
+                            ->where('id', $ticket->id)
+                            ->update(['sla_due_at' => $dueAt]);
+                    }
+                });
         }
     }
 

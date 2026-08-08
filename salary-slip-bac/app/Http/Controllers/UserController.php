@@ -1916,8 +1916,8 @@ class UserController extends Controller
         }
 
         $userAuth = auth('api')->user();
-        if ($userAuth && $userAuth->type === 'agent' && empty($data['id'])) {
-            $data['added_by'] = $userAuth->id;
+        if ($userAuth && empty($data['id'])) {
+            $data['added_by'] = $data['added_by'] ?? $userAuth->id;
         }
 
         $data = $this->withSafeAadhaar($data);
@@ -1938,7 +1938,9 @@ class UserController extends Controller
 
         $query = User::where('type', 'trial');
 
-        if ($userAuth && ((int) $userAuth->role === 1 || (int) $userAuth->role === 0)) {
+        if ($userAuth && ($userAuth->type === 'agent' || (int) $userAuth->role === 4)) {
+            $query->where('added_by', $userAuth->id);
+        } elseif ($userAuth && ((int) $userAuth->role === 1 || (int) $userAuth->role === 0)) {
             if ($request->company_code && ! in_array($request->company_code, ['all', 'all-companies'])) {
                 $codes = array_filter(array_map('trim', explode(',', $request->company_code)));
                 $query->whereIn('company_code', $codes);
