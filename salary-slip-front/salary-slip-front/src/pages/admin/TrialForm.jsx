@@ -406,7 +406,8 @@ export default function TrialForm() {
 
   const isAgentUser = user?.type === "agent" || user?.role === "agent" || Number(user?.role) === 4;
 
-  const displayedForms = forms;
+  const pendingForms = forms.filter(f => f.status !== "Approved" && f.status !== "Rejected");
+  const historyForms = forms.filter(f => f.status === "Approved" || f.status === "Rejected");
 
   const handleDownloadPDF = async () => {
     if (!selected || !formRef.current) return;
@@ -1158,44 +1159,71 @@ export default function TrialForm() {
         </div>
       ) : (
         /* ── Desktop AG Grid ────────────────────────────────────────────── */
-        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
-          {loading ? (
-            <div className="p-4">
-              <SkeletonTable rows={6} cols={7} />
-            </div>
-          ) : (
-            <div
-              ref={gridContainerRef}
-              className={`salary-ag-grid ${dark ? "ag-theme-alpine-dark" : "ag-theme-alpine"} ${headerFrozen ? "grid-header-frozen" : ""}`}
-            >
-              <AgGridReact
-                ref={gridRef}
-                rowData={displayedForms}
-                columnDefs={columnDefs}
-                defaultColDef={defaultColDef}
-                getRowStyle={(params) => {
-                  if (params.data.status === "Approved") return { backgroundColor: dark ? 'rgba(34, 197, 94, 0.1)' : '#dcfce7' };
-                  if (params.data.status === "Rejected") return { backgroundColor: dark ? 'rgba(239, 68, 68, 0.1)' : '#fee2e2' };
-                  return null;
-                }}
-                getRowId={(params) => String(params.data.id)}
-                domLayout="autoHeight"
-                rowHeight={58}
-                headerHeight={48}
-                popupParent={document.body}
-                enableCellTextSelection
-                animateRows
-                overlayNoRowsTemplate="<span class='text-gray-400 text-sm'>No trial forms found</span>"
-              />
-              <GridHeaderContextMenu
-                menu={headerMenu}
-                frozen={headerFrozen}
-                onClose={closeHeaderMenu}
-                onToggleFrozen={toggleHeaderFrozen}
-              />
-            </div>
+        <>
+          <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800 mb-8">
+            {loading ? (
+              <div className="p-4">
+                <SkeletonTable rows={6} cols={7} />
+              </div>
+            ) : (
+              <div
+                ref={gridContainerRef}
+                className={`salary-ag-grid ${dark ? "ag-theme-alpine-dark" : "ag-theme-alpine"} ${headerFrozen ? "grid-header-frozen" : ""}`}
+              >
+                <AgGridReact
+                  ref={gridRef}
+                  rowData={pendingForms}
+                  columnDefs={columnDefs}
+                  defaultColDef={defaultColDef}
+                  getRowId={(params) => String(params.data.id)}
+                  domLayout="autoHeight"
+                  rowHeight={58}
+                  headerHeight={48}
+                  popupParent={document.body}
+                  enableCellTextSelection
+                  animateRows
+                  overlayNoRowsTemplate="<span class='text-gray-400 text-sm'>No pending trial forms found</span>"
+                />
+                <GridHeaderContextMenu
+                  menu={headerMenu}
+                  frozen={headerFrozen}
+                  onClose={closeHeaderMenu}
+                  onToggleFrozen={toggleHeaderFrozen}
+                />
+              </div>
+            )}
+          </div>
+          
+          {historyForms.length > 0 && (
+            <>
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-4">History</h2>
+              <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+                <div
+                  className={`salary-ag-grid ${dark ? "ag-theme-alpine-dark" : "ag-theme-alpine"} ${headerFrozen ? "grid-header-frozen" : ""}`}
+                >
+                  <AgGridReact
+                    rowData={historyForms}
+                    columnDefs={columnDefs}
+                    defaultColDef={defaultColDef}
+                    getRowStyle={(params) => {
+                      if (params.data.status === "Approved") return { backgroundColor: dark ? 'rgba(34, 197, 94, 0.1)' : '#dcfce7' };
+                      if (params.data.status === "Rejected") return { backgroundColor: dark ? 'rgba(239, 68, 68, 0.1)' : '#fee2e2' };
+                      return null;
+                    }}
+                    getRowId={(params) => String(params.data.id)}
+                    domLayout="autoHeight"
+                    rowHeight={58}
+                    headerHeight={48}
+                    popupParent={document.body}
+                    enableCellTextSelection
+                    animateRows
+                    overlayNoRowsTemplate="<span class='text-gray-400 text-sm'>No history forms found</span>"
+                  />
+                </div>
+              </div>
+            </>
           )}
-        </div>
+        </>
       )}
 
       {/* Detail Modal */}
