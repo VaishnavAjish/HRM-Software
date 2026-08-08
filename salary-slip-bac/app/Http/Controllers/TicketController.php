@@ -706,12 +706,23 @@ class TicketController extends Controller
         return $query->count();
     }
 
+    private function secondsDiffSql(string $col1, string $col2): string
+    {
+        $driver = DB::connection()->getDriverName();
+
+        return match ($driver) {
+            'sqlite' => "strftime('%s', {$col1}) - strftime('%s', {$col2})",
+            'mysql' => "timestampdiff(SECOND, {$col2}, {$col1})",
+            default => "extract(epoch from ({$col1} - {$col2}))",
+        };
+    }
+
     /** Mean hours from raised to resolved, or null when nothing is resolved yet. */
     private function averageResolutionHours($query): ?float
     {
         $seconds = $query
             ->whereNotNull('resolved_at')
-            ->select(DB::raw('avg(extract(epoch from (resolved_at - created_at))) as avg_seconds'))
+            ->select(DB::raw('avg(' . $this->secondsDiffSql('resolved_at', 'created_at') . ') as avg_seconds'))
             ->value('avg_seconds');
 
         return $seconds === null ? null : round(((float) $seconds) / 3600, 1);
@@ -1253,10 +1264,10 @@ class TicketController extends Controller
             ->select(
                 $column,
                 DB::raw('count(*) as total'),
-                DB::raw("count(*) filter (where status = 'resolved') as resolved"),
-                DB::raw("count(*) filter (where status = 'closed') as closed"),
-                DB::raw('count(*) filter (where sla_breached_at is not null or (sla_due_at < now() and status not in (\'resolved\',\'closed\'))) as overdue'),
-                DB::raw('avg(extract(epoch from (resolved_at - created_at))) as avg_seconds')
+                DB::raw("count(case when status = 'resolved' then 1 end) as resolved"),
+                DB::raw("count(case when status = 'closed' then 1 end) as closed"),
+                DB::raw('count(case when sla_breached_at is not null or (sla_due_at < now() and status not in (\'resolved\',\'closed\')) then 1 end) as overdue'),
+                DB::raw('avg(' . $this->secondsDiffSql('resolved_at', 'created_at') . ') as avg_seconds')
             )
             ->groupBy($column)
             ->orderByDesc('total')
@@ -1276,7 +1287,7 @@ class TicketController extends Controller
     {
         return $query
             ->select('users.name', 'users.emp_code', DB::raw('count(*) as total'),
-                DB::raw("count(*) filter (where tickets.status in ('resolved','closed')) as settled"))
+                DB::raw("count(case when tickets.status in ('resolved','closed') then 1 end) as settled"))
             ->join('users', 'users.id', '=', 'tickets.employee_id')
             ->groupBy('users.name', 'users.emp_code')
             ->orderByDesc('total')
@@ -1294,7 +1305,7 @@ class TicketController extends Controller
     {
         return $query
             ->select('ticket_categories.name', DB::raw('count(*) as total'),
-                DB::raw('avg(extract(epoch from (tickets.resolved_at - tickets.created_at))) as avg_seconds'))
+                DB::raw('avg(' . $this->secondsDiffSql('tickets.resolved_at', 'tickets.created_at') . ') as avg_seconds'))
             ->leftJoin('ticket_categories', 'ticket_categories.id', '=', 'tickets.category_id')
             ->groupBy('ticket_categories.name')
             ->orderByDesc('total')
@@ -1311,10 +1322,10 @@ class TicketController extends Controller
     {
         return $query
             ->select('priority', DB::raw('count(*) as total'),
-                DB::raw('count(*) filter (where resolved_at is not null and sla_due_at is not null and resolved_at <= sla_due_at) as within_target'),
-                DB::raw('count(*) filter (where resolved_at is not null and sla_due_at is not null and resolved_at > sla_due_at) as breached'),
-                DB::raw('avg(extract(epoch from (first_response_at - created_at))) as avg_response_seconds'),
-                DB::raw('avg(extract(epoch from (resolved_at - created_at))) as avg_resolution_seconds'))
+                DB::raw('count(case when resolved_at is not null and sla_due_at is not null and resolved_at <= sla_due_at then 1 end) as within_target'),
+                DB::raw('count(case when resolved_at is not null and sla_due_at is not null and resolved_at > sla_due_at then 1 end) as breached'),
+                DB::raw('avg(' . $this->secondsDiffSql('first_response_at', 'created_at') . ') as avg_response_seconds'),
+                DB::raw('avg(' . $this->secondsDiffSql('resolved_at', 'created_at') . ') as avg_resolution_seconds'))
             ->groupBy('priority')
             ->get()
             ->map(function ($row) {
