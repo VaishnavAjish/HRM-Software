@@ -29,13 +29,14 @@ const eventListeners = new Map();
  * Initialize and return Socket.IO client instance
  */
 export function getSocket(token) {
-  // On production HTTPS without explicit socket server URL, fall back gracefully to local event dispatcher
-  const isHttpsProdWithoutSocketUrl =
+  // On production domains (like niss.pro) without explicit socket server URL, fall back gracefully to local event dispatcher
+  const isNonLocalHostWithoutSocketUrl =
     typeof window !== "undefined" &&
-    window.location.protocol === "https:" &&
+    (window.location.hostname === "niss.pro" ||
+      (window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1")) &&
     !import.meta.env.VITE_SOCKET_URL;
 
-  if (isHttpsProdWithoutSocketUrl) {
+  if (isNonLocalHostWithoutSocketUrl) {
     return {
       on: (event, fn) => {
         if (!eventListeners.has(event)) eventListeners.set(event, new Set());
