@@ -10,6 +10,17 @@ export function DigitalIdCard() {
   const { theme } = useTheme();
   const { user } = useAuth();
 
+  if (!user) return null;
+
+  const empCode = user.emp_code || user.empCode || 'EMP-001';
+  const name = user.name || user.full_name || 'Employee';
+  const designation = user.designation || 'Security Officer';
+  const department = user.department || 'Operations';
+  const joiningDate = user.joining_date || user.joiningDate || '15 Jan 2024';
+  const company = user.company_code || user.company || 'NISS Enterprise';
+  const unit = user.unit || 'HQ';
+  const photoUrl = user.photo || user.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=6366F1&color=fff`;
+
   return (
     <View style={styles.cardWrapper}>
       <LinearGradient
@@ -22,7 +33,7 @@ export function DigitalIdCard() {
         <View style={styles.topHeader}>
           <View style={styles.brandGroup}>
             <Building2 size={22} color="#818CF8" />
-            <Text style={styles.companyTitle}>NISS ENTERPRISE</Text>
+            <Text style={styles.companyTitle}>{company.toUpperCase()}</Text>
           </View>
           <View style={styles.verifiedPill}>
             <ShieldCheck size={12} color="#10B981" />
@@ -40,11 +51,11 @@ export function DigitalIdCard() {
 
         {/* Main Info Section */}
         <View style={styles.infoRow}>
-          <Image source={{ uri: user.avatar }} style={styles.idAvatar} />
+          <Image source={{ uri: photoUrl }} style={styles.idAvatar} />
           <View style={styles.idDetails}>
-            <Text style={styles.empName}>{user.name}</Text>
-            <Text style={styles.empRole}>{user.designation}</Text>
-            <Text style={styles.empDept}>{user.department}</Text>
+            <Text style={styles.empName}>{name}</Text>
+            <Text style={styles.empRole}>{designation}</Text>
+            <Text style={styles.empDept}>{department}</Text>
           </View>
         </View>
 
@@ -52,15 +63,15 @@ export function DigitalIdCard() {
         <View style={styles.cardFooter}>
           <View>
             <Text style={styles.footerLabel}>EMPLOYEE ID</Text>
-            <Text style={styles.footerValue}>{user.empCode}</Text>
+            <Text style={styles.footerValue}>{empCode}</Text>
           </View>
           <View>
             <Text style={styles.footerLabel}>JOINING DATE</Text>
-            <Text style={styles.footerValue}>{user.joiningDate}</Text>
+            <Text style={styles.footerValue}>{joiningDate}</Text>
           </View>
           <View>
             <Text style={styles.footerLabel}>UNIT LOCATION</Text>
-            <Text style={styles.footerValue}>{user.unit.split('-')[0]}</Text>
+            <Text style={styles.footerValue}>{unit}</Text>
           </View>
         </View>
       </LinearGradient>
@@ -92,7 +103,7 @@ const styles = StyleSheet.create({
   },
   companyTitle: {
     color: '#F8FAFC',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '800',
     letterSpacing: 1,
   },

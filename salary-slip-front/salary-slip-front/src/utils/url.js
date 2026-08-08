@@ -4,9 +4,33 @@ const PROD_API_URL =
 
 const ENV = import.meta.env.VITE_ENV;
 
+function getDevBaseUrl() {
+  const envUrl = import.meta.env.VITE_API_BASE_URL;
+  if (envUrl && typeof window !== "undefined" && window.location.hostname) {
+    try {
+      const u = new URL(envUrl, window.location.origin);
+      if (
+        (u.hostname === "localhost" || u.hostname === "127.0.0.1") &&
+        window.location.hostname !== "localhost" &&
+        window.location.hostname !== "127.0.0.1"
+      ) {
+        u.hostname = window.location.hostname;
+        return u.toString();
+      }
+    } catch {
+      // ignore
+    }
+    return envUrl;
+  }
+  if (typeof window !== "undefined" && window.location.hostname) {
+    return `${window.location.protocol}//${window.location.hostname}:8000/api`;
+  }
+  return "http://127.0.0.1:8000/api";
+}
+
 const rawBase =
   ENV === "DEV"
-    ? import.meta.env.VITE_API_BASE_URL
+    ? getDevBaseUrl()
     : ENV === "STAG"
       ? import.meta.env.VITE_STAGING_URL
       : PROD_API_URL;

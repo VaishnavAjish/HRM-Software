@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Lock, Mail, ShieldCheck, User, ArrowRight, Building2, Eye, EyeOff, AlertCircle } from 'lucide-react-native';
 import { useTheme } from '../../context/ThemeContext';
@@ -10,8 +10,8 @@ import { Button } from '../../components/common/Button';
 export function LoginScreen() {
   const { theme, isDark, toggleTheme } = useTheme();
   const { login, authError } = useAuth();
-  const [email, setEmail] = useState('emp001@niss.com');
-  const [password, setPassword] = useState('password123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [selectedRole, setSelectedRole] = useState('employee');
   const [loading, setLoading] = useState(false);
@@ -19,7 +19,7 @@ export function LoginScreen() {
 
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
-      setErrorMessage('Please enter both Email/Emp Code and Password');
+      setErrorMessage('Please enter your Enterprise Email / Employee Code and Password');
       return;
     }
     setErrorMessage('');
@@ -27,11 +27,11 @@ export function LoginScreen() {
     const res = await login(email.trim(), password, selectedRole);
     setLoading(false);
     if (!res.success) {
-      setErrorMessage(res.message || 'Login failed. Please check credentials.');
+      setErrorMessage(res.message || 'Invalid credentials or backend connection failed');
     }
   };
 
-  const handleQuickFill = (type) => {
+  const handleDemoFill = (type) => {
     if (type === 'emp') {
       setEmail('EMP001');
       setPassword('password123');
@@ -52,14 +52,14 @@ export function LoginScreen() {
       />
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* Header Branding */}
+        {/* Top Branding */}
         <View style={styles.headerArea}>
           <TouchableOpacity style={styles.logoBadge} onPress={toggleTheme} activeOpacity={0.8}>
-            <Building2 size={30} color="#6366F1" />
+            <Building2 size={32} color="#6366F1" />
           </TouchableOpacity>
           <Text style={[styles.appTitle, { color: theme.textPrimary }]}>NISS Enterprise</Text>
           <Text style={[styles.appSubtitle, { color: theme.textMuted }]}>
-            Real Backend HRMS & Field Agent Portal
+            Real Backend HRMS & Field Agent Mobile Portal
           </Text>
         </View>
 
@@ -73,7 +73,7 @@ export function LoginScreen() {
           </View>
         ) : null}
 
-        {/* Form Card */}
+        {/* Login Form Card */}
         <View style={[styles.formCard, { backgroundColor: theme.surfaceCard, borderColor: theme.border }, shadows.glass]}>
           {/* Role Selector Tabs */}
           <View style={[styles.roleTabContainer, { backgroundColor: theme.surfaceElevated }]}>
@@ -116,16 +116,16 @@ export function LoginScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* Email/Emp Code Input */}
+          {/* Email / Emp Code Input */}
           <View style={styles.inputGroup}>
-            <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Email or Employee Code</Text>
+            <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>Enterprise Email or Employee Code</Text>
             <View style={[styles.inputWrapper, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
               <Mail size={18} color={theme.textMuted} style={styles.inputIcon} />
               <TextInput
                 style={[styles.input, { color: theme.textPrimary }]}
                 value={email}
                 onChangeText={setEmail}
-                placeholder="EMP001 or user@company.com"
+                placeholder="Enter Email or Emp Code (e.g. EMP001)"
                 placeholderTextColor={theme.textMuted}
                 autoCapitalize="none"
               />
@@ -141,7 +141,7 @@ export function LoginScreen() {
                 style={[styles.input, { color: theme.textPrimary }]}
                 value={password}
                 onChangeText={setPassword}
-                placeholder="Enter password"
+                placeholder="Enter your password"
                 placeholderTextColor={theme.textMuted}
                 secureTextEntry={!showPassword}
               />
@@ -155,7 +155,7 @@ export function LoginScreen() {
             </View>
           </View>
 
-          {/* Action Button */}
+          {/* Login Button */}
           <Button
             title={`Sign In to ${selectedRole === 'agent' ? 'Agent Workspace' : 'Employee Portal'}`}
             onPress={handleLogin}
@@ -165,12 +165,12 @@ export function LoginScreen() {
             style={styles.submitBtn}
           />
 
-          {/* Quick Demo Autofill Pills */}
-          <Text style={[styles.demoLabel, { color: theme.textMuted }]}>Quick Fill Demo Credentials:</Text>
+          {/* Quick Demo Helper Pills */}
+          <Text style={[styles.demoLabel, { color: theme.textMuted }]}>Fill Test Credentials:</Text>
           <View style={styles.quickPillRow}>
             <TouchableOpacity
               style={[styles.quickPill, { backgroundColor: theme.primary + '1F', borderColor: theme.primary }]}
-              onPress={() => handleQuickFill('emp')}
+              onPress={() => handleDemoFill('emp')}
             >
               <User size={12} color={theme.primary} />
               <Text style={[styles.quickPillText, { color: theme.primary }]}>Employee (EMP001)</Text>
@@ -178,16 +178,16 @@ export function LoginScreen() {
 
             <TouchableOpacity
               style={[styles.quickPill, { backgroundColor: theme.violet + '1F', borderColor: theme.violet }]}
-              onPress={() => handleQuickFill('agent')}
+              onPress={() => handleDemoFill('agent')}
             >
               <ShieldCheck size={12} color={theme.violet} />
               <Text style={[styles.quickPillText, { color: theme.violet }]}>Agent Portal</Text>
             </TouchableOpacity>
           </View>
 
-          {/* Security Banner */}
-          <Text style={[styles.biometricNote, { color: theme.textMuted }]}>
-            🌐 Live API: 192.168.1.53:8000/api • JWT SSL Secured
+          {/* Server Connection Pill */}
+          <Text style={[styles.serverNote, { color: theme.textMuted }]}>
+            🌐 Backend Server: http://192.168.1.53:8000/api
           </Text>
         </View>
       </ScrollView>
@@ -217,9 +217,9 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   logoBadge: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 68,
+    height: 68,
+    borderRadius: 34,
     backgroundColor: 'rgba(99, 102, 241, 0.15)',
     borderWidth: 1.5,
     borderColor: '#6366F1',
@@ -323,7 +323,7 @@ const styles = StyleSheet.create({
     ...typography.micro,
     fontWeight: '700',
   },
-  biometricNote: {
+  serverNote: {
     ...typography.micro,
     textAlign: 'center',
     marginTop: 18,

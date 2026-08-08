@@ -17,7 +17,12 @@ export function Header({ title, onOpenNotifications, onNavigateProfile }) {
       {/* User Info & Title */}
       <View style={styles.leftSection}>
         <TouchableOpacity style={styles.avatarTouchable} onPress={onNavigateProfile} activeOpacity={0.8}>
-          <Image source={{ uri: user.avatar }} style={styles.avatar} />
+          <Image
+            source={{
+              uri: user?.photo || user?.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'User')}&background=6366F1&color=fff`,
+            }}
+            style={styles.avatar}
+          />
           <View style={[styles.onlineDot, { backgroundColor: theme.emerald }]} />
         </TouchableOpacity>
         <View style={styles.titleWrapper}>
@@ -25,7 +30,7 @@ export function Header({ title, onOpenNotifications, onNavigateProfile }) {
             Welcome back,
           </Text>
           <Text style={[styles.userNameText, { color: theme.textPrimary }]} numberOfLines={1}>
-            {user.name.split(' ')[0]}
+            {user?.name ? user.name.split(' ')[0] : 'User'}
           </Text>
         </View>
       </View>

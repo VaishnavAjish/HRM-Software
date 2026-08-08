@@ -1,14 +1,13 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { MOCK_USER_EMPLOYEE, MOCK_USER_AGENT } from '../services/mockData';
+import React, { createContext, useContext, useState } from 'react';
 import { api } from '../services/api';
 
 const AuthContext = createContext();
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(MOCK_USER_EMPLOYEE);
-  const [role, setRole] = useState('employee'); // 'employee' or 'agent'
+  const [user, setUser] = useState(null);
+  const [role, setRole] = useState('employee'); // 'employee' | 'agent'
   const [token, setToken] = useState(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authError, setAuthError] = useState(null);
 
   const login = async (email, password, selectedRole = 'employee') => {
@@ -30,7 +29,7 @@ export function AuthProvider({ children }) {
   const refreshProfile = async () => {
     if (token) {
       const profile = await api.getProfile();
-      if (profile) {
+      if (profile && (profile.id || profile.emp_code || profile.name)) {
         setUser(profile);
       }
     }
@@ -40,15 +39,11 @@ export function AuthProvider({ children }) {
     setUser(null);
     setToken(null);
     setIsAuthenticated(false);
+    setAuthError(null);
   };
 
   const switchRole = (newRole) => {
     setRole(newRole);
-    if (newRole === 'agent') {
-      setUser(MOCK_USER_AGENT);
-    } else {
-      setUser(MOCK_USER_EMPLOYEE);
-    }
   };
 
   return (
