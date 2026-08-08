@@ -104,6 +104,59 @@ export function formatDateTime(value) {
 }
 
 /**
+ * Compact timestamp for narrow cells: "08 Aug, 4:05 pm", with the year only
+ * when it is not the current one.
+ *
+ * The full format is 21 characters and does not fit the drawer's metadata
+ * cards, so every date there rendered as "08 Aug 202…" — a truncation that
+ * removed the one part a reader needs. Pair this with the full value in a
+ * title attribute.
+ */
+export function formatDateTimeShort(value) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+
+  const sameYear = date.getFullYear() === new Date().getFullYear();
+
+  return date.toLocaleString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    ...(sameYear ? {} : { year: "2-digit" }),
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+/** Initials for an avatar chip, e.g. "Dhirubhai Dungrani" → "DD". */
+export function initialsOf(name) {
+  const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  return (parts[0][0] + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase();
+}
+
+/**
+ * A stable colour per person, so the same author keeps the same avatar tint
+ * across the thread instead of every avatar being the same brand colour.
+ */
+export function avatarTone(name) {
+  const tones = [
+    "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
+    "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300",
+    "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
+    "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+    "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300",
+    "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300",
+  ];
+
+  const key = String(name || "?");
+  let hash = 0;
+  for (let i = 0; i < key.length; i += 1) hash = (hash * 31 + key.charCodeAt(i)) % 997;
+
+  return tones[hash % tones.length];
+}
+
+/**
  * Format a count the API may not have sent yet.
  *
  * Returns "—" for null/undefined instead of coercing to 0: "no data loaded" and
