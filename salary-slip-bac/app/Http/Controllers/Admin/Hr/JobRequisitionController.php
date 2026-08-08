@@ -142,4 +142,32 @@ class JobRequisitionController extends Controller
 
         return response()->json(['status' => true, 'message' => 'Requisition posted', 'data' => $requisition]);
     }
+
+    public function publishToIndeed(Request $request, $id, \App\Services\IndeedJobService $indeedService)
+    {
+        $requisition = JobRequisition::find($id);
+        if (!$requisition) {
+            return response()->json(['status' => false, 'message' => 'Requisition not found'], 404);
+        }
+
+        $result = $indeedService->publishJob($requisition, $request->all());
+
+        if ($result['success']) {
+            $requisition->update([
+                'status' => 'posted',
+                'indeed_job_id' => $result['indeed_job_id'],
+                'published_to_indeed' => true,
+                'published_to_indeed_at' => now(),
+                'posted_at' => $requisition->posted_at ?? now(),
+            ]);
+
+            return response()->json([
+                'status' => true,
+                'message' => $result['message'],
+                'data' => $requisition->fresh(),
+            ]);
+        }
+
+        return response()->json(['status' => false, 'message' => 'Could not publish job to Indeed'], 500);
+    }
 }

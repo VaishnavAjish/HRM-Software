@@ -838,29 +838,24 @@ export default function TrialForm() {
         width: user?.role === 'agent' ? 200 : 380,
         sortable: false,
         filter: false,
-        cellRenderer: ({ data }) => (
-          <div className="flex h-full items-center gap-1.5">
-            <Button
-              size="sm"
-              variant="secondary"
-              icon={<Eye size={13} />}
-              onClick={() => setSelected(data)}
-            >
-              View
-            </Button>
-            {user?.role !== 'agent' && (
-              <>
-                {data.status !== "Rejected" && (
+        cellRenderer: ({ data }) => {
+          const isHistory = data.status === "Approved" || data.status === "Rejected";
+          return (
+            <div className="flex h-full items-center gap-1.5">
+              <Button
+                size="sm"
+                variant="secondary"
+                icon={<Eye size={13} />}
+                onClick={() => setSelected(data)}
+              >
+                View
+              </Button>
+              {user?.role !== 'agent' && !isHistory && (
+                <>
                   <button
                     onClick={() => handleStatusUpdate(data.id, true)}
-                    disabled={
-                      Boolean(statusLoading[data.id]) || data.status === "Approved"
-                    }
-                    className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold transition ${
-                      data.status === "Approved"
-                        ? "bg-green-600 text-white cursor-default"
-                        : "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 hover:bg-green-100 disabled:opacity-50"
-                    }`}
+                    disabled={Boolean(statusLoading[data.id])}
+                    className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold transition bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 hover:bg-green-100 disabled:opacity-50"
                   >
                     {statusLoading[data.id] === "Approved" ? (
                       <Loader2 size={11} className="animate-spin" />
@@ -869,18 +864,10 @@ export default function TrialForm() {
                     )}
                     Approve
                   </button>
-                )}
-                {data.status !== "Approved" && (
                   <button
                     onClick={() => handleStatusUpdate(data.id, false)}
-                    disabled={
-                      Boolean(statusLoading[data.id]) || data.status === "Rejected"
-                    }
-                    className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold transition ${
-                      data.status === "Rejected"
-                        ? "bg-red-600 text-white cursor-default"
-                        : "bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 hover:bg-red-100 disabled:opacity-50"
-                    }`}
+                    disabled={Boolean(statusLoading[data.id])}
+                    className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold transition bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 hover:bg-red-100 disabled:opacity-50"
                   >
                     {statusLoading[data.id] === "Rejected" ? (
                       <Loader2 size={11} className="animate-spin" />
@@ -889,34 +876,36 @@ export default function TrialForm() {
                     )}
                     Reject
                   </button>
-                )}
+                </>
+              )}
+              {user?.role !== 'agent' && (
                 <button
                   onClick={() => setDeleteTarget(data)}
                   className="inline-flex items-center gap-1 rounded-lg bg-red-50 px-2.5 py-1.5 text-xs font-bold text-red-700 transition hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400"
                 >
                   <Trash2 size={11} />
                 </button>
-              </>
-            )}
-            {(data.status === "Approved" || data.status === "1") && (user?.role === 'agent' || ["0", "1", "2", "admin", "superadmin"].includes(String(user?.role).toLowerCase())) && (
-              data.processed ? (
-                <span className="inline-flex items-center gap-1 rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs font-bold text-gray-500 dark:bg-gray-700 dark:text-gray-400 whitespace-nowrap">
-                  <CheckCircle2 size={11} /> Processed
-                </span>
-              ) : (
-                <button
-                  onClick={() => {
-                    setPrefillTrialData(data);
-                    setShowAppointmentModal(true);
-                  }}
-                  className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-2.5 py-1.5 text-xs font-bold text-blue-700 transition hover:bg-blue-100 dark:bg-blue-900/20 dark:text-blue-400 whitespace-nowrap"
-                >
-                  <Plus size={11} /> Process
-                </button>
-              )
-            )}
-          </div>
-        ),
+              )}
+              {!isHistory && (data.status === "Approved" || data.status === "1") && (user?.role === 'agent' || ["0", "1", "2", "admin", "superadmin"].includes(String(user?.role).toLowerCase())) && (
+                data.processed ? (
+                  <span className="inline-flex items-center gap-1 rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs font-bold text-gray-500 dark:bg-gray-700 dark:text-gray-400 whitespace-nowrap">
+                    <CheckCircle2 size={11} /> Processed
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setPrefillTrialData(data);
+                      setShowAppointmentModal(true);
+                    }}
+                    className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-2.5 py-1.5 text-xs font-bold text-blue-700 transition hover:bg-blue-100 dark:bg-blue-900/20 dark:text-blue-400 whitespace-nowrap"
+                  >
+                    <Plus size={11} /> Process
+                  </button>
+                )
+              )}
+            </div>
+          );
+        },
       },
     ],
     [statusLoading, handleStatusUpdate, visibleColumns, user?.role],

@@ -1769,6 +1769,9 @@ export const hrApi = {
   publishRequisition(id, accessToken, tokenType = "Bearer") {
     return apiRequest(`/hr/requisitions/publish/${id}`, { method: "POST", headers: hrAuthHeaders(accessToken, tokenType) });
   },
+  publishToIndeed(id, payload = {}, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/requisitions/publish-indeed/${id}`, { method: "POST", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(payload) });
+  },
 
   // Quizzes
   getQuizzes(accessToken, tokenType = "Bearer", filters = {}) {

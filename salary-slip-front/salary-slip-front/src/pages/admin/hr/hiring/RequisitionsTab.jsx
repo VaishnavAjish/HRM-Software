@@ -299,6 +299,23 @@ export default function RequisitionsTab({ departments = [], people = [] }) {
     } catch (err) { toast.error(err.message || "Failed to publish"); }
   };
 
+  const [publishingIndeedId, setPublishingIndeedId] = useState(null);
+
+  const publishToIndeed = async (r) => {
+    setPublishingIndeedId(r.id);
+    try {
+      const res = await hrApi.publishToIndeed(r.id, {}, user?.accessToken, user?.tokenType);
+      if (res.status) {
+        toast.success(res.message || "Job requisition published to Indeed!");
+        load();
+      }
+    } catch (err) {
+      toast.error(err.message || "Failed to publish to Indeed");
+    } finally {
+      setPublishingIndeedId(null);
+    }
+  };
+
   const duplicate = async (r) => {
     try {
       const res = await hrApi.storeRequisition({
@@ -479,6 +496,21 @@ export default function RequisitionsTab({ departments = [], people = [] }) {
                         )}
                         {r.status === "approved" && (
                           <button title="Post" onClick={() => publish(r.id)} className="p-1.5 rounded-lg text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20"><Send size={14} /></button>
+                        )}
+                        {["approved", "posted"].includes(r.status) && (
+                          <button
+                            title={r.published_to_indeed ? "Published on Indeed" : "Publish to Indeed"}
+                            onClick={() => publishToIndeed(r)}
+                            disabled={publishingIndeedId === r.id}
+                            className={`px-2 py-1 rounded-md text-xs font-bold flex items-center gap-1 transition-colors ${
+                              r.published_to_indeed
+                                ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
+                                : "bg-blue-600 text-white hover:bg-blue-700 shadow-xs"
+                            }`}
+                          >
+                            <span className="font-black">Indeed</span>
+                            {publishingIndeedId === r.id ? "..." : (r.published_to_indeed ? "✓" : "Post")}
+                          </button>
                         )}
                         <button title="Edit" onClick={() => openEdit(r)} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"><Pencil size={14} /></button>
                         <button title="Duplicate" onClick={() => duplicate(r)} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"><Copy size={14} /></button>

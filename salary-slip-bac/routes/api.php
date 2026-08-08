@@ -514,6 +514,7 @@ Route::middleware('jwt.auth')->group(function () {
                 Route::delete('delete/{id}', [JobRequisitionController::class, 'destroy'])->middleware('permission:hr.requisition.delete');
                 Route::post('approve/{id}', [JobRequisitionController::class, 'approve'])->middleware('permission:hr.requisition.approve');
                 Route::post('publish/{id}', [JobRequisitionController::class, 'publish'])->middleware('permission:hr.requisition.publish');
+                Route::post('publish-indeed/{id}', [JobRequisitionController::class, 'publishToIndeed'])->middleware('permission:hr.requisition.publish');
             });
 
             Route::group(['prefix' => 'quizzes'], function () {
