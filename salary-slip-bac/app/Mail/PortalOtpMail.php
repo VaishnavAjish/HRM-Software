@@ -25,6 +25,14 @@ class PortalOtpMail extends Mailable
         );
     }
 
+    /**
+     * HTML plus a plain-text alternative.
+     *
+     * The text part is not decoration. An HTML-only message with no multipart
+     * alternative is a long-standing spam signal, and Gmail weighs it heavily
+     * for a transactional mail from a low-volume domain — which is exactly what
+     * this is. Shipping both parts is the cheapest deliverability fix available.
+     */
     public function content(): Content
     {
         return new Content(
@@ -32,6 +40,11 @@ class PortalOtpMail extends Mailable
                 'otp' => $this->otp,
                 'employeeName' => $this->employeeName,
             ])->render(),
+            text: 'emails.otp_text',
+            with: [
+                'otp' => $this->otp,
+                'employeeName' => $this->employeeName,
+            ],
         );
     }
 }

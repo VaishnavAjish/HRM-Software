@@ -1,25 +1,15 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { Home, Ticket, FileText, User } from 'lucide-react-native';
 import { useTheme } from '../../context/ThemeContext';
 import { typography, shadows } from '../../theme';
 
-// Only rendered for the employee role — agents get a single self-contained
-// screen with no tab bar (see App.js).
-export function FloatingTabBar({ activeTab, onSelectTab }) {
+export function FloatingTabBar({ tabs, activeTab, onSelectTab }) {
   const { theme } = useTheme();
-
-  const currentTabs = [
-    { id: 'home', label: 'Home', icon: Home },
-    { id: 'payslips', label: 'Payslips', icon: FileText },
-    { id: 'tickets', label: 'Tickets', icon: Ticket },
-    { id: 'profile', label: 'Profile', icon: User },
-  ];
 
   return (
     <View style={styles.floatingContainer}>
       <View style={[styles.tabBarCard, { backgroundColor: theme.tabBarBg, borderColor: theme.border }]}>
-        {currentTabs.map((tab) => {
+        {tabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
 

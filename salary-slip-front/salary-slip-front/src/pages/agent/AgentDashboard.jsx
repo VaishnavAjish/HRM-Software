@@ -436,7 +436,11 @@ export default function AgentDashboard() {
             </div>
           ) : (
             candidates.map((c) => (
-              <div key={c.id} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4 shadow-sm flex flex-col gap-3">
+              <div key={c.id} className={`border rounded-xl p-4 shadow-sm flex flex-col gap-3 ${
+                isCandidateApproved(c) ? 'bg-green-50 dark:bg-green-900/10 border-green-200 dark:border-green-800' :
+                (String(c.status) === "2" || String(c.form_status) === "2" ? 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800' :
+                'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700')
+              }`}>
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex min-w-0 items-center gap-3">
                     {c.photo ? (
@@ -551,7 +555,11 @@ export default function AgentDashboard() {
                   </tr>
                 ) : (
                   candidates.map((c) => (
-                    <tr key={c.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-700/20 transition-colors">
+                    <tr key={c.id} className={`transition-colors ${
+                      isCandidateApproved(c) ? 'bg-green-50/30 dark:bg-green-900/10 hover:bg-green-50 dark:hover:bg-green-900/20' :
+                      (String(c.status) === "2" || String(c.form_status) === "2" ? 'bg-red-50/30 dark:bg-red-900/10 hover:bg-red-50 dark:hover:bg-red-900/20' :
+                      'hover:bg-gray-50/50 dark:hover:bg-gray-700/20')
+                    }`}>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
                           {c.photo ? (

@@ -406,10 +406,7 @@ export default function TrialForm() {
 
   const isAgentUser = user?.type === "agent" || user?.role === "agent" || Number(user?.role) === 4;
 
-  const displayedForms = useMemo(
-    () => forms.filter((f) => isAgentUser || f.status !== "Approved"),
-    [forms, isAgentUser],
-  );
+  const displayedForms = forms;
 
   const handleDownloadPDF = async () => {
     if (!selected || !formRef.current) return;
@@ -1176,6 +1173,11 @@ export default function TrialForm() {
                 rowData={displayedForms}
                 columnDefs={columnDefs}
                 defaultColDef={defaultColDef}
+                getRowStyle={(params) => {
+                  if (params.data.status === "Approved") return { backgroundColor: dark ? 'rgba(34, 197, 94, 0.1)' : '#dcfce7' };
+                  if (params.data.status === "Rejected") return { backgroundColor: dark ? 'rgba(239, 68, 68, 0.1)' : '#fee2e2' };
+                  return null;
+                }}
                 getRowId={(params) => String(params.data.id)}
                 domLayout="autoHeight"
                 rowHeight={58}

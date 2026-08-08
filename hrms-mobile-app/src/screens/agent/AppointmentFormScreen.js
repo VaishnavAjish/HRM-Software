@@ -9,6 +9,8 @@ import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { FormInput } from '../../components/common/FormInput';
 import { FormSelect } from '../../components/common/FormSelect';
+import { SelectField } from '../../components/common/SelectField';
+import { DatePickerField } from '../../components/common/DatePickerField';
 import { ImagePickerField } from '../../components/common/ImagePickerField';
 import { LoadingView } from '../../components/common/LoadingView';
 import { COMPANY_OPTIONS, getCompanyUnits } from '../../utils/companyConfig';
@@ -236,7 +238,7 @@ export function AppointmentFormScreen({ initialData, isPrefillFromTrial, onDone,
           <FormInput label="First Name" value={form.name_first} onChangeText={setField('name_first')} />
           <FormInput label="Middle Name" value={form.name_mid} onChangeText={setField('name_mid')} />
           <FormInput label="Surname" value={form.name_surname} onChangeText={setField('name_surname')} />
-          <FormInput label="Date of Birth" value={form.dob} onChangeText={setField('dob')} placeholder="YYYY-MM-DD" />
+          <DatePickerField label="Date of Birth" value={form.dob} onChange={setField('dob')} />
           <FormSelect label="Gender" value={form.gender} onChange={setField('gender')} options={GENDER_OPTIONS} />
           <FormSelect label="Marital Status" value={form.marital_status} onChange={setField('marital_status')} options={MARITAL_OPTIONS} />
           <FormInput label="Blood Group" value={form.blood_group} onChangeText={setField('blood_group')} />
@@ -264,8 +266,8 @@ export function AppointmentFormScreen({ initialData, isPrefillFromTrial, onDone,
 
         <Card style={styles.sectionCard} elevated>
           <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Employment</Text>
-          <FormInput label="Joining Date" value={form.joining_date} onChangeText={setField('joining_date')} placeholder="YYYY-MM-DD" />
-          <FormSelect label="Department" value={form.department} onChange={setField('department')} options={departmentOptions} />
+          <DatePickerField label="Joining Date" value={form.joining_date} onChange={setField('joining_date')} />
+          <SelectField label="Department" value={form.department} onChange={setField('department')} options={departmentOptions} placeholder="Select department" />
           <FormInput label="Designation" value={form.designation} onChangeText={setField('designation')} />
           <FormInput label="Manager Name" value={form.manager_name} onChangeText={setField('manager_name')} />
           <FormInput label="Salary" value={form.salary} onChangeText={setField('salary')} keyboardType="number-pad" />
@@ -301,7 +303,7 @@ export function AppointmentFormScreen({ initialData, isPrefillFromTrial, onDone,
               <Text style={[styles.memberLabel, { color: theme.textMuted }]}>Member {idx + 1}</Text>
               <FormInput label="Name" value={m.name} onChangeText={setMemberField(idx, 'name')} />
               <FormInput label="Relation" value={m.relation} onChangeText={setMemberField(idx, 'relation')} />
-              <FormInput label="Date of Birth" value={m.dob} onChangeText={setMemberField(idx, 'dob')} placeholder="YYYY-MM-DD" />
+              <DatePickerField label="Date of Birth" value={m.dob} onChange={setMemberField(idx, 'dob')} />
               <FormInput label="Mobile" value={m.mobile} onChangeText={setMemberField(idx, 'mobile')} keyboardType="phone-pad" maxLength={10} />
               <FormInput label="Occupation" value={m.occupation} onChangeText={setMemberField(idx, 'occupation')} />
             </View>

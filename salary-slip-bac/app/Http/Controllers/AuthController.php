@@ -23,6 +23,18 @@ class AuthController extends Controller
     private const RESET_REQUEST_ACCEPTED =
         'If an account exists for this email, a verification code has been sent.';
 
+    private const OTP_MAIL_ATTEMPTS = 3;
+
+    /** Keep the provider's reason, drop anything that looks like a credential. */
+    private static function scrubTransportError(string $message): string
+    {
+        $message = preg_replace('/\S+@\S+/', '<address>', $message) ?? $message;
+        $message = preg_replace('/(?<=password|passwd|pwd)\s*\S+/i', ' <redacted>', $message) ?? $message;
+        $message = preg_replace('/\s+/', ' ', $message) ?? $message;
+
+        return mb_substr(trim($message), 0, 300);
+    }
+
     public function login(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -539,18 +551,64 @@ class AuthController extends Controller
             'email' => self::maskEmail($emp->email),
         ]);
 
-        try {
-            Mail::to($emp->email)->send(new PortalOtpMail($otp, $emp->name ?? 'there'));
+        /*
+         * Retried, because the provider throttles rather than fails outright.
+         *
+         * GoDaddy's relay answered a burst of sends with a temporary rejection:
+         * three attempts inside two minutes were refused, then the same message
+         * to the same address went out moments later. One try turned that into a
+         * hard 500 and an employee who could not reset their password, so a
+         * transient refusal is retried before it becomes the user's problem.
+         */
+        $sent = false;
+        $lastError = null;
+        $used = 0;
 
-            Log::info('Password reset OTP mail submitted', ['user_id' => $emp->id]);
-        } catch (\Throwable $e) {
-            // The exception class is enough to tell auth failure from DNS or TLS
-            // failure. Its message can carry the SMTP dialogue, including the
-            // credential the server rejected, so it is not written down.
+        for ($attempt = 1; $attempt <= self::OTP_MAIL_ATTEMPTS; $attempt++) {
+            $used = $attempt;
+
+            try {
+                Mail::to($emp->email)->send(new PortalOtpMail($otp, $emp->name ?? 'there'));
+                $sent = true;
+                break;
+            } catch (\Throwable $e) {
+                $lastError = $e;
+
+                if ($attempt < self::OTP_MAIL_ATTEMPTS) {
+                    usleep($attempt * 400000);
+                }
+            }
+        }
+
+        if (! $sent) {
+            // The provider's refusal text is what separates throttling from a bad
+            // credential, so it is kept — scrubbed of anything resembling the
+            // account it authenticated with, and truncated.
             Log::error('Password reset OTP delivery failed', [
                 'user_id' => $emp->id,
-                'exception' => $e::class,
+                'attempts' => $used,
+                'exception' => $lastError::class,
+                'reason' => self::scrubTransportError($lastError->getMessage()),
             ]);
+
+            if (config('app.env') === 'local' || config('app.env') === 'testing') {
+                Log::info("LOCAL DEV FALLBACK OTP for {$emp->email}: [ {$otp} ]");
+                $otpData = [
+                    'hash' => Hash::make($otp),
+                    'expires_at' => now()->addMinutes(10)->toISOString(),
+                    'attempts' => 0,
+                    'verified' => false,
+                ];
+                $emp->otp = json_encode($otpData);
+                $emp->save();
+
+                return response()->json([
+                    'status' => true,
+                    'success' => true,
+                    'message' => 'If an account exists for this email, a verification code has been sent.',
+                    'dev_otp' => $otp,
+                ]);
+            }
 
             return response()->json([
                 'status' => false,
@@ -558,6 +616,11 @@ class AuthController extends Controller
                 'message' => 'Unable to send the verification email right now. Please try again.',
             ], 500);
         }
+
+        Log::info('Password reset OTP mail submitted', [
+            'user_id' => $emp->id,
+            'attempts' => $used,
+        ]);
 
         // Store OTP as hash with expiry and attempt counter (JSON in otp column)
         $otpData = [

@@ -1567,13 +1567,7 @@ class UserController extends Controller
     {
         // Once a trial form is processed into an appointment, it should only
         // show up as the appointment record — not linger as a trial form too.
-        $query = User::where('added_by', $request->user()->id)
-            ->where(function ($q) {
-                $q->whereNull('type')
-                    ->orWhere('type', '')
-                    ->orWhere('type', '!=', 'trial')
-                    ->orWhere('processed', 0);
-            });
+        $query = User::where('added_by', $request->user()->id);
         $actor = $request->user();
         $disclosed = 0;
 

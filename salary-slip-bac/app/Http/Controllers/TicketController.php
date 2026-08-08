@@ -1001,7 +1001,7 @@ class TicketController extends Controller
     {
         return $query
             ->select('ticket_categories.name', DB::raw('count(*) as total'),
-                DB::raw('avg(extract(epoch from (resolved_at - created_at))) as avg_seconds'))
+                DB::raw('avg(extract(epoch from (tickets.resolved_at - tickets.created_at))) as avg_seconds'))
             ->leftJoin('ticket_categories', 'ticket_categories.id', '=', 'tickets.category_id')
             ->groupBy('ticket_categories.name')
             ->orderByDesc('total')

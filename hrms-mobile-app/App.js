@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import { LayoutDashboard, UserPlus, FileText as FileTextIcon, Home, Ticket, User } from 'lucide-react-native';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { ThemeProvider, useTheme } from './src/context/ThemeContext';
 import { Header } from './src/components/common/Header';
@@ -10,18 +11,34 @@ import { LoginScreen } from './src/screens/auth/LoginScreen';
 import { HomeScreen } from './src/screens/employee/HomeScreen';
 import { PayslipScreen } from './src/screens/employee/PayslipScreen';
 import { AgentDashboardScreen } from './src/screens/agent/AgentDashboardScreen';
+import { AgentAppointmentsScreen } from './src/screens/agent/AgentAppointmentsScreen';
+import { AgentTrialScreen } from './src/screens/agent/AgentTrialScreen';
 import { TicketScreen } from './src/screens/TicketScreen';
 import { ProfileScreen } from './src/screens/ProfileScreen';
+
+const EMPLOYEE_TABS = [
+  { id: 'home', label: 'Home', icon: Home },
+  { id: 'payslips', label: 'Payslips', icon: FileTextIcon },
+  { id: 'tickets', label: 'Tickets', icon: Ticket },
+  { id: 'profile', label: 'Profile', icon: User },
+];
+
+const AGENT_TABS = [
+  { id: 'agent-dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { id: 'agent-appointments', label: 'Appointment', icon: UserPlus },
+  { id: 'agent-trial', label: 'Trial Form', icon: FileTextIcon },
+];
 
 function MainAppContent() {
   const { theme, isDark } = useTheme();
   const { isAuthenticated, bootstrapping, role } = useAuth();
-  const [activeTab, setActiveTab] = useState('home');
   const isAgent = role === 'agent';
+  const [activeTab, setActiveTab] = useState(isAgent ? 'agent-dashboard' : 'home');
 
   React.useEffect(() => {
-    if (!isAgent && !['home', 'payslips', 'tickets', 'profile'].includes(activeTab)) {
-      setActiveTab('home');
+    const validTabs = (isAgent ? AGENT_TABS : EMPLOYEE_TABS).map((t) => t.id);
+    if (!validTabs.includes(activeTab)) {
+      setActiveTab(isAgent ? 'agent-dashboard' : 'home');
     }
   }, [role]);
 
@@ -33,10 +50,17 @@ function MainAppContent() {
     return <LoginScreen />;
   }
 
-  // Agents get a single, self-contained screen (candidates + appointment/trial
-  // forms) — there's no ticket or profile module for this role, so no tab bar.
   const renderActiveScreen = () => {
-    if (isAgent) return <AgentDashboardScreen />;
+    if (isAgent) {
+      switch (activeTab) {
+        case 'agent-appointments':
+          return <AgentAppointmentsScreen />;
+        case 'agent-trial':
+          return <AgentTrialScreen />;
+        default:
+          return <AgentDashboardScreen />;
+      }
+    }
 
     switch (activeTab) {
       case 'payslips':
@@ -58,7 +82,7 @@ function MainAppContent() {
 
       <View style={styles.screenContainer}>{renderActiveScreen()}</View>
 
-      {!isAgent && <FloatingTabBar activeTab={activeTab} onSelectTab={setActiveTab} />}
+      <FloatingTabBar tabs={isAgent ? AGENT_TABS : EMPLOYEE_TABS} activeTab={activeTab} onSelectTab={setActiveTab} />
     </View>
   );
 }

@@ -8,6 +8,8 @@ import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { FormInput } from '../../components/common/FormInput';
 import { FormSelect } from '../../components/common/FormSelect';
+import { SelectField } from '../../components/common/SelectField';
+import { DatePickerField } from '../../components/common/DatePickerField';
 import { ImagePickerField } from '../../components/common/ImagePickerField';
 import { getCompanyUnits } from '../../utils/companyConfig';
 import { normaliseAadhaar, isCompleteAadhaar, formatAadhaarInput, formatFullAadhaar } from '../../utils/aadhaar';
@@ -131,7 +133,7 @@ export function TrialFormScreen({ initialData, onDone, onCancel }) {
         <Card style={styles.sectionCard} elevated>
           <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Candidate Details</Text>
           <FormInput label="Form No" value={form.form_no} onChangeText={setField('form_no')} />
-          <FormInput label="Trial Date" value={form.trial_date} onChangeText={setField('trial_date')} placeholder="YYYY-MM-DD" />
+          <DatePickerField label="Trial Date" value={form.trial_date} onChange={setField('trial_date')} />
           <FormInput label="Name of Employee" value={form.name} onChangeText={setField('name')} />
           <FormSelect label="Gender" value={form.gender} onChange={setField('gender')} options={GENDER_OPTIONS} />
           <FormInput label="Address" value={form.address} onChangeText={setField('address')} multiline />
@@ -146,7 +148,7 @@ export function TrialFormScreen({ initialData, onDone, onCancel }) {
 
         <Card style={styles.sectionCard} elevated>
           <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Position</Text>
-          <FormSelect label="Department" value={form.department} onChange={setField('department')} options={departmentOptions} />
+          <SelectField label="Department" value={form.department} onChange={setField('department')} options={departmentOptions} placeholder="Select department" />
           <FormInput label="Designation" value={form.designation} onChangeText={setField('designation')} />
           <FormSelect label="Branch" value={form.unit} onChange={setField('unit')} options={UNIT_OPTIONS} />
           <FormInput label="Manager Name" value={form.manager_name} onChangeText={setField('manager_name')} />
