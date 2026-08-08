@@ -35,39 +35,45 @@ return new class extends Migration
 
     public function up(): void
     {
-        Schema::create('ticket_sla_rules', function (Blueprint $table) {
-            $table->id();
-            $table->string('priority')->unique();
-            $table->unsignedSmallInteger('response_hours')->default(4);
-            $table->unsignedSmallInteger('resolution_hours')->default(24);
-            $table->boolean('auto_escalate')->default(false);
-            $table->unsignedSmallInteger('escalate_after_hours')->default(12);
-            $table->timestamps();
-        });
+        if (! Schema::hasTable('ticket_sla_rules')) {
+            Schema::create('ticket_sla_rules', function (Blueprint $table) {
+                $table->id();
+                $table->string('priority')->unique();
+                $table->unsignedSmallInteger('response_hours')->default(4);
+                $table->unsignedSmallInteger('resolution_hours')->default(24);
+                $table->boolean('auto_escalate')->default(false);
+                $table->unsignedSmallInteger('escalate_after_hours')->default(12);
+                $table->timestamps();
+            });
 
-        Schema::table('tickets', function (Blueprint $table) {
-            $table->timestamp('sla_due_at')->nullable();
-            $table->timestamp('first_response_at')->nullable();
-            $table->timestamp('sla_breached_at')->nullable();
-            $table->unsignedSmallInteger('escalation_level')->default(0);
-            $table->timestamp('escalated_at')->nullable();
+            $now = now();
+            foreach (self::DEFAULT_RULES as [$priority, $response, $resolution, $autoEscalate, $escalateAfter]) {
+                DB::table('ticket_sla_rules')->updateOrInsert(
+                    ['priority' => $priority],
+                    [
+                        'response_hours' => $response,
+                        'resolution_hours' => $resolution,
+                        'auto_escalate' => $autoEscalate,
+                        'escalate_after_hours' => $escalateAfter,
+                        'created_at' => $now,
+                        'updated_at' => $now,
+                    ]
+                );
+            }
+        }
 
-            // Reporting/queue reads filter on these constantly.
-            $table->index('sla_due_at');
-            $table->index(['status', 'sla_breached_at']);
-        });
+        if (! Schema::hasColumn('tickets', 'sla_due_at')) {
+            Schema::table('tickets', function (Blueprint $table) {
+                $table->timestamp('sla_due_at')->nullable();
+                $table->timestamp('first_response_at')->nullable();
+                $table->timestamp('sla_breached_at')->nullable();
+                $table->unsignedSmallInteger('escalation_level')->default(0);
+                $table->timestamp('escalated_at')->nullable();
 
-        $now = now();
-        foreach (self::DEFAULT_RULES as [$priority, $response, $resolution, $autoEscalate, $escalateAfter]) {
-            DB::table('ticket_sla_rules')->insert([
-                'priority' => $priority,
-                'response_hours' => $response,
-                'resolution_hours' => $resolution,
-                'auto_escalate' => $autoEscalate,
-                'escalate_after_hours' => $escalateAfter,
-                'created_at' => $now,
-                'updated_at' => $now,
-            ]);
+                // Reporting/queue reads filter on these constantly.
+                $table->index('sla_due_at');
+                $table->index(['status', 'sla_breached_at']);
+            });
         }
 
         // Backfill: existing tickets predate the SLA columns and would otherwise
