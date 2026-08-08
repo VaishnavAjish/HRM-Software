@@ -13,6 +13,10 @@ const SOCKET_PORT = 8000;
  * application is really running.
  */
 function defaultSocketUrl() {
+  if (typeof window !== "undefined" && window.location.protocol === "https:") {
+    return window.location.origin;
+  }
+
   const api = import.meta.env.VITE_API_BASE_URL;
 
   if (api) {
@@ -26,7 +30,10 @@ function defaultSocketUrl() {
   return `${window.location.protocol}//${window.location.hostname}:${SOCKET_PORT}`;
 }
 
-const SOCKET_SERVER_URL = import.meta.env.VITE_SOCKET_URL || defaultSocketUrl();
+const SOCKET_SERVER_URL =
+  typeof window !== "undefined" && window.location.protocol === "https:"
+    ? window.location.origin
+    : (import.meta.env.VITE_SOCKET_URL || defaultSocketUrl());
 
 let socket = null;
 const eventListeners = new Map();
