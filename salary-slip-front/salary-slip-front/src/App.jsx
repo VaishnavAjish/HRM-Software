@@ -138,6 +138,18 @@ function ProtectedRoute({ children, requiredRole, requiredPermission }) {
   return children;
 }
 
+// TEMPORARY — layout preview harness, removed after screenshotting.
+function __DrawerPreview() {
+  const Drawer = lazy(() => import("./components/tickets/SuperAdminTicketDrawer"));
+  return (
+    <div data-drawer-ready className="min-h-screen bg-gray-100">
+      <Suspense fallback={null}>
+        <Drawer ticketId={6} onClose={() => {}} onRefresh={() => {}} />
+      </Suspense>
+    </div>
+  );
+}
+
 function AppRoutes() {
   const { user, initializing, isAuthenticated } = useAuth();
 
@@ -366,6 +378,8 @@ function AppRoutes() {
         <Route path="trial-forms" element={<TrialForm />} />
         <Route path="appointments" element={<Appointments />} />
       </Route>
+
+      <Route path="/__drawer" element={<__DrawerPreview />} />
 
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>

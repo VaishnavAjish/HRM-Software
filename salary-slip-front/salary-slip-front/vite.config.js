@@ -187,6 +187,9 @@ export default defineConfig(({ mode }) => {
     server: {
       host: true,
       port: 5175,
+      watch: {
+        ignored: ["**/main/**", "**/master/**", "**/nidhi-impex/**", "**/silver-star/**"],
+      },
     },
     optimizeDeps: {
       // Explicitly pre-bundled instead of left to lazy discovery. Vite
