@@ -1,27 +1,5 @@
 import { io } from "socket.io-client";
 
-const SOCKET_PORT = 8000;
-
-function defaultSocketUrl() {
-  const api = import.meta.env.VITE_API_BASE_URL;
-
-  if (api) {
-    try {
-      return new URL(api, window.location.origin).origin;
-    } catch {
-      // Malformed value
-    }
-  }
-
-  if (typeof window !== "undefined") {
-    return `${window.location.protocol}//${window.location.hostname}:${SOCKET_PORT}`;
-  }
-
-  return "";
-}
-
-const SOCKET_SERVER_URL = import.meta.env.VITE_SOCKET_URL || defaultSocketUrl();
-
 let socket = null;
 const eventListeners = new Map();
 
@@ -29,10 +7,11 @@ const eventListeners = new Map();
  * Initialize and return Socket.IO client instance
  */
 export function getSocket(token) {
-  // If no explicit VITE_SOCKET_URL is set, use local event fallback instead of polling 8000
-  const isWithoutSocketUrl = !import.meta.env.VITE_SOCKET_URL;
+  const socketUrl = import.meta.env.VITE_SOCKET_URL;
 
-  if (isWithoutSocketUrl) {
+  // Unless a dedicated Socket.IO server URL is explicitly provided in VITE_SOCKET_URL,
+  // use the lightweight local event dispatcher to prevent 404 polling errors on Laravel API port 8000.
+  if (!socketUrl) {
     return {
       on: (event, fn) => {
         if (!eventListeners.has(event)) eventListeners.set(event, new Set());
@@ -50,10 +29,10 @@ export function getSocket(token) {
 
   if (!socket) {
     try {
-      socket = io(SOCKET_SERVER_URL, {
+      socket = io(socketUrl, {
         autoConnect: true,
-        reconnection: false, // Don't spam console with retry attempts if server is offline
-        transports: ["polling", "websocket"],
+        reconnection: false,
+        transports: ["websocket", "polling"],
         auth: {
           token: token || "",
         },
