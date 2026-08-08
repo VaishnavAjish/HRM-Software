@@ -41,7 +41,7 @@ export const PrintableTrialForm = ({ data, formRef }) => {
         .join(" "),
     },
     { label: "Hastak Mobile No", value: data.hastakMobileNo },
-    { label: "Hastak Department", value: data.hastakDepartment },
+    { label: "Hastak Department [Designation]", value: data.hastakDepartment || data.hastak_department },
     { label: "Contractor", value: data.contractor },
     { label: "Manager Name", value: data.managerName },
     { label: "Akar", value: data.akar },
@@ -170,7 +170,7 @@ export const PrintableTrialForm = ({ data, formRef }) => {
                 {data.hastakMobileNo}
               </td>
             </tr>
-            <Row label="Hastak Department" value={data.hastakDepartment || data.hastak_department} full />
+            <Row label="Hastak Department [Designation]" value={data.hastakDepartment || data.hastak_department} full />
             <Row label="Contractor" value={data.contractor} full />
             <tr>
               <td className="border border-black bg-gray-50 px-3 py-2 text-[12px] font-bold uppercase text-black">

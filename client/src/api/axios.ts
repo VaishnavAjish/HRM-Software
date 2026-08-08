@@ -1,6 +1,15 @@
 import axios, { AxiosError, AxiosInstance, type InternalAxiosRequestConfig } from 'axios';
 
-const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:5000/api/v1';
+function getDynamicApiBaseUrl(): string {
+  const envUrl = (import.meta as any).env?.VITE_API_BASE_URL;
+  if (envUrl) return envUrl;
+  if (typeof window !== 'undefined') {
+    return `http://${window.location.hostname}:8000/api`;
+  }
+  return 'http://localhost:8000/api';
+}
+
+const API_BASE_URL = getDynamicApiBaseUrl();
 
 class ApiClient {
   private client: AxiosInstance;

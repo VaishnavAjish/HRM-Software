@@ -741,18 +741,10 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
                 inputMode="numeric"
               />
               <FullField
-                label="Hastak Department"
+                label="Hastak Department [Designation]"
                 name="hastak_department"
                 value={formData.hastak_department}
                 onChange={handleChange}
-                select
-                options={[
-                  { value: "", label: "SELECT HASTAK DEPARTMENT" },
-                  ...(departmentsList.length > 0 ? departmentsList : DEFAULT_DEPARTMENTS).map((d) => ({
-                    value: d,
-                    label: d,
-                  })),
-                ]}
               />
               <FullField
                 label="Contractor"

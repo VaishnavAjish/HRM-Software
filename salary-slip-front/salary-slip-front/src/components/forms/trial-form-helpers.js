@@ -48,6 +48,7 @@ export function normalizeTrialForm(item, index) {
     hastakName: firstPresent(item.hastak_name, item.hastakName),
     hastakCode: firstPresent(item.hastak_code, item.hastakCode),
     hastakMobileNo: firstPresent(item.hastak_mobile, item.hastakMobileNo),
+    hastakDepartment: firstPresent(item.hastak_department, item.hastakDepartment),
     contractor: item.contractor || "-",
     managerName: firstPresent(item.manager_name, item.managerName),
     akar: item.akar || "-",
