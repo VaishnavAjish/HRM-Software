@@ -4,7 +4,7 @@
   "description": "Root package.json to manage frontend and backend",
   "scripts": {
     "dev:client": "cd salary-slip-front/salary-slip-front && npm run dev",
-    "dev:server": "cd salary-slip-bac && php artisan serve --host=192.168.1.53 --port=8000",
+    "dev:server": "cd salary-slip-bac && php artisan serve --host=0.0.0.0 --port=8000",
     "dev": "npx concurrently \"npm run dev:server\" \"npm run dev:client\"",
     "build:client": "cd salary-slip-front/salary-slip-front && npm run build",
     "build:server": "cd salary-slip-bac && php artisan optimize:clear",
