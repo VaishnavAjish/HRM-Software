@@ -31,13 +31,13 @@ def rnVersion = getRNVersion()
  */
 react {
     entryFile = file(["node", "-e", "require('expo/scripts/resolveAppEntry')", projectRoot, "android", "absolute"].execute(null, rootDir).text.trim())
-    reactNativeDir = file("../../node_modules/react-native")
-    hermesCommand = file("../../node_modules/react-native/sdks/hermesc/%OS-BIN%/hermesc").absolutePath
-    codegenDir = file("../../node_modules/@react-native/codegen")
+    reactNativeDir = file("$projectRoot/node_modules/react-native")
+    hermesCommand = file("$projectRoot/node_modules/react-native/sdks/hermesc/%OS-BIN%/hermesc").absolutePath
+    codegenDir = file("$projectRoot/node_modules/@react-native/codegen")
 
     // Use Expo CLI to bundle the app, this ensures the Metro config
     // works correctly with Expo projects.
-    cliFile = file("../../node_modules/expo/bin/cli")
+    cliFile = file("$projectRoot/node_modules/expo/bin/cli")
     bundleCommand = "export:embed"
 
     /* Folders */
