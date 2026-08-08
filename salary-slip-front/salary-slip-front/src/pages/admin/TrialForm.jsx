@@ -180,7 +180,7 @@ const PrintableTrialForm = ({ data, formRef }) => {
     { label: "Reason for Leaving", value: data.reasonForLeaving },
     { label: "Hastak Name & Code", value: [data.hastakName, data.hastakCode ? `- ${data.hastakCode}` : ""].filter(Boolean).join(" ") },
     { label: "Hastak Mobile No", value: data.hastakMobileNo },
-    { label: "Hastak Department [Designation]", value: data.hastakDepartment || data.hastak_department, full: true },
+    { label: "Hastak Department/Designation", value: data.hastakDepartment || data.hastak_department, full: true },
     { label: "Contractor", value: data.contractor, full: true },
     { label: "Manager Name", value: data.managerName },
     { label: "Akar", value: data.akar },
@@ -282,7 +282,7 @@ const PrintableTrialForm = ({ data, formRef }) => {
                 <td className="border border-black bg-gray-50 px-3 py-2 text-[12px] font-bold uppercase text-black">Hastak Mobile No</td>
                 <td className="border border-black px-3 py-2 text-[13px] font-medium text-black">{data.hastakMobileNo}</td>
               </tr>
-              <Row label="Hastak Department [Designation]" value={data.hastakDepartment || data.hastak_department} full />
+              <Row label="Hastak Department/Designation" value={data.hastakDepartment || data.hastak_department} full />
               <Row label="Contractor" value={data.contractor} full />
               <tr>
                 <td className="border border-black bg-gray-50 px-3 py-2 text-[12px] font-bold uppercase text-black">Manager Name</td>

@@ -741,7 +741,7 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
                 inputMode="numeric"
               />
               <FullField
-                label="Hastak Department [Designation]"
+                label="Hastak Department/Designation"
                 name="hastak_department"
                 value={formData.hastak_department}
                 onChange={handleChange}
