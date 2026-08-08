@@ -8,7 +8,7 @@ import { typography, shadows } from '../../theme';
 import { Button } from '../../components/common/Button';
 
 export function LoginScreen() {
-  const { theme } = useTheme();
+  const { theme, isDark } = useTheme();
   const { login } = useAuth();
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
@@ -43,11 +43,19 @@ export function LoginScreen() {
         contentContainerStyle={[styles.container, { backgroundColor: theme.background }]}
         keyboardShouldPersistTaps="handled"
       >
-        <LinearGradient colors={['#1E1B4B', theme.background]} style={styles.backgroundGlow} />
+        <LinearGradient
+          colors={isDark ? ['#1E1B4B', theme.background] : ['#E0E7FF', theme.background]}
+          style={styles.backgroundGlow}
+        />
 
         <View style={styles.headerArea}>
-          <View style={styles.logoBadge}>
-            <Building2 size={28} color="#818CF8" />
+          <View
+            style={[
+              styles.logoBadge,
+              { backgroundColor: isDark ? 'rgba(99, 102, 241, 0.2)' : '#EEF2FF', borderColor: theme.primary },
+            ]}
+          >
+            <Building2 size={28} color={theme.primary} />
           </View>
           <Text style={[styles.appTitle, { color: theme.textPrimary }]}>NISS Enterprise</Text>
           <Text style={[styles.appSubtitle, { color: theme.textMuted }]}>Employee & Agent Portal</Text>

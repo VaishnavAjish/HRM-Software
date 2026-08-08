@@ -1,234 +1,329 @@
-import React from "react";
 import {
-  LifeBuoy, Flame, CheckCircle, Clock, AlertTriangle, UserCheck, Inbox,
-  PieChart, BarChart3, TrendingUp, ShieldAlert, ArrowUpRight, Award, CornerUpRight, RotateCcw, XCircle, CheckCircle2
+  LifeBuoy, Flame, Clock, AlertTriangle, UserCheck,
+  PieChart, BarChart3, TrendingUp, ShieldAlert, Award, CornerUpRight, CheckCircle2,
 } from "lucide-react";
-import { statusMeta, priorityMeta, slaMeta } from "./ticketMeta";
+import { statusMeta, priorityMeta, slaMeta, slaLabel, metric, PRIORITY_ORDER } from "./ticketMeta";
 
-export default function SuperAdminTicketDashboard({ summary, tickets = [], onFilterSelect, onSelectTicket }) {
+/**
+ * The helpdesk overview.
+ *
+ * Every figure comes from /api/tickets/dashboard. This component previously
+ * carried literal arrays for department load, branch load, priority
+ * distribution and SLA health, plus `|| 18`-style fallbacks on the metric cards
+ * — so a deployment with two tickets displayed 96.8% compliance across four
+ * branches that were never in the database. There are no fallback values now:
+ * where the API has nothing to say, the panel says so.
+ */
+export default function SuperAdminTicketDashboard({ summary, tickets = [], loading, onFilterSelect, onSelectTicket }) {
   const byStatus = summary?.by_status || {};
   const byPriority = summary?.by_priority || {};
-  const byDept = summary?.by_department || [
-    { name: "IT & Systems", count: 32 },
-    { name: "HR & Payroll", count: 48 },
-    { name: "Accounts & Finance", count: 21 },
-    { name: "Operations", count: 29 },
-    { name: "Administration & Facilities", count: 18 },
-  ];
-  const byBranch = summary?.by_branch || [
-    { name: "Headquarters (Surat)", count: 58 },
-    { name: "Mumbai Branch", count: 34 },
-    { name: "Ahmedabad Branch", count: 28 },
-    { name: "Delhi NCR Branch", count: 24 },
-  ];
+  const byDept = summary?.by_department || [];
+  const byBranch = summary?.by_branch || [];
 
-  // Row 1 Metric Cards (As specified in user prompt)
-  const row1Metrics = [
-    { key: "open", label: "Open Tickets", val: byStatus.open || 14, icon: Clock, bg: "bg-blue-500/10 text-blue-600 dark:text-blue-400" },
-    { key: "assigned", label: "Assigned", val: byStatus.assigned || 18, icon: UserCheck, bg: "bg-purple-500/10 text-purple-600 dark:text-purple-400" },
-    { key: "sla_breached", label: "Overdue (SLA Breached)", val: summary?.sla_breached || 3, icon: AlertTriangle, bg: "bg-rose-500/15 text-rose-700 dark:text-rose-400 font-bold animate-pulse" },
-    { key: "escalated", label: "Escalated", val: byStatus.escalated || 5, icon: ShieldAlert, bg: "bg-red-500/15 text-red-700 dark:text-red-300 font-bold" },
-    { key: "resolved_today", label: "Resolved Today", val: summary?.resolved_today || 16, icon: CheckCircle2, bg: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" },
-    { key: "pending_approval", label: "Pending Approval", val: byStatus.pending_approval || 7, icon: CornerUpRight, bg: "bg-amber-500/10 text-amber-600 dark:text-amber-400" },
-    { key: "avg_resolution", label: "Avg Resolution Time", val: "2.4 Hours", icon: TrendingUp, bg: "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400" },
-    { key: "sla_compliance", label: "SLA Compliance", val: "96.8%", icon: Award, bg: "bg-emerald-600/15 text-emerald-700 dark:text-emerald-300 font-bold" },
+  const cards = [
+    { key: "open", label: "Open Tickets", value: byStatus.open, icon: Clock, cls: "bg-blue-500/10 text-blue-600 dark:text-blue-400" },
+    { key: "assigned", label: "Assigned", value: byStatus.assigned, icon: UserCheck, cls: "bg-purple-500/10 text-purple-600 dark:text-purple-400" },
+    { key: "overdue", label: "Overdue (SLA Breached)", value: summary?.sla_breached, icon: AlertTriangle, cls: "bg-rose-500/15 text-rose-700 dark:text-rose-400" },
+    { key: "escalated", label: "Escalated", value: byStatus.escalated, icon: ShieldAlert, cls: "bg-red-500/15 text-red-700 dark:text-red-300" },
+    { key: "resolved", label: "Resolved Today", value: summary?.resolved_today, icon: CheckCircle2, cls: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" },
+    { key: "pending_approval", label: "Pending Approval", value: byStatus.pending_approval, icon: CornerUpRight, cls: "bg-amber-500/10 text-amber-600 dark:text-amber-400" },
+    {
+      key: "avg_resolution",
+      label: "Avg Resolution Time",
+      // Null until something has actually been resolved — never a placeholder.
+      value: summary?.avg_resolution_hours == null ? null : `${summary.avg_resolution_hours}h`,
+      icon: TrendingUp,
+      cls: "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400",
+      static: true,
+    },
+    {
+      key: "sla_compliance",
+      label: "SLA Compliance",
+      value: summary?.sla_compliance == null ? null : `${summary.sla_compliance}%`,
+      icon: Award,
+      cls: "bg-emerald-600/15 text-emerald-700 dark:text-emerald-300",
+      static: true,
+    },
   ];
 
   return (
-    <div className="space-y-6 font-sans">
-      {/* ROW 1: METRIC CARDS */}
+    <div className="space-y-6">
+      {/* Metric cards */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
-        {row1Metrics.map((card) => {
+        {cards.map((card) => {
           const Icon = card.icon;
+          const clickable = !card.static && onFilterSelect;
+          const Wrapper = clickable ? "button" : "div";
+
           return (
-            <button
+            <Wrapper
               key={card.key}
-              onClick={() => onFilterSelect && onFilterSelect(card.key)}
-              className="flex flex-col justify-between rounded-2xl border border-gray-200 bg-white p-3.5 text-left shadow-2xs transition-all hover:scale-[1.02] hover:shadow-md dark:border-gray-800 dark:bg-gray-900"
+              {...(clickable ? { onClick: () => onFilterSelect(card.key), type: "button" } : {})}
+              className={`flex flex-col justify-between rounded-2xl border border-gray-200 bg-white p-3.5 text-left dark:border-gray-800 dark:bg-gray-900 ${
+                clickable ? "transition hover:border-brand-300 hover:shadow-sm" : ""
+              }`}
             >
               <div className="flex items-center justify-between">
-                <span className={`flex h-8 w-8 items-center justify-center rounded-xl ${card.bg}`}>
+                <span className={`flex h-8 w-8 items-center justify-center rounded-xl ${card.cls}`}>
                   <Icon size={16} />
                 </span>
                 <span className="text-lg font-extrabold text-gray-900 dark:text-white">
-                  {card.val}
+                  {loading ? "…" : metric(card.value)}
                 </span>
               </div>
-              <p className="mt-2 text-[11px] font-semibold text-gray-500 dark:text-gray-400 truncate">
+              <p className="mt-2 truncate text-[11px] font-semibold text-gray-500 dark:text-gray-400">
                 {card.label}
               </p>
-            </button>
+            </Wrapper>
           );
         })}
       </div>
 
-      {/* ROW 2: LIVE TICKET QUEUE PREVIEW */}
-      <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-xs dark:border-gray-800 dark:bg-gray-900 space-y-4">
-        <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 pb-3">
+      {/* Live queue preview */}
+      <div className="space-y-4 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900">
+        <div className="flex items-center justify-between border-b border-gray-100 pb-3 dark:border-gray-800">
           <div>
-            <h3 className="text-sm font-extrabold text-gray-900 dark:text-white flex items-center gap-2">
-              <LifeBuoy size={16} className="text-brand-500" /> Live Enterprise Ticket Queue
+            <h3 className="flex items-center gap-2 text-sm font-extrabold text-gray-900 dark:text-white">
+              <LifeBuoy size={16} className="text-brand-500" /> Live Ticket Queue
             </h3>
-            <p className="text-[11px] text-gray-400">Real-time incoming requests, level assignments, and SLA countdown monitors</p>
+            <p className="text-[11px] text-gray-400">Most recent requests, with their SLA countdown</p>
           </div>
           <button
             onClick={() => onFilterSelect && onFilterSelect("inbox")}
-            className="text-xs font-bold text-brand-600 dark:text-brand-400 hover:underline"
+            className="text-xs font-bold text-brand-600 hover:underline dark:text-brand-400"
           >
-            View Full Inbox ({tickets.length})
+            View full inbox ({tickets.length})
           </button>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs font-sans">
-            <thead>
-              <tr className="border-b border-gray-100 dark:border-gray-800 text-[11px] font-bold text-gray-400 uppercase">
-                <th className="py-2.5 px-3">Ticket #</th>
-                <th className="py-2.5 px-3">Employee</th>
-                <th className="py-2.5 px-3">Department</th>
-                <th className="py-2.5 px-3">Priority</th>
-                <th className="py-2.5 px-3">Hierarchy Level</th>
-                <th className="py-2.5 px-3">Current Owner</th>
-                <th className="py-2.5 px-3">SLA Timer</th>
-                <th className="py-2.5 px-3">Status</th>
-                <th className="py-2.5 px-3 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100 dark:divide-gray-800/60 text-gray-700 dark:text-gray-300">
-              {tickets.slice(0, 5).map((t) => {
-                const sMeta = statusMeta(t.status);
-                const pMeta = priorityMeta(t.priority);
-                const levelName = t.current_level_name || `Level ${t.current_level || 1}`;
+        {tickets.length === 0 ? (
+          <p className="py-8 text-center text-xs text-gray-400">
+            {loading ? "Loading tickets…" : "No tickets in your scope yet."}
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-gray-100 text-[11px] font-bold uppercase text-gray-400 dark:border-gray-800">
+                  <th className="px-3 py-2.5">Ticket #</th>
+                  <th className="px-3 py-2.5">Employee</th>
+                  <th className="px-3 py-2.5">Department</th>
+                  <th className="px-3 py-2.5">Priority</th>
+                  <th className="px-3 py-2.5">Escalation</th>
+                  <th className="px-3 py-2.5">Assigned To</th>
+                  <th className="px-3 py-2.5">SLA</th>
+                  <th className="px-3 py-2.5">Status</th>
+                  <th className="px-3 py-2.5 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 text-gray-700 dark:divide-gray-800/60 dark:text-gray-300">
+                {tickets.slice(0, 5).map((t) => {
+                  const s = statusMeta(t.status);
+                  const p = priorityMeta(t.priority);
+                  const sla = slaMeta(t.sla_status);
 
-                return (
-                  <tr key={t.id} className="hover:bg-gray-50/80 dark:hover:bg-gray-800/40 transition-colors">
-                    <td className="py-3 px-3 font-mono font-bold text-brand-600 dark:text-brand-400">{t.ticket_number || `TK-${t.id}`}</td>
-                    <td className="py-3 px-3 font-semibold text-gray-900 dark:text-white">{t.user?.name || t.employee_name || "Employee"}</td>
-                    <td className="py-3 px-3 font-semibold text-gray-600 dark:text-gray-300">{t.department?.name || t.department || "IT"}</td>
-                    <td className="py-3 px-3">
-                      <span className={`inline-flex px-2 py-0.5 rounded-md text-[10px] ${pMeta.colorCls}`}>{pMeta.label}</span>
-                    </td>
-                    <td className="py-3 px-3 font-semibold text-purple-600 dark:text-purple-400">{levelName}</td>
-                    <td className="py-3 px-3 font-medium text-gray-800 dark:text-gray-200">{t.assigned_to?.name || t.owner_name || "Level 1 Desk"}</td>
-                    <td className="py-3 px-3">
-                      <span className="inline-flex items-center gap-1 font-mono text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
-                        <Clock size={12} /> {t.sla_remaining || "03h 45m"}
-                      </span>
-                    </td>
-                    <td className="py-3 px-3">
-                      <span className={`inline-flex px-2 py-0.5 rounded-md text-[10px] font-bold ${sMeta.badgeBg}`}>{sMeta.label}</span>
-                    </td>
-                    <td className="py-3 px-3 text-right">
-                      <button
-                        onClick={() => onSelectTicket && onSelectTicket(t.id)}
-                        className="px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-gray-800 text-brand-600 dark:text-brand-400 font-bold hover:bg-brand-50"
-                      >
-                        Inspect
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                  return (
+                    <tr key={t.id} className="transition-colors hover:bg-gray-50/80 dark:hover:bg-gray-800/40">
+                      <td className="px-3 py-3 font-mono font-bold text-brand-600 dark:text-brand-400">
+                        {t.ticket_number}
+                      </td>
+                      <td className="px-3 py-3 font-semibold text-gray-900 dark:text-white">
+                        {t.employee?.name || "—"}
+                      </td>
+                      <td className="px-3 py-3 text-gray-600 dark:text-gray-300">{t.department || "—"}</td>
+                      <td className="px-3 py-3">
+                        <span className={`inline-flex rounded-md px-2 py-0.5 text-[10px] ${p.colorCls}`}>{p.label}</span>
+                      </td>
+                      <td className="px-3 py-3 font-semibold text-gray-600 dark:text-gray-300">
+                        {t.escalation_level > 0 ? `Level ${t.escalation_level}` : "—"}
+                      </td>
+                      <td className="px-3 py-3 text-gray-800 dark:text-gray-200">
+                        {t.assignee?.name || <span className="text-gray-400">Unassigned</span>}
+                      </td>
+                      <td className="px-3 py-3">
+                        <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 font-mono text-[10px] ${sla.cls}`}>
+                          <Clock size={11} /> {slaLabel(t)}
+                        </span>
+                      </td>
+                      <td className="px-3 py-3">
+                        <span className={`inline-flex rounded-md px-2 py-0.5 text-[10px] font-bold ${s.badgeBg}`}>{s.label}</span>
+                      </td>
+                      <td className="px-3 py-3 text-right">
+                        <button
+                          onClick={() => onSelectTicket && onSelectTicket(t.id)}
+                          className="rounded-lg bg-gray-100 px-2.5 py-1 font-bold text-brand-600 hover:bg-brand-50 dark:bg-gray-800 dark:text-brand-400"
+                        >
+                          Inspect
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
-      {/* ROW 3: ANALYTICS SUITE CHARTS & DISTRIBUTION */}
+      {/* Breakdowns */}
       <div className="grid gap-4 lg:grid-cols-4">
-        {/* Department Load */}
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-xs dark:border-gray-800 dark:bg-gray-900 space-y-3">
-          <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 pb-2.5">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
-              <BarChart3 size={15} className="text-brand-500" /> Department Load
-            </h3>
-            <span className="text-[10px] text-gray-400">Active</span>
-          </div>
-          <div className="space-y-2.5">
-            {byDept.map((dept, idx) => {
-              const max = Math.max(...byDept.map((d) => d.count || 1));
-              const pct = Math.round(((dept.count || 0) / max) * 100);
+        <BarPanel
+          title="Department Load"
+          icon={BarChart3}
+          iconCls="text-brand-500"
+          rows={byDept}
+          loading={loading}
+          empty="No tickets to break down by department yet."
+        />
+
+        <ListPanel
+          title="Branch Load"
+          icon={PieChart}
+          iconCls="text-purple-500"
+          rows={byBranch}
+          loading={loading}
+          empty="No branch data yet."
+        />
+
+        <div className="space-y-3 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900">
+          <PanelHeader title="Priority Distribution" icon={Flame} iconCls="text-amber-500" />
+          <div className="space-y-2 text-xs">
+            {PRIORITY_ORDER.slice().reverse().map((key) => {
+              const meta = priorityMeta(key);
               return (
-                <div key={idx} className="space-y-1">
-                  <div className="flex justify-between text-xs font-semibold">
-                    <span className="text-gray-700 dark:text-gray-300">{dept.name}</span>
-                    <span className="font-extrabold text-gray-900 dark:text-white">{dept.count}</span>
-                  </div>
-                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
-                    <div className="h-full rounded-full bg-brand-500" style={{ width: `${pct}%` }} />
-                  </div>
+                <div key={key} className={`flex items-center justify-between rounded-xl p-2 font-bold ${meta.colorCls}`}>
+                  <span>{meta.label} Priority</span>
+                  <span>{loading ? "…" : metric(byPriority[key])}</span>
                 </div>
               );
             })}
           </div>
         </div>
 
-        {/* Branch Load */}
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-xs dark:border-gray-800 dark:bg-gray-900 space-y-3">
-          <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 pb-2.5">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
-              <PieChart size={15} className="text-purple-500" /> Branch Load
-            </h3>
-            <span className="text-[10px] text-gray-400">Locations</span>
-          </div>
-          <div className="space-y-2.5">
-            {byBranch.map((b, idx) => (
-              <div key={idx} className="flex items-center justify-between p-2 rounded-xl bg-gray-50 dark:bg-gray-800/60 text-xs">
-                <span className="font-semibold text-gray-800 dark:text-gray-200">{b.name}</span>
-                <span className="font-extrabold text-brand-600 dark:text-brand-400">{b.count} tickets</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Priority Distribution */}
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-xs dark:border-gray-800 dark:bg-gray-900 space-y-3">
-          <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 pb-2.5">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
-              <Flame size={15} className="text-amber-500" /> Priority Distribution
-            </h3>
-            <span className="text-[10px] text-gray-400">Severity</span>
-          </div>
-          <div className="space-y-2 text-xs">
-            {[
-              { label: "Critical", count: byPriority.critical || 4, color: "text-rose-600 bg-rose-50 dark:bg-rose-950/40" },
-              { label: "Urgent", count: byPriority.urgent || 6, color: "text-orange-600 bg-orange-50 dark:bg-orange-950/40" },
-              { label: "High", count: byPriority.high || 11, color: "text-amber-600 bg-amber-50 dark:bg-amber-950/40" },
-              { label: "Medium", count: byPriority.medium || 24, color: "text-blue-600 bg-blue-50 dark:bg-blue-950/40" },
-              { label: "Low", count: byPriority.low || 18, color: "text-gray-600 bg-gray-100 dark:bg-gray-800" },
-            ].map((p) => (
-              <div key={p.label} className={`flex items-center justify-between p-2 rounded-xl font-bold ${p.color}`}>
-                <span>{p.label} Priority</span>
-                <span>{p.count}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* SLA Health */}
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-xs dark:border-gray-800 dark:bg-gray-900 space-y-3">
-          <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 pb-2.5">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
-              <ShieldAlert size={15} className="text-emerald-500" /> SLA Health
-            </h3>
-            <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">96.8%</span>
-          </div>
+        {/* SLA health — the three figures the API computes, nothing more. */}
+        <div className="space-y-3 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900">
+          <PanelHeader
+            title="SLA Health"
+            icon={ShieldAlert}
+            iconCls="text-emerald-500"
+            right={
+              summary?.sla_compliance == null ? (
+                <span className="text-[10px] text-gray-400">No data</span>
+              ) : (
+                <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                  {summary.sla_compliance}%
+                </span>
+              )
+            }
+          />
           <div className="space-y-3 text-xs">
-            <div className="p-3 bg-emerald-50/60 dark:bg-emerald-950/30 rounded-xl border border-emerald-100 dark:border-emerald-900/40">
-              <p className="font-bold text-emerald-800 dark:text-emerald-300">On-Track Compliance</p>
-              <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-0.5">84 active tickets within response window</p>
-            </div>
-            <div className="p-3 bg-amber-50/60 dark:bg-amber-950/30 rounded-xl border border-amber-100 dark:border-amber-900/40">
-              <p className="font-bold text-amber-800 dark:text-amber-300">At-Risk SLA Countdowns</p>
-              <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5">5 tickets near 75% SLA threshold</p>
-            </div>
-            <div className="p-3 bg-rose-50/60 dark:bg-rose-950/30 rounded-xl border border-rose-100 dark:border-rose-900/40">
-              <p className="font-bold text-rose-800 dark:text-rose-300">Breached SLA Escalations</p>
-              <p className="text-[11px] text-rose-600 dark:text-rose-400 mt-0.5">3 tickets auto-escalated to Level 3 TL</p>
-            </div>
+            <SlaBand
+              tone="emerald"
+              title="On-Track"
+              value={summary?.on_track}
+              caption="active tickets inside their response window"
+            />
+            <SlaBand
+              tone="amber"
+              title="At Risk"
+              value={summary?.at_risk}
+              caption="within the last quarter of their SLA window"
+            />
+            <SlaBand
+              tone="rose"
+              title="Breached"
+              value={summary?.sla_breached}
+              caption="past target and still unresolved"
+            />
+            {summary?.sla_compliance == null && (
+              <p className="text-[11px] leading-relaxed text-gray-400">
+                Compliance is calculated once tickets have been resolved against an SLA target.
+              </p>
+            )}
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function PanelHeader({ title, icon: Icon, iconCls, right }) {
+  return (
+    <div className="flex items-center justify-between border-b border-gray-100 pb-2.5 dark:border-gray-800">
+      <h3 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300">
+        <Icon size={15} className={iconCls} /> {title}
+      </h3>
+      {right}
+    </div>
+  );
+}
+
+function BarPanel({ title, icon, iconCls, rows, loading, empty }) {
+  const max = Math.max(1, ...rows.map((r) => r.count || 0));
+
+  return (
+    <div className="space-y-3 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900">
+      <PanelHeader title={title} icon={icon} iconCls={iconCls} />
+      {rows.length === 0 ? (
+        <p className="py-6 text-center text-[11px] text-gray-400">{loading ? "Loading…" : empty}</p>
+      ) : (
+        <div className="space-y-2.5">
+          {rows.map((row) => (
+            <div key={row.name} className="space-y-1">
+              <div className="flex justify-between text-xs font-semibold">
+                <span className="truncate text-gray-700 dark:text-gray-300">{row.name}</span>
+                <span className="font-extrabold text-gray-900 dark:text-white">{row.count}</span>
+              </div>
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+                <div className="h-full rounded-full bg-brand-500" style={{ width: `${Math.round((row.count / max) * 100)}%` }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ListPanel({ title, icon, iconCls, rows, loading, empty }) {
+  return (
+    <div className="space-y-3 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900">
+      <PanelHeader title={title} icon={icon} iconCls={iconCls} />
+      {rows.length === 0 ? (
+        <p className="py-6 text-center text-[11px] text-gray-400">{loading ? "Loading…" : empty}</p>
+      ) : (
+        <div className="space-y-2.5">
+          {rows.map((row) => (
+            <div
+              key={row.name}
+              className="flex items-center justify-between rounded-xl bg-gray-50 p-2 text-xs dark:bg-gray-800/60"
+            >
+              <span className="truncate font-semibold text-gray-800 dark:text-gray-200">{row.name}</span>
+              <span className="shrink-0 font-extrabold text-brand-600 dark:text-brand-400">
+                {row.count} {row.count === 1 ? "ticket" : "tickets"}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SlaBand({ tone, title, value, caption }) {
+  const tones = {
+    emerald: "bg-emerald-50/60 border-emerald-100 text-emerald-800 dark:bg-emerald-950/30 dark:border-emerald-900/40 dark:text-emerald-300",
+    amber: "bg-amber-50/60 border-amber-100 text-amber-800 dark:bg-amber-950/30 dark:border-amber-900/40 dark:text-amber-300",
+    rose: "bg-rose-50/60 border-rose-100 text-rose-800 dark:bg-rose-950/30 dark:border-rose-900/40 dark:text-rose-300",
+  };
+
+  return (
+    <div className={`rounded-xl border p-3 ${tones[tone]}`}>
+      <p className="flex items-center justify-between font-bold">
+        <span>{title}</span>
+        <span>{metric(value)}</span>
+      </p>
+      <p className="mt-0.5 text-[11px] opacity-80">{caption}</p>
     </div>
   );
 }

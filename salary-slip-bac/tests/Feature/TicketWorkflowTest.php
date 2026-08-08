@@ -269,6 +269,203 @@ class TicketWorkflowTest extends TestCase
     }
 
     #[Test]
+    public function a_new_ticket_gets_an_sla_target_from_its_priority_rule(): void
+    {
+        $this->raiseTicket();
+        $ticket = Ticket::firstOrFail();
+
+        // 'high' seeds an 8-hour resolution target.
+        $this->assertNotNull($ticket->sla_due_at);
+        $this->assertSame(8, (int) round($ticket->created_at->diffInHours($ticket->sla_due_at)));
+        $this->assertSame('on_track', $ticket->sla_status);
+        $this->assertFalse($ticket->is_overdue);
+    }
+
+    #[Test]
+    public function a_ticket_past_its_target_reports_as_overdue(): void
+    {
+        $this->raiseTicket();
+        $ticket = Ticket::firstOrFail();
+        $ticket->forceFill(['sla_due_at' => now()->subHours(2)])->save();
+
+        $fresh = $ticket->fresh();
+        $this->assertSame('breached', $fresh->sla_status);
+        $this->assertTrue($fresh->is_overdue);
+
+        $summary = $this->withToken(auth('api')->login($this->admin))
+            ->getJson('/api/tickets/dashboard')->json('data.summary');
+
+        $this->assertSame(1, $summary['sla_breached']);
+    }
+
+    /**
+     * A ticket resolved comfortably inside its window must not drift into
+     * looking breached simply because time passed afterwards.
+     */
+    #[Test]
+    public function a_settled_ticket_freezes_its_sla_at_the_moment_it_was_resolved(): void
+    {
+        $this->raiseTicket();
+        $ticket = Ticket::firstOrFail();
+        $ticket->forceFill([
+            'status' => Ticket::STATUS_RESOLVED,
+            'resolved_at' => now()->subDays(10)->addHour(),
+            'sla_due_at' => now()->subDays(10)->addHours(8),
+            'created_at' => now()->subDays(10),
+        ])->save();
+
+        $fresh = $ticket->fresh();
+        $this->assertSame('on_track', $fresh->sla_status);
+        $this->assertFalse($fresh->is_overdue);
+    }
+
+    #[Test]
+    public function sla_compliance_is_null_until_something_has_been_resolved(): void
+    {
+        $this->raiseTicket();
+
+        $summary = $this->withToken(auth('api')->login($this->admin))
+            ->getJson('/api/tickets/dashboard')->json('data.summary');
+
+        // Not 100 — there is nothing to judge yet.
+        $this->assertNull($summary['sla_compliance']);
+        $this->assertNull($summary['avg_resolution_hours']);
+    }
+
+    #[Test]
+    public function the_dashboard_breaks_tickets_down_by_department_and_branch(): void
+    {
+        $this->raiseTicket();
+
+        $silverEmployee = $this->makeUser([
+            'role' => 3, 'company_code' => 'silver-star', 'unit' => 'Daduk', 'department' => 'Payroll',
+        ]);
+        $this->raiseTicket($silverEmployee);
+
+        $summary = $this->withToken(auth('api')->login($this->admin))
+            ->getJson('/api/tickets/dashboard')->json('data.summary');
+
+        $departments = collect($summary['by_department'])->pluck('count', 'name');
+        $branches = collect($summary['by_branch'])->pluck('count', 'name');
+
+        $this->assertSame(1, $departments['IT']);
+        $this->assertSame(1, $departments['Payroll']);
+        $this->assertSame(1, $branches['Shreeji']);
+        $this->assertSame(1, $branches['Daduk']);
+    }
+
+    #[Test]
+    public function escalating_raises_the_level_and_is_recorded(): void
+    {
+        $this->raiseTicket();
+        $ticket = Ticket::firstOrFail();
+
+        $this->withToken(auth('api')->login($this->admin))
+            ->postJson("/api/tickets/{$ticket->id}/escalate", ['remarks' => 'No response from the desk'])
+            ->assertOk();
+
+        $fresh = $ticket->fresh();
+        $this->assertSame(Ticket::STATUS_ESCALATED, $fresh->status);
+        $this->assertSame(1, $fresh->escalation_level);
+        $this->assertDatabaseHas('ticket_activity_logs', ['ticket_id' => $ticket->id, 'action' => 'ESCALATED']);
+    }
+
+    #[Test]
+    public function a_bulk_action_reports_per_ticket_outcomes_instead_of_blanket_success(): void
+    {
+        $this->raiseTicket();
+        $this->raiseTicket();
+
+        $tickets = Ticket::orderBy('id')->get();
+        // One is already closed, so it must refuse and say so.
+        $tickets[1]->forceFill(['status' => Ticket::STATUS_CLOSED, 'closed_at' => now()])->save();
+
+        $response = $this->withToken(auth('api')->login($this->admin))
+            ->postJson('/api/tickets/bulk', [
+                'action' => 'escalate',
+                'ids' => $tickets->pluck('id')->all(),
+            ])->assertOk();
+
+        $this->assertCount(1, $response->json('data.succeeded'));
+        $this->assertCount(1, $response->json('data.failed'));
+    }
+
+    #[Test]
+    public function bulk_actions_cannot_touch_tickets_outside_the_callers_scope(): void
+    {
+        $this->raiseTicket();
+        $ticket = Ticket::firstOrFail();
+
+        $response = $this->withToken(auth('api')->login($this->otherCompanyAdmin))
+            ->postJson('/api/tickets/bulk', ['action' => 'escalate', 'ids' => [$ticket->id]])
+            ->assertOk();
+
+        $this->assertCount(0, $response->json('data.succeeded'));
+        $this->assertSame(1, $response->json('data.not_visible'));
+        $this->assertSame(Ticket::STATUS_OPEN, $ticket->fresh()->status);
+    }
+
+    #[Test]
+    public function sla_rules_can_be_read_and_saved(): void
+    {
+        $this->withToken(auth('api')->login($this->admin))
+            ->getJson('/api/tickets/sla-rules')
+            ->assertOk()
+            ->assertJsonCount(4, 'data');
+
+        $this->withToken(auth('api')->login($this->admin))
+            ->putJson('/api/tickets/sla-rules', [
+                'rules' => [[
+                    'priority' => 'high', 'response_hours' => 3, 'resolution_hours' => 12,
+                    'auto_escalate' => false, 'escalate_after_hours' => 6,
+                ]],
+            ])->assertOk();
+
+        $this->assertDatabaseHas('ticket_sla_rules', ['priority' => 'high', 'resolution_hours' => 12]);
+    }
+
+    #[Test]
+    public function a_report_returns_real_rows_scoped_to_the_caller(): void
+    {
+        $this->raiseTicket();
+
+        $rows = $this->withToken(auth('api')->login($this->admin))
+            ->getJson('/api/tickets/reports?type=department_wise')
+            ->assertOk()
+            ->json('data.rows');
+
+        $this->assertSame('IT', $rows[0]['Department']);
+        $this->assertSame(1, $rows[0]['Total']);
+
+        // The other company's admin must not see it in their report.
+        $otherRows = $this->withToken(auth('api')->login($this->otherCompanyAdmin))
+            ->getJson('/api/tickets/reports?type=department_wise')
+            ->assertOk()
+            ->json('data.rows');
+
+        $this->assertCount(0, $otherRows);
+    }
+
+    #[Test]
+    public function a_staff_reply_stamps_first_response_but_an_internal_note_does_not(): void
+    {
+        $this->raiseTicket();
+        $ticket = Ticket::firstOrFail();
+
+        $this->withToken(auth('api')->login($this->admin))
+            ->postJson("/api/tickets/{$ticket->id}/reply", ['message' => 'Internal only', 'is_internal' => true])
+            ->assertCreated();
+
+        $this->assertNull($ticket->fresh()->first_response_at);
+
+        $this->withToken(auth('api')->login($this->admin))
+            ->postJson("/api/tickets/{$ticket->id}/reply", ['message' => 'We are on it'])
+            ->assertCreated();
+
+        $this->assertNotNull($ticket->fresh()->first_response_at);
+    }
+
+    #[Test]
     public function an_employee_cannot_reach_the_staff_only_actions(): void
     {
         $this->raiseTicket();

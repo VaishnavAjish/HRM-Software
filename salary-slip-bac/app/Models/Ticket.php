@@ -19,12 +19,35 @@ class Ticket extends Model
 
     public const STATUS_REOPENED = 'reopened';
 
+    /** Waiting on the employee to answer a question; the SLA clock is paused. */
+    public const STATUS_WAITING_EMPLOYEE = 'waiting_employee';
+
+    /** Held for a sign-off before work continues. */
+    public const STATUS_PENDING_APPROVAL = 'pending_approval';
+
+    /** Raised a level, either manually or because the SLA target passed. */
+    public const STATUS_ESCALATED = 'escalated';
+
     public const STATUSES = [
         self::STATUS_OPEN,
         self::STATUS_ASSIGNED,
         self::STATUS_IN_PROGRESS,
+        self::STATUS_WAITING_EMPLOYEE,
+        self::STATUS_PENDING_APPROVAL,
+        self::STATUS_ESCALATED,
         self::STATUS_RESOLVED,
         self::STATUS_CLOSED,
+        self::STATUS_REOPENED,
+    ];
+
+    /** Statuses where the ticket is still someone's problem. */
+    public const ACTIVE_STATUSES = [
+        self::STATUS_OPEN,
+        self::STATUS_ASSIGNED,
+        self::STATUS_IN_PROGRESS,
+        self::STATUS_WAITING_EMPLOYEE,
+        self::STATUS_PENDING_APPROVAL,
+        self::STATUS_ESCALATED,
         self::STATUS_REOPENED,
     ];
 
@@ -39,13 +62,36 @@ class Ticket extends Model
      * a staff transition, and has its own window check below.
      */
     public const TRANSITIONS = [
-        self::STATUS_OPEN        => [self::STATUS_ASSIGNED, self::STATUS_IN_PROGRESS, self::STATUS_RESOLVED],
-        self::STATUS_ASSIGNED    => [self::STATUS_IN_PROGRESS, self::STATUS_RESOLVED, self::STATUS_OPEN],
-        self::STATUS_IN_PROGRESS => [self::STATUS_RESOLVED, self::STATUS_ASSIGNED],
-        self::STATUS_REOPENED    => [self::STATUS_ASSIGNED, self::STATUS_IN_PROGRESS, self::STATUS_RESOLVED],
-        self::STATUS_RESOLVED    => [self::STATUS_CLOSED, self::STATUS_IN_PROGRESS],
+        self::STATUS_OPEN => [
+            self::STATUS_ASSIGNED, self::STATUS_IN_PROGRESS, self::STATUS_PENDING_APPROVAL,
+            self::STATUS_WAITING_EMPLOYEE, self::STATUS_ESCALATED, self::STATUS_RESOLVED,
+        ],
+        self::STATUS_ASSIGNED => [
+            self::STATUS_IN_PROGRESS, self::STATUS_PENDING_APPROVAL, self::STATUS_WAITING_EMPLOYEE,
+            self::STATUS_ESCALATED, self::STATUS_RESOLVED, self::STATUS_OPEN,
+        ],
+        self::STATUS_IN_PROGRESS => [
+            self::STATUS_WAITING_EMPLOYEE, self::STATUS_PENDING_APPROVAL, self::STATUS_ESCALATED,
+            self::STATUS_RESOLVED, self::STATUS_ASSIGNED,
+        ],
+        // The employee answered, or the approver decided — either way it goes
+        // back to being worked.
+        self::STATUS_WAITING_EMPLOYEE => [
+            self::STATUS_IN_PROGRESS, self::STATUS_ASSIGNED, self::STATUS_ESCALATED, self::STATUS_RESOLVED,
+        ],
+        self::STATUS_PENDING_APPROVAL => [
+            self::STATUS_IN_PROGRESS, self::STATUS_ASSIGNED, self::STATUS_ESCALATED,
+            self::STATUS_RESOLVED, self::STATUS_CLOSED,
+        ],
+        self::STATUS_ESCALATED => [
+            self::STATUS_IN_PROGRESS, self::STATUS_ASSIGNED, self::STATUS_RESOLVED,
+        ],
+        self::STATUS_REOPENED => [
+            self::STATUS_ASSIGNED, self::STATUS_IN_PROGRESS, self::STATUS_ESCALATED, self::STATUS_RESOLVED,
+        ],
+        self::STATUS_RESOLVED => [self::STATUS_CLOSED, self::STATUS_IN_PROGRESS],
         // Terminal. "Closed tickets become read-only" is a stated business rule.
-        self::STATUS_CLOSED      => [],
+        self::STATUS_CLOSED => [],
     ];
 
     /** Days a resolved ticket stays reopenable. Business rule 5. */
@@ -56,6 +102,7 @@ class Ticket extends Model
         'priority', 'status', 'company_code', 'unit', 'department',
         'assigned_to', 'assigned_by', 'assigned_at',
         'resolved_at', 'closed_at', 'reopened_at', 'last_activity_at',
+        'sla_due_at', 'first_response_at', 'sla_breached_at', 'escalation_level', 'escalated_at',
     ];
 
     protected function casts(): array
@@ -66,7 +113,113 @@ class Ticket extends Model
             'closed_at' => 'datetime',
             'reopened_at' => 'datetime',
             'last_activity_at' => 'datetime',
+            'sla_due_at' => 'datetime',
+            'first_response_at' => 'datetime',
+            'sla_breached_at' => 'datetime',
+            'escalated_at' => 'datetime',
+            'escalation_level' => 'integer',
         ];
+    }
+
+    /**
+     * SLA fields the client renders, computed from stored columns.
+     *
+     * Appended so the queue, the drawer and the dashboard all read the same
+     * numbers. Every one of these was a hard-coded string in the React
+     * components before ("03h 45m", "96.8%"); they are derived here so there is
+     * exactly one definition of "overdue".
+     */
+    protected $appends = ['sla_status', 'sla_remaining_seconds', 'sla_remaining', 'is_overdue'];
+
+    /** Resolved and closed tickets have stopped consuming their SLA. */
+    public function isSettled(): bool
+    {
+        return in_array($this->status, [self::STATUS_RESOLVED, self::STATUS_CLOSED], true);
+    }
+
+    /**
+     * Seconds left against the resolution target: negative once past it.
+     * Null when the ticket has no target, so the UI can say so rather than
+     * showing a countdown it invented.
+     */
+    public function getSlaRemainingSecondsAttribute(): ?int
+    {
+        if (! $this->sla_due_at) {
+            return null;
+        }
+
+        // A settled ticket's remaining time is frozen at the moment it was
+        // resolved — otherwise a ticket resolved comfortably in time drifts into
+        // looking breached simply because days passed afterwards.
+        $reference = $this->isSettled()
+            ? ($this->resolved_at ?? $this->closed_at ?? now())
+            : now();
+
+        return (int) $reference->diffInSeconds($this->sla_due_at, false);
+    }
+
+    /** on_track | at_risk | breached | none */
+    public function getSlaStatusAttribute(): string
+    {
+        $remaining = $this->sla_remaining_seconds;
+
+        if ($remaining === null) {
+            return 'none';
+        }
+
+        if ($remaining < 0) {
+            return 'breached';
+        }
+
+        // "At risk" is the last quarter of the window, matching the threshold
+        // the SLA Health panel describes.
+        $rule = TicketSlaRule::forPriority($this->priority);
+        $window = $rule ? $rule->resolution_hours * 3600 : null;
+
+        if ($window && $window > 0 && $remaining <= $window * 0.25) {
+            return 'at_risk';
+        }
+
+        return 'on_track';
+    }
+
+    public function getIsOverdueAttribute(): bool
+    {
+        return $this->sla_status === 'breached' && ! $this->isSettled();
+    }
+
+    /** "03h 45m", "-01h 10m" past due, or null when there is no target. */
+    public function getSlaRemainingAttribute(): ?string
+    {
+        $remaining = $this->sla_remaining_seconds;
+
+        if ($remaining === null) {
+            return null;
+        }
+
+        $sign = $remaining < 0 ? '-' : '';
+        $abs = abs($remaining);
+
+        return sprintf('%s%02dh %02dm', $sign, intdiv($abs, 3600), intdiv($abs % 3600, 60));
+    }
+
+    /**
+     * Stamp the resolution target from the rule in force right now.
+     * No rule for the priority means no target, deliberately — see
+     * TicketSlaRule::forPriority.
+     */
+    public function applySlaTarget(?\DateTimeInterface $from = null): void
+    {
+        $rule = TicketSlaRule::forPriority($this->priority);
+
+        if (! $rule) {
+            return;
+        }
+
+        $start = $from ?? $this->created_at ?? now();
+        $this->sla_due_at = \Illuminate\Support\Carbon::instance(
+            $start instanceof \Illuminate\Support\Carbon ? $start : \Illuminate\Support\Carbon::parse($start)
+        )->addHours($rule->resolution_hours);
     }
 
     public function employee()

@@ -100,6 +100,26 @@ class ApiService {
     return this.request('/agent/candidates');
   }
 
+  getDepartments() {
+    return this.request('/department/get');
+  }
+
+  submitAppointment(formData) {
+    return this.request('/appointment', { method: 'POST', body: formData, isForm: true });
+  }
+
+  updateAppointment(formData) {
+    return this.request('/appointment/update', { method: 'POST', body: formData, isForm: true });
+  }
+
+  submitTrialForm(formData) {
+    return this.request('/trial-form/store', { method: 'POST', body: formData, isForm: true });
+  }
+
+  updateTrialForm(id, formData) {
+    return this.request(`/trial-form/update/${id}`, { method: 'POST', body: formData, isForm: true });
+  }
+
   // ----- Tickets (shared, any role) -----
   getTicketCategories() {
     return this.request('/tickets/categories');

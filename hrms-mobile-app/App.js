@@ -17,11 +17,10 @@ function MainAppContent() {
   const { theme, isDark } = useTheme();
   const { isAuthenticated, bootstrapping, role } = useAuth();
   const [activeTab, setActiveTab] = useState('home');
+  const isAgent = role === 'agent';
 
   React.useEffect(() => {
-    if (role === 'agent' && !['agent-dashboard', 'tickets', 'profile'].includes(activeTab)) {
-      setActiveTab('agent-dashboard');
-    } else if (role !== 'agent' && !['home', 'payslips', 'tickets', 'profile'].includes(activeTab)) {
+    if (!isAgent && !['home', 'payslips', 'tickets', 'profile'].includes(activeTab)) {
       setActiveTab('home');
     }
   }, [role]);
@@ -34,20 +33,20 @@ function MainAppContent() {
     return <LoginScreen />;
   }
 
+  // Agents get a single, self-contained screen (candidates + appointment/trial
+  // forms) — there's no ticket or profile module for this role, so no tab bar.
   const renderActiveScreen = () => {
+    if (isAgent) return <AgentDashboardScreen />;
+
     switch (activeTab) {
-      case 'home':
-        return <HomeScreen onNavigateTab={setActiveTab} />;
       case 'payslips':
         return <PayslipScreen />;
       case 'tickets':
         return <TicketScreen />;
-      case 'agent-dashboard':
-        return <AgentDashboardScreen />;
       case 'profile':
         return <ProfileScreen />;
       default:
-        return role === 'agent' ? <AgentDashboardScreen /> : <HomeScreen onNavigateTab={setActiveTab} />;
+        return <HomeScreen onNavigateTab={setActiveTab} />;
     }
   };
 
@@ -55,11 +54,11 @@ function MainAppContent() {
     <View style={[styles.mainWrapper, { backgroundColor: theme.background }]}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
 
-      <Header onNavigateProfile={() => setActiveTab('profile')} />
+      <Header onNavigateProfile={isAgent ? undefined : () => setActiveTab('profile')} />
 
       <View style={styles.screenContainer}>{renderActiveScreen()}</View>
 
-      <FloatingTabBar activeTab={activeTab} onSelectTab={setActiveTab} />
+      {!isAgent && <FloatingTabBar activeTab={activeTab} onSelectTab={setActiveTab} />}
     </View>
   );
 }

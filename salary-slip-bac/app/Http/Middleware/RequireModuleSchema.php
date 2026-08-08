@@ -53,6 +53,10 @@ class RequireModuleSchema
             'tickets',
             'ticket_messages',
             'ticket_activity_logs',
+            // The dashboard and queue read the SLA columns that land with this
+            // table, so a deployment stopped between the two ticket migrations
+            // must report "being set up" rather than 500 on every card.
+            'ticket_sla_rules',
         ],
     ];
 

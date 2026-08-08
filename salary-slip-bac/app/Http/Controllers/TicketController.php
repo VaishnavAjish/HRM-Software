@@ -236,6 +236,10 @@ class TicketController extends Controller
                 'last_activity_at' => now(),
             ]);
 
+            // Stamped now, from the rule in force now — see Ticket::applySlaTarget.
+            $ticket->applySlaTarget($ticket->created_at);
+            $ticket->save();
+
             $this->record($ticket, 'CREATED', null, Ticket::STATUS_OPEN);
 
             return $ticket;
@@ -280,7 +284,7 @@ class TicketController extends Controller
         $staff = $this->isStaff($this->actor());
         $internal = $staff && $request->boolean('is_internal');
 
-        $message = DB::transaction(function () use ($ticket, $data, $internal) {
+        $message = DB::transaction(function () use ($ticket, $data, $internal, $staff) {
             $message = TicketMessage::create([
                 'ticket_id' => $ticket->id,
                 'sender_id' => $this->actor()->id,
@@ -288,7 +292,15 @@ class TicketController extends Controller
                 'is_internal' => $internal,
             ]);
 
-            $ticket->forceFill(['last_activity_at' => now()])->save();
+            $changes = ['last_activity_at' => now()];
+
+            // First response is the first thing the employee actually sees from
+            // staff, so an internal note does not count as one.
+            if ($staff && ! $internal && $ticket->first_response_at === null) {
+                $changes['first_response_at'] = now();
+            }
+
+            $ticket->forceFill($changes)->save();
             $this->record($ticket, $internal ? 'INTERNAL_NOTE' : 'REPLIED');
 
             return $message;
@@ -522,6 +534,15 @@ class TicketController extends Controller
     // Dashboard
     // ---------------------------------------------------------------------
 
+    /**
+     * Everything the control centre's cards and panels display.
+     *
+     * Each figure here replaced a literal in the React components — the
+     * department bars, branch loads, SLA compliance and average resolution time
+     * were all invented client-side. They are computed from the caller's own
+     * visible rows, so two admins with different company access see different,
+     * correct numbers rather than one shared fiction.
+     */
     public function dashboard(Request $request)
     {
         $actor = $this->actor();
@@ -540,31 +561,59 @@ class TicketController extends Controller
             $byStatus[$status] = (int) ($counts[$status] ?? 0);
         }
 
+        $byPriority = [];
+        $priorityCounts = $base()
+            ->select('priority', DB::raw('count(*) as total'))
+            ->groupBy('priority')
+            ->pluck('total', 'priority');
+        foreach (Ticket::PRIORITIES as $priority) {
+            $byPriority[$priority] = (int) ($priorityCounts[$priority] ?? 0);
+        }
+
         $summary = [
             'total' => array_sum($byStatus),
             'by_status' => $byStatus,
-            'by_priority' => $base()
-                ->select('priority', DB::raw('count(*) as total'))
-                ->groupBy('priority')
-                ->pluck('total', 'priority'),
+            'by_priority' => $byPriority,
             'resolved_today' => $base()->whereDate('resolved_at', today())->count(),
             'closed_today' => $base()->whereDate('closed_at', today())->count(),
         ];
 
         if ($staff) {
             $summary['assigned_to_me'] = $base()->where('assigned_to', $actor->id)
-                ->whereNotIn('status', [Ticket::STATUS_CLOSED])->count();
+                ->whereIn('status', Ticket::ACTIVE_STATUSES)->count();
             $summary['unassigned'] = $base()->whereNull('assigned_to')
-                ->whereNotIn('status', [Ticket::STATUS_CLOSED, Ticket::STATUS_RESOLVED])->count();
+                ->whereIn('status', Ticket::ACTIVE_STATUSES)->count();
+
+            // Overdue: past the stored target and still someone's problem.
+            $summary['sla_breached'] = $base()
+                ->whereIn('status', Ticket::ACTIVE_STATUSES)
+                ->whereNotNull('sla_due_at')
+                ->where('sla_due_at', '<', now())
+                ->count();
+
+            $summary['at_risk'] = $this->atRiskCount($base());
+            $summary['on_track'] = max(
+                0,
+                $base()->whereIn('status', Ticket::ACTIVE_STATUSES)->whereNotNull('sla_due_at')->count()
+                    - $summary['sla_breached'] - $summary['at_risk']
+            );
+
+            $summary['by_department'] = $this->groupCounts($base(), 'department', 'Unassigned');
+            $summary['by_branch'] = $this->groupCounts($base(), 'unit', 'Unspecified');
+            $summary['by_company'] = $this->groupCounts($base(), 'company_code', 'Unspecified');
+
             $summary['by_category'] = $base()
                 ->select('ticket_categories.name', DB::raw('count(*) as total'))
                 ->leftJoin('ticket_categories', 'ticket_categories.id', '=', 'tickets.category_id')
                 ->groupBy('ticket_categories.name')
                 ->pluck('total', 'name');
+
+            $summary['avg_resolution_hours'] = $this->averageResolutionHours($base());
+            $summary['sla_compliance'] = $this->slaCompliance($base());
         }
 
         $recent = $base()
-            ->with(['employee:id,name,emp_code', 'category:id,name', 'assignee:id,name'])
+            ->with(['employee:id,name,emp_code', 'category:id,name', 'assignee:id,name,emp_code'])
             ->orderByDesc('created_at')
             ->limit(10)
             ->get();
@@ -573,5 +622,447 @@ class TicketController extends Controller
             'status' => true,
             'data' => ['summary' => $summary, 'recent' => $recent],
         ]);
+    }
+
+    /** [{ name, count }], biggest first — the shape the bar panels render. */
+    private function groupCounts($query, string $column, string $emptyLabel): array
+    {
+        return $query
+            ->select($column, DB::raw('count(*) as total'))
+            ->groupBy($column)
+            ->orderByDesc('total')
+            ->get()
+            ->map(fn ($row) => [
+                'name' => filled($row->{$column}) ? $row->{$column} : $emptyLabel,
+                'count' => (int) $row->total,
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Active tickets inside the last quarter of their window.
+     *
+     * The threshold is per-priority, so this walks the rules rather than
+     * applying one blanket fraction in SQL.
+     */
+    private function atRiskCount($query): int
+    {
+        $rules = \App\Models\TicketSlaRule::all();
+
+        if ($rules->isEmpty()) {
+            return 0;
+        }
+
+        $query->whereIn('status', Ticket::ACTIVE_STATUSES)
+            ->whereNotNull('sla_due_at')
+            ->where('sla_due_at', '>=', now());
+
+        $query->where(function ($outer) use ($rules) {
+            foreach ($rules as $rule) {
+                $threshold = now()->addHours(max(1, (int) round($rule->resolution_hours * 0.25)));
+                $outer->orWhere(function ($q) use ($rule, $threshold) {
+                    $q->where('priority', $rule->priority)->where('sla_due_at', '<=', $threshold);
+                });
+            }
+        });
+
+        return $query->count();
+    }
+
+    /** Mean hours from raised to resolved, or null when nothing is resolved yet. */
+    private function averageResolutionHours($query): ?float
+    {
+        $seconds = $query
+            ->whereNotNull('resolved_at')
+            ->select(DB::raw('avg(extract(epoch from (resolved_at - created_at))) as avg_seconds'))
+            ->value('avg_seconds');
+
+        return $seconds === null ? null : round(((float) $seconds) / 3600, 1);
+    }
+
+    /**
+     * Share of resolved tickets that beat their target, as a percentage.
+     *
+     * Null — not 100 — when nothing has been resolved yet or no target was ever
+     * set. A fresh deployment showing "100% compliance" would be a claim about
+     * data that does not exist.
+     */
+    private function slaCompliance($query): ?float
+    {
+        $resolved = (clone $query)->whereNotNull('resolved_at')->whereNotNull('sla_due_at');
+        $total = (clone $resolved)->count();
+
+        if ($total === 0) {
+            return null;
+        }
+
+        $withinTarget = (clone $resolved)->whereColumn('resolved_at', '<=', 'sla_due_at')->count();
+
+        return round(($withinTarget / $total) * 100, 1);
+    }
+
+    // ---------------------------------------------------------------------
+    // Escalation
+    // ---------------------------------------------------------------------
+
+    public function escalate(Request $request, $id)
+    {
+        $ticket = $this->findVisible((int) $id);
+
+        if (! $ticket) {
+            return response()->json(['status' => false, 'message' => 'Ticket not found'], 404);
+        }
+
+        if ($ticket->isSettled()) {
+            return response()->json(['status' => false, 'message' => 'A resolved or closed ticket cannot be escalated.'], 422);
+        }
+
+        $data = $request->validate(['remarks' => 'nullable|string|max:500']);
+        $old = $ticket->status;
+
+        DB::transaction(function () use ($ticket, $data, $old) {
+            $ticket->forceFill([
+                'status' => Ticket::STATUS_ESCALATED,
+                'escalation_level' => (int) $ticket->escalation_level + 1,
+                'escalated_at' => now(),
+                'last_activity_at' => now(),
+            ])->save();
+
+            $this->record($ticket, 'ESCALATED', $old, Ticket::STATUS_ESCALATED, $data['remarks'] ?? null);
+        });
+
+        AuditLogger::log($request, 'ESCALATE', 'Tickets', ['status' => $old], [
+            'ticket_number' => $ticket->ticket_number,
+            'escalation_level' => $ticket->escalation_level,
+        ]);
+
+        return response()->json([
+            'status' => true,
+            'message' => "Escalated to level {$ticket->escalation_level}",
+            'data' => $ticket->fresh(),
+        ]);
+    }
+
+    /**
+     * Apply one action to several tickets.
+     *
+     * Reports per-ticket outcomes instead of a single success: with a mixed
+     * selection some will legitimately refuse (a closed ticket cannot be
+     * escalated), and the caller needs to know which rather than being told
+     * everything worked.
+     */
+    public function bulk(Request $request)
+    {
+        $data = $request->validate([
+            'action' => 'required|in:escalate,assign,status,close',
+            'ids' => 'required|array|min:1|max:200',
+            'ids.*' => 'integer',
+            'assigned_to' => 'required_if:action,assign|integer|exists:users,id',
+            'status' => 'required_if:action,status|in:'.implode(',', Ticket::STATUSES),
+            'remarks' => 'nullable|string|max:500',
+        ]);
+
+        $tickets = Ticket::query()->visibleTo($this->actor())->whereIn('id', $data['ids'])->get();
+
+        $succeeded = [];
+        $failed = [];
+
+        foreach ($tickets as $ticket) {
+            try {
+                DB::transaction(function () use ($ticket, $data) {
+                    $old = $ticket->status;
+
+                    if ($data['action'] === 'escalate') {
+                        if ($ticket->isSettled()) {
+                            throw new \RuntimeException('already settled');
+                        }
+                        $ticket->forceFill([
+                            'status' => Ticket::STATUS_ESCALATED,
+                            'escalation_level' => (int) $ticket->escalation_level + 1,
+                            'escalated_at' => now(),
+                            'last_activity_at' => now(),
+                        ])->save();
+                        $this->record($ticket, 'ESCALATED', $old, Ticket::STATUS_ESCALATED, $data['remarks'] ?? null);
+
+                        return;
+                    }
+
+                    if ($data['action'] === 'assign') {
+                        if ($ticket->isClosed()) {
+                            throw new \RuntimeException('closed');
+                        }
+                        $ticket->forceFill([
+                            'assigned_to' => $data['assigned_to'],
+                            'assigned_by' => $this->actor()->id,
+                            'assigned_at' => now(),
+                            'status' => in_array($ticket->status, [Ticket::STATUS_OPEN, Ticket::STATUS_REOPENED], true)
+                                ? Ticket::STATUS_ASSIGNED
+                                : $ticket->status,
+                            'last_activity_at' => now(),
+                        ])->save();
+                        $this->record($ticket, 'ASSIGNED', $old, $ticket->status, $data['remarks'] ?? null);
+
+                        return;
+                    }
+
+                    $next = $data['action'] === 'close' ? Ticket::STATUS_CLOSED : $data['status'];
+
+                    if (! $ticket->canTransitionTo($next)) {
+                        throw new \RuntimeException("cannot move from {$ticket->status} to {$next}");
+                    }
+
+                    $changes = ['status' => $next, 'last_activity_at' => now()];
+                    if ($next === Ticket::STATUS_RESOLVED) {
+                        $changes['resolved_at'] = now();
+                    }
+                    if ($next === Ticket::STATUS_CLOSED) {
+                        $changes['closed_at'] = now();
+                    }
+
+                    $ticket->forceFill($changes)->save();
+                    $this->record($ticket, 'STATUS_CHANGED', $old, $next, $data['remarks'] ?? null);
+                });
+
+                $succeeded[] = $ticket->ticket_number;
+            } catch (\Throwable $e) {
+                $failed[] = ['ticket' => $ticket->ticket_number, 'reason' => $e->getMessage()];
+            }
+        }
+
+        // Ids the caller asked for that they cannot see are neither applied nor
+        // acknowledged as existing.
+        $missing = count($data['ids']) - $tickets->count();
+
+        AuditLogger::log($request, 'BULK_'.strtoupper($data['action']), 'Tickets', null, [
+            'succeeded' => $succeeded,
+            'failed' => count($failed),
+        ]);
+
+        return response()->json([
+            'status' => true,
+            'message' => sprintf(
+                '%d ticket(s) updated%s',
+                count($succeeded),
+                $failed || $missing ? ', '.(count($failed) + $missing).' skipped' : ''
+            ),
+            'data' => ['succeeded' => $succeeded, 'failed' => $failed, 'not_visible' => $missing],
+        ]);
+    }
+
+    // ---------------------------------------------------------------------
+    // SLA rules
+    // ---------------------------------------------------------------------
+
+    public function slaRules()
+    {
+        $rules = \App\Models\TicketSlaRule::orderByRaw(
+            "CASE priority WHEN 'urgent' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END"
+        )->get();
+
+        return response()->json(['status' => true, 'data' => $rules]);
+    }
+
+    public function updateSlaRules(Request $request)
+    {
+        $data = $request->validate([
+            'rules' => 'required|array|min:1',
+            'rules.*.priority' => 'required|in:'.implode(',', Ticket::PRIORITIES),
+            'rules.*.response_hours' => 'required|integer|min:1|max:720',
+            'rules.*.resolution_hours' => 'required|integer|min:1|max:2160',
+            'rules.*.auto_escalate' => 'required|boolean',
+            'rules.*.escalate_after_hours' => 'required|integer|min:1|max:720',
+        ]);
+
+        $before = \App\Models\TicketSlaRule::all()->keyBy('priority')->toArray();
+
+        DB::transaction(function () use ($data) {
+            foreach ($data['rules'] as $rule) {
+                \App\Models\TicketSlaRule::updateOrCreate(
+                    ['priority' => $rule['priority']],
+                    [
+                        'response_hours' => $rule['response_hours'],
+                        'resolution_hours' => $rule['resolution_hours'],
+                        'auto_escalate' => $rule['auto_escalate'],
+                        'escalate_after_hours' => $rule['escalate_after_hours'],
+                    ]
+                );
+            }
+        });
+
+        // Existing tickets keep the target they were raised under — see the note
+        // on the migration. Only new tickets pick up the change.
+        AuditLogger::log($request, 'UPDATE', 'Ticket SLA Rules', $before, $data['rules']);
+
+        return response()->json([
+            'status' => true,
+            'message' => 'SLA rules saved. They apply to tickets raised from now on.',
+            'data' => \App\Models\TicketSlaRule::all(),
+        ]);
+    }
+
+    // ---------------------------------------------------------------------
+    // Reports
+    // ---------------------------------------------------------------------
+
+    /**
+     * Aggregated rows for the reports screen, in the caller's scope.
+     *
+     * Returns data the client turns into a spreadsheet — the export button used
+     * to resolve a timer and claim success without producing a file.
+     */
+    public function reports(Request $request)
+    {
+        $data = $request->validate([
+            'type' => 'required|in:company_wise,branch_wise,department_wise,employee_wise,category_wise,resolution_time,sla,escalation,high_priority,overdue',
+            'from' => 'nullable|date',
+            'to' => 'nullable|date',
+        ]);
+
+        $actor = $this->actor();
+
+        $base = function () use ($actor, $data) {
+            $query = Ticket::query()->visibleTo($actor);
+            if (! empty($data['from'])) {
+                $query->whereDate('created_at', '>=', $data['from']);
+            }
+            if (! empty($data['to'])) {
+                $query->whereDate('created_at', '<=', $data['to']);
+            }
+
+            return $query;
+        };
+
+        $rows = match ($data['type']) {
+            'company_wise' => $this->breakdownReport($base(), 'company_code', 'Company'),
+            'branch_wise' => $this->breakdownReport($base(), 'unit', 'Branch'),
+            'department_wise' => $this->breakdownReport($base(), 'department', 'Department'),
+            'employee_wise' => $this->employeeReport($base()),
+            'category_wise' => $this->categoryReport($base()),
+            'resolution_time', 'sla' => $this->slaReport($base()),
+            'escalation' => $this->ticketRows($base()->where('escalation_level', '>', 0)),
+            'high_priority' => $this->ticketRows($base()->whereIn('priority', ['high', 'urgent'])),
+            'overdue' => $this->ticketRows(
+                $base()->whereIn('status', Ticket::ACTIVE_STATUSES)
+                    ->whereNotNull('sla_due_at')->where('sla_due_at', '<', now())
+            ),
+        };
+
+        return response()->json([
+            'status' => true,
+            'data' => ['type' => $data['type'], 'rows' => $rows, 'generated_at' => now()->toIso8601String()],
+        ]);
+    }
+
+    private function breakdownReport($query, string $column, string $label): array
+    {
+        return $query
+            ->select(
+                $column,
+                DB::raw('count(*) as total'),
+                DB::raw("count(*) filter (where status = 'resolved') as resolved"),
+                DB::raw("count(*) filter (where status = 'closed') as closed"),
+                DB::raw('count(*) filter (where sla_breached_at is not null or (sla_due_at < now() and status not in (\'resolved\',\'closed\'))) as overdue'),
+                DB::raw('avg(extract(epoch from (resolved_at - created_at))) as avg_seconds')
+            )
+            ->groupBy($column)
+            ->orderByDesc('total')
+            ->get()
+            ->map(fn ($row) => [
+                $label => filled($row->{$column}) ? $row->{$column} : 'Unspecified',
+                'Total' => (int) $row->total,
+                'Resolved' => (int) $row->resolved,
+                'Closed' => (int) $row->closed,
+                'Overdue' => (int) $row->overdue,
+                'Avg Resolution (hrs)' => $row->avg_seconds === null ? '' : round(((float) $row->avg_seconds) / 3600, 1),
+            ])
+            ->all();
+    }
+
+    private function employeeReport($query): array
+    {
+        return $query
+            ->select('users.name', 'users.emp_code', DB::raw('count(*) as total'),
+                DB::raw("count(*) filter (where tickets.status in ('resolved','closed')) as settled"))
+            ->join('users', 'users.id', '=', 'tickets.employee_id')
+            ->groupBy('users.name', 'users.emp_code')
+            ->orderByDesc('total')
+            ->get()
+            ->map(fn ($row) => [
+                'Employee' => $row->name,
+                'Emp Code' => $row->emp_code,
+                'Tickets Raised' => (int) $row->total,
+                'Settled' => (int) $row->settled,
+            ])
+            ->all();
+    }
+
+    private function categoryReport($query): array
+    {
+        return $query
+            ->select('ticket_categories.name', DB::raw('count(*) as total'),
+                DB::raw('avg(extract(epoch from (resolved_at - created_at))) as avg_seconds'))
+            ->leftJoin('ticket_categories', 'ticket_categories.id', '=', 'tickets.category_id')
+            ->groupBy('ticket_categories.name')
+            ->orderByDesc('total')
+            ->get()
+            ->map(fn ($row) => [
+                'Category' => $row->name ?: 'Uncategorised',
+                'Total' => (int) $row->total,
+                'Avg Resolution (hrs)' => $row->avg_seconds === null ? '' : round(((float) $row->avg_seconds) / 3600, 1),
+            ])
+            ->all();
+    }
+
+    private function slaReport($query): array
+    {
+        return $query
+            ->select('priority', DB::raw('count(*) as total'),
+                DB::raw('count(*) filter (where resolved_at is not null and sla_due_at is not null and resolved_at <= sla_due_at) as within_target'),
+                DB::raw('count(*) filter (where resolved_at is not null and sla_due_at is not null and resolved_at > sla_due_at) as breached'),
+                DB::raw('avg(extract(epoch from (first_response_at - created_at))) as avg_response_seconds'),
+                DB::raw('avg(extract(epoch from (resolved_at - created_at))) as avg_resolution_seconds'))
+            ->groupBy('priority')
+            ->get()
+            ->map(function ($row) {
+                $judged = (int) $row->within_target + (int) $row->breached;
+
+                return [
+                    'Priority' => $row->priority,
+                    'Total' => (int) $row->total,
+                    'Within Target' => (int) $row->within_target,
+                    'Breached' => (int) $row->breached,
+                    // Blank, not 100, when nothing has been resolved to judge.
+                    'Compliance %' => $judged === 0 ? '' : round(((int) $row->within_target / $judged) * 100, 1),
+                    'Avg First Response (hrs)' => $row->avg_response_seconds === null ? '' : round(((float) $row->avg_response_seconds) / 3600, 1),
+                    'Avg Resolution (hrs)' => $row->avg_resolution_seconds === null ? '' : round(((float) $row->avg_resolution_seconds) / 3600, 1),
+                ];
+            })
+            ->all();
+    }
+
+    private function ticketRows($query): array
+    {
+        return $query
+            ->with(['employee:id,name,emp_code', 'category:id,name', 'assignee:id,name'])
+            ->orderByDesc('created_at')
+            ->limit(1000)
+            ->get()
+            ->map(fn (Ticket $ticket) => [
+                'Ticket No' => $ticket->ticket_number,
+                'Subject' => $ticket->subject,
+                'Employee' => $ticket->employee?->name,
+                'Category' => $ticket->category?->name,
+                'Priority' => $ticket->priority,
+                'Status' => $ticket->status,
+                'Escalation Level' => $ticket->escalation_level,
+                'Assigned To' => $ticket->assignee?->name,
+                'Company' => $ticket->company_code,
+                'Branch' => $ticket->unit,
+                'Created' => optional($ticket->created_at)->toDateTimeString(),
+                'SLA Due' => optional($ticket->sla_due_at)->toDateTimeString(),
+                'Overdue' => $ticket->is_overdue ? 'Yes' : 'No',
+            ])
+            ->all();
     }
 }

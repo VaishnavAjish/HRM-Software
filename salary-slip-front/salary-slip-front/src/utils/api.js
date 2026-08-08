@@ -2084,73 +2084,47 @@ export const ticketApi = {
     });
   },
 
-  // Super Admin Hierarchy Override & Advanced Actions
-  overrideAction(id, payload, accessToken, tokenType = "Bearer") {
-    return apiRequest(`/tickets/${id}/override`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...hrAuthHeaders(accessToken, tokenType) },
-      body: JSON.stringify(payload),
-    });
-  },
-
-  transferTicket(id, payload, accessToken, tokenType = "Bearer") {
-    return apiRequest(`/tickets/${id}/transfer`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...hrAuthHeaders(accessToken, tokenType) },
-      body: JSON.stringify(payload),
-    });
-  },
-
-  escalateTicket(id, payload, accessToken, tokenType = "Bearer") {
+  /*
+   * Staff actions.
+   *
+   * Only endpoints that exist in routes/api.php appear here. This object
+   * previously also carried overrideAction, transferTicket, stopEscalation,
+   * resetSlaTimer and getAuditLogs, pointing at /override, /transfer,
+   * /stop-escalation, /reset-sla and /audit-logs — none of which are routed, so
+   * every one of them 404'd. They are gone rather than left as buttons that
+   * cannot work.
+   */
+  escalate(id, payload, accessToken, tokenType = "Bearer") {
     return apiRequest(`/tickets/${id}/escalate`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...hrAuthHeaders(accessToken, tokenType) },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(payload ?? {}),
     });
   },
 
-  stopEscalation(id, accessToken, tokenType = "Bearer") {
-    return apiRequest(`/tickets/${id}/stop-escalation`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...hrAuthHeaders(accessToken, tokenType) },
-    });
-  },
-
-  resetSlaTimer(id, accessToken, tokenType = "Bearer") {
-    return apiRequest(`/tickets/${id}/reset-sla`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...hrAuthHeaders(accessToken, tokenType) },
-    });
-  },
-
-  bulkOperations(payload, accessToken, tokenType = "Bearer") {
-    return apiRequest(`/tickets/bulk-actions`, {
+  // One action over a selection; the response reports per-ticket outcomes.
+  bulk(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/tickets/bulk`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...hrAuthHeaders(accessToken, tokenType) },
       body: JSON.stringify(payload),
     });
   },
 
-  getAuditLogs(id, accessToken, tokenType = "Bearer") {
-    return apiRequest(`/tickets/${id}/audit-logs`, {
+  getReports(type, filters = {}, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/tickets/reports${hrQuery({ type, ...filters })}`, {
       headers: hrAuthHeaders(accessToken, tokenType),
     });
   },
 
-  getReports(reportType, filters = {}, accessToken, tokenType = "Bearer") {
-    return apiRequest(`/tickets/reports/${reportType}${hrQuery(filters)}`, {
+  getSlaRules(accessToken, tokenType = "Bearer") {
+    return apiRequest(`/tickets/sla-rules`, {
       headers: hrAuthHeaders(accessToken, tokenType),
     });
   },
 
-  getSlaMatrix(accessToken, tokenType = "Bearer") {
-    return apiRequest(`/tickets/sla-matrix`, {
-      headers: hrAuthHeaders(accessToken, tokenType),
-    });
-  },
-
-  updateSlaMatrix(payload, accessToken, tokenType = "Bearer") {
-    return apiRequest(`/tickets/sla-matrix`, {
+  updateSlaRules(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/tickets/sla-rules`, {
       method: "PUT",
       headers: { "Content-Type": "application/json", ...hrAuthHeaders(accessToken, tokenType) },
       body: JSON.stringify(payload),

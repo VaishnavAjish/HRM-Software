@@ -1,28 +1,20 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { Home, Ticket, FileText, ShieldCheck, User } from 'lucide-react-native';
+import { Home, Ticket, FileText, User } from 'lucide-react-native';
 import { useTheme } from '../../context/ThemeContext';
-import { useAuth } from '../../context/AuthContext';
 import { typography, shadows } from '../../theme';
 
+// Only rendered for the employee role — agents get a single self-contained
+// screen with no tab bar (see App.js).
 export function FloatingTabBar({ activeTab, onSelectTab }) {
   const { theme } = useTheme();
-  const { role } = useAuth();
 
-  const employeeTabs = [
+  const currentTabs = [
     { id: 'home', label: 'Home', icon: Home },
     { id: 'payslips', label: 'Payslips', icon: FileText },
     { id: 'tickets', label: 'Tickets', icon: Ticket },
     { id: 'profile', label: 'Profile', icon: User },
   ];
-
-  const agentTabs = [
-    { id: 'agent-dashboard', label: 'Candidates', icon: ShieldCheck },
-    { id: 'tickets', label: 'Tickets', icon: Ticket },
-    { id: 'profile', label: 'Profile', icon: User },
-  ];
-
-  const currentTabs = role === 'agent' ? agentTabs : employeeTabs;
 
   return (
     <View style={styles.floatingContainer}>

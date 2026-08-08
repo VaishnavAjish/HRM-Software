@@ -1,291 +1,225 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
-import {
-  LifeBuoy, Send, Loader2, Paperclip, AlertTriangle, CheckCircle2, ShieldCheck, UserCheck, Layers, FileText, X, Sparkles, Building
-} from "lucide-react";
+import { LifeBuoy, Send, Loader2 } from "lucide-react";
 import { ticketApi } from "../../utils/api";
 import { useAuth } from "../../context/AuthContext";
-import { useNotifications } from "../../context/NotificationContext";
-import { DEPARTMENTS, PRIORITY_ORDER, priorityMeta, getPermissions } from "../../components/tickets/ticketMeta";
+import { PRIORITY_ORDER, priorityMeta } from "../../components/tickets/ticketMeta";
 
-const EMPTY = {
-  category_id: "1",
-  department: "IT",
-  subject: "",
-  description: "",
-  priority: "medium",
-  company_code: "",
-  unit: "",
-  employee_code: "",
-  attachments: [],
-};
+const EMPTY = { category_id: "", subject: "", description: "", priority: "medium" };
 
-const DEFAULT_CATEGORIES = [
-  { id: 1, name: "IT Hardware & Laptops", department: "IT" },
-  { id: 2, name: "Software Access & VPN", department: "IT" },
-  { id: 3, name: "Salary Slips & Tax Deduction", department: "Payroll" },
-  { id: 4, name: "Leave & Attendance Claims", department: "HR" },
-  { id: 5, name: "Reimbursement & Expenses", department: "Finance" },
-  { id: 6, name: "Office Desk & Facilities", department: "Facilities" },
-  { id: 7, name: "Legal & Compliance Clearance", department: "Legal" },
-];
-
+/**
+ * Employee-facing "Raise Ticket".
+ *
+ * Company, unit and department are not fields: the server takes them from the
+ * signed-in employee, so offering them as inputs would imply a choice that does
+ * not exist and that the API ignores. They are shown read-only instead.
+ *
+ * Categories come from /api/tickets/categories only. An earlier version fell
+ * back to a built-in list when the call failed, which let an employee pick a
+ * category id that did not exist and get a validation error they could not act
+ * on; a failed load now says so.
+ */
 export default function RaiseTicket() {
   const { user } = useAuth();
-  const { pushNotification } = useNotifications();
   const navigate = useNavigate();
-  const perms = getPermissions(user?.role);
 
-  const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
+  const accessToken = user?.accessToken;
+  const tokenType = user?.tokenType;
+
+  const [categories, setCategories] = useState([]);
   const [form, setForm] = useState(EMPTY);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [aiSuggesting, setAiSuggesting] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
+
     ticketApi
-      .getCategories(user?.accessToken, user?.tokenType)
+      .getCategories(accessToken, tokenType)
       .then((res) => {
-        if (res?.status && Array.isArray(res.data) && res.data.length > 0) {
-          setCategories(res.data);
-        }
+        if (cancelled) return;
+        if (res?.status) setCategories(res.data || []);
+        setLoading(false);
       })
-      .catch(() => {
-        // Fallback to default categories
+      .catch((err) => {
+        if (cancelled) return;
+        setLoadFailed(true);
+        setLoading(false);
+        toast.error(err.message || "Failed to load categories");
       });
-  }, [user?.accessToken, user?.tokenType]);
+
+    return () => { cancelled = true; };
+  }, [accessToken, tokenType]);
 
   const update = (field) => (e) => setForm((prev) => ({ ...prev, [field]: e.target.value }));
-
-  const handleFileUpload = (files) => {
-    const fileList = Array.from(files).map((f) => ({
-      name: f.name,
-      size: (f.size / 1024).toFixed(1) + " KB",
-      type: f.type,
-    }));
-    setForm((prev) => ({ ...prev, attachments: [...prev.attachments, ...fileList] }));
-  };
-
-  const removeAttachment = (index) => {
-    setForm((prev) => ({
-      ...prev,
-      attachments: prev.attachments.filter((_, i) => i !== index),
-    }));
-  };
-
-  const handleAiSuggest = () => {
-    if (!form.subject.trim()) {
-      toast.error("Please enter a subject first to run AI categorization");
-      return;
-    }
-    setAiSuggesting(true);
-    setTimeout(() => {
-      const lower = form.subject.toLowerCase();
-      let suggestedDept = "IT";
-      if (lower.includes("salary") || lower.includes("pay") || lower.includes("tax")) suggestedDept = "Payroll";
-      else if (lower.includes("leave") || lower.includes("joining") || lower.includes("policy")) suggestedDept = "HR";
-      else if (lower.includes("reimburse") || lower.includes("bill") || lower.includes("invoice")) suggestedDept = "Finance";
-
-      setForm((prev) => ({ ...prev, department: suggestedDept }));
-      setAiSuggesting(false);
-      toast.success(`AI routed request to '${suggestedDept}' department`);
-    }, 400);
-  };
 
   const submit = async (e) => {
     e.preventDefault();
 
+    if (!form.category_id) {
+      toast.error("Please choose a category");
+      return;
+    }
     if (!form.subject.trim() || !form.description.trim()) {
-      toast.error("Subject and description are required");
+      toast.error("Subject and description are both required");
       return;
     }
 
     setSaving(true);
     try {
-      const payload = {
-        category_id: Number(form.category_id) || 1,
-        department: form.department,
-        subject: form.subject.trim(),
-        description: form.description.trim(),
-        priority: form.priority,
-        attachments: form.attachments,
-      };
+      const res = await ticketApi.createTicket(
+        {
+          category_id: Number(form.category_id),
+          subject: form.subject.trim(),
+          description: form.description.trim(),
+          priority: form.priority,
+        },
+        accessToken,
+        tokenType,
+      );
 
-      const res = await ticketApi.createTicket(payload, user?.accessToken, user?.tokenType);
-
-      // Trigger Notification Center Alert
-      pushNotification({
-        title: `Ticket Created: ${form.subject.trim()}`,
-        description: `Routed to ${form.department} Level 1 Handler. Priority: ${form.priority.toUpperCase()}`,
-        module: "Tickets",
-        priority: form.priority === "critical" || form.priority === "urgent" ? "Urgent" : "Normal",
-        actionUrl: perms.isSuperAdmin ? "/admin/tickets/control-center" : "/employee/tickets",
-        actionLabel: "Open Ticket",
-      });
-
-      toast.success("Helpdesk ticket created successfully!");
-      setForm(EMPTY);
-      navigate(perms.isSuperAdmin ? "/admin/tickets/control-center" : "/employee/tickets");
+      if (res?.status) {
+        // The number is what the employee will quote later, so it goes in the
+        // confirmation rather than a generic "submitted".
+        toast.success(res.message || "Ticket created");
+        setForm(EMPTY);
+        navigate("/employee/tickets");
+      } else {
+        toast.error(res?.message || "Failed to create ticket");
+      }
     } catch (err) {
-      // Local fallback success for UI demo
-      pushNotification({
-        title: `Ticket Created: ${form.subject.trim()}`,
-        description: `Routed to ${form.department} Level 1 Handler. Priority: ${form.priority.toUpperCase()}`,
-        module: "Tickets",
-        priority: form.priority === "critical" || form.priority === "urgent" ? "Urgent" : "Normal",
-        actionUrl: perms.isSuperAdmin ? "/admin/tickets/control-center" : "/employee/tickets",
-        actionLabel: "Open Ticket",
-      });
-      toast.success("Helpdesk ticket created successfully!");
-      setForm(EMPTY);
-      navigate(perms.isSuperAdmin ? "/admin/tickets/control-center" : "/employee/tickets");
+      toast.error(err.message || "Failed to create ticket");
     } finally {
       setSaving(false);
     }
   };
 
+  const selectedCategory = categories.find((c) => String(c.id) === String(form.category_id));
+
   return (
-    <div className="mx-auto w-full max-w-4xl space-y-6 p-3 lg:p-6 font-sans">
-      <header className="flex flex-wrap items-center justify-between gap-4 border-b border-gray-200 pb-5 dark:border-gray-800">
-        <div className="flex items-center gap-3.5">
-          <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-600 text-white shadow-lg shadow-brand-600/20">
-            <LifeBuoy size={24} />
-          </span>
-          <div>
-            <h1 className="text-2xl font-extrabold tracking-tight text-gray-900 dark:text-white">
-              Raise Internal Helpdesk Ticket
-            </h1>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              Submit requests directly to departmental level 1 handlers with SLA tracking.
-            </p>
-          </div>
+    <div className="mx-auto w-full max-w-3xl space-y-5 p-2 lg:p-6">
+      <header className="flex items-center gap-3">
+        <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-100 text-brand-600 dark:bg-brand-900/30 dark:text-brand-400">
+          <LifeBuoy size={20} />
+        </span>
+        <div>
+          <h1 className="text-xl font-bold text-gray-900 dark:text-white">Raise a Ticket</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Tell us what you need help with and we will route it to the right team.
+          </p>
         </div>
       </header>
 
-      <form onSubmit={submit} className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900 space-y-6">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {/* Target Department Selection */}
-          <div>
-            <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
-              Target Department
-            </label>
-            <select
-              value={form.department}
-              onChange={update("department")}
-              className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3.5 py-2.5 text-xs font-bold text-gray-900 dark:text-white outline-none focus:border-brand-500"
-            >
-              {DEPARTMENTS.map((dept) => (
-                <option key={dept} value={dept}>{dept} Department</option>
+      <form
+        onSubmit={submit}
+        className="space-y-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-[#0b0f1a]"
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Category" required>
+            {loading ? (
+              <div className="h-[42px] animate-pulse rounded-xl bg-gray-100 dark:bg-gray-800" />
+            ) : loadFailed ? (
+              <p className="rounded-xl bg-rose-50 px-3 py-2.5 text-xs text-rose-700 dark:bg-rose-950/30 dark:text-rose-300">
+                Categories could not be loaded. Refresh the page to try again.
+              </p>
+            ) : (
+              <select value={form.category_id} onChange={update("category_id")} className={inputCls} required>
+                <option value="">Select a category</option>
+                {categories.map((category) => (
+                  <option key={category.id} value={category.id}>{category.name}</option>
+                ))}
+              </select>
+            )}
+            {selectedCategory?.default_department && (
+              <p className="mt-1 text-xs text-gray-400">
+                Routes to {selectedCategory.default_department}.
+              </p>
+            )}
+          </Field>
+
+          <Field label="Priority" required>
+            <select value={form.priority} onChange={update("priority")} className={inputCls}>
+              {PRIORITY_ORDER.map((value) => (
+                <option key={value} value={value}>{priorityMeta(value).label}</option>
               ))}
             </select>
-          </div>
-
-          {/* Priority Assignment */}
-          <div>
-            <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
-              Priority Severity
-            </label>
-            <select
-              value={form.priority}
-              onChange={update("priority")}
-              className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3.5 py-2.5 text-xs font-bold text-gray-900 dark:text-white outline-none focus:border-brand-500"
-            >
-              <option value="low">Low (Standard SLA)</option>
-              <option value="medium">Medium (Moderate SLA)</option>
-              <option value="high">High (Accelerated SLA)</option>
-              <option value="urgent">Urgent (4-Hour SLA)</option>
-              <option value="critical">Critical (1-Hour SLA)</option>
-            </select>
-          </div>
+          </Field>
         </div>
 
-        {/* Subject */}
-        <div>
-          <div className="flex items-center justify-between mb-1.5">
-            <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
-              Issue Subject
-            </label>
-            <button
-              type="button"
-              onClick={handleAiSuggest}
-              className="flex items-center gap-1 text-[11px] font-bold text-brand-600 dark:text-brand-400 hover:underline"
-            >
-              <Sparkles size={12} className={aiSuggesting ? "animate-spin" : ""} />
-              {aiSuggesting ? "Analyzing..." : "AI Auto-Route Department"}
-            </button>
-          </div>
+        <Field label="Subject" required>
           <input
-            type="text"
-            placeholder="e.g. Surat office VPN authentication failing or Salaryslip Form16 query..."
             value={form.subject}
             onChange={update("subject")}
-            className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3.5 py-2.5 text-xs font-semibold text-gray-900 dark:text-white placeholder-gray-400 outline-none focus:border-brand-500"
+            maxLength={200}
+            placeholder="A one-line summary, e.g. Salary not credited for July"
+            className={inputCls}
             required
           />
-        </div>
+        </Field>
 
-        {/* Description */}
-        <div>
-          <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
-            Detailed Issue Description
-          </label>
+        <Field label="Description" required>
           <textarea
-            rows={5}
-            placeholder="Provide exact details, error messages, or context for the support desk..."
             value={form.description}
             onChange={update("description")}
-            className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3.5 py-2.5 text-xs font-semibold text-gray-900 dark:text-white placeholder-gray-400 outline-none focus:border-brand-500"
+            rows={6}
+            maxLength={5000}
+            placeholder="What happened, when it started, and anything you have already tried."
+            className={inputCls}
             required
           />
+          <p className="mt-1 text-right text-[11px] text-gray-400">{form.description.length}/5000</p>
+        </Field>
+
+        <div className="grid gap-3 rounded-xl bg-gray-50 p-3 text-xs sm:grid-cols-3 dark:bg-white/5">
+          <ReadOnly label="Company" value={user?.company_code} />
+          <ReadOnly label="Unit / Branch" value={user?.unit} />
+          <ReadOnly label="Department" value={user?.department} />
         </div>
 
-        {/* File Attachments */}
-        <div>
-          <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
-            Attach Screenshots / Logs
-          </label>
-          <div className="flex items-center gap-2">
-            <label className="flex items-center gap-1.5 px-4 py-2.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 text-gray-700 dark:text-gray-200 text-xs font-bold rounded-xl cursor-pointer transition-all border border-gray-200 dark:border-gray-700">
-              <Paperclip size={14} /> Upload Attachments
-              <input type="file" multiple onChange={(e) => handleFileUpload(e.target.files)} className="hidden" />
-            </label>
-            <span className="text-[11px] text-gray-400">PNG, JPG, PDF, TXT up to 10 MB</span>
-          </div>
-
-          {form.attachments.length > 0 && (
-            <div className="mt-3 space-y-2">
-              {form.attachments.map((att, idx) => (
-                <div key={idx} className="flex items-center justify-between p-2.5 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 text-xs">
-                  <span className="font-semibold text-gray-800 dark:text-gray-200 truncate">{att.name} ({att.size})</span>
-                  <button type="button" onClick={() => removeAttachment(idx)} className="text-gray-400 hover:text-rose-500 p-1">
-                    <X size={14} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Submit Buttons */}
-        <div className="flex justify-end gap-2 border-t border-gray-100 dark:border-gray-800 pt-4">
+        <div className="flex justify-end gap-3 border-t border-gray-100 pt-4 dark:border-white/10">
           <button
             type="button"
-            onClick={() => navigate(-1)}
-            className="px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-xs font-bold text-gray-600 dark:text-gray-300 hover:bg-gray-50"
+            onClick={() => setForm(EMPTY)}
+            disabled={saving}
+            className="rounded-xl px-4 py-2 text-sm font-semibold text-gray-600 transition-colors hover:bg-gray-100 disabled:opacity-50 dark:text-gray-300 dark:hover:bg-white/5"
           >
-            Cancel
+            Clear
           </button>
           <button
             type="submit"
-            disabled={saving}
-            className="flex items-center gap-2 px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl text-xs shadow-md transition-all"
+            disabled={saving || loadFailed}
+            className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-700 disabled:opacity-50"
           >
             {saving ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
-            Submit Helpdesk Ticket
+            {saving ? "Submitting…" : "Submit Ticket"}
           </button>
         </div>
       </form>
+    </div>
+  );
+}
+
+const inputCls =
+  "w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 text-sm text-gray-900 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-500/20 dark:border-white/10 dark:bg-slate-950/60 dark:text-white";
+
+function Field({ label, required, children }) {
+  return (
+    <div>
+      <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">
+        {label} {required && <span className="text-red-500">*</span>}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+function ReadOnly({ label, value }) {
+  return (
+    <div>
+      <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">{label}</p>
+      <p className="mt-0.5 text-gray-700 dark:text-gray-200">{value || "—"}</p>
     </div>
   );
 }

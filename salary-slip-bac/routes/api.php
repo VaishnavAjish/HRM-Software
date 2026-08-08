@@ -443,6 +443,16 @@ Route::middleware('jwt.auth')->group(function () {
             Route::get('assignees', [TicketController::class, 'assignees'])->middleware('permission:support.ticket.assign');
             Route::put('{id}/assign', [TicketController::class, 'assign'])->whereNumber('id')->middleware('permission:support.ticket.assign');
             Route::put('{id}/status', [TicketController::class, 'updateStatus'])->whereNumber('id')->middleware('permission:support.ticket.update');
+            Route::post('{id}/escalate', [TicketController::class, 'escalate'])->whereNumber('id')->middleware('permission:support.ticket.update');
+
+            // One action over a selection. Throttled because a single call can
+            // touch up to 200 tickets.
+            Route::post('bulk', [TicketController::class, 'bulk'])->middleware(['throttle:20,1', 'permission:support.ticket.update']);
+
+            Route::get('reports', [TicketController::class, 'reports'])->middleware('permission:support.ticket.read');
+
+            Route::get('sla-rules', [TicketController::class, 'slaRules'])->middleware('permission:support.ticket.read');
+            Route::put('sla-rules', [TicketController::class, 'updateSlaRules'])->middleware('permission:support.ticket.update');
         });
     });
 
