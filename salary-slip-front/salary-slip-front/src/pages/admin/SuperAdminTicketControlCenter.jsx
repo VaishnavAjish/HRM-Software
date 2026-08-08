@@ -1,9 +1,8 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
   LifeBuoy, LayoutDashboard, Inbox, Clock, CornerUpRight, UserCheck, ShieldAlert,
-  PieChart, CheckCircle2, Award, BarChart3, Settings, Search, Plus, RefreshCw,
+  PieChart, CheckCircle2, Award, BarChart3, Settings, Search, RefreshCw,
 } from "lucide-react";
 import { ticketApi } from "../../utils/api";
 import { useAuth } from "../../context/AuthContext";
@@ -47,7 +46,6 @@ const QUEUE_KINDS = ["queue", "status"];
 export default function SuperAdminTicketControlCenter() {
   const { user } = useAuth();
   const { companyId, companyScope } = useCompany();
-  const navigate = useNavigate();
 
   const [activeSection, setActiveSection] = useState("dashboard");
   const [tickets, setTickets] = useState([]);
@@ -150,6 +148,24 @@ export default function SuperAdminTicketControlCenter() {
     }
   };
 
+  const handleDeleteTicket = async (id) => {
+    if (!window.confirm("Are you sure you want to delete this closed ticket? This action cannot be undone.")) {
+      return;
+    }
+    try {
+      const res = await ticketApi.deleteTicket(id, accessToken, tokenType);
+      if (res?.status) {
+        toast.success(res.message || "Ticket deleted successfully");
+        if (activeTicketId === id) setActiveTicketId(null);
+        await load();
+      } else {
+        toast.error(res?.message || "Failed to delete ticket");
+      }
+    } catch (err) {
+      toast.error(err.message || "Failed to delete ticket");
+    }
+  };
+
   return (
     <div className="space-y-5 p-2 lg:p-6">
       <header className="flex flex-wrap items-center justify-between gap-4">
@@ -184,13 +200,6 @@ export default function SuperAdminTicketControlCenter() {
             title="Refresh"
           >
             <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
-          </button>
-
-          <button
-            onClick={() => navigate("/employee/tickets/new")}
-            className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-brand-700"
-          >
-            <Plus size={15} /> Raise New Ticket
           </button>
         </div>
       </header>
@@ -285,6 +294,7 @@ export default function SuperAdminTicketControlCenter() {
               selectedIds={selectedIds}
               onToggleSelect={toggleSelect}
               onToggleSelectAll={toggleSelectAll}
+              onDeleteTicket={handleDeleteTicket}
             />
           )}
         </div>

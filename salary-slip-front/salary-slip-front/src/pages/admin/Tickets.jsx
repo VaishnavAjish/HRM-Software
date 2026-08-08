@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import {
-  LifeBuoy, Search, Loader2, Eye, Filter, RotateCcw, Inbox, UserCheck,
+  Ticket, Search, Loader2, Eye, Filter, RotateCcw, Inbox, UserCheck, Trash2,
 } from "lucide-react";
 import Badge from "../../components/ui/Badge";
 import TicketDetailDrawer from "../../components/tickets/TicketDetailDrawer";
@@ -101,11 +101,27 @@ export default function Tickets() {
     setStatus(""); setPriority(""); setCategoryId(""); setMine(false); setSearch("");
   };
 
+  const handleDeleteTicket = async (id) => {
+    if (!window.confirm("Are you sure you want to delete this closed ticket? This action cannot be undone.")) return;
+    try {
+      const res = await ticketApi.deleteTicket(id, accessToken, tokenType);
+      if (res?.status) {
+        toast.success(res.message || "Ticket deleted successfully");
+        if (openTicketId === id) setOpenTicketId(null);
+        await load();
+      } else {
+        toast.error(res?.message || "Failed to delete ticket");
+      }
+    } catch (err) {
+      toast.error(err.message || "Failed to delete ticket");
+    }
+  };
+
   return (
     <div className="space-y-5 p-2 lg:p-6">
       <header className="flex items-center gap-3">
         <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-100 text-brand-600 dark:bg-brand-900/30 dark:text-brand-400">
-          <LifeBuoy size={20} />
+          <Ticket size={20} />
         </span>
         <div>
           <h1 className="text-xl font-bold text-gray-900 dark:text-white">Support Tickets</h1>
@@ -190,7 +206,7 @@ export default function Tickets() {
           </div>
         ) : tickets.length === 0 ? (
           <div className="flex h-56 flex-col items-center justify-center gap-2 text-center">
-            <LifeBuoy size={34} className="text-gray-300 dark:text-gray-600" />
+            <Ticket size={34} className="text-gray-300 dark:text-gray-600" />
             <p className="text-sm text-gray-500 dark:text-gray-400">
               {total === 0 ? "No tickets in your scope yet." : "No tickets match these filters."}
             </p>
@@ -268,12 +284,23 @@ export default function Tickets() {
                       </td>
                       <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{formatDate(ticket.created_at)}</td>
                       <td className="px-4 py-3 text-right">
-                        <button
-                          onClick={() => setOpenTicketId(ticket.id)}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-white/10 dark:text-gray-200 dark:hover:bg-white/5"
-                        >
-                          <Eye size={13} /> Open
-                        </button>
+                        <div className="inline-flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => setOpenTicketId(ticket.id)}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-white/10 dark:text-gray-200 dark:hover:bg-white/5"
+                          >
+                            <Eye size={13} /> Open
+                          </button>
+                          {String(ticket.status).toLowerCase() === "closed" && (
+                            <button
+                              onClick={() => handleDeleteTicket(ticket.id)}
+                              className="inline-flex items-center gap-1 rounded-lg bg-rose-600 px-2.5 py-1 text-xs font-bold text-white transition-colors hover:bg-rose-700"
+                              title="Delete Ticket"
+                            >
+                              <Trash2 size={13} /> Delete
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}

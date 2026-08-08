@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, RefreshControl } from 'react-native
 import { FileText, AlertCircle, Users, ClipboardList, CheckCircle2 } from 'lucide-react-native';
 import { useTheme } from '../../context/ThemeContext';
 import { typography } from '../../theme';
-import { Button } from '../../components/common/Button';
+import { Fab } from '../../components/common/Fab';
 import { LoadingView } from '../../components/common/LoadingView';
 import { EmptyState } from '../../components/common/EmptyState';
 import { StatCard } from '../../components/common/StatCard';
@@ -59,19 +59,12 @@ export function AgentTrialScreen() {
   if (loading) return <LoadingView fullscreen label="Loading trial forms…" />;
 
   return (
+    <View style={styles.screen}>
     <ScrollView
       style={styles.screen}
       contentContainerStyle={styles.content}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => reload(true)} tintColor={theme.primary} />}
     >
-      <Button
-        title="New Trial Form"
-        onPress={() => setView({ mode: 'form', initialData: null })}
-        icon={FileText}
-        variant="accent"
-        style={styles.newButton}
-      />
-
       {error ? (
         <EmptyState icon={AlertCircle} title="Couldn't load trial forms" message={error} tone="error" actionLabel="Retry" onAction={() => reload()} />
       ) : (
@@ -103,13 +96,15 @@ export function AgentTrialScreen() {
         </>
       )}
     </ScrollView>
+
+    <Fab onPress={() => setView({ mode: 'form', initialData: null })} accessibilityLabel="New trial form" />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  content: { padding: 16, paddingBottom: 40 },
-  newButton: { marginBottom: 20 },
+  content: { padding: 16, paddingBottom: 170 },
   statsRow: { flexDirection: 'row', gap: 10, marginBottom: 14 },
   search: { marginBottom: 16 },
   sectionTitle: { ...typography.h3, marginBottom: 12 },

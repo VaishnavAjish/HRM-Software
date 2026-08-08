@@ -169,6 +169,31 @@ class ApiService {
   reopenTicket(id, reason) {
     return this.request(`/tickets/${id}/reopen`, { method: 'POST', body: { reason } });
   }
+
+  // ----- Notifications (shared, any role) -----
+  // The feed is gated behind `module.schema:notifications` server-side, so it
+  // 503s on an environment where that table hasn't been migrated. Callers treat
+  // a failure as "no server notifications" rather than an error state.
+  getNotifications(params = {}) {
+    const qs = new URLSearchParams(params).toString();
+    return this.request(`/notifications${qs ? `?${qs}` : ''}`);
+  }
+
+  getUnreadNotificationCount() {
+    return this.request('/notifications/unread-count');
+  }
+
+  markNotificationRead(id) {
+    return this.request(`/notifications/${id}/read`, { method: 'POST' });
+  }
+
+  markAllNotificationsRead() {
+    return this.request('/notifications/read-all', { method: 'POST' });
+  }
+
+  deleteNotification(id) {
+    return this.request(`/notifications/${id}`, { method: 'DELETE' });
+  }
 }
 
 export const api = new ApiService();

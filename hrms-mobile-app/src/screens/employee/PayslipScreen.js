@@ -8,7 +8,7 @@ import { Card } from '../../components/common/Card';
 import { LoadingView } from '../../components/common/LoadingView';
 import { EmptyState } from '../../components/common/EmptyState';
 import { formatCurrency, monthName } from '../../utils/format';
-import { generateAndSharePdf } from '../../utils/pdf';
+import { downloadPdfToDevice } from '../../utils/pdf';
 import { buildPayslipHtml } from '../../utils/payslipPdf';
 
 export function PayslipScreen() {
@@ -98,7 +98,8 @@ function PayslipDetail({ id, onBack }) {
     setDownloading(true);
     try {
       const html = buildPayslipHtml(detail);
-      await generateAndSharePdf(html, `Payslip ${monthName(detail.month)} ${detail.year}`);
+      const { saved } = await downloadPdfToDevice(html, `Payslip ${monthName(detail.month)} ${detail.year}`);
+      if (saved) Alert.alert('Saved', 'The payslip PDF was saved to your device.');
     } catch (e) {
       Alert.alert('Could not generate PDF', e.message || 'Please try again.');
     } finally {

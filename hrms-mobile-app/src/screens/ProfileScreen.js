@@ -1,6 +1,11 @@
-import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, TextInput, ScrollView, TouchableOpacity, Alert } from 'react-native';
-import { ShieldCheck, Pencil, Check, X, BadgeCheck, Download } from 'lucide-react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import { LinearGradient } from 'expo-linear-gradient';
+import {
+  ShieldCheck, Pencil, BadgeCheck, Download, Camera, FileText, ChevronRight, AlertTriangle, LogOut,
+  Mail, Phone, Calendar, Users, Building2, Briefcase, Home, MapPin, Hash, CreditCard, Landmark, Wallet,
+} from 'lucide-react-native';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
@@ -9,57 +14,84 @@ import { Card } from '../components/common/Card';
 import { Badge } from '../components/common/Badge';
 import { Button } from '../components/common/Button';
 import { Avatar } from '../components/common/Avatar';
+import { FormInput } from '../components/common/FormInput';
+import { FormSelect } from '../components/common/FormSelect';
+import { SelectField } from '../components/common/SelectField';
+import { DatePickerField } from '../components/common/DatePickerField';
 import { formatDate } from '../utils/format';
-import { generateAndSharePdf, pdfDocument } from '../utils/pdf';
+import { downloadPdfToDevice } from '../utils/pdf';
+import { buildAppointmentPrintHtml } from '../utils/appointmentPrintPdf';
+import { BASIC_FIELDS, ADDRESS_FIELDS, BANK_FIELDS, ALL_FIELDS, computeProfileCompletion } from '../utils/profileCompletion';
 
 const TABS = [
-  { id: 'basic', label: 'Basic' },
-  { id: 'address', label: 'Address' },
-  { id: 'bank', label: 'Bank & ID' },
+  { id: 'basic', label: 'Basic', icon: Users },
+  { id: 'address', label: 'Address', icon: MapPin },
+  { id: 'bank', label: 'Bank & ID', icon: Landmark },
 ];
 
-const BASIC_FIELDS = [
-  { key: 'email', label: 'Email', keyboardType: 'email-address' },
-  { key: 'mobile_number', label: 'Mobile Number', keyboardType: 'phone-pad' },
-  { key: 'dob', label: 'Date of Birth', placeholder: 'YYYY-MM-DD' },
-  { key: 'gender', label: 'Gender' },
-  { key: 'department', label: 'Department' },
-  { key: 'designation', label: 'Designation' },
-];
+const FIELD_ICONS = {
+  email: Mail,
+  mobile_number: Phone,
+  dob: Calendar,
+  gender: Users,
+  department: Building2,
+  designation: Briefcase,
+  address: Home,
+  city: MapPin,
+  district: MapPin,
+  state: MapPin,
+  pin: Hash,
+  pan_card_no: CreditCard,
+  bank_name: Landmark,
+  bank_ifsc_code: Landmark,
+  bank_account_no: Wallet,
+  pf_no: FileText,
+  esi_no: FileText,
+};
 
-const ADDRESS_FIELDS = [
-  { key: 'address', label: 'Full Address', multiline: true },
-  { key: 'city', label: 'City' },
-  { key: 'district', label: 'District' },
-  { key: 'state', label: 'State' },
-  { key: 'pin', label: 'PIN Code', keyboardType: 'number-pad' },
-];
+const GENDER_OPTIONS = ['MALE', 'FEMALE', 'OTHER'];
+const DEFAULT_DEPARTMENTS = ['4P DEPT', 'Account', 'BLOCKING DEPT', 'Cutting', 'IT', 'Polish-02 (MFG)'];
 
-const BANK_FIELDS = [
-  { key: 'pan_card_no', label: 'PAN Card No', placeholder: 'ABCDE1234F', autoCapitalize: 'characters' },
-  { key: 'bank_name', label: 'Bank Name' },
-  { key: 'bank_ifsc_code', label: 'Bank IFSC', placeholder: 'SBIN0001234', autoCapitalize: 'characters' },
-  { key: 'bank_account_no', label: 'Bank Account No', keyboardType: 'number-pad' },
-  { key: 'pf_no', label: 'PF Account No' },
-  { key: 'esi_no', label: 'ESI ID No' },
-];
+const FIELD_VALIDATORS = {
+  email: (v) => (!v || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) ? null : 'Enter a valid email address'),
+  mobile_number: (v) => (!v || /^\d{10}$/.test(v) ? null : 'Enter a valid 10-digit mobile number'),
+  pin: (v) => (!v || /^\d{6}$/.test(v) ? null : 'PIN code must be 6 digits'),
+  pan_card_no: (v) => (!v || /^[A-Z]{5}\d{4}[A-Z]$/.test(v.toUpperCase()) ? null : 'Format: ABCDE1234F'),
+  bank_ifsc_code: (v) => (!v || /^[A-Z]{4}0[A-Z0-9]{6}$/.test(v.toUpperCase()) ? null : 'Enter a valid IFSC code'),
+  bank_account_no: (v) => (!v || /^\d{6,18}$/.test(v) ? null : 'Enter a valid account number'),
+};
 
-const ALL_FIELDS = [...BASIC_FIELDS, ...ADDRESS_FIELDS, ...BANK_FIELDS];
-
-export function ProfileScreen() {
+export function ProfileScreen({ requireCompletion = false }) {
   const { theme } = useTheme();
-  const { user, role, updateUser } = useAuth();
+  const { user, role, updateUser, logout } = useAuth();
+  // Agents have no employee record — no payroll, no appointment form, no
+  // completion requirement. Their profile is just who they are and a way out.
+  const isAgent = role === 'agent';
   const [activeTab, setActiveTab] = useState('basic');
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(() => initFormFromUser(user));
   const [errorMsg, setErrorMsg] = useState(null);
   const [downloading, setDownloading] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [departments, setDepartments] = useState([]);
 
-  const completion = useMemo(() => {
-    const filled = ALL_FIELDS.filter((f) => (user?.[f.key] ?? '').toString().trim().length > 0).length;
-    return Math.round((filled / ALL_FIELDS.length) * 100);
-  }, [user]);
+  const { percent: completion } = useMemo(() => computeProfileCompletion(user), [user]);
+  const departmentOptions = departments.length ? departments : DEFAULT_DEPARTMENTS;
+
+  useEffect(() => {
+    if (isAgent) return;
+    (async () => {
+      try {
+        const res = await api.getDepartments();
+        if (res?.status && res.data?.length) {
+          setDepartments(res.data.map((d) => d.name));
+        }
+      } catch (e) {
+        // Falls back to the default list below.
+      }
+    })();
+  }, []);
 
   const startEdit = () => {
     setForm(initFormFromUser(user));
@@ -72,7 +104,28 @@ export function ProfileScreen() {
     setErrorMsg(null);
   };
 
+  const switchTab = (tabId) => {
+    if (editing) cancelEdit();
+    setActiveTab(tabId);
+  };
+
+  const fieldsForTab = activeTab === 'basic' ? BASIC_FIELDS : activeTab === 'address' ? ADDRESS_FIELDS : BANK_FIELDS;
+
+  const fieldErrors = useMemo(() => {
+    const errors = {};
+    fieldsForTab.forEach((f) => {
+      const validator = FIELD_VALIDATORS[f.key];
+      if (validator) {
+        const err = validator((form[f.key] || '').trim());
+        if (err) errors[f.key] = err;
+      }
+    });
+    return errors;
+  }, [form, fieldsForTab]);
+  const hasErrors = Object.keys(fieldErrors).length > 0;
+
   const save = async () => {
+    if (hasErrors) return;
     setSaving(true);
     setErrorMsg(null);
     try {
@@ -90,69 +143,61 @@ export function ProfileScreen() {
     }
   };
 
-  const fieldsForTab = activeTab === 'basic' ? BASIC_FIELDS : activeTab === 'address' ? ADDRESS_FIELDS : BANK_FIELDS;
+  const uploadPhoto = async (asset) => {
+    setUploadingPhoto(true);
+    try {
+      const fd = new FormData();
+      fd.append('photo', { uri: asset.uri, name: asset.fileName || `avatar-${Date.now()}.jpg`, type: asset.mimeType || 'image/jpeg' });
+      const res = await api.updateProfile(fd);
+      if (res?.status) {
+        updateUser(res.user || {});
+      } else {
+        Alert.alert('Could not update photo', res?.message || 'Please try again.');
+      }
+    } catch (e) {
+      Alert.alert('Could not update photo', e.message || 'Please try again.');
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+
+  const pickPhoto = () => {
+    Alert.alert('Update profile photo', undefined, [
+      {
+        text: 'Camera',
+        onPress: async () => {
+          const perm = await ImagePicker.requestCameraPermissionsAsync();
+          if (!perm.granted) return Alert.alert('Camera permission needed', 'Enable camera access to take a photo.');
+          const result = await ImagePicker.launchCameraAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.7 });
+          if (!result.canceled && result.assets?.[0]) uploadPhoto(result.assets[0]);
+        },
+      },
+      {
+        text: 'Gallery',
+        onPress: async () => {
+          const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+          if (!perm.granted) return Alert.alert('Photo library permission needed', 'Enable photo access to choose a picture.');
+          const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.7 });
+          if (!result.canceled && result.assets?.[0]) uploadPhoto(result.assets[0]);
+        },
+      },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
+  const confirmLogout = () => {
+    Alert.alert('Log out', 'You will need to sign in again to continue.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Log out', style: 'destructive', onPress: logout },
+    ]);
+  };
 
   const downloadAppointmentForm = async () => {
     setDownloading(true);
     try {
-      const html = pdfDocument('Appointment Form', [
-        {
-          title: 'Employee',
-          rows: [
-            ['Name', user?.name],
-            ['Employee Code', user?.emp_code],
-            ['Company Code', user?.company_code],
-            ['Unit / Branch', user?.unit],
-            ['Department', user?.department],
-            ['Designation', user?.designation],
-            ['Joining Date', user?.joining_date ? formatDate(user.joining_date) : null],
-            ['Manager Name', user?.manager_name],
-          ],
-        },
-        {
-          title: 'Personal Details',
-          rows: [
-            ['Date of Birth', user?.dob ? formatDate(user.dob) : null],
-            ['Gender', user?.gender],
-            ['Marital Status', user?.marital_status],
-            ['Blood Group', user?.blood_group],
-            ['Education', user?.education],
-          ],
-        },
-        {
-          title: 'Contact',
-          rows: [
-            ['Email', user?.email],
-            ['Mobile Number', user?.mobile_number],
-            ['WhatsApp Number', user?.emp_whatsapp_no],
-          ],
-        },
-        {
-          title: 'Address',
-          rows: [
-            ['Resident Address', user?.address],
-            ['Village', user?.village],
-            ['Taluka', user?.taluka],
-            ['District', user?.district],
-            ['City', user?.city],
-            ['State', user?.state],
-            ['PIN Code', user?.pin],
-          ],
-        },
-        {
-          title: 'Identity & Bank',
-          rows: [
-            ['Aadhaar', user?.aadhaar_masked],
-            ['PAN Card No', user?.pan_card_no],
-            ['Bank Name', user?.bank_name],
-            ['Bank IFSC', user?.bank_ifsc_code],
-            ['Bank Account No', user?.bank_account_no],
-            ['PF No', user?.pf_no],
-            ['ESI No', user?.esi_no],
-          ],
-        },
-      ]);
-      await generateAndSharePdf(html, `Appointment Form - ${user?.name || user?.emp_code || ''}`);
+      const html = buildAppointmentPrintHtml(user, user?.name);
+      const { saved } = await downloadPdfToDevice(html, `Appointment Form - ${user?.name || user?.emp_code || ''}`);
+      if (saved) Alert.alert('Saved', 'The appointment form PDF was saved to your device.');
     } catch (e) {
       Alert.alert('Could not generate PDF', e.message || 'Please try again.');
     } finally {
@@ -162,34 +207,60 @@ export function ProfileScreen() {
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <Card style={styles.heroCard} elevated>
-        <Avatar name={user?.name} uri={user?.photo} size={72} />
-        <Text style={[styles.name, { color: theme.textPrimary }]}>{user?.name || '—'}</Text>
-        <Text style={[styles.designation, { color: theme.textMuted }]}>
-          {user?.designation || (role === 'agent' ? 'Agent' : 'Employee')}
-          {user?.department ? ` · ${user.department}` : ''}
-        </Text>
-
-        <View style={styles.badgeRow}>
-          <Badge label={role === 'agent' ? 'Agent' : 'Employee'} variant={role === 'agent' ? 'violet' : 'cyan'} />
-          {user?.emp_code ? <Badge label={`ID ${user.emp_code}`} variant="default" /> : null}
-          {user?.status === 0 || user?.status === '0' ? <Badge label="Active" variant="emerald" /> : null}
+      {requireCompletion ? (
+        <View style={[styles.completionBanner, { backgroundColor: theme.amberBg, borderColor: theme.amber + '40' }]}>
+          <AlertTriangle size={16} color={theme.amber} />
+          <Text style={[styles.completionBannerText, { color: theme.amber }]}>
+            Complete your profile to unlock the rest of the app. PF and ESI numbers are optional — everything else is required.
+          </Text>
         </View>
+      ) : null}
 
-        <View style={styles.completionRow}>
-          <View style={[styles.progressTrack, { backgroundColor: theme.surfaceElevated }]}>
-            <View style={[styles.progressFill, { width: `${completion}%`, backgroundColor: theme.primary }]} />
+      <Card style={styles.heroCard} elevated>
+        <LinearGradient colors={theme.primaryGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.heroBanner} />
+        <View style={styles.heroBody}>
+          <TouchableOpacity onPress={pickPhoto} activeOpacity={0.85} disabled={uploadingPhoto} style={styles.avatarWrap}>
+            <View style={[styles.avatarRing, { backgroundColor: theme.surfaceCard }]}>
+              <Avatar name={user?.name} uri={user?.photo} size={84} />
+            </View>
+            <View style={[styles.avatarBadge, { backgroundColor: theme.primary, borderColor: theme.surfaceCard }]}>
+              <Camera size={13} color="#FFFFFF" />
+            </View>
+          </TouchableOpacity>
+          {uploadingPhoto ? <Text style={[styles.uploadingText, { color: theme.textMuted }]}>Uploading…</Text> : null}
+          <Text style={[styles.name, { color: theme.textPrimary }]}>{user?.name || '—'}</Text>
+          <Text style={[styles.designation, { color: theme.textMuted }]}>
+            {user?.designation || (role === 'agent' ? 'Agent' : 'Employee')}
+            {user?.department ? ` · ${user.department}` : ''}
+          </Text>
+
+          <View style={styles.badgeRow}>
+            <Badge label={role === 'agent' ? 'Agent' : 'Employee'} variant={role === 'agent' ? 'violet' : 'cyan'} />
+            {user?.emp_code ? <Badge label={`ID ${user.emp_code}`} variant="default" /> : null}
+            {user?.status === 0 || user?.status === '0' ? <Badge label="Active" variant="emerald" /> : null}
           </View>
-          <Text style={[styles.progressLabel, { color: theme.textMuted }]}>{completion}% complete</Text>
+
+          {!isAgent ? (
+            <View style={styles.completionRow}>
+              <View style={[styles.progressTrack, { backgroundColor: theme.surfaceElevated }]}>
+                <View style={[styles.progressFill, { width: `${completion}%`, backgroundColor: completion >= 100 ? theme.emerald : theme.primary }]} />
+              </View>
+              <Text style={[styles.progressLabel, { color: theme.textMuted }]}>{completion}% complete</Text>
+            </View>
+          ) : null}
         </View>
       </Card>
 
-      <Card style={styles.readonlyCard} elevated>
-        <ReadonlyRow label="Employee Code" value={user?.emp_code} theme={theme} />
-        <ReadonlyRow label="Company Code" value={user?.company_code} theme={theme} />
-        <ReadonlyRow label="Unit / Branch" value={user?.unit} theme={theme} />
-        <ReadonlyRow label="Joining Date" value={user?.joining_date ? formatDate(user.joining_date) : '—'} theme={theme} />
-        {user?.has_aadhaar ? (
+      <Card style={styles.infoCard} elevated>
+        <View style={styles.infoGrid}>
+          {!isAgent ? <InfoTile icon={Briefcase} label="Employee Code" value={user?.emp_code} theme={theme} /> : null}
+          <InfoTile icon={Building2} label={isAgent ? 'Company' : 'Company Code'} value={user?.company_code} theme={theme} />
+          <InfoTile icon={MapPin} label={isAgent ? 'Branch' : 'Unit / Branch'} value={user?.unit} theme={theme} />
+          {!isAgent ? (
+            <InfoTile icon={Calendar} label="Joining Date" value={user?.joining_date ? formatDate(user.joining_date) : '—'} theme={theme} />
+          ) : null}
+        </View>
+        {!isAgent && user?.has_aadhaar ? (
           <View style={styles.aadhaarRow}>
             <ShieldCheck size={14} color={theme.emerald} />
             <Text style={[styles.aadhaarText, { color: theme.textMuted }]}>
@@ -200,96 +271,178 @@ export function ProfileScreen() {
         ) : null}
       </Card>
 
-      <Button
-        title={downloading ? 'Preparing…' : 'Download Appointment Form'}
-        onPress={downloadAppointmentForm}
-        loading={downloading}
-        icon={Download}
-        variant="outline"
-        style={styles.downloadFormBtn}
-      />
+      {!isAgent ? (
+      <>
+      <TouchableOpacity onPress={downloadAppointmentForm} disabled={downloading} activeOpacity={0.85}>
+        <Card style={styles.downloadCard} elevated>
+          <LinearGradient colors={theme.primaryGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.downloadIconWrap}>
+            <FileText size={20} color="#FFFFFF" />
+          </LinearGradient>
+          <View style={styles.downloadTextWrap}>
+            <Text style={[styles.downloadTitle, { color: theme.textPrimary }]}>
+              {downloading ? 'Preparing PDF…' : 'Download Appointment Form'}
+            </Text>
+            <Text style={[styles.downloadSubtitle, { color: theme.textMuted }]}>Saved as a PDF to your device</Text>
+          </View>
+          {downloading ? <Download size={18} color={theme.textMuted} /> : <ChevronRight size={18} color={theme.textMuted} />}
+        </Card>
+      </TouchableOpacity>
 
       <View style={[styles.tabBar, { backgroundColor: theme.surfaceElevated }]}>
-        {TABS.map((tab) => (
-          <TouchableOpacity
-            key={tab.id}
-            style={[styles.tabItem, activeTab === tab.id && { backgroundColor: theme.primary }]}
-            onPress={() => setActiveTab(tab.id)}
-          >
-            <Text style={[styles.tabLabel, { color: activeTab === tab.id ? '#FFFFFF' : theme.textMuted }]}>{tab.label}</Text>
-          </TouchableOpacity>
-        ))}
+        {TABS.map((tab) => {
+          const Icon = tab.icon;
+          const active = activeTab === tab.id;
+          return (
+            <TouchableOpacity
+              key={tab.id}
+              style={[styles.tabItem, active && { backgroundColor: theme.primary }]}
+              onPress={() => switchTab(tab.id)}
+            >
+              <Icon size={13} color={active ? '#FFFFFF' : theme.textMuted} />
+              <Text style={[styles.tabLabel, { color: active ? '#FFFFFF' : theme.textMuted }]}>{tab.label}</Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
 
       <Card style={styles.fieldsCard} elevated>
         <View style={styles.fieldsHeader}>
-          <Text style={[styles.fieldsTitle, { color: theme.textPrimary }]}>
-            {TABS.find((t) => t.id === activeTab)?.label} Details
-          </Text>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.fieldsTitle, { color: theme.textPrimary }]}>
+              {TABS.find((t) => t.id === activeTab)?.label} Details
+            </Text>
+            {editing ? (
+              <Text style={[styles.editingHint, { color: theme.primary }]}>Editing — update the fields below</Text>
+            ) : null}
+          </View>
           {!editing ? (
-            <TouchableOpacity style={styles.editBtn} onPress={startEdit}>
-              <Pencil size={14} color={theme.primary} />
+            <TouchableOpacity
+              style={[styles.editBtn, { backgroundColor: theme.primary + '12', borderColor: theme.primary + '30' }]}
+              onPress={startEdit}
+            >
+              <Pencil size={13} color={theme.primary} />
               <Text style={[styles.editBtnText, { color: theme.primary }]}>Edit</Text>
             </TouchableOpacity>
-          ) : (
-            <View style={styles.editActions}>
-              <TouchableOpacity onPress={cancelEdit} style={styles.iconBtn}>
-                <X size={16} color={theme.rose} />
-              </TouchableOpacity>
-              <TouchableOpacity onPress={save} style={styles.iconBtn} disabled={saving}>
-                <Check size={16} color={theme.emerald} />
-              </TouchableOpacity>
-            </View>
-          )}
+          ) : null}
         </View>
 
         {errorMsg ? <Text style={[styles.errorText, { color: theme.rose }]}>{errorMsg}</Text> : null}
 
-        {fieldsForTab.map((f) => (
-          <View key={f.key} style={styles.fieldRow}>
-            <Text style={[styles.fieldLabel, { color: theme.textMuted }]}>{f.label}</Text>
-            {editing ? (
-              <TextInput
+        {!editing ? (
+          fieldsForTab.map((f, idx) => {
+            const Icon = FIELD_ICONS[f.key] || FileText;
+            return (
+              <View
+                key={f.key}
                 style={[
-                  styles.fieldInput,
-                  f.multiline && styles.fieldInputMultiline,
-                  { color: theme.textPrimary, backgroundColor: theme.surfaceElevated, borderColor: theme.border },
+                  styles.viewRow,
+                  idx !== fieldsForTab.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.border },
                 ]}
-                value={form[f.key] ?? ''}
-                onChangeText={(v) => setForm((prev) => ({ ...prev, [f.key]: v }))}
-                placeholder={f.placeholder}
-                placeholderTextColor={theme.textMuted}
-                keyboardType={f.keyboardType}
-                autoCapitalize={f.autoCapitalize || 'sentences'}
-                multiline={f.multiline}
-              />
-            ) : (
-              <Text style={[styles.fieldValue, { color: theme.textPrimary }]}>{user?.[f.key] || '—'}</Text>
-            )}
-          </View>
-        ))}
+              >
+                <View style={[styles.viewIconWrap, { backgroundColor: theme.primary + '12' }]}>
+                  <Icon size={15} color={theme.primary} />
+                </View>
+                <View style={styles.viewTextWrap}>
+                  <Text style={[styles.fieldLabel, { color: theme.textMuted }]}>{f.label}</Text>
+                  <Text style={[styles.fieldValue, { color: theme.textPrimary }]}>{user?.[f.key] || '—'}</Text>
+                </View>
+              </View>
+            );
+          })
+        ) : (
+          <>
+            {fieldsForTab.map((f) => (
+              <View key={f.key} style={styles.editFieldWrap}>
+                {renderFieldEditor(f, form[f.key] ?? '', (v) => setForm((prev) => ({ ...prev, [f.key]: v })), departmentOptions)}
+                {fieldErrors[f.key] ? <Text style={[styles.fieldError, { color: theme.rose }]}>{fieldErrors[f.key]}</Text> : null}
+              </View>
+            ))}
 
-        {editing && (
-          <Button title="Save Changes" onPress={save} loading={saving} variant="gradient" style={styles.saveBtn} />
+            <View style={styles.editActionsRow}>
+              <Button title="Cancel" variant="outline" onPress={cancelEdit} style={styles.editActionBtn} />
+              <Button
+                title="Save Changes"
+                variant="gradient"
+                onPress={save}
+                loading={saving}
+                disabled={hasErrors}
+                style={styles.editActionBtn}
+              />
+            </View>
+          </>
         )}
       </Card>
+      </>
+      ) : null}
+
+      <TouchableOpacity onPress={confirmLogout} activeOpacity={0.85}>
+        <Card style={styles.logoutCard} elevated>
+          <View style={[styles.logoutIconWrap, { backgroundColor: theme.roseBg }]}>
+            <LogOut size={18} color={theme.rose} />
+          </View>
+          <View style={styles.logoutTextWrap}>
+            <Text style={[styles.logoutTitle, { color: theme.rose }]}>Log out</Text>
+            <Text style={[styles.logoutSubtitle, { color: theme.textMuted }]}>
+              Sign out of this device
+            </Text>
+          </View>
+          <ChevronRight size={18} color={theme.textMuted} />
+        </Card>
+      </TouchableOpacity>
     </ScrollView>
+  );
+}
+
+function renderFieldEditor(f, value, onChange, departmentOptions) {
+  if (f.key === 'dob') {
+    return <DatePickerField label={f.label} value={value} onChange={onChange} />;
+  }
+  if (f.key === 'gender') {
+    return <FormSelect label={f.label} value={value} onChange={onChange} options={GENDER_OPTIONS} />;
+  }
+  if (f.key === 'department') {
+    return (
+      <SelectField
+        label={f.label}
+        value={value}
+        onChange={onChange}
+        options={departmentOptions}
+        placeholder="Select department"
+      />
+    );
+  }
+  return (
+    <FormInput
+      label={f.label}
+      value={value}
+      onChangeText={onChange}
+      placeholder={f.placeholder}
+      keyboardType={f.keyboardType}
+      autoCapitalize={f.autoCapitalize || 'sentences'}
+      multiline={f.multiline}
+    />
   );
 }
 
 function initFormFromUser(user) {
   const form = {};
   ALL_FIELDS.forEach((f) => {
-    form[f.key] = user?.[f.key] != null ? String(user[f.key]) : '';
+    const raw = user?.[f.key] != null ? String(user[f.key]) : '';
+    // Gender is edited via fixed-case chips (MALE/FEMALE/OTHER) — normalise so
+    // the chip for the employee's existing value highlights correctly.
+    form[f.key] = f.key === 'gender' ? raw.toUpperCase() : raw;
   });
   return form;
 }
 
-function ReadonlyRow({ label, value, theme }) {
+function InfoTile({ icon: Icon, label, value, theme }) {
   return (
-    <View style={styles.readonlyRow}>
-      <Text style={[styles.readonlyLabel, { color: theme.textMuted }]}>{label}</Text>
-      <Text style={[styles.readonlyValue, { color: theme.textPrimary }]}>{value || '—'}</Text>
+    <View style={[styles.infoTile, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
+      <View style={[styles.infoIconWrap, { backgroundColor: theme.primary + '15' }]}>
+        <Icon size={14} color={theme.primary} />
+      </View>
+      <Text style={[styles.infoLabel, { color: theme.textMuted }]}>{label}</Text>
+      <Text style={[styles.infoValue, { color: theme.textPrimary }]} numberOfLines={1}>{value || '—'}</Text>
     </View>
   );
 }
@@ -297,10 +450,58 @@ function ReadonlyRow({ label, value, theme }) {
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   content: { padding: 16, paddingBottom: 120 },
-  heroCard: {
+  completionBanner: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 24,
+    gap: 8,
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 12,
     marginBottom: 12,
+  },
+  completionBannerText: {
+    ...typography.caption,
+    fontWeight: '600',
+    flex: 1,
+  },
+  heroCard: {
+    padding: 0,
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  heroBanner: {
+    width: '100%',
+    height: 86,
+  },
+  heroBody: {
+    width: '100%',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingBottom: 22,
+    marginTop: -46,
+  },
+  avatarWrap: {
+    position: 'relative',
+  },
+  avatarRing: {
+    padding: 4,
+    borderRadius: 46,
+    ...shadows.card,
+  },
+  avatarBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+  },
+  uploadingText: {
+    ...typography.micro,
+    marginTop: 8,
   },
   name: {
     ...typography.h3,
@@ -334,28 +535,43 @@ const styles = StyleSheet.create({
     ...typography.micro,
     marginTop: 6,
   },
-  readonlyCard: {
+  infoCard: {
     marginBottom: 12,
     padding: 16,
   },
-  readonlyRow: {
+  infoGrid: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 6,
+    flexWrap: 'wrap',
+    gap: 10,
   },
-  readonlyLabel: {
-    ...typography.body,
+  infoTile: {
+    width: '47%',
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 12,
   },
-  readonlyValue: {
+  infoIconWrap: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  infoLabel: {
+    ...typography.micro,
+  },
+  infoValue: {
     ...typography.body,
-    fontWeight: '600',
+    fontWeight: '700',
+    marginTop: 2,
   },
   aadhaarRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginTop: 8,
-    paddingTop: 8,
+    marginTop: 12,
+    paddingTop: 12,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: 'rgba(148,163,184,0.3)',
   },
@@ -363,8 +579,29 @@ const styles = StyleSheet.create({
     ...typography.caption,
     flex: 1,
   },
-  downloadFormBtn: {
-    marginBottom: 12,
+  downloadCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    marginBottom: 16,
+    gap: 12,
+  },
+  downloadIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  downloadTextWrap: {
+    flex: 1,
+  },
+  downloadTitle: {
+    ...typography.h4,
+  },
+  downloadSubtitle: {
+    ...typography.caption,
+    marginTop: 2,
   },
   tabBar: {
     flexDirection: 'row',
@@ -374,9 +611,12 @@ const styles = StyleSheet.create({
   },
   tabItem: {
     flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
     paddingVertical: 10,
     borderRadius: 12,
-    alignItems: 'center',
   },
   tabLabel: {
     ...typography.caption,
@@ -388,55 +628,95 @@ const styles = StyleSheet.create({
   fieldsHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: 8,
   },
   fieldsTitle: {
     ...typography.h4,
   },
+  editingHint: {
+    ...typography.micro,
+    marginTop: 3,
+  },
   editBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 12,
+    borderWidth: 1,
   },
   editBtnText: {
     ...typography.caption,
     fontWeight: '700',
   },
-  editActions: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  iconBtn: {
-    padding: 4,
-  },
   errorText: {
     ...typography.caption,
     marginBottom: 8,
   },
-  fieldRow: {
-    marginBottom: 14,
+  viewRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+  },
+  viewIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  viewTextWrap: {
+    flex: 1,
   },
   fieldLabel: {
     ...typography.caption,
-    marginBottom: 6,
   },
   fieldValue: {
     ...typography.body,
     fontWeight: '600',
+    marginTop: 2,
   },
-  fieldInput: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
+  editFieldWrap: {
+    marginBottom: 2,
   },
-  fieldInputMultiline: {
-    minHeight: 70,
-    textAlignVertical: 'top',
+  fieldError: {
+    ...typography.micro,
+    marginTop: -10,
+    marginBottom: 10,
   },
-  saveBtn: {
-    marginTop: 8,
+  editActionsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 6,
+  },
+  editActionBtn: {
+    flex: 1,
+  },
+  logoutCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    marginTop: 14,
+    gap: 12,
+  },
+  logoutIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logoutTextWrap: {
+    flex: 1,
+  },
+  logoutTitle: {
+    ...typography.h4,
+  },
+  logoutSubtitle: {
+    ...typography.caption,
+    marginTop: 2,
   },
 });

@@ -64,7 +64,7 @@ export function Button({
         style={[
           styles.buttonBase,
           styles[size],
-          isOutline && { borderBottomColor: theme.border, borderWidth: 1, backgroundColor: theme.surfaceElevated },
+          isOutline && { borderColor: theme.border, borderWidth: 1.5, backgroundColor: theme.surfaceElevated },
           disabled && { opacity: 0.5 },
           style,
         ]}

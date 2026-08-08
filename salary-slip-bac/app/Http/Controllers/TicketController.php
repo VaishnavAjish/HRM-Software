@@ -8,6 +8,7 @@ use App\Models\TicketCategory;
 use App\Models\TicketMessage;
 use App\Models\User;
 use App\Support\AuditLogger;
+use App\Support\TicketNotifier;
 use App\Support\TicketNumber;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -252,6 +253,10 @@ class TicketController extends Controller
             'priority' => $ticket->priority,
         ]);
 
+        // After the transaction commits: a notification about a ticket that
+        // then failed to save would point at nothing.
+        TicketNotifier::created($ticket->load('employee:id,name'), $actor);
+
         return response()->json([
             'status' => true,
             'message' => "Ticket {$ticket->ticket_number} created",
@@ -310,6 +315,8 @@ class TicketController extends Controller
             'ticket_id' => $ticket->id,
             'ticket_number' => $ticket->ticket_number,
         ]);
+
+        TicketNotifier::replied($ticket->load('employee:id,name,role'), $message, $this->actor());
 
         return response()->json([
             'status' => true,
@@ -373,6 +380,8 @@ class TicketController extends Controller
             'status' => $ticket->status,
         ]);
 
+        TicketNotifier::assigned($ticket->load('employee:id,name'), $this->actor());
+
         return response()->json([
             'status' => true,
             'message' => 'Ticket assigned',
@@ -426,10 +435,37 @@ class TicketController extends Controller
             'status' => $next,
         ]);
 
+        TicketNotifier::statusChanged($ticket->load('employee:id,name'), $old, $next, $this->actor());
+
         return response()->json([
             'status' => true,
             'message' => "Ticket marked {$next}",
             'data' => $ticket->fresh(),
+        ]);
+    }
+
+    public function destroy(Request $request, $id)
+    {
+        $ticket = $this->findVisible((int) $id);
+
+        if (! $ticket) {
+            return response()->json(['status' => false, 'message' => 'Ticket not found'], 404);
+        }
+
+        AuditLogger::log($request, 'DELETE', 'Tickets', [
+            'ticket_number' => $ticket->ticket_number,
+            'status' => $ticket->status,
+        ], null);
+
+        DB::transaction(function () use ($ticket) {
+            TicketActivityLog::where('ticket_id', $ticket->id)->delete();
+            TicketMessage::where('ticket_id', $ticket->id)->delete();
+            $ticket->delete();
+        });
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Ticket deleted successfully',
         ]);
     }
 
@@ -458,7 +494,7 @@ class TicketController extends Controller
             return response()->json([
                 'status' => false,
                 'message' => $ticket->status === Ticket::STATUS_RESOLVED
-                    ? 'The '.Ticket::REOPEN_WINDOW_DAYS.'-day window to reopen this ticket has passed.'
+                    ? 'The '.Ticket::reopenWindowDays().'-day window to reopen this ticket has passed.'
                     : 'Only a resolved ticket can be reopened.',
             ], 422);
         }
@@ -737,6 +773,8 @@ class TicketController extends Controller
             'escalation_level' => $ticket->escalation_level,
         ]);
 
+        TicketNotifier::escalated($ticket->fresh()->load('employee:id,name'), $this->actor());
+
         return response()->json([
             'status' => true,
             'message' => "Escalated to level {$ticket->escalation_level}",
@@ -854,19 +892,58 @@ class TicketController extends Controller
     // SLA rules
     // ---------------------------------------------------------------------
 
+    /**
+     * Rules grouped by department, with the company-wide set first.
+     *
+     * `departments` lists what an override can be created for: the departments
+     * that tickets actually carry, plus any that already have one. Offering a
+     * hard-coded list would let an administrator configure a team this company
+     * does not have.
+     */
     public function slaRules()
     {
-        $rules = \App\Models\TicketSlaRule::orderByRaw(
-            "CASE priority WHEN 'urgent' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END"
-        )->get();
+        $rules = \App\Models\TicketSlaRule::orderBy('department')
+            ->orderByRaw("CASE priority WHEN 'urgent' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END")
+            ->get();
 
-        return response()->json(['status' => true, 'data' => $rules]);
+        $fromTickets = Ticket::query()
+            ->visibleTo($this->actor())
+            ->whereNotNull('department')
+            ->where('department', '!=', '')
+            ->distinct()
+            ->pluck('department');
+
+        $fromCategories = TicketCategory::whereNotNull('default_department')
+            ->where('default_department', '!=', '')
+            ->distinct()
+            ->pluck('default_department');
+
+        $departments = $fromTickets
+            ->merge($fromCategories)
+            ->merge($rules->pluck('department'))
+            ->filter(fn ($d) => filled($d))
+            ->unique()
+            ->sort()
+            ->values();
+
+        return response()->json([
+            'status' => true,
+            'data' => [
+                'global' => $rules->where('department', \App\Models\TicketSlaRule::GLOBAL_DEPARTMENT)->values(),
+                'overrides' => $rules->where('department', '!=', \App\Models\TicketSlaRule::GLOBAL_DEPARTMENT)
+                    ->groupBy('department')
+                    ->map(fn ($group) => $group->values()),
+                'departments' => $departments,
+                'priorities' => Ticket::PRIORITIES,
+            ],
+        ]);
     }
 
     public function updateSlaRules(Request $request)
     {
         $data = $request->validate([
             'rules' => 'required|array|min:1',
+            'rules.*.department' => 'nullable|string|max:100',
             'rules.*.priority' => 'required|in:'.implode(',', Ticket::PRIORITIES),
             'rules.*.response_hours' => 'required|integer|min:1|max:720',
             'rules.*.resolution_hours' => 'required|integer|min:1|max:2160',
@@ -874,12 +951,27 @@ class TicketController extends Controller
             'rules.*.escalate_after_hours' => 'required|integer|min:1|max:720',
         ]);
 
-        $before = \App\Models\TicketSlaRule::all()->keyBy('priority')->toArray();
+        // Rejected rather than silently corrected: a first-response target after
+        // the resolution deadline is almost certainly a typo, and quietly
+        // "fixing" it would hide the mistake behind numbers that look saved.
+        foreach ($data['rules'] as $index => $rule) {
+            if ($rule['response_hours'] > $rule['resolution_hours']) {
+                return response()->json([
+                    'status' => false,
+                    'message' => "Row {$index}: first response ({$rule['response_hours']}h) cannot be later than resolution ({$rule['resolution_hours']}h).",
+                ], 422);
+            }
+        }
+
+        $before = \App\Models\TicketSlaRule::all()->toArray();
 
         DB::transaction(function () use ($data) {
             foreach ($data['rules'] as $rule) {
                 \App\Models\TicketSlaRule::updateOrCreate(
-                    ['priority' => $rule['priority']],
+                    [
+                        'department' => trim((string) ($rule['department'] ?? '')),
+                        'priority' => $rule['priority'],
+                    ],
                     [
                         'response_hours' => $rule['response_hours'],
                         'resolution_hours' => $rule['resolution_hours'],
@@ -897,8 +989,209 @@ class TicketController extends Controller
         return response()->json([
             'status' => true,
             'message' => 'SLA rules saved. They apply to tickets raised from now on.',
-            'data' => \App\Models\TicketSlaRule::all(),
         ]);
+    }
+
+    /** Remove a department's override; it falls back to the global rules. */
+    public function deleteSlaOverride(Request $request, string $department)
+    {
+        $department = trim($department);
+
+        if ($department === \App\Models\TicketSlaRule::GLOBAL_DEPARTMENT) {
+            return response()->json([
+                'status' => false,
+                'message' => 'The company-wide rules cannot be removed — every ticket falls back to them.',
+            ], 422);
+        }
+
+        $deleted = \App\Models\TicketSlaRule::where('department', $department)->delete();
+
+        if ($deleted === 0) {
+            return response()->json(['status' => false, 'message' => 'No override found for that department'], 404);
+        }
+
+        AuditLogger::log($request, 'DELETE', 'Ticket SLA Rules', ['department' => $department], null);
+
+        return response()->json([
+            'status' => true,
+            'message' => "{$department} now follows the company-wide rules.",
+        ]);
+    }
+
+    // ---------------------------------------------------------------------
+    // Helpdesk settings
+    // ---------------------------------------------------------------------
+
+    public function settings()
+    {
+        return response()->json([
+            'status' => true,
+            'data' => [
+                'settings' => \App\Support\HelpdeskSettings::all(),
+                'priorities' => Ticket::PRIORITIES,
+            ],
+        ]);
+    }
+
+    public function updateSettings(Request $request)
+    {
+        $data = $request->validate([
+            'reopen_window_days' => 'required|integer|min:1|max:365',
+            'auto_close_resolved_days' => 'required|integer|min:0|max:365',
+            'default_priority' => 'required|in:'.implode(',', Ticket::PRIORITIES),
+            'allow_manager_assignment' => 'required|boolean',
+        ]);
+
+        $before = \App\Support\HelpdeskSettings::all();
+
+        $values = [
+            'helpdesk.reopen_window_days' => (string) $data['reopen_window_days'],
+            'helpdesk.auto_close_resolved_days' => (string) $data['auto_close_resolved_days'],
+            'helpdesk.default_priority' => $data['default_priority'],
+            'helpdesk.allow_manager_assignment' => $data['allow_manager_assignment'] ? 'true' : 'false',
+        ];
+
+        DB::transaction(function () use ($values) {
+            foreach ($values as $key => $value) {
+                \App\Models\Setting::updateOrCreate(
+                    ['key' => $key],
+                    ['value' => $value, 'group' => \App\Support\HelpdeskSettings::GROUP]
+                );
+            }
+        });
+
+        // The rest of this request must see the new values, not the ones cached
+        // when it started.
+        \App\Support\HelpdeskSettings::flush();
+
+        AuditLogger::log($request, 'UPDATE', 'Helpdesk Settings', $before, $values);
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Helpdesk settings saved',
+            'data' => ['settings' => \App\Support\HelpdeskSettings::all()],
+        ]);
+    }
+
+    // ---------------------------------------------------------------------
+    // Categories
+    // ---------------------------------------------------------------------
+
+    /** Admin view: inactive categories included, with usage counts. */
+    public function allCategories()
+    {
+        $categories = TicketCategory::withCount('tickets')
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get();
+
+        return response()->json(['status' => true, 'data' => $categories]);
+    }
+
+    public function storeCategory(Request $request)
+    {
+        $data = $request->validate([
+            'name' => 'required|string|max:100',
+            'description' => 'nullable|string|max:500',
+            'default_department' => 'nullable|string|max:100',
+            'is_active' => 'sometimes|boolean',
+            'sort_order' => 'nullable|integer|min:0|max:9999',
+        ]);
+
+        $slug = $this->uniqueSlug($data['name']);
+
+        $category = TicketCategory::create([
+            'name' => $data['name'],
+            'slug' => $slug,
+            'description' => $data['description'] ?? null,
+            'default_department' => $data['default_department'] ?? null,
+            'is_active' => $data['is_active'] ?? true,
+            // Appended to the end by default so a new category does not jump the
+            // order an administrator has already arranged.
+            'sort_order' => $data['sort_order'] ?? ((int) TicketCategory::max('sort_order') + 10),
+        ]);
+
+        AuditLogger::log($request, 'CREATE', 'Ticket Categories', null, $category->toArray());
+
+        return response()->json(['status' => true, 'message' => 'Category created', 'data' => $category], 201);
+    }
+
+    public function updateCategory(Request $request, $id)
+    {
+        $category = TicketCategory::find($id);
+
+        if (! $category) {
+            return response()->json(['status' => false, 'message' => 'Category not found'], 404);
+        }
+
+        $data = $request->validate([
+            'name' => 'sometimes|required|string|max:100',
+            'description' => 'nullable|string|max:500',
+            'default_department' => 'nullable|string|max:100',
+            'is_active' => 'sometimes|boolean',
+            'sort_order' => 'nullable|integer|min:0|max:9999',
+        ]);
+
+        $before = $category->toArray();
+
+        // The slug is the stable handle rows and seeds key on, so renaming a
+        // category changes its label, not its identity.
+        $category->update($data);
+
+        AuditLogger::log($request, 'UPDATE', 'Ticket Categories', $before, $category->fresh()->toArray());
+
+        return response()->json(['status' => true, 'message' => 'Category updated', 'data' => $category->fresh()]);
+    }
+
+    /**
+     * Deactivate, or delete only when nothing has ever used it.
+     *
+     * Deleting a category with tickets behind it would null their category_id
+     * and quietly rewrite history — the reports would lose the breakdown and the
+     * tickets would show "Uncategorised" for work that was categorised at the
+     * time. Deactivating keeps the record and just takes it off the raise form.
+     */
+    public function destroyCategory(Request $request, $id)
+    {
+        $category = TicketCategory::withCount('tickets')->find($id);
+
+        if (! $category) {
+            return response()->json(['status' => false, 'message' => 'Category not found'], 404);
+        }
+
+        $before = $category->toArray();
+
+        if ($category->tickets_count > 0) {
+            $category->update(['is_active' => false]);
+
+            AuditLogger::log($request, 'DEACTIVATE', 'Ticket Categories', $before, $category->fresh()->toArray());
+
+            return response()->json([
+                'status' => true,
+                'message' => "{$category->name} has {$category->tickets_count} ticket(s), so it was deactivated rather than deleted. It is hidden from the raise form and its history is intact.",
+                'data' => $category->fresh(),
+            ]);
+        }
+
+        $category->delete();
+
+        AuditLogger::log($request, 'DELETE', 'Ticket Categories', $before, null);
+
+        return response()->json(['status' => true, 'message' => 'Category deleted']);
+    }
+
+    private function uniqueSlug(string $name): string
+    {
+        $base = \Illuminate\Support\Str::slug($name) ?: 'category';
+        $slug = $base;
+        $suffix = 2;
+
+        while (TicketCategory::where('slug', $slug)->exists()) {
+            $slug = "{$base}-{$suffix}";
+            $suffix++;
+        }
+
+        return $slug;
     }
 
     // ---------------------------------------------------------------------

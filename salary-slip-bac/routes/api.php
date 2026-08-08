@@ -37,6 +37,7 @@ use App\Http\Controllers\Api\V1\DocumentController as V1DocumentController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\SalariesSlipController;
+use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\TicketController;
 use App\Http\Controllers\UserController;
@@ -416,6 +417,21 @@ Route::middleware('jwt.auth')->group(function () {
     Route::get('/department/get', [AdminController::class, 'getDepartment'])->middleware('throttle:60,1');
 
     /*
+     * In-app notifications — the caller's own, whatever their role.
+     *
+     * No permission gate: these are rows addressed to this user by id, and the
+     * controller never looks anything up without that anchor. The bell polls
+     * unread-count, so it is throttled a little more loosely than the feed.
+     */
+    Route::group(['prefix' => 'notifications', 'middleware' => 'module.schema:notifications'], function () {
+        Route::get('/', [NotificationController::class, 'index'])->middleware('throttle:120,1');
+        Route::get('unread-count', [NotificationController::class, 'unreadCount'])->middleware('throttle:240,1');
+        Route::post('{id}/read', [NotificationController::class, 'markRead'])->whereNumber('id');
+        Route::post('read-all', [NotificationController::class, 'markAllRead']);
+        Route::delete('{id}', [NotificationController::class, 'destroy'])->whereNumber('id');
+    });
+
+    /*
      * Support tickets.
      *
      * Not split into admin/ and employee/ trees: these are the same rows seen
@@ -443,6 +459,7 @@ Route::middleware('jwt.auth')->group(function () {
             Route::get('assignees', [TicketController::class, 'assignees'])->middleware('permission:support.ticket.assign');
             Route::put('{id}/assign', [TicketController::class, 'assign'])->whereNumber('id')->middleware('permission:support.ticket.assign');
             Route::put('{id}/status', [TicketController::class, 'updateStatus'])->whereNumber('id')->middleware('permission:support.ticket.update');
+            Route::delete('{id}', [TicketController::class, 'destroy'])->whereNumber('id')->middleware('permission:support.ticket.update');
             Route::post('{id}/escalate', [TicketController::class, 'escalate'])->whereNumber('id')->middleware('permission:support.ticket.update');
 
             // One action over a selection. Throttled because a single call can
@@ -453,6 +470,21 @@ Route::middleware('jwt.auth')->group(function () {
 
             Route::get('sla-rules', [TicketController::class, 'slaRules'])->middleware('permission:support.ticket.read');
             Route::put('sla-rules', [TicketController::class, 'updateSlaRules'])->middleware('permission:support.ticket.update');
+            // {department} is a free-text name, so it is not constrained to a
+            // number the way the id routes are.
+            Route::delete('sla-rules/{department}', [TicketController::class, 'deleteSlaOverride'])
+                ->middleware('permission:support.ticket.update');
+
+            Route::get('settings', [TicketController::class, 'settings'])->middleware('permission:support.ticket.read');
+            Route::put('settings', [TicketController::class, 'updateSettings'])->middleware('permission:support.ticket.update');
+
+            // Admin category management. The unauthenticated-to-staff read at
+            // /tickets/categories above stays active-only; this one shows the
+            // inactive ones too, with usage counts.
+            Route::get('categories/manage', [TicketController::class, 'allCategories'])->middleware('permission:support.ticket.read');
+            Route::post('categories', [TicketController::class, 'storeCategory'])->middleware('permission:support.ticket.update');
+            Route::put('categories/{id}', [TicketController::class, 'updateCategory'])->whereNumber('id')->middleware('permission:support.ticket.update');
+            Route::delete('categories/{id}', [TicketController::class, 'destroyCategory'])->whereNumber('id')->middleware('permission:support.ticket.update');
         });
     });
 

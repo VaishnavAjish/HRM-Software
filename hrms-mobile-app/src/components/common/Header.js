@@ -1,31 +1,25 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
-import { Sun, Moon, Shield, User, LogOut } from 'lucide-react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { Bell } from 'lucide-react-native';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { typography } from '../../theme';
 import { Avatar } from './Avatar';
+import { NotificationPanel } from './NotificationPanel';
+import { useNotifications } from '../../hooks/useNotifications';
 
 export function Header({ onNavigateProfile }) {
-  const { theme, isDark, toggleTheme } = useTheme();
-  const { user, role, logout } = useAuth();
+  const { theme } = useTheme();
+  const { user } = useAuth();
+  const [panelOpen, setPanelOpen] = useState(false);
+  const notifications = useNotifications();
 
   const firstName = (user?.name || '').split(' ')[0] || 'there';
-  const isAgent = role === 'agent';
-
-  const confirmLogout = () => {
-    Alert.alert('Log out', 'You will need to sign in again to continue.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Log out', style: 'destructive', onPress: logout },
-    ]);
-  };
+  const { unread } = notifications;
 
   return (
     <View style={[styles.headerContainer, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
       <View style={styles.leftSection}>
-        <TouchableOpacity onPress={onNavigateProfile} activeOpacity={0.8}>
-          <Avatar name={user?.name} uri={user?.photo} size={42} ringColor={theme.primary} />
-        </TouchableOpacity>
         <View style={styles.titleWrapper}>
           <Text style={[styles.greetingText, { color: theme.textMuted }]}>Welcome back,</Text>
           <Text style={[styles.userNameText, { color: theme.textPrimary }]} numberOfLines={1}>
@@ -35,34 +29,25 @@ export function Header({ onNavigateProfile }) {
       </View>
 
       <View style={styles.rightSection}>
-        <View
-          style={[
-            styles.roleBadge,
-            { backgroundColor: isAgent ? theme.violetBg : theme.cyanBg, borderColor: isAgent ? theme.violet : theme.cyan },
-          ]}
-        >
-          {isAgent ? <Shield size={12} color={theme.violet} /> : <User size={12} color={theme.cyan} />}
-          <Text style={[styles.roleText, { color: isAgent ? theme.violet : theme.cyan }]}>
-            {isAgent ? 'Agent' : 'Employee'}
-          </Text>
-        </View>
-
         <TouchableOpacity
           style={[styles.iconButton, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}
-          onPress={toggleTheme}
+          onPress={() => setPanelOpen(true)}
           activeOpacity={0.7}
         >
-          {isDark ? <Sun size={18} color="#F59E0B" /> : <Moon size={18} color="#6366F1" />}
+          <Bell size={18} color={theme.textSecondary} />
+          {unread > 0 ? (
+            <View style={[styles.badge, { backgroundColor: theme.rose, borderColor: theme.surface }]}>
+              <Text style={styles.badgeText}>{unread > 9 ? '9+' : unread}</Text>
+            </View>
+          ) : null}
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.iconButton, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}
-          onPress={confirmLogout}
-          activeOpacity={0.7}
-        >
-          <LogOut size={18} color={theme.rose} />
+        <TouchableOpacity onPress={onNavigateProfile} activeOpacity={0.8}>
+          <Avatar name={user?.name} uri={user?.photo} size={42} />
         </TouchableOpacity>
       </View>
+
+      <NotificationPanel visible={panelOpen} onClose={() => setPanelOpen(false)} {...notifications} />
     </View>
   );
 }
@@ -83,7 +68,6 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   titleWrapper: {
-    marginLeft: 12,
     flexShrink: 1,
   },
   greetingText: {
@@ -95,20 +79,7 @@ const styles = StyleSheet.create({
   rightSection: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-  },
-  roleBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 20,
-    borderWidth: 1,
-    gap: 4,
-  },
-  roleText: {
-    ...typography.caption,
-    fontWeight: '600',
+    gap: 10,
   },
   iconButton: {
     width: 38,
@@ -117,5 +88,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
+  },
+  badge: {
+    position: 'absolute',
+    top: -3,
+    right: -3,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  badgeText: {
+    color: '#FFFFFF',
+    fontSize: 9.5,
+    fontWeight: '800',
   },
 });

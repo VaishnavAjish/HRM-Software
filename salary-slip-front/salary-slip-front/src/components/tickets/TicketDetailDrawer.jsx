@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import {
   X, Send, Clock, User as UserIcon, Building2, Tag, Loader2,
-  RotateCcw, Lock, ShieldAlert,
+  RotateCcw, Lock, ShieldAlert, Copy, Check, Calendar,
+  UserCheck, Ticket as TicketIcon, MessageSquare, History,
 } from "lucide-react";
 import Badge from "../ui/Badge";
 import { ticketApi } from "../../utils/api";
@@ -10,15 +11,7 @@ import { useAuth } from "../../context/AuthContext";
 import { statusMeta, priorityMeta, formatDateTime } from "./ticketMeta";
 
 /**
- * The one ticket detail surface, opened from the employee list and the admin
- * queue alike.
- *
- * What each viewer may do is taken from the server's `meta` block
- * (can_reply / can_reopen / next_statuses / is_staff) rather than re-derived
- * from the user's role here. The API is the thing that enforces those rules, so
- * mirroring its answer keeps the buttons and the outcome in agreement — a
- * locally computed "you can close this" that the server then rejects is worse
- * than not offering it.
+ * The ticket detail surface.
  */
 export default function TicketDetailDrawer({ ticketId, onClose, onChanged }) {
   const { user } = useAuth();
@@ -33,17 +26,13 @@ export default function TicketDetailDrawer({ ticketId, onClose, onChanged }) {
   const [assignees, setAssignees] = useState([]);
   const [reopenOpen, setReopenOpen] = useState(false);
   const [reopenReason, setReopenReason] = useState("");
+  const [copied, setCopied] = useState(false);
 
   const threadEndRef = useRef(null);
 
-  // Pulled out of `user` so the only values these effects depend on are the two
-  // strings they actually use — depending on the whole object re-runs them on
-  // every unrelated change to the signed-in user.
   const accessToken = user?.accessToken;
   const tokenType = user?.tokenType;
 
-  // Every setState happens after an await, so calling this from an effect does
-  // not cascade a render — same shape as EmployeeMasterTable's loader.
   const requestTicket = async () => {
     try {
       const res = await ticketApi.getTicket(ticketId, accessToken, tokenType);
@@ -59,12 +48,9 @@ export default function TicketDetailDrawer({ ticketId, onClose, onChanged }) {
   const load = () =>
     requestTicket().catch((err) => toast.error(err.message || "Failed to load ticket"));
 
-  // Raising the spinner during render rather than inside the effect: switching
-  // to another ticket must show the loading state, and a synchronous setState in
-  // an effect body is exactly the cascading render React warns about.
-  const [ticketSeen, setTicketSeen] = useState(ticketId);
-  if (ticketSeen !== ticketId) {
-    setTicketSeen(ticketId);
+  const [seen, setSeen] = useState(ticketId);
+  if (seen !== ticketId) {
+    setSeen(ticketId);
     setLoading(true);
   }
 
@@ -73,20 +59,14 @@ export default function TicketDetailDrawer({ ticketId, onClose, onChanged }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ticketId]);
 
-  // Only staff can assign, so the list is only fetched for them — an employee
-  // requesting it would get a 403 and a toast for something they never asked for.
   useEffect(() => {
     if (!meta?.is_staff) return undefined;
 
     let cancelled = false;
     ticketApi
       .getAssignees(accessToken, tokenType)
-      .then((res) => {
-        if (!cancelled && res?.status) setAssignees(res.data || []);
-      })
-      .catch(() => {
-        // Non-fatal: the drawer still works, the assign control just stays empty.
-      });
+      .then((res) => { if (!cancelled && res?.status) setAssignees(res.data || []); })
+      .catch(() => { /* the assign control stays empty */ });
 
     return () => { cancelled = true; };
   }, [meta?.is_staff, accessToken, tokenType]);
@@ -100,6 +80,15 @@ export default function TicketDetailDrawer({ ticketId, onClose, onChanged }) {
     onChanged?.();
   };
 
+  const copyTicketNumber = () => {
+    if (ticket?.ticket_number) {
+      navigator.clipboard.writeText(ticket.ticket_number);
+      setCopied(true);
+      toast.success("Ticket number copied!");
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
   const sendReply = async (e) => {
     e.preventDefault();
     if (!reply.trim()) return;
@@ -109,8 +98,8 @@ export default function TicketDetailDrawer({ ticketId, onClose, onChanged }) {
       const res = await ticketApi.reply(
         ticketId,
         { message: reply.trim(), is_internal: internal },
-        user?.accessToken,
-        user?.tokenType,
+        accessToken,
+        tokenType,
       );
       if (res?.status) {
         setReply("");
@@ -126,16 +115,12 @@ export default function TicketDetailDrawer({ ticketId, onClose, onChanged }) {
     }
   };
 
-  const changeStatus = async (status) => {
-    setBusyAction(status);
+  const changeStatus = async (newStatus) => {
+    setBusyAction(newStatus);
     try {
-      const res = await ticketApi.updateStatus(ticketId, { status }, accessToken, tokenType);
-      if (res?.status) {
-        toast.success(res.message || "Status updated");
-        await refresh();
-      } else {
-        toast.error(res?.message || "Failed to update status");
-      }
+      const res = await ticketApi.updateStatus(ticketId, { status: newStatus }, accessToken, tokenType);
+      res?.status ? toast.success(res.message || "Status updated") : toast.error(res?.message || "Failed");
+      if (res?.status) await refresh();
     } catch (err) {
       toast.error(err.message || "Failed to update status");
     } finally {
@@ -148,12 +133,8 @@ export default function TicketDetailDrawer({ ticketId, onClose, onChanged }) {
     setBusyAction("assign");
     try {
       const res = await ticketApi.assign(ticketId, { assigned_to: Number(assignedTo) }, accessToken, tokenType);
-      if (res?.status) {
-        toast.success("Ticket assigned");
-        await refresh();
-      } else {
-        toast.error(res?.message || "Failed to assign");
-      }
+      res?.status ? toast.success("Ticket assigned") : toast.error(res?.message || "Failed to assign");
+      if (res?.status) await refresh();
     } catch (err) {
       toast.error(err.message || "Failed to assign");
     } finally {
@@ -169,7 +150,7 @@ export default function TicketDetailDrawer({ ticketId, onClose, onChanged }) {
     try {
       const res = await ticketApi.reopen(ticketId, reopenReason.trim(), accessToken, tokenType);
       if (res?.status) {
-        toast.success("Ticket reopened");
+        toast.success(res.message || "Ticket reopened");
         setReopenOpen(false);
         setReopenReason("");
         await refresh();
@@ -187,8 +168,7 @@ export default function TicketDetailDrawer({ ticketId, onClose, onChanged }) {
   const priority = priorityMeta(ticket?.priority);
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/50 backdrop-blur-sm">
-      {/* Clicking away closes, matching the other drawers in the app. */}
+    <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/60 backdrop-blur-sm transition-opacity">
       <button
         type="button"
         aria-label="Close ticket details"
@@ -197,20 +177,29 @@ export default function TicketDetailDrawer({ ticketId, onClose, onChanged }) {
       />
 
       <div className="flex h-full w-full max-w-2xl flex-col bg-white shadow-2xl dark:bg-[#0b0f1a]">
-        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-gray-200 px-5 py-4 dark:border-white/10">
-          <div className="min-w-0">
+        {/* Header */}
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-gray-100 bg-gray-50/50 px-6 py-4 dark:border-white/10 dark:bg-white/[0.02]">
+          <div className="min-w-0 flex-1">
             {loading ? (
-              <div className="h-5 w-40 animate-pulse rounded bg-gray-200 dark:bg-gray-700" />
+              <div className="space-y-2">
+                <div className="h-4 w-32 animate-pulse rounded-md bg-gray-200 dark:bg-gray-700" />
+                <div className="h-6 w-3/4 animate-pulse rounded-md bg-gray-200 dark:bg-gray-700" />
+              </div>
             ) : (
               <>
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-mono text-xs font-bold text-brand-600 dark:text-brand-400">
+                  <button
+                    onClick={copyTicketNumber}
+                    title="Click to copy ticket number"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50/80 px-2.5 py-0.5 font-mono text-xs font-bold text-brand-700 transition hover:bg-brand-100 dark:border-brand-900/50 dark:bg-brand-950/50 dark:text-brand-300 dark:hover:bg-brand-900/50"
+                  >
                     {ticket?.ticket_number}
-                  </span>
+                    {copied ? <Check size={12} className="text-emerald-600" /> : <Copy size={12} className="opacity-60" />}
+                  </button>
                   <Badge variant={status.tone}>{status.label}</Badge>
                   <Badge variant={priority.tone}>{priority.label}</Badge>
                 </div>
-                <h2 className="mt-1 break-words text-base font-bold text-gray-900 dark:text-white">
+                <h2 className="mt-2 break-words text-lg font-extrabold text-gray-900 dark:text-white">
                   {ticket?.subject}
                 </h2>
               </>
@@ -218,7 +207,7 @@ export default function TicketDetailDrawer({ ticketId, onClose, onChanged }) {
           </div>
           <button
             onClick={onClose}
-            className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+            className="rounded-full p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-white/10 dark:hover:text-gray-200"
           >
             <X size={18} />
           </button>
@@ -226,77 +215,113 @@ export default function TicketDetailDrawer({ ticketId, onClose, onChanged }) {
 
         {loading ? (
           <div className="flex flex-1 items-center justify-center">
-            <Loader2 className="animate-spin text-brand-500" size={22} />
+            <Loader2 className="animate-spin text-brand-500" size={24} />
           </div>
         ) : !ticket ? (
-          <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center text-gray-400">
-            <ShieldAlert size={30} />
-            <p className="text-sm">This ticket is not available.</p>
+          <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center text-gray-400">
+            <ShieldAlert size={34} />
+            <p className="text-sm font-medium">This ticket is not available.</p>
           </div>
         ) : (
           <>
-            <div className="flex-1 overflow-y-auto px-5 py-4">
-              <dl className="mb-5 grid grid-cols-2 gap-x-4 gap-y-3 rounded-xl bg-gray-50 p-3 text-xs dark:bg-white/5">
-                <Detail icon={UserIcon} label="Raised by" value={ticket.employee?.name} sub={ticket.employee?.emp_code} />
-                <Detail icon={Tag} label="Category" value={ticket.category?.name} />
-                <Detail
+            <div className="flex-1 overflow-y-auto px-6 py-5">
+              {/* Metadata Grid */}
+              <div className="mb-5 grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+                <DetailCard
+                  icon={UserIcon}
+                  label="Raised By"
+                  value={ticket.employee?.name}
+                  sub={ticket.employee?.emp_code ? `(${ticket.employee.emp_code})` : null}
+                  iconBg="bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400"
+                />
+                <DetailCard
+                  icon={Tag}
+                  label="Category"
+                  value={ticket.category?.name}
+                  iconBg="bg-purple-50 text-purple-600 dark:bg-purple-950/50 dark:text-purple-400"
+                />
+                <DetailCard
                   icon={Building2}
                   label="Company / Unit"
-                  value={ticket.company_code || "—"}
+                  value={ticket.company_code}
                   sub={ticket.unit}
+                  iconBg="bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400"
                 />
-                <Detail
-                  icon={UserIcon}
-                  label="Assigned to"
+                <DetailCard
+                  icon={UserCheck}
+                  label="Assigned To"
                   value={ticket.assignee?.name || "Unassigned"}
-                  sub={ticket.assignee?.emp_code}
+                  sub={ticket.assignee?.emp_code ? `(${ticket.assignee.emp_code})` : null}
+                  iconBg="bg-sky-50 text-sky-600 dark:bg-sky-950/50 dark:text-sky-400"
                 />
-                <Detail icon={Clock} label="Created" value={formatDateTime(ticket.created_at)} />
-                <Detail icon={Clock} label="Last activity" value={formatDateTime(ticket.last_activity_at)} />
-              </dl>
+                <DetailCard
+                  icon={Calendar}
+                  label="Created"
+                  value={formatDateTime(ticket.created_at)}
+                  iconBg="bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"
+                />
+                <DetailCard
+                  icon={Clock}
+                  label="Last Activity"
+                  value={formatDateTime(ticket.last_activity_at)}
+                  iconBg="bg-amber-50 text-amber-600 dark:bg-amber-950/50 dark:text-amber-400"
+                />
+              </div>
 
-              <section className="mb-5">
-                <h3 className="mb-1.5 text-[10px] font-bold uppercase tracking-widest text-gray-400">
-                  Description
+              {/* Description */}
+              <section className="mb-6 rounded-2xl border border-gray-100 bg-gray-50/60 p-4 dark:border-white/10 dark:bg-white/[0.02]">
+                <h3 className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                  <TicketIcon size={14} className="text-brand-500" /> Issue Description
                 </h3>
-                <p className="whitespace-pre-wrap break-words rounded-xl border border-gray-200 p-3 text-sm text-gray-800 dark:border-white/10 dark:text-gray-200">
+                <p className="whitespace-pre-wrap break-words text-xs leading-relaxed text-gray-800 dark:text-gray-200">
                   {ticket.description}
                 </p>
               </section>
 
-              <section className="mb-5">
-                <h3 className="mb-2 text-[10px] font-bold uppercase tracking-widest text-gray-400">
-                  Conversation
+              {/* Messages */}
+              <section className="mb-6">
+                <h3 className="mb-3 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                  <MessageSquare size={14} className="text-brand-500" /> Conversation ({(ticket.messages || []).length})
                 </h3>
                 {(ticket.messages || []).length === 0 ? (
-                  <p className="rounded-xl border border-dashed border-gray-200 px-3 py-6 text-center text-xs text-gray-400 dark:border-white/10">
-                    No replies yet.
-                  </p>
+                  <div className="rounded-2xl border border-dashed border-gray-200 py-8 text-center dark:border-white/10">
+                    <MessageSquare size={24} className="mx-auto text-gray-300 dark:text-gray-600" />
+                    <p className="mt-2 text-xs font-medium text-gray-400">No replies yet.</p>
+                  </div>
                 ) : (
-                  <ul className="space-y-2.5">
+                  <ul className="space-y-3">
                     {ticket.messages.map((message) => {
                       const mine = String(message.sender_id) === String(user?.id);
                       return (
                         <li
                           key={message.id}
-                          className={`rounded-xl border p-3 ${
+                          className={`rounded-2xl border p-4 shadow-2xs transition ${
                             message.is_internal
-                              ? "border-amber-300 bg-amber-50 dark:border-amber-500/40 dark:bg-amber-500/10"
+                              ? "border-amber-200 bg-amber-50/80 dark:border-amber-500/30 dark:bg-amber-950/20"
                               : mine
-                                ? "border-brand-200 bg-brand-50 dark:border-brand-500/30 dark:bg-brand-500/10"
-                                : "border-gray-200 bg-white dark:border-white/10 dark:bg-white/5"
+                                ? "border-brand-200 bg-brand-50/60 dark:border-brand-500/30 dark:bg-brand-950/20"
+                                : "border-gray-100 bg-white dark:border-white/5 dark:bg-white/5"
                           }`}
                         >
-                          <div className="mb-1 flex flex-wrap items-center gap-2">
-                            <span className="text-xs font-semibold text-gray-900 dark:text-white">
-                              {message.sender?.name || "Unknown"}
-                            </span>
-                            {message.is_internal && <Badge variant="yellow">Internal note</Badge>}
-                            <span className="ml-auto text-[10px] text-gray-400">
+                          <div className="mb-2 flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-brand-100 font-bold text-brand-700 text-[10px] dark:bg-brand-900/50 dark:text-brand-300">
+                                {(message.sender?.name || "U")[0]}
+                              </span>
+                              <span className="text-xs font-bold text-gray-900 dark:text-white">
+                                {message.sender?.name || "Unknown"}
+                              </span>
+                              {message.is_internal && (
+                                <span className="inline-flex items-center gap-1 rounded-md bg-amber-200/80 px-2 py-0.5 text-[10px] font-bold text-amber-900 dark:bg-amber-900/50 dark:text-amber-200">
+                                  <Lock size={10} /> Internal Note
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-[10px] font-medium text-gray-400">
                               {formatDateTime(message.created_at)}
                             </span>
                           </div>
-                          <p className="whitespace-pre-wrap break-words text-sm text-gray-700 dark:text-gray-200">
+                          <p className="whitespace-pre-wrap break-words text-xs leading-relaxed text-gray-800 dark:text-gray-200">
                             {message.message}
                           </p>
                         </li>
@@ -307,40 +332,47 @@ export default function TicketDetailDrawer({ ticketId, onClose, onChanged }) {
                 <div ref={threadEndRef} />
               </section>
 
+              {/* Activity Logs */}
               {(ticket.activity_logs || []).length > 0 && (
                 <section>
-                  <h3 className="mb-2 text-[10px] font-bold uppercase tracking-widest text-gray-400">
-                    Timeline
+                  <h3 className="mb-3 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                    <History size={14} className="text-brand-500" /> Activity Log ({(ticket.activity_logs || []).length})
                   </h3>
-                  <ul className="space-y-1.5 border-l border-gray-200 pl-3 dark:border-white/10">
+                  <div className="relative border-l-2 border-gray-100 pl-4 space-y-4 dark:border-white/10">
                     {ticket.activity_logs.map((log) => (
-                      <li key={log.id} className="text-xs text-gray-500 dark:text-gray-400">
-                        <span className="font-semibold text-gray-700 dark:text-gray-200">
-                          {log.action.replaceAll("_", " ").toLowerCase()}
-                        </span>
-                        {log.new_status ? ` → ${statusMeta(log.new_status).label}` : ""}
-                        {log.performer?.name ? ` · ${log.performer.name}` : ""}
-                        <span className="ml-1 text-gray-400">{formatDateTime(log.created_at)}</span>
-                        {log.remarks && (
-                          <p className="mt-0.5 italic text-gray-400">“{log.remarks}”</p>
-                        )}
-                      </li>
+                      <div key={log.id} className="relative text-xs">
+                        <div className="absolute -left-[21px] top-1 h-2.5 w-2.5 rounded-full border-2 border-white bg-brand-500 dark:border-gray-900" />
+                        <div className="flex flex-wrap items-center gap-1.5 font-medium text-gray-700 dark:text-gray-300">
+                          <span className="font-bold text-gray-900 dark:text-white">
+                            {log.action.replaceAll("_", " ").toLowerCase()}
+                          </span>
+                          {log.new_status && (
+                            <span className="rounded-md bg-gray-100 px-1.5 py-0.5 font-bold text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                              → {statusMeta(log.new_status).label}
+                            </span>
+                          )}
+                          {log.performer?.name && <span className="text-gray-500">by {log.performer.name}</span>}
+                          <span className="ml-auto text-[10px] text-gray-400">{formatDateTime(log.created_at)}</span>
+                        </div>
+                        {log.remarks && <p className="mt-1 italic text-gray-500 dark:text-gray-400">“{log.remarks}”</p>}
+                      </div>
                     ))}
-                  </ul>
+                  </div>
                 </section>
               )}
             </div>
 
-            <div className="shrink-0 space-y-3 border-t border-gray-200 px-5 py-3 dark:border-white/10">
+            {/* Footer Panel */}
+            <div className="shrink-0 space-y-4 border-t border-gray-200 bg-gray-50/80 p-5 dark:border-white/10 dark:bg-white/[0.02]">
               {meta?.is_staff && (
                 <div className="flex flex-wrap items-center gap-2">
                   <select
                     value=""
                     disabled={busyAction === "assign" || ticket.status === "closed"}
                     onChange={(e) => assignTo(e.target.value)}
-                    className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs text-gray-700 outline-none disabled:opacity-50 dark:border-white/10 dark:bg-gray-800 dark:text-gray-200"
+                    className="rounded-xl border border-gray-200 bg-white py-2 pl-3 pr-8 text-xs font-bold text-gray-700 shadow-2xs outline-none focus:border-brand-500 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
                   >
-                    <option value="">Assign to…</option>
+                    <option value="">Assign ticket to…</option>
                     {assignees.map((person) => (
                       <option key={person.id} value={person.id}>
                         {person.name} {person.emp_code ? `(${person.emp_code})` : ""}
@@ -353,7 +385,7 @@ export default function TicketDetailDrawer({ ticketId, onClose, onChanged }) {
                       key={next}
                       onClick={() => changeStatus(next)}
                       disabled={busyAction === next}
-                      className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-brand-700 disabled:opacity-50"
+                      className={`rounded-xl px-3.5 py-2 text-xs font-bold shadow-2xs transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 ${statusBtnStyle(next)}`}
                     >
                       {busyAction === next ? "Saving…" : `Mark ${statusMeta(next).label}`}
                     </button>
@@ -364,34 +396,34 @@ export default function TicketDetailDrawer({ ticketId, onClose, onChanged }) {
               {meta?.can_reopen && !reopenOpen && (
                 <button
                   onClick={() => setReopenOpen(true)}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-50 dark:border-white/10 dark:text-gray-200 dark:hover:bg-white/5"
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-gray-300 bg-white px-3.5 py-2 text-xs font-bold text-gray-700 shadow-2xs transition hover:bg-gray-50 dark:border-white/10 dark:bg-gray-800 dark:text-gray-200"
                 >
-                  <RotateCcw size={13} /> Reopen ticket
+                  <RotateCcw size={14} /> Reopen Ticket
                 </button>
               )}
 
               {reopenOpen && (
-                <form onSubmit={submitReopen} className="space-y-2">
+                <form onSubmit={submitReopen} className="space-y-3">
                   <textarea
                     value={reopenReason}
                     onChange={(e) => setReopenReason(e.target.value)}
                     rows={2}
                     required
                     placeholder="Why does this need reopening?"
-                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand-500 dark:border-white/10 dark:bg-gray-800 dark:text-white"
+                    className="w-full rounded-2xl border border-gray-200 bg-white p-3 text-xs outline-none focus:border-brand-500 dark:border-white/10 dark:bg-gray-900 dark:text-white"
                   />
                   <div className="flex gap-2">
                     <button
                       type="submit"
                       disabled={busyAction === "reopen"}
-                      className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+                      className="rounded-xl bg-brand-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-brand-700 disabled:opacity-50"
                     >
-                      {busyAction === "reopen" ? "Reopening…" : "Confirm reopen"}
+                      {busyAction === "reopen" ? "Reopening…" : "Confirm Reopen"}
                     </button>
                     <button
                       type="button"
                       onClick={() => { setReopenOpen(false); setReopenReason(""); }}
-                      className="rounded-lg px-3 py-1.5 text-xs font-semibold text-gray-500 hover:bg-gray-100 dark:hover:bg-white/5"
+                      className="rounded-xl px-4 py-2 text-xs font-bold text-gray-500 hover:bg-gray-200 dark:hover:bg-white/10"
                     >
                       Cancel
                     </button>
@@ -400,39 +432,42 @@ export default function TicketDetailDrawer({ ticketId, onClose, onChanged }) {
               )}
 
               {meta?.can_reply ? (
-                <form onSubmit={sendReply} className="space-y-2">
+                <form onSubmit={sendReply} className="space-y-3">
                   <textarea
                     value={reply}
                     onChange={(e) => setReply(e.target.value)}
                     rows={2}
-                    placeholder="Write a reply…"
-                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand-500 dark:border-white/10 dark:bg-gray-800 dark:text-white"
+                    placeholder="Write a response or internal note…"
+                    className="w-full rounded-2xl border border-gray-200 bg-white p-3.5 text-xs outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 dark:border-white/10 dark:bg-gray-900 dark:text-white"
                   />
                   <div className="flex items-center justify-between gap-3">
                     {meta?.is_staff ? (
-                      <label className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300">
+                      <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-gray-700 dark:text-gray-300">
                         <input
                           type="checkbox"
                           checked={internal}
                           onChange={(e) => setInternal(e.target.checked)}
-                          className="h-3.5 w-3.5 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                          className="h-4 w-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
                         />
-                        Internal note — not shown to the employee
+                        <span className={internal ? "font-bold text-amber-700 dark:text-amber-400" : ""}>
+                          Internal Note (Hidden from employee)
+                        </span>
                       </label>
                     ) : <span />}
                     <button
                       type="submit"
                       disabled={sending || !reply.trim()}
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-brand-700 disabled:opacity-40"
+                      className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-5 py-2 text-xs font-bold text-white shadow-md transition-all hover:bg-brand-700 disabled:opacity-40"
                     >
-                      <Send size={13} /> {sending ? "Sending…" : "Send"}
+                      <Send size={13} /> {sending ? "Sending…" : "Send Response"}
                     </button>
                   </div>
                 </form>
               ) : (
-                <p className="flex items-center justify-center gap-1.5 rounded-lg bg-gray-50 py-2 text-xs text-gray-500 dark:bg-white/5 dark:text-gray-400">
-                  <Lock size={12} /> This ticket is closed and is now read-only.
-                </p>
+                <div className="flex items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-gray-100/80 p-3 text-xs font-bold text-gray-600 dark:border-white/10 dark:bg-white/5 dark:text-gray-300">
+                  <Lock size={14} className="text-gray-400" />
+                  This ticket is closed and is now read-only.
+                </div>
               )}
             </div>
           </>
@@ -442,16 +477,42 @@ export default function TicketDetailDrawer({ ticketId, onClose, onChanged }) {
   );
 }
 
-function Detail({ icon: Icon, label, value, sub }) {
+function DetailCard({ icon: Icon, label, value, sub, iconBg }) {
   return (
-    <div className="min-w-0">
-      <dt className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-gray-400">
-        <Icon size={11} /> {label}
-      </dt>
-      <dd className="mt-0.5 break-words text-gray-800 dark:text-gray-200">
-        {value || "—"}
-        {sub ? <span className="ml-1 text-gray-400">({sub})</span> : null}
-      </dd>
+    <div className="flex items-start gap-2.5 rounded-xl border border-gray-100 bg-white p-3 shadow-2xs dark:border-white/5 dark:bg-white/5">
+      <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${iconBg}`}>
+        <Icon size={13} />
+      </div>
+      <div className="min-w-0 flex-1">
+        <dt className="text-[9px] font-bold uppercase tracking-wider text-gray-400">
+          {label}
+        </dt>
+        <dd className="mt-0.5 truncate text-xs font-bold text-gray-900 dark:text-white" title={value || "—"}>
+          {value || "—"}
+        </dd>
+        {sub && <p className="truncate text-[10px] font-medium text-gray-500 dark:text-gray-400">{sub}</p>}
+      </div>
     </div>
   );
 }
+
+const statusBtnStyle = (status) => {
+  switch (status) {
+    case "resolved":
+      return "bg-emerald-600 hover:bg-emerald-700 text-white";
+    case "closed":
+      return "bg-slate-700 hover:bg-slate-800 text-white";
+    case "waiting_employee":
+      return "bg-amber-600 hover:bg-amber-700 text-white";
+    case "pending_approval":
+      return "bg-purple-600 hover:bg-purple-700 text-white";
+    case "in_progress":
+      return "bg-blue-600 hover:bg-blue-700 text-white";
+    case "assigned":
+      return "bg-indigo-600 hover:bg-indigo-700 text-white";
+    case "escalated":
+      return "bg-rose-600 hover:bg-rose-700 text-white";
+    default:
+      return "bg-brand-600 hover:bg-brand-700 text-white";
+  }
+};

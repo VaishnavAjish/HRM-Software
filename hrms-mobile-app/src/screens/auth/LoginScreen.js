@@ -11,7 +11,7 @@ import { Button } from '../../components/common/Button';
 import { SetPasswordFlow } from './SetPasswordFlow';
 
 export function LoginScreen() {
-  const { theme, isDark } = useTheme();
+  const { theme } = useTheme();
   const { login } = useAuth();
   const [screen, setScreen] = useState('login'); // 'login' | 'setPassword'
   const [identifier, setIdentifier] = useState('');
@@ -31,10 +31,14 @@ export function LoginScreen() {
     ]).start();
   }, []);
 
-  const canSubmit = identifier.trim().length > 0 && password.length > 0 && !loading;
+  const canSubmit = !loading;
 
   const handleLogin = async () => {
     if (!canSubmit) return;
+    if (!identifier.trim() || !password) {
+      setError('Please enter your email/employee code and password.');
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -59,16 +63,13 @@ export function LoginScreen() {
         contentContainerStyle={[styles.container, { backgroundColor: theme.background }]}
         keyboardShouldPersistTaps="handled"
       >
-        <LinearGradient
-          colors={isDark ? ['#1E1B4B', theme.background] : ['#E0E7FF', theme.background]}
-          style={styles.backgroundGlow}
-        />
-        <View style={[styles.blob, styles.blobOne, { backgroundColor: theme.primary, opacity: isDark ? 0.14 : 0.1 }]} />
-        <View style={[styles.blob, styles.blobTwo, { backgroundColor: theme.violet, opacity: isDark ? 0.12 : 0.08 }]} />
+        <LinearGradient colors={['#E0E7FF', theme.background]} style={styles.backgroundGlow} />
+        <View style={[styles.blob, styles.blobOne, { backgroundColor: theme.primary, opacity: 0.1 }]} />
+        <View style={[styles.blob, styles.blobTwo, { backgroundColor: theme.violet, opacity: 0.08 }]} />
 
         <Animated.View style={{ opacity: fade, transform: [{ translateY: slide }] }}>
           <View style={styles.headerArea}>
-            <View style={[styles.logoBadge, { backgroundColor: isDark ? 'rgba(99, 102, 241, 0.2)' : '#EEF2FF', borderColor: theme.primary }, shadows.glow(theme.primary)]}>
+            <View style={[styles.logoBadge, { backgroundColor: '#EEF2FF', borderColor: theme.primary }, shadows.glow(theme.primary)]}>
               <Building2 size={30} color={theme.primary} />
             </View>
             <Text style={[styles.appTitle, { color: theme.textPrimary }]}>NISS Enterprise</Text>

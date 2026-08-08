@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
-import { ChevronLeft, FileText } from 'lucide-react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, KeyboardAvoidingView, Platform, Alert } from 'react-native';
+import { ChevronLeft, FileText, Printer, Lock } from 'lucide-react-native';
 import { useTheme } from '../../context/ThemeContext';
 import { api } from '../../services/api';
 import { typography } from '../../theme';
@@ -13,6 +13,9 @@ import { DatePickerField } from '../../components/common/DatePickerField';
 import { ImagePickerField } from '../../components/common/ImagePickerField';
 import { getCompanyUnits } from '../../utils/companyConfig';
 import { normaliseAadhaar, isCompleteAadhaar, formatAadhaarInput, formatFullAadhaar } from '../../utils/aadhaar';
+import { isCandidateProcessed } from './candidateHelpers';
+import { buildTrialPrintHtml } from '../../utils/trialPrintPdf';
+import { downloadPdfToDevice } from '../../utils/pdf';
 
 const GENDER_OPTIONS = ['MALE', 'FEMALE'];
 const DEFAULT_DEPARTMENTS = ['4P DEPT', 'Account', 'BLOCKING DEPT', 'Cutting', 'IT', 'Polish-02 (MFG)'];
@@ -56,12 +59,14 @@ export function TrialFormScreen({ initialData, onDone, onCancel }) {
   const { theme } = useTheme();
   const isEditMode = Boolean(initialData?.id);
   const raw = initialData?.raw;
+  const readOnly = isEditMode && isCandidateProcessed(raw || {});
 
   const [form, setForm] = useState(() => buildInitialForm(raw));
   const [photo, setPhoto] = useState(raw?.photo || null);
   const [adharImage, setAdharImage] = useState(raw?.adhar_image || null);
   const [departments, setDepartments] = useState([]);
   const [submitting, setSubmitting] = useState(false);
+  const [printing, setPrinting] = useState(false);
   const [error, setError] = useState(null);
 
   const aadhaarOnFile = Boolean(raw?.aadhaar_full || raw?.aadhaar_masked);
@@ -109,15 +114,52 @@ export function TrialFormScreen({ initialData, onDone, onCancel }) {
     }
   };
 
+  const handlePrint = async () => {
+    setPrinting(true);
+    try {
+      const html = buildTrialPrintHtml(raw);
+      const { saved } = await downloadPdfToDevice(html, `Trial Form - ${raw?.name || raw?.form_no || ''}`);
+      if (saved) Alert.alert('Saved', 'The trial form PDF was saved to your device.');
+    } catch (e) {
+      Alert.alert('Could not print', e.message || 'Please try again.');
+    } finally {
+      setPrinting(false);
+    }
+  };
+
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-        <TouchableOpacity onPress={onCancel} style={styles.backRow} activeOpacity={0.7}>
-          <ChevronLeft size={18} color={theme.primary} />
-          <Text style={[styles.backText, { color: theme.primary }]}>Cancel</Text>
-        </TouchableOpacity>
+        <View style={styles.headerRow}>
+          <TouchableOpacity onPress={onCancel} style={styles.backRow} activeOpacity={0.7}>
+            <ChevronLeft size={18} color={theme.primary} />
+            <Text style={[styles.backText, { color: theme.primary }]}>Cancel</Text>
+          </TouchableOpacity>
 
-        <Text style={[styles.formTitle, { color: theme.textPrimary }]}>{isEditMode ? 'Edit Trial Form' : 'New Trial Form'}</Text>
+          {isEditMode ? (
+            <TouchableOpacity
+              onPress={handlePrint}
+              disabled={printing}
+              style={[styles.printBtn, { borderColor: theme.border, backgroundColor: theme.surfaceElevated }]}
+            >
+              <Printer size={15} color={theme.primary} />
+              <Text style={[styles.printText, { color: theme.primary }]}>{printing ? 'Preparing…' : 'Print'}</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+
+        <Text style={[styles.formTitle, { color: theme.textPrimary }]}>
+          {readOnly ? 'View Trial Form' : isEditMode ? 'Edit Trial Form' : 'New Trial Form'}
+        </Text>
+
+        {readOnly ? (
+          <View style={[styles.readOnlyBanner, { backgroundColor: theme.amberBg, borderColor: theme.amber + '40' }]}>
+            <Lock size={14} color={theme.amber} />
+            <Text style={[styles.readOnlyText, { color: theme.amber }]}>
+              This trial form has already been processed into an appointment and can no longer be edited — view only.
+            </Text>
+          </View>
+        ) : null}
 
         {error ? (
           <Card style={[styles.errorCard, { backgroundColor: theme.roseBg, borderColor: theme.rose + '40' }]}>
@@ -125,6 +167,7 @@ export function TrialFormScreen({ initialData, onDone, onCancel }) {
           </Card>
         ) : null}
 
+        <View pointerEvents={readOnly ? 'none' : 'auto'} style={readOnly && styles.readOnlyContent}>
         <Card style={styles.sectionCard} elevated>
           <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Photo</Text>
           <ImagePickerField label="Candidate Photo" value={photo} onChange={setPhoto} cameraOnly />
@@ -199,15 +242,18 @@ export function TrialFormScreen({ initialData, onDone, onCancel }) {
           <FormInput label="Hastak Signature" value={form.hastak_signature} onChangeText={setField('hastak_signature')} />
           <FormInput label="HR Signature" value={form.hr_signature} onChangeText={setField('hr_signature')} />
         </Card>
+        </View>
 
-        <Button
-          title={isEditMode ? 'Save Changes' : 'Submit Trial Form'}
-          onPress={submit}
-          loading={submitting}
-          icon={FileText}
-          variant="gradient"
-          style={styles.submitBtn}
-        />
+        {!readOnly && (
+          <Button
+            title={isEditMode ? 'Save Changes' : 'Submit Trial Form'}
+            onPress={submit}
+            loading={submitting}
+            icon={FileText}
+            variant="gradient"
+            style={styles.submitBtn}
+          />
+        )}
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -216,9 +262,15 @@ export function TrialFormScreen({ initialData, onDone, onCancel }) {
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   content: { padding: 16, paddingBottom: 60 },
-  backRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 12 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  backRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   backText: { ...typography.body, fontWeight: '600' },
-  formTitle: { ...typography.h2, marginBottom: 16 },
+  printBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, borderWidth: 1 },
+  printText: { ...typography.caption, fontWeight: '700' },
+  formTitle: { ...typography.h2, marginBottom: 12 },
+  readOnlyBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 14, borderWidth: 1, padding: 12, marginBottom: 16 },
+  readOnlyText: { ...typography.caption, fontWeight: '600', flexShrink: 1 },
+  readOnlyContent: { opacity: 0.6 },
   errorCard: { padding: 14, marginBottom: 16, borderWidth: 1 },
   sectionCard: { padding: 18, marginBottom: 16 },
   sectionTitle: { ...typography.h4, marginBottom: 14 },

@@ -2087,6 +2087,13 @@ export const ticketApi = {
     });
   },
 
+  deleteTicket(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/tickets/${id}`, {
+      method: "DELETE",
+      headers: hrAuthHeaders(accessToken, tokenType),
+    });
+  },
+
   /*
    * Staff actions.
    *
@@ -2131,6 +2138,99 @@ export const ticketApi = {
       method: "PUT",
       headers: { "Content-Type": "application/json", ...hrAuthHeaders(accessToken, tokenType) },
       body: JSON.stringify(payload),
+    });
+  },
+
+  // Drops a department's override; it falls back to the company-wide rules.
+  deleteSlaOverride(department, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/tickets/sla-rules/${encodeURIComponent(department)}`, {
+      method: "DELETE",
+      headers: hrAuthHeaders(accessToken, tokenType),
+    });
+  },
+
+  getSettings(accessToken, tokenType = "Bearer") {
+    return apiRequest(`/tickets/settings`, { headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+
+  updateSettings(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/tickets/settings`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", ...hrAuthHeaders(accessToken, tokenType) },
+      body: JSON.stringify(payload),
+    });
+  },
+
+  // Admin view — includes inactive categories and their usage counts. The
+  // employee-facing getCategories() stays active-only.
+  getManagedCategories(accessToken, tokenType = "Bearer") {
+    return apiRequest(`/tickets/categories/manage`, { headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+
+  createCategory(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/tickets/categories`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...hrAuthHeaders(accessToken, tokenType) },
+      body: JSON.stringify(payload),
+    });
+  },
+
+  updateCategory(id, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/tickets/categories/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", ...hrAuthHeaders(accessToken, tokenType) },
+      body: JSON.stringify(payload),
+    });
+  },
+
+  deleteCategory(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/tickets/categories/${id}`, {
+      method: "DELETE",
+      headers: hrAuthHeaders(accessToken, tokenType),
+    });
+  },
+};
+
+/**
+ * In-app notifications for the signed-in user.
+ *
+ * Every endpoint is anchored server-side on the caller's own id — there is no
+ * "fetch user X's notifications" call, by design.
+ */
+export const notificationApi = {
+  list(accessToken, tokenType = "Bearer", filters = {}) {
+    return apiRequest(`/notifications${hrQuery(filters)}`, {
+      headers: hrAuthHeaders(accessToken, tokenType),
+    });
+  },
+
+  // Cheap enough to poll for the bell badge.
+  unreadCount(accessToken, tokenType = "Bearer") {
+    return apiRequest(`/notifications/unread-count`, {
+      headers: hrAuthHeaders(accessToken, tokenType),
+    });
+  },
+
+  markRead(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/notifications/${id}/read`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...hrAuthHeaders(accessToken, tokenType) },
+      body: "{}",
+    });
+  },
+
+  markAllRead(accessToken, tokenType = "Bearer") {
+    return apiRequest(`/notifications/read-all`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...hrAuthHeaders(accessToken, tokenType) },
+      body: "{}",
+    });
+  },
+
+  remove(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/notifications/${id}`, {
+      method: "DELETE",
+      headers: hrAuthHeaders(accessToken, tokenType),
     });
   },
 };

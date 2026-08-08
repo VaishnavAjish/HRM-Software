@@ -9,6 +9,11 @@ import { api, ApiError } from '../../services/api';
 import { Button } from '../../components/common/Button';
 import { OtpInput } from '../../components/auth/OtpInput';
 import { normaliseAadhaar, isCompleteAadhaar, formatAadhaarInput } from '../../utils/aadhaar';
+import { COMPANY_OPTIONS } from '../../utils/companyConfig';
+
+function companyLabel(code) {
+  return COMPANY_OPTIONS.find((o) => o.value === code)?.label || code;
+}
 
 const STEPS = [
   { icon: UserCheck, label: 'Verify Employee' },
@@ -103,28 +108,38 @@ export function SetPasswordFlow({ onDone, onCancel }) {
 
   const strength = passwordStrength(password);
 
-  const onEmpCodeBlur = async () => {
-    if (!empCode.trim()) return;
+  const runEmpCodeCheck = async (code) => {
+    if (!code.trim()) return;
     setCheckingEmpCode(true);
     setEmpCodeChecked(false);
     try {
-      const res = await api.checkEmpCode(empCode.trim());
+      const res = await api.checkEmpCode(code.trim());
       if (res?.status) {
         setCompanyCode(res.company_code || '');
         setUnit(res.unit || '');
-        setEmpCodeChecked(true);
+      } else {
+        setCompanyCode('');
+        setUnit('');
       }
     } catch (e) {
-      // Non-fatal — the verify call below still works with a default company.
+      setCompanyCode('');
+      setUnit('');
     } finally {
+      setEmpCodeChecked(true);
       setCheckingEmpCode(false);
     }
   };
+
+  const onEmpCodeBlur = () => runEmpCodeCheck(empCode);
 
   const submitStep1 = async () => {
     setError(null);
     if (!empCode.trim()) return setError('Enter your employee code.');
     if (!isCompleteAadhaar(aadhaar)) return setError('Enter a valid 12-digit Aadhaar card number.');
+
+    // Belt-and-braces: guarantees company/unit are resolved even if the field
+    // never blurred (e.g. the user tapped straight from the keyboard).
+    if (!empCodeChecked) await runEmpCodeCheck(empCode);
 
     setVerifying1(true);
     try {
@@ -185,7 +200,8 @@ export function SetPasswordFlow({ onDone, onCancel }) {
       const res = await api.verifyPasswordResetOtp({ email: email.trim(), otp });
       if (res?.status) {
         setOtpStatus('success');
-        setTimeout(() => setStep(2), 1100);
+        // Step advance is triggered by OtpInput's onSuccessEnd once the
+        // gather → spin → checkmark animation actually finishes playing.
       } else {
         setOtpStatus('error');
         setError(res?.message || 'Incorrect OTP. Please try again.');
@@ -284,12 +300,34 @@ export function SetPasswordFlow({ onDone, onCancel }) {
                 placeholderTextColor={theme.textMuted}
                 autoCapitalize="characters"
               />
-              {checkingEmpCode ? (
-                <Text style={[styles.hint, { color: theme.textMuted }]}>Detecting…</Text>
-              ) : empCodeChecked ? (
-                <Text style={[styles.hint, { color: theme.emerald }]}>
-                  Detected {companyCode || '—'}{unit ? ` — ${unit}` : ''}
-                </Text>
+              <View style={styles.autoDetectRow}>
+                <View style={styles.autoDetectField}>
+                  <Text style={[styles.label, { color: theme.textSecondary }]}>Company</Text>
+                  <View style={[styles.readonlyBox, { backgroundColor: theme.border, borderColor: theme.border }]}>
+                    <Text style={[styles.readonlyBoxText, { color: companyCode ? theme.textPrimary : theme.textMuted }]} numberOfLines={1}>
+                      {checkingEmpCode ? 'Detecting…' : companyCode ? companyLabel(companyCode) : 'Auto-detected'}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.autoDetectField}>
+                  <Text style={[styles.label, { color: theme.textSecondary }]}>Branch / Unit</Text>
+                  <View style={[styles.readonlyBox, { backgroundColor: theme.border, borderColor: theme.border }]}>
+                    <Text style={[styles.readonlyBoxText, { color: unit ? theme.textPrimary : theme.textMuted }]} numberOfLines={1}>
+                      {checkingEmpCode ? 'Detecting…' : unit || 'Auto-detected'}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+              {empCodeChecked && !checkingEmpCode ? (
+                companyCode ? (
+                  <Text style={[styles.hint, { color: theme.emerald }]}>
+                    Detected {companyLabel(companyCode)}{unit ? ` — ${unit}` : ''}
+                  </Text>
+                ) : (
+                  <Text style={[styles.hint, { color: theme.textMuted }]}>
+                    Couldn't auto-detect this employee code — you can still continue.
+                  </Text>
+                )
               ) : null}
 
               <Text style={[styles.label, { color: theme.textSecondary, marginTop: 14 }]}>Aadhaar Card Number</Text>
@@ -361,7 +399,7 @@ export function SetPasswordFlow({ onDone, onCancel }) {
               {emailLocked && (
                 <>
                   <Text style={[styles.otpLabel, { color: theme.textSecondary }]}>Enter 6-digit OTP</Text>
-                  <OtpInput value={otp} onChange={setOtp} status={otpStatus} />
+                  <OtpInput value={otp} onChange={setOtp} status={otpStatus} onSuccessEnd={() => setStep(2)} />
 
                   {otpStatus !== 'success' && (
                     <>
@@ -473,6 +511,10 @@ const styles = StyleSheet.create({
   label: { ...typography.caption, marginBottom: 6 },
   input: { borderWidth: 1, borderRadius: 14, paddingHorizontal: 14, height: 48, fontSize: 14 },
   hint: { ...typography.micro, marginTop: 6 },
+  autoDetectRow: { flexDirection: 'row', gap: 10, marginTop: 12 },
+  autoDetectField: { flex: 1 },
+  readonlyBox: { borderWidth: 1, borderRadius: 14, paddingHorizontal: 12, height: 44, justifyContent: 'center' },
+  readonlyBoxText: { fontSize: 13, fontWeight: '600' },
   inlineRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
   inlineInput: { flex: 1 },
   sendBtn: { height: 48 },

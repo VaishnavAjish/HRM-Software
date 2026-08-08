@@ -58,6 +58,9 @@ class RequireModuleSchema
             // must report "being set up" rather than 500 on every card.
             'ticket_sla_rules',
         ],
+        'notifications' => [
+            'notifications',
+        ],
     ];
 
     public function handle(Request $request, Closure $next, string $module)

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
-import { LifeBuoy, Send, Loader2 } from "lucide-react";
+import { Ticket, Send, Loader2, ArrowLeft } from "lucide-react";
 import { ticketApi } from "../../utils/api";
 import { useAuth } from "../../context/AuthContext";
 import { PRIORITY_ORDER, priorityMeta } from "../../components/tickets/ticketMeta";
@@ -100,9 +100,19 @@ export default function RaiseTicket() {
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-5 p-2 lg:p-6">
+      <div className="flex items-center">
+        <button
+          type="button"
+          onClick={() => navigate("/employee/tickets")}
+          className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50 dark:border-white/10 dark:bg-[#0b0f1a] dark:text-gray-200 dark:hover:bg-white/5"
+        >
+          <ArrowLeft size={15} /> Back to My Tickets
+        </button>
+      </div>
+
       <header className="flex items-center gap-3">
         <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-100 text-brand-600 dark:bg-brand-900/30 dark:text-brand-400">
-          <LifeBuoy size={20} />
+          <Ticket size={20} />
         </span>
         <div>
           <h1 className="text-xl font-bold text-gray-900 dark:text-white">Raise a Ticket</h1>
@@ -179,6 +189,14 @@ export default function RaiseTicket() {
         </div>
 
         <div className="flex justify-end gap-3 border-t border-gray-100 pt-4 dark:border-white/10">
+          <button
+            type="button"
+            onClick={() => navigate("/employee/tickets")}
+            disabled={saving}
+            className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-100 disabled:opacity-50 dark:border-white/10 dark:text-gray-300 dark:hover:bg-white/5"
+          >
+            Cancel
+          </button>
           <button
             type="button"
             onClick={() => setForm(EMPTY)}

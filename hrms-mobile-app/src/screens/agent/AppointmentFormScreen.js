@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
-import { ChevronLeft, UserPlus } from 'lucide-react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, KeyboardAvoidingView, Platform, Alert } from 'react-native';
+import { ChevronLeft, UserPlus, Printer, Lock } from 'lucide-react-native';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/api';
@@ -15,6 +15,9 @@ import { ImagePickerField } from '../../components/common/ImagePickerField';
 import { LoadingView } from '../../components/common/LoadingView';
 import { COMPANY_OPTIONS, getCompanyUnits } from '../../utils/companyConfig';
 import { normaliseAadhaar, isCompleteAadhaar, formatAadhaarInput, formatFullAadhaar } from '../../utils/aadhaar';
+import { isCandidateApproved } from './candidateHelpers';
+import { buildAppointmentPrintHtml } from '../../utils/appointmentPrintPdf';
+import { downloadPdfToDevice } from '../../utils/pdf';
 
 const GENDER_OPTIONS = ['MALE', 'FEMALE', 'OTHER'];
 const MARITAL_OPTIONS = ['MARRIED', 'UNMARRIED'];
@@ -73,6 +76,8 @@ export function AppointmentFormScreen({ initialData, isPrefillFromTrial, onDone,
   const { theme } = useTheme();
   const { user } = useAuth();
   const isEditMode = Boolean(initialData?.id) && !isPrefillFromTrial;
+  const readOnly = isEditMode && isCandidateApproved(initialData.raw || {});
+  const [printing, setPrinting] = useState(false);
 
   const [form, setForm] = useState(() => buildInitialForm(initialData?.raw, user?.company_code));
   const [members, setMembers] = useState(() => {
@@ -204,17 +209,52 @@ export function AppointmentFormScreen({ initialData, isPrefillFromTrial, onDone,
     }
   };
 
+  const handlePrint = async () => {
+    setPrinting(true);
+    try {
+      const html = buildAppointmentPrintHtml(initialData.raw, user?.name);
+      const { saved } = await downloadPdfToDevice(html, `Appointment Form - ${initialData.raw?.name || initialData.raw?.emp_code || ''}`);
+      if (saved) Alert.alert('Saved', 'The appointment form PDF was saved to your device.');
+    } catch (e) {
+      Alert.alert('Could not print', e.message || 'Please try again.');
+    } finally {
+      setPrinting(false);
+    }
+  };
+
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-        <TouchableOpacity onPress={onCancel} style={styles.backRow} activeOpacity={0.7}>
-          <ChevronLeft size={18} color={theme.primary} />
-          <Text style={[styles.backText, { color: theme.primary }]}>Cancel</Text>
-        </TouchableOpacity>
+        <View style={styles.headerRow}>
+          <TouchableOpacity onPress={onCancel} style={styles.backRow} activeOpacity={0.7}>
+            <ChevronLeft size={18} color={theme.primary} />
+            <Text style={[styles.backText, { color: theme.primary }]}>Cancel</Text>
+          </TouchableOpacity>
+
+          {isEditMode ? (
+            <TouchableOpacity
+              onPress={handlePrint}
+              disabled={printing}
+              style={[styles.printBtn, { borderColor: theme.border, backgroundColor: theme.surfaceElevated }]}
+            >
+              <Printer size={15} color={theme.primary} />
+              <Text style={[styles.printText, { color: theme.primary }]}>{printing ? 'Preparing…' : 'Print'}</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
 
         <Text style={[styles.formTitle, { color: theme.textPrimary }]}>
-          {isEditMode ? 'Edit Appointment' : isPrefillFromTrial ? 'Process into Appointment' : 'New Appointment'}
+          {readOnly ? 'View Appointment' : isEditMode ? 'Edit Appointment' : isPrefillFromTrial ? 'Process into Appointment' : 'New Appointment'}
         </Text>
+
+        {readOnly ? (
+          <View style={[styles.readOnlyBanner, { backgroundColor: theme.amberBg, borderColor: theme.amber + '40' }]}>
+            <Lock size={14} color={theme.amber} />
+            <Text style={[styles.readOnlyText, { color: theme.amber }]}>
+              This appointment is already approved and can no longer be edited — view only.
+            </Text>
+          </View>
+        ) : null}
 
         {error ? (
           <Card style={[styles.errorCard, { backgroundColor: theme.roseBg, borderColor: theme.rose + '40' }]}>
@@ -222,6 +262,7 @@ export function AppointmentFormScreen({ initialData, isPrefillFromTrial, onDone,
           </Card>
         ) : null}
 
+        <View pointerEvents={readOnly ? 'none' : 'auto'} style={readOnly && styles.readOnlyContent}>
         {form.emp_code ? (
           <Card style={styles.sectionCard} elevated>
             <FormInput label="Employee Code" value={form.emp_code} disabled />
@@ -321,16 +362,19 @@ export function AppointmentFormScreen({ initialData, isPrefillFromTrial, onDone,
         <Card style={styles.sectionCard} elevated>
           <FormInput label="Employee Signature" value={form.emp_signature} onChangeText={setField('emp_signature')} />
         </Card>
+        </View>
 
-        <Button
-          title={isEditMode ? 'Save Changes' : 'Submit Appointment'}
-          onPress={submit}
-          loading={submitting}
-          disabled={!canSubmit}
-          icon={UserPlus}
-          variant="gradient"
-          style={styles.submitBtn}
-        />
+        {!readOnly && (
+          <Button
+            title={isEditMode ? 'Save Changes' : 'Submit Appointment'}
+            onPress={submit}
+            loading={submitting}
+            disabled={!canSubmit}
+            icon={UserPlus}
+            variant="gradient"
+            style={styles.submitBtn}
+          />
+        )}
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -339,9 +383,15 @@ export function AppointmentFormScreen({ initialData, isPrefillFromTrial, onDone,
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   content: { padding: 16, paddingBottom: 60 },
-  backRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 12 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  backRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   backText: { ...typography.body, fontWeight: '600' },
-  formTitle: { ...typography.h2, marginBottom: 16 },
+  printBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, borderWidth: 1 },
+  printText: { ...typography.caption, fontWeight: '700' },
+  formTitle: { ...typography.h2, marginBottom: 12 },
+  readOnlyBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 14, borderWidth: 1, padding: 12, marginBottom: 16 },
+  readOnlyText: { ...typography.caption, fontWeight: '600', flexShrink: 1 },
+  readOnlyContent: { opacity: 0.6 },
   errorCard: { padding: 14, marginBottom: 16, borderWidth: 1 },
   sectionCard: { padding: 18, marginBottom: 16 },
   sectionTitle: { ...typography.h4, marginBottom: 14 },

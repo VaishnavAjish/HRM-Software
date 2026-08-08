@@ -94,8 +94,19 @@ class Ticket extends Model
         self::STATUS_CLOSED => [],
     ];
 
-    /** Days a resolved ticket stays reopenable. Business rule 5. */
+    /**
+     * Fallback only. The live value is configurable under Helpdesk Settings —
+     * see reopenWindowDays() — and this constant is what applies when the
+     * settings table is not present.
+     */
     public const REOPEN_WINDOW_DAYS = 7;
+
+    public static function reopenWindowDays(): int
+    {
+        $days = \App\Support\HelpdeskSettings::int('helpdesk.reopen_window_days');
+
+        return $days > 0 ? $days : self::REOPEN_WINDOW_DAYS;
+    }
 
     protected $fillable = [
         'ticket_number', 'employee_id', 'category_id', 'subject', 'description',
@@ -210,7 +221,9 @@ class Ticket extends Model
      */
     public function applySlaTarget(?\DateTimeInterface $from = null): void
     {
-        $rule = TicketSlaRule::forPriority($this->priority);
+        // Department first, then the company-wide default — Payroll and IT can
+        // hold different targets for the same priority.
+        $rule = TicketSlaRule::resolve($this->priority, $this->department);
 
         if (! $rule) {
             return;
@@ -278,7 +291,7 @@ class Ticket extends Model
             return true;
         }
 
-        return $this->resolved_at->diffInDays(now()) <= self::REOPEN_WINDOW_DAYS;
+        return $this->resolved_at->diffInDays(now()) <= self::reopenWindowDays();
     }
 
     /**

@@ -25,7 +25,7 @@ import {
   ChevronDown,
   Briefcase,
   ShieldCheck,
-  LifeBuoy,
+  Ticket,
 } from "lucide-react";
 
 function getAdminNav(companyId, user, isAllCompanies, isModuleAvailable = () => true) {

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Search, Eye, Clock, Loader2 } from "lucide-react";
+import { Search, Eye, Clock, Loader2, Trash2 } from "lucide-react";
 import {
   statusMeta, priorityMeta, slaMeta, slaLabel, formatDate,
   departmentsFrom, STATUS_ORDER, PRIORITY_ORDER,
@@ -23,6 +23,7 @@ export default function SuperAdminTicketTable({
   selectedIds = [],
   onToggleSelect,
   onToggleSelectAll,
+  onDeleteTicket,
 }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [deptFilter, setDeptFilter] = useState("All");
@@ -216,12 +217,23 @@ export default function SuperAdminTicketTable({
                       <span className={`inline-flex rounded-md px-2 py-0.5 text-[10px] font-bold ${s.badgeBg}`}>{s.label}</span>
                     </td>
                     <td className="px-3 py-3 text-right">
-                      <button
-                        onClick={() => onSelectTicket && onSelectTicket(t.id)}
-                        className="inline-flex items-center gap-1 rounded-xl bg-brand-600 px-3 py-1.5 text-xs font-bold text-white transition-all hover:bg-brand-700"
-                      >
-                        <Eye size={13} /> View
-                      </button>
+                      <div className="inline-flex items-center justify-end gap-1.5">
+                        <button
+                          onClick={() => onSelectTicket && onSelectTicket(t.id)}
+                          className="inline-flex items-center gap-1 rounded-xl bg-brand-600 px-3 py-1.5 text-xs font-bold text-white transition-all hover:bg-brand-700"
+                        >
+                          <Eye size={13} /> View
+                        </button>
+                        {String(t.status).toLowerCase() === "closed" && (
+                          <button
+                            onClick={() => onDeleteTicket && onDeleteTicket(t.id)}
+                            className="inline-flex items-center gap-1 rounded-xl bg-rose-600 px-3 py-1.5 text-xs font-bold text-white transition-all hover:bg-rose-700"
+                            title="Delete Ticket"
+                          >
+                            <Trash2 size={13} /> Delete
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
