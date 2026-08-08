@@ -1,445 +1,142 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, TextInput, ActivityIndicator } from 'react-native';
-import { ShieldCheck, UserPlus, FileText, CheckCircle2, Clock, MapPin, Search, Star, AlertCircle, Plus, X, Award } from 'lucide-react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, RefreshControl } from 'react-native';
+import { Users, FileText, ClipboardList, AlertCircle, Mail, Phone } from 'lucide-react-native';
 import { useTheme } from '../../context/ThemeContext';
-import { Card } from '../../components/common/Card';
-import { Button } from '../../components/common/Button';
-import { Badge } from '../../components/common/Badge';
-import { typography, shadows } from '../../theme';
 import { api } from '../../services/api';
+import { typography } from '../../theme';
+import { Card } from '../../components/common/Card';
+import { Badge } from '../../components/common/Badge';
+import { StatCard } from '../../components/common/StatCard';
+import { LoadingView } from '../../components/common/LoadingView';
+import { EmptyState } from '../../components/common/EmptyState';
+import { Avatar } from '../../components/common/Avatar';
+import { timeAgo } from '../../utils/format';
 
-export function AgentDashboardScreen({ onNavigateTab }) {
+const TYPE_VARIANT = {
+  appointment: 'emerald',
+  trial: 'amber',
+  pending_employee: 'violet',
+};
+
+function typeLabel(type) {
+  if (type === 'appointment') return 'Appointment';
+  if (type === 'trial') return 'Trial Form';
+  if (type === 'pending_employee') return 'Pending';
+  return 'Candidate';
+}
+
+export function AgentDashboardScreen() {
   const { theme } = useTheme();
   const [candidates, setCandidates] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedFilter, setSelectedFilter] = useState('All'); // 'All' | 'Approved' | 'Pending'
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState(null);
 
-  // Appointment Modal State
-  const [appointmentModalVisible, setAppointmentModalVisible] = useState(false);
-  const [apptName, setApptName] = useState('');
-  const [apptPhone, setApptPhone] = useState('');
-  const [apptAadhaar, setApptAadhaar] = useState('');
-  const [apptDept, setApptDept] = useState('Security Operations');
-  const [submittingAppt, setSubmittingAppt] = useState(false);
-
-  // Trial Form Modal State
-  const [trialModalVisible, setTrialModalVisible] = useState(false);
-  const [trialCandidate, setTrialCandidate] = useState('');
-  const [trialNotes, setTrialNotes] = useState('');
-  const [submittingTrial, setSubmittingTrial] = useState(false);
-
-  useEffect(() => {
-    loadAgentData();
+  const load = useCallback(async (isRefresh = false) => {
+    isRefresh ? setRefreshing(true) : setLoading(true);
+    setError(null);
+    try {
+      const res = await api.getAgentCandidates();
+      if (res?.status) {
+        setCandidates(res.data || []);
+      } else {
+        setError(res?.message || 'Could not load your candidates.');
+      }
+    } catch (e) {
+      setError(e.message || 'Could not load your candidates.');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   }, []);
 
-  const loadAgentData = async () => {
-    setLoading(true);
-    const data = await api.getAgentCandidates();
-    setCandidates(data || []);
-    setLoading(false);
-  };
+  useEffect(() => {
+    load();
+  }, [load]);
 
-  const handleCreateAppointment = async () => {
-    if (!apptName.trim() || !apptPhone.trim()) {
-      alert('Please fill candidate name and phone');
-      return;
-    }
-    setSubmittingAppt(true);
-    await api.createAppointment({
-      full_name: apptName,
-      mobile_number: apptPhone,
-      aadhaar: apptAadhaar,
-      department: apptDept,
-    });
-    setSubmittingAppt(false);
-    setAppointmentModalVisible(false);
-    setApptName('');
-    setApptPhone('');
-    setApptAadhaar('');
-    loadAgentData();
-  };
+  const stats = useMemo(() => {
+    const appointments = candidates.filter((c) => c.type === 'appointment').length;
+    const trials = candidates.filter((c) => c.type === 'trial').length;
+    return { total: candidates.length, appointments, trials };
+  }, [candidates]);
 
-  const handleCreateTrial = async () => {
-    if (!trialCandidate.trim()) {
-      alert('Please enter candidate name/ID');
-      return;
-    }
-    setSubmittingTrial(true);
-    await api.createTrialForm({
-      candidate_name: trialCandidate,
-      notes: trialNotes,
-      status: 'In Trial',
-    });
-    setSubmittingTrial(false);
-    setTrialModalVisible(false);
-    setTrialCandidate('');
-    setTrialNotes('');
-    loadAgentData();
-  };
-
-  const filteredCandidates = candidates.filter((c) => {
-    const name = c.name || c.full_name || c.employee_name || 'Candidate';
-    const matchesSearch = name.toLowerCase().includes(searchQuery.toLowerCase());
-    if (selectedFilter === 'Approved') return matchesSearch && (c.status === 'Approved' || c.status === '1');
-    if (selectedFilter === 'Pending') return matchesSearch && (c.status === 'Pending' || c.status === '0');
-    return matchesSearch;
-  });
+  if (loading) return <LoadingView fullscreen label="Loading your candidates…" />;
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: theme.background }]} contentContainerStyle={styles.contentContainer} showsVerticalScrollIndicator={false}>
-
-      {/* Header Command Desk */}
-      <Card style={styles.bannerCard} glass>
-        <View style={styles.bannerRow}>
-          <View style={[styles.bannerIconBadge, { backgroundColor: theme.violetBg }]}>
-            <ShieldCheck size={28} color={theme.violet} />
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={styles.content}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={theme.primary} />}
+    >
+      {error ? (
+        <EmptyState icon={AlertCircle} title="Couldn't load candidates" message={error} tone="error" actionLabel="Retry" onAction={() => load()} />
+      ) : (
+        <>
+          <View style={styles.statsRow}>
+            <StatCard icon={Users} label="Total Submitted" value={stats.total} tint="cyan" />
+            <StatCard icon={FileText} label="Appointments" value={stats.appointments} tint="emerald" />
+            <StatCard icon={ClipboardList} label="Trial Forms" value={stats.trials} tint="amber" />
           </View>
-          <View style={{ flex: 1, marginLeft: 12 }}>
-            <Text style={[styles.bannerTitle, { color: theme.textPrimary }]}>Agent Candidate Command Center</Text>
-            <Text style={[styles.bannerSub, { color: theme.textMuted }]}>
-              Real API: 192.168.1.53:8000 • {candidates.length} Registered Candidates
-            </Text>
-          </View>
-        </View>
-      </Card>
 
-      {/* Quick Action Tiles */}
-      <View style={styles.actionRow}>
-        <TouchableOpacity
-          style={[styles.actionTile, { backgroundColor: theme.primary }]}
-          onPress={() => setAppointmentModalVisible(true)}
-          activeOpacity={0.85}
-        >
-          <UserPlus size={20} color="#FFFFFF" />
-          <Text style={styles.actionTileText}>New Appointment</Text>
-        </TouchableOpacity>
+          <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Your Candidates</Text>
 
-        <TouchableOpacity
-          style={[styles.actionTile, { backgroundColor: theme.violet }]}
-          onPress={() => setTrialModalVisible(true)}
-          activeOpacity={0.85}
-        >
-          <FileText size={20} color="#FFFFFF" />
-          <Text style={styles.actionTileText}>Log Field Trial</Text>
-        </TouchableOpacity>
-      </View>
+          {candidates.length === 0 ? (
+            <EmptyState icon={Users} title="No candidates yet" message="Candidates you submit will show up here." />
+          ) : (
+            candidates.map((c) => (
+              <Card key={c.id} style={styles.candidateCard} elevated>
+                <View style={styles.candidateTop}>
+                  <Avatar name={c.name} uri={c.photo} size={44} />
+                  <View style={styles.candidateInfo}>
+                    <Text style={[styles.candidateName, { color: theme.textPrimary }]} numberOfLines={1}>
+                      {c.name || 'Unnamed candidate'}
+                    </Text>
+                    <Text style={[styles.candidateMeta, { color: theme.textMuted }]} numberOfLines={1}>
+                      {c.designation || c.department || '—'}
+                    </Text>
+                  </View>
+                  <Badge label={typeLabel(c.type)} variant={TYPE_VARIANT[c.type] || 'default'} size="small" />
+                </View>
 
-      {/* Pipeline Filter Bar & Search */}
-      <View style={[styles.searchWrapper, { backgroundColor: theme.surfaceCard, borderColor: theme.border }]}>
-        <Search size={18} color={theme.textMuted} style={{ marginRight: 8 }} />
-        <TextInput
-          style={[styles.searchInput, { color: theme.textPrimary }]}
-          placeholder="Search candidates by name or code..."
-          placeholderTextColor={theme.textMuted}
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-        />
-      </View>
+                <View style={styles.contactRow}>
+                  {c.email ? (
+                    <View style={styles.contactItem}>
+                      <Mail size={12} color={theme.textMuted} />
+                      <Text style={[styles.contactText, { color: theme.textMuted }]} numberOfLines={1}>{c.email}</Text>
+                    </View>
+                  ) : null}
+                  {c.mobile_number ? (
+                    <View style={styles.contactItem}>
+                      <Phone size={12} color={theme.textMuted} />
+                      <Text style={[styles.contactText, { color: theme.textMuted }]}>{c.mobile_number}</Text>
+                    </View>
+                  ) : null}
+                </View>
 
-      {/* Status Filter Pills */}
-      <View style={styles.filterPillRow}>
-        {['All', 'Approved', 'Pending'].map((filter) => (
-          <TouchableOpacity
-            key={filter}
-            style={[
-              styles.filterPill,
-              selectedFilter === filter
-                ? { backgroundColor: theme.primary, borderColor: theme.primary }
-                : { backgroundColor: theme.surfaceCard, borderColor: theme.border },
-            ]}
-            onPress={() => setSelectedFilter(filter)}
-          >
-            <Text
-              style={[
-                styles.filterPillText,
-                { color: selectedFilter === filter ? '#FFFFFF' : theme.textMuted },
-              ]}
-            >
-              {filter}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {/* Candidates List with ATS Score */}
-      <Text style={[styles.sectionTitle, { color: theme.textPrimary, marginTop: 16 }]}>
-        Recruitment Pipeline & ATS Scores ({filteredCandidates.length})
-      </Text>
-
-      {loading ? (
-        <ActivityIndicator size="large" color={theme.primary} style={{ marginVertical: 20 }} />
-      ) : filteredCandidates.map((item, index) => {
-        const candidateName = item.name || item.full_name || item.employee_name || `Candidate #${index + 1}`;
-        const atsScore = item.ats_score || Math.floor(75 + (index * 7) % 23);
-        const isApproved = item.status === 'Approved' || item.status === '1' || item.emp_code;
-
-        return (
-          <Card key={item.id || index} style={styles.candidateCard} glass>
-            <View style={styles.candidateTopRow}>
-              <Text style={[styles.candidateName, { color: theme.textPrimary }]}>{candidateName}</Text>
-              <Badge
-                label={isApproved ? 'Approved' : 'Pending'}
-                variant={isApproved ? 'emerald' : 'amber'}
-                size="small"
-              />
-            </View>
-
-            <Text style={[styles.candidateSub, { color: theme.textMuted }]}>
-              Emp Code: {item.emp_code || 'Pending Issue'} • {item.department || 'Security Operations'}
-            </Text>
-
-            <View style={styles.atsRow}>
-              <View style={styles.atsBadge}>
-                <Award size={14} color={atsScore >= 85 ? theme.emerald : theme.amber} />
-                <Text style={[styles.atsText, { color: atsScore >= 85 ? theme.emerald : theme.amber }]}>
-                  ATS Score: {atsScore}% Match
+                <Text style={[styles.candidateTime, { color: theme.textMuted }]}>
+                  Submitted {timeAgo(c.created_at)}
                 </Text>
-              </View>
-
-              <Text style={[styles.mobileText, { color: theme.textSecondary }]}>
-                📱 {item.mobile_number || item.phone || '+91 98765 43210'}
-              </Text>
-            </View>
-          </Card>
-        );
-      })}
-
-      {/* Appointment Registration Modal */}
-      <Modal visible={appointmentModalVisible} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, { backgroundColor: theme.surfaceCard, borderColor: theme.border }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>Register New Appointment</Text>
-              <TouchableOpacity onPress={() => setAppointmentModalVisible(false)}>
-                <X size={20} color={theme.textMuted} />
-              </TouchableOpacity>
-            </View>
-
-            <TextInput
-              style={[styles.modalInput, { backgroundColor: theme.surfaceElevated, color: theme.textPrimary, borderColor: theme.border }]}
-              placeholder="Candidate Full Name"
-              placeholderTextColor={theme.textMuted}
-              value={apptName}
-              onChangeText={setApptName}
-            />
-
-            <TextInput
-              style={[styles.modalInput, { backgroundColor: theme.surfaceElevated, color: theme.textPrimary, borderColor: theme.border }]}
-              placeholder="Mobile Number"
-              placeholderTextColor={theme.textMuted}
-              keyboardType="phone-pad"
-              value={apptPhone}
-              onChangeText={setApptPhone}
-            />
-
-            <TextInput
-              style={[styles.modalInput, { backgroundColor: theme.surfaceElevated, color: theme.textPrimary, borderColor: theme.border }]}
-              placeholder="Aadhaar Card Number (12 Digits)"
-              placeholderTextColor={theme.textMuted}
-              keyboardType="numeric"
-              value={apptAadhaar}
-              onChangeText={setApptAadhaar}
-            />
-
-            <Button
-              title="Submit Appointment Record"
-              onPress={handleCreateAppointment}
-              loading={submittingAppt}
-              variant="gradient"
-              style={{ marginTop: 12 }}
-            />
-          </View>
-        </View>
-      </Modal>
-
-      {/* Log Trial Form Modal */}
-      <Modal visible={trialModalVisible} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, { backgroundColor: theme.surfaceCard, borderColor: theme.border }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>Log Candidate Field Trial</Text>
-              <TouchableOpacity onPress={() => setTrialModalVisible(false)}>
-                <X size={20} color={theme.textMuted} />
-              </TouchableOpacity>
-            </View>
-
-            <TextInput
-              style={[styles.modalInput, { backgroundColor: theme.surfaceElevated, color: theme.textPrimary, borderColor: theme.border }]}
-              placeholder="Candidate Name or ID"
-              placeholderTextColor={theme.textMuted}
-              value={trialCandidate}
-              onChangeText={setTrialCandidate}
-            />
-
-            <TextInput
-              style={[styles.modalInput, { backgroundColor: theme.surfaceElevated, color: theme.textPrimary, borderColor: theme.border, height: 80 }]}
-              placeholder="Trial Inspection Notes & Findings"
-              placeholderTextColor={theme.textMuted}
-              multiline
-              value={trialNotes}
-              onChangeText={setTrialNotes}
-            />
-
-            <Button
-              title="Save Trial Log"
-              onPress={handleCreateTrial}
-              loading={submittingTrial}
-              variant="accent"
-              style={{ marginTop: 12 }}
-            />
-          </View>
-        </View>
-      </Modal>
-
+              </Card>
+            ))
+          )}
+        </>
+      )}
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  contentContainer: {
-    padding: 18,
-    paddingBottom: 100,
-  },
-  bannerCard: {
-    marginBottom: 16,
-    padding: 16,
-  },
-  bannerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  bannerIconBadge: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  bannerTitle: {
-    ...typography.h3,
-  },
-  bannerSub: {
-    ...typography.caption,
-    marginTop: 2,
-  },
-  actionRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 16,
-  },
-  actionTile: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 14,
-    borderRadius: 16,
-    gap: 8,
-  },
-  actionTileText: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-    fontSize: 13,
-  },
-  searchWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 16,
-    borderWidth: 1,
-    paddingHorizontal: 14,
-    height: 46,
-    marginBottom: 12,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 13,
-  },
-  filterPillRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 14,
-  },
-  filterPill: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  filterPillText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  sectionTitle: {
-    ...typography.h3,
-    marginBottom: 12,
-  },
-  candidateCard: {
-    padding: 16,
-    marginBottom: 12,
-  },
-  candidateTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 4,
-  },
-  candidateName: {
-    ...typography.h4,
-  },
-  candidateSub: {
-    ...typography.caption,
-    marginBottom: 10,
-  },
-  atsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.08)',
-    paddingTop: 8,
-  },
-  atsBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  atsText: {
-    ...typography.caption,
-    fontWeight: '700',
-  },
-  mobileText: {
-    ...typography.caption,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.65)',
-    justifyContent: 'center',
-    padding: 20,
-  },
-  modalCard: {
-    borderRadius: 24,
-    padding: 20,
-    borderWidth: 1,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  modalTitle: {
-    ...typography.h3,
-  },
-  modalInput: {
-    height: 48,
-    borderRadius: 14,
-    borderWidth: 1,
-    paddingHorizontal: 14,
-    marginBottom: 12,
-    fontSize: 14,
-  },
+  screen: { flex: 1 },
+  content: { padding: 16, paddingBottom: 120 },
+  statsRow: { flexDirection: 'row', gap: 10, marginBottom: 20 },
+  sectionTitle: { ...typography.h3, marginBottom: 12 },
+  candidateCard: { marginBottom: 10, padding: 16 },
+  candidateTop: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
+  candidateInfo: { flex: 1, marginLeft: 12, marginRight: 8 },
+  candidateName: { ...typography.h4 },
+  candidateMeta: { ...typography.caption, marginTop: 2 },
+  contactRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 6 },
+  contactItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  contactText: { ...typography.caption },
+  candidateTime: { ...typography.micro },
 });

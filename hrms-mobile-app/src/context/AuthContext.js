@@ -1,53 +1,80 @@
-import React, { createContext, useContext, useState } from 'react';
-import { api } from '../services/api';
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import { api, persistSession, loadPersistedSession, clearPersistedSession } from '../services/api';
+import { resolveRole } from '../utils/role';
 
 const AuthContext = createContext();
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
-  const [role, setRole] = useState('employee'); // 'employee' | 'agent'
-  const [token, setToken] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [authError, setAuthError] = useState(null);
+  const [bootstrapping, setBootstrapping] = useState(true);
 
-  const login = async (email, password, selectedRole = 'employee') => {
-    setAuthError(null);
-    const res = await api.login(email, password, selectedRole);
-    if (res.success && res.user) {
-      setUser(res.user);
-      setToken(res.token);
-      const userRole = (res.user.role || selectedRole || 'employee').toLowerCase();
-      setRole(userRole === 'agent' ? 'agent' : 'employee');
-      setIsAuthenticated(true);
-      return { success: true, user: res.user, role: userRole };
-    } else {
-      setAuthError(res.message || 'Authentication failed');
-      return { success: false, message: res.message || 'Authentication failed' };
-    }
-  };
-
-  const refreshProfile = async () => {
-    if (token) {
-      const profile = await api.getProfile();
-      if (profile && (profile.id || profile.emp_code || profile.name)) {
-        setUser(profile);
+  // Restore a saved session on cold start, then re-validate it against the
+  // server — a token could have expired or been revoked while the app was closed.
+  useEffect(() => {
+    (async () => {
+      try {
+        const saved = await loadPersistedSession();
+        if (saved?.token) {
+          api.setToken(saved.token, saved.tokenType);
+          const res = await api.getProfile();
+          if (res?.status && res.user) {
+            setUser(res.user);
+            setIsAuthenticated(true);
+          } else {
+            await clearPersistedSession();
+          }
+        }
+      } catch (e) {
+        api.clearToken();
+        await clearPersistedSession();
+      } finally {
+        setBootstrapping(false);
       }
+    })();
+  }, []);
+
+  const login = useCallback(async (identifier, password) => {
+    const res = await api.login(identifier, password);
+    if (res?.status && res.token) {
+      api.setToken(res.token, res.token_type);
+      await persistSession({ token: res.token, tokenType: res.token_type || 'Bearer' });
+      setUser(res.user);
+      setIsAuthenticated(true);
+      return { success: true, user: res.user };
     }
-  };
+    return { success: false, message: res?.message || 'Invalid credentials' };
+  }, []);
 
-  const logout = () => {
-    setUser(null);
-    setToken(null);
-    setIsAuthenticated(false);
-    setAuthError(null);
-  };
+  const logout = useCallback(async () => {
+    try {
+      await api.logout();
+    } finally {
+      api.clearToken();
+      await clearPersistedSession();
+      setUser(null);
+      setIsAuthenticated(false);
+    }
+  }, []);
 
-  const switchRole = (newRole) => {
-    setRole(newRole);
-  };
+  const refreshProfile = useCallback(async () => {
+    const res = await api.getProfile();
+    if (res?.status && res.user) {
+      setUser(res.user);
+    }
+    return res;
+  }, []);
+
+  const updateUser = useCallback((partial) => {
+    setUser((prev) => (prev ? { ...prev, ...partial } : prev));
+  }, []);
+
+  const role = resolveRole(user);
 
   return (
-    <AuthContext.Provider value={{ user, role, token, isAuthenticated, authError, login, logout, switchRole, refreshProfile }}>
+    <AuthContext.Provider
+      value={{ user, role, isAuthenticated, bootstrapping, login, logout, refreshProfile, updateUser }}
+    >
       {children}
     </AuthContext.Provider>
   );

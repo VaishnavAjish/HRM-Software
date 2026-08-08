@@ -84,7 +84,13 @@ function normalizeTrialForm(item, index) {
     contractor: item.contractor || "-",
     managerName: firstPresent(item.manager_name, item.managerName),
     akar: item.akar || "-",
-    aadharCardNo: item.aadhaar_full || item.aadhaar_masked || "-",
+    aadharCardNo: firstPresent(
+      item.aadhar_card_no,
+      item.aadhaar_full,
+      item.aadhar_full,
+      item.aadhar_no,
+      item.aadharNo
+    ) || "-",
     empSignature: item.emp_signature || "",
     managerSignature: item.manager_signature || "",
     hastakSignature: item.hastak_signature || "",
@@ -170,6 +176,7 @@ const PrintableTrialForm = ({ data, formRef }) => {
     { label: "Department", value: data.department },
     { label: "Designation", value: data.designation },
     { label: "Name of Employee", value: data.name, full: true },
+    { label: "Aadhaar Number", value: data.aadharCardNo, full: true },
     { label: "Address", value: data.address, full: true },
     { label: "Mobile No 1", value: data.mobileNo1 },
     { label: "Mobile No 2", value: data.mobileNo2 },

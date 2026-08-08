@@ -1,306 +1,202 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
-import { Clock, MapPin, Ticket, Calendar, FileText, Megaphone, ArrowUpRight, CheckCircle2, AlertCircle } from 'lucide-react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity } from 'react-native';
+import { Wallet, CalendarCheck, FileText, ChevronRight, Ticket, User, AlertCircle } from 'lucide-react-native';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
-import { Card } from '../../components/common/Card';
-import { Button } from '../../components/common/Button';
-import { Badge } from '../../components/common/Badge';
-import { typography, shadows } from '../../theme';
 import { api } from '../../services/api';
+import { typography } from '../../theme';
+import { Card } from '../../components/common/Card';
+import { Badge } from '../../components/common/Badge';
+import { StatCard } from '../../components/common/StatCard';
+import { LoadingView } from '../../components/common/LoadingView';
+import { EmptyState } from '../../components/common/EmptyState';
+import { formatCurrency, monthName } from '../../utils/format';
 
 export function HomeScreen({ onNavigateTab }) {
   const { theme } = useTheme();
   const { user } = useAuth();
-  const [attendance, setAttendance] = useState(null);
-  const [leaves, setLeaves] = useState(null);
-  const [tickets, setTickets] = useState([]);
-  const [loadingPunch, setLoadingPunch] = useState(false);
+  const [dashboard, setDashboard] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState(null);
 
-  useEffect(() => {
-    loadDashboardData();
+  const load = useCallback(async (isRefresh = false) => {
+    isRefresh ? setRefreshing(true) : setLoading(true);
+    setError(null);
+    try {
+      const res = await api.getDashboard();
+      if (res?.status) {
+        setDashboard(res.data);
+      } else {
+        setError(res?.message || 'Could not load your dashboard.');
+      }
+    } catch (e) {
+      setError(e.message || 'Could not load your dashboard.');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   }, []);
 
-  const loadDashboardData = async () => {
-    const att = await api.getAttendance();
-    const lev = await api.getLeaves();
-    const tck = await api.getTickets();
-    setAttendance(att);
-    setLeaves(lev);
-    setTickets(tck);
-  };
+  useEffect(() => {
+    load();
+  }, [load]);
 
-  const handleTogglePunch = async () => {
-    setLoadingPunch(true);
-    if (attendance?.isPunchedIn) {
-      await api.punchOut();
-    } else {
-      await api.punchIn();
-    }
-    const updated = await api.getAttendance();
-    setAttendance({ ...updated });
-    setLoadingPunch(false);
-  };
+  if (loading) return <LoadingView fullscreen label="Loading your dashboard…" />;
+
+  const latestSlip = dashboard?.recent_slips?.[0];
+  const recentSlips = dashboard?.recent_slips || [];
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: theme.background }]} contentContainerStyle={styles.contentContainer} showsVerticalScrollIndicator={false}>
-
-      {/* Quick Punch In/Out Card */}
-      <Card style={styles.punchCard} glass>
-        <View style={styles.punchHeaderRow}>
-          <View style={styles.punchBadgeGroup}>
-            <View style={[styles.statusPulse, { backgroundColor: attendance?.isPunchedIn ? theme.emerald : theme.amber }]} />
-            <Text style={[styles.punchStatusText, { color: attendance?.isPunchedIn ? theme.emerald : theme.amber }]}>
-              {attendance?.isPunchedIn ? 'On Shift (Punched In)' : 'Off Shift (Punched Out)'}
-            </Text>
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={styles.content}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={theme.primary} />}
+    >
+      {error ? (
+        <EmptyState icon={AlertCircle} title="Couldn't load dashboard" message={error} tone="error" actionLabel="Retry" onAction={() => load()} />
+      ) : (
+        <>
+          <View style={styles.statsRow}>
+            <StatCard icon={FileText} label="Payslips Issued" value={dashboard?.total_slips ?? 0} tint="cyan" />
+            <StatCard
+              icon={Wallet}
+              label="Latest Net Pay"
+              value={latestSlip ? formatCurrency(latestSlip.net_payable) : '—'}
+              tint="emerald"
+            />
+            <StatCard
+              icon={CalendarCheck}
+              label="Present Days"
+              value={latestSlip?.present_days ?? '—'}
+              tint="violet"
+            />
           </View>
-          <Text style={[styles.shiftTimer, { color: theme.textPrimary }]}>
-            {attendance?.isPunchedIn ? attendance?.totalHoursToday : '--:--'}
-          </Text>
-        </View>
 
-        {/* Location & Shift detail */}
-        <View style={styles.locationRow}>
-          <MapPin size={15} color={theme.primary} />
-          <Text style={[styles.locationText, { color: theme.textMuted }]}>
-            {attendance?.location || 'HQ Alpha - Verified GPS'}
-          </Text>
-        </View>
-
-        <View style={styles.punchActionRow}>
-          <Button
-            title={attendance?.isPunchedIn ? 'Clock Out' : 'Clock In Now'}
-            variant={attendance?.isPunchedIn ? 'rose' : 'emerald'}
-            onPress={handleTogglePunch}
-            loading={loadingPunch}
-            icon={Clock}
-            style={{ flex: 1 }}
-          />
-          <TouchableOpacity
-            style={[styles.historyIconBtn, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}
-            onPress={() => onNavigateTab('attendance')}
-          >
-            <ArrowUpRight size={20} color={theme.textPrimary} />
-          </TouchableOpacity>
-        </View>
-      </Card>
-
-      {/* Stats Summary Widgets Grid */}
-      <View style={styles.statsGrid}>
-        {/* Attendance Punctuality */}
-        <TouchableOpacity
-          style={[styles.statBox, { backgroundColor: theme.surfaceCard, borderColor: theme.border }]}
-          onPress={() => onNavigateTab('attendance')}
-          activeOpacity={0.8}
-        >
-          <View style={[styles.statIconBadge, { backgroundColor: theme.emeraldBg }]}>
-            <Clock size={18} color={theme.emerald} />
+          <View style={styles.quickActionsRow}>
+            <QuickAction icon={FileText} label="Payslips" onPress={() => onNavigateTab?.('payslips')} theme={theme} />
+            <QuickAction icon={Ticket} label="Tickets" onPress={() => onNavigateTab?.('tickets')} theme={theme} />
+            <QuickAction icon={User} label="Profile" onPress={() => onNavigateTab?.('profile')} theme={theme} />
           </View>
-          <Text style={[styles.statNumber, { color: theme.textPrimary }]}>
-            {attendance?.monthlySummary?.punctualityRate || '95.6%'}
-          </Text>
-          <Text style={[styles.statLabel, { color: theme.textMuted }]}>Punctuality</Text>
-        </TouchableOpacity>
 
-        {/* Casual Leave Available */}
-        <TouchableOpacity
-          style={[styles.statBox, { backgroundColor: theme.surfaceCard, borderColor: theme.border }]}
-          onPress={() => onNavigateTab('leave')}
-          activeOpacity={0.8}
-        >
-          <View style={[styles.statIconBadge, { backgroundColor: theme.cyanBg }]}>
-            <Calendar size={18} color={theme.cyan} />
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Recent Payslips</Text>
+            <TouchableOpacity onPress={() => onNavigateTab?.('payslips')} style={styles.seeAllBtn}>
+              <Text style={[styles.seeAllText, { color: theme.primary }]}>See all</Text>
+              <ChevronRight size={14} color={theme.primary} />
+            </TouchableOpacity>
           </View>
-          <Text style={[styles.statNumber, { color: theme.textPrimary }]}>
-            {leaves?.quotas?.[0]?.remaining ?? 6} Days
-          </Text>
-          <Text style={[styles.statLabel, { color: theme.textMuted }]}>Casual Leave</Text>
-        </TouchableOpacity>
 
-        {/* Open Tickets */}
-        <TouchableOpacity
-          style={[styles.statBox, { backgroundColor: theme.surfaceCard, borderColor: theme.border }]}
-          onPress={() => onNavigateTab('tickets')}
-          activeOpacity={0.8}
-        >
-          <View style={[styles.statIconBadge, { backgroundColor: theme.violetBg }]}>
-            <Ticket size={18} color={theme.violet} />
-          </View>
-          <Text style={[styles.statNumber, { color: theme.textPrimary }]}>
-            {tickets?.length || 2} Open
-          </Text>
-          <Text style={[styles.statLabel, { color: theme.textMuted }]}>Helpdesk</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Quick Action Shortcuts Bar */}
-      <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Quick Actions</Text>
-      <View style={styles.shortcutRow}>
-        <TouchableOpacity style={[styles.shortcutCard, { backgroundColor: theme.surfaceCard, borderColor: theme.border }]} onPress={() => onNavigateTab('tickets')}>
-          <Ticket size={22} color={theme.primary} />
-          <Text style={[styles.shortcutText, { color: theme.textPrimary }]}>Raise Ticket</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={[styles.shortcutCard, { backgroundColor: theme.surfaceCard, borderColor: theme.border }]} onPress={() => onNavigateTab('leave')}>
-          <Calendar size={22} color={theme.emerald} />
-          <Text style={[styles.shortcutText, { color: theme.textPrimary }]}>Apply Leave</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={[styles.shortcutCard, { backgroundColor: theme.surfaceCard, borderColor: theme.border }]} onPress={() => onNavigateTab('payslips')}>
-          <FileText size={22} color={theme.cyan} />
-          <Text style={[styles.shortcutText, { color: theme.textPrimary }]}>Payslip</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Recent Announcement */}
-      <Text style={[styles.sectionTitle, { color: theme.textPrimary, marginTop: 22 }]}>Enterprise Announcements</Text>
-      <Card style={styles.announcementCard} glass>
-        <View style={styles.announcementHeader}>
-          <View style={[styles.announcementIconCircle, { backgroundColor: theme.violetBg }]}>
-            <Megaphone size={18} color={theme.violet} />
-          </View>
-          <View style={{ flex: 1, marginLeft: 10 }}>
-            <Text style={[styles.announcementTitle, { color: theme.textPrimary }]}>Q3 All-Hands Townhall Meeting</Text>
-            <Text style={[styles.announcementTime, { color: theme.textMuted }]}>Posted yesterday by HR Communications</Text>
-          </View>
-        </View>
-        <Text style={[styles.announcementBody, { color: theme.textSecondary }]}>
-          Join our leadership team this Thursday at 04:00 PM EST for the quarterly update on company growth, team promotions, and project roadmaps.
-        </Text>
-      </Card>
-
+          {recentSlips.length === 0 ? (
+            <EmptyState icon={FileText} title="No payslips yet" message="Your payslips will appear here once they're issued." />
+          ) : (
+            recentSlips.map((slip) => (
+              <Card key={slip.id} style={styles.slipCard} elevated>
+                <View style={styles.slipRow}>
+                  <View style={styles.slipLeft}>
+                    <Text style={[styles.slipMonth, { color: theme.textPrimary }]}>
+                      {monthName(slip.month)} {slip.year}
+                    </Text>
+                    <Text style={[styles.slipDept, { color: theme.textMuted }]}>{slip.department || user?.department || '—'}</Text>
+                  </View>
+                  <View style={styles.slipRight}>
+                    <Text style={[styles.slipAmount, { color: theme.emerald }]}>{formatCurrency(slip.net_payable)}</Text>
+                    <Badge label="Net Pay" variant="emerald" size="small" />
+                  </View>
+                </View>
+              </Card>
+            ))
+          )}
+        </>
+      )}
     </ScrollView>
   );
 }
 
+function QuickAction({ icon: Icon, label, onPress, theme }) {
+  return (
+    <TouchableOpacity style={styles.quickAction} onPress={onPress} activeOpacity={0.8}>
+      <Card style={[styles.quickActionCard, { backgroundColor: theme.surfaceElevated }]}>
+        <Icon size={20} color={theme.primary} />
+        <Text style={[styles.quickActionLabel, { color: theme.textPrimary }]}>{label}</Text>
+      </Card>
+    </TouchableOpacity>
+  );
+}
+
 const styles = StyleSheet.create({
-  container: {
+  screen: {
     flex: 1,
   },
-  contentContainer: {
-    padding: 18,
-    paddingBottom: 100,
+  content: {
+    padding: 16,
+    paddingBottom: 120,
   },
-  punchCard: {
-    marginBottom: 20,
-  },
-  punchHeaderRow: {
+  statsRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-  },
-  punchBadgeGroup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  statusPulse: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  punchStatusText: {
-    ...typography.caption,
-    fontWeight: '700',
-  },
-  shiftTimer: {
-    ...typography.h2,
-    fontWeight: '800',
-  },
-  locationRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
+    gap: 10,
     marginBottom: 16,
   },
-  locationText: {
-    ...typography.caption,
-  },
-  punchActionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  historyIconBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-  },
-  statsGrid: {
+  quickActionsRow: {
     flexDirection: 'row',
     gap: 10,
-    marginBottom: 22,
+    marginBottom: 24,
   },
-  statBox: {
+  quickAction: {
     flex: 1,
-    padding: 14,
-    borderRadius: 18,
-    borderWidth: 1,
   },
-  statIconBadge: {
-    width: 34,
-    height: 34,
-    borderRadius: 12,
+  quickActionCard: {
     alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 8,
-  },
-  statNumber: {
-    ...typography.h3,
-    fontWeight: '700',
-  },
-  statLabel: {
-    ...typography.micro,
-    marginTop: 2,
-  },
-  sectionTitle: {
-    ...typography.h3,
-    marginBottom: 12,
-  },
-  shortcutRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  shortcutCard: {
-    flex: 1,
-    padding: 16,
-    borderRadius: 18,
-    borderWidth: 1,
-    alignItems: 'center',
+    paddingVertical: 16,
     gap: 8,
+    borderWidth: 0,
   },
-  shortcutText: {
+  quickActionLabel: {
     ...typography.caption,
     fontWeight: '600',
   },
-  announcementCard: {
-    padding: 16,
-  },
-  announcementHeader: {
+  sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 10,
+    justifyContent: 'space-between',
+    marginBottom: 12,
   },
-  announcementIconCircle: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+  sectionTitle: {
+    ...typography.h3,
+  },
+  seeAllBtn: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 2,
   },
-  announcementTitle: {
+  seeAllText: {
+    ...typography.caption,
+    fontWeight: '600',
+  },
+  slipCard: {
+    marginBottom: 10,
+    padding: 16,
+  },
+  slipRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  slipLeft: {
+    flexShrink: 1,
+  },
+  slipMonth: {
     ...typography.h4,
+    marginBottom: 2,
   },
-  announcementTime: {
-    ...typography.micro,
+  slipDept: {
+    ...typography.caption,
   },
-  announcementBody: {
-    ...typography.body,
-    fontSize: 13,
-    lineHeight: 19,
+  slipRight: {
+    alignItems: 'flex-end',
+    gap: 4,
+  },
+  slipAmount: {
+    ...typography.h4,
   },
 });

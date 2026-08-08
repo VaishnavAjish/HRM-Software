@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { Home, Clock, Calendar, Ticket, FileText, ShieldCheck, MapPin, User } from 'lucide-react-native';
+import { Home, Ticket, FileText, ShieldCheck, User } from 'lucide-react-native';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { typography, shadows } from '../../theme';
@@ -11,16 +11,14 @@ export function FloatingTabBar({ activeTab, onSelectTab }) {
 
   const employeeTabs = [
     { id: 'home', label: 'Home', icon: Home },
-    { id: 'attendance', label: 'Punch', icon: Clock },
-    { id: 'leave', label: 'Leaves', icon: Calendar },
+    { id: 'payslips', label: 'Payslips', icon: FileText },
     { id: 'tickets', label: 'Tickets', icon: Ticket },
-    { id: 'payslips', label: 'Payslip', icon: FileText },
+    { id: 'profile', label: 'Profile', icon: User },
   ];
 
   const agentTabs = [
-    { id: 'agent-dashboard', label: 'Desk', icon: ShieldCheck },
-    { id: 'agent-tickets', label: 'Tickets', icon: Ticket },
-    { id: 'field-tasks', label: 'Field Visits', icon: MapPin },
+    { id: 'agent-dashboard', label: 'Candidates', icon: ShieldCheck },
+    { id: 'tickets', label: 'Tickets', icon: Ticket },
     { id: 'profile', label: 'Profile', icon: User },
   ];
 
@@ -36,31 +34,17 @@ export function FloatingTabBar({ activeTab, onSelectTab }) {
           return (
             <TouchableOpacity
               key={tab.id}
-              style={[
-                styles.tabItem,
-                isActive && { backgroundColor: theme.primary + '18' },
-              ]}
+              style={[styles.tabItem, isActive && { backgroundColor: theme.primary + '18' }]}
               onPress={() => onSelectTab(tab.id)}
               activeOpacity={0.7}
             >
-              <Icon
-                size={20}
-                color={isActive ? theme.primary : theme.textMuted}
-                strokeWidth={isActive ? 2.5 : 1.8}
-              />
+              <Icon size={20} color={isActive ? theme.primary : theme.textMuted} strokeWidth={isActive ? 2.5 : 1.8} />
               <Text
-                style={[
-                  styles.tabLabel,
-                  { color: isActive ? theme.primary : theme.textMuted },
-                  isActive && styles.activeTabLabel,
-                ]}
+                style={[styles.tabLabel, { color: isActive ? theme.primary : theme.textMuted }, isActive && styles.activeTabLabel]}
               >
                 {tab.label}
               </Text>
-
-              {isActive && (
-                <View style={[styles.activePill, { backgroundColor: theme.primary }]} />
-              )}
+              {isActive && <View style={[styles.activePill, { backgroundColor: theme.primary }]} />}
             </TouchableOpacity>
           );
         })}

@@ -25,6 +25,7 @@ export const PrintableTrialForm = ({ data, formRef }) => {
     { label: "Department", value: data.department },
     { label: "Designation", value: data.designation },
     { label: "Name of Employee", value: data.name },
+    { label: "Aadhaar Number", value: data.aadharCardNo },
     { label: "Address", value: data.address },
     { label: "Mobile No 1", value: data.mobileNo1 },
     { label: "Gender", value: data.gender },
@@ -107,6 +108,7 @@ export const PrintableTrialForm = ({ data, formRef }) => {
               </td>
             </tr>
             <Row label="Name of Employee" value={data.name} full />
+            <Row label="Aadhaar Number" value={data.aadharCardNo} full />
             <Row label="Address" value={data.address} full />
             <tr>
               <td className="border border-black bg-gray-50 px-3 py-2 text-[12px] font-bold uppercase text-black">

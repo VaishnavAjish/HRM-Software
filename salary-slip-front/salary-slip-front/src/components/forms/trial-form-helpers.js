@@ -52,6 +52,13 @@ export function normalizeTrialForm(item, index) {
     contractor: item.contractor || "-",
     managerName: firstPresent(item.manager_name, item.managerName),
     akar: item.akar || "-",
+    aadharCardNo: firstPresent(
+      item.aadhar_card_no,
+      item.aadhaar_full,
+      item.aadhar_full,
+      item.aadhar_no,
+      item.aadharNo
+    ),
     empSignature: item.emp_signature || "",
     managerSignature: item.manager_signature || "",
     hastakSignature: item.hastak_signature || "",
