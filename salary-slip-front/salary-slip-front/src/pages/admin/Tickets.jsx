@@ -118,7 +118,7 @@ export default function Tickets() {
   };
 
   return (
-    <div className="space-y-5 p-2 lg:p-6">
+    <div className="space-y-5">
       <header className="flex items-center gap-3">
         <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-100 text-brand-600 dark:bg-brand-900/30 dark:text-brand-400">
           <Ticket size={20} />

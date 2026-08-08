@@ -2,38 +2,25 @@ import { io } from "socket.io-client";
 
 const SOCKET_PORT = 8000;
 
-/*
- * Derived, never hardcoded.
- *
- * This used to fall back to a literal LAN address. When the machine's DHCP
- * lease moved, that address stopped resolving and every socket attempt timed
- * out against a host that no longer existed — the same stale-IP failure that
- * took the login endpoint down with it. Following the API origin, and then the
- * host that actually served the page, means the client tracks wherever the
- * application is really running.
- */
 function defaultSocketUrl() {
-  if (typeof window !== "undefined" && window.location.protocol === "https:") {
-    return window.location.origin;
-  }
-
   const api = import.meta.env.VITE_API_BASE_URL;
 
   if (api) {
     try {
       return new URL(api, window.location.origin).origin;
     } catch {
-      // Malformed value: fall through to the page's own host.
+      // Malformed value
     }
   }
 
-  return `${window.location.protocol}//${window.location.hostname}:${SOCKET_PORT}`;
+  if (typeof window !== "undefined") {
+    return `${window.location.protocol}//${window.location.hostname}:${SOCKET_PORT}`;
+  }
+
+  return "";
 }
 
-const SOCKET_SERVER_URL =
-  typeof window !== "undefined" && window.location.protocol === "https:"
-    ? window.location.origin
-    : (import.meta.env.VITE_SOCKET_URL || defaultSocketUrl());
+const SOCKET_SERVER_URL = import.meta.env.VITE_SOCKET_URL || defaultSocketUrl();
 
 let socket = null;
 const eventListeners = new Map();
@@ -42,50 +29,70 @@ const eventListeners = new Map();
  * Initialize and return Socket.IO client instance
  */
 export function getSocket(token) {
-  if (!socket) {
-    socket = io(SOCKET_SERVER_URL, {
-      autoConnect: true,
-      reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 2000,
-      transports: ["websocket", "polling"],
-      auth: {
-        token: token || "",
+  // On production HTTPS without explicit socket server URL, fall back gracefully to local event dispatcher
+  const isHttpsProdWithoutSocketUrl =
+    typeof window !== "undefined" &&
+    window.location.protocol === "https:" &&
+    !import.meta.env.VITE_SOCKET_URL;
+
+  if (isHttpsProdWithoutSocketUrl) {
+    return {
+      on: (event, fn) => {
+        if (!eventListeners.has(event)) eventListeners.set(event, new Set());
+        eventListeners.get(event).add(fn);
       },
-    });
+      off: (event, fn) => {
+        if (eventListeners.has(event)) eventListeners.get(event).delete(fn);
+      },
+      emit: (event, data) => {
+        if (eventListeners.has(event)) eventListeners.get(event).forEach((cb) => cb(data));
+      },
+      connected: false,
+    };
+  }
 
-    socket.on("connect", () => {
-      console.log("[Socket.IO] Connected to notification server:", socket.id);
-    });
+  if (!socket) {
+    try {
+      socket = io(SOCKET_SERVER_URL, {
+        autoConnect: true,
+        reconnection: false, // Don't spam console with retry attempts if server is offline
+        transports: ["polling", "websocket"],
+        auth: {
+          token: token || "",
+        },
+      });
 
-    socket.on("connect_error", (err) => {
-      console.warn("[Socket.IO] Connection error (using fallback local event dispatcher):", err.message);
-    });
+      socket.on("connect", () => {
+        console.log("[Socket.IO] Connected to notification server:", socket.id);
+      });
 
-    socket.on("disconnect", (reason) => {
-      console.log("[Socket.IO] Disconnected:", reason);
-    });
+      socket.on("connect_error", (err) => {
+        console.warn("[Socket.IO] Connection error (using fallback local event dispatcher):", err.message);
+      });
+    } catch (e) {
+      console.warn("[Socket.IO] Disabled:", e.message);
+    }
   }
 
   return socket;
 }
 
 /**
- * Subscribe to a Socket.IO event channel
+ * Subscribe to a Socket.IO or local event channel
  */
 export function subscribeSocketEvent(eventName, callback) {
-  const s = getSocket();
-  if (s) {
-    s.on(eventName, callback);
+  if (!eventListeners.has(eventName)) {
+    eventListeners.set(eventName, new Set());
+  }
+  eventListeners.get(eventName).add(callback);
 
-    if (!eventListeners.has(eventName)) {
-      eventListeners.set(eventName, new Set());
-    }
-    eventListeners.get(eventName).add(callback);
+  const s = getSocket();
+  if (s && typeof s.on === "function") {
+    s.on(eventName, callback);
   }
 
   return () => {
-    if (s) {
+    if (s && typeof s.off === "function") {
       s.off(eventName, callback);
     }
     if (eventListeners.has(eventName)) {
@@ -99,11 +106,11 @@ export function subscribeSocketEvent(eventName, callback) {
  */
 export function emitSocketEvent(eventName, payload) {
   const s = getSocket();
-  if (s && s.connected) {
+  if (s && s.connected && typeof s.emit === "function") {
     s.emit(eventName, payload);
   }
 
-  // Also trigger local eventListeners for instant reactive client dispatch
+  // Always trigger local eventListeners for instant reactive client dispatch
   if (eventListeners.has(eventName)) {
     eventListeners.get(eventName).forEach((cb) => cb(payload));
   }

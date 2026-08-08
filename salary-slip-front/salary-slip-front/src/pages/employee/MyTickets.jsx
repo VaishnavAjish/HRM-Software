@@ -65,7 +65,7 @@ export default function MyTickets() {
   const total = Object.values(counts).reduce((sum, n) => sum + Number(n || 0), 0);
 
   return (
-    <div className="space-y-5 p-2 lg:p-6">
+    <div className="space-y-5">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-100 text-brand-600 dark:bg-brand-900/30 dark:text-brand-400">

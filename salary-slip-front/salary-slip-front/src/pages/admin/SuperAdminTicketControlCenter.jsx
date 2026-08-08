@@ -167,7 +167,7 @@ export default function SuperAdminTicketControlCenter() {
   };
 
   return (
-    <div className="space-y-5 p-2 lg:p-6">
+    <div className="space-y-5">
       <header className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-500/10 text-brand-600 dark:text-brand-400">

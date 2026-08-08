@@ -1,18 +1,20 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity, TextInput,
   KeyboardAvoidingView, Platform,
 } from 'react-native';
-import { Ticket as TicketIcon, ChevronLeft, ChevronRight, Plus, AlertCircle, Send } from 'lucide-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ticket as TicketIcon, ChevronLeft, Plus, AlertCircle, Send, Lock, RotateCcw } from 'lucide-react-native';
 import { useTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
-import { typography } from '../theme';
+import { typography, shadows } from '../theme';
 import { Card } from '../components/common/Card';
 import { Badge } from '../components/common/Badge';
 import { Button } from '../components/common/Button';
+import { Fab } from '../components/common/Fab';
 import { LoadingView } from '../components/common/LoadingView';
 import { EmptyState } from '../components/common/EmptyState';
-import { timeAgo } from '../utils/format';
 
 const PRIORITIES = ['low', 'medium', 'high', 'urgent'];
 
@@ -25,8 +27,56 @@ const STATUS_VARIANT = {
   reopened: 'rose',
 };
 
+const STATUS_TINT = {
+  open: 'violet',
+  assigned: 'amber',
+  in_progress: 'amber',
+  resolved: 'emerald',
+  closed: 'textMuted',
+  reopened: 'rose',
+};
+
 function label(s) {
   return String(s || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function chatTime(iso) {
+  const d = new Date(iso);
+  if (!iso || Number.isNaN(d.getTime())) return '';
+  let h = d.getHours();
+  const m = String(d.getMinutes()).padStart(2, '0');
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 || 12;
+  return `${h}:${m} ${ampm}`;
+}
+
+function dayKey(iso) {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '' : d.toDateString();
+}
+
+function dayLabel(iso) {
+  const d = new Date(iso);
+  if (!iso || Number.isNaN(d.getTime())) return '';
+  const now = new Date();
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (d.toDateString() === now.toDateString()) return 'Today';
+  if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  return d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+// Same rule WhatsApp uses in its chat list: time for today, a word for
+// yesterday, a short date beyond that.
+function listTime(iso) {
+  const d = new Date(iso);
+  if (!iso || Number.isNaN(d.getTime())) return '';
+  const now = new Date();
+  if (d.toDateString() === now.toDateString()) return chatTime(iso);
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getFullYear()).slice(-2)}`;
 }
 
 export function TicketScreen() {
@@ -40,6 +90,8 @@ export function TicketScreen() {
   }
   return <TicketList onOpen={(id) => setView({ mode: 'detail', id })} onCreate={() => setView({ mode: 'create' })} />;
 }
+
+/* ------------------------------------------------------------------ list */
 
 function TicketList({ onOpen, onCreate }) {
   const { theme } = useTheme();
@@ -66,48 +118,64 @@ function TicketList({ onOpen, onCreate }) {
     }
   }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useEffect(() => { load(); }, [load]);
 
   if (loading) return <LoadingView fullscreen label="Loading tickets…" />;
 
   return (
-    <ScrollView
-      style={styles.screen}
-      contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={theme.primary} />}
-    >
-      <Button title="Raise a Ticket" onPress={onCreate} icon={Plus} variant="gradient" style={styles.raiseBtn} />
+    <View style={styles.screen}>
+      <ScrollView
+        style={styles.screen}
+        contentContainerStyle={styles.listContent}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={theme.primary} />}
+      >
+        {error ? (
+          <EmptyState icon={AlertCircle} title="Couldn't load tickets" message={error} tone="error" actionLabel="Retry" onAction={() => load()} />
+        ) : tickets.length === 0 ? (
+          <EmptyState icon={TicketIcon} title="No tickets yet" message="Tap the + button to raise your first ticket." />
+        ) : (
+          tickets.map((t, i) => {
+            const tint = theme[STATUS_TINT[t.status] || 'primary'];
+            return (
+              <TouchableOpacity
+                key={t.id}
+                activeOpacity={0.7}
+                onPress={() => onOpen(t.id)}
+                style={[
+                  styles.chatRow,
+                  i !== tickets.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.border },
+                ]}
+              >
+                <View style={[styles.chatAvatar, { backgroundColor: tint + '1F' }]}>
+                  <TicketIcon size={20} color={tint} />
+                </View>
 
-      {error ? (
-        <EmptyState icon={AlertCircle} title="Couldn't load tickets" message={error} tone="error" actionLabel="Retry" onAction={() => load()} />
-      ) : tickets.length === 0 ? (
-        <EmptyState icon={TicketIcon} title="No tickets yet" message="Raise a ticket if you need help from support or HR." />
-      ) : (
-        tickets.map((t) => (
-          <TouchableOpacity key={t.id} activeOpacity={0.8} onPress={() => onOpen(t.id)}>
-            <Card style={styles.ticketCard} elevated>
-              <View style={styles.ticketTopRow}>
-                <Text style={[styles.ticketNumber, { color: theme.textMuted }]}>{t.ticket_number}</Text>
-                <Badge label={label(t.status)} variant={STATUS_VARIANT[t.status] || 'default'} size="small" />
-              </View>
-              <Text style={[styles.ticketSubject, { color: theme.textPrimary }]} numberOfLines={1}>
-                {t.subject}
-              </Text>
-              <View style={styles.ticketBottomRow}>
-                <Text style={[styles.ticketMeta, { color: theme.textMuted }]}>
-                  {t.category?.name || 'General'} · {timeAgo(t.created_at)}
-                </Text>
-                <ChevronRight size={16} color={theme.textMuted} />
-              </View>
-            </Card>
-          </TouchableOpacity>
-        ))
-      )}
-    </ScrollView>
+                <View style={styles.chatRowBody}>
+                  <View style={styles.chatRowTop}>
+                    <Text style={[styles.chatSubject, { color: theme.textPrimary }]} numberOfLines={1}>
+                      {t.subject}
+                    </Text>
+                    <Text style={[styles.chatTime, { color: theme.textMuted }]}>{listTime(t.created_at)}</Text>
+                  </View>
+                  <View style={styles.chatRowBottom}>
+                    <Text style={[styles.chatPreview, { color: theme.textMuted }]} numberOfLines={1}>
+                      {t.ticket_number} · {t.category?.name || 'General'}
+                    </Text>
+                    <Badge label={label(t.status)} variant={STATUS_VARIANT[t.status] || 'default'} size="small" />
+                  </View>
+                </View>
+              </TouchableOpacity>
+            );
+          })
+        )}
+      </ScrollView>
+
+      <Fab onPress={onCreate} accessibilityLabel="Raise a ticket" />
+    </View>
   );
 }
+
+/* ---------------------------------------------------------------- create */
 
 function CreateTicket({ onDone, onCancel }) {
   const { theme } = useTheme();
@@ -149,11 +217,8 @@ function CreateTicket({ onDone, onCancel }) {
         description: description.trim(),
         priority,
       });
-      if (res?.status) {
-        onDone();
-      } else {
-        setError(res?.message || 'Could not create ticket.');
-      }
+      if (res?.status) onDone();
+      else setError(res?.message || 'Could not create ticket.');
     } catch (e) {
       setError(e.message || 'Could not create ticket.');
     } finally {
@@ -163,7 +228,7 @@ function CreateTicket({ onDone, onCancel }) {
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+      <ScrollView style={styles.screen} contentContainerStyle={styles.formContent}>
         <TouchableOpacity onPress={onCancel} style={styles.backRow} activeOpacity={0.7}>
           <ChevronLeft size={18} color={theme.primary} />
           <Text style={[styles.backText, { color: theme.primary }]}>Cancel</Text>
@@ -228,8 +293,7 @@ function CreateTicket({ onDone, onCancel }) {
           <Text style={[styles.fieldLabel, { color: theme.textMuted }]}>Description</Text>
           <TextInput
             style={[
-              styles.input,
-              styles.inputMultiline,
+              styles.input, styles.inputMultiline,
               { color: theme.textPrimary, backgroundColor: theme.surfaceElevated, borderColor: theme.border },
             ]}
             value={description}
@@ -246,8 +310,11 @@ function CreateTicket({ onDone, onCancel }) {
   );
 }
 
+/* ------------------------------------------------------- detail (chat) */
+
 function TicketDetail({ id, onBack }) {
   const { theme } = useTheme();
+  const { user } = useAuth();
   const [ticket, setTicket] = useState(null);
   const [meta, setMeta] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -257,6 +324,7 @@ function TicketDetail({ id, onBack }) {
   const [showReopen, setShowReopen] = useState(false);
   const [reopenReason, setReopenReason] = useState('');
   const [reopening, setReopening] = useState(false);
+  const scrollRef = useRef(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -276,12 +344,10 @@ function TicketDetail({ id, onBack }) {
     }
   }, [id]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useEffect(() => { load(); }, [load]);
 
   const sendReply = async () => {
-    if (!reply.trim()) return;
+    if (!reply.trim() || sending) return;
     setSending(true);
     try {
       await api.replyTicket(id, reply.trim());
@@ -309,99 +375,184 @@ function TicketDetail({ id, onBack }) {
     }
   };
 
+  const tint = theme[STATUS_TINT[ticket?.status] || 'primary'];
+
+  // The ticket description is the opening message of the thread. Tickets are
+  // only ever the signed-in employee's own here, so it always aligns right.
+  const thread = ticket
+    ? [
+        { id: 'opening', mine: true, message: ticket.description, created_at: ticket.created_at, sender: { name: 'You' } },
+        ...(ticket.messages || []).map((m) => ({
+          id: m.id,
+          mine: m.sender?.id === user?.id,
+          message: m.message,
+          created_at: m.created_at,
+          sender: m.sender,
+        })),
+      ]
+    : [];
+
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-        <TouchableOpacity onPress={onBack} style={styles.backRow} activeOpacity={0.7}>
-          <ChevronLeft size={18} color={theme.primary} />
-          <Text style={[styles.backText, { color: theme.primary }]}>All tickets</Text>
-        </TouchableOpacity>
+      <View style={[styles.screen, { backgroundColor: theme.background }]}>
+        {/* chat header */}
+        <View style={[styles.chatHeader, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
+          <TouchableOpacity onPress={onBack} hitSlop={10} style={styles.chatBack}>
+            <ChevronLeft size={24} color={theme.textPrimary} />
+          </TouchableOpacity>
+          <View style={[styles.chatHeaderAvatar, { backgroundColor: tint + '1F' }]}>
+            <TicketIcon size={18} color={tint} />
+          </View>
+          <View style={styles.chatHeaderText}>
+            <Text style={[styles.chatHeaderTitle, { color: theme.textPrimary }]} numberOfLines={1}>
+              {ticket?.subject || 'Ticket'}
+            </Text>
+            <Text style={[styles.chatHeaderSub, { color: theme.textMuted }]} numberOfLines={1}>
+              {ticket?.ticket_number}{ticket?.category?.name ? ` · ${ticket.category.name}` : ''}
+            </Text>
+          </View>
+          {ticket ? <Badge label={label(ticket.status)} variant={STATUS_VARIANT[ticket.status] || 'default'} size="small" /> : null}
+        </View>
 
         {loading ? (
           <LoadingView label="Loading ticket…" />
         ) : error && !ticket ? (
           <EmptyState icon={AlertCircle} title="Couldn't load ticket" message={error} tone="error" actionLabel="Retry" onAction={load} />
-        ) : ticket ? (
+        ) : (
           <>
-            <Card style={styles.detailCard} elevated>
-              <View style={styles.ticketTopRow}>
-                <Text style={[styles.ticketNumber, { color: theme.textMuted }]}>{ticket.ticket_number}</Text>
-                <Badge label={label(ticket.status)} variant={STATUS_VARIANT[ticket.status] || 'default'} size="small" />
-              </View>
-              <Text style={[styles.detailSubject, { color: theme.textPrimary }]}>{ticket.subject}</Text>
-              <Text style={[styles.detailDescription, { color: theme.textSecondary }]}>{ticket.description}</Text>
-              <View style={styles.chipRow}>
-                <Badge label={label(ticket.priority)} variant={ticket.priority === 'urgent' || ticket.priority === 'high' ? 'rose' : 'default'} size="small" />
-                {ticket.category?.name ? <Badge label={ticket.category.name} variant="cyan" size="small" /> : null}
-              </View>
-            </Card>
+            <ScrollView
+              ref={scrollRef}
+              style={styles.chatBody}
+              contentContainerStyle={styles.chatBodyContent}
+              onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}
+            >
+              {thread.map((m, i) => {
+                const showDay = i === 0 || dayKey(m.created_at) !== dayKey(thread[i - 1].created_at);
+                return (
+                  <View key={m.id ?? i}>
+                    {showDay ? (
+                      <View style={styles.dayChipWrap}>
+                        <View style={[styles.dayChip, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+                          <Text style={[styles.dayChipText, { color: theme.textMuted }]}>{dayLabel(m.created_at)}</Text>
+                        </View>
+                      </View>
+                    ) : null}
 
-            <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Conversation</Text>
-            {(ticket.messages || []).length === 0 ? (
-              <EmptyState icon={TicketIcon} title="No replies yet" message="Add a message below to start the conversation." />
-            ) : (
-              ticket.messages.map((m) => (
-                <Card key={m.id} style={styles.messageCard} elevated>
-                  <View style={styles.messageHeader}>
-                    <Text style={[styles.messageSender, { color: theme.textPrimary }]}>{m.sender?.name || 'User'}</Text>
-                    <Text style={[styles.messageTime, { color: theme.textMuted }]}>{timeAgo(m.created_at)}</Text>
+                    <View style={[styles.bubbleRow, m.mine ? styles.bubbleRowMine : styles.bubbleRowTheirs]}>
+                      <View
+                        style={[
+                          styles.bubble,
+                          m.mine
+                            ? [styles.bubbleMine, { backgroundColor: theme.primary + '1F' }]
+                            : [styles.bubbleTheirs, { backgroundColor: theme.surface, borderColor: theme.border }],
+                        ]}
+                      >
+                        {!m.mine && m.sender?.name ? (
+                          <Text style={[styles.bubbleSender, { color: theme.primary }]}>{m.sender.name}</Text>
+                        ) : null}
+                        <Text style={[styles.bubbleText, { color: theme.textPrimary }]}>{m.message}</Text>
+                        <Text style={[styles.bubbleTime, { color: theme.textMuted }]}>{chatTime(m.created_at)}</Text>
+                      </View>
+                    </View>
                   </View>
-                  <Text style={[styles.messageText, { color: theme.textSecondary }]}>{m.message}</Text>
-                </Card>
-              ))
-            )}
+                );
+              })}
+            </ScrollView>
 
-            {meta?.can_reply && (
-              <Card style={styles.replyCard} elevated>
-                <TextInput
-                  style={[styles.input, styles.inputMultiline, { color: theme.textPrimary, backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}
-                  value={reply}
-                  onChangeText={setReply}
-                  placeholder="Write a reply…"
-                  placeholderTextColor={theme.textMuted}
-                  multiline
-                />
-                <Button title="Send Reply" onPress={sendReply} loading={sending} icon={Send} variant="gradient" style={styles.submitBtn} />
-              </Card>
-            )}
-
-            {meta?.can_reopen && (
-              <Card style={styles.replyCard} elevated>
+            {/* composer */}
+            {meta?.can_reply ? (
+              <View style={[styles.composer, { backgroundColor: theme.surface, borderTopColor: theme.border }]}>
+                <View style={[styles.composerPill, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
+                  <TextInput
+                    style={[styles.composerInput, { color: theme.textPrimary }]}
+                    value={reply}
+                    onChangeText={setReply}
+                    placeholder="Message"
+                    placeholderTextColor={theme.textMuted}
+                    multiline
+                  />
+                </View>
+                <TouchableOpacity onPress={sendReply} disabled={!reply.trim() || sending} activeOpacity={0.85}>
+                  <LinearGradient
+                    colors={theme.primaryGradient}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={[styles.sendBtn, (!reply.trim() || sending) && { opacity: 0.45 }]}
+                  >
+                    <Send size={19} color="#FFFFFF" />
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
+            ) : meta?.can_reopen ? (
+              <View style={[styles.composer, { backgroundColor: theme.surface, borderTopColor: theme.border }]}>
                 {!showReopen ? (
-                  <Button title="Reopen this ticket" onPress={() => setShowReopen(true)} variant="outline" />
+                  <TouchableOpacity
+                    style={[styles.reopenBtn, { borderColor: theme.border, backgroundColor: theme.surfaceElevated }]}
+                    onPress={() => setShowReopen(true)}
+                  >
+                    <RotateCcw size={15} color={theme.primary} />
+                    <Text style={[styles.reopenText, { color: theme.primary }]}>Reopen this ticket</Text>
+                  </TouchableOpacity>
                 ) : (
                   <>
-                    <Text style={[styles.fieldLabel, { color: theme.textMuted }]}>Why are you reopening this?</Text>
-                    <TextInput
-                      style={[styles.input, styles.inputMultiline, { color: theme.textPrimary, backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}
-                      value={reopenReason}
-                      onChangeText={setReopenReason}
-                      placeholder="Explain what's still wrong…"
-                      placeholderTextColor={theme.textMuted}
-                      multiline
-                    />
-                    <Button title="Confirm Reopen" onPress={submitReopen} loading={reopening} variant="rose" style={styles.submitBtn} />
+                    <View style={[styles.composerPill, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
+                      <TextInput
+                        style={[styles.composerInput, { color: theme.textPrimary }]}
+                        value={reopenReason}
+                        onChangeText={setReopenReason}
+                        placeholder="Why are you reopening this?"
+                        placeholderTextColor={theme.textMuted}
+                        multiline
+                      />
+                    </View>
+                    <TouchableOpacity onPress={submitReopen} disabled={!reopenReason.trim() || reopening} activeOpacity={0.85}>
+                      <LinearGradient
+                        colors={theme.roseGradient}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={[styles.sendBtn, (!reopenReason.trim() || reopening) && { opacity: 0.45 }]}
+                      >
+                        <Send size={19} color="#FFFFFF" />
+                      </LinearGradient>
+                    </TouchableOpacity>
                   </>
                 )}
-              </Card>
+              </View>
+            ) : (
+              <View style={[styles.closedBar, { backgroundColor: theme.surface, borderTopColor: theme.border }]}>
+                <Lock size={13} color={theme.textMuted} />
+                <Text style={[styles.closedText, { color: theme.textMuted }]}>
+                  This ticket is closed — no further replies can be sent.
+                </Text>
+              </View>
             )}
           </>
-        ) : null}
-      </ScrollView>
+        )}
+      </View>
     </KeyboardAvoidingView>
   );
 }
 
+// The floating tab bar is an absolutely positioned sibling of this screen, so
+// anything anchored to the bottom has to clear it manually.
+const TAB_BAR_CLEARANCE = 92;
+
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  content: { padding: 16, paddingBottom: 120 },
-  raiseBtn: { marginBottom: 16 },
-  ticketCard: { marginBottom: 10, padding: 16 },
-  ticketTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  ticketNumber: { ...typography.micro },
-  ticketSubject: { ...typography.h4, marginBottom: 8 },
-  ticketBottomRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  ticketMeta: { ...typography.caption },
+
+  /* list */
+  listContent: { paddingTop: 6, paddingBottom: 170 },
+  chatRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 16, gap: 12 },
+  chatAvatar: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center' },
+  chatRowBody: { flex: 1, minWidth: 0 },
+  chatRowTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  chatSubject: { ...typography.h4, flexShrink: 1 },
+  chatTime: { ...typography.micro },
+  chatRowBottom: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 4 },
+  chatPreview: { ...typography.caption, flexShrink: 1 },
+
+  /* create form */
+  formContent: { padding: 16, paddingBottom: 140 },
   backRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 16 },
   backText: { ...typography.body, fontWeight: '600' },
   formCard: { padding: 18 },
@@ -414,14 +565,56 @@ const styles = StyleSheet.create({
   inputMultiline: { minHeight: 90, textAlignVertical: 'top' },
   submitBtn: { marginTop: 8 },
   errorText: { ...typography.caption, marginBottom: 12 },
-  detailCard: { padding: 18, marginBottom: 16 },
-  detailSubject: { ...typography.h3, marginBottom: 8 },
-  detailDescription: { ...typography.body, marginBottom: 12 },
-  sectionTitle: { ...typography.h4, marginBottom: 12 },
-  messageCard: { padding: 14, marginBottom: 10 },
-  messageHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
-  messageSender: { ...typography.caption, fontWeight: '700' },
-  messageTime: { ...typography.micro },
-  messageText: { ...typography.body },
-  replyCard: { padding: 16, marginTop: 4 },
+
+  /* chat header */
+  chatHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1,
+  },
+  chatBack: { padding: 2 },
+  chatHeaderAvatar: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+  chatHeaderText: { flex: 1, minWidth: 0 },
+  chatHeaderTitle: { ...typography.h4 },
+  chatHeaderSub: { ...typography.micro, marginTop: 2 },
+
+  /* chat body */
+  chatBody: { flex: 1 },
+  chatBodyContent: { padding: 14, paddingBottom: 20 },
+  dayChipWrap: { alignItems: 'center', marginVertical: 10 },
+  dayChip: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12, borderWidth: 1 },
+  dayChipText: { ...typography.micro, fontWeight: '700' },
+
+  bubbleRow: { flexDirection: 'row', marginBottom: 8 },
+  bubbleRowMine: { justifyContent: 'flex-end' },
+  bubbleRowTheirs: { justifyContent: 'flex-start' },
+  bubble: { maxWidth: '82%', paddingHorizontal: 11, paddingTop: 7, paddingBottom: 5, borderRadius: 16, ...shadows.card },
+  bubbleMine: { borderBottomRightRadius: 4 },
+  bubbleTheirs: { borderBottomLeftRadius: 4, borderWidth: 1 },
+  bubbleSender: { ...typography.micro, fontWeight: '800', marginBottom: 2 },
+  bubbleText: { ...typography.body, lineHeight: 20 },
+  bubbleTime: { ...typography.micro, alignSelf: 'flex-end', marginTop: 3 },
+
+  /* composer */
+  composer: {
+    flexDirection: 'row', alignItems: 'flex-end', gap: 8,
+    paddingHorizontal: 12, paddingTop: 10,
+    paddingBottom: TAB_BAR_CLEARANCE,
+    borderTopWidth: 1,
+  },
+  composerPill: {
+    flex: 1, borderWidth: 1, borderRadius: 22,
+    paddingHorizontal: 14, paddingVertical: 6, minHeight: 44, justifyContent: 'center',
+  },
+  composerInput: { fontSize: 14.5, maxHeight: 110, paddingTop: 4, paddingBottom: 4 },
+  sendBtn: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  reopenBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    paddingVertical: 12, borderRadius: 22, borderWidth: 1,
+  },
+  reopenText: { ...typography.caption, fontWeight: '700' },
+  closedBar: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
+    paddingHorizontal: 16, paddingTop: 14, paddingBottom: TAB_BAR_CLEARANCE, borderTopWidth: 1,
+  },
+  closedText: { ...typography.caption, flexShrink: 1 },
 });
