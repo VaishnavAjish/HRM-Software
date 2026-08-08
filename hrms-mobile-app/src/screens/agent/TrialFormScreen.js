@@ -270,7 +270,9 @@ const styles = StyleSheet.create({
   formTitle: { ...typography.h2, marginBottom: 12 },
   readOnlyBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 14, borderWidth: 1, padding: 12, marginBottom: 16 },
   readOnlyText: { ...typography.caption, fontWeight: '600', flexShrink: 1 },
-  readOnlyContent: { opacity: 0.6 },
+  // Read-only is conveyed by the banner and pointerEvents, not by dimming —
+  // an opacity wash made the whole form look greyed out and unreadable.
+  readOnlyContent: {},
   errorCard: { padding: 14, marginBottom: 16, borderWidth: 1 },
   sectionCard: { padding: 18, marginBottom: 16 },
   sectionTitle: { ...typography.h4, marginBottom: 14 },

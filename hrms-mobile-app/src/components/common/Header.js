@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Animated, Easing } from 'react-native';
 import { Bell } from 'lucide-react-native';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
@@ -17,6 +17,30 @@ export function Header({ onNavigateProfile }) {
   const firstName = (user?.name || '').split(' ')[0] || 'there';
   const { unread } = notifications;
 
+  // Swing the bell in short bursts while anything is unread, with a pause
+  // between rings so it reads as "something's waiting" rather than a jitter.
+  const swing = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (unread <= 0) {
+      swing.setValue(0);
+      return undefined;
+    }
+    const tick = (toValue, duration) =>
+      Animated.timing(swing, { toValue, duration, easing: Easing.inOut(Easing.quad), useNativeDriver: true });
+
+    const loop = Animated.loop(
+      Animated.sequence([
+        tick(1, 110), tick(-1, 200), tick(1, 200), tick(-1, 200), tick(0, 110),
+        Animated.delay(1800),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [unread, swing]);
+
+  const bellRotate = swing.interpolate({ inputRange: [-1, 1], outputRange: ['-16deg', '16deg'] });
+
   return (
     <View style={[styles.headerContainer, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
       <View style={styles.leftSection}>
@@ -30,11 +54,18 @@ export function Header({ onNavigateProfile }) {
 
       <View style={styles.rightSection}>
         <TouchableOpacity
-          style={[styles.iconButton, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}
-          onPress={() => setPanelOpen(true)}
-          activeOpacity={0.7}
+          style={styles.bellButton}
+          onPress={() => { notifications.reload(); setPanelOpen(true); }}
+          activeOpacity={0.6}
+          hitSlop={8}
         >
-          <Bell size={18} color={theme.textSecondary} />
+          <Animated.View style={{ transform: [{ rotate: bellRotate }] }}>
+            <Bell
+              size={23}
+              color={unread > 0 ? theme.primary : theme.textSecondary}
+              strokeWidth={unread > 0 ? 2.4 : 2}
+            />
+          </Animated.View>
           {unread > 0 ? (
             <View style={[styles.badge, { backgroundColor: theme.rose, borderColor: theme.surface }]}>
               <Text style={styles.badgeText}>{unread > 9 ? '9+' : unread}</Text>
@@ -75,24 +106,26 @@ const styles = StyleSheet.create({
   },
   userNameText: {
     ...typography.h4,
+    fontSize: 20,
+    fontWeight: '700',
+    letterSpacing: -0.3,
+    marginTop: 1,
   },
   rightSection: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
   },
-  iconButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+  bellButton: {
+    width: 34,
+    height: 34,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
   },
   badge: {
     position: 'absolute',
-    top: -3,
-    right: -3,
+    top: -1,
+    right: -2,
     minWidth: 18,
     height: 18,
     borderRadius: 9,

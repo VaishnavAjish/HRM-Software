@@ -206,20 +206,38 @@ export default function SuperAdminTicketControlCenter() {
 
       <div className="flex flex-col gap-5 md:flex-row">
         {/* Mobile section switcher */}
-        <div className="flex gap-2 overflow-x-auto pb-2 md:hidden">
-          {SECTIONS.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => setActiveSection(item.id)}
-              className={`whitespace-nowrap rounded-xl px-3 py-1.5 text-xs font-bold transition ${
-                activeSection === item.id
-                  ? "bg-brand-600 text-white"
-                  : "border border-gray-200 bg-white text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
-              }`}
-            >
-              {item.label}
-            </button>
-          ))}
+        <div className="flex gap-2 overflow-x-auto pb-1 md:hidden [ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {SECTIONS.map((item) => {
+            const Icon = item.icon;
+            const isActive = activeSection === item.id;
+            const badge = badgeFor(item);
+
+            return (
+              <button
+                key={item.id}
+                onClick={() => setActiveSection(item.id)}
+                className={`flex h-11 shrink-0 items-center gap-2 rounded-xl px-3.5 text-xs font-bold transition-all active:scale-95 ${
+                  isActive
+                    ? "bg-brand-600 text-white shadow-sm shadow-brand-500/20"
+                    : "border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300"
+                }`}
+              >
+                <Icon size={14} className={item.alert && !isActive && badge ? "text-rose-500" : ""} />
+                <span className="whitespace-nowrap">{item.label}</span>
+                {badge && (
+                  <span
+                    className={`rounded-full px-1.5 py-0.5 text-[10px] font-extrabold ${
+                      isActive
+                        ? "bg-white/20 text-white"
+                        : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                    }`}
+                  >
+                    {badge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
 
         <aside className="hidden w-64 shrink-0 rounded-2xl border border-gray-200 bg-white p-3.5 md:block dark:border-gray-800 dark:bg-gray-900">

@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { monthName, formatCurrency } from '../utils/format';
 import { isCandidateApproved, isCandidateProcessed, typeLabel } from '../screens/agent/candidateHelpers';
+import { setupPushNotifications, syncNotificationsToTray } from '../services/pushNotifications';
 
 const READ_KEY = 'hrms_notif_read_local';
 const DISMISS_KEY = 'hrms_notif_dismissed_local';
@@ -146,6 +148,35 @@ export function useNotifications() {
   }, [isAuthenticated, isAgent]);
 
   useEffect(() => { load(); }, [load]);
+
+  // The bell lives in a header that never unmounts, so without these the feed
+  // would only ever be as fresh as the last sign-in.
+  useEffect(() => {
+    if (!isAuthenticated) return undefined;
+    const timer = setInterval(load, 20000);
+    return () => clearInterval(timer);
+  }, [isAuthenticated, load]);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') load();
+    });
+    return () => sub.remove();
+  }, [load]);
+
+  // Tray notifications: register the OS-level background poll once, and also
+  // push anything new to the tray on each foreground poll so alerts don't wait
+  // for Android's 15-minute background window.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    setupPushNotifications().then((ok) => { if (ok) syncNotificationsToTray(); });
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return undefined;
+    const timer = setInterval(() => { syncNotificationsToTray(); }, 60000);
+    return () => clearInterval(timer);
+  }, [isAuthenticated]);
 
   const items = useMemo(() => {
     const merged = [

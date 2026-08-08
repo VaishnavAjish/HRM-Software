@@ -378,6 +378,7 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
     try {
       const submitData = {
         ...formData,
+        punching_no: formData.form_no || formData.punching_no || "",
         company_code: resolveWriteCompanyId(companyId || "nidhi-impex")
       };
 

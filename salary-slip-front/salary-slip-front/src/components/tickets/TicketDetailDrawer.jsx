@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import toast from "react-hot-toast";
 import {
   X, Send, Clock, User as UserIcon, Building2, Tag, Loader2,
@@ -9,6 +10,7 @@ import Badge from "../ui/Badge";
 import { ticketApi } from "../../utils/api";
 import { useAuth } from "../../context/AuthContext";
 import { statusMeta, priorityMeta, formatDateTime } from "./ticketMeta";
+import TicketAttachments from "./TicketAttachments";
 
 /**
  * The ticket detail surface.
@@ -167,7 +169,7 @@ export default function TicketDetailDrawer({ ticketId, onClose, onChanged }) {
   const status = statusMeta(ticket?.status);
   const priority = priorityMeta(ticket?.priority);
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/60 backdrop-blur-sm transition-opacity">
       <button
         type="button"
@@ -277,6 +279,14 @@ export default function TicketDetailDrawer({ ticketId, onClose, onChanged }) {
                   {ticket.description}
                 </p>
               </section>
+
+              <TicketAttachments
+                ticketId={ticket.id}
+                attachments={ticket.attachments || []}
+                canManage={Boolean(meta?.is_staff)}
+                currentUserId={user?.id}
+                onChanged={refresh}
+              />
 
               {/* Messages */}
               <section className="mb-6">
@@ -473,7 +483,8 @@ export default function TicketDetailDrawer({ ticketId, onClose, onChanged }) {
           </>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

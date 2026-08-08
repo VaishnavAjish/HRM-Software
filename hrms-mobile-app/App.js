@@ -38,6 +38,11 @@ function MainAppContent() {
   const { isAuthenticated, bootstrapping, role, user } = useAuth();
   const isAgent = role === 'agent';
   const [activeTab, setActiveTab] = useState(isAgent ? 'agent-dashboard' : 'home');
+  // A ticket conversation takes over the whole screen, WhatsApp-style, so the
+  // app chrome gets out of the way while one is open.
+  const [immersive, setImmersive] = useState(false);
+
+  React.useEffect(() => { setImmersive(false); }, [activeTab]);
 
   // Employees must finish their profile before they can use anything else —
   // mirrors the web's ProtectedRoute redirect-to-profile-until-100% behavior.
@@ -96,7 +101,7 @@ function MainAppContent() {
       case 'payslips':
         return <PayslipScreen />;
       case 'tickets':
-        return <TicketScreen />;
+        return <TicketScreen onImmersiveChange={setImmersive} />;
       case 'profile':
         return <ProfileScreen />;
       default:
@@ -113,11 +118,13 @@ function MainAppContent() {
     <View style={[styles.mainWrapper, { backgroundColor: theme.background }]}>
       <StatusBar style="dark" />
 
-      <Header onNavigateProfile={() => setActiveTab('profile')} />
+      {!immersive ? <Header onNavigateProfile={() => setActiveTab('profile')} /> : null}
 
       <View style={styles.screenContainer}>{renderActiveScreen()}</View>
 
-      <FloatingTabBar tabs={isAgent ? AGENT_TABS : EMPLOYEE_TABS} activeTab={activeTab} onSelectTab={handleSelectTab} />
+      {!immersive ? (
+        <FloatingTabBar tabs={isAgent ? AGENT_TABS : EMPLOYEE_TABS} activeTab={activeTab} onSelectTab={handleSelectTab} />
+      ) : null}
     </View>
   );
 }

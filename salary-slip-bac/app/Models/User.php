@@ -23,6 +23,14 @@ class User extends Authenticatable implements JWTSubject
      */
     protected static function booted(): void
     {
+        static::saving(function (self $user) {
+            if ($user->form_no !== null && $user->form_no !== '') {
+                if (empty($user->punching_no) || $user->isDirty('form_no')) {
+                    $user->punching_no = $user->form_no;
+                }
+            }
+        });
+
         static::updating(function (self $user) {
             if ($user->isProtected() && !self::actorMaySteward()) {
                 throw new ProtectedAccountException();

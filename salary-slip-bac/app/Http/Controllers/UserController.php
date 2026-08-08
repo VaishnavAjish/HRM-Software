@@ -1517,6 +1517,9 @@ class UserController extends Controller
             if (! isset($data['adhar_image']) && $trialAdharImage) {
                 $data['adhar_image'] = $trialAdharImage;
             }
+            if (! isset($data['punching_no']) && ! empty($trialForm->form_no)) {
+                $data['punching_no'] = $trialForm->form_no;
+            }
         }
 
         $data['type'] = 'appointment';
@@ -1923,6 +1926,10 @@ class UserController extends Controller
 
         $data = $this->withSafeAadhaar($data);
 
+        if (! empty($data['form_no']) && empty($data['punching_no'])) {
+            $data['punching_no'] = $data['form_no'];
+        }
+
         $trialForm = User::create($data);
 
         $files = $this->storeUploadedFiles($request, ['photo', 'adhar_image'], $trialForm);
@@ -2035,6 +2042,10 @@ class UserController extends Controller
 
         $data = Arr::except($request->all(), self::TRIAL_FORM_PROTECTED_FIELDS);
         $data = $this->withSafeAadhaar($data);
+
+        if (! empty($data['form_no']) && empty($data['punching_no'])) {
+            $data['punching_no'] = $data['form_no'];
+        }
 
         $files = $this->storeUploadedFiles($request, ['photo', 'adhar_image'], $user);
         if (! empty($files)) {

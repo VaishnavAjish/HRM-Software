@@ -1,12 +1,39 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
-import { Ticket, Send, Loader2, ArrowLeft } from "lucide-react";
+import {
+  Ticket, Send, Loader2, ArrowLeft, Paperclip, X, FileText, Image as ImageIcon,
+} from "lucide-react";
 import { ticketApi } from "../../utils/api";
 import { useAuth } from "../../context/AuthContext";
 import { PRIORITY_ORDER, priorityMeta } from "../../components/tickets/ticketMeta";
 
 const EMPTY = { category_id: "", subject: "", description: "", priority: "medium" };
+
+/**
+ * Mirrors App\Support\TicketAttachmentPolicy.
+ *
+ * Duplicated here only so the employee is told immediately rather than after an
+ * upload round-trip. The server enforces the same rules and is the authority —
+ * this is a courtesy, not a gate.
+ */
+const MAX_FILES = 5;
+const MAX_BYTES = 10 * 1024 * 1024;
+const ACCEPT = [
+  "image/jpeg", "image/png", "image/gif", "image/webp", "image/heic", "image/heif",
+  "application/pdf", "text/plain", "text/csv",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "video/mp4", "video/webm", "video/quicktime", "application/zip",
+].join(",");
+
+function humanSize(bytes) {
+  return bytes >= 1048576
+    ? `${(bytes / 1048576).toFixed(1)} MB`
+    : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
 
 /**
  * Employee-facing "Raise Ticket".
@@ -32,6 +59,9 @@ export default function RaiseTicket() {
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [files, setFiles] = useState([]);
+
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -54,6 +84,44 @@ export default function RaiseTicket() {
   }, [accessToken, tokenType]);
 
   const update = (field) => (e) => setForm((prev) => ({ ...prev, [field]: e.target.value }));
+
+  /**
+   * Add to the selection, rejecting anything the server would reject anyway.
+   *
+   * Appends rather than replaces, because the native picker returns only the
+   * files chosen in that one dialog — replacing would silently drop what the
+   * employee attached a moment earlier.
+   */
+  const addFiles = (incoming) => {
+    const picked = Array.from(incoming || []);
+    if (picked.length === 0) return;
+
+    const accepted = [];
+    const rejected = [];
+
+    picked.forEach((file) => {
+      if (file.size > MAX_BYTES) {
+        rejected.push(`${file.name} is ${humanSize(file.size)} — the limit is 10 MB`);
+        return;
+      }
+      // Same name and size twice is a double-pick, not two files.
+      if (files.some((existing) => existing.name === file.name && existing.size === file.size)) {
+        return;
+      }
+      accepted.push(file);
+    });
+
+    const room = MAX_FILES - files.length;
+    if (accepted.length > room) {
+      rejected.push(`Only ${MAX_FILES} files can be attached; the rest were not added`);
+      accepted.length = Math.max(0, room);
+    }
+
+    if (accepted.length > 0) setFiles((prev) => [...prev, ...accepted]);
+    rejected.forEach((reason) => toast.error(reason));
+  };
+
+  const removeFile = (index) => setFiles((prev) => prev.filter((_, i) => i !== index));
 
   const submit = async (e) => {
     e.preventDefault();
@@ -81,10 +149,33 @@ export default function RaiseTicket() {
       );
 
       if (res?.status) {
+        /*
+         * Attachments go up after the ticket exists, because they need its id.
+         *
+         * A failure here must not look like the ticket failed — it was created,
+         * and the employee is told plainly that only the files did not attach so
+         * they can add them from the ticket instead of raising a duplicate.
+         */
+        if (files.length > 0) {
+          try {
+            await ticketApi.uploadAttachments(res.data.id, files, accessToken, tokenType);
+          } catch (uploadError) {
+            toast.error(
+              `Ticket ${res.data.ticket_number} was created, but the files did not attach: ${uploadError.message}`,
+              { duration: 7000 },
+            );
+            setForm(EMPTY);
+            setFiles([]);
+            navigate("/employee/tickets");
+            return;
+          }
+        }
+
         // The number is what the employee will quote later, so it goes in the
         // confirmation rather than a generic "submitted".
         toast.success(res.message || "Ticket created");
         setForm(EMPTY);
+        setFiles([]);
         navigate("/employee/tickets");
       } else {
         toast.error(res?.message || "Failed to create ticket");
@@ -182,6 +273,79 @@ export default function RaiseTicket() {
           <p className="mt-1 text-right text-[11px] text-gray-400">{form.description.length}/5000</p>
         </Field>
 
+        {/* Attachments — optional, so it is labelled as such rather than
+            carrying the required asterisk the other fields use. */}
+        <div>
+          <div className="mb-1 flex items-baseline justify-between gap-2">
+            <label className="block text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">
+              Attachments <span className="font-medium normal-case text-gray-400">(optional)</span>
+            </label>
+            <span className="text-[11px] text-gray-400">
+              {files.length}/{MAX_FILES} · up to 10 MB each
+            </span>
+          </div>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept={ACCEPT}
+            className="sr-only"
+            onChange={(e) => {
+              addFiles(e.target.files);
+              // Cleared so picking the same file again still fires onChange.
+              e.target.value = "";
+            }}
+          />
+
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={files.length >= MAX_FILES}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => { e.preventDefault(); addFiles(e.dataTransfer.files); }}
+            className="flex w-full flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-gray-300 bg-gray-50/60 px-4 py-5 text-center transition hover:border-brand-400 hover:bg-brand-50/40 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/15 dark:bg-white/[0.02] dark:hover:border-brand-500/50"
+          >
+            <Paperclip size={18} className="text-gray-400" />
+            <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">
+              {files.length >= MAX_FILES ? "Attachment limit reached" : "Click to attach, or drop files here"}
+            </span>
+            <span className="text-[11px] text-gray-400">
+              Screenshots, PDFs, documents, spreadsheets or short videos
+            </span>
+          </button>
+
+          {files.length > 0 && (
+            <ul className="mt-2 space-y-1.5">
+              {files.map((file, index) => {
+                const isImage = file.type.startsWith("image/");
+                const Icon = isImage ? ImageIcon : FileText;
+
+                return (
+                  <li
+                    key={`${file.name}-${file.size}-${index}`}
+                    className="flex items-center gap-2.5 rounded-xl border border-gray-200 bg-white px-3 py-2 dark:border-white/10 dark:bg-white/5"
+                  >
+                    <Icon size={15} className="shrink-0 text-gray-400" />
+                    <span className="min-w-0 flex-1 truncate text-xs font-medium text-gray-800 dark:text-gray-200" title={file.name}>
+                      {file.name}
+                    </span>
+                    <span className="shrink-0 text-[11px] text-gray-400">{humanSize(file.size)}</span>
+                    <button
+                      type="button"
+                      onClick={() => removeFile(index)}
+                      className="shrink-0 rounded-lg p-1 text-gray-400 transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+                      aria-label={`Remove ${file.name}`}
+                    >
+                      <X size={14} />
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+
         <div className="grid gap-3 rounded-xl bg-gray-50 p-3 text-xs sm:grid-cols-3 dark:bg-white/5">
           <ReadOnly label="Company" value={user?.company_code} />
           <ReadOnly label="Unit / Branch" value={user?.unit} />
@@ -199,7 +363,7 @@ export default function RaiseTicket() {
           </button>
           <button
             type="button"
-            onClick={() => setForm(EMPTY)}
+            onClick={() => { setForm(EMPTY); setFiles([]); }}
             disabled={saving}
             className="rounded-xl px-4 py-2 text-sm font-semibold text-gray-600 transition-colors hover:bg-gray-100 disabled:opacity-50 dark:text-gray-300 dark:hover:bg-white/5"
           >

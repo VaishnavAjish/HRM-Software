@@ -1,37 +1,49 @@
-// Rebuilds the web app's PrintableTrialForm.jsx as static HTML, matching its
-// desktop/print table layout (the mobile-stacked view is print:hidden on web).
+// Mirrors the web app's PrintableTrialForm.jsx (desktop/print branch) — same
+// dotted outer frame, same bordered table, same column widths, and the same
+// blank-when-missing behaviour. The web prints "" for an empty field, not a
+// dash, so this does too; a dash would read as a deliberate "none".
 function escapeHtml(str) {
   return String(str ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
 function fmtDate(value) {
-  if (!value) return '-';
+  if (!value) return '';
   const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return '-';
+  if (Number.isNaN(d.getTime())) return '';
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
 }
 
 function up(v) {
-  return v ? String(v).toUpperCase() : '-';
+  return v ? String(v).toUpperCase() : '';
 }
 
+/** Two label/value pairs on one row. */
 function pairRow(l1, v1, l2, v2, opts = {}) {
-  const v1Html = opts.lowercase1 ? escapeHtml(v1 || '-') : escapeHtml(up(v1));
-  const v2Html = opts.lowercase2 ? escapeHtml(v2 || '-') : escapeHtml(up(v2));
+  const v1Html = escapeHtml(opts.raw1 ? (v1 || '') : up(v1));
+  const v2Html = escapeHtml(opts.raw2 ? (v2 || '') : up(v2));
   return `
     <tr>
-      <td class="label">${escapeHtml(l1)}</td><td class="value">${v1Html}</td>
-      <td class="label">${escapeHtml(l2)}</td><td class="value">${v2Html}</td>
+      <td class="lbl half">${escapeHtml(l1)}</td><td class="val half-val${opts.lower1 ? ' lower' : ''}">${v1Html}</td>
+      <td class="lbl half">${escapeHtml(l2)}</td><td class="val half-val${opts.lower2 ? ' lower' : ''}">${v2Html}</td>
     </tr>`;
 }
 
+/** One label with a value spanning the remaining three columns. */
 function fullRow(label, value, opts = {}) {
-  const v = opts.lowercase ? escapeHtml(value || '-') : escapeHtml(up(value));
+  const v = escapeHtml(opts.raw ? (value || '') : up(value));
   return `
     <tr>
-      <td class="label">${escapeHtml(label)}</td>
-      <td class="value" colspan="3">${v}</td>
+      <td class="lbl full">${escapeHtml(label)}</td>
+      <td class="val${opts.lower ? ' lower' : ''}" colspan="3">${v}</td>
     </tr>`;
+}
+
+function signature(value, caption) {
+  return `
+    <div class="sign-cell">
+      <div class="sign-line">${escapeHtml(up(value))}</div>
+      <p>${escapeHtml(caption)}</p>
+    </div>`;
 }
 
 function attachmentsSection(raw) {
@@ -64,65 +76,95 @@ export function buildTrialPrintHtml(raw) {
     <head>
       <meta charset="utf-8" />
       <style>
-        body { font-family: Arial, Helvetica, sans-serif; color: #000; margin: 0; padding: 18px; }
-        .doc { max-width: 820px; margin: 0 auto; border: 1px solid #555; border-radius: 8px; padding: 20px; }
-        .header { display: flex; justify-content: space-between; align-items: flex-start; }
-        .header .spacer { flex: 1; }
+        @page { margin: 14mm; }
+        body { font-family: Arial, Helvetica, sans-serif; color: #000; margin: 0; padding: 0; }
+        .doc {
+          max-width: 850px; margin: 0 auto; background: #fff; color: #000;
+          border: 1px dotted #4B5563; border-radius: 8px; padding: 24px;
+        }
+        .header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 4px; }
+        .header .side { flex: 1; }
         .header .center { flex: 1; text-align: center; }
-        .header h1 { font-size: 22px; font-weight: 900; letter-spacing: 2px; text-transform: uppercase; margin: 0; }
-        .badge { display: inline-block; margin-top: 6px; background: #111; color: #fff; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; padding: 3px 14px; border-radius: 999px; }
+        .header h1 { font-size: 24px; font-weight: 900; letter-spacing: 3px; text-transform: uppercase; margin: 0; }
+        .badge {
+          display: inline-block; margin-top: 4px; background: #111827; color: #fff;
+          font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 2px;
+          padding: 4px 16px; border-radius: 999px;
+        }
         .header .right { flex: 1; text-align: right; font-size: 13px; font-weight: 600; }
-        .hr { border-top: 2px solid #000; margin: 8px 0 14px; }
-        table.info { width: 100%; border-collapse: collapse; border: 1px solid #000; border-radius: 8px; overflow: hidden; font-size: 13px; }
-        table.info td { border: 1px solid #000; padding: 6px 10px; }
-        table.info td.label { background: #f5f5f5; font-size: 11px; font-weight: 700; text-transform: uppercase; width: 22%; }
-        table.info td.value { font-weight: 600; text-transform: uppercase; }
-        .sign-grid { display: grid; grid-template-columns: 1fr 1fr; column-gap: 60px; row-gap: 28px; margin-top: 32px; font-size: 13px; font-weight: 700; text-align: center; }
-        .sign-grid .line { border-bottom: 1px solid #000; height: 26px; margin-bottom: 4px; }
-        .attachments { margin-top: 24px; page-break-before: always; }
-        .attachments h2 { font-size: 14px; font-weight: 900; text-transform: uppercase; letter-spacing: 1px; border-bottom: 2px solid #000; padding-bottom: 6px; margin-bottom: 14px; }
+        .header .right p { margin: 0 0 4px; }
+        .header .right span { font-weight: 700; }
+        .rule { border-top: 2px solid #000; margin: 8px 0; }
+
+        .table-wrap { border: 1px solid #000; border-radius: 8px; overflow: hidden; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        td { border: 1px solid #000; padding: 8px 12px; }
+        td.lbl { background: #F9FAFB; font-size: 12px; font-weight: 700; text-transform: uppercase; }
+        td.lbl.half { width: 16.66%; }
+        td.lbl.full { width: 25%; }
+        td.val { font-size: 13px; font-weight: 500; text-transform: uppercase; }
+        td.val.half-val { width: 33.33%; }
+        td.val.lower { text-transform: lowercase; }
+
+        .signs {
+          display: grid; grid-template-columns: 1fr 1fr; column-gap: 64px; row-gap: 32px;
+          margin-top: 32px; font-size: 13px; font-weight: 700; text-align: center;
+        }
+        .sign-cell p { margin: 0; }
+        .sign-line {
+          height: 32px; border-bottom: 1px solid #000; margin-bottom: 4px; padding: 0 4px;
+          font-size: 13px; font-weight: 600; text-transform: uppercase;
+          display: flex; align-items: flex-end; justify-content: center;
+        }
+
+        .attachments { margin-top: 26px; padding-top: 16px; border-top: 2px solid #000; }
+        .attachments h2 { font-size: 13px; font-weight: 900; text-transform: uppercase; letter-spacing: 1px; margin: 0 0 12px; }
         .attach-grid { display: flex; flex-wrap: wrap; gap: 16px; }
-        .attach-item { width: 220px; }
+        .attach-item { width: 240px; }
         .attach-item .cap { font-size: 11px; font-weight: 700; text-transform: uppercase; margin-bottom: 6px; }
-        .attach-item img { width: 100%; height: 160px; object-fit: contain; border: 1px solid #999; background: #f8f8f8; }
+        .attach-item img { width: 100%; height: 170px; object-fit: contain; border: 1px solid #000; background: #fff; }
       </style>
     </head>
     <body>
       <div class="doc">
         <div class="header">
-          <div class="spacer"></div>
+          <div class="side"></div>
           <div class="center">
             <h1>Nidhi Impex</h1>
             <div class="badge">Trial Form</div>
           </div>
           <div class="right">
-            Date : ${escapeHtml(fmtDate(raw?.trial_date))}<br/>
-            Form No : ${escapeHtml(raw?.form_no || '-')}
+            <p>Date : <span>${escapeHtml(fmtDate(raw?.trial_date))}</span></p>
+            <p>Form No : <span>${escapeHtml(raw?.form_no || '')}</span></p>
           </div>
         </div>
-        <div class="hr"></div>
+        <div class="rule"></div>
 
-        <table class="info">
-          ${pairRow('Department', raw?.department, 'Designation', raw?.designation)}
-          ${fullRow('Name of Employee', raw?.name)}
-          ${fullRow('Aadhaar Number', aadhaar, { lowercase: true })}
-          ${fullRow('Address', raw?.address)}
-          ${pairRow('Mobile No 1', raw?.mobile_number, 'Gender', raw?.gender)}
-          ${pairRow('Mobile No 2', raw?.mobile_no_2, 'Email Id', raw?.email, { lowercase2: true })}
-          ${fullRow('Last Company Name', raw?.last_company_name)}
-          ${fullRow('Last Company Address', raw?.last_company_address)}
-          ${pairRow('Experience', raw?.experience, 'Reason for Leaving', raw?.reason_for_leaving)}
-          ${pairRow('Hastak Name & Code', hastakNameCode, 'Hastak Mobile No', raw?.hastak_mobile)}
-          ${fullRow('Hastak Department/Designation', raw?.hastak_department)}
-          ${fullRow('Contractor', raw?.contractor)}
-          ${pairRow('Manager Name', raw?.manager_name, 'Akar', raw?.akar)}
-        </table>
+        <div class="table-wrap">
+          <table>
+            <tbody>
+              ${pairRow('Department', raw?.department, 'Designation', raw?.designation)}
+              ${fullRow('Name of Employee', raw?.name)}
+              ${fullRow('Aadhaar Number', aadhaar, { raw: true })}
+              ${fullRow('Address', raw?.address)}
+              ${pairRow('Mobile No 1', raw?.mobile_number, 'Gender', raw?.gender, { raw1: true })}
+              ${pairRow('Mobile No 2', raw?.mobile_no_2, 'Email Id', raw?.email, { raw1: true, raw2: true, lower2: true })}
+              ${fullRow('Last Company Name', raw?.last_company_name)}
+              ${fullRow('Last Company Address', raw?.last_company_address)}
+              ${pairRow('Experience', raw?.experience, 'Reason for Leaving', raw?.reason_for_leaving)}
+              ${pairRow('Hastak Name &amp; Code', hastakNameCode, 'Hastak Mobile No', raw?.hastak_mobile, { raw2: true })}
+              ${fullRow('Hastak Department/Designation', raw?.hastak_department)}
+              ${fullRow('Contractor', raw?.contractor)}
+              ${pairRow('Manager Name', raw?.manager_name, 'Akar', raw?.akar)}
+            </tbody>
+          </table>
+        </div>
 
-        <div class="sign-grid">
-          <div><div class="line"></div>Emp - Signature</div>
-          <div><div class="line"></div>Manager</div>
-          <div><div class="line"></div>Hastak Signature</div>
-          <div><div class="line"></div>H R</div>
+        <div class="signs">
+          ${signature(raw?.emp_signature, 'Emp - Signature')}
+          ${signature(raw?.manager_signature, 'Manager')}
+          ${signature(raw?.hastak_signature, 'Hastak Signature')}
+          ${signature(raw?.hr_signature, 'H R')}
         </div>
 
         ${attachmentsSection(raw)}

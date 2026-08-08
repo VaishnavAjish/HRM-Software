@@ -94,6 +94,7 @@ class TicketController extends Controller
                 'employee:id,name,emp_code,department,company_code,unit',
                 'category:id,name,slug',
                 'assignee:id,name,emp_code',
+                'lastMessage.sender:id,name',
             ]);
 
         // "mine" means different things either side of the desk: the employee's
@@ -190,7 +191,10 @@ class TicketController extends Controller
             ->get();
 
         $ticket->setRelation('messages', $messages);
-        $ticket->load(['activityLogs.performer:id,name,emp_code']);
+        $ticket->load([
+            'activityLogs.performer:id,name,emp_code',
+            'attachments.uploader:id,name,emp_code',
+        ]);
 
         return response()->json([
             'status' => true,
@@ -323,6 +327,179 @@ class TicketController extends Controller
             'message' => $internal ? 'Internal note added' : 'Reply sent',
             'data' => $message->load('sender:id,name,emp_code,role'),
         ], 201);
+    }
+
+    // ---------------------------------------------------------------------
+    // Attachments
+    // ---------------------------------------------------------------------
+
+    /**
+     * Attach files to a ticket the caller can see.
+     *
+     * Files land on the private disk, never anywhere a web server serves
+     * directly — they are read back through downloadAttachment(), which
+     * re-checks visibility. The stored path is a UUID; the original name is
+     * kept for display only.
+     *
+     * The whole batch is validated before anything is written, so one bad file
+     * does not leave the earlier ones half-attached.
+     */
+    public function storeAttachments(Request $request, $id)
+    {
+        $ticket = $this->findVisible((int) $id);
+
+        if (! $ticket) {
+            return response()->json(['status' => false, 'message' => 'Ticket not found'], 404);
+        }
+
+        if ($ticket->isClosed()) {
+            return response()->json(['status' => false, 'message' => 'This ticket is closed and can no longer be changed.'], 422);
+        }
+
+        $files = $request->file('files');
+        $files = $files === null ? [] : (is_array($files) ? $files : [$files]);
+
+        if ($files === []) {
+            return response()->json(['status' => false, 'message' => 'No file was uploaded.'], 422);
+        }
+
+        if (count($files) > \App\Support\TicketAttachmentPolicy::MAX_FILES) {
+            return response()->json([
+                'status' => false,
+                'message' => 'You can attach at most '.\App\Support\TicketAttachmentPolicy::MAX_FILES.' files at a time.',
+            ], 422);
+        }
+
+        foreach ($files as $file) {
+            if ($reason = \App\Support\TicketAttachmentPolicy::reject($file)) {
+                return response()->json(['status' => false, 'message' => $reason], 422);
+            }
+        }
+
+        $actor = $this->actor();
+
+        $stored = DB::transaction(function () use ($files, $ticket, $actor) {
+            $created = [];
+
+            foreach ($files as $file) {
+                $path = $file->storeAs(
+                    "ticket-attachments/{$ticket->id}",
+                    \App\Support\TicketAttachmentPolicy::storedName($file),
+                    'local'
+                );
+
+                $created[] = \App\Models\TicketAttachment::create([
+                    'ticket_id' => $ticket->id,
+                    'file_name' => \App\Support\TicketAttachmentPolicy::displayName($file),
+                    'file_path' => $path,
+                    'mime_type' => $file->getMimeType(),
+                    'file_size' => $file->getSize(),
+                    'uploaded_by' => $actor->id,
+                ]);
+            }
+
+            $ticket->forceFill(['last_activity_at' => now()])->save();
+            $this->record($ticket, 'ATTACHED', null, null, count($created).' file(s) attached');
+
+            return $created;
+        });
+
+        AuditLogger::log($request, 'ATTACH', 'Tickets', null, [
+            'ticket_number' => $ticket->ticket_number,
+            'files' => array_map(fn ($a) => $a->file_name, $stored),
+        ]);
+
+        return response()->json([
+            'status' => true,
+            'message' => count($stored).' file(s) attached',
+            'data' => $stored,
+        ], 201);
+    }
+
+    /**
+     * Stream an attachment back.
+     *
+     * Visibility is re-checked here rather than trusted from upload time: a
+     * ticket can change hands, and a link kept in someone's history must not
+     * outlive their access. Only real images render inline; everything else is
+     * forced to download so a crafted file cannot execute in the app's origin.
+     */
+    public function downloadAttachment($id, $attachmentId)
+    {
+        $ticket = $this->findVisible((int) $id);
+
+        if (! $ticket) {
+            return response()->json(['status' => false, 'message' => 'Ticket not found'], 404);
+        }
+
+        $attachment = \App\Models\TicketAttachment::where('ticket_id', $ticket->id)->find($attachmentId);
+
+        if (! $attachment) {
+            return response()->json(['status' => false, 'message' => 'Attachment not found'], 404);
+        }
+
+        $disk = \Illuminate\Support\Facades\Storage::disk('local');
+
+        if (! $disk->exists($attachment->file_path)) {
+            return response()->json(['status' => false, 'message' => 'The stored file is missing.'], 404);
+        }
+
+        $disposition = \App\Support\TicketAttachmentPolicy::isInline($attachment->mime_type)
+            ? 'inline'
+            : 'attachment';
+
+        return $disk->response($attachment->file_path, $attachment->file_name, [
+            'Content-Type' => $attachment->mime_type ?: 'application/octet-stream',
+            // Even for an inline image: stop the browser second-guessing the
+            // type we declared.
+            'X-Content-Type-Options' => 'nosniff',
+            'Content-Disposition' => $disposition.'; filename="'.addslashes($attachment->file_name).'"',
+        ]);
+    }
+
+    /**
+     * Remove an attachment.
+     *
+     * The uploader can take back their own mistake — a wrong or over-shared
+     * file is exactly what someone needs to undo — and staff can remove
+     * anything on a ticket they hold. Closed tickets stay read-only.
+     */
+    public function destroyAttachment(Request $request, $id, $attachmentId)
+    {
+        $ticket = $this->findVisible((int) $id);
+
+        if (! $ticket) {
+            return response()->json(['status' => false, 'message' => 'Ticket not found'], 404);
+        }
+
+        if ($ticket->isClosed()) {
+            return response()->json(['status' => false, 'message' => 'This ticket is closed and can no longer be changed.'], 422);
+        }
+
+        $attachment = \App\Models\TicketAttachment::where('ticket_id', $ticket->id)->find($attachmentId);
+
+        if (! $attachment) {
+            return response()->json(['status' => false, 'message' => 'Attachment not found'], 404);
+        }
+
+        $actor = $this->actor();
+
+        if (! $this->isStaff($actor) && (int) $attachment->uploaded_by !== (int) $actor->id) {
+            return response()->json(['status' => false, 'message' => 'You can only remove files you attached.'], 403);
+        }
+
+        $before = $attachment->toArray();
+
+        DB::transaction(function () use ($attachment, $ticket) {
+            \Illuminate\Support\Facades\Storage::disk('local')->delete($attachment->file_path);
+            $attachment->delete();
+
+            $this->record($ticket, 'ATTACHMENT_REMOVED', null, null, $attachment->file_name);
+        });
+
+        AuditLogger::log($request, 'DELETE_ATTACHMENT', 'Tickets', $before, null);
+
+        return response()->json(['status' => true, 'message' => 'Attachment removed']);
     }
 
     // ---------------------------------------------------------------------

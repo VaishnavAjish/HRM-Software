@@ -1,5 +1,8 @@
-import React from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, RefreshControl, Alert } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, RefreshControl, Alert,
+  Animated, Easing, Dimensions,
+} from 'react-native';
 import { X, BellOff, CheckCheck, UserCheck, Wallet, Ticket, Bell, Trash2 } from 'lucide-react-native';
 import { useTheme } from '../../context/ThemeContext';
 import { typography, shadows } from '../../theme';
@@ -14,6 +17,25 @@ const MODULE_ICON = {
 
 export function NotificationPanel({ visible, onClose, items, unread, loading, reload, markRead, markAllRead, clearAll }) {
   const { theme } = useTheme();
+
+  // Modal's built-in "slide" drags the backdrop up with the sheet, so the dim
+  // layer appears to rise from the bottom edge. Driving them separately lets the
+  // backdrop fade in place while only the sheet travels.
+  const anim = useRef(new Animated.Value(0)).current;
+  const [mounted, setMounted] = useState(visible);
+
+  useEffect(() => {
+    if (visible) {
+      setMounted(true);
+      Animated.timing(anim, {
+        toValue: 1, duration: 260, easing: Easing.out(Easing.cubic), useNativeDriver: true,
+      }).start();
+    } else {
+      Animated.timing(anim, {
+        toValue: 0, duration: 190, easing: Easing.in(Easing.cubic), useNativeDriver: true,
+      }).start(({ finished }) => { if (finished) setMounted(false); });
+    }
+  }, [visible, anim]);
 
   const confirmClearAll = () => {
     Alert.alert('Clear all notifications', 'This removes every notification from your feed.', [
@@ -41,11 +63,20 @@ export function NotificationPanel({ visible, onClose, items, unread, loading, re
   return (
     // statusBarTranslucent: without it Android leaves the status-bar strip
     // outside the modal, so the dim backdrop stops short of the top of the screen.
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
+    <Modal visible={mounted} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
       <View style={styles.overlay}>
-        <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
+        <Animated.View style={[styles.backdrop, { opacity: anim }]}>
+          <TouchableOpacity style={styles.backdropFill} activeOpacity={1} onPress={onClose} />
+        </Animated.View>
 
-        <View style={[styles.sheet, { backgroundColor: theme.surfaceCard, borderColor: theme.border }, shadows.glass]}>
+        <Animated.View
+          style={[
+            styles.sheet,
+            { backgroundColor: theme.surfaceCard, borderColor: theme.border },
+            shadows.glass,
+            { transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [SHEET_TRAVEL, 0] }) }] },
+          ]}
+        >
           <View style={styles.grabber}>
             <View style={[styles.grabberBar, { backgroundColor: theme.border }]} />
           </View>
@@ -139,15 +170,18 @@ export function NotificationPanel({ visible, onClose, items, unread, loading, re
               })}
             </ScrollView>
           )}
-        </View>
+        </Animated.View>
       </View>
     </Modal>
   );
 }
 
+const SHEET_TRAVEL = Math.round(Dimensions.get('window').height * 0.85);
+
 const styles = StyleSheet.create({
   overlay: { flex: 1, justifyContent: 'flex-end' },
   backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(15,23,42,0.45)' },
+  backdropFill: { flex: 1 },
   sheet: {
     borderTopLeftRadius: 26,
     borderTopRightRadius: 26,

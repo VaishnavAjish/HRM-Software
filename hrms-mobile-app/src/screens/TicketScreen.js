@@ -4,11 +4,14 @@ import {
   KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Ticket as TicketIcon, ChevronLeft, Plus, AlertCircle, Send, Lock, RotateCcw } from 'lucide-react-native';
+import {
+  Ticket as TicketIcon, ChevronLeft, AlertCircle, Send, Lock, RotateCcw,
+  Check, CheckCheck, Tag, Flag, CalendarDays, UserCog,
+} from 'lucide-react-native';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
-import { typography, shadows } from '../theme';
+import { typography } from '../theme';
 import { Card } from '../components/common/Card';
 import { Badge } from '../components/common/Badge';
 import { Button } from '../components/common/Button';
@@ -79,14 +82,30 @@ function listTime(iso) {
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getFullYear()).slice(-2)}`;
 }
 
-export function TicketScreen() {
+// Staff moving a ticket out of `open` means a human opened and acted on it —
+// the nearest thing to a read receipt, since ticket_messages has no read_at.
+const STAFF_ENGAGED = ['assigned', 'in_progress', 'resolved', 'closed'];
+
+// `last_message` is served by the list endpoint; the description is the opening
+// message, so it's the correct fallback rather than a placeholder label.
+function lastMessageOf(t) {
+  const msgs = t.messages || [];
+  return t.last_message || (msgs.length ? msgs[msgs.length - 1] : null);
+}
+
+function previewText(t) {
+  const text = lastMessageOf(t)?.message || t.description || '';
+  return String(text).replace(/\s+/g, ' ').trim() || t.ticket_number;
+}
+
+export function TicketScreen({ onImmersiveChange }) {
   const [view, setView] = useState({ mode: 'list' });
 
   if (view.mode === 'create') {
     return <CreateTicket onDone={() => setView({ mode: 'list' })} onCancel={() => setView({ mode: 'list' })} />;
   }
   if (view.mode === 'detail') {
-    return <TicketDetail id={view.id} onBack={() => setView({ mode: 'list' })} />;
+    return <TicketDetail id={view.id} onBack={() => setView({ mode: 'list' })} onImmersiveChange={onImmersiveChange} />;
   }
   return <TicketList onOpen={(id) => setView({ mode: 'detail', id })} onCreate={() => setView({ mode: 'create' })} />;
 }
@@ -95,7 +114,9 @@ export function TicketScreen() {
 
 function TicketList({ onOpen, onCreate }) {
   const { theme } = useTheme();
+  const { user } = useAuth();
   const [tickets, setTickets] = useState([]);
+  const [inbox, setInbox] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
@@ -112,13 +133,36 @@ function TicketList({ onOpen, onCreate }) {
       }
     } catch (e) {
       setError(e.message || 'Could not load tickets.');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
     }
+
+    // The ticket list carries no messages, so unread replies (and the text of
+    // the newest one) come from the notification feed — the only place the
+    // backend records that a reply happened.
+    try {
+      const n = await api.getNotifications({ module: 'Tickets', unread_only: true, limit: 100 });
+      setInbox(n?.status ? (n.data || []) : []);
+    } catch (e) {
+      setInbox([]);
+    }
+
+    setLoading(false);
+    setRefreshing(false);
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  const inboxFor = (t) => inbox.filter((n) => (
+    String(n.related_id) === String(t.id)
+    || (t.ticket_number && String(n.title || '').includes(t.ticket_number))
+  ));
+
+  // Opening the conversation is the read receipt: clear its notifications.
+  const openTicket = (t) => {
+    const mine = inboxFor(t);
+    mine.forEach((n) => api.markNotificationRead(n.id).catch(() => {}));
+    setInbox((prev) => prev.filter((n) => !mine.some((m) => m.id === n.id)));
+    onOpen(t.id);
+  };
 
   if (loading) return <LoadingView fullscreen label="Loading tickets…" />;
 
@@ -136,11 +180,22 @@ function TicketList({ onOpen, onCreate }) {
         ) : (
           tickets.map((t, i) => {
             const tint = theme[STATUS_TINT[t.status] || 'primary'];
+            const unread = inboxFor(t);
+            const count = unread.length;
+            const last = lastMessageOf(t);
+            // No last_message means nothing has been replied to yet, so the
+            // opening message — which is the employee's own — is the latest.
+            const lastMine = last
+              ? String(last.sender_id ?? last.sender?.id ?? '') === String(user?.id ?? '')
+              : true;
+            const lastSeen = lastMine && STAFF_ENGAGED.includes(t.status);
+            const preview = previewText(t);
+            const when = last?.created_at || t.created_at;
             return (
               <TouchableOpacity
                 key={t.id}
                 activeOpacity={0.7}
-                onPress={() => onOpen(t.id)}
+                onPress={() => openTicket(t)}
                 style={[
                   styles.chatRow,
                   i !== tickets.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.border },
@@ -155,13 +210,35 @@ function TicketList({ onOpen, onCreate }) {
                     <Text style={[styles.chatSubject, { color: theme.textPrimary }]} numberOfLines={1}>
                       {t.subject}
                     </Text>
-                    <Text style={[styles.chatTime, { color: theme.textMuted }]}>{listTime(t.created_at)}</Text>
+                    <Text style={[styles.chatTime, { color: count ? theme.primary : theme.textMuted }]}>
+                      {listTime(when)}
+                    </Text>
                   </View>
                   <View style={styles.chatRowBottom}>
-                    <Text style={[styles.chatPreview, { color: theme.textMuted }]} numberOfLines={1}>
-                      {t.ticket_number} · {t.category?.name || 'General'}
-                    </Text>
-                    <Badge label={label(t.status)} variant={STATUS_VARIANT[t.status] || 'default'} size="small" />
+                    <View style={styles.previewWrap}>
+                      {lastMine ? (
+                        lastSeen
+                          ? <CheckCheck size={14} color={theme.violet} strokeWidth={2.6} />
+                          : <Check size={14} color={theme.textMuted} strokeWidth={2.6} />
+                      ) : null}
+                      <Text
+                        style={[
+                          styles.chatPreview,
+                          { color: count ? theme.textPrimary : theme.textMuted },
+                          count > 0 && styles.chatPreviewUnread,
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {preview}
+                      </Text>
+                    </View>
+                    {count > 0 ? (
+                      <View style={[styles.unreadPill, { backgroundColor: theme.primary }]}>
+                        <Text style={styles.unreadPillText}>{count > 99 ? '99+' : count}</Text>
+                      </View>
+                    ) : (
+                      <Badge label={label(t.status)} variant={STATUS_VARIANT[t.status] || 'default'} size="small" />
+                    )}
                   </View>
                 </View>
               </TouchableOpacity>
@@ -312,9 +389,10 @@ function CreateTicket({ onDone, onCancel }) {
 
 /* ------------------------------------------------------- detail (chat) */
 
-function TicketDetail({ id, onBack }) {
+function TicketDetail({ id, onBack, onImmersiveChange }) {
   const { theme } = useTheme();
   const { user } = useAuth();
+  const [showInfo, setShowInfo] = useState(false);
   const [ticket, setTicket] = useState(null);
   const [meta, setMeta] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -326,8 +404,10 @@ function TicketDetail({ id, onBack }) {
   const [reopening, setReopening] = useState(false);
   const scrollRef = useRef(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  // `silent` keeps the thread on screen while refreshing — flipping the shared
+  // loading flag after a send is what made the chat blink back to a spinner.
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     setError(null);
     try {
       const res = await api.getTicket(id);
@@ -340,19 +420,38 @@ function TicketDetail({ id, onBack }) {
     } catch (e) {
       setError(e.message || 'Could not load this ticket.');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [id]);
 
   useEffect(() => { load(); }, [load]);
 
+  // Takes over the screen while open, and hands the chrome back on unmount.
+  useEffect(() => {
+    onImmersiveChange?.(true);
+    return () => onImmersiveChange?.(false);
+  }, [onImmersiveChange]);
+
   const sendReply = async () => {
-    if (!reply.trim() || sending) return;
+    const text = reply.trim();
+    if (!text || sending) return;
     setSending(true);
+    setReply('');
+
+    // Show the message immediately, then reconcile with the server copy.
+    setTicket((prev) => (prev ? {
+      ...prev,
+      messages: [...(prev.messages || []), {
+        id: `pending-${Date.now()}`,
+        message: text,
+        created_at: new Date().toISOString(),
+        sender: { id: user?.id, name: user?.name },
+      }],
+    } : prev));
+
     try {
-      await api.replyTicket(id, reply.trim());
-      setReply('');
-      await load();
+      await api.replyTicket(id, text);
+      await load(true);
     } catch (e) {
       setError(e.message || 'Could not send reply.');
     } finally {
@@ -392,6 +491,16 @@ function TicketDetail({ id, onBack }) {
       ]
     : [];
 
+  // ticket_messages has no read_at column, so a true "seen at" is not available.
+  // The closest honest signals are: someone replied after this message, or staff
+  // picked the ticket up (assigning/working it means they opened and read it).
+  const lastOtherIndex = thread.reduce((acc, m, i) => (m.mine ? acc : i), -1);
+  const staffEngaged = STAFF_ENGAGED.includes(ticket?.status);
+
+  if (showInfo && ticket) {
+    return <TicketInfo ticket={ticket} theme={theme} onBack={() => setShowInfo(false)} />;
+  }
+
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={[styles.screen, { backgroundColor: theme.background }]}>
@@ -400,17 +509,23 @@ function TicketDetail({ id, onBack }) {
           <TouchableOpacity onPress={onBack} hitSlop={10} style={styles.chatBack}>
             <ChevronLeft size={24} color={theme.textPrimary} />
           </TouchableOpacity>
-          <View style={[styles.chatHeaderAvatar, { backgroundColor: tint + '1F' }]}>
-            <TicketIcon size={18} color={tint} />
-          </View>
-          <View style={styles.chatHeaderText}>
-            <Text style={[styles.chatHeaderTitle, { color: theme.textPrimary }]} numberOfLines={1}>
-              {ticket?.subject || 'Ticket'}
-            </Text>
-            <Text style={[styles.chatHeaderSub, { color: theme.textMuted }]} numberOfLines={1}>
-              {ticket?.ticket_number}{ticket?.category?.name ? ` · ${ticket.category.name}` : ''}
-            </Text>
-          </View>
+          <TouchableOpacity
+            style={styles.chatHeaderTap}
+            activeOpacity={0.7}
+            onPress={() => ticket && setShowInfo(true)}
+          >
+            <View style={[styles.chatHeaderAvatar, { backgroundColor: tint + '1F' }]}>
+              <TicketIcon size={18} color={tint} />
+            </View>
+            <View style={styles.chatHeaderText}>
+              <Text style={[styles.chatHeaderTitle, { color: theme.textPrimary }]} numberOfLines={1}>
+                {ticket?.subject || 'Ticket'}
+              </Text>
+              <Text style={[styles.chatHeaderSub, { color: theme.textMuted }]} numberOfLines={1}>
+                {ticket?.ticket_number}{ticket?.category?.name ? ` · ${ticket.category.name}` : ''}
+              </Text>
+            </View>
+          </TouchableOpacity>
           {ticket ? <Badge label={label(ticket.status)} variant={STATUS_VARIANT[ticket.status] || 'default'} size="small" /> : null}
         </View>
 
@@ -428,6 +543,7 @@ function TicketDetail({ id, onBack }) {
             >
               {thread.map((m, i) => {
                 const showDay = i === 0 || dayKey(m.created_at) !== dayKey(thread[i - 1].created_at);
+                const seen = m.mine && (i < lastOtherIndex || staffEngaged);
                 return (
                   <View key={m.id ?? i}>
                     {showDay ? (
@@ -443,7 +559,7 @@ function TicketDetail({ id, onBack }) {
                         style={[
                           styles.bubble,
                           m.mine
-                            ? [styles.bubbleMine, { backgroundColor: theme.primary + '1F' }]
+                            ? [styles.bubbleMine, { backgroundColor: MY_BUBBLE }]
                             : [styles.bubbleTheirs, { backgroundColor: theme.surface, borderColor: theme.border }],
                         ]}
                       >
@@ -451,7 +567,14 @@ function TicketDetail({ id, onBack }) {
                           <Text style={[styles.bubbleSender, { color: theme.primary }]}>{m.sender.name}</Text>
                         ) : null}
                         <Text style={[styles.bubbleText, { color: theme.textPrimary }]}>{m.message}</Text>
-                        <Text style={[styles.bubbleTime, { color: theme.textMuted }]}>{chatTime(m.created_at)}</Text>
+                        <View style={styles.bubbleMeta}>
+                          <Text style={[styles.bubbleTime, { color: theme.textMuted }]}>{chatTime(m.created_at)}</Text>
+                          {m.mine ? (
+                            seen
+                              ? <CheckCheck size={15} color={theme.violet} strokeWidth={2.6} />
+                              : <Check size={15} color={theme.textMuted} strokeWidth={2.6} />
+                          ) : null}
+                        </View>
                       </View>
                     </View>
                   </View>
@@ -533,9 +656,76 @@ function TicketDetail({ id, onBack }) {
   );
 }
 
-// The floating tab bar is an absolutely positioned sibling of this screen, so
-// anything anchored to the bottom has to clear it manually.
-const TAB_BAR_CLEARANCE = 92;
+/* ------------------------------------------------------------ ticket info */
+
+function TicketInfo({ ticket, theme, onBack }) {
+  const tint = theme[STATUS_TINT[ticket.status] || 'primary'];
+  const rows = [
+    { icon: Tag, label: 'Category', value: ticket.category?.name || 'General' },
+    { icon: Flag, label: 'Priority', value: label(ticket.priority) },
+    { icon: CalendarDays, label: 'Raised on', value: `${dayLabel(ticket.created_at)} · ${chatTime(ticket.created_at)}` },
+    { icon: UserCog, label: 'Assigned to', value: ticket.assignee?.name || 'Not assigned yet' },
+  ];
+
+  return (
+    <View style={[styles.screen, { backgroundColor: theme.background }]}>
+      <View style={[styles.chatHeader, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
+        <TouchableOpacity onPress={onBack} hitSlop={10} style={styles.chatBack}>
+          <ChevronLeft size={24} color={theme.textPrimary} />
+        </TouchableOpacity>
+        <Text style={[styles.chatHeaderTitle, { color: theme.textPrimary, flex: 1 }]}>Ticket info</Text>
+      </View>
+
+      <ScrollView contentContainerStyle={styles.infoContent}>
+        <View style={styles.infoHero}>
+          <View style={[styles.infoAvatar, { backgroundColor: tint + '1F' }]}>
+            <TicketIcon size={38} color={tint} />
+          </View>
+          <Text style={[styles.infoSubject, { color: theme.textPrimary }]}>{ticket.subject}</Text>
+          <Text style={[styles.infoNumber, { color: theme.textMuted }]}>{ticket.ticket_number}</Text>
+          {/* Badge sets alignSelf:'flex-start' internally, so centring has to be re-stated here. */}
+          <Badge
+            label={label(ticket.status)}
+            variant={STATUS_VARIANT[ticket.status] || 'default'}
+            style={{ marginTop: 10, alignSelf: 'center' }}
+          />
+        </View>
+
+        <Card style={styles.infoCard} elevated>
+          {rows.map((r, i) => {
+            const Icon = r.icon;
+            return (
+              <View
+                key={r.label}
+                style={[
+                  styles.infoRow,
+                  i !== rows.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.border },
+                ]}
+              >
+                <View style={[styles.infoRowIcon, { backgroundColor: theme.primary + '12' }]}>
+                  <Icon size={16} color={theme.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.infoRowLabel, { color: theme.textMuted }]}>{r.label}</Text>
+                  <Text style={[styles.infoRowValue, { color: theme.textPrimary }]}>{r.value}</Text>
+                </View>
+              </View>
+            );
+          })}
+        </Card>
+
+        <Card style={styles.infoCard} elevated>
+          <Text style={[styles.infoRowLabel, { color: theme.textMuted, marginBottom: 6 }]}>Description</Text>
+          <Text style={[styles.infoDescription, { color: theme.textPrimary }]}>{ticket.description}</Text>
+        </Card>
+      </ScrollView>
+    </View>
+  );
+}
+
+// Own messages sit on a light violet plate — tinted enough to separate from the
+// slate background without the washed-out look of an alpha overlay.
+const MY_BUBBLE = '#E4DCFF';
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
@@ -549,7 +739,14 @@ const styles = StyleSheet.create({
   chatSubject: { ...typography.h4, flexShrink: 1 },
   chatTime: { ...typography.micro },
   chatRowBottom: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 4 },
+  previewWrap: { flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1 },
   chatPreview: { ...typography.caption, flexShrink: 1 },
+  chatPreviewUnread: { fontWeight: '700' },
+  unreadPill: {
+    minWidth: 21, height: 21, borderRadius: 11, paddingHorizontal: 6,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  unreadPillText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800' },
 
   /* create form */
   formContent: { padding: 16, paddingBottom: 140 },
@@ -569,9 +766,11 @@ const styles = StyleSheet.create({
   /* chat header */
   chatHeader: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
-    paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1,
+    // The app header is hidden in this view, so the chat bar owns the status-bar inset.
+    paddingHorizontal: 12, paddingTop: 46, paddingBottom: 10, borderBottomWidth: 1,
   },
   chatBack: { padding: 2 },
+  chatHeaderTap: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, minWidth: 0 },
   chatHeaderAvatar: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
   chatHeaderText: { flex: 1, minWidth: 0 },
   chatHeaderTitle: { ...typography.h4 },
@@ -587,18 +786,23 @@ const styles = StyleSheet.create({
   bubbleRow: { flexDirection: 'row', marginBottom: 8 },
   bubbleRowMine: { justifyContent: 'flex-end' },
   bubbleRowTheirs: { justifyContent: 'flex-start' },
-  bubble: { maxWidth: '82%', paddingHorizontal: 11, paddingTop: 7, paddingBottom: 5, borderRadius: 16, ...shadows.card },
+  bubble: {
+    maxWidth: '82%', paddingHorizontal: 11, paddingTop: 7, paddingBottom: 5, borderRadius: 16,
+    shadowColor: '#0F172A', shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.07, shadowRadius: 2, elevation: 1,
+  },
   bubbleMine: { borderBottomRightRadius: 4 },
   bubbleTheirs: { borderBottomLeftRadius: 4, borderWidth: 1 },
   bubbleSender: { ...typography.micro, fontWeight: '800', marginBottom: 2 },
   bubbleText: { ...typography.body, lineHeight: 20 },
-  bubbleTime: { ...typography.micro, alignSelf: 'flex-end', marginTop: 3 },
+  bubbleMeta: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-end', marginTop: 3 },
+  bubbleTime: { ...typography.micro },
 
   /* composer */
   composer: {
     flexDirection: 'row', alignItems: 'flex-end', gap: 8,
     paddingHorizontal: 12, paddingTop: 10,
-    paddingBottom: TAB_BAR_CLEARANCE,
+    paddingBottom: 14,
     borderTopWidth: 1,
   },
   composerPill: {
@@ -614,7 +818,20 @@ const styles = StyleSheet.create({
   reopenText: { ...typography.caption, fontWeight: '700' },
   closedBar: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
-    paddingHorizontal: 16, paddingTop: 14, paddingBottom: TAB_BAR_CLEARANCE, borderTopWidth: 1,
+    paddingHorizontal: 16, paddingTop: 14, paddingBottom: 22, borderTopWidth: 1,
   },
   closedText: { ...typography.caption, flexShrink: 1 },
+
+  /* ticket info */
+  infoContent: { padding: 16, paddingBottom: 40 },
+  infoHero: { alignItems: 'center', paddingVertical: 18 },
+  infoAvatar: { width: 84, height: 84, borderRadius: 42, alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
+  infoSubject: { ...typography.h3, textAlign: 'center' },
+  infoNumber: { ...typography.caption, marginTop: 4 },
+  infoCard: { padding: 16, marginTop: 14 },
+  infoRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 11 },
+  infoRowIcon: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  infoRowLabel: { ...typography.caption },
+  infoRowValue: { ...typography.body, fontWeight: '600', marginTop: 2 },
+  infoDescription: { ...typography.body, lineHeight: 21 },
 });

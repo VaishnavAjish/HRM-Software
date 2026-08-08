@@ -130,12 +130,14 @@ export function buildAppointmentPrintHtml(raw, printedByName) {
         .footer-row { display: flex; justify-content: space-between; align-items: flex-end; gap: 20px; margin-top: 20px; font-size: 11px; }
         .footer-row .label { font-weight: 700; text-transform: uppercase; }
         .footer-row .value { border-bottom: 1px solid #000; font-weight: 700; text-transform: uppercase; padding: 0 4px; }
-        .attachments { margin-top: 24px; page-break-before: always; }
-        .attachments h2 { font-size: 14px; font-weight: 900; text-transform: uppercase; letter-spacing: 1px; border-bottom: 2px solid #000; padding-bottom: 6px; margin-bottom: 14px; }
+        /* Kept inside the bordered form rather than forced onto its own page —
+           a page break drops the documents outside the frame entirely. */
+        .attachments { margin-top: 26px; padding-top: 16px; border-top: 2px solid #000; page-break-inside: avoid; }
+        .attachments h2 { font-size: 13px; font-weight: 900; text-transform: uppercase; letter-spacing: 1px; margin: 0 0 12px; }
         .attach-grid { display: flex; flex-wrap: wrap; gap: 16px; }
-        .attach-item { width: 220px; }
+        .attach-item { width: 240px; page-break-inside: avoid; }
         .attach-item .cap { font-size: 11px; font-weight: 700; text-transform: uppercase; margin-bottom: 6px; }
-        .attach-item img { width: 100%; height: 160px; object-fit: contain; border: 1px solid #999; background: #f8f8f8; }
+        .attach-item img { width: 100%; height: 170px; object-fit: contain; border: 1px solid #000; background: #fff; }
       </style>
     </head>
     <body>

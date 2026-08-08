@@ -3,18 +3,33 @@ const PROD_API_URL =
   typeof __PROD_API_URL__ !== "undefined" ? __PROD_API_URL__ : "";
 
 function getDevBaseUrl() {
-  const isLocalHost =
-    typeof window !== "undefined" &&
-    (window.location.hostname === "localhost" ||
-      window.location.hostname === "127.0.0.1");
-
-  if (isLocalHost) {
-    const envUrl = import.meta.env.VITE_API_BASE_URL;
-    return envUrl || `${window.location.protocol}//${window.location.hostname}:8000/api`;
+  if (typeof window === "undefined") {
+    return PROD_API_URL || "";
   }
 
-  // Any domain or live IP (niss.pro, staging, production) strictly uses window.location.origin
-  if (typeof window !== "undefined" && window.location.origin) {
+  const envUrl = import.meta.env.VITE_API_BASE_URL;
+  if (envUrl) return envUrl;
+
+  const hostname = window.location.hostname;
+  const port = window.location.port;
+
+  const isLocalDev =
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    /^192\.168\./.test(hostname) ||
+    /^10\./.test(hostname) ||
+    /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(hostname) ||
+    port === "5173" ||
+    port === "5174" ||
+    port === "5175" ||
+    port === "3000";
+
+  if (isLocalDev) {
+    return `${window.location.protocol}//${hostname}:8000/api`;
+  }
+
+  // Any production domain strictly uses window.location.origin
+  if (window.location.origin) {
     return window.location.origin;
   }
 

@@ -2189,6 +2189,64 @@ export const ticketApi = {
       headers: hrAuthHeaders(accessToken, tokenType),
     });
   },
+
+  /*
+   * Attachments.
+   *
+   * No Content-Type header here on purpose: the browser has to set its own
+   * multipart boundary, and naming the type ourselves would produce a body the
+   * server cannot parse. apiRequest already skips the JSON header for FormData.
+   */
+  uploadAttachments(id, files, accessToken, tokenType = "Bearer") {
+    const body = new FormData();
+    Array.from(files).forEach((file) => body.append("files[]", file));
+
+    return apiRequest(`/tickets/${id}/attachments`, {
+      method: "POST",
+      headers: hrAuthHeaders(accessToken, tokenType),
+      body,
+    });
+  },
+
+  /**
+   * Fetch an attachment and hand it to the browser.
+   *
+   * Not an <a href>: the endpoint requires the bearer token, which a plain link
+   * cannot send — it would just 401. Fetching as a blob keeps the file behind
+   * the same authorisation as the rest of the ticket.
+   */
+  async downloadAttachment(id, attachmentId, fileName, accessToken, tokenType = "Bearer") {
+    const response = await fetch(`${baseUrl}/api/tickets/${id}/attachments/${attachmentId}`, {
+      headers: hrAuthHeaders(accessToken, tokenType),
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        response.status === 404
+          ? "That file is no longer available."
+          : "Could not download the attachment.",
+      );
+    }
+
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fileName || "attachment";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    // Revoked on the next tick: revoking synchronously can cancel the download
+    // in some browsers before it has started reading.
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  },
+
+  deleteAttachment(id, attachmentId, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/tickets/${id}/attachments/${attachmentId}`, {
+      method: "DELETE",
+      headers: hrAuthHeaders(accessToken, tokenType),
+    });
+  },
 };
 
 /**

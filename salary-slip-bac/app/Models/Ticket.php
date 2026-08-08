@@ -255,6 +255,18 @@ class Ticket extends Model
         return $this->hasMany(TicketMessage::class)->orderBy('created_at');
     }
 
+    /**
+     * Newest message only, for list views.
+     *
+     * A ticket list wants "who said what last" without dragging every message
+     * of every ticket across the wire; latestOfMany resolves that in one
+     * subquery instead of N round-trips from the client.
+     */
+    public function lastMessage()
+    {
+        return $this->hasOne(TicketMessage::class)->latestOfMany();
+    }
+
     public function activityLogs()
     {
         return $this->hasMany(TicketActivityLog::class)->orderBy('created_at');

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import toast from "react-hot-toast";
 import {
   X, Send, Clock, MessageSquare, History, ShieldAlert, Loader2, Lock,
@@ -11,6 +12,7 @@ import {
 } from "./ticketMeta";
 import { ticketApi } from "../../utils/api";
 import { useAuth } from "../../context/AuthContext";
+import TicketAttachments from "./TicketAttachments";
 
 /**
  * Staff ticket inspector.
@@ -205,7 +207,7 @@ export default function SuperAdminTicketDrawer({ ticketId, onClose, onRefresh })
   const secondary = nextStatuses.filter((n) => n !== primary && n !== "escalated");
   const canEscalate = ticket && !["resolved", "closed", "escalated"].includes(ticket.status);
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/60 backdrop-blur-sm">
       <button type="button" aria-label="Close" className="flex-1 cursor-default" onClick={onClose} />
 
@@ -366,6 +368,14 @@ export default function SuperAdminTicketDrawer({ ticketId, onClose, onRefresh })
                   {ticket.description}
                 </p>
               </section>
+
+              <TicketAttachments
+                ticketId={ticket.id}
+                attachments={ticket.attachments || []}
+                canManage={Boolean(meta?.is_staff)}
+                currentUserId={user?.id}
+                onChanged={refresh}
+              />
 
               <div className="mb-4 flex rounded-xl bg-gray-100 p-1 dark:bg-white/5">
                 {[
@@ -540,7 +550,8 @@ export default function SuperAdminTicketDrawer({ ticketId, onClose, onRefresh })
           </>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

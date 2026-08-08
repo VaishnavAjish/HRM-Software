@@ -223,7 +223,11 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
     setSearch(""); setStageFilter("all"); setMonth(""); setYear(""); setPage(1);
   };
 
-  const draftValue = (row, field) => drafts[row.id]?.[field] ?? row[field] ?? "";
+  const draftValue = (row, field) => {
+    if (drafts[row.id]?.[field] !== undefined) return drafts[row.id][field];
+    if (field === "punching_no") return row.punching_no || row.form_no || "";
+    return row[field] ?? "";
+  };
 
   const setDraft = (id, field, value) =>
     setDrafts((prev) => ({ ...prev, [id]: { ...prev[id], [field]: value } }));

@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView, Animated,
+  View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView, Animated, Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Lock, Mail, ArrowRight, Building2, Eye, EyeOff, AlertCircle, ShieldCheck } from 'lucide-react-native';
+import { Lock, Mail, ArrowRight, Eye, EyeOff, AlertCircle, ShieldCheck } from 'lucide-react-native';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { typography, shadows } from '../../theme';
@@ -69,9 +69,9 @@ export function LoginScreen() {
 
         <Animated.View style={{ opacity: fade, transform: [{ translateY: slide }] }}>
           <View style={styles.headerArea}>
-            <View style={[styles.logoBadge, { backgroundColor: '#EEF2FF', borderColor: theme.primary }, shadows.glow(theme.primary)]}>
-              <Building2 size={30} color={theme.primary} />
-            </View>
+            {/* The launcher icon itself — same asset the OS shows, so the
+                sign-in screen and the home screen read as one product. */}
+            <Image source={require('../../../assets/icon.png')} style={styles.logoBadge} resizeMode="contain" />
             <Text style={[styles.appTitle, { color: theme.textPrimary }]}>NISS Enterprise</Text>
             <Text style={[styles.appSubtitle, { color: theme.textMuted }]}>Employee & Agent Portal</Text>
           </View>
@@ -201,12 +201,9 @@ const styles = StyleSheet.create({
     marginBottom: 30,
   },
   logoBadge: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    borderWidth: 1.5,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 82,
+    height: 82,
+    borderRadius: 19,
     marginBottom: 14,
   },
   appTitle: {

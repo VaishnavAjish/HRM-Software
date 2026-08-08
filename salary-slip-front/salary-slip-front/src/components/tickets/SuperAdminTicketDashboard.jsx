@@ -101,67 +101,117 @@ export default function SuperAdminTicketDashboard({ summary, tickets = [], loadi
             {loading ? "Loading tickets…" : "No tickets in your scope yet."}
           </p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-gray-100 text-[11px] font-bold uppercase text-gray-400 dark:border-gray-800">
-                  <th className="px-3 py-2.5">Ticket #</th>
-                  <th className="px-3 py-2.5">Employee</th>
-                  <th className="px-3 py-2.5">Department</th>
-                  <th className="px-3 py-2.5">Priority</th>
-                  <th className="px-3 py-2.5">Escalation</th>
-                  <th className="px-3 py-2.5">Assigned To</th>
-                  <th className="px-3 py-2.5">SLA</th>
-                  <th className="px-3 py-2.5">Status</th>
-                  <th className="px-3 py-2.5 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 text-gray-700 dark:divide-gray-800/60 dark:text-gray-300">
-                {tickets.slice(0, 5).map((t) => {
-                  const s = statusMeta(t.status);
-                  const p = priorityMeta(t.priority);
-                  const sla = slaMeta(t.sla_status);
+          <>
+            {/* Desktop Table View */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-gray-100 text-[11px] font-bold uppercase text-gray-400 dark:border-gray-800">
+                    <th className="px-3 py-2.5">Ticket #</th>
+                    <th className="px-3 py-2.5">Employee</th>
+                    <th className="px-3 py-2.5">Department</th>
+                    <th className="px-3 py-2.5">Priority</th>
+                    <th className="px-3 py-2.5">Escalation</th>
+                    <th className="px-3 py-2.5">Assigned To</th>
+                    <th className="px-3 py-2.5">SLA</th>
+                    <th className="px-3 py-2.5">Status</th>
+                    <th className="px-3 py-2.5 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 text-gray-700 dark:divide-gray-800/60 dark:text-gray-300">
+                  {tickets.slice(0, 5).map((t) => {
+                    const s = statusMeta(t.status);
+                    const p = priorityMeta(t.priority);
+                    const sla = slaMeta(t.sla_status);
 
-                  return (
-                    <tr key={t.id} className="transition-colors hover:bg-gray-50/80 dark:hover:bg-gray-800/40">
-                      <td className="px-3 py-3 font-mono font-bold text-brand-600 dark:text-brand-400">
+                    return (
+                      <tr key={t.id} className="transition-colors hover:bg-gray-50/80 dark:hover:bg-gray-800/40">
+                        <td className="px-3 py-3 font-mono font-bold text-brand-600 dark:text-brand-400">
+                          {t.ticket_number}
+                        </td>
+                        <td className="px-3 py-3 font-semibold text-gray-900 dark:text-white">
+                          {t.employee?.name || "—"}
+                        </td>
+                        <td className="px-3 py-3 text-gray-600 dark:text-gray-300">{t.department || "—"}</td>
+                        <td className="px-3 py-3">
+                          <span className={`inline-flex rounded-md px-2 py-0.5 text-[10px] ${p.colorCls}`}>{p.label}</span>
+                        </td>
+                        <td className="px-3 py-3 font-semibold text-gray-600 dark:text-gray-300">
+                          {t.escalation_level > 0 ? `Level ${t.escalation_level}` : "—"}
+                        </td>
+                        <td className="px-3 py-3 text-gray-800 dark:text-gray-200">
+                          {t.assignee?.name || <span className="text-gray-400">Unassigned</span>}
+                        </td>
+                        <td className="px-3 py-3">
+                          <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 font-mono text-[10px] ${sla.cls}`}>
+                            <Clock size={11} /> {slaLabel(t)}
+                          </span>
+                        </td>
+                        <td className="px-3 py-3">
+                          <span className={`inline-flex rounded-md px-2 py-0.5 text-[10px] font-bold ${s.badgeBg}`}>{s.label}</span>
+                        </td>
+                        <td className="px-3 py-3 text-right">
+                          <button
+                            onClick={() => onSelectTicket && onSelectTicket(t.id)}
+                            className="rounded-lg bg-gray-100 px-2.5 py-1 font-bold text-brand-600 hover:bg-brand-50 dark:bg-gray-800 dark:text-brand-400"
+                          >
+                            Inspect
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile Card List View */}
+            <div className="space-y-3 md:hidden">
+              {tickets.slice(0, 5).map((t) => {
+                const s = statusMeta(t.status);
+                const p = priorityMeta(t.priority);
+                const sla = slaMeta(t.sla_status);
+
+                return (
+                  <div
+                    key={t.id}
+                    className="rounded-2xl border border-gray-100 bg-gray-50/50 p-4 space-y-3 dark:border-gray-800 dark:bg-gray-800/40"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="font-mono text-xs font-bold text-brand-600 dark:text-brand-400">
                         {t.ticket_number}
-                      </td>
-                      <td className="px-3 py-3 font-semibold text-gray-900 dark:text-white">
-                        {t.employee?.name || "—"}
-                      </td>
-                      <td className="px-3 py-3 text-gray-600 dark:text-gray-300">{t.department || "—"}</td>
-                      <td className="px-3 py-3">
-                        <span className={`inline-flex rounded-md px-2 py-0.5 text-[10px] ${p.colorCls}`}>{p.label}</span>
-                      </td>
-                      <td className="px-3 py-3 font-semibold text-gray-600 dark:text-gray-300">
-                        {t.escalation_level > 0 ? `Level ${t.escalation_level}` : "—"}
-                      </td>
-                      <td className="px-3 py-3 text-gray-800 dark:text-gray-200">
-                        {t.assignee?.name || <span className="text-gray-400">Unassigned</span>}
-                      </td>
-                      <td className="px-3 py-3">
+                      </span>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold ${s.badgeBg}`}>{s.label}</span>
+                        <span className={`rounded-md px-2 py-0.5 text-[10px] ${p.colorCls}`}>{p.label}</span>
                         <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 font-mono text-[10px] ${sla.cls}`}>
-                          <Clock size={11} /> {slaLabel(t)}
+                          <Clock size={10} /> {slaLabel(t)}
                         </span>
-                      </td>
-                      <td className="px-3 py-3">
-                        <span className={`inline-flex rounded-md px-2 py-0.5 text-[10px] font-bold ${s.badgeBg}`}>{s.label}</span>
-                      </td>
-                      <td className="px-3 py-3 text-right">
-                        <button
-                          onClick={() => onSelectTicket && onSelectTicket(t.id)}
-                          className="rounded-lg bg-gray-100 px-2.5 py-1 font-bold text-brand-600 hover:bg-brand-50 dark:bg-gray-800 dark:text-brand-400"
-                        >
-                          Inspect
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs">
+                      <div>
+                        <p className="font-bold text-gray-900 dark:text-white">{t.employee?.name || "—"}</p>
+                        <p className="text-[10px] text-gray-500 dark:text-gray-400">{t.department || "—"}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-[10px] uppercase font-bold tracking-wider text-gray-400">Assigned To</p>
+                        <p className="font-semibold text-gray-800 dark:text-gray-200">{t.assignee?.name || "Unassigned"}</p>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => onSelectTicket && onSelectTicket(t.id)}
+                      className="flex h-11 w-full items-center justify-center rounded-xl bg-brand-600 text-xs font-bold text-white shadow-xs transition active:scale-95"
+                    >
+                      Inspect Ticket
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </>
         )}
       </div>
 

@@ -60,66 +60,68 @@ export default function SuperAdminTicketTable({
 
   return (
     <div className="space-y-4 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <div className="relative w-full sm:w-56">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Filter loaded tickets…"
-              className="w-full rounded-xl border border-gray-200 bg-gray-50 py-2 pl-8 pr-3 text-xs outline-none focus:border-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+              className="w-full rounded-xl border border-gray-200 bg-gray-50 py-2.5 pl-8 pr-3 text-xs outline-none focus:border-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
             />
           </div>
 
-          <select value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)} className={selectCls}>
-            <option value="All">All Departments</option>
-            {departments.map((d) => (
-              <option key={d} value={d}>{d}</option>
-            ))}
-          </select>
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
+            <select value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)} className={selectCls}>
+              <option value="All">All Departments</option>
+              {departments.map((d) => (
+                <option key={d} value={d}>{d}</option>
+              ))}
+            </select>
 
-          <select value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value)} className={selectCls}>
-            <option value="All">All Priorities</option>
-            {PRIORITY_ORDER.map((p) => (
-              <option key={p} value={p}>{priorityMeta(p).label}</option>
-            ))}
-          </select>
+            <select value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value)} className={selectCls}>
+              <option value="All">All Priorities</option>
+              {PRIORITY_ORDER.map((p) => (
+                <option key={p} value={p}>{priorityMeta(p).label}</option>
+              ))}
+            </select>
 
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={selectCls}>
-            <option value="All">All Statuses</option>
-            {STATUS_ORDER.map((s) => (
-              <option key={s} value={s}>{statusMeta(s).label}</option>
-            ))}
-          </select>
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={selectCls}>
+              <option value="All">All Statuses</option>
+              {STATUS_ORDER.map((s) => (
+                <option key={s} value={s}>{statusMeta(s).label}</option>
+              ))}
+            </select>
 
-          <select value={slaFilter} onChange={(e) => setSlaFilter(e.target.value)} className={selectCls}>
-            <option value="All">Any SLA state</option>
-            <option value="on_track">On Track</option>
-            <option value="at_risk">At Risk</option>
-            <option value="breached">Breached</option>
-            <option value="none">No target</option>
-          </select>
+            <select value={slaFilter} onChange={(e) => setSlaFilter(e.target.value)} className={selectCls}>
+              <option value="All">Any SLA state</option>
+              <option value="on_track">On Track</option>
+              <option value="at_risk">At Risk</option>
+              <option value="breached">Breached</option>
+              <option value="none">No target</option>
+            </select>
+          </div>
         </div>
 
         {selectedIds.length > 0 && (
-          <div className="flex items-center gap-2 rounded-xl border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs dark:border-brand-800 dark:bg-brand-950/40">
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-brand-200 bg-brand-50 p-2 text-xs dark:border-brand-800 dark:bg-brand-950/40">
             <span className="font-bold text-brand-700 dark:text-brand-300">{selectedIds.length} selected</span>
             <button
               onClick={() => onBulkAction && onBulkAction("escalate", selectedIds)}
-              className="rounded-lg bg-rose-600 px-2.5 py-1 font-bold text-white hover:bg-rose-700"
+              className="rounded-lg bg-rose-600 px-2.5 py-1.5 font-bold text-white hover:bg-rose-700"
             >
               Escalate
             </button>
             <button
               onClick={() => onBulkAction && onBulkAction("status", selectedIds, { status: "resolved" })}
-              className="rounded-lg bg-emerald-600 px-2.5 py-1 font-bold text-white hover:bg-emerald-700"
+              className="rounded-lg bg-emerald-600 px-2.5 py-1.5 font-bold text-white hover:bg-emerald-700"
             >
               Resolve
             </button>
             <button
               onClick={() => onBulkAction && onBulkAction("close", selectedIds)}
-              className="rounded-lg bg-gray-600 px-2.5 py-1 font-bold text-white hover:bg-gray-700"
+              className="rounded-lg bg-gray-600 px-2.5 py-1.5 font-bold text-white hover:bg-gray-700"
             >
               Close
             </button>
@@ -127,7 +129,8 @@ export default function SuperAdminTicketTable({
         )}
       </div>
 
-      <div className="overflow-x-auto">
+      {/* Desktop Table View */}
+      <div className="hidden md:block overflow-x-auto">
         <table className="w-full text-left text-xs">
           <thead>
             <tr className="border-b border-gray-100 text-[11px] font-bold uppercase text-gray-400 dark:border-gray-800">
@@ -241,6 +244,90 @@ export default function SuperAdminTicketTable({
             )}
           </tbody>
         </table>
+      </div>
+
+      {/* Mobile Ticket Cards View */}
+      <div className="space-y-3 md:hidden">
+        {loading ? (
+          <div className="py-10 text-center">
+            <Loader2 className="mx-auto animate-spin text-brand-500" size={24} />
+          </div>
+        ) : filteredTickets.length === 0 ? (
+          <p className="py-8 text-center text-xs font-semibold text-gray-400">
+            {tickets.length === 0 ? "No tickets in this view." : "No tickets match the selected filters."}
+          </p>
+        ) : (
+          filteredTickets.map((t) => {
+            const s = statusMeta(t.status);
+            const p = priorityMeta(t.priority);
+            const sla = slaMeta(t.sla_status);
+            const isSelected = selectedIds.includes(t.id);
+
+            return (
+              <div
+                key={t.id}
+                className={`rounded-2xl border p-4 space-y-3 transition ${
+                  isSelected
+                    ? "border-brand-300 bg-brand-50/50 dark:border-brand-800 dark:bg-brand-950/30"
+                    : "border-gray-100 bg-gray-50/40 dark:border-gray-800 dark:bg-gray-800/40"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => onToggleSelect && onToggleSelect(t.id)}
+                      className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                    />
+                    <span className="font-mono text-xs font-bold text-brand-600 dark:text-brand-400">
+                      {t.ticket_number}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1">
+                    <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold ${s.badgeBg}`}>{s.label}</span>
+                    <span className={`rounded-md px-2 py-0.5 text-[10px] ${p.colorCls}`}>{p.label}</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <p className="text-[10px] uppercase font-bold tracking-wider text-gray-400">Employee</p>
+                    <p className="font-bold text-gray-900 dark:text-white">{t.employee?.name || "—"}</p>
+                    <p className="text-[10px] text-gray-500 dark:text-gray-400">{t.department || "—"}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[10px] uppercase font-bold tracking-wider text-gray-400">Assigned To</p>
+                    <p className="font-semibold text-gray-800 dark:text-gray-200">{t.assignee?.name || "Unassigned"}</p>
+                    <span className={`mt-1 inline-flex items-center gap-1 rounded-md px-2 py-0.5 font-mono text-[10px] ${sla.cls}`}>
+                      <Clock size={10} /> {slaLabel(t)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between gap-2 pt-1">
+                  <span className="text-[10px] font-medium text-gray-400">{formatDate(t.created_at)}</span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => onSelectTicket && onSelectTicket(t.id)}
+                      className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl bg-brand-600 px-4 text-xs font-bold text-white shadow-xs transition active:scale-95"
+                    >
+                      <Eye size={13} /> View Ticket
+                    </button>
+                    {String(t.status).toLowerCase() === "closed" && (
+                      <button
+                        onClick={() => onDeleteTicket && onDeleteTicket(t.id)}
+                        className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl bg-rose-600 px-3 text-xs font-bold text-white shadow-xs transition active:scale-95"
+                      >
+                        <Trash2 size={13} /> Delete
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        )}
       </div>
     </div>
   );

@@ -455,6 +455,20 @@ Route::middleware('jwt.auth')->group(function () {
         Route::post('{id}/reply', [TicketController::class, 'reply'])->whereNumber('id')->middleware(['throttle:60,1', 'permission:self.ticket.create']);
         Route::post('{id}/reopen', [TicketController::class, 'reopen'])->whereNumber('id')->middleware(['throttle:20,1', 'permission:self.ticket.create']);
 
+        /*
+         * Attachments. Employees and staff alike may attach to a ticket they can
+         * see; the controller re-checks visibility on every read, so a download
+         * link cannot outlive the caller's access.
+         *
+         * Throttled harder than a reply: each upload writes to disk.
+         */
+        Route::post('{id}/attachments', [TicketController::class, 'storeAttachments'])
+            ->whereNumber('id')->middleware(['throttle:20,1', 'permission:self.ticket.create']);
+        Route::get('{id}/attachments/{attachmentId}', [TicketController::class, 'downloadAttachment'])
+            ->whereNumber('id')->whereNumber('attachmentId')->middleware('permission:self.ticket.read');
+        Route::delete('{id}/attachments/{attachmentId}', [TicketController::class, 'destroyAttachment'])
+            ->whereNumber('id')->whereNumber('attachmentId')->middleware('permission:self.ticket.create');
+
         Route::middleware('role:admin')->group(function () {
             Route::get('assignees', [TicketController::class, 'assignees'])->middleware('permission:support.ticket.assign');
             Route::put('{id}/assign', [TicketController::class, 'assign'])->whereNumber('id')->middleware('permission:support.ticket.assign');
