@@ -18,9 +18,9 @@ class IndeedJobService
      */
     public function publishJob(JobRequisition $requisition, array $options = []): array
     {
-        $clientId = config('services.indeed.client_id');
-        $clientSecret = config('services.indeed.client_secret');
-        $employerId = config('services.indeed.employer_id');
+        $clientId = \App\Models\Setting::where('key', 'hr.indeed_client_id')->value('value') ?: config('services.indeed.client_id');
+        $clientSecret = \App\Models\Setting::where('key', 'hr.indeed_client_secret')->value('value') ?: config('services.indeed.client_secret');
+        $employerId = \App\Models\Setting::where('key', 'hr.indeed_employer_id')->value('value') ?: config('services.indeed.employer_id');
         $token = config('services.candidate_intake.token');
 
         $baseUrl = config('app.url', 'https://niss.pro');

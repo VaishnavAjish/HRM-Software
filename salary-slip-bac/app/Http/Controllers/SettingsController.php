@@ -31,6 +31,9 @@ class SettingsController extends Controller
         // Apply" section — see RequisitionsTab's buildJdTemplate. One shared
         // form for all requisitions, per the candidate-intake design.
         'hr.google_form_url' => '',
+        'hr.indeed_client_id' => '',
+        'hr.indeed_client_secret' => '',
+        'hr.indeed_employer_id' => '',
     ];
 
     public function index(Request $request)

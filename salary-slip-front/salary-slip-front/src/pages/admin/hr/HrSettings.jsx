@@ -20,11 +20,14 @@ import {
   Eye,
   Copy,
   CheckCircle2,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Globe
 } from "lucide-react";
 import Button from "../../../components/ui/Button";
 import Badge from "../../../components/ui/Badge";
 import Modal from "../../../components/ui/Modal";
+import { useAuth } from "../../../context/AuthContext";
+import { rbacApi } from "../../../utils/api";
 
 const inputClass =
   "w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3.5 py-2.5 text-xs font-semibold text-gray-900 dark:text-white placeholder-gray-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 transition-all duration-150 outline-none";
@@ -118,10 +121,50 @@ export default function HrSettings() {
   const fileInputRef = useRef(null);
 
   // States
+  const { user } = useAuth();
   const [notifications, setNotifications] = useState(DEFAULT_NOTIFICATIONS);
   const [generalConfig, setGeneralConfig] = useState(DEFAULT_GENERAL);
   const [docTypes, setDocTypes] = useState(DEFAULT_DOC_TYPES);
   const [letterTemplates, setLetterTemplates] = useState(DEFAULT_TEMPLATES);
+
+  // Indeed Integration Credentials State
+  const [indeedClientId, setIndeedClientId] = useState("");
+  const [indeedClientSecret, setIndeedClientSecret] = useState("");
+  const [indeedEmployerId, setIndeedEmployerId] = useState("");
+  const [savingIntegrations, setSavingIntegrations] = useState(false);
+
+  useEffect(() => {
+    if (!user?.accessToken) return;
+    rbacApi.getSettings(user.accessToken, user.tokenType, "hr")
+      .then((res) => {
+        const data = res.data || [];
+        setIndeedClientId(data.find((s) => s.key === "hr.indeed_client_id")?.value || "");
+        setIndeedClientSecret(data.find((s) => s.key === "hr.indeed_client_secret")?.value || "");
+        setIndeedEmployerId(data.find((s) => s.key === "hr.indeed_employer_id")?.value || "");
+      })
+      .catch(() => {});
+  }, [user]);
+
+  const saveIntegrations = async () => {
+    setSavingIntegrations(true);
+    try {
+      const res = await rbacApi.updateSettings(
+        [
+          { key: "hr.indeed_client_id", value: indeedClientId.trim() },
+          { key: "hr.indeed_client_secret", value: indeedClientSecret.trim() },
+          { key: "hr.indeed_employer_id", value: indeedEmployerId.trim() },
+        ],
+        user?.accessToken, user?.tokenType, "hr"
+      );
+      if (res.status) {
+        toast.success("Indeed API Credentials Saved!");
+      }
+    } catch (err) {
+      toast.error(err.message || "Failed to save Indeed credentials");
+    } finally {
+      setSavingIntegrations(false);
+    }
+  };
 
   // Document Modal state
   const [docModalOpen, setDocModalOpen] = useState(false);
@@ -457,7 +500,8 @@ export default function HrSettings() {
           { id: "general", label: "General Config", icon: Building2 },
           { id: "notifications", label: "Notifications", icon: BellRing },
           { id: "documents", label: `Document Verification (${docTypes.length})`, icon: FileCheck },
-          { id: "templates", label: `Letter Templates (${letterTemplates.length})`, icon: FileText }
+          { id: "templates", label: `Letter Templates (${letterTemplates.length})`, icon: FileText },
+          { id: "integrations", label: "Job Boards (Indeed)", icon: Globe }
         ].map((t) => {
           const IconComponent = t.icon;
           const isActive = activeTab === t.id;
@@ -721,6 +765,70 @@ export default function HrSettings() {
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* TAB 5: INTEGRATIONS */}
+        {activeTab === "integrations" && (
+          <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900 space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-gray-100 dark:border-gray-800 pb-4">
+              <div>
+                <h3 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                  <Globe size={18} className="text-blue-600" /> Indeed Partner API Credentials
+                </h3>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Enter your Indeed Developer API keys here to enable 1-Click direct job posting from NISS HRMS to Indeed.
+                </p>
+              </div>
+              <Button size="sm" icon={<Save size={14} />} onClick={saveIntegrations} disabled={savingIntegrations}>
+                {savingIntegrations ? "Saving..." : "Save Indeed Keys"}
+              </Button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">Indeed Client ID</label>
+                <input
+                  type="text"
+                  placeholder="e.g. 1a2b3c4d-5e6f-7g8h"
+                  value={indeedClientId}
+                  onChange={(e) => setIndeedClientId(e.target.value)}
+                  className={inputClass}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">Indeed Client Secret</label>
+                <input
+                  type="password"
+                  placeholder="••••••••••••••••"
+                  value={indeedClientSecret}
+                  onChange={(e) => setIndeedClientSecret(e.target.value)}
+                  className={inputClass}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">Indeed Employer ID</label>
+                <input
+                  type="text"
+                  placeholder="e.g. emp_89271923"
+                  value={indeedEmployerId}
+                  onChange={(e) => setIndeedEmployerId(e.target.value)}
+                  className={inputClass}
+                />
+              </div>
+            </div>
+
+            <div className="rounded-2xl bg-blue-50 dark:bg-blue-950/40 p-4 border border-blue-100 dark:border-blue-900/50 text-xs text-blue-800 dark:text-blue-200 flex items-start gap-3">
+              <Sparkles size={16} className="text-blue-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold">How Indeed Automated Job Sync Works:</p>
+                <p className="mt-1 opacity-90">
+                  Once saved, HR admins can click the <strong>"Indeed Post"</strong> button on any Approved Job Requisition in <strong>HR Management &gt; Hiring &gt; Job Requisitions</strong>. NISS HRMS will automatically push the job title, description, branch location, and salary to your Indeed Employer account!
+                </p>
+              </div>
             </div>
           </div>
         )}
