@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, TextInput, ScrollView, TouchableOpacity, Alert } from 'react-native';
-import { ShieldCheck, Pencil, Check, X, BadgeCheck } from 'lucide-react-native';
+import { ShieldCheck, Pencil, Check, X, BadgeCheck, Download } from 'lucide-react-native';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
@@ -10,6 +10,7 @@ import { Badge } from '../components/common/Badge';
 import { Button } from '../components/common/Button';
 import { Avatar } from '../components/common/Avatar';
 import { formatDate } from '../utils/format';
+import { generateAndSharePdf, pdfDocument } from '../utils/pdf';
 
 const TABS = [
   { id: 'basic', label: 'Basic' },
@@ -53,6 +54,7 @@ export function ProfileScreen() {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(() => initFormFromUser(user));
   const [errorMsg, setErrorMsg] = useState(null);
+  const [downloading, setDownloading] = useState(false);
 
   const completion = useMemo(() => {
     const filled = ALL_FIELDS.filter((f) => (user?.[f.key] ?? '').toString().trim().length > 0).length;
@@ -89,6 +91,74 @@ export function ProfileScreen() {
   };
 
   const fieldsForTab = activeTab === 'basic' ? BASIC_FIELDS : activeTab === 'address' ? ADDRESS_FIELDS : BANK_FIELDS;
+
+  const downloadAppointmentForm = async () => {
+    setDownloading(true);
+    try {
+      const html = pdfDocument('Appointment Form', [
+        {
+          title: 'Employee',
+          rows: [
+            ['Name', user?.name],
+            ['Employee Code', user?.emp_code],
+            ['Company Code', user?.company_code],
+            ['Unit / Branch', user?.unit],
+            ['Department', user?.department],
+            ['Designation', user?.designation],
+            ['Joining Date', user?.joining_date ? formatDate(user.joining_date) : null],
+            ['Manager Name', user?.manager_name],
+          ],
+        },
+        {
+          title: 'Personal Details',
+          rows: [
+            ['Date of Birth', user?.dob ? formatDate(user.dob) : null],
+            ['Gender', user?.gender],
+            ['Marital Status', user?.marital_status],
+            ['Blood Group', user?.blood_group],
+            ['Education', user?.education],
+          ],
+        },
+        {
+          title: 'Contact',
+          rows: [
+            ['Email', user?.email],
+            ['Mobile Number', user?.mobile_number],
+            ['WhatsApp Number', user?.emp_whatsapp_no],
+          ],
+        },
+        {
+          title: 'Address',
+          rows: [
+            ['Resident Address', user?.address],
+            ['Village', user?.village],
+            ['Taluka', user?.taluka],
+            ['District', user?.district],
+            ['City', user?.city],
+            ['State', user?.state],
+            ['PIN Code', user?.pin],
+          ],
+        },
+        {
+          title: 'Identity & Bank',
+          rows: [
+            ['Aadhaar', user?.aadhaar_masked],
+            ['PAN Card No', user?.pan_card_no],
+            ['Bank Name', user?.bank_name],
+            ['Bank IFSC', user?.bank_ifsc_code],
+            ['Bank Account No', user?.bank_account_no],
+            ['PF No', user?.pf_no],
+            ['ESI No', user?.esi_no],
+          ],
+        },
+      ]);
+      await generateAndSharePdf(html, `Appointment Form - ${user?.name || user?.emp_code || ''}`);
+    } catch (e) {
+      Alert.alert('Could not generate PDF', e.message || 'Please try again.');
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
@@ -129,6 +199,15 @@ export function ProfileScreen() {
           </View>
         ) : null}
       </Card>
+
+      <Button
+        title={downloading ? 'Preparing…' : 'Download Appointment Form'}
+        onPress={downloadAppointmentForm}
+        loading={downloading}
+        icon={Download}
+        variant="outline"
+        style={styles.downloadFormBtn}
+      />
 
       <View style={[styles.tabBar, { backgroundColor: theme.surfaceElevated }]}>
         {TABS.map((tab) => (
@@ -283,6 +362,9 @@ const styles = StyleSheet.create({
   aadhaarText: {
     ...typography.caption,
     flex: 1,
+  },
+  downloadFormBtn: {
+    marginBottom: 12,
   },
   tabBar: {
     flexDirection: 'row',

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity } from 'react-native';
-import { FileText, ChevronLeft, AlertCircle, ChevronRight } from 'lucide-react-native';
+import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity, Alert } from 'react-native';
+import { FileText, ChevronLeft, AlertCircle, ChevronRight, Download } from 'lucide-react-native';
 import { useTheme } from '../../context/ThemeContext';
 import { api } from '../../services/api';
 import { typography } from '../../theme';
@@ -8,6 +8,8 @@ import { Card } from '../../components/common/Card';
 import { LoadingView } from '../../components/common/LoadingView';
 import { EmptyState } from '../../components/common/EmptyState';
 import { formatCurrency, monthName } from '../../utils/format';
+import { generateAndSharePdf } from '../../utils/pdf';
+import { buildPayslipHtml } from '../../utils/payslipPdf';
 
 export function PayslipScreen() {
   const { theme } = useTheme();
@@ -89,6 +91,20 @@ function PayslipDetail({ id, onBack }) {
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [downloading, setDownloading] = useState(false);
+
+  const download = async () => {
+    if (!detail) return;
+    setDownloading(true);
+    try {
+      const html = buildPayslipHtml(detail);
+      await generateAndSharePdf(html, `Payslip ${monthName(detail.month)} ${detail.year}`);
+    } catch (e) {
+      Alert.alert('Could not generate PDF', e.message || 'Please try again.');
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   useEffect(() => {
     (async () => {
@@ -124,10 +140,19 @@ function PayslipDetail({ id, onBack }) {
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <TouchableOpacity onPress={onBack} style={styles.backRow} activeOpacity={0.7}>
-        <ChevronLeft size={18} color={theme.primary} />
-        <Text style={[styles.backText, { color: theme.primary }]}>All payslips</Text>
-      </TouchableOpacity>
+      <View style={styles.detailHeaderRow}>
+        <TouchableOpacity onPress={onBack} style={styles.backRow} activeOpacity={0.7}>
+          <ChevronLeft size={18} color={theme.primary} />
+          <Text style={[styles.backText, { color: theme.primary }]}>All payslips</Text>
+        </TouchableOpacity>
+
+        {detail ? (
+          <TouchableOpacity onPress={download} disabled={downloading} style={[styles.downloadBtn, { borderColor: theme.border, backgroundColor: theme.surfaceElevated }]}>
+            <Download size={15} color={theme.primary} />
+            <Text style={[styles.downloadText, { color: theme.primary }]}>{downloading ? 'Preparing…' : 'Download'}</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
 
       {loading ? (
         <LoadingView label="Loading payslip…" />
@@ -231,15 +256,33 @@ const styles = StyleSheet.create({
   slipAmount: {
     ...typography.h4,
   },
+  detailHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
   backRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    marginBottom: 16,
   },
   backText: {
     ...typography.body,
     fontWeight: '600',
+  },
+  downloadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  downloadText: {
+    ...typography.caption,
+    fontWeight: '700',
   },
   detailHero: {
     alignItems: 'center',

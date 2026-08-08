@@ -701,3 +701,5 @@ Route::group(['prefix' => 'quiz'], function () {
  */
 Route::post('candidate-intake/{token}', [PublicCandidateIntakeController::class, 'store'])
     ->middleware(['throttle:30,1', 'module.schema:hr']);
+
+Route::get('jobs/indeed-feed.xml', [\App\Http\Controllers\IndeedFeedController::class, 'index']);

@@ -128,9 +128,9 @@ function getAdminNav(companyId, user, isAllCompanies, isModuleAvailable = () => 
    */
   if ((rawRole === 0 || hasAccess("support.ticket.read")) && isModuleAvailable("tickets")) {
     if (rawRole === 0 || user?.role === "super_admin" || user?.role === "owner") {
-      nav.push({ to: "/admin/tickets/control-center", label: "Ticket Control Center", icon: LifeBuoy });
+      nav.push({ to: "/admin/tickets/control-center", label: "Ticket Control Center", icon: Ticket });
     } else {
-      nav.push({ to: "/admin/tickets", label: "Tickets", icon: LifeBuoy });
+      nav.push({ to: "/admin/tickets", label: "Tickets", icon: Ticket });
     }
   }
 
@@ -177,14 +177,7 @@ const employeeNav = [
   { to: "/employee", label: "Dashboard", icon: LayoutDashboard, end: true },
   { to: "/employee/payslips", label: "Payslips", icon: FileText },
   { to: "/employee/form16", label: "Form 16", icon: Receipt },
-  {
-    label: "Tickets",
-    icon: LifeBuoy,
-    subItems: [
-      { to: "/employee/tickets/new", label: "Raise Ticket" },
-      { to: "/employee/tickets", label: "My Tickets" },
-    ],
-  },
+  { to: "/employee/tickets", label: "My Tickets", icon: Ticket },
   { to: "/employee/profile", label: "Profile", icon: UserCircle },
   { to: "/employee/appointment", label: "Appointment Form", icon: ClipboardList },
 ];

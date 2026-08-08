@@ -68,6 +68,30 @@ class ApiService {
     return this.request('/logout', { method: 'POST' }).catch(() => null);
   }
 
+  // ----- Set Password (first-time / forgot password) -----
+  // All 4 steps hit AuthController::newData, which dispatches purely on the
+  // `type` field in the body — the URL suffix is cosmetic, kept matching the
+  // web client's paths for consistency.
+  checkEmpCode(empCode) {
+    return this.request(`/check-emp-code/${encodeURIComponent(empCode)}`, { auth: false });
+  }
+
+  verifyEmployeeIdentity(formData) {
+    return this.request('/new-emp_code', { method: 'POST', body: formData, isForm: true, auth: false });
+  }
+
+  sendPasswordResetOtp(payload) {
+    return this.request('/new-email', { method: 'POST', body: { ...payload, type: 1 }, auth: false });
+  }
+
+  verifyPasswordResetOtp(payload) {
+    return this.request('/new-email-otp', { method: 'POST', body: { ...payload, type: 2 }, auth: false });
+  }
+
+  setNewPasswordAfterVerification(payload) {
+    return this.request('/new-password', { method: 'POST', body: { ...payload, type: 3 }, auth: false });
+  }
+
   getProfile() {
     return this.request('/profile');
   }

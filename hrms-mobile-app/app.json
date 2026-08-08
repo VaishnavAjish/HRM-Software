@@ -10,7 +10,8 @@
       "bundleIdentifier": "com.niss.hrmsmobile"
     },
     "android": {
-      "package": "com.niss.hrmsmobile"
+      "package": "com.niss.hrmsmobile",
+      "navigationBarColor": "#F1F5F9"
     }
   }
 }

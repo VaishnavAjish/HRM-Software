@@ -1504,11 +1504,18 @@ class UserController extends Controller
         }
 
         if ($trialForm) {
-            if (! isset($data['photo']) && $trialForm->photo) {
-                $data['photo'] = $trialForm->photo;
+            // getRawOriginal(), not the ->photo/->adhar_image accessors: those
+            // resolve an S3 key to a short-lived presigned URL (expires in
+            // minutes, and can run well past the varchar(255) column limit).
+            // Carrying the record over must copy the stored object key itself.
+            $trialPhoto = $trialForm->getRawOriginal('photo');
+            $trialAdharImage = $trialForm->getRawOriginal('adhar_image');
+
+            if (! isset($data['photo']) && $trialPhoto) {
+                $data['photo'] = $trialPhoto;
             }
-            if (! isset($data['adhar_image']) && $trialForm->adhar_image) {
-                $data['adhar_image'] = $trialForm->adhar_image;
+            if (! isset($data['adhar_image']) && $trialAdharImage) {
+                $data['adhar_image'] = $trialAdharImage;
             }
         }
 
