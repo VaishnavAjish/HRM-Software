@@ -80,6 +80,8 @@ const ExitManagement = lazy(() => import("./pages/admin/hr/ExitManagement"));
 const HrSettings = lazy(() => import("./pages/admin/hr/HrSettings"));
 const TrainingQuizPage = lazy(() => import("./pages/admin/hr/TrainingQuizPage"));
 const CandidateQuiz = lazy(() => import("./pages/public/CandidateQuiz"));
+const AboutNiss = lazy(() => import("./pages/public/AboutNiss"));
+import SeoManager from "./components/common/SeoManager";
 
 function RouteLoader() {
   return (
@@ -182,6 +184,7 @@ function AppRoutes() {
         to navigate away with mid-assessment.
       */}
       <Route path="/quiz/:token" element={<CandidateQuiz />} />
+      <Route path="/about-niss" element={<AboutNiss />} />
 
       {/* Admin routes */}
       <Route
@@ -378,6 +381,7 @@ import { NotificationProvider } from "./context/NotificationContext";
 export default function App() {
   return (
     <BrowserRouter>
+      <SeoManager />
       <ThemeProvider>
         <AuthProvider>
           <CompanyProvider>

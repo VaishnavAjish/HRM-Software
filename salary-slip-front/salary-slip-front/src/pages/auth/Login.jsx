@@ -1,9 +1,5 @@
-/* global __APP_LABEL__ */
-const APP_LABEL =
-  typeof __APP_LABEL__ !== "undefined" ? __APP_LABEL__ : "NISS HRMS";
-
 import { useRef, useState, useEffect } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import {
   Eye,
@@ -579,14 +575,17 @@ export default function Login() {
         {/* Logo */}
         {mode === "login" && (
           <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-14 h-14 bg-brand-600 rounded-2xl shadow-lg shadow-brand-600/30 mb-4">
+            <div className="inline-flex items-center justify-center w-14 h-14 bg-brand-600 rounded-2xl shadow-lg shadow-brand-600/30 mb-3">
               <ClipboardList size={28} className="text-white" />
             </div>
-            <p className="text-xs font-semibold uppercase tracking-widest text-brand-600 dark:text-brand-400 mb-1">
-              {APP_LABEL}
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+              NISS HRMS
+            </h1>
+            <p className="text-xs font-semibold uppercase tracking-wider text-brand-600 dark:text-brand-400 mt-1">
+              Nidhi Impex Silver Star
             </p>
-            <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">
-              HRMS portal
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              Human Resource Management System
             </p>
           </div>
         )}
@@ -1060,6 +1059,16 @@ export default function Login() {
           </div>
         )}
 
+        {/* Footer Brand Link */}
+        <div className="mt-8 text-center text-xs text-gray-500 dark:text-gray-400 space-y-1.5">
+          <p>
+            <Link to="/about-niss" className="font-semibold text-brand-600 dark:text-brand-400 hover:underline">
+              About NISS HRMS
+            </Link>{" "}
+            • Nidhi Impex Silver Star
+          </p>
+          <p>© {new Date().getFullYear()} Nidhi Impex Silver Star. All rights reserved.</p>
+        </div>
       </div>
     </div>
   );

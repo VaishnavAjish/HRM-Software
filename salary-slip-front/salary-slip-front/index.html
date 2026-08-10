@@ -9,13 +9,29 @@
     <!-- PWA theme / status bar color -->
     <meta name="theme-color" content="#1d4ed8" />
 
-    <!-- SEO & description -->
-    <meta name="description" content="Employee Payroll & HR Management System by Nidhi Impex" />
+    <!-- Canonical Brand Title & SEO Description -->
+    <title>NISS HRMS | Nidhi Impex Silver Star</title>
+    <meta name="description" content="NISS HRMS – Nidhi Impex Silver Star Human Resource Management System for employee management, attendance, leave, payroll, HR operations and employee self-service." />
+    <link rel="canonical" href="https://niss.pro/" />
+
+    <!-- Open Graph Metadata -->
+    <meta property="og:site_name" content="NISS HRMS" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://niss.pro/" />
+    <meta property="og:title" content="NISS HRMS | Nidhi Impex Silver Star" />
+    <meta property="og:description" content="NISS HRMS – Nidhi Impex Silver Star Human Resource Management System." />
+    <meta property="og:image" content="https://niss.pro/nidhi_impex_logo.png" />
+
+    <!-- Twitter Card Metadata -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="NISS HRMS | Nidhi Impex Silver Star" />
+    <meta name="twitter:description" content="NISS HRMS – Nidhi Impex Silver Star Human Resource Management System." />
+    <meta name="twitter:image" content="https://niss.pro/nidhi_impex_logo.png" />
 
     <!-- iOS PWA support -->
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="HRMS" />
+    <meta name="apple-mobile-web-app-title" content="NISS HRMS" />
 
     <!-- Icons -->
     <link rel="icon"             type="image/svg+xml" href="/favicon.svg" />
@@ -32,7 +48,47 @@
     <link rel="preload" href="https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" />
 
-    <title>NISS HRMS</title>
+    <!-- Structured Data (JSON-LD) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "WebSite",
+          "@id": "https://niss.pro/#website",
+          "url": "https://niss.pro/",
+          "name": "NISS HRMS",
+          "alternateName": [
+            "NISS",
+            "Nidhi Impex Silver Star HRMS",
+            "Nidhi Impex Silver Star Human Resource Management System"
+          ],
+          "publisher": {
+            "@id": "https://niss.pro/#organization"
+          }
+        },
+        {
+          "@type": "Organization",
+          "@id": "https://niss.pro/#organization",
+          "name": "Nidhi Impex Silver Star",
+          "alternateName": "NISS",
+          "url": "https://niss.pro/",
+          "logo": "https://niss.pro/nidhi_impex_logo.png",
+          "description": "Nidhi Impex Silver Star and its NISS Human Resource Management System."
+        },
+        {
+          "@type": "SoftwareApplication",
+          "@id": "https://niss.pro/#software",
+          "name": "NISS HRMS",
+          "alternateName": "Nidhi Impex Silver Star Human Resource Management System",
+          "applicationCategory": "BusinessApplication",
+          "operatingSystem": "Web",
+          "url": "https://niss.pro/",
+          "description": "NISS HRMS is the Human Resource Management System of Nidhi Impex Silver Star."
+        }
+      ]
+    }
+    </script>
   </head>
   <body>
     <div id="root"></div>
