@@ -97,22 +97,7 @@ export default function OnboardingWorkspace() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-[21px] font-semibold tracking-tight">Onboarding</h1>
-          <p className="mt-0.5 text-[13px] text-gray-500 dark:text-gray-400">
-            Manage every new employee from offer acceptance until onboarding completion.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" size="sm" icon={<Download size={15} />} onClick={exportEmployees}>
-            Export
-          </Button>
-          <Link to="/admin/hr/hiring?tab=candidates">
-            <Button size="sm" icon={<Plus size={15} />}>New joiner</Button>
-          </Link>
-        </div>
-      </div>
+
 
       {source === "preview" ? <PreviewBanner /> : null}
 
@@ -134,8 +119,8 @@ export default function OnboardingWorkspace() {
         </div>
       ) : null}
 
-      <div className="sticky top-0 z-30 -mx-4 md:-mx-6 px-4 md:px-6 bg-gray-50/95 dark:bg-[var(--sidebar-bg)]/95 backdrop-blur-sm border-b border-gray-200 dark:border-gray-700">
-        <div className="flex gap-1 overflow-x-auto">
+      <div className="sticky top-0 z-30 -mx-4 md:-mx-6 px-4 md:px-6 bg-gray-50/95 dark:bg-[var(--sidebar-bg)]/95 backdrop-blur-sm border-b border-gray-200 dark:border-gray-700 flex flex-wrap items-center justify-between gap-4">
+        <div className="flex gap-1 overflow-x-auto scrollbar-hide">
           {TABS.map((t) => (
             <button
               key={t.key}
@@ -149,6 +134,14 @@ export default function OnboardingWorkspace() {
               {t.label}
             </button>
           ))}
+        </div>
+        <div className="flex flex-wrap gap-2 pb-2 sm:pb-0 sm:pt-0">
+          <Button variant="secondary" size="sm" icon={<Download size={15} />} onClick={exportEmployees}>
+            Export
+          </Button>
+          <Link to="/admin/hr/hiring?tab=candidates">
+            <Button size="sm" icon={<Plus size={15} />}>New joiner</Button>
+          </Link>
         </div>
       </div>
 

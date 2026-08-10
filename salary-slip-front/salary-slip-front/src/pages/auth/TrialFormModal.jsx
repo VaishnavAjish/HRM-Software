@@ -150,20 +150,21 @@ const HalfField = ({
 );
 
 // ─── Signature field ──────────────────────────────────────────────────────────
-const SignatureField = ({ label, name, value, onChange }) => (
+const SignatureField = ({ label, name, value, onChange, disabled }) => (
   <div className="flex flex-col items-center gap-1 text-center">
     <input
       name={name}
       value={value}
       onChange={onChange}
-      className="mb-1 h-8 w-full border-b-2 border-black bg-transparent px-1 text-center text-[13px] font-semibold uppercase outline-none focus:border-brand-500"
+      disabled={disabled}
+      className="mb-1 h-8 w-full border-b-2 border-black bg-transparent px-1 text-center text-[13px] font-semibold uppercase outline-none focus:border-brand-500 disabled:border-gray-300 disabled:text-gray-500"
     />
     <p className="text-[11px] font-bold uppercase tracking-wide text-gray-600">{label}</p>
   </div>
 );
 
 // ─── Main component ───────────────────────────────────────────────────────────
-const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
+const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess, isViewMode = false, extraActions }) => {
   const { user } = useAuth();
   const { companyId } = useCompany();
   const isEditMode = Boolean(initialData);
@@ -495,10 +496,12 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
               <div className="flex items-center gap-2">
                 <span className="text-[12px] font-bold uppercase whitespace-nowrap flex-shrink-0">Form No :</span>
                 <input
+                  type="text"
                   name="form_no"
                   value={formData.form_no}
                   onChange={handleChange}
-                  className="w-24 rounded border-b border-black bg-transparent px-1 text-[12px] font-semibold outline-none focus:bg-brand-50/70"
+                  disabled={isViewMode}
+                  className="w-24 rounded border-b border-black bg-transparent px-1 text-[12px] font-semibold outline-none focus:bg-brand-50/70 disabled:border-gray-300 disabled:text-gray-500"
                 />
               </div>
             </div>
@@ -512,8 +515,8 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
               <div className="col-span-1 sm:col-span-2 flex flex-col md:flex-row gap-6 mb-2">
                 <div className="flex flex-col items-center flex-shrink-0">
                   <div
-                    className="cursor-pointer group relative"
-                    onClick={requestCapture}
+                    className={`${isViewMode ? "" : "cursor-pointer"} group relative`}
+                    onClick={isViewMode ? undefined : requestCapture}
                   >
                     <div className="w-32 h-40 border border-gray-400 flex items-center justify-center bg-gray-50 overflow-hidden">
                       {photoPreview ? (
@@ -524,17 +527,21 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
                         />
                       ) : (
                         <div className="text-center text-[10px]">
-                          <p className="font-bold text-gray-400 group-hover:text-brand-500">
-                            TAP TO TAKE PHOTO
-                          </p>
+                          {!isViewMode && (
+                            <p className="font-bold text-gray-400 group-hover:text-brand-500">
+                              TAP TO TAKE PHOTO
+                            </p>
+                          )}
                         </div>
                       )}
                     </div>
-                    <p className="text-[9px] text-gray-400 mt-1 text-center">
-                      (Click box to take photo)
-                    </p>
+                    {!isViewMode && (
+                      <p className="text-[9px] text-gray-400 mt-1 text-center">
+                        (Click box to take photo)
+                      </p>
+                    )}
                   </div>
-                  {cameraModal}
+                  {!isViewMode && cameraModal}
                 </div>
                 
                 <div className="flex-1 flex flex-col gap-3 justify-center">
@@ -546,50 +553,6 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
                     error={errors.aadhar_card_no}
                     disabled={isEditMode}
                   />
-                  <div className="flex flex-col gap-1">
-                    <label className="text-[11px] font-bold uppercase tracking-wide text-gray-500">
-                      Upload Aadhaar Card
-                    </label>
-                    <div className="flex items-center gap-2">
-                      <label className="cursor-pointer inline-flex items-center gap-2 rounded border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50">
-                        <Upload size={14} />
-                        {formData.adhar_image ? "Change File" : "Choose File"}
-                        <input
-                          type="file"
-                          accept="image/*,.pdf"
-                          className="hidden"
-                          onChange={(e) => {
-                            if (e.target.files && e.target.files[0]) {
-                              setFormData(prev => ({ ...prev, adhar_image: e.target.files[0] }));
-                            }
-                          }}
-                        />
-                      </label>
-                      {formData.adhar_image && (
-                        <div className="mt-2 w-full max-w-[150px] border rounded overflow-hidden shadow-sm bg-gray-50">
-                          {typeof formData.adhar_image === "string" ? (
-                            formData.adhar_image.toLowerCase().includes(".pdf") ? (
-                              <a href={formData.adhar_image} target="_blank" rel="noreferrer" className="flex flex-col items-center justify-center p-4 text-brand-600 hover:bg-brand-50 transition">
-                                <FileText size={24} className="mb-1" />
-                                <span className="text-[10px] font-semibold text-center">View PDF</span>
-                              </a>
-                            ) : (
-                              <a href={formData.adhar_image} target="_blank" rel="noreferrer" className="block w-full">
-                                <img src={formData.adhar_image} alt="Aadhaar" className="w-full h-auto object-cover max-h-[100px]" />
-                              </a>
-                            )
-                          ) : formData.adhar_image.type === "application/pdf" ? (
-                            <div className="flex flex-col items-center justify-center p-4 text-brand-600">
-                              <FileText size={24} className="mb-1" />
-                              <span className="text-[10px] font-semibold text-center">PDF Selected</span>
-                            </div>
-                          ) : (
-                            <img src={URL.createObjectURL(formData.adhar_image)} alt="Aadhaar" className="w-full h-auto object-cover max-h-[100px]" />
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
                 </div>
               </div>
 
@@ -600,6 +563,7 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
                 name="unit"
                 value={formData.unit}
                 onChange={handleChange}
+                disabled={isViewMode}
                 options={[
                   { value: "", label: "Select Branch" },
                   ...getCompanyUnits("nidhi-impex").map((u) => ({
@@ -614,6 +578,7 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
                 name="gender"
                 value={formData.gender}
                 onChange={handleChange}
+                disabled={isViewMode}
                 options={["MALE", "FEMALE"]}
               />
 
@@ -624,6 +589,7 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
                 onChange={handleChange}
                 error={errors.department}
                 select
+                disabled={isViewMode}
                 options={[
                   { value: "", label: "SELECT DEPARTMENT" },
                   ...(departmentsList.length > 0 ? departmentsList : DEFAULT_DEPARTMENTS).map((d) => ({
@@ -638,6 +604,7 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
                 value={formData.designation}
                 onChange={handleChange}
                 error={errors.designation}
+                disabled={isViewMode}
               />
               <FullField
                 label="Name of Employee"
@@ -645,6 +612,7 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
                 value={formData.name}
                 onChange={handleChange}
                 error={errors.name}
+                disabled={isViewMode}
               />
               <FullField
                 label="Address"
@@ -653,6 +621,7 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
                 onChange={handleChange}
                 error={errors.address}
                 textarea
+                disabled={isViewMode}
               />
 
               <HalfField
@@ -663,6 +632,7 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
                 onChange={handleChange}
                 inputMode="numeric"
                 maxLength={10}
+                disabled={isViewMode}
               />
               <HalfField
                 label="Mobile No 2"
@@ -672,6 +642,7 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
                 onChange={handleChange}
                 inputMode="numeric"
                 maxLength={10}
+                disabled={isViewMode}
               />
 
               <FullField
@@ -681,6 +652,7 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
                 onChange={handleChange}
                 error={errors.email}
                 type="email"
+                disabled={isViewMode}
               />
 
               {/* ── Previous Employment ── */}
@@ -692,12 +664,14 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
                 value={formData.last_company_name}
                 onChange={handleChange}
                 error={errors.last_company_name}
+                disabled={isViewMode}
               />
               <FullField
                 label="Last Company Address"
                 name="last_company_address"
                 value={formData.last_company_address}
                 onChange={handleChange}
+                disabled={isViewMode}
               />
 
               <HalfField
@@ -706,6 +680,7 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
                 name="experience"
                 value={formData.experience}
                 onChange={handleChange}
+                disabled={isViewMode}
               />
               <HalfField
                 label="Reason for Leaving"
@@ -713,6 +688,7 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
                 name="reason_for_leaving"
                 value={formData.reason_for_leaving}
                 onChange={handleChange}
+                disabled={isViewMode}
               />
 
               {/* ── Hastak / Reference Details ── */}
@@ -724,6 +700,7 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
                 name="hastak_name"
                 value={formData.hastak_name}
                 onChange={handleChange}
+                disabled={isViewMode}
               />
               <HalfField
                 label="Hastak Code No"
@@ -731,6 +708,7 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
                 name="hastak_code"
                 value={formData.hastak_code}
                 onChange={handleChange}
+                disabled={isViewMode}
               />
 
               <FullField
@@ -740,18 +718,21 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
                 onChange={handleChange}
                 error={errors.hastak_mobile}
                 inputMode="numeric"
+                disabled={isViewMode}
               />
               <FullField
                 label="Hastak Department/Designation"
                 name="hastak_department"
                 value={formData.hastak_department}
                 onChange={handleChange}
+                disabled={isViewMode}
               />
               <FullField
                 label="Contractor"
                 name="contractor"
                 value={formData.contractor}
                 onChange={handleChange}
+                disabled={isViewMode}
               />
 
               <HalfField
@@ -760,12 +741,14 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
                 name="manager_name"
                 value={formData.manager_name}
                 onChange={handleChange}
+                disabled={isViewMode}
               />
               <HalfField
                 label="Akar"
                 name="akar"
                 value={formData.akar}
                 onChange={handleChange}
+                disabled={isViewMode}
               />
             </div>
 
@@ -776,54 +759,118 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess }) => {
                 name="emp_signature"
                 value={formData.emp_signature}
                 onChange={handleChange}
+                disabled={isViewMode}
               />
               <SignatureField
                 label="Manager"
                 name="manager_signature"
                 value={formData.manager_signature}
                 onChange={handleChange}
+                disabled={isViewMode}
               />
               <SignatureField
                 label="Hastak Signature"
                 name="hastak_signature"
                 value={formData.hastak_signature}
                 onChange={handleChange}
+                disabled={isViewMode}
               />
               <SignatureField
                 label="H R"
                 name="hr_signature"
                 value={formData.hr_signature}
                 onChange={handleChange}
+                disabled={isViewMode}
               />
             </div>
           </div>
 
+          {/* ── Documents (Outside Printable Form) ── */}
+          <div className="mt-6 rounded-lg border border-gray-200 bg-white p-4 sm:p-6 shadow-sm">
+            <h3 className="mb-4 text-sm font-bold text-gray-800 flex items-center gap-2">
+              <Upload size={16} /> Documents
+            </h3>
+            <div className="flex flex-col gap-1">
+              <label className="text-[11px] font-bold uppercase tracking-wide text-gray-500">
+                Upload Aadhaar Card
+              </label>
+              <div className="flex flex-col sm:flex-row sm:items-start gap-4">
+                {!isViewMode && (
+                  <label className="cursor-pointer inline-flex items-center justify-center gap-2 rounded border border-gray-300 bg-gray-50 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100 self-start">
+                    <Upload size={16} className="text-gray-500" />
+                    {formData.adhar_image ? "Change File" : "Choose File"}
+                    <input
+                      type="file"
+                      accept="image/*,.pdf"
+                      className="hidden"
+                      onChange={(e) => {
+                        if (e.target.files && e.target.files[0]) {
+                          setFormData(prev => ({ ...prev, adhar_image: e.target.files[0] }));
+                        }
+                      }}
+                    />
+                  </label>
+                )}
+                {formData.adhar_image && (
+                  <div className="w-full max-w-[250px] border rounded overflow-hidden shadow-sm bg-gray-50">
+                    {typeof formData.adhar_image === "string" ? (
+                      formData.adhar_image.toLowerCase().includes(".pdf") ? (
+                        <a href={formData.adhar_image} target="_blank" rel="noreferrer" className="flex flex-col items-center justify-center p-6 text-brand-600 hover:bg-brand-50 transition">
+                          <FileText size={32} className="mb-2" />
+                          <span className="text-[11px] font-bold text-center underline">View PDF Document</span>
+                        </a>
+                      ) : (
+                        <a href={formData.adhar_image} target="_blank" rel="noreferrer" className="block w-full">
+                          <img src={formData.adhar_image} alt="Aadhaar" className="w-full h-auto object-contain max-h-[150px]" />
+                        </a>
+                      )
+                    ) : formData.adhar_image.type === "application/pdf" ? (
+                      <div className="flex flex-col items-center justify-center p-6 text-brand-600">
+                        <FileText size={32} className="mb-2" />
+                        <span className="text-[11px] font-bold text-center">PDF File Selected</span>
+                      </div>
+                    ) : (
+                      <img src={URL.createObjectURL(formData.adhar_image)} alt="Aadhaar" className="w-full h-auto object-contain max-h-[150px]" />
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
           {/* Action buttons */}
-          <div className="mt-4 flex flex-wrap justify-end gap-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-lg border border-gray-300 bg-white px-5 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={loading}
-              className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm shadow-brand-600/30 transition hover:bg-brand-700 disabled:opacity-50"
-            >
-              {loading ? (
-                <>
-                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                  {isEditMode ? "Updating..." : "Submitting..."}
-                </>
-              ) : (
-                <>
-                  <Check size={15} />
-                  {isEditMode ? "Update Trial Form" : "Submit Trial Form"}
-                </>
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              {extraActions}
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-lg border border-gray-300 bg-white px-5 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+              >
+                {isViewMode ? "Close" : "Cancel"}
+              </button>
+              {!isViewMode && (
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm shadow-brand-600/30 transition hover:bg-brand-700 disabled:opacity-50"
+                >
+                  {loading ? (
+                    <>
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                      {isEditMode ? "Updating..." : "Submitting..."}
+                    </>
+                  ) : (
+                    <>
+                      <Check size={15} />
+                      {isEditMode ? "Update Trial Form" : "Submit Trial Form"}
+                    </>
+                  )}
+                </button>
               )}
-            </button>
+            </div>
           </div>
         </form>
       </div>

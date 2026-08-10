@@ -220,10 +220,15 @@ function buildCompanyQuery(companyId) {
 }
 
 function mergeCompanyFilters(filters = {}, companyId) {
-  return {
+  const base = buildCompanyQuery(companyId);
+  const merged = {
+    ...base,
     ...filters,
-    ...buildCompanyQuery(companyId),
   };
+  if (filters.company_code === "") {
+    merged.company_code = "all";
+  }
+  return merged;
 }
 
 export function resolveWriteCompanyId(companyId, fallbackCompanyId) {
@@ -565,13 +570,14 @@ export const salaryApi = {
     });
   },
 
-  getAttendanceGrid(accessToken, tokenType = "Bearer", { companyId, unit, month, year } = {}) {
+  getAttendanceGrid(accessToken, tokenType = "Bearer", { companyId, unit, month, year, only_uploaded } = {}) {
     const params = new URLSearchParams({
       company_code: resolveWriteCompanyId(companyId),
       month,
       year,
     });
     if (unit) params.set("unit", unit);
+    if (only_uploaded) params.set("only_uploaded", "1");
     return apiRequest(`/attendance/grid?${params}`, {
       headers: accessToken ? { Authorization: `${tokenType} ${accessToken}` } : {},
     });
@@ -855,8 +861,10 @@ export const roleApi = {
     });
   },
 
-  remove(id, accessToken, tokenType = "Bearer") {
-    return apiRequest(`/v1/roles/${id}`, {
+  // `force` also strips the role from whoever holds it. The server accepts it
+  // only from a super administrator and ignores it otherwise.
+  remove(id, accessToken, tokenType = "Bearer", force = false) {
+    return apiRequest(`/v1/roles/${id}${force ? "?force=1" : ""}`, {
       method: "DELETE", headers: authHeaders(accessToken, tokenType),
     });
   },
@@ -2236,9 +2244,32 @@ export const ticketApi = {
     document.body.appendChild(link);
     link.click();
     link.remove();
-    // Revoked on the next tick: revoking synchronously can cancel the download
-    // in some browsers before it has started reading.
     setTimeout(() => URL.revokeObjectURL(url), 1000);
+  },
+
+  async getAttachmentBlobUrl(id, attachmentId, accessToken, tokenType = "Bearer") {
+    const response = await fetch(`${baseUrl}/api/tickets/${id}/attachments/${attachmentId}`, {
+      headers: hrAuthHeaders(accessToken, tokenType),
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        response.status === 404
+          ? "That file is no longer available."
+          : "Could not view the attachment.",
+      );
+    }
+
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const contentType = response.headers.get("content-type") || blob.type || "";
+    return { url, contentType, blob };
+  },
+
+  async viewAttachment(id, attachmentId, accessToken, tokenType = "Bearer") {
+    const { url } = await this.getAttachmentBlobUrl(id, attachmentId, accessToken, tokenType);
+    window.open(url, "_blank");
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
   },
 
   deleteAttachment(id, attachmentId, accessToken, tokenType = "Bearer") {

@@ -285,10 +285,10 @@ export default function SalaryManagement() {
         setTotalRecords(pagination?.total ?? mapped.length);
         setPerPage(pagination?.per_page ?? 15);
         setTotalNetPayable(
-          mapped.reduce((sum, r) => sum + (Number(r.netSalary) || 0), 0),
+          res?.total_net_payable ?? res?.data?.total_net_payable ?? mapped.reduce((sum, r) => sum + (Number(r.netSalary) || 0), 0),
         );
         setTotalDepartments(
-          new Set(mapped.map((r) => r.department).filter(Boolean)).size,
+          res?.total_departments ?? res?.data?.total_departments ?? new Set(mapped.map((r) => r.department).filter(Boolean)).size,
         );
       } catch (err) {
         if (!cancelled) {

@@ -57,11 +57,7 @@ export default function HrReports() {
 
   return (
     <div className="space-y-6 pb-12 font-sans text-gray-900 dark:text-gray-100">
-      {/* Top Header */}
-      <div>
-        <h1 className="text-2xl font-extrabold text-gray-900 dark:text-white tracking-tight">HR Intelligence & Analytics Reports</h1>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Generate, preview, and export high-density workforce reports across hiring, assets, and performance</p>
-      </div>
+
 
       {/* Control Card */}
       <div className="rounded-3xl border border-gray-200/80 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">

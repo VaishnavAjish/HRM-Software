@@ -218,6 +218,28 @@ export const PrintableTrialForm = ({ data, formRef }) => {
           <p>H R</p>
         </div>
       </div>
+
+      {/* Uploaded Documents */}
+      {data.raw?.adhar_image && (
+        <div className="mt-8 border-t-2 border-black pt-6 print:break-before-page">
+          <h2 className="mb-4 text-center text-[14px] font-bold uppercase tracking-widest text-black">
+            Aadhaar Card
+          </h2>
+          <div className="flex justify-center">
+            {typeof data.raw.adhar_image === "string" && data.raw.adhar_image.toLowerCase().includes(".pdf") ? (
+              <a href={data.raw.adhar_image} target="_blank" rel="noreferrer" className="flex flex-col items-center justify-center p-4 text-brand-600 hover:bg-brand-50 transition border rounded">
+                <span className="text-[13px] font-bold text-center underline">View PDF Document</span>
+              </a>
+            ) : (
+              <img
+                src={data.raw.adhar_image}
+                alt="Uploaded Aadhaar Card"
+                className="max-h-[600px] max-w-full rounded border border-gray-300 object-contain shadow-sm print:max-h-full print:border-none"
+              />
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

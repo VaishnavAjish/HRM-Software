@@ -1,5 +1,9 @@
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap");
 
+/* Global UI scale + shell dimension tokens. Must load before Tailwind so the
+   root font size is established before any rem-based utility resolves. */
+@import "./styles/design-tokens.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -216,8 +220,10 @@ body {
   position: absolute;
   left: 50%;
   top: 50%;
-  margin-left: -28px; /* half of w-14 */
-  margin-top: -28px;
+  /* Half of w-14 (3.5rem). Kept in rem so the OTP dial stays centred on the
+     digit boxes once the UI scale changes their size. */
+  margin-left: -1.75rem;
+  margin-top: -1.75rem;
 }
 .otp-slot-gather {
   animation: otp-gather 0.6s cubic-bezier(0.34, 1.4, 0.64, 1) forwards;
@@ -453,7 +459,9 @@ body {
 .employee-ag-grid.grid-header-frozen .ag-header,
 .salary-ag-grid.grid-header-frozen .ag-header {
   position: sticky;
-  top: 64px;
+  /* Tracks the app header, which is 4rem tall. A literal 64px here would leave
+     a gap once the UI scale shrinks the header. */
+  top: var(--app-header-height);
   z-index: 20;
   box-shadow: 0 8px 18px -18px rgba(15, 23, 42, 0.75);
 }

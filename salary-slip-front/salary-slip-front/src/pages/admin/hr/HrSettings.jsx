@@ -115,7 +115,7 @@ const AVAILABLE_TOKENS = [
 ];
 
 export default function HrSettings() {
-  const [activeTab, setActiveTab] = useState("general");
+  const [activeTab, setActiveTab] = useState("documents");
   const [searchQuery, setSearchQuery] = useState("");
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const fileInputRef = useRef(null);
@@ -425,19 +425,7 @@ export default function HrSettings() {
     <div className="space-y-6 pb-24 font-sans text-gray-900 dark:text-gray-100">
       {/* TOP HEADER */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-extrabold tracking-tight text-gray-900 dark:text-white">
-              HR Administration Center
-            </h1>
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-500/10 px-3 py-1 text-xs font-semibold text-brand-600 dark:text-brand-400 border border-brand-500/20">
-              <Sparkles size={13} /> Live System Config
-            </span>
-          </div>
-          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-            Configure system rules, email triggers, document verification, and official letter templates.
-          </p>
-        </div>
+
 
         {/* Action Controls */}
         <div className="flex flex-wrap items-center gap-2.5">
@@ -497,8 +485,6 @@ export default function HrSettings() {
       {/* NAVIGATION TABS BAR */}
       <div className="flex items-center gap-1 overflow-x-auto border-b border-gray-200 dark:border-gray-800 pb-px">
         {[
-          { id: "general", label: "General Config", icon: Building2 },
-          { id: "notifications", label: "Notifications", icon: BellRing },
           { id: "documents", label: `Document Verification (${docTypes.length})`, icon: FileCheck },
           { id: "templates", label: `Letter Templates (${letterTemplates.length})`, icon: FileText },
           { id: "integrations", label: "Job Boards (Indeed)", icon: Globe }
@@ -524,132 +510,6 @@ export default function HrSettings() {
 
       {/* TAB CONTENT PANELS */}
       <div className="space-y-6">
-        {/* TAB 1: GENERAL CONFIG */}
-        {activeTab === "general" && (
-          <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900 space-y-6">
-            <h3 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
-              <Building2 size={18} className="text-brand-500" /> Company HR Parameters
-            </h3>
-
-            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">Probation Period (Days)</label>
-                <input
-                  className={inputClass}
-                  value={generalConfig.probationDays}
-                  onChange={(e) => { setGeneralConfig({ ...generalConfig, probationDays: e.target.value }); setHasUnsavedChanges(true); }}
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">Default Notice Period (Days)</label>
-                <input
-                  className={inputClass}
-                  value={generalConfig.defaultNoticeDays}
-                  onChange={(e) => { setGeneralConfig({ ...generalConfig, defaultNoticeDays: e.target.value }); setHasUnsavedChanges(true); }}
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">Working Days Per Week</label>
-                <select
-                  className={selectClass}
-                  value={generalConfig.workingDaysPerWeek}
-                  onChange={(e) => { setGeneralConfig({ ...generalConfig, workingDaysPerWeek: e.target.value }); setHasUnsavedChanges(true); }}
-                >
-                  <option value="5">5 Days (Mon-Fri)</option>
-                  <option value="6">6 Days (Mon-Sat)</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">Default Shift Hours</label>
-                <input
-                  className={inputClass}
-                  value={generalConfig.defaultShift}
-                  onChange={(e) => { setGeneralConfig({ ...generalConfig, defaultShift: e.target.value }); setHasUnsavedChanges(true); }}
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">Auto Employee ID Format</label>
-                <input
-                  className={inputClass}
-                  value={generalConfig.autoEmpIdPrefix}
-                  onChange={(e) => { setGeneralConfig({ ...generalConfig, autoEmpIdPrefix: e.target.value }); setHasUnsavedChanges(true); }}
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">Default Review Cycle</label>
-                <select
-                  className={selectClass}
-                  value={generalConfig.reviewCycle}
-                  onChange={(e) => { setGeneralConfig({ ...generalConfig, reviewCycle: e.target.value }); setHasUnsavedChanges(true); }}
-                >
-                  <option value="Annual">Annual (H1 + H2)</option>
-                  <option value="Quarterly">Quarterly (Q1-Q4)</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="border-t border-gray-100 dark:border-gray-800 pt-6 space-y-4">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-gray-400">Module Toggles</h4>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                {[
-                  { key: "joiningChecklist", label: "Automated Joining Checklist", desc: "Guide new hires through document upload steps" },
-                  { key: "enableExitDesk", label: "Exit Desk & Clearances", desc: "Manage resignations and clearance workflows" },
-                  { key: "enableAssetTracking", label: "IT Asset Allocation Desk", desc: "Track laptops, phones, and hardware credentials" }
-                ].map((mod) => (
-                  <div key={mod.key} className="flex items-center justify-between p-4 rounded-2xl border border-gray-100 bg-gray-50/50 dark:border-gray-800 dark:bg-gray-800/40">
-                    <div>
-                      <p className="text-xs font-bold text-gray-900 dark:text-white">{mod.label}</p>
-                      <p className="text-[11px] text-gray-400">{mod.desc}</p>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={generalConfig[mod.key]}
-                      onChange={(e) => { setGeneralConfig({ ...generalConfig, [mod.key]: e.target.checked }); setHasUnsavedChanges(true); }}
-                      className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* TAB 2: NOTIFICATIONS */}
-        {activeTab === "notifications" && (
-          <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900 space-y-6">
-            <div>
-              <h3 className="text-base font-bold text-gray-900 dark:text-white">Email & System Notification Triggers</h3>
-              <p className="text-xs text-gray-400">Toggle automated event notifications</p>
-            </div>
-
-            <div className="space-y-3">
-              {[
-                { key: "onNewRequisition", title: "New Requisition Submitted", desc: "Alert Super Admins when a manager requests a new headcount position" },
-                { key: "onOfferAccepted", title: "Candidate Offer Accepted", desc: "Notify HR & Hiring Manager when a candidate accepts an offer" },
-                { key: "onInterviewScheduled", title: "Interview Scheduling Confirmation", desc: "Send calendar invite & SMS reminder to candidate and panel" },
-                { key: "onCandidateApply", title: "New Applicant Alert", desc: "Send immediate notification to recruiter upon application submission" },
-                { key: "onExitRequested", title: "Resignation Request Alert", desc: "Notify HR Manager when an employee submits an exit request" },
-                { key: "onDocumentSubmitted", title: "Onboarding Document Uploaded", desc: "Alert HR team when candidate uploads verification documents" }
-              ].map((item) => (
-                <div key={item.key} className="flex items-center justify-between p-4 rounded-2xl border border-gray-100 bg-gray-50/50 dark:border-gray-800 dark:bg-gray-800/40">
-                  <div>
-                    <p className="text-xs font-bold text-gray-900 dark:text-white">{item.title}</p>
-                    <p className="text-[11px] text-gray-400">{item.desc}</p>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={notifications[item.key]}
-                    onChange={(e) => {
-                      setNotifications({ ...notifications, [item.key]: e.target.checked });
-                      setHasUnsavedChanges(true);
-                    }}
-                    className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* TAB 3: DOCUMENT VERIFICATION */}
         {activeTab === "documents" && (

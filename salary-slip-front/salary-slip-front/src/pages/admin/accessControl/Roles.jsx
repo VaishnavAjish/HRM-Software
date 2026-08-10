@@ -174,9 +174,18 @@ export default function Roles() {
   };
 
   const remove = async (role) => {
-    if (!window.confirm(`Delete role "${role.name}"? This cannot be undone.`)) return;
+    const held = role.assignedUserCount > 0;
+
+    // Holders are named in the prompt rather than discovered afterwards: this
+    // strips their assignment, and only a super administrator may force it.
+    const warning = held
+      ? `Delete role "${role.name}"?\n\n${role.assignedUserCount} user${role.assignedUserCount === 1 ? "" : "s"} currently hold this role and will lose it.\n\nThis cannot be undone.`
+      : `Delete role "${role.name}"? This cannot be undone.`;
+
+    if (!window.confirm(warning)) return;
+
     try {
-      await roleApi.remove(role.id, token, tokenType);
+      await roleApi.remove(role.id, token, tokenType, held && systemRolesEditable);
       toast.success("Role deleted");
       refresh();
     } catch (err) {
@@ -297,8 +306,29 @@ export default function Roles() {
                             ? <Button size="sm" variant="outline" onClick={() => transition(role, "restore", "restored")}><ArchiveRestore size={14} /> Restore</Button>
                             : <Button size="sm" variant="outline" onClick={() => transition(role, "archive", "archived")}><Archive size={14} /> Archive</Button>
                         )}
-                        {manageRoles && can("admin.role.delete") && (systemRolesEditable || !role.isSystem) && role.assignedUserCount === 0 && (
-                          <Button size="sm" variant="danger" onClick={() => remove(role)}><Trash2 size={14} /> Delete</Button>
+                        {/*
+                          Shown but disabled while the role is held, rather than
+                          hidden. The button used to disappear whenever anyone
+                          had the role, which reads as a missing feature — there
+                          is nothing on screen to say the holders are the reason.
+                          The backend refuses this delete with 409 regardless.
+                        */}
+                        {manageRoles && can("admin.role.delete") && (systemRolesEditable || !role.isSystem) && (
+                          <Button
+                            size="sm"
+                            variant="danger"
+                            disabled={role.assignedUserCount > 0 && !systemRolesEditable}
+                            title={
+                              role.assignedUserCount === 0
+                                ? `Delete "${role.name}"`
+                                : systemRolesEditable
+                                  ? `Deletes the role and removes it from ${role.assignedUserCount} user${role.assignedUserCount === 1 ? "" : "s"}.`
+                                  : `Assigned to ${role.assignedUserCount} user${role.assignedUserCount === 1 ? "" : "s"}. Reassign them before deleting this role.`
+                            }
+                            onClick={() => remove(role)}
+                          >
+                            <Trash2 size={14} /> Delete
+                          </Button>
                         )}
                       </div>
                     </td>

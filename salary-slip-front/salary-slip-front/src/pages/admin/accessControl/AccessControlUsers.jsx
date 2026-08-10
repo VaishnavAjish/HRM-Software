@@ -47,14 +47,6 @@ const USER_TYPE_LABEL = {
   EMPLOYEE: "Employee",
 };
 
-const LEGACY_ROLES = [
-  { value: 0, label: "Super Admin" },
-  { value: 1, label: "Admin" },
-  { value: 2, label: "Unit Admin" },
-  { value: 3, label: "Employee" },
-  { value: 4, label: "Agent" },
-];
-
 const REASON_ACTIONS = {
   lock: { title: "Lock user", verb: "Lock", required: true, danger: true },
   unlock: { title: "Unlock user", verb: "Unlock", required: true },
@@ -584,8 +576,60 @@ function ActionDialog({ dialog, options, token, tokenType, busy, setBusy, onDone
     }
   };
 
+  /*
+   * User type is the role list.
+   *
+   * The server unions the canonical tiers with every active role and resolves
+   * each option's tier from the role CODE, so the browser never has to guess an
+   * identity from a display name. There is no hardcoded fallback: an empty
+   * list means no assignable roles exist, and the form says so.
+   */
+  /*
+   * No fallback. An empty list means no assignable roles exist.
+   *
+   * This used to drop back to a hardcoded five when the server sent nothing,
+   * which is the failure it was supposed to prevent: with every role deleted the
+   * Roles page correctly showed none while this dropdown still offered Super
+   * Admin, Admin, Unit Admin, Employee and Agent — none of which existed. An
+   * empty list is information, not an error to paper over.
+   */
+  const userTypeOptions = options?.userTypeOptions ?? [];
+  const rolesLoaded = options !== null;
+  const noRolesAvailable = rolesLoaded && userTypeOptions.length === 0;
+
+  const userTypeValue =
+    userTypeOptions.find((item) => item.roleId && roleIds.includes(item.roleId))?.value
+    ?? userTypeOptions.find((item) => !item.roleId && item.tier === Number(form.role))?.value
+    ?? userTypeOptions.find((item) => item.tier === Number(form.role))?.value
+    ?? "";
+
+  const selectUserType = (value) => {
+    const picked = userTypeOptions.find((item) => item.value === value);
+    if (!picked) return;
+
+    // Both halves move together: the numeric tier the legacy checks read, and
+    // the role assignment RBAC resolves. Picking one can no longer contradict
+    // the other, which is what having two fields allowed.
+    setForm((current) => ({ ...current, role: picked.tier }));
+    setRoleIds(picked.roleId ? [picked.roleId] : []);
+  };
+
   const reasonMeta = REASON_ACTIONS[isBulk ? bulkAction : dialog.kind];
-  const needsRoles = dialog.kind === "assign-role" || dialog.kind === "create" || bulkAction === "assign-role";
+  /*
+   * Create does not pick roles; User type is the single identity choice.
+   *
+   * The form used to offer both, and they answered the same question twice: the
+   * User type select writes users.role, while the checkboxes wrote user_roles
+   * against rows literally named "admin", "EMP" and "Super Admin" — the same
+   * tiers under different spellings. An operator could set User type = Employee
+   * and tick "admin", leaving the account's identity dependent on which check
+   * ran first. The backend now derives the role assignment from User type, so
+   * the two can no longer disagree.
+   *
+   * Assign role stays: granting an extra role (HR Manager, ACC) to an existing
+   * user is a deliberate RBAC operation, not part of creating an account.
+   */
+  const needsRoles = dialog.kind === "assign-role" || bulkAction === "assign-role";
   const isForm = dialog.kind === "create" || dialog.kind === "edit";
 
   const title = isBulk
@@ -647,9 +691,25 @@ function ActionDialog({ dialog, options, token, tokenType, busy, setBusy, onDone
             )}
             <label className="block">
               <span className={labelClass}>User type *</span>
-              <select className={inputClass} value={form.role} onChange={set("role")}>
-                {LEGACY_ROLES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+              <select
+                className={inputClass}
+                value={userTypeValue}
+                disabled={!rolesLoaded || noRolesAvailable}
+                required
+                onChange={(event) => selectUserType(event.target.value)}
+              >
+                {!rolesLoaded && <option value="">Loading roles…</option>}
+                {noRolesAvailable && <option value="">No active roles available</option>}
+                {rolesLoaded && !noRolesAvailable && <option value="">Select role</option>}
+                {userTypeOptions.map((item) => (
+                  <option key={item.value} value={item.value}>{item.label}</option>
+                ))}
               </select>
+              {noRolesAvailable && (
+                <span className="mt-1 block text-xs text-amber-600 dark:text-amber-400">
+                  Create a role in Access Control → Roles before adding users.
+                </span>
+              )}
             </label>
             <label className="block">
               <span className={labelClass}>Company *</span>

@@ -106,13 +106,14 @@ export default function ExitManagement() {
   };
 
   const withdraw = async (r) => {
-    if (!window.confirm("Withdraw this resignation request?")) return;
+    const isExited = r.status === "exited";
+    if (!window.confirm(isExited ? "Revoke this resignation and make the employee active again?" : "Withdraw this resignation request?")) return;
     setActingId(r.id);
     try {
       const res = await hrApi.updateResignationStatus(r.id, { status: "withdrawn" }, user?.accessToken, user?.tokenType);
-      if (res.status) { toast.success("Resignation withdrawn"); reload(); }
+      if (res.status) { toast.success(isExited ? "Resignation revoked" : "Resignation withdrawn"); reload(); }
     } catch (err) {
-      toast.error(err.message || "Failed to withdraw resignation");
+      toast.error(err.message || (isExited ? "Failed to revoke resignation" : "Failed to withdraw resignation"));
     } finally {
       setActingId(null);
     }
@@ -122,10 +123,7 @@ export default function ExitManagement() {
     <div className="space-y-6 pb-12 font-sans text-gray-900 dark:text-gray-100">
       {/* Top Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-extrabold text-gray-900 dark:text-white tracking-tight">Exit Management</h1>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Track employee resignations, notice periods, clearances and exit interviews</p>
-        </div>
+
         <div className="flex items-center gap-2">
           <select
             value={statusFilter}
@@ -209,13 +207,13 @@ export default function ExitManagement() {
                                 {STATUS_LABEL[next]} <ArrowRight size={12} />
                               </button>
                             )}
-                            {!TERMINAL_STATUSES.includes(r.status) && (
+                            {r.status !== "withdrawn" && (
                               <button
                                 disabled={isBusy}
                                 onClick={() => withdraw(r)}
                                 className="px-2.5 py-1 rounded-lg border border-gray-200 text-gray-500 hover:text-rose-600 hover:border-rose-200 dark:border-gray-700 transition-all text-[11px]"
                               >
-                                Withdraw
+                                {r.status === "exited" ? "Revoke" : "Withdraw"}
                               </button>
                             )}
                           </div>

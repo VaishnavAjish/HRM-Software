@@ -45,6 +45,7 @@ const STATUS_CONFIG = {
   late:     { label: "L", short: "Late",     bg: "bg-amber-500",   bgLight: "bg-amber-50 dark:bg-amber-950/40", text: "text-amber-700 dark:text-amber-400", border: "border-amber-200 dark:border-amber-800/60", badge: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 border border-amber-300 dark:border-amber-700",     icon: Clock },
   half_day: { label: "H", short: "Half Day", bg: "bg-purple-500",  bgLight: "bg-purple-50 dark:bg-purple-950/40",text: "text-purple-700 dark:text-purple-400",border: "border-purple-200 dark:border-purple-800/60",badge: "bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300 border border-purple-300 dark:border-purple-700",icon: AlertCircle },
   leave:    { label: "L", short: "Leave",    bg: "bg-sky-500",     bgLight: "bg-sky-50 dark:bg-sky-950/40",     text: "text-sky-700 dark:text-sky-400",     border: "border-sky-200 dark:border-sky-800/60",     badge: "bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300 border border-sky-300 dark:border-sky-700",         icon: Palmtree },
+  not_marked: { label: "-", short: "Not Marked", bg: "bg-slate-400", bgLight: "bg-slate-50 dark:bg-slate-900/40", text: "text-slate-500 dark:text-slate-400", border: "border-slate-200 dark:border-slate-800", badge: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 border border-slate-200 dark:border-slate-700", icon: Clock },
 };
 
 function daysInMonth(month, year) {
@@ -134,6 +135,7 @@ export default function AttendanceView() {
           unit: selectedUnit,
           month: selectedMonth,
           year: selectedYear,
+          only_uploaded: 1,
         });
         if (cancelled) return;
         const emps = res?.data?.employees || [];
@@ -162,42 +164,29 @@ export default function AttendanceView() {
 
   // Process employee rows with check-in, check-out, working hours, status
   const processedRows = useMemo(() => {
-    return employees.map((emp, index) => {
+    return employees.map((emp) => {
       const empData = attendanceMap[emp.emp_code] || {};
-      const dayStatus = empData[targetDateStr] || (index % 5 === 0 ? "present" : index % 7 === 0 ? "absent" : index % 9 === 0 ? "late" : index % 11 === 0 ? "half_day" : "present");
+      const dayStatus = empData[targetDateStr] || "not_marked";
 
       let checkIn = "—";
       let checkOut = "—";
-      let workHours = "0.0 hrs";
+      let workHours = "—";
       let breakTime = "—";
       let overtime = "0.0 hrs";
-      let remarks = "Regular Shift";
+      let remarks = "—";
 
       if (dayStatus === "present") {
-        checkIn = "09:00 AM";
-        checkOut = "06:00 PM";
-        workHours = "9.0 hrs";
-        breakTime = "1.0 hr";
-        overtime = index % 3 === 0 ? "1.5 hrs" : "0.0 hrs";
-        remarks = "On Time";
+        remarks = "Present";
       } else if (dayStatus === "late") {
-        checkIn = "09:45 AM";
-        checkOut = "06:00 PM";
-        workHours = "8.25 hrs";
-        breakTime = "1.0 hr";
-        overtime = "0.0 hrs";
-        remarks = "Late by 45 mins";
+        remarks = "Late Arrival";
       } else if (dayStatus === "half_day") {
-        checkIn = "09:00 AM";
-        checkOut = "01:30 PM";
-        workHours = "4.5 hrs";
-        breakTime = "0.5 hr";
-        overtime = "0.0 hrs";
-        remarks = "Half Day Approved";
+        remarks = "Half Day";
       } else if (dayStatus === "leave") {
-        remarks = "Casual Leave";
+        remarks = "Leave Approved";
       } else if (dayStatus === "absent") {
-        remarks = "Uninformed Absence";
+        remarks = "Absent";
+      } else {
+        remarks = "Not Marked";
       }
 
       return {
@@ -209,7 +198,7 @@ export default function AttendanceView() {
         breakTime,
         overtime,
         remarks,
-        shiftName: emp.shift_name || emp.shift || "General (09:00 - 18:00)",
+        shiftName: emp.shift_name || emp.shift || "—",
       };
     });
   }, [employees, attendanceMap, targetDateStr]);

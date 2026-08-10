@@ -72,8 +72,14 @@ class AttendanceController extends Controller
             ->get(['emp_code', 'date', 'status']);
 
         $map = [];
+        $recordedEmpCodes = [];
         foreach ($records as $r) {
             $map[$r->emp_code][$r->date->format('Y-m-d')] = $r->status;
+            $recordedEmpCodes[$r->emp_code] = true;
+        }
+
+        if ($request->only_uploaded || $request->only_marked) {
+            $employees = $employees->filter(fn ($e) => isset($recordedEmpCodes[$e->emp_code]))->values();
         }
 
         return response()->json([

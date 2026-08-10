@@ -38,6 +38,7 @@ export default function PermissionMatrixPage() {
     token, tokenType, roles, roleId, selectRole, matrix, audit, loading, saving, error, reload,
     draft, dirty, status, configuredOf, setStates, discard, save,
     expanded, toggleExpand, expandAll, collapseAll,
+    visibleColumns, toggleColumn,
     selectedKey, setSelectedKey, selectedNode, editable,
   } = matrixState;
 
@@ -259,6 +260,8 @@ export default function PermissionMatrixPage() {
                 activeFilterCount={activeFilterCount}
                 onClearFilters={() => setFilters(DEFAULT_FILTERS)}
                 editable={editable}
+                visibleColumns={visibleColumns}
+                onToggleColumn={toggleColumn}
               />
 
               {rows.length === 0 ? (
@@ -276,6 +279,7 @@ export default function PermissionMatrixPage() {
                     configuredOf={configuredOf}
                     draft={draft}
                     editable={editable}
+                    visibleColumns={visibleColumns}
                     selectedKey={selectedKey}
                     onSelect={setSelectedKey}
                     onSetState={setStates}

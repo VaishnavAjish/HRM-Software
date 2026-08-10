@@ -77,9 +77,10 @@ export default function AppLayout() {
     localStorage.setItem("salaryms_sidebar_collapsed", String(isCollapsed));
   }, [isCollapsed]);
 
+  // CSS lengths, not numbers — see the note on the constants in EnterpriseNav.
   const currentSidebarWidth = isDesktop
     ? (flyoutOpen ? EXPANDED_WIDTH : RAIL_WIDTH)
-    : 0;
+    : "0px";
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50 dark:bg-[var(--sidebar-bg)] font-sans">
@@ -99,7 +100,7 @@ export default function AppLayout() {
 
       <div
         className="flex-1 flex flex-col min-w-0 transition-[padding-left] duration-300 ease-in-out bg-gray-50 dark:bg-[var(--sidebar-bg)]"
-        style={{ paddingLeft: `${currentSidebarWidth}px` }}
+        style={{ paddingLeft: currentSidebarWidth }}
       >
         <Header
           onMenuClick={() => setSidebarOpen(true)}

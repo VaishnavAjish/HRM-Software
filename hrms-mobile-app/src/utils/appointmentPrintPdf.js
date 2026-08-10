@@ -45,17 +45,13 @@ function attachmentsSection(raw) {
 
   if (!docs.length) return '';
 
-  return `
-    <div class="attachments">
-      <h2>Attached Documents</h2>
-      <div class="attach-grid">
-        ${docs.map((d) => `
-          <div class="attach-item">
-            <div class="cap">${escapeHtml(d.label)}</div>
-            <img src="${d.url}" />
-          </div>`).join('')}
-      </div>
-    </div>`;
+  // One document per page, printed as large as the page allows. These sit
+  // outside the bordered form so the form itself closes cleanly on page 1.
+  return docs.map((d) => `
+    <section class="attachment-page">
+      <h2>${escapeHtml(d.label)}</h2>
+      <div class="attachment-frame"><img src="${d.url}" /></div>
+    </section>`).join('');
 }
 
 function fieldRow(label, value, opts = {}) {
@@ -95,7 +91,12 @@ export function buildAppointmentPrintHtml(raw, printedByName) {
       <meta charset="utf-8" />
       <style>
         body { font-family: Arial, Helvetica, sans-serif; color: #000; margin: 0; padding: 18px; }
-        .doc { max-width: 820px; margin: 0 auto; border: 1px solid #555; padding: 20px; }
+        /* Keeps the whole bordered form — and its closing border — on page 1. */
+        .doc {
+          max-width: 820px; margin: 0 auto; border: 1px solid #555; padding: 20px;
+          page-break-inside: avoid; break-inside: avoid;
+          page-break-after: avoid; break-after: avoid;
+        }
         .banner { border: 2px solid #000; text-align: center; padding: 4px 8px; margin-bottom: 10px; }
         .banner .line1 { font-size: 11px; font-weight: 900; text-transform: uppercase; letter-spacing: 1.5px; }
         .banner .line2 { font-size: 9px; font-weight: 600; margin-top: 2px; }
@@ -130,14 +131,18 @@ export function buildAppointmentPrintHtml(raw, printedByName) {
         .footer-row { display: flex; justify-content: space-between; align-items: flex-end; gap: 20px; margin-top: 20px; font-size: 11px; }
         .footer-row .label { font-weight: 700; text-transform: uppercase; }
         .footer-row .value { border-bottom: 1px solid #000; font-weight: 700; text-transform: uppercase; padding: 0 4px; }
-        /* Kept inside the bordered form rather than forced onto its own page —
-           a page break drops the documents outside the frame entirely. */
-        .attachments { margin-top: 26px; padding-top: 16px; border-top: 2px solid #000; page-break-inside: avoid; }
-        .attachments h2 { font-size: 13px; font-weight: 900; text-transform: uppercase; letter-spacing: 1px; margin: 0 0 12px; }
-        .attach-grid { display: flex; flex-wrap: wrap; gap: 16px; }
-        .attach-item { width: 240px; page-break-inside: avoid; }
-        .attach-item .cap { font-size: 11px; font-weight: 700; text-transform: uppercase; margin-bottom: 6px; }
-        .attach-item img { width: 100%; height: 170px; object-fit: contain; border: 1px solid #000; background: #fff; }
+        /* Each document owns a full page; the form box stays whole on page 1. */
+        .attachment-page {
+          page-break-before: always; break-before: page;
+          page-break-inside: avoid; break-inside: avoid;
+          text-align: center;
+        }
+        .attachment-page h2 {
+          font-size: 14px; font-weight: 900; text-transform: uppercase; letter-spacing: 1.5px;
+          margin: 0 0 12px; padding-bottom: 8px; border-bottom: 2px solid #000;
+        }
+        .attachment-frame { border: 1px solid #000; padding: 8px; }
+        .attachment-page img { display: block; width: 100%; max-height: 235mm; object-fit: contain; }
       </style>
     </head>
     <body>
@@ -231,9 +236,9 @@ export function buildAppointmentPrintHtml(raw, printedByName) {
             <span class="label">Emp. Signature :</span> <span class="value">${escapeHtml(raw?.emp_signature)}</span>
           </div>
         </div>
-
-        ${attachmentsSection(raw)}
       </div>
+
+      ${attachmentsSection(raw)}
     </body>
   </html>`;
 }

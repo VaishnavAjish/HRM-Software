@@ -4,6 +4,7 @@ import { useAuth } from "../../../context/AuthContext";
 import permissionMatrixApi from "../services/permissionMatrixApi";
 import { collectKeys, findNode } from "../utils/tree";
 import { STATE } from "../models/permissionStates";
+import { loadColumnPreference, saveColumnPreference } from "../models/matrixColumns";
 
 const AUTO_EXPAND_DEPTH = 2;
 
@@ -32,6 +33,22 @@ export default function usePermissionMatrix() {
   const [draft, setDraft] = useState(new Map());
   const [expanded, setExpanded] = useState(new Set());
   const [selectedKey, setSelectedKey] = useState(null);
+
+  /*
+   * Column visibility is a display preference, deliberately held apart from
+   * `draft`. It never enters a save payload, never marks the matrix dirty and
+   * never reaches the permission engine — hiding a column changes what this
+   * administrator reads, not what any user may do.
+   */
+  const [visibleColumns, setVisibleColumns] = useState(loadColumnPreference);
+
+  const toggleColumn = useCallback((key) => {
+    setVisibleColumns((current) => {
+      const next = { ...current, [key]: !current[key] };
+      saveColumnPreference(next);
+      return next;
+    });
+  }, []);
 
   const requestId = useRef(0);
 
@@ -202,6 +219,7 @@ export default function usePermissionMatrix() {
     matrix, audit, loading, saving, error, reload,
     draft, dirty, status, configuredOf, setStates, discard, save,
     expanded, toggleExpand, expandAll, collapseAll,
+    visibleColumns, toggleColumn,
     selectedKey, setSelectedKey, selectedNode,
     editable: matrix?.editable ?? false,
     STATE,

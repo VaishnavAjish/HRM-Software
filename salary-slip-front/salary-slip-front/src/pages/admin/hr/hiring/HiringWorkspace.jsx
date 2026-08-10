@@ -56,7 +56,7 @@ export default function HiringWorkspace() {
   return (
     <div className="space-y-4">
       <div className="sticky top-0 z-30 -mx-4 md:-mx-6 px-4 md:px-6 bg-gray-50/95 dark:bg-[var(--sidebar-bg)]/95 backdrop-blur-sm border-b border-gray-200 dark:border-gray-700">
-        <div className="flex gap-1 overflow-x-auto">
+        <div className="flex gap-1 overflow-x-auto scrollbar-hide">
           {TABS.map((t) => (
             <button
               key={t.key}

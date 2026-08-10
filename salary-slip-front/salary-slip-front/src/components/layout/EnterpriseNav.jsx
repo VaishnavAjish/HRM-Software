@@ -4,8 +4,17 @@ import { ChevronDown, ChevronRight, LogOut, UserCircle, LifeBuoy } from "lucide-
 import { useAuth } from "../../context/AuthContext";
 import { useNavItems, dashboardPathFor } from "./useNavItems";
 
-export const RAIL_WIDTH = 68;
-export const EXPANDED_WIDTH = 260;
+/*
+ * Nav widths as CSS lengths rather than raw numbers.
+ *
+ * They were 68 and 260, applied as `${n}px`, which left the nav at its original
+ * size while the rest of the UI followed the global scale — the one part of the
+ * shell that would not shrink. Reading the rem-based tokens instead means the
+ * nav rides --ui-scale like everything else, and AppLayout's matching
+ * padding-left resolves from the same variables so the two cannot drift.
+ */
+export const RAIL_WIDTH = "var(--app-nav-rail-width)";
+export const EXPANDED_WIDTH = "var(--app-nav-expanded-width)";
 
 function itemKey(item, index) {
   return item.to ?? item.label ?? `item-${index}`;

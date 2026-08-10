@@ -5,6 +5,7 @@ import {
 import { EffectiveBadge, SensitivityMark, StateBadge, TypeBadge } from "./badges";
 import { collectAssignable } from "../utils/tree";
 import useDismissable from "../hooks/useDismissable";
+import { COLUMN, DEFAULT_VISIBLE, gridTemplate } from "../models/matrixColumns";
 import PermissionStateSelect from "./PermissionStateSelect";
 
 const ICONS = {
@@ -19,7 +20,39 @@ const ICONS = {
   api: Zap,
 };
 
-const GRID = "grid grid-cols-[32px_minmax(240px,1fr)_minmax(190px,1.1fr)_150px_140px_110px_44px] items-center gap-3";
+/**
+ * Whether the page governing this row can be opened.
+ *
+ * Reaching a page and acting inside one are separate permissions: an action
+ * configured Allow under a page whose view is denied cannot be used, and the
+ * action's own row says nothing about that. This column surfaces the governing
+ * page's effective result on every descendant so the constraint is visible
+ * where the decision is made.
+ *
+ * Read-only by design. The page's state is edited on the page's own row — one
+ * permission with one editable place, so two cells cannot disagree.
+ */
+function ViewCell({ node }) {
+  const page = node.governingPage;
+
+  if (!page) {
+    return <span className="text-xs text-gray-400 dark:text-gray-500" title="Not inside a page">—</span>;
+  }
+
+  const own = page.key === node.key;
+
+  return (
+    <span
+      className="inline-flex items-center gap-1"
+      title={own
+        ? `Page view: ${page.effectiveResult}`
+        : `Governed by "${page.label}" — view is ${page.effectiveResult}`}
+    >
+      <EffectiveBadge result={page.effectiveResult} />
+      {!own && <span className="text-[10px] text-gray-400" aria-hidden="true">↑</span>}
+    </span>
+  );
+}
 
 function StateControl({ node, value, pending, editable, onChange }) {
   if (!node.assignable) {
@@ -95,9 +128,15 @@ function RowMenu({ node, editable, onApplyToDescendants, onCopy }) {
 
 export default function PermissionTreeTable({
   rows, expanded, onToggleExpand, configuredOf, draft, editable,
+  visibleColumns = DEFAULT_VISIBLE,
   selectedKey, onSelect, onSetState, onApplyToDescendants, onCopy,
   checked, onToggleChecked, onToggleAll,
 }) {
+  // Grid tracks follow the visible columns, so hiding one closes its space
+  // instead of leaving a gap the headers no longer line up with.
+  const GRID = `grid items-center gap-3`;
+  const gridStyle = { gridTemplateColumns: gridTemplate(visibleColumns) };
+
   const selectable = rows.filter((row) => row.assignable);
   const allSelected = selectable.length > 0 && selectable.every((row) => checked.has(row.key));
   const someSelected = selectable.some((row) => checked.has(row.key));
@@ -105,6 +144,7 @@ export default function PermissionTreeTable({
   return (
     <div role="treegrid" aria-label="Permission tree" className="min-w-[900px]">
       <div
+        style={gridStyle}
         className={`${GRID} sticky top-0 z-10 border-b border-gray-200 bg-gray-50 px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:border-gray-700 dark:bg-gray-900/60 dark:text-gray-400`}
         role="row"
       >
@@ -119,10 +159,13 @@ export default function PermissionTreeTable({
           />
         </span>
         <span role="columnheader">Name</span>
-        <span role="columnheader">Permission Code</span>
-        <span role="columnheader">Configured State</span>
-        <span role="columnheader">Effective Result</span>
-        <span role="columnheader">Type</span>
+        {visibleColumns[COLUMN.CODE] && <span role="columnheader">Permission Code</span>}
+        {visibleColumns[COLUMN.VIEW] && (
+          <span role="columnheader" title="Whether the page governing this row can be opened">View</span>
+        )}
+        {visibleColumns[COLUMN.CONFIGURED] && <span role="columnheader">Configured State</span>}
+        {visibleColumns[COLUMN.EFFECTIVE] && <span role="columnheader">Effective Result</span>}
+        {visibleColumns[COLUMN.TYPE] && <span role="columnheader">Type</span>}
         <span role="columnheader" className="sr-only">Options</span>
       </div>
 
@@ -159,6 +202,7 @@ export default function PermissionTreeTable({
                 if (event.key === "ArrowRight" && hasChildren && !isOpen) onToggleExpand(node.key);
                 if (event.key === "ArrowLeft" && hasChildren && isOpen) onToggleExpand(node.key);
               }}
+              style={gridStyle}
               className={`${GRID} cursor-pointer border-b border-gray-100 px-4 py-1.5 text-sm outline-none transition-colors focus:ring-2 focus:ring-inset focus:ring-brand-500 dark:border-gray-700/60 ${
                 selected
                   ? "bg-brand-50 dark:bg-brand-500/10"
@@ -214,10 +258,17 @@ export default function PermissionTreeTable({
                 <SensitivityMark sensitivity={node.sensitivity} />
               </div>
 
-              <code role="gridcell" className="truncate font-mono text-[11px] text-gray-500 dark:text-gray-400">
-                {node.permissionCode ?? "—"}
-              </code>
+              {visibleColumns[COLUMN.CODE] && (
+                <code role="gridcell" className="truncate font-mono text-[11px] text-gray-500 dark:text-gray-400">
+                  {node.permissionCode ?? "—"}
+                </code>
+              )}
 
+              {visibleColumns[COLUMN.VIEW] && (
+                <div role="gridcell"><ViewCell node={node} /></div>
+              )}
+
+              {visibleColumns[COLUMN.CONFIGURED] && (
               <div role="gridcell" onClick={(event) => event.stopPropagation()}>
                 <StateControl
                   node={node}
@@ -227,14 +278,17 @@ export default function PermissionTreeTable({
                   onChange={(next) => onSetState([node], next)}
                 />
               </div>
+              )}
 
-              <div role="gridcell">
-                {node.assignable
-                  ? <EffectiveBadge result={node.effectiveResult} pending={pending} />
-                  : <span className="text-xs text-gray-400 dark:text-gray-500">—</span>}
-              </div>
+              {visibleColumns[COLUMN.EFFECTIVE] && (
+                <div role="gridcell">
+                  {node.assignable
+                    ? <EffectiveBadge result={node.effectiveResult} pending={pending} />
+                    : <span className="text-xs text-gray-400 dark:text-gray-500">—</span>}
+                </div>
+              )}
 
-              <div role="gridcell"><TypeBadge type={node.type} /></div>
+              {visibleColumns[COLUMN.TYPE] && <div role="gridcell"><TypeBadge type={node.type} /></div>}
 
               <div role="gridcell" onClick={(event) => event.stopPropagation()}>
                 <RowMenu

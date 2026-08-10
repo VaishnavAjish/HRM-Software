@@ -85,6 +85,9 @@ const FILTER_KEY_MAP = {
   mobileNo: "mobile_no",
   loginRole: "role",
   unit: "unit",
+  companyLabel: "company_code",
+  department: "department",
+  status: "status",
 };
 
 const selectCls =
@@ -260,6 +263,52 @@ export default function EmployeeManagement() {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedStatus, setSelectedStatus] = useState("");
+  const [selectedDepartment, setSelectedDepartment] = useState("");
+  const [selectedCompany, setSelectedCompany] = useState("");
+  const [selectedUnit, setSelectedUnit] = useState("");
+
+  const [departmentsList, setDepartmentsList] = useState([]);
+  const [allDepartments, setAllDepartments] = useState([]);
+  const [allUnits, setAllUnits] = useState([]);
+
+  useEffect(() => {
+    let active = true;
+    salaryApi
+      .getDepartments(currentUser?.accessToken, currentUser?.tokenType, companyScope?.companyId || companyScope)
+      .then((res) => {
+        if (!active) return;
+        const list = res?.data || res || [];
+        const names = (Array.isArray(list) ? list : [])
+          .map((d) => (typeof d === "string" ? d : d.name || d.department))
+          .filter(Boolean);
+        setDepartmentsList(names);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [currentUser?.accessToken, currentUser?.tokenType, companyScope]);
+
+  useEffect(() => {
+    setAllDepartments((prev) => {
+      const set = new Set(prev);
+      departmentsList.forEach((d) => {
+        if (d && String(d).trim()) set.add(String(d).trim());
+      });
+      employees.forEach((e) => {
+        if (e.department && String(e.department).trim()) set.add(String(e.department).trim());
+      });
+      return Array.from(set).sort();
+    });
+
+    setAllUnits((prev) => {
+      const set = new Set(prev);
+      employees.forEach((e) => {
+        if (e.unit && String(e.unit).trim()) set.add(String(e.unit).trim());
+      });
+      return Array.from(set).sort();
+    });
+  }, [employees, departmentsList]);
 
   const mergedFilters = useMemo(() => {
     const filters = { ...apiFilter };
@@ -269,8 +318,17 @@ export default function EmployeeManagement() {
     if (selectedStatus) {
       filters.status = selectedStatus;
     }
+    if (selectedDepartment) {
+      filters.department = selectedDepartment;
+    }
+    if (selectedCompany) {
+      filters.company_code = selectedCompany;
+    }
+    if (selectedUnit) {
+      filters.unit = selectedUnit;
+    }
     return filters;
-  }, [apiFilter, searchQuery, selectedStatus]);
+  }, [apiFilter, searchQuery, selectedStatus, selectedDepartment, selectedCompany, selectedUnit]);
 
   const [exportLoading, setExportLoading] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -308,7 +366,6 @@ export default function EmployeeManagement() {
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
   const [bulkDeleteLoading, setBulkDeleteLoading] = useState(false);
 
-  const [departmentsList, setDepartmentsList] = useState([]);
   const [isDeptModalOpen, setIsDeptModalOpen] = useState(false);
   const [newDeptName, setNewDeptName] = useState("");
 
@@ -1257,7 +1314,7 @@ export default function EmployeeManagement() {
         flex: 1,
         minWidth: 150,
         hide: isMobile || !visibleColumns.includes("companyLabel"),
-        filter: false,
+        filter: "agTextColumnFilter",
         cellRenderer: ({ data: emp }) =>
           emp ? (
             <span className="text-sm text-gray-600 dark:text-gray-300 truncate">
@@ -1437,6 +1494,54 @@ export default function EmployeeManagement() {
               );
             })}
           </div>
+
+          {/* Department Filter */}
+          <select
+            value={selectedDepartment}
+            onChange={(e) => {
+              setSelectedDepartment(e.target.value);
+              setApiPage(1);
+            }}
+            className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-500/20 dark:border-white/10 dark:bg-[#0b0f1a] dark:text-white"
+          >
+            <option value="">All Departments</option>
+            {allDepartments.map((d) => (
+              <option key={d} value={d}>
+                {d}
+              </option>
+            ))}
+          </select>
+
+          {/* Company Filter */}
+          <select
+            value={selectedCompany}
+            onChange={(e) => {
+              setSelectedCompany(e.target.value);
+              setApiPage(1);
+            }}
+            className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-500/20 dark:border-white/10 dark:bg-[#0b0f1a] dark:text-white"
+          >
+            <option value="">All Companies</option>
+            <option value="nidhi-impex">Nidhi Impex</option>
+            <option value="silverstar">Silver Star</option>
+          </select>
+
+          {/* Unit Filter */}
+          <select
+            value={selectedUnit}
+            onChange={(e) => {
+              setSelectedUnit(e.target.value);
+              setApiPage(1);
+            }}
+            className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-500/20 dark:border-white/10 dark:bg-[#0b0f1a] dark:text-white"
+          >
+            <option value="">All Units</option>
+            {allUnits.map((u) => (
+              <option key={u} value={u}>
+                {u}
+              </option>
+            ))}
+          </select>
 
           {/* Employee Counts */}
           <div className="flex flex-wrap gap-3 text-sm text-gray-500 dark:text-gray-400">

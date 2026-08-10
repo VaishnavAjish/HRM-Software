@@ -388,7 +388,7 @@ class UserController extends Controller
         $query = User::where('is_deleted', 0)
             ->whereNotIn('role', [0, 1, 2]);
 
-        if ($status !== null && (int) $status === 2) {
+        if ($status !== null && (string) $status === '2') {
             $query->where('type', 'pending_employee')
                 ->where('status', 2);
         } else {
@@ -398,8 +398,22 @@ class UserController extends Controller
                     $q->whereNull('type')
                         ->orWhereNotIn('type', ['appointment', 'agent', 'pending_employee']);
                 });
-            if ($status !== null) {
-                $query->where('status', $status);
+            if ($status !== null && $status !== '') {
+                $statusStr = (string) $status;
+                $statusLower = strtolower($statusStr);
+
+                if ($statusLower === 'active' || $statusStr === '0') {
+                    $query->where('status', 0);
+                } elseif ($statusLower === 'inactive' || $statusStr === '1') {
+                    $query->where('status', 1);
+                } elseif ($statusLower === 'pending' || $statusStr === '2') {
+                    $query->where('status', 2);
+                } elseif ($statusLower === 'resigned') {
+                    $query->whereNotNull('resignation_date')
+                        ->where('resignation_date', '<=', date('Y-m-d'));
+                } else {
+                    $query->where('status', $status);
+                }
             }
         }
 
@@ -417,7 +431,17 @@ class UserController extends Controller
                 : ($requested ? array_intersect($requested, $own) : $own);
 
             if ($codes) {
-                $query->whereIn('company_code', $codes);
+                $query->where(function ($q) use ($codes) {
+                    foreach ($codes as $code) {
+                        if ($code === 'nidhi-impex' || stripos($code, 'nidhi') !== false) {
+                            $q->orWhere('company_code', 'nidhi-impex')->orWhere('company_code', 'like', '%nidhi%');
+                        } elseif ($code === 'silverstar' || $code === 'silver-star' || stripos($code, 'silver') !== false) {
+                            $q->orWhere('company_code', 'silverstar')->orWhere('company_code', 'like', '%silver%');
+                        } else {
+                            $q->orWhere('company_code', 'like', "%{$code}%");
+                        }
+                    }
+                });
             } elseif ((int) $userAuth->role !== 0) {
                 $query->whereRaw('1 = 0');
             }
@@ -429,9 +453,15 @@ class UserController extends Controller
                 $query->whereIn('company_code', $codes);
             }
         }
-        if ($request->unit) {
-            $query->where('unit', $request->unit);
+
+        if ($request->department) {
+            $query->where('department', 'like', "%{$request->department}%");
         }
+
+        if ($request->unit) {
+            $query->where('unit', 'like', "%{$request->unit}%");
+        }
+
         if ($request->search) {
             $query->where(function ($q) use ($request) {
                 $q->where('name', 'like', "%{$request->search}%")

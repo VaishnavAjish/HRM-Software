@@ -15,7 +15,7 @@ export default function Header({ onMenuClick, title, isCollapsed }) {
   const [profileOpen, setProfileOpen] = useState(false);
 
   return (
-    <header className="h-16 bg-white dark:bg-gray-800 border-b-2 border-brand-600/20 dark:border-brand-600/30 flex items-center px-4 gap-4 sticky top-0 z-10">
+    <header className="h-16 bg-white dark:bg-gray-800 border-b-2 border-brand-600/20 dark:border-brand-600/30 flex items-center px-4 gap-4 sticky top-0 z-40">
       <button
         onClick={onMenuClick}
         aria-label="Open navigation menu"

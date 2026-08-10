@@ -322,16 +322,21 @@ const PrintableTrialForm = ({ data, formRef }) => {
         </div>
       </div>
 
-      {/* ── Aadhaar Card Print Page (New Page) ── */}
+      {/* ── Uploaded Aadhaar Card ── */}
       {data.adharImage && (
-        <div className="hidden print:flex w-full h-[277mm] flex-col items-center justify-center break-before-page pt-4 relative">
-          {data.adharImage.toLowerCase().includes('.pdf') ? (
-            <div className="text-center font-bold text-gray-700 mt-10">
-              [Aadhaar Card is a PDF document and cannot be printed directly as an image. Please print the PDF separately.]
-            </div>
-          ) : (
-            <img src={data.adharImage} alt="Aadhaar Card" className="max-w-[190mm] max-h-[270mm] object-contain" />
-          )}
+        <div className="mt-6 sm:mt-8 pt-6 border-t-2 border-black print:break-before-page">
+          <h2 className="mb-4 text-center text-[14px] font-bold uppercase tracking-widest text-black">
+            Aadhaar Card
+          </h2>
+          <div className="flex justify-center">
+            {data.adharImage.toLowerCase().includes('.pdf') ? (
+              <a href={data.adharImage} target="_blank" rel="noreferrer" className="flex flex-col items-center justify-center p-4 text-blue-600 hover:bg-blue-50 transition border rounded print:hidden">
+                <span className="text-[13px] font-bold text-center underline">View PDF Document</span>
+              </a>
+            ) : (
+              <img src={data.adharImage} alt="Aadhaar Card" className="max-h-[600px] max-w-full rounded border border-gray-300 object-contain shadow-sm print:max-h-full print:border-none print:shadow-none" />
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -505,13 +510,6 @@ export default function TrialForm() {
     }
   };
 
-  /**
-   * Memoised because the column definitions below depend on it; a fresh
-   * function each render rebuilt them and re-rendered the whole grid.
-   *
-   * Not an async callback: memoization cannot be preserved across one, and
-   * nothing awaits this — it is wired straight to a button.
-   */
   const handleStatusUpdate = useCallback(
     (id, approve) => {
       const label = approve ? "Approved" : "Rejected";
@@ -1216,31 +1214,15 @@ export default function TrialForm() {
       )}
 
       {/* Detail Modal */}
-      <Modal
+      <TrialFormModal
         isOpen={Boolean(selected)}
         onClose={() => setSelected(null)}
-        title={
-          <div className="flex flex-wrap items-center gap-2">
-            <span>Trial Form Details</span>
-            {selected && <StatusBadge status={selected.status} />}
-            {selected &&
-              (selected.isPrinted ? (
-                <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2.5 py-1 text-xs font-bold text-green-700">
-                  <Printer size={11} /> Printed
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-1 text-xs font-bold text-gray-500">
-                  <Printer size={11} /> Not Printed
-                </span>
-              ))}
-          </div>
-        }
-        size="xl"
-        footer={
+        initialData={selected}
+        isViewMode={true}
+        extraActions={
           selected && (
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              {/* Status actions — left side */}
-              <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2 border-r border-gray-200 pr-3 mr-1">
                 {user?.role !== 'agent' && (
                   <>
                     <button
@@ -1301,7 +1283,6 @@ export default function TrialForm() {
                   )
                 )}
               </div>
-              {/* Document actions — right side */}
               <div className="flex flex-wrap items-center gap-2">
                 <Button variant="secondary" onClick={() => setSelected(null)}>
                   Close
@@ -1339,9 +1320,12 @@ export default function TrialForm() {
             </div>
           )
         }
-      >
+      />
+
+      {/* Hidden printable form for ReactToPrint */}
+      <div className="hidden">
         {selected && <PrintableTrialForm data={selected} formRef={formRef} />}
-      </Modal>
+      </div>
 
       {/* Delete confirm */}
       <Modal

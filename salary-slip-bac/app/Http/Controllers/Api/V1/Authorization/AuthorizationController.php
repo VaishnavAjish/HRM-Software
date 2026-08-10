@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1\Authorization;
 
 use App\Http\Controllers\Controller;
+use App\Support\PermissionRegistry;
 use App\Models\AuthorizationFeatureFlag;
 use App\Models\Permission;
 use App\Models\User;
@@ -148,9 +149,46 @@ class AuthorizationController extends Controller
             'authorizationVersion' => 'v2',
             'cacheVersion' => $this->cache->version($tenantId),
             'permissions' => $decisions,
+            'requires' => $this->chainSnapshot(),
             'roles' => $this->roleSnapshot($actor),
             'featureFlags' => $this->flagSnapshot($actor->company_code),
         ];
+    }
+
+    /**
+     * Business code → the codes its ancestors require.
+     *
+     * The Permission Matrix suppresses a child whose module or page is denied,
+     * but the browser's can() was a flat lookup: a role holding
+     * hr.appointment.create while ui.forms was denied got `true` and rendered
+     * the button, even though the matrix showed the action as effectively
+     * denied. That is a child bypassing a denied parent — the one thing the
+     * hierarchy exists to prevent.
+     *
+     * Publishing the chain lets the client apply the same rule the server does,
+     * from the same registry, instead of re-deriving a hierarchy it cannot see.
+     * The middleware still decides every request; this only stops the UI from
+     * offering an action the API would refuse.
+     *
+     * @return array<string,list<string>>
+     */
+    private function chainSnapshot(): array
+    {
+        $out = [];
+
+        foreach (PermissionRegistry::all() as $key => $node) {
+            $required = PermissionRegistry::requiredCodesFor($key);
+
+            foreach (PermissionRegistry::impliedCodes($key) as $code) {
+                // A code reached through several nodes keeps the shortest chain:
+                // holding it by any legitimate route is enough.
+                if (! isset($out[$code]) || count($required) < count($out[$code])) {
+                    $out[$code] = array_values(array_diff($required, [$code]));
+                }
+            }
+        }
+
+        return array_filter($out);
     }
 
     /**
@@ -201,23 +239,57 @@ class AuthorizationController extends Controller
      * the endpoint failing, so a pre-enterprise deployment still gets a usable
      * snapshot instead of a 500.
      */
+    /**
+     * Both assignment records, merged and de-duplicated by role.
+     *
+     * The enterprise table was preferred and user_roles consulted only when it
+     * was absent — but User::roles() is a belongsToMany on user_roles, so that
+     * pivot is what every authorization check resolves. Where the two disagree
+     * the snapshot silently under-reported: the super administrator holds role 1
+     * through user_roles with no active enterprise assignment, so their own
+     * snapshot came back with an empty roles array while they held a role.
+     *
+     * Enterprise rows are read first because they carry scope and validity;
+     * pivot-only roles are appended with those fields null, which is honest —
+     * the pivot does not record them.
+     */
     private function roleSnapshot(User $actor): array
     {
+        $byCode = [];
+
         if (SchemaSupport::hasTable('authorization_role_assignments')) {
-            return $actor->authorizationRoleAssignments()->active()->with('role:id,name,code,role_type')->get()
-                ->map(fn ($assignment) => [
-                    'code' => $assignment->role?->code, 'name' => $assignment->role?->name,
+            foreach ($actor->authorizationRoleAssignments()->active()->with('role:id,name,code,role_type')->get() as $assignment) {
+                $code = $assignment->role?->code;
+
+                if ($code === null) {
+                    continue;
+                }
+
+                $byCode[$code] = [
+                    'code' => $code, 'name' => $assignment->role?->name,
                     'type' => $assignment->role?->role_type, 'scopeType' => $assignment->scope_type,
                     'scopeId' => $assignment->scope_id, 'validUntil' => $assignment->valid_until,
-                ])->values()->all();
+                ];
+            }
         }
 
-        return $actor->roles()->get()
-            ->map(fn ($role) => [
-                'code' => $role->code ?: Str::slug($role->name, '_'), 'name' => $role->name,
+        foreach ($actor->roles()->get() as $role) {
+            $code = $role->code ?: Str::slug($role->name, '_');
+
+            // An enterprise row already describes this role with its scope, and
+            // that is the richer record — do not overwrite it with nulls.
+            if (isset($byCode[$code])) {
+                continue;
+            }
+
+            $byCode[$code] = [
+                'code' => $code, 'name' => $role->name,
                 'type' => $role->role_type ?? $role->type, 'scopeType' => null,
                 'scopeId' => null, 'validUntil' => null,
-            ])->values()->all();
+            ];
+        }
+
+        return array_values($byCode);
     }
 
     private function flagSnapshot(?string $tenantId): array

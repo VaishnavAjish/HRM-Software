@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { ChevronsDownUp, ChevronsUpDown, Search, SlidersHorizontal, Wand2 } from "lucide-react";
+import { ChevronsDownUp, ChevronsUpDown, Columns3, Search, SlidersHorizontal, Wand2 } from "lucide-react";
 import Button from "../../../components/ui/Button";
 import {
   SENSITIVITY_FILTERS, SETTABLE_STATES, STATE_FILTERS, STATE_META, TYPE_FILTERS,
 } from "../models/permissionStates";
+import { COLUMN_DEFS, DEFAULT_VISIBLE } from "../models/matrixColumns";
 import useDismissable from "../hooks/useDismissable";
 
 const selectClass =
@@ -12,9 +13,11 @@ const selectClass =
 export default function MatrixToolbar({
   filters, onFilterChange, onExpandAll, onCollapseAll, onBulkApply,
   selectedNodes, activeFilterCount, onClearFilters, editable,
+  visibleColumns = DEFAULT_VISIBLE, onToggleColumn = () => {},
 }) {
   const [showFilters, setShowFilters] = useState(false);
   const { open: bulkOpen, setOpen: setBulkOpen, ref: bulkRef, toggle: toggleBulk } = useDismissable();
+  const { open: columnsOpen, ref: columnsRef, toggle: toggleColumns } = useDismissable();
 
   // Bulk edits act on the rows the administrator checked, never on everything
   // that happens to be visible — a filter change must not silently widen the
@@ -58,6 +61,53 @@ export default function MatrixToolbar({
         <Button variant="secondary" size="sm" onClick={onCollapseAll}>
           <ChevronsDownUp size={15} className="mr-1.5" /> Collapse All
         </Button>
+
+        {/*
+          Display preference only. Toggling a column never touches a permission,
+          never marks the matrix dirty and never writes an audit entry — it
+          changes what this administrator looks at, not what any user may reach.
+        */}
+        <div className="relative" ref={columnsRef}>
+          <Button variant="secondary" size="sm" onClick={toggleColumns} aria-haspopup="menu" aria-expanded={columnsOpen}>
+            <Columns3 size={15} className="mr-1.5" /> Columns
+          </Button>
+
+          {columnsOpen && (
+            <div
+              role="menu"
+              className="absolute right-0 z-50 mt-1 w-56 rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-800"
+            >
+              <p className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                Columns
+              </p>
+
+              {COLUMN_DEFS.map((column) => (
+                <label
+                  key={column.key}
+                  className={`flex items-center gap-2 px-3 py-1.5 text-xs ${
+                    column.locked
+                      ? "cursor-not-allowed text-gray-400 dark:text-gray-500"
+                      : "cursor-pointer text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={Boolean(visibleColumns[column.key])}
+                    disabled={column.locked}
+                    onChange={() => onToggleColumn(column.key)}
+                    className="rounded border-gray-300 text-brand-600 focus:ring-brand-500 disabled:opacity-50"
+                  />
+                  {column.label}
+                  {column.locked && <span className="ml-auto text-[10px]">always</span>}
+                </label>
+              ))}
+
+              <p className="border-t border-gray-100 px-3 py-1.5 text-[10px] leading-snug text-gray-400 dark:border-gray-700">
+                Affects this table only. Permissions are unchanged.
+              </p>
+            </div>
+          )}
+        </div>
 
         <Button
           variant={showFilters ? "primary" : "secondary"}

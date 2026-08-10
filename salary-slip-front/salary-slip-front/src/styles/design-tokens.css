@@ -1,0 +1,90 @@
+/* ─────────────────────────────────────────────────────────
+   GLOBAL UI SCALE
+   ─────────────────────────────────────────────────────────
+
+   One knob for the whole application: --ui-scale.
+
+   HOW IT WORKS
+   ------------
+   The scale is applied by changing the root font size, not by transforming or
+   zooming anything. Tailwind's spacing, sizing, radius and typography scales
+   are all expressed in `rem`, so every padding, gap, width, height, font size
+   and border radius in the app is already a multiple of the root font size.
+   Shrinking that one value shrinks all of them proportionally — and because it
+   produces real layout (not a visual transform), everything downstream keeps
+   working exactly as before:
+
+     · position: fixed / sticky resolve against the real viewport
+     · dropdown, popover and drawer positioning stays accurate
+     · hit areas match what is drawn, so clicks land where they look
+     · scrollbars and overflow behave normally
+     · no stacking-context or blur artefacts
+
+   This is why the alternatives were rejected: `transform: scale()` on the app
+   root breaks fixed/sticky positioning and offsets every click target, and
+   `zoom` is a non-standard property with inconsistent behaviour in exactly the
+   places that matter (fixed elements, measured coordinates).
+
+   A percentage is used rather than a pixel value so a reader who has raised
+   their browser's default font size still gets a proportionally larger UI —
+   hard-coding 14.4px would silently override that accessibility preference.
+
+   SCOPE
+   -----
+   Desktop only. Below the `lg` breakpoint the app returns to 100%, because the
+   mobile layout is already compact and shrinking it further hurts both
+   readability and touch-target size. Tailwind's breakpoints are defined in `px`,
+   so they are unaffected by the root font size and every responsive rule fires
+   at the same viewport width as before.
+
+   WHAT DOES NOT SCALE
+   -------------------
+   Values written in `px` are deliberately outside this system:
+
+     · Lucide icons sized with a numeric `size={16}` prop render as px, so they
+       stay their current size. They therefore read ~10% larger relative to the
+       text around them. Left alone on purpose — the CSS-only ways to shrink
+       them all rely on `transform`, which would collide with the `animate-spin`
+       and `animate-bell-ring` rotations already used on icons.
+     · Print/PDF documents (payslips, Form 16, the appointment form) size their
+       type and columns in `px` for output fidelity, and the print reset below
+       returns the root to 100% so a printed page is never scaled.
+
+   TO CHANGE THE SCALE
+   -------------------
+   Edit --ui-scale below. Nothing else. 0.9 = 90%, 1 = the original 100%.
+   ───────────────────────────────────────────────────────── */
+
+:root {
+  /* The single source of truth for the global scale. */
+  --ui-scale: 0.9;
+
+  /*
+   * Shell dimensions in rem so they ride the same scale as everything else.
+   * EnterpriseNav and AppLayout both read these — the nav sets its width and
+   * the content area sets a matching padding-left, so they must never drift.
+   * 4.25rem = 68px and 16.25rem = 260px at 100%; 61px and 234px at 90%.
+   */
+  --app-nav-rail-width: 4.25rem;
+  --app-nav-expanded-width: 16.25rem;
+
+  /* Header height, mirrored by the sticky offsets that sit beneath it. */
+  --app-header-height: 4rem;
+}
+
+@media (min-width: 1024px) {
+  :root {
+    font-size: calc(100% * var(--ui-scale));
+  }
+}
+
+/*
+ * Printing is a fixed-size medium: a document scaled to 90% would come out
+ * smaller on paper for no reason, and the payslip and appointment forms are
+ * laid out to fill a page.
+ */
+@media print {
+  :root {
+    font-size: 100%;
+  }
+}

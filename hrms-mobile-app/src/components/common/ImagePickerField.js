@@ -4,6 +4,8 @@ import * as ImagePicker from 'expo-image-picker';
 import { Camera, ImagePlus, X, FileCheck } from 'lucide-react-native';
 import { useTheme } from '../../context/ThemeContext';
 import { typography } from '../../theme';
+import { offerSettingsShortcut } from '../../utils/withTimeout';
+import { captureCameraPhoto, CameraPermissionError } from '../../utils/cameraCapture';
 
 const IMAGE_OPTIONS = {
   mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -20,16 +22,19 @@ export function ImagePickerField({ label, value, onChange, cameraOnly = false })
   const previewUri = typeof value === 'string' ? value : value?.uri;
 
   const fromCamera = async () => {
-    const perm = await ImagePicker.requestCameraPermissionsAsync();
-    if (!perm.granted) {
-      Alert.alert('Camera permission needed', 'Enable camera access to take a photo.');
-      return;
-    }
     setBusy(true);
     try {
-      const result = await ImagePicker.launchCameraAsync(IMAGE_OPTIONS);
-      if (!result.canceled && result.assets?.[0]) {
-        applyAsset(result.assets[0]);
+      const result = await captureCameraPhoto();
+      if (!result.canceled) {
+        applyAsset({ uri: result.uri, fileName: result.fileName, mimeType: result.mimeType });
+      }
+    } catch (e) {
+      if (e instanceof CameraPermissionError) {
+        offerSettingsShortcut('Camera permission needed', e.message);
+      } else {
+        // Without this the rejection vanishes and the button just appears
+        // dead — no dialog, no log, no camera.
+        Alert.alert('Could not open the camera', e?.message || 'Please try again.');
       }
     } finally {
       setBusy(false);
@@ -48,6 +53,8 @@ export function ImagePickerField({ label, value, onChange, cameraOnly = false })
       if (!result.canceled && result.assets?.[0]) {
         applyAsset(result.assets[0]);
       }
+    } catch (e) {
+      Alert.alert('Could not open the gallery', e?.message || 'Please try again.');
     } finally {
       setBusy(false);
     }

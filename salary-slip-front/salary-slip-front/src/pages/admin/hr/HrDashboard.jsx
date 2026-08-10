@@ -110,52 +110,17 @@ export default function HrDashboard() {
 
   return (
     <div className="space-y-6 pb-12 font-sans text-gray-900 dark:text-gray-100">
-      {/* ── Premium Header ── */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-extrabold text-gray-900 dark:text-white tracking-tight">HR Control Center</h1>
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-500/10 px-3 py-1 text-xs font-semibold text-brand-600 dark:text-brand-400 border border-brand-500/20">
-              <Sparkles size={13} /> Live Overview
-            </span>
-          </div>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            {greeting()}{user?.name ? `, ${user.name.split(" ")[0]}` : ""} — {new Date().toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
-          </p>
-        </div>
-        <div className="flex items-center gap-2.5">
-          <button
-            onClick={load}
-            title="Refresh Data"
-            className="p-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-brand-600 hover:border-brand-300 dark:hover:border-brand-700 bg-white dark:bg-gray-800 shadow-sm transition-all"
-          >
-            <RefreshCw size={16} />
-          </button>
-          <button
-            onClick={exportSummary}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-xs font-bold text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:border-brand-300 dark:hover:border-brand-700 hover:text-brand-600 shadow-sm transition-all"
-          >
-            <Download size={14} /> Export Summary
-          </button>
-          <Link
-            to="/admin/employees/add"
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold text-white bg-gradient-to-br from-brand-600 to-indigo-600 hover:from-brand-700 hover:to-indigo-700 shadow-md shadow-brand-600/20 transition-all"
-          >
-            <Plus size={16} /> Add Employee
-          </Link>
-        </div>
-      </div>
 
       {/* ── KPI Grid (8 Key Metrics) ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Lift><StatCard title="Total Workforce" value={cards.total_employees ?? "—"} icon={<Users size={22} />} color="blue" /></Lift>
-        <Lift><StatCard title="Active Employees" value={cards.active_employees ?? "—"} icon={<UserCheck size={22} />} color="green" /></Lift>
-        <Lift><StatCard title="New Joiners (30d)" value={cards.new_joiners ?? "—"} icon={<UserPlus size={22} />} color="purple" /></Lift>
-        <Lift><StatCard title="On Notice Period" value={cards.employees_on_notice_period ?? "—"} icon={<FileClock size={22} />} color="yellow" /></Lift>
-        <Lift><StatCard title="Pending Approvals" value={cards.pending_approvals ?? "—"} icon={<ClipboardList size={22} />} color="red" /></Lift>
-        <Lift><StatCard title="Open Positions" value={cards.open_job_positions ?? "—"} icon={<Briefcase size={22} />} color="blue" /></Lift>
-        <Lift><StatCard title="Interviews Today" value={cards.interviews_today ?? "—"} icon={<CalendarDays size={22} />} color="green" /></Lift>
-        <Lift><StatCard title="Asset Allocations Pending" value={cards.assets_pending_allocation ?? "—"} icon={<Laptop size={22} />} color="purple" /></Lift>
+        <Lift><StatCard compact title="Total Workforce" value={cards.total_employees ?? "—"} icon={<Users size={20} />} color="blue" /></Lift>
+        <Lift><StatCard compact title="Active Employees" value={cards.active_employees ?? "—"} icon={<UserCheck size={20} />} color="green" /></Lift>
+        <Lift><StatCard compact title="New Joiners (30d)" value={cards.new_joiners ?? "—"} icon={<UserPlus size={20} />} color="purple" /></Lift>
+        <Lift><StatCard compact title="On Notice Period" value={cards.employees_on_notice_period ?? "—"} icon={<FileClock size={20} />} color="yellow" /></Lift>
+        <Lift><StatCard compact title="Pending Approvals" value={cards.pending_approvals ?? "—"} icon={<ClipboardList size={20} />} color="red" /></Lift>
+        <Lift><StatCard compact title="Open Positions" value={cards.open_job_positions ?? "—"} icon={<Briefcase size={20} />} color="blue" /></Lift>
+        <Lift><StatCard compact title="Interviews Today" value={cards.interviews_today ?? "—"} icon={<CalendarDays size={20} />} color="green" /></Lift>
+        <Lift><StatCard compact title="Asset Allocations Pending" value={cards.assets_pending_allocation ?? "—"} icon={<Laptop size={20} />} color="purple" /></Lift>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">

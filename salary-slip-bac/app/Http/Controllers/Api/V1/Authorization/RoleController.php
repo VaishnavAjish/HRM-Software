@@ -151,17 +151,38 @@ class RoleController extends Controller
             return $this->conflict('System roles cannot be deleted.', 'ROLE_IS_SYSTEM');
         }
 
+        /*
+         * A held role is refused unless a super administrator says otherwise.
+         *
+         * The block exists because deleting a role silently strips whoever holds
+         * it, and on a database whose foreign keys refuse instead of cascading
+         * the request dies as a 500 with no explanation. Neither is acceptable
+         * as a default.
+         *
+         * A super administrator may still proceed with ?force=1 — a deliberate,
+         * separate act rather than the ordinary delete. The assignments are then
+         * removed inside the same transaction as the role, so no holder is left
+         * pointing at a row that no longer exists.
+         */
         $assigned = $this->roles->assignedUserCount($model);
-        if ($assigned > 0) {
+        $actor = auth('api')->user();
+        $forced = request()->boolean('force') && $actor?->isSuperAdmin();
+
+        if ($assigned > 0 && ! $forced) {
             return response()->json([
                 'success' => false,
                 'code' => 'ROLE_HAS_ASSIGNED_USERS',
                 'message' => 'This role is assigned to users. Reassign those users before deleting the role.',
                 'assignedUserCount' => $assigned,
+                'forcible' => (bool) $actor?->isSuperAdmin(),
             ], 409);
         }
 
-        $this->roles->delete($model);
+        if ($forced && $assigned > 0) {
+            RoleAudit::denied(request(), $actor, 'ROLE_FORCE_DELETED_WITH_HOLDERS', $model);
+        }
+
+        $this->roles->delete($model, $forced);
 
         return response()->json(['success' => true, 'data' => ['id' => $role, 'deleted' => true]]);
     }

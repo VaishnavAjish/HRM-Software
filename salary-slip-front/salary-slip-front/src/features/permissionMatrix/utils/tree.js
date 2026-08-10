@@ -72,11 +72,26 @@ export function filterTree(nodes, filters, configuredOf) {
 }
 
 /** Rows to render, honouring collapsed branches. */
-export function flattenVisible(nodes, expanded, depth = 0, out = []) {
+/**
+ * Flatten the visible tree, tagging each row with the page that governs it.
+ *
+ * `governingPage` is the nearest page ancestor, or the row itself when it is a
+ * page. It exists because reaching a page and acting inside one are different
+ * permissions: an action configured Allow under a page whose view is denied
+ * cannot be used, and nothing in a row of its own says so. Carrying the page
+ * down the tree lets the View column show that constraint on every row.
+ *
+ * Attached here rather than recomputed per cell so one traversal answers it and
+ * the value cannot disagree between columns.
+ */
+export function flattenVisible(nodes, expanded, depth = 0, out = [], governingPage = null) {
   nodes.forEach((node) => {
-    out.push({ ...node, depth });
+    const page = node.type === "page" ? node : governingPage;
+
+    out.push({ ...node, depth, governingPage: page });
+
     if (expanded.has(node.key)) {
-      flattenVisible(node.children ?? [], expanded, depth + 1, out);
+      flattenVisible(node.children ?? [], expanded, depth + 1, out, page);
     }
   });
   return out;

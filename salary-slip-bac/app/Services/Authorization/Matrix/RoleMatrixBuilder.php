@@ -77,14 +77,35 @@ class RoleMatrixBuilder
         ];
     }
 
+    /**
+     * How many people a change to this role actually reaches.
+     *
+     * Counted across both assignment records, de-duplicated by user. This used
+     * to read authorization_role_assignments alone and fall back to user_roles
+     * only when that table was absent — but User::roles() is a belongsToMany on
+     * user_roles, so user_roles is what every permission check actually
+     * resolves. The two disagree in this database: the super administrator has
+     * a user_roles row and no active enterprise assignment, so the screen
+     * reported "Assigned Users: 0" for a role somebody holds.
+     *
+     * Reporting a number that is not the set of affected people is worse than
+     * reporting none, because it is the figure an administrator weighs before
+     * changing access.
+     */
     private function assignedUserCount(int $roleId): int
     {
+        $userIds = DB::table('user_roles')->where('role_id', $roleId)->pluck('user_id');
+
         if (SchemaSupport::hasTable('authorization_role_assignments')) {
-            return DB::table('authorization_role_assignments')
-                ->where('role_id', $roleId)->where('status', 'ACTIVE')->count();
+            $enterprise = DB::table('authorization_role_assignments')
+                ->where('role_id', $roleId)
+                ->where('status', 'ACTIVE')
+                ->pluck('user_id');
+
+            $userIds = $userIds->concat($enterprise);
         }
 
-        return DB::table('user_roles')->where('role_id', $roleId)->count();
+        return $userIds->filter()->unique()->count();
     }
 
     private function tree(?string $parent, array $states): array

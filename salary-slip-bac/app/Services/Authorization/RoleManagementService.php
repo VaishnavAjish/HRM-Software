@@ -190,24 +190,88 @@ class RoleManagementService
         return $role->fresh();
     }
 
-    public function delete(Role $role): void
+    /**
+     * Remove a role, and when forced, everything that points at it.
+     *
+     * Dependent rows are cleared explicitly rather than left to the database.
+     * Cascade behaviour differs per engine — PostgreSQL here removed the
+     * assignment silently while the SQLite deployment refused and returned a
+     * 500 — so the same delete produced two different outcomes, neither of them
+     * announced. Doing it in the transaction makes the result identical
+     * everywhere and keeps it atomic: either the role and its references go, or
+     * nothing does.
+     */
+    public function delete(Role $role, bool $force = false): void
     {
-        DB::transaction(function () use ($role) {
-            $this->audit($role, 'DELETE', ['name' => $role->name, 'code' => $role->code]);
+        DB::transaction(function () use ($role, $force) {
+            if ($force) {
+                DB::table('user_roles')->where('role_id', $role->id)->delete();
+
+                // Each table names the role differently: assignments carry
+                // role_id, inheritance carries parent_role_id and child_role_id.
+                // Both sides of an inheritance edge have to go, or the surviving
+                // role keeps a link to a row that no longer exists.
+                $references = [
+                    'authorization_role_assignments' => ['role_id'],
+                    'authorization_role_inheritances' => ['parent_role_id', 'child_role_id'],
+                ];
+
+                foreach ($references as $table => $columns) {
+                    if (! SchemaSupport::hasTable($table)) {
+                        continue;
+                    }
+
+                    foreach ($columns as $column) {
+                        if (SchemaSupport::hasColumn($table, $column)) {
+                            DB::table($table)->where($column, $role->id)->delete();
+                        }
+                    }
+                }
+            }
+
+            DB::table('role_permissions')->where('role_id', $role->id)->delete();
+
+            $this->audit($role, 'DELETE', [
+                'name' => $role->name,
+                'code' => $role->code,
+                'forced' => $force,
+            ]);
+
             $role->delete();
         });
 
         $this->invalidate($role);
     }
 
+    /**
+     * Users holding this role, counted across both assignment records.
+     *
+     * This is the guard that stops a role being deleted out from under its
+     * holders, so it has to see every way a role can be held. It previously read
+     * authorization_role_assignments alone and only fell back to user_roles when
+     * that table was absent — but User::roles() is a belongsToMany on user_roles,
+     * and the two disagree.
+     *
+     * A role held only through user_roles therefore reported zero holders and
+     * sailed past the ROLE_HAS_ASSIGNED_USERS check. On PostgreSQL the delete
+     * then cascaded and silently destroyed the assignment; on the SQLite
+     * deployment the foreign key refused and the request died as a 500 with an
+     * HTML body the client could not parse.
+     */
     public function assignedUserCount(Role $role): int
     {
+        $userIds = DB::table('user_roles')->where('role_id', $role->id)->pluck('user_id');
+
         if (SchemaSupport::hasTable('authorization_role_assignments')) {
-            return (int) DB::table('authorization_role_assignments')
-                ->where('role_id', $role->id)->where('status', 'ACTIVE')->count();
+            $userIds = $userIds->concat(
+                DB::table('authorization_role_assignments')
+                    ->where('role_id', $role->id)
+                    ->where('status', 'ACTIVE')
+                    ->pluck('user_id')
+            );
         }
 
-        return (int) DB::table('user_roles')->where('role_id', $role->id)->count();
+        return $userIds->filter()->unique()->count();
     }
 
     public function present(Role $role): array

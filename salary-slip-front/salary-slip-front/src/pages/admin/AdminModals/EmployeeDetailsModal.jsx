@@ -336,6 +336,7 @@ export default function EmployeeDetailsModal({
                 <EmployeeDocuments
                   employeeId={selected.id}
                   employeeLabel={selected.name}
+                  readOnly={true}
                 />
               )}
             </div>

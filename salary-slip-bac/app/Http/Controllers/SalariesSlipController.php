@@ -75,11 +75,16 @@ class SalariesSlipController extends Controller
             return response()->json(['status' => true, 'data' => $query->orderBy('id', 'desc')->get()]);
         }
 
+        $totalNetPayable = (float) (clone $query)->sum('net_payable');
+        $totalDepartments = (int) (clone $query)->whereNotNull('department')->where('department', '!=', '')->distinct()->count('department');
+
         $slips = $query->orderBy('id', 'desc')->paginate($perPage);
 
         return response()->json([
             'status' => true,
             'data'   => $slips->items(),
+            'total_net_payable' => $totalNetPayable,
+            'total_departments' => $totalDepartments,
             'pagination' => [
                 'total'        => $slips->total(),
                 'per_page'     => $slips->perPage(),

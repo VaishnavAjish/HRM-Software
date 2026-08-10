@@ -66,27 +66,38 @@ export default function MyTickets() {
 
   return (
     <div className="space-y-5">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-100 text-brand-600 dark:bg-brand-900/30 dark:text-brand-400">
-            <TicketIcon size={20} />
-          </span>
-          <div>
-            <h1 className="text-xl font-bold text-gray-900 dark:text-white">My Tickets</h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              Everything you have raised, and where it stands.
-            </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <header className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-brand-100 text-brand-600 dark:bg-brand-900/30 dark:text-brand-400 shadow-xs">
+              <TicketIcon size={22} />
+            </span>
+            <div>
+              <h1 className="text-xl font-bold tracking-tight text-gray-900 dark:text-white">My Tickets</h1>
+              <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
+                Spot an issue company related? Raise a ticket.
+              </p>
+            </div>
           </div>
-        </div>
+          <Link
+            to="/employee/tickets/new"
+            className="hidden sm:inline-flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white transition-all shadow-md shadow-brand-500/20 active:scale-95 hover:bg-brand-700"
+          >
+            <Plus size={16} /> Raise Ticket
+          </Link>
+        </header>
+
+        {/* Mobile Raise Ticket Primary CTA */}
         <Link
           to="/employee/tickets/new"
-          className="inline-flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-700"
+          className="flex sm:hidden h-12 w-full items-center justify-center gap-2 rounded-2xl bg-brand-600 px-5 text-sm font-bold text-white shadow-md shadow-brand-600/30 active:scale-[0.98] transition-all"
         >
-          <Plus size={15} /> Raise Ticket
+          <Plus size={18} /> Raise New Ticket
         </Link>
-      </header>
+      </div>
 
-      <div className="flex flex-wrap items-center gap-2">
+      {/* Horizontal Scroll Filter Chips */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1.5 scrollbar-none -mx-4 px-4 sm:mx-0 sm:px-0">
         <button
           onClick={() => setStatus("")}
           className={chipCls(status === "")}
@@ -98,36 +109,37 @@ export default function MyTickets() {
             {statusMeta(value).label} ({Number(counts[value] || 0)})
           </button>
         ))}
-
-        <form
-          onSubmit={(e) => { e.preventDefault(); load(); }}
-          className="relative ml-auto w-full sm:w-64"
-        >
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search ticket no. or subject…"
-            className="w-full rounded-lg border border-gray-200 bg-gray-50 py-1.5 pl-8 pr-3 text-xs text-gray-900 outline-none transition focus:border-brand-400 focus:bg-white dark:border-white/10 dark:bg-gray-800 dark:text-white"
-          />
-          <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-gray-400" />
-        </form>
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-white/10 dark:bg-[#0b0f1a]">
+      {/* Search Input */}
+      <form
+        onSubmit={(e) => { e.preventDefault(); load(); }}
+        className="relative w-full"
+      >
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search ticket no. or subject…"
+          className="w-full rounded-2xl border border-gray-200 bg-white dark:bg-[#0b0f1a] py-3 pl-10 pr-4 text-sm text-gray-900 outline-none transition-all shadow-xs focus:border-brand-400 focus:ring-2 focus:ring-brand-500/20 dark:border-white/10 dark:text-white"
+        />
+        <Search className="absolute left-3.5 top-3.5 h-4 w-4 text-gray-400 dark:text-gray-500" />
+      </form>
+
+      <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xs dark:border-white/10 dark:bg-[#0b0f1a]">
         {loading ? (
           <div className="flex h-56 items-center justify-center">
-            <Loader2 className="animate-spin text-brand-500" size={22} />
+            <Loader2 className="animate-spin text-brand-500" size={24} />
           </div>
         ) : tickets.length === 0 ? (
-          <div className="flex h-56 flex-col items-center justify-center gap-3 text-center">
-            <TicketIcon size={34} className="text-gray-300 dark:text-gray-600" />
-            <p className="text-sm text-gray-500 dark:text-gray-400">
+          <div className="flex h-56 flex-col items-center justify-center gap-3 p-6 text-center">
+            <TicketIcon size={36} className="text-gray-300 dark:text-gray-600" />
+            <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
               {total === 0 ? "You have not raised any tickets yet." : "No tickets match this filter."}
             </p>
             {total === 0 && (
               <Link
                 to="/employee/tickets/new"
-                className="rounded-lg bg-brand-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-brand-700"
+                className="mt-1 rounded-xl bg-brand-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-brand-700"
               >
                 Raise your first ticket
               </Link>
@@ -135,31 +147,47 @@ export default function MyTickets() {
           </div>
         ) : (
           <>
-            {/* Mobile: cards. The table's six columns cannot fit a phone. */}
+            {/* Mobile: Touch-friendly premium cards */}
             <ul className="divide-y divide-gray-100 md:hidden dark:divide-white/10">
               {tickets.map((ticket) => (
-                <li key={ticket.id} className="p-4">
+                <li
+                  key={ticket.id}
+                  onClick={() => setOpenTicketId(ticket.id)}
+                  className="p-4 active:bg-gray-50 dark:active:bg-white/5 transition-colors cursor-pointer"
+                >
                   <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="font-mono text-[11px] font-bold text-brand-600 dark:text-brand-400">
-                        {ticket.ticket_number}
-                      </p>
-                      <p className="mt-0.5 break-words font-medium text-gray-900 dark:text-white">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-mono text-xs font-bold text-brand-600 dark:text-brand-400">
+                          {ticket.ticket_number}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setOpenTicketId(ticket.id);
+                          }}
+                          className="p-1 text-gray-400 hover:text-brand-600 dark:hover:text-brand-400"
+                        >
+                          <Eye size={18} />
+                        </button>
+                      </div>
+                      <p className="mt-1 font-semibold text-sm leading-snug text-gray-900 dark:text-white line-clamp-2">
                         {ticket.subject}
                       </p>
                     </div>
-                    <button
-                      onClick={() => setOpenTicketId(ticket.id)}
-                      className="shrink-0 rounded-lg p-1.5 text-gray-400 hover:bg-brand-50 hover:text-brand-600 dark:hover:bg-brand-900/20"
-                    >
-                      <Eye size={16} />
-                    </button>
                   </div>
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
                     <Badge variant={statusMeta(ticket.status).tone}>{statusMeta(ticket.status).label}</Badge>
                     <Badge variant={priorityMeta(ticket.priority).tone}>{priorityMeta(ticket.priority).label}</Badge>
-                    <span className="text-[11px] text-gray-400">{ticket.category?.name}</span>
-                    <span className="ml-auto text-[11px] text-gray-400">{formatDate(ticket.created_at)}</span>
+                    {ticket.category?.name && (
+                      <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
+                        {ticket.category.name}
+                      </span>
+                    )}
+                    <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">
+                      {formatDate(ticket.created_at)}
+                    </span>
                   </div>
                 </li>
               ))}

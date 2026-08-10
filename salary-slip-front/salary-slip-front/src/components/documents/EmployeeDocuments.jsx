@@ -27,7 +27,7 @@ const formatDate = (iso) => (iso ? new Date(iso).toLocaleDateString() : "—");
  * The backend is authoritative for permissions — `actions` comes back per
  * document from the API and only decides which buttons render.
  */
-export default function EmployeeDocuments({ employeeId = null, employeeLabel = "" }) {
+export default function EmployeeDocuments({ employeeId = null, employeeLabel = "", readOnly = false }) {
   const { user } = useAuth();
   const token = user?.accessToken;
   const tokenType = user?.tokenType || "Bearer";
@@ -154,8 +154,9 @@ export default function EmployeeDocuments({ employeeId = null, employeeLabel = "
   return (
     <div className="space-y-5">
       {/* Upload */}
-      <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
-        <h3 className="mb-3 flex items-center gap-2 text-sm font-bold text-gray-900 dark:text-white">
+      {!readOnly && (
+        <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+          <h3 className="mb-3 flex items-center gap-2 text-sm font-bold text-gray-900 dark:text-white">
           <Upload size={15} /> Upload Document
           {employeeLabel && <span className="font-normal text-gray-400">· {employeeLabel}</span>}
         </h3>
@@ -197,6 +198,7 @@ export default function EmployeeDocuments({ employeeId = null, employeeLabel = "
         )}
         <p className="mt-1 text-[11px] text-gray-400">PDF, JPG, PNG · max 10 MB</p>
       </div>
+      )}
 
       {/* Filters */}
       <div className="flex flex-col gap-2 sm:flex-row">
@@ -292,15 +294,15 @@ export default function EmployeeDocuments({ employeeId = null, employeeLabel = "
                               <Download size={15} />
                             </button>
                           )}
-                          {a.replace && (
+                          {!readOnly && a.replace && (
                             <button type="button" onClick={() => { setReplacingId(d.documentId); replaceRef.current?.click(); }} title="Replace"
                               className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 hover:text-brand-600 dark:hover:bg-gray-700">
                               <RefreshCw size={15} />
                             </button>
                           )}
-                          {a.delete && (
+                          {!readOnly && a.delete && (
                             <button type="button" onClick={() => handleDelete(d)} title="Delete"
-                              className="rounded-lg p-1.5 text-gray-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20">
+                              className="rounded-lg p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30">
                               <Trash2 size={15} />
                             </button>
                           )}

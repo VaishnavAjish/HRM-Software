@@ -697,6 +697,46 @@ class PermissionRegistry
             'implies' => ['support.ticket.assign'],
         ],
 
+        /* --------------------------------------------------------- reporting */
+
+        'ui.reports' => [
+            'type' => self::TYPE_MODULE, 'label' => 'Reports', 'order' => 85,
+            'parent' => null, 'route' => '/admin/reports',
+            'description' => 'Reporting workspace.',
+            'implies' => ['ui.admin.reports.view'],
+            'scopes' => [self::SCOPE_COMPANY],
+        ],
+
+        /* ----------------------------------------------------------- portals */
+
+        /*
+         * The agent and employee portals.
+         *
+         * These three permissions existed, were granted to roles, and gated real
+         * sidebar entries — but had no registry node, so the validator reported
+         * them as orphans and no administrator could see or change them from the
+         * Permission Matrix. They are page visibility only: no route enforces
+         * them, which is why they carry no child actions here.
+         */
+        'ui.portals' => [
+            'type' => self::TYPE_MODULE, 'label' => 'Portals', 'order' => 95,
+            'parent' => null,
+            'description' => 'Non-administrator portal landing pages.',
+            'implies' => [],
+        ],
+        'ui.portals.agent_dashboard' => [
+            'type' => self::TYPE_PAGE, 'label' => 'Agent Dashboard', 'order' => 10,
+            'parent' => 'ui.portals', 'route' => '/agent',
+            'description' => 'Open the agent portal dashboard.',
+            'implies' => ['ui.agent.dashboard.view'],
+        ],
+        'ui.portals.employee_dashboard' => [
+            'type' => self::TYPE_PAGE, 'label' => 'Employee Dashboard', 'order' => 20,
+            'parent' => 'ui.portals', 'route' => '/employee',
+            'description' => 'Open the employee self-service dashboard.',
+            'implies' => ['ui.employee.dashboard.view'],
+        ],
+
         /* ----------------------------------------------------- access control */
 
         'ui.access_control' => [

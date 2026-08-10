@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Services\Authorization\AuthorizationCache;
 use App\Services\Authorization\SchemaSupport;
 use App\Support\AuditLogger;
+use App\Support\UserTypeRoles;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -58,6 +59,8 @@ class UserAccountService
             $this->assignRoles($user, $data['roleIds'], $actor, 'Created with the account');
         }
 
+        $this->syncIdentityRole($user);
+
         $this->audit($user, self::CHANGE_CREATE, null, $this->snapshot($user), $data['businessReason'] ?? null);
 
         return $user;
@@ -79,10 +82,47 @@ class UserAccountService
 
         $user->save();
 
+        if (array_key_exists('role', $data) && $data['role'] !== null) {
+            $this->syncIdentityRole($user);
+        }
+
         $this->audit($user, self::CHANGE_UPDATE, $before, $this->snapshot($user), $data['businessReason'] ?? null);
         $this->cache->invalidate($user->company_code ?: null);
 
         return $user;
+    }
+
+    /**
+     * Bring the RBAC assignment in line with the user's type.
+     *
+     * Only identity roles are touched. A user granted HR Manager or ACC keeps
+     * them across a type change — those are additional capability, not a second
+     * answer to "who is this person", and silently revoking them here would make
+     * an unrelated edit remove access nobody asked to remove.
+     */
+    private function syncIdentityRole(User $user): void
+    {
+        if (! SchemaSupport::hasTable('user_roles')) {
+            return;
+        }
+
+        try {
+            $identityIds = UserTypeRoles::identityRoleIds();
+            $target = UserTypeRoles::roleFor($user->role);
+
+            $keep = $user->roles()->pluck('roles.id')
+                ->reject(fn ($id) => in_array($id, $identityIds, true))
+                ->all();
+
+            if ($target !== null) {
+                $keep[] = $target->id;
+            }
+
+            $user->roles()->sync(array_values(array_unique($keep)));
+        } catch (\Throwable $e) {
+            // A deployment without the pivot must not fail account creation.
+            report($e);
+        }
     }
 
     public function softDelete(User $user, User $actor, ?string $reason = null): void

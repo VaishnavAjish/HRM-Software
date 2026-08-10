@@ -108,10 +108,21 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [stageFilter, setStageFilter] = useState("all");
+  const [departmentFilter, setDepartmentFilter] = useState("");
   const [month, setMonth] = useState("");
   const [year, setYear] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(15);
+
+  const departmentOptions = useMemo(() => {
+    const set = new Set();
+    rows.forEach((r) => {
+      if (r.department && String(r.department).trim()) {
+        set.add(String(r.department).trim());
+      }
+    });
+    return Array.from(set).sort();
+  }, [rows]);
 
   const [drafts, setDrafts] = useState({}); // { [id]: { emp_code?, punching_no? } }
   const [savingCell, setSavingCell] = useState(null); // `${id}:${field}`
@@ -129,6 +140,7 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
   // own page-level state and not designed to be dropped in elsewhere.
   const [appointmentModalRow, setAppointmentModalRow] = useState(null);
   const [trialModalRow, setTrialModalRow] = useState(null);
+  const [trialModalMode, setTrialModalMode] = useState(null); // 'view' or 'edit'
   const [editEmployeeRow, setEditEmployeeRow] = useState(null);
   const [editForm, setEditForm] = useState({});
   const [editSaving, setEditSaving] = useState(false);
@@ -195,6 +207,10 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
     return rows.filter((r) => {
       if (stageFilter !== "all" && r.__stage !== stageFilter) return false;
 
+      if (departmentFilter && String(r.department || "").trim() !== departmentFilter) {
+        return false;
+      }
+
       if (month || year) {
         const ref = referenceDate(r);
         const d = ref ? new Date(ref) : null;
@@ -211,7 +227,7 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
 
       return true;
     });
-  }, [rows, search, stageFilter, month, year]);
+  }, [rows, search, stageFilter, departmentFilter, month, year]);
 
   const paginated = useMemo(() => {
     const start = (page - 1) * pageSize;
@@ -220,7 +236,7 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
 
 
   const clearFilters = () => {
-    setSearch(""); setStageFilter("all"); setMonth(""); setYear(""); setPage(1);
+    setSearch(""); setStageFilter("all"); setDepartmentFilter(""); setMonth(""); setYear(""); setPage(1);
   };
 
   const draftValue = (row, field) => {
@@ -319,7 +335,10 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
   // the modal state above for why trial/appointment reuse the real form while
   // pending/employee gets a dedicated (simpler) edit form.
   const openView = (row) => {
-    if (row.__stage === "trial") setTrialModalRow(row);
+    if (row.__stage === "trial") {
+      setTrialModalRow(row);
+      setTrialModalMode("view");
+    }
     // A "pending" row is an already-approved appointment awaiting emp_code
     // assignment — same underlying record, so the original Appointment Form
     // is still the useful thing to show here, not the bare-bones employee
@@ -329,7 +348,10 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
   };
 
   const openEdit = (row) => {
-    if (row.__stage === "trial") setTrialModalRow(row);
+    if (row.__stage === "trial") {
+      setTrialModalRow(row);
+      setTrialModalMode("edit");
+    }
     else if (row.__stage === "appointment") setAppointmentModalRow(row);
     else {
       setEditForm({
@@ -455,6 +477,16 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
               <option value="">All Years</option>
               {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
             </select>
+            <select
+              value={departmentFilter}
+              onChange={(e) => { setDepartmentFilter(e.target.value); setPage(1); }}
+              className="rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 px-2.5 py-1.5 text-xs text-gray-700 dark:text-gray-200"
+            >
+              <option value="">All Departments</option>
+              {departmentOptions.map((d) => (
+                <option key={d} value={d}>{d}</option>
+              ))}
+            </select>
 
             <div className="h-5 w-px bg-gray-200 dark:bg-white/10 mx-1 hidden sm:block" />
 
@@ -478,7 +510,7 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
               </button>
             ))}
 
-            {(search || stageFilter !== "all" || month || year) && (
+            {(search || stageFilter !== "all" || departmentFilter || month || year) && (
               <button
                 onClick={clearFilters}
                 className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-gray-500 hover:bg-gray-100 dark:text-slate-400 dark:hover:bg-white/5"
@@ -886,13 +918,14 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
           Form admin page ── */}
       <TrialFormModal
         isOpen={Boolean(trialModalRow)}
-        onClose={() => setTrialModalRow(null)}
+        onClose={() => { setTrialModalRow(null); setTrialModalMode(null); }}
         initialData={
           trialModalRow
             ? { id: trialModalRow.id, raw: trialModalRow, addedBy: trialModalRow.added_by }
             : null
         }
-        onSuccess={() => { setTrialModalRow(null); fetchAll(); }}
+        isViewMode={trialModalMode === "view"}
+        onSuccess={() => { setTrialModalRow(null); setTrialModalMode(null); fetchAll(); }}
       />
 
       {/* ── Pending/Employee stage: a purpose-built edit form. Not the same

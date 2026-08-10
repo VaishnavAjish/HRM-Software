@@ -170,6 +170,30 @@ class ApiService {
     return this.request(`/tickets/${id}/reopen`, { method: 'POST', body: { reason } });
   }
 
+  // A ticket must exist before files can be attached to it — this is a
+  // separate multipart endpoint, not part of tickets/store.
+  uploadTicketAttachments(ticketId, assets) {
+    const fd = new FormData();
+    assets.forEach((asset, i) => {
+      fd.append('files[]', {
+        uri: asset.uri,
+        name: asset.fileName || `attachment-${Date.now()}-${i}.jpg`,
+        type: asset.mimeType || 'image/jpeg',
+      });
+    });
+    return this.request(`/tickets/${ticketId}/attachments`, { method: 'POST', body: fd, isForm: true });
+  }
+
+  // Attachment download is an authenticated stream, not a public URL — pair
+  // with authHeaders() when passing this to <Image source={{ uri, headers }}>.
+  getTicketAttachmentUrl(ticketId, attachmentId) {
+    return `${BASE_URL}/tickets/${ticketId}/attachments/${attachmentId}`;
+  }
+
+  authHeaders() {
+    return this.token ? { Authorization: `${this.tokenType} ${this.token}` } : {};
+  }
+
   // ----- Notifications (shared, any role) -----
   // The feed is gated behind `module.schema:notifications` server-side, so it
   // 503s on an environment where that table hasn't been migrated. Callers treat

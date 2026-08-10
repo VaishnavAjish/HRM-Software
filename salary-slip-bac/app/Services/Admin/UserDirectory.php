@@ -207,6 +207,10 @@ class UserDirectory
             'roles' => $roles,
             'statuses' => self::STATUSES,
             'userTypes' => self::USER_TYPES,
+            // The User type dropdown. Canonical tiers unioned with the real
+            // roles, each carrying the tier its CODE resolves to, so the form
+            // never has to infer identity from a display name.
+            'userTypeOptions' => \App\Support\UserTypeRoles::options($actor),
         ];
     }
 

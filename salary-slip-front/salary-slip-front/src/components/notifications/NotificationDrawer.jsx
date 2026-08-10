@@ -204,51 +204,9 @@ export default function NotificationDrawer() {
               </button>
             </div>
           </div>
-
-          {/* HR Broadcast Controls */}
-          {isHrOrAdmin && (
-            <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 pt-1">
-              <button
-                type="button"
-                onClick={() => setAncModalOpen(true)}
-                className="flex-1 min-w-[130px] flex items-center justify-center gap-1.5 py-1.5 px-3 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
-              >
-                <Megaphone size={13} /> Publish Broadcast
-              </button>
-              <button
-                type="button"
-                onClick={() => setGroupsModalOpen(true)}
-                className="flex items-center gap-1 py-1.5 px-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 rounded-xl text-xs font-semibold transition-all shadow-2xs"
-              >
-                <Users size={13} /> Groups
-              </button>
-            </div>
-          )}
-
-          {/* Workspace Tabs */}
-          <div className="flex items-center gap-1 border-t border-gray-200/60 dark:border-gray-700/60 pt-2.5">
-            <button
-              onClick={() => setActiveTab("feed")}
-              className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all ${
-                activeTab === "feed"
-                  ? "bg-white dark:bg-gray-800 text-brand-600 dark:text-brand-400 shadow-xs border border-gray-200/60 dark:border-gray-700"
-                  : "text-gray-500 hover:text-gray-800 dark:text-gray-400"
-              }`}
-            >
-              Activity Feed ({notifications.length})
-            </button>
-            <button
-              onClick={() => setActiveTab("announcements")}
-              className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all ${
-                activeTab === "announcements"
-                  ? "bg-white dark:bg-gray-800 text-brand-600 dark:text-brand-400 shadow-xs border border-gray-200/60 dark:border-gray-700"
-                  : "text-gray-500 hover:text-gray-800 dark:text-gray-400"
-              }`}
-            >
-              Announcements ({announcements.length})
-            </button>
-          </div>
         </div>
+
+
 
         {/* FEED TAB */}
         {activeTab === "feed" && (
@@ -268,7 +226,7 @@ export default function NotificationDrawer() {
 
               {/* Category Filter Chips */}
               <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-                {["All", "Unread", "Tickets", "Payroll", "Leave", "Attendance", "Assets", "Performance"].map((cat) => (
+                {["All", "Unread", "Tickets"].map((cat) => (
                   <button
                     key={cat}
                     onClick={() => setFilterCategory(cat)}

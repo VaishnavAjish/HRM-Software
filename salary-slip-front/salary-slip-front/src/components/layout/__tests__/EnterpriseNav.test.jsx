@@ -63,7 +63,7 @@ describe("EnterpriseNav", () => {
 
   it("starts collapsed at the rail width", () => {
     const { rail } = renderNav();
-    expect(rail).toHaveStyle({ width: `${RAIL_WIDTH}px` });
+    expect(rail).toHaveStyle({ width: RAIL_WIDTH });
   });
 
   it("expands on hover and collapses again on leave", () => {
@@ -71,11 +71,11 @@ describe("EnterpriseNav", () => {
     const { rail } = renderNav();
 
     fireEvent.mouseEnter(rail);
-    expect(rail).toHaveStyle({ width: `${EXPANDED_WIDTH}px` });
+    expect(rail).toHaveStyle({ width: EXPANDED_WIDTH });
 
     fireEvent.mouseLeave(rail);
     act(() => vi.advanceTimersByTime(250));
-    expect(rail).toHaveStyle({ width: `${RAIL_WIDTH}px` });
+    expect(rail).toHaveStyle({ width: RAIL_WIDTH });
 
     vi.useRealTimers();
   });

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import toast from "react-hot-toast";
-import { Paperclip, Download, Trash2, FileText, Image as ImageIcon, Loader2 } from "lucide-react";
+import { Paperclip, Download, Trash2, FileText, Image as ImageIcon, Loader2, Eye } from "lucide-react";
+import Modal from "../ui/Modal";
 import { ticketApi } from "../../utils/api";
 import { useAuth } from "../../context/AuthContext";
 import { formatDateTimeShort, formatDateTime } from "./ticketMeta";
@@ -15,8 +16,34 @@ import { formatDateTimeShort, formatDateTime } from "./ticketMeta";
 export default function TicketAttachments({ ticketId, attachments = [], canManage, currentUserId, onChanged }) {
   const { user } = useAuth();
   const [busyId, setBusyId] = useState(null);
+  const [viewBusyId, setViewBusyId] = useState(null);
+  const [previewModal, setPreviewModal] = useState(null);
 
   if (attachments.length === 0) return null;
+
+  const view = async (attachment) => {
+    setViewBusyId(attachment.id);
+    try {
+      const { url, contentType } = await ticketApi.getAttachmentBlobUrl(
+        ticketId,
+        attachment.id,
+        user?.accessToken,
+        user?.tokenType,
+      );
+      setPreviewModal({ isOpen: true, url, attachment, contentType });
+    } catch (err) {
+      toast.error(err.message || "Could not view the attachment");
+    } finally {
+      setViewBusyId(null);
+    }
+  };
+
+  const closePreview = () => {
+    if (previewModal?.url) {
+      URL.revokeObjectURL(previewModal.url);
+    }
+    setPreviewModal(null);
+  };
 
   const download = async (attachment) => {
     setBusyId(attachment.id);
@@ -68,6 +95,7 @@ export default function TicketAttachments({ ticketId, attachments = [], canManag
           // Staff can remove anything; an employee only what they attached.
           const mayRemove = canManage || String(attachment.uploaded_by) === String(currentUserId);
           const busy = busyId === attachment.id;
+          const viewBusy = viewBusyId === attachment.id;
 
           return (
             <li
@@ -92,8 +120,17 @@ export default function TicketAttachments({ ticketId, attachments = [], canManag
               </div>
 
               <button
+                onClick={() => view(attachment)}
+                disabled={viewBusy || busy}
+                className="shrink-0 rounded-lg p-1.5 text-gray-400 transition hover:bg-brand-50 hover:text-brand-600 disabled:opacity-40 dark:hover:bg-brand-900/20"
+                title="View Attachment"
+              >
+                {viewBusy ? <Loader2 size={14} className="animate-spin text-brand-600" /> : <Eye size={14} />}
+              </button>
+
+              <button
                 onClick={() => download(attachment)}
-                disabled={busy}
+                disabled={busy || viewBusy}
                 className="shrink-0 rounded-lg p-1.5 text-gray-400 transition hover:bg-brand-50 hover:text-brand-600 disabled:opacity-40 dark:hover:bg-brand-900/20"
                 title="Download"
               >
@@ -114,6 +151,48 @@ export default function TicketAttachments({ ticketId, attachments = [], canManag
           );
         })}
       </ul>
+
+      {previewModal && (
+        <Modal
+          isOpen={previewModal.isOpen}
+          onClose={closePreview}
+          title={previewModal.attachment.file_name}
+          size="xl"
+          footer={
+            <div className="flex items-center justify-end gap-2">
+              <button
+                onClick={() => download(previewModal.attachment)}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-brand-700"
+              >
+                <Download size={14} /> Download
+              </button>
+              <button
+                onClick={closePreview}
+                className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 dark:border-white/10 dark:bg-white/5 dark:text-gray-200"
+              >
+                Close
+              </button>
+            </div>
+          }
+        >
+          <div className="flex min-h-[350px] items-center justify-center rounded-xl bg-gray-900/5 p-2 dark:bg-black/30">
+            {previewModal.contentType.startsWith("image/") ||
+            /\.(png|jpe?g|gif|webp|svg)$/i.test(previewModal.attachment.file_name) ? (
+              <img
+                src={previewModal.url}
+                alt={previewModal.attachment.file_name}
+                className="max-h-[70vh] w-auto max-w-full rounded-lg object-contain shadow-md"
+              />
+            ) : (
+              <iframe
+                src={previewModal.url}
+                className="h-[70vh] w-full rounded-xl border-0 bg-white"
+                title={previewModal.attachment.file_name}
+              />
+            )}
+          </div>
+        </Modal>
+      )}
     </section>
   );
 }

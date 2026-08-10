@@ -487,7 +487,7 @@ export default function RequisitionsTab({ departments = [], people = [] }) {
                       </td>
                     )}
                     <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                      <div className="flex items-center justify-end gap-1">
                         {r.status === "draft" && (
                           <button title="Submit for approval" onClick={() => submitForApproval(r)} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"><Send size={14} /></button>
                         )}

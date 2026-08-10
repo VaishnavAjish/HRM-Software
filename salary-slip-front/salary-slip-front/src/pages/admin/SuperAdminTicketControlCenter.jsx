@@ -33,7 +33,6 @@ const SECTIONS = [
   { id: "assigned", label: "Assigned Tickets", icon: UserCheck, kind: "status" },
   { id: "escalated", label: "Escalated Tickets", icon: ShieldAlert, kind: "status", alert: true },
   { id: "in_progress", label: "In Progress", icon: PieChart, kind: "status" },
-  { id: "waiting_employee", label: "Waiting Employee", icon: Inbox, kind: "status" },
   { id: "resolved", label: "Resolved", icon: CheckCircle2, kind: "status" },
   { id: "closed", label: "Closed Archive", icon: Award, kind: "status" },
   { id: "sla_management", label: "Department SLA Rules", icon: Clock, kind: "view" },
@@ -204,9 +203,9 @@ export default function SuperAdminTicketControlCenter() {
         </div>
       </header>
 
-      <div className="flex flex-col gap-5 md:flex-row">
-        {/* Mobile section switcher */}
-        <div className="flex gap-2 overflow-x-auto pb-1 md:hidden [ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      {/* Horizontal Helpdesk Control Navigation Card Bar */}
+      <div className="rounded-2xl border border-gray-200 bg-white p-2.5 dark:border-gray-800 dark:bg-gray-900 shadow-2xs">
+        <div className="flex items-center gap-2 overflow-x-auto pb-0.5 scrollbar-none">
           {SECTIONS.map((item) => {
             const Icon = item.icon;
             const isActive = activeSection === item.id;
@@ -216,20 +215,22 @@ export default function SuperAdminTicketControlCenter() {
               <button
                 key={item.id}
                 onClick={() => setActiveSection(item.id)}
-                className={`flex h-11 shrink-0 items-center gap-2 rounded-xl px-3.5 text-xs font-bold transition-all active:scale-95 ${
+                className={`flex h-9 shrink-0 items-center gap-2 rounded-xl px-3 text-xs font-semibold transition-all active:scale-95 ${
                   isActive
-                    ? "bg-brand-600 text-white shadow-sm shadow-brand-500/20"
-                    : "border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300"
+                    ? "bg-brand-600 font-bold text-white shadow-sm shadow-brand-600/25"
+                    : "text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800/60"
                 }`}
               >
                 <Icon size={14} className={item.alert && !isActive && badge ? "text-rose-500" : ""} />
                 <span className="whitespace-nowrap">{item.label}</span>
                 {badge && (
                   <span
-                    className={`rounded-full px-1.5 py-0.5 text-[10px] font-extrabold ${
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
                       isActive
                         ? "bg-white/20 text-white"
-                        : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                        : item.alert
+                          ? "bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300"
+                          : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"
                     }`}
                   >
                     {badge}
@@ -239,83 +240,40 @@ export default function SuperAdminTicketControlCenter() {
             );
           })}
         </div>
+      </div>
 
-        <aside className="hidden w-64 shrink-0 rounded-2xl border border-gray-200 bg-white p-3.5 md:block dark:border-gray-800 dark:bg-gray-900">
-          <p className="mb-2 px-2 py-1 text-[10px] font-extrabold uppercase tracking-wider text-gray-400">
-            Helpdesk Control
-          </p>
-          <nav className="space-y-1">
-            {SECTIONS.map((item) => {
-              const Icon = item.icon;
-              const isActive = activeSection === item.id;
-              const badge = badgeFor(item);
+      <div className="w-full space-y-5">
+        {activeSection === "dashboard" && (
+          <SuperAdminTicketDashboard
+            summary={summary}
+            tickets={tickets}
+            loading={loading}
+            onFilterSelect={(id) => {
+              // Cards map onto sections where one exists; "overdue" has no
+              // tab of its own, so it opens the full queue.
+              const target = SECTIONS.find((s) => s.id === id);
+              setActiveSection(target ? target.id : "inbox");
+            }}
+            onSelectTicket={setActiveTicketId}
+          />
+        )}
 
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => setActiveSection(item.id)}
-                  className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-xs font-semibold transition ${
-                    isActive
-                      ? "bg-brand-600 font-bold text-white"
-                      : "text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5">
-                    <Icon size={15} className={item.alert && !isActive && badge ? "text-rose-500" : ""} />
-                    <span>{item.label}</span>
-                  </div>
-                  {badge && (
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                        isActive
-                          ? "bg-white/20 text-white"
-                          : item.alert
-                            ? "bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300"
-                            : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"
-                      }`}
-                    >
-                      {badge}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </nav>
-        </aside>
+        {activeSection === "reports" && <TicketReportsView />}
+        {activeSection === "sla_management" && <TicketSlaManagementView />}
+        {activeSection === "settings" && <TicketSettingsView />}
 
-        <div className="min-w-0 flex-1 space-y-5">
-          {activeSection === "dashboard" && (
-            <SuperAdminTicketDashboard
-              summary={summary}
-              tickets={tickets}
-              loading={loading}
-              onFilterSelect={(id) => {
-                // Cards map onto sections where one exists; "overdue" has no
-                // tab of its own, so it opens the full queue.
-                const target = SECTIONS.find((s) => s.id === id);
-                setActiveSection(target ? target.id : "inbox");
-              }}
-              onSelectTicket={setActiveTicketId}
-            />
-          )}
-
-          {activeSection === "reports" && <TicketReportsView />}
-          {activeSection === "sla_management" && <TicketSlaManagementView />}
-          {activeSection === "settings" && <TicketSettingsView />}
-
-          {showsQueue && (
-            <SuperAdminTicketTable
-              tickets={tickets}
-              loading={loading}
-              onSelectTicket={setActiveTicketId}
-              onBulkAction={handleBulkAction}
-              selectedIds={selectedIds}
-              onToggleSelect={toggleSelect}
-              onToggleSelectAll={toggleSelectAll}
-              onDeleteTicket={handleDeleteTicket}
-            />
-          )}
-        </div>
+        {showsQueue && (
+          <SuperAdminTicketTable
+            tickets={tickets}
+            loading={loading}
+            onSelectTicket={setActiveTicketId}
+            onBulkAction={handleBulkAction}
+            selectedIds={selectedIds}
+            onToggleSelect={toggleSelect}
+            onToggleSelectAll={toggleSelectAll}
+            onDeleteTicket={handleDeleteTicket}
+          />
+        )}
       </div>
 
       {activeTicketId && (

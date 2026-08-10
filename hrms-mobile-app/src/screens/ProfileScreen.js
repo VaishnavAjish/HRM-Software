@@ -22,6 +22,8 @@ import { formatDate } from '../utils/format';
 import { downloadPdfToDevice } from '../utils/pdf';
 import { buildAppointmentPrintHtml } from '../utils/appointmentPrintPdf';
 import { BASIC_FIELDS, ADDRESS_FIELDS, BANK_FIELDS, ALL_FIELDS, computeProfileCompletion } from '../utils/profileCompletion';
+import { offerSettingsShortcut } from '../utils/withTimeout';
+import { captureCameraPhoto, CameraPermissionError } from '../utils/cameraCapture';
 
 const TABS = [
   { id: 'basic', label: 'Basic', icon: Users },
@@ -166,19 +168,32 @@ export function ProfileScreen({ requireCompletion = false }) {
       {
         text: 'Camera',
         onPress: async () => {
-          const perm = await ImagePicker.requestCameraPermissionsAsync();
-          if (!perm.granted) return Alert.alert('Camera permission needed', 'Enable camera access to take a photo.');
-          const result = await ImagePicker.launchCameraAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.7 });
-          if (!result.canceled && result.assets?.[0]) uploadPhoto(result.assets[0]);
+          try {
+            const result = await captureCameraPhoto();
+            if (!result.canceled) {
+              uploadPhoto({ uri: result.uri, fileName: result.fileName, mimeType: result.mimeType });
+            }
+          } catch (e) {
+            if (e instanceof CameraPermissionError) {
+              offerSettingsShortcut('Camera permission needed', e.message);
+            } else {
+              // Without this the rejection vanishes and the button looks dead.
+              Alert.alert('Could not open the camera', e?.message || String(e));
+            }
+          }
         },
       },
       {
         text: 'Gallery',
         onPress: async () => {
-          const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-          if (!perm.granted) return Alert.alert('Photo library permission needed', 'Enable photo access to choose a picture.');
-          const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.7 });
-          if (!result.canceled && result.assets?.[0]) uploadPhoto(result.assets[0]);
+          try {
+            const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+            if (!perm.granted) return Alert.alert('Photo library permission needed', 'Enable photo access to choose a picture.');
+            const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.7 });
+            if (!result.canceled && result.assets?.[0]) uploadPhoto(result.assets[0]);
+          } catch (e) {
+            Alert.alert('Could not open the gallery', e?.message || String(e));
+          }
         },
       },
       { text: 'Cancel', style: 'cancel' },
