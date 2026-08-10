@@ -1,16 +1,12 @@
-# OSX
-#
-.DS_Store
+# Signing secrets — never commit these.
+# Losing them means never being able to update the Play Store listing again,
+# so keep an offline backup somewhere separate from the repo.
+keystore.properties
+app/niss-release.keystore
+*.jks
 
-# Android/IntelliJ
-#
+# Build output
 build/
-.idea
-.gradle
+app/build/
+.gradle/
 local.properties
-*.iml
-*.hprof
-.cxx/
-
-# Bundle artifacts
-*.jsbundle

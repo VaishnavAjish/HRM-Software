@@ -11,24 +11,16 @@ function getDevBaseUrl() {
   if (envUrl) return envUrl;
 
   const hostname = window.location.hostname;
-  const port = window.location.port;
 
-  const isLocalDev =
-    hostname === "localhost" ||
-    hostname === "127.0.0.1" ||
-    /^192\.168\./.test(hostname) ||
-    /^10\./.test(hostname) ||
-    /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(hostname) ||
-    port === "5173" ||
-    port === "5174" ||
-    port === "5175" ||
-    port === "3000";
+  // Local development fallback is strictly limited to localhost or 127.0.0.1 loopback interfaces.
+  // Any public, production, or staged domain (e.g. niss.pro, www.niss.pro) strictly uses window.location.origin
+  // to guarantee zero probes to port 8000, 127.0.0.1, or local IP addresses.
+  const isLoopbackDev = hostname === "localhost" || hostname === "127.0.0.1";
 
-  if (isLocalDev) {
+  if (isLoopbackDev) {
     return `${window.location.protocol}//${hostname}:8000/api`;
   }
 
-  // Any production domain strictly uses window.location.origin
   if (window.location.origin) {
     return window.location.origin;
   }
