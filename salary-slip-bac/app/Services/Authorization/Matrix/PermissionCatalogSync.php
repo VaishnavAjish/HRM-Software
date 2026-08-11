@@ -30,7 +30,8 @@ class PermissionCatalogSync
     public function sync(bool $dryRun = false): array
     {
         $registry = PermissionRegistry::all();
-        $existing = DB::table('permissions')->pluck('id', 'code')->all();
+        $existingByCode = DB::table('permissions')->pluck('id', 'code')->all();
+        $existingByName = DB::table('permissions')->pluck('id', 'name')->all();
 
         $created = [];
         $updated = [];
@@ -65,11 +66,13 @@ class PermissionCatalogSync
                 'updated_at' => $now,
             ];
 
-            if (isset($existing[$key])) {
+            $targetId = $existingByCode[$key] ?? $existingByName[$key] ?? null;
+
+            if ($targetId !== null) {
                 $updated[] = $key;
 
                 if (! $dryRun) {
-                    DB::table('permissions')->where('code', $key)->update($payload);
+                    DB::table('permissions')->where('id', $targetId)->update($payload);
                 }
 
                 continue;

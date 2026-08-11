@@ -43,7 +43,7 @@ function Tile({ label, value }) {
 export default function Roles() {
   const { user } = useAuth();
   const { can } = useAuthorization();
-  const manageRoles = canManageRoles(user);
+  const manageRoles = canManageRoles(user, can);
   // The super administrator owns every visible tier, so a System role is
   // not a reason to hide status and delete actions from them. The backend
   // applies the same rule; the hidden identity is never in this list.

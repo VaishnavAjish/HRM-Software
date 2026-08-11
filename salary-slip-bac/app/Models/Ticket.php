@@ -114,6 +114,7 @@ class Ticket extends Model
         'assigned_to', 'assigned_by', 'assigned_at',
         'resolved_at', 'closed_at', 'reopened_at', 'last_activity_at',
         'sla_due_at', 'first_response_at', 'sla_breached_at', 'escalation_level', 'escalated_at',
+        'hierarchy_snapshot', 'routed_to', 'previous_assigned_to', 'authority_action_at',
     ];
 
     protected function casts(): array
@@ -128,6 +129,8 @@ class Ticket extends Model
             'first_response_at' => 'datetime',
             'sla_breached_at' => 'datetime',
             'escalated_at' => 'datetime',
+            'authority_action_at' => 'datetime',
+            'hierarchy_snapshot' => 'array',
             'escalation_level' => 'integer',
         ];
     }
@@ -275,6 +278,56 @@ class Ticket extends Model
     public function attachments()
     {
         return $this->hasMany(TicketAttachment::class);
+    }
+
+    public function assignmentHistory()
+    {
+        return $this->hasMany(TicketAssignmentHistory::class)->orderBy('created_at');
+    }
+
+    public function escalationHistory()
+    {
+        return $this->hasMany(TicketEscalationHistory::class)->orderBy('created_at');
+    }
+
+    /** The authority displaced by the most recent escalation. */
+    public function previousAssignee()
+    {
+        return $this->belongsTo(User::class, 'previous_assigned_to');
+    }
+
+    /**
+     * Where the ticket sits in its own chain, and who is next.
+     *
+     * Read from the stored snapshot so it describes the routing the ticket was
+     * created under rather than today's org chart.
+     */
+    public function currentAuthority(): ?array
+    {
+        $snapshot = $this->hierarchy_snapshot ?: [];
+        $level = ((int) $this->escalation_level) + 1;
+
+        foreach ($snapshot as $entry) {
+            if ((int) ($entry['level'] ?? 0) === $level) {
+                return $entry;
+            }
+        }
+
+        return null;
+    }
+
+    public function nextAuthority(): ?array
+    {
+        $snapshot = $this->hierarchy_snapshot ?: [];
+        $level = ((int) $this->escalation_level) + 2;
+
+        foreach ($snapshot as $entry) {
+            if ((int) ($entry['level'] ?? 0) === $level) {
+                return $entry;
+            }
+        }
+
+        return null;
     }
 
     public function isClosed(): bool

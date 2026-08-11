@@ -128,7 +128,7 @@ function MainAppContent() {
         case 'admin-salary':
           return <AdminSalaryScreen />;
         case 'admin-forms':
-          return <AdminFormsScreen />;
+          return <AdminFormsScreen onImmersiveChange={setImmersive} />;
         case 'admin-tickets':
           return <AdminTicketsScreen onImmersiveChange={setImmersive} />;
         default:

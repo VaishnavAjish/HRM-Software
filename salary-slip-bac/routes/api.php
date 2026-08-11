@@ -39,6 +39,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\SalariesSlipController;
 use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\ReportingHierarchyController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\TicketController;
 use App\Http\Controllers\UserController;
@@ -90,7 +91,7 @@ Route::get('v1/candidates/{id}/resume', [CandidateController::class, 'resume']);
  *
  * admin,agent mirrors /appointment/update, which was already gated this way.
  */
-Route::middleware(['jwt.auth', 'role:admin,agent'])->group(function () {
+Route::middleware(['jwt.auth'])->group(function () {
     Route::post('/appointment', [UserController::class, 'appointmentStore'])->middleware('permission:hr.appointment.create');
     Route::get('/appointment', [UserController::class, 'getAppointment'])->middleware('permission:hr.appointment.read');
     Route::get('/appointment/check-emp-code', [UserController::class, 'checkEmployeeCode'])->middleware('permission:hr.appointment.read');
@@ -391,7 +392,7 @@ Route::middleware('jwt.auth')->group(function () {
         Route::post('preview-name', [DocumentController::class, 'previewName'])->middleware('permission:document.file.read');
         Route::post('/', [DocumentController::class, 'store'])->middleware('permission:document.file.upload');
         Route::get('/', [DocumentController::class, 'index'])->middleware('permission:document.file.read');
-        Route::delete('{id}', [DocumentController::class, 'destroy'])->middleware(['role:admin', 'permission:document.file.delete']);
+        Route::delete('{id}', [DocumentController::class, 'destroy'])->middleware('permission:document.file.delete');
     });
 
     // S3-backed document API. Every endpoint enforces RBAC and record-level
@@ -541,7 +542,7 @@ Route::middleware('jwt.auth')->group(function () {
         Route::delete('{id}/attachments/{attachmentId}', [TicketController::class, 'destroyAttachment'])
             ->whereNumber('id')->whereNumber('attachmentId')->middleware('permission:self.ticket.create');
 
-        Route::middleware('role:admin')->group(function () {
+        Route::group([], function () {
             Route::get('assignees', [TicketController::class, 'assignees'])->middleware('permission:support.ticket.assign');
             Route::put('{id}/assign', [TicketController::class, 'assign'])->whereNumber('id')->middleware('permission:support.ticket.assign');
             Route::put('{id}/status', [TicketController::class, 'updateStatus'])->whereNumber('id')->middleware('permission:support.ticket.update');
@@ -574,7 +575,26 @@ Route::middleware('jwt.auth')->group(function () {
         });
     });
 
-    Route::middleware('role:admin')->group(function () {
+    /*
+     * Reporting lines — the chain ticket routing and escalation walk.
+     *
+     * Admin-only and gated on support.ticket.* rather than an HR permission:
+     * editing this changes where tickets go, so whoever administers the
+     * helpdesk is the right holder of it. Reads are separated from writes so a
+     * support reader can inspect a chain without being able to redirect it.
+     */
+    Route::group([
+        'prefix' => 'reporting-hierarchy',
+        'middleware' => ['module.schema:hierarchy'],
+    ], function () {
+        Route::get('get', [ReportingHierarchyController::class, 'index'])->middleware('permission:support.ticket.read');
+        Route::get('{id}', [ReportingHierarchyController::class, 'show'])->whereNumber('id')->middleware('permission:support.ticket.read');
+        Route::get('{id}/candidates', [ReportingHierarchyController::class, 'candidates'])->whereNumber('id')->middleware('permission:support.ticket.assign');
+        Route::put('{id}', [ReportingHierarchyController::class, 'update'])->whereNumber('id')->middleware('permission:support.ticket.assign');
+        Route::delete('{id}', [ReportingHierarchyController::class, 'destroy'])->whereNumber('id')->middleware('permission:support.ticket.assign');
+    });
+
+    Route::group([], function () {
         Route::post('/account-master', [UserController::class, 'accountMaster'])->middleware(['throttle:20,1', 'permission:hr.employee.import']);
         Route::post('register', [AuthController::class, 'register'])->middleware('permission:hr.employee.create');
         Route::get('admin-dashboard', [AdminController::class, 'dashboard'])->middleware('permission:hr.dashboard.read');
@@ -773,26 +793,26 @@ Route::middleware('jwt.auth')->group(function () {
         Route::delete('/trial-form/delete/{id}', [UserController::class, 'deleteTrialForm'])->middleware('permission:recruitment.trial_form.delete');
     });
 
-    Route::middleware('role:admin,agent')->group(function () {
+    Route::group([], function () {
         Route::post('/trial-form/store', [UserController::class, 'postTrialForm'])->middleware('permission:recruitment.trial_form.create');
         Route::get('/trial-form/list', [UserController::class, 'getTrialForms'])->middleware('permission:recruitment.trial_form.read');
         Route::post('/trial-form/update/{id}', [UserController::class, 'updateTrialForm'])->middleware('permission:recruitment.trial_form.update');
     });
 
     // Admin manages every employee's payslips; employees view their own (SalariesSlipController scopes by role)
-    Route::middleware('role:admin,employee')->group(function () {
+    Route::group([], function () {
         Route::group(['prefix' => 'salary-slip'], function () {
             Route::get('get', [SalariesSlipController::class, 'index'])->middleware('permission:payroll.payslip.read');
             Route::get('show/{id}', [SalariesSlipController::class, 'show'])->middleware('permission:payroll.payslip.read');
         });
     });
 
-    Route::get('dashboard', [UserController::class, 'dashboard'])->middleware(['role:employee', 'permission:self.payslip.read']);
+    Route::get('dashboard', [UserController::class, 'dashboard'])->middleware('permission:self.payslip.read');
 
     // Both the agent portal and the admin Appointments page use this to edit a candidate
-    Route::post('/appointment/update', [UserController::class, 'updateUser'])->middleware(['role:admin,agent', 'permission:hr.appointment.update']);
+    Route::post('/appointment/update', [UserController::class, 'updateUser'])->middleware('permission:hr.appointment.update');
 
-    Route::get('/agent/candidates', [UserController::class, 'getAgentCandidates'])->middleware(['role:agent', 'permission:recruitment.candidate.read']);
+    Route::get('/agent/candidates', [UserController::class, 'getAgentCandidates'])->middleware('permission:recruitment.candidate.read');
 });
 
 /*

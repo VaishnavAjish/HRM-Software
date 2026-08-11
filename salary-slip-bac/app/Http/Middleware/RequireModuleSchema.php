@@ -61,6 +61,12 @@ class RequireModuleSchema
         'notifications' => [
             'notifications',
         ],
+        // Reporting lines ship after the ticket tables, so a deployment stopped
+        // between the two must report "being set up" on the hierarchy screen
+        // rather than 500.
+        'hierarchy' => [
+            'reporting_relationships',
+        ],
     ];
 
     public function handle(Request $request, Closure $next, string $module)

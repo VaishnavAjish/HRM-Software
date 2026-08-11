@@ -108,14 +108,33 @@ class UserProvisioningService
      */
     public function updateUser(User $user, array $data, User $actor): User
     {
+        /*
+         * An identity change on edit requires an explicit role id.
+         *
+         * The legacy tier must never SELECT a role here. tierForCode() maps
+         * every code it does not recognise to the employee tier, so HR Manager,
+         * Account and every custom role all report tier 3 — and the edit form
+         * posts that tier on every save. Deriving identity from it resolved "3"
+         * back to the `emp` role and replaced whatever the account actually
+         * held: editing a phone number silently demoted an HR Manager to
+         * Employee, and the audit line read "tier 3 → 3", so it looked like
+         * nothing had happened.
+         *
+         * A tier is a coarse legacy shadow of the role. It can be written from
+         * a role, and it must never be read back to choose one.
+         */
         $role = null;
 
         if ($this->mentionsIdentity($data)) {
             $role = $this->requireAssignableRole(
                 $actor,
-                $this->identityRoleFrom($data),
+                Role::query()->find((int) ($data['roleId'] ?? $data['roleIds'][0])),
                 ProvisioningContext::EDIT_USER
             );
+        } else {
+            // No role was chosen, so the tier does not move either. Letting it
+            // drift on its own is how the two representations disagree.
+            unset($data['role']);
         }
 
         $companyIds = array_key_exists('companyIds', $data) && is_array($data['companyIds'])
@@ -274,11 +293,16 @@ class UserProvisioningService
         return empty($data['primaryUnitId']) ? null : (int) $data['primaryUnitId'];
     }
 
+    /**
+     * Whether the caller actually chose a role.
+     *
+     * Deliberately does NOT count the legacy tier. The edit form sends it on
+     * every save, so treating it as a choice made every save an identity
+     * change — see updateUser() for what that cost.
+     */
     private function mentionsIdentity(array $data): bool
     {
-        return ! empty($data['roleId'])
-            || ! empty($data['roleIds'])
-            || (array_key_exists('role', $data) && $data['role'] !== null);
+        return ! empty($data['roleId']) || ! empty($data['roleIds']);
     }
 
     /** @throws ProvisioningException */

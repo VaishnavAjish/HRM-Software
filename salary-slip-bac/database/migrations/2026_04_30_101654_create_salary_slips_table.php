@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('salary_slips')) {
+            return;
+        }
+
         Schema::create('salary_slips', function (Blueprint $table) {
             $table->id();
             $table->string('month')->default(1)->index();

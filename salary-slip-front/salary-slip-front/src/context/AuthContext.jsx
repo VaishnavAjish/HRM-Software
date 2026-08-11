@@ -92,6 +92,39 @@ function buildAuthUser(apiUser, fallbackUser = {}, loginData = {}) {
   };
 }
 
+/**
+ * Which shell to render.
+ *
+ * The server resolves this from the ui.portals.* capabilities, so the Permission
+ * Matrix decides it rather than the legacy numeric tier. That tier is a poor
+ * proxy: every role whose code the tier map does not recognise — HR Manager,
+ * Account, any custom role — reports the employee tier, so the shell was chosen
+ * by a value that says nothing about the role.
+ *
+ * The previous rule survives as the fallback, both here and on the server: it
+ * upgraded a non-admin tier only when the account held whatever permission
+ * governs the /admin route, which is ui.dashboard. That made the dashboard a
+ * hidden prerequisite for every other business page.
+ *
+ * A shell is not authority. Landing in the management frame grants nothing;
+ * ui.access_control is still resolved independently.
+ */
+function portalRoleFor(builtUser, snapshot) {
+  const resolved = snapshot?.portal;
+
+  if (resolved === "admin" || resolved === "agent" || resolved === "employee") {
+    return resolved;
+  }
+
+  if (builtUser.role === "agent" || builtUser.role === "admin") {
+    return builtUser.role;
+  }
+
+  const code = snapshot?.routes?.["/admin"];
+
+  return code && snapshot?.permissions?.[code]?.allowed ? "admin" : builtUser.role;
+}
+
 /*
  * Why the snapshot is empty matters as much as that it is empty.
  *
@@ -124,7 +157,7 @@ async function loadPermissionsForUser(builtUser) {
       const decisions = enterprise.data.permissions;
       return {
         ...builtUser,
-        role: builtUser.role,
+        role: portalRoleFor(builtUser, enterprise.data),
         authorizationStatus: "loaded",
         authorization: enterprise.data,
         permissions: Object.fromEntries(

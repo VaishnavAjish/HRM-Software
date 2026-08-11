@@ -20,14 +20,29 @@ export function isSuperAdminUser(user) {
 /**
  * May this user reach the role-management surface at all?
  *
- * Two tiers manage roles: the hidden super administrator and the administrator.
- * Everyone below manages nothing. This mirrors RoleHierarchy on the server,
- * which is the authority — the server narrows both the list and every mutation
- * by tier, so a stale or edited value here changes what is drawn and nothing
- * about what is permitted.
+ * The answer is a permission, not a tier. This read `rawRole === 1`, which is
+ * the legacy numeric tier — and tierForCode() maps every role code it does not
+ * recognise onto the employee tier, so the value says nothing about the role.
+ * Now that the Permission Matrix decides which shell an account enters, a
+ * business role can be drawn in the management frame, and a tier check there
+ * would either hand it role management or refuse a genuine administrator whose
+ * grant was removed. Neither follows the matrix.
+ *
+ * ui.access_control.roles is the node the matrix edits, and it implies
+ * admin.role.read, which is what the API already enforces — so the button and
+ * the endpoint answer from one decision. Ancestors are honoured, so a role
+ * holding it under a denied ui.access_control does not qualify.
+ *
+ * The hidden super administrator is exempt by identity, as everywhere else.
+ * RoleHierarchy on the server remains the authority: this only decides what is
+ * drawn, and every mutation is still narrowed by tier server-side.
  */
-export function canManageRoles(user) {
-  return isSuperAdminUser(user) || Number(user?.rawRole) === 1;
+export function canManageRoles(user, can) {
+  if (isSuperAdminUser(user)) {
+    return true;
+  }
+
+  return typeof can === "function" && can("ui.access_control.roles");
 }
 
 /**

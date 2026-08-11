@@ -204,24 +204,11 @@ export function useNavItems() {
     }
 
     if (user?.role === "agent") {
-      const baseNav = agentNav.filter(item => {
+      return agentNav.filter(item => {
         if (!item.company) return true;
         if (user?.company_code === 'all-companies') return true;
         if (user?.company_code?.includes(item.company)) return true;
         return false;
-      });
-
-      const keyMap = {
-        "/agent": "agent_dashboard",
-        "/agent/trial-forms": "agent_trial_form",
-        "/agent/appointments": "agent_appointment_form",
-      };
-
-      return baseNav.filter(item => {
-        const key = keyMap[item.to];
-        if (!key) return true;
-        if (!user?.permissions) return true;
-        return user.permissions[key] !== "no_access";
       });
     }
 
@@ -238,25 +225,21 @@ export function useNavItems() {
      * to finish their details and deciding which pages they may open are
      * different jobs, and only the second one belongs here.
      */
-    const baseNav = employeeNav
+    /*
+     * Both shells are filtered by the shared routeState() pass below, the same
+     * one the admin shell uses, so nothing role-specific decides visibility.
+     *
+     * The per-shell keyMaps that used to sit here did nothing. They compared
+     * against employee_dashboard, employee_payslips, agent_trial_form and five
+     * more codes that were never in the permissions catalogue, so the lookup
+     * returned undefined, `undefined !== "no_access"` held, and every entry
+     * rendered whatever the Permission Matrix said. Each page now declares its
+     * route in PermissionRegistry, which is what makes the filter real.
+     */
+    return employeeNav
       // Same module probe the admin side applies: without the ticket tables the
-      // pages behind these two entries can only fail.
-      .filter(item => item.label !== "Tickets" || isModuleAvailable("tickets"));
-
-    const keyMap = {
-      "/employee": "employee_dashboard",
-      "/employee/payslips": "employee_payslips",
-      "/employee/form16": "employee_form16",
-      "/employee/profile": "employee_profile",
-      "/employee/appointment": "employee_appointment",
-    };
-
-    return baseNav.filter(item => {
-      const key = keyMap[item.to];
-      if (!key) return true;
-      if (!user?.permissions) return true;
-      return user.permissions[key] !== "no_access";
-    });
+      // page behind this entry can only fail.
+      .filter(item => item.label !== "My Tickets" || isModuleAvailable("tickets"));
   })();
 
   /*

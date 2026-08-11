@@ -1,24 +1,24 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Animated, Easing } from 'react-native';
-import { Bell } from 'lucide-react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Animated, Easing, Modal, Alert } from 'react-native';
+import { Bell, User, LogOut, X, ShieldCheck } from 'lucide-react-native';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
-import { typography } from '../../theme';
+import { typography, shadows } from '../../theme';
 import { Avatar } from './Avatar';
+import { Badge } from './Badge';
 import { NotificationPanel } from './NotificationPanel';
 import { useNotifications } from '../../hooks/useNotifications';
 
 export function Header({ onNavigateProfile }) {
   const { theme } = useTheme();
-  const { user } = useAuth();
+  const { user, role, logout } = useAuth();
   const [panelOpen, setPanelOpen] = useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const notifications = useNotifications();
 
   const firstName = (user?.name || '').split(' ')[0] || 'there';
   const { unread } = notifications;
 
-  // Swing the bell in short bursts while anything is unread, with a pause
-  // between rings so it reads as "something's waiting" rather than a jitter.
   const swing = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -40,6 +40,24 @@ export function Header({ onNavigateProfile }) {
   }, [unread, swing]);
 
   const bellRotate = swing.interpolate({ inputRange: [-1, 1], outputRange: ['-16deg', '16deg'] });
+
+  const handleLogout = () => {
+    Alert.alert(
+      'Sign Out of NISS?',
+      'Are you sure you want to sign out of your account?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Sign Out',
+          style: 'destructive',
+          onPress: () => {
+            setProfileMenuOpen(false);
+            logout();
+          },
+        },
+      ]
+    );
+  };
 
   return (
     <View style={[styles.headerContainer, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
@@ -73,12 +91,97 @@ export function Header({ onNavigateProfile }) {
           ) : null}
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={onNavigateProfile} activeOpacity={0.8}>
+        <TouchableOpacity onPress={() => setProfileMenuOpen(true)} activeOpacity={0.8}>
           <Avatar name={user?.name} uri={user?.photo} size={42} />
         </TouchableOpacity>
       </View>
 
       <NotificationPanel visible={panelOpen} onClose={() => setPanelOpen(false)} {...notifications} />
+
+      {/* Profile & Account Action Modal */}
+      <Modal
+        visible={profileMenuOpen}
+        transparent
+        statusBarTranslucent
+        animationType="fade"
+        onRequestClose={() => setProfileMenuOpen(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setProfileMenuOpen(false)}
+        >
+          <TouchableOpacity
+            activeOpacity={1}
+            style={[
+              styles.profileSheet,
+              { backgroundColor: theme.surfaceCard, borderColor: theme.border },
+              shadows.glass,
+            ]}
+          >
+            <View style={styles.sheetTop}>
+              <Text style={[styles.sheetTitle, { color: theme.textPrimary }]}>Account & Profile</Text>
+              <TouchableOpacity onPress={() => setProfileMenuOpen(false)} hitSlop={8}>
+                <X size={20} color={theme.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            {/* User Brief */}
+            <View style={[styles.profileBrief, { backgroundColor: theme.surfaceElevated }]}>
+              <Avatar name={user?.name} uri={user?.photo} size={54} />
+              <View style={styles.briefInfo}>
+                <Text style={[styles.briefName, { color: theme.textPrimary }]}>
+                  {user?.name || 'User Profile'}
+                </Text>
+                <Text style={[styles.briefEmail, { color: theme.textMuted }]} numberOfLines={1}>
+                  {user?.email || user?.emp_code || 'Staff Member'}
+                </Text>
+                <View style={{ marginTop: 4, flexDirection: 'row' }}>
+                  <Badge
+                    label={role === 'admin' ? 'Administrator' : role === 'agent' ? 'Field Agent' : 'Employee'}
+                    variant={role === 'admin' ? 'violet' : role === 'agent' ? 'amber' : 'emerald'}
+                    size="small"
+                  />
+                </View>
+              </View>
+            </View>
+
+            {/* Menu Options */}
+            <View style={styles.menuGroup}>
+              <TouchableOpacity
+                style={[styles.menuOption, { backgroundColor: theme.surfaceElevated }]}
+                onPress={() => {
+                  setProfileMenuOpen(false);
+                  onNavigateProfile?.();
+                }}
+                activeOpacity={0.8}
+              >
+                <View style={[styles.optionIconWrap, { backgroundColor: theme.primary + '15' }]}>
+                  <User size={18} color={theme.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.optionTitle, { color: theme.textPrimary }]}>My Profile Details</Text>
+                  <Text style={[styles.optionSub, { color: theme.textMuted }]}>View & edit personal info</Text>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.menuOption, { backgroundColor: theme.roseBg || '#FEF2F2' }]}
+                onPress={handleLogout}
+                activeOpacity={0.8}
+              >
+                <View style={[styles.optionIconWrap, { backgroundColor: theme.rose + '15' }]}>
+                  <LogOut size={18} color={theme.rose} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.optionTitle, { color: theme.rose }]}>Logout / Sign Out</Text>
+                  <Text style={[styles.optionSub, { color: theme.rose + 'AA' }]}>Sign out of your account</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
@@ -138,5 +241,72 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 9.5,
     fontWeight: '800',
+  },
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  profileSheet: {
+    width: '88%',
+    padding: 20,
+    borderRadius: 22,
+    borderWidth: 1,
+  },
+  sheetTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  sheetTitle: {
+    ...typography.h3,
+    fontWeight: '800',
+  },
+  profileBrief: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 16,
+    marginBottom: 16,
+  },
+  briefInfo: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  briefName: {
+    ...typography.h4,
+    fontWeight: '800',
+  },
+  briefEmail: {
+    ...typography.micro,
+    marginTop: 2,
+  },
+  menuGroup: {
+    gap: 10,
+  },
+  menuOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 16,
+    gap: 12,
+  },
+  optionIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  optionTitle: {
+    ...typography.body,
+    fontWeight: '700',
+  },
+  optionSub: {
+    ...typography.micro,
+    marginTop: 2,
   },
 });

@@ -2375,6 +2375,50 @@ export const ticketApi = {
 };
 
 /**
+ * Employee reporting lines — the chain ticket routing and escalation walk.
+ *
+ * The four assignment rules (no self-reporting, no inactive manager, same
+ * company, no cycles) live on the server. `getCandidates` returns only choices
+ * that pass them, so the picker cannot offer something the save would reject —
+ * but the save re-checks regardless, because a stale list is not a permission.
+ */
+export const hierarchyApi = {
+  list(accessToken, tokenType = "Bearer", filters = {}) {
+    return apiRequest(`/reporting-hierarchy/get${hrQuery(filters)}`, {
+      headers: hrAuthHeaders(accessToken, tokenType),
+    });
+  },
+
+  getChain(userId, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/reporting-hierarchy/${userId}`, {
+      headers: hrAuthHeaders(accessToken, tokenType),
+    });
+  },
+
+  getCandidates(userId, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/reporting-hierarchy/${userId}/candidates`, {
+      headers: hrAuthHeaders(accessToken, tokenType),
+    });
+  },
+
+  setManager(userId, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/reporting-hierarchy/${userId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", ...hrAuthHeaders(accessToken, tokenType) },
+      body: JSON.stringify(payload),
+    });
+  },
+
+  clearManager(userId, reason, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/reporting-hierarchy/${userId}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json", ...hrAuthHeaders(accessToken, tokenType) },
+      body: JSON.stringify({ reason }),
+    });
+  },
+};
+
+/**
  * In-app notifications for the signed-in user.
  *
  * Every endpoint is anchored server-side on the caller's own id — there is no

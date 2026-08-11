@@ -14,7 +14,7 @@ export function CandidateCard({ candidate: c, onView, onProcess }) {
 
   return (
     <Card style={styles.card} elevated>
-      <TouchableOpacity activeOpacity={0.8} onPress={() => onView(c)}>
+      <TouchableOpacity activeOpacity={0.8} onPress={() => onView?.(c)}>
         <View style={styles.top}>
           <Avatar name={c.name} uri={c.photo} size={44} />
           <View style={styles.info}>
@@ -62,8 +62,8 @@ export function CandidateCard({ candidate: c, onView, onProcess }) {
       <View style={styles.bottomRow}>
         <Text style={[styles.time, { color: theme.textMuted }]}>Submitted {timeAgo(c.created_at)}</Text>
         <View style={styles.actionsRow}>
-          <TouchableOpacity onPress={() => onView(c)}>
-            <Text style={[styles.actionLink, { color: theme.primary }]}>View</Text>
+          <TouchableOpacity onPress={() => onView?.(c)}>
+            <Text style={[styles.actionLink, { color: theme.primary }]}>View Form</Text>
           </TouchableOpacity>
           {canProcess(c) && onProcess ? (
             <TouchableOpacity style={styles.processBtn} onPress={() => onProcess(c)}>

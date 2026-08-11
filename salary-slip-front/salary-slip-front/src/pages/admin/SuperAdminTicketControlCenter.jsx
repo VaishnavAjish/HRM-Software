@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import {
-  LifeBuoy, LayoutDashboard, Inbox, Clock, CornerUpRight, UserCheck, ShieldAlert,
-  PieChart, CheckCircle2, Award, BarChart3, Settings, Search, RefreshCw,
+  LayoutDashboard, Inbox, Clock, UserCheck, ShieldAlert,
+  PieChart, CheckCircle2, Award, BarChart3, Settings, Network,
 } from "lucide-react";
 import { ticketApi } from "../../utils/api";
 import { useAuth } from "../../context/AuthContext";
@@ -13,6 +13,7 @@ import SuperAdminTicketDrawer from "../../components/tickets/SuperAdminTicketDra
 import TicketReportsView from "../../components/tickets/TicketReportsView";
 import TicketSlaManagementView from "../../components/tickets/TicketSlaManagementView";
 import TicketSettingsView from "../../components/tickets/TicketSettingsView";
+import TicketHierarchyView from "../../components/tickets/TicketHierarchyView";
 
 /**
  * The helpdesk control centre.
@@ -34,6 +35,7 @@ const SECTIONS = [
   { id: "in_progress", label: "In Progress", icon: PieChart, kind: "status" },
   { id: "resolved", label: "Resolved", icon: CheckCircle2, kind: "status" },
   { id: "closed", label: "Closed Archive", icon: Award, kind: "status" },
+  { id: "hierarchy", label: "Reporting Hierarchy", icon: Network, kind: "view" },
   { id: "sla_management", label: "Department SLA Rules", icon: Clock, kind: "view" },
   { id: "reports", label: "Reports & Analytics", icon: BarChart3, kind: "view" },
   { id: "settings", label: "Helpdesk Settings", icon: Settings, kind: "view" },
@@ -234,6 +236,7 @@ export default function SuperAdminTicketControlCenter() {
           />
         )}
 
+        {activeSection === "hierarchy" && <TicketHierarchyView />}
         {activeSection === "reports" && <TicketReportsView />}
         {activeSection === "sla_management" && <TicketSlaManagementView />}
         {activeSection === "settings" && <TicketSettingsView />}

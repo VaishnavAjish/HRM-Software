@@ -39,6 +39,48 @@ class PermissionRegistry
      */
     private const NODES = [
 
+        /* ------------------------------------------------------------ portals */
+
+        /*
+         * Which application shell an account lands in.
+         *
+         * The shell used to be decided by the legacy numeric tier, with one
+         * escape hatch: a non-admin tier was upgraded to the administration
+         * shell if it happened to hold whatever permission governs the /admin
+         * route — which is ui.dashboard. That made the dashboard a load-bearing
+         * dependency of every other business page. A role granted ui.hr but not
+         * ui.dashboard was sent to the employee shell and could never reach HR,
+         * however the Permission Matrix was configured.
+         *
+         * A shell is not authority. Holding the business shell says only where
+         * the navigation is drawn; ui.access_control stays independently denied,
+         * so a business role does not become an administrator by being rendered
+         * in the same frame as one.
+         *
+         * Deliberately NORMAL sensitivity and no implied legacy codes: these
+         * grant nothing on their own.
+         */
+        'ui.portals' => [
+            'type' => self::TYPE_MODULE, 'label' => 'Application Shells', 'order' => 5,
+            'parent' => null,
+            'description' => 'Which application shell a role signs in to.',
+        ],
+        'ui.portals.business' => [
+            'type' => self::TYPE_FEATURE, 'label' => 'Business / Administration Shell', 'order' => 10,
+            'parent' => 'ui.portals',
+            'description' => 'Sign in to the management shell. Grants no page or action by itself.',
+        ],
+        'ui.portals.employee' => [
+            'type' => self::TYPE_FEATURE, 'label' => 'Employee Self-Service Shell', 'order' => 20,
+            'parent' => 'ui.portals',
+            'description' => 'Sign in to the employee self-service shell.',
+        ],
+        'ui.portals.agent' => [
+            'type' => self::TYPE_FEATURE, 'label' => 'Agent Shell', 'order' => 30,
+            'parent' => 'ui.portals',
+            'description' => 'Sign in to the agent shell.',
+        ],
+
         /* ---------------------------------------------------------- dashboard */
 
         'ui.dashboard' => [
@@ -210,25 +252,55 @@ class PermissionRegistry
             'parent' => 'ui.employees.master', 'assignable' => false,
             'description' => 'Filter controls available on the employee master table.',
         ],
+        /*
+         * The filter and column nodes are DECLARED BUT NOT ENFORCED.
+         *
+         * Every one of them is marked deprecated, and that is a statement of
+         * fact rather than a plan to remove them. Nothing reads them: a search
+         * of the frontend returns zero references to any of the fourteen codes,
+         * and no backend serialiser consults them either — FieldSecurity exists
+         * but is not wired to the employee listing.
+         *
+         * They had already been configured. Admin and HR Manager hold most of
+         * these columns and deliberately NOT salary, bank_account or aadhaar —
+         * an administrator restricted three sensitive columns in the Permission
+         * Matrix and the application went on showing them. A permission that
+         * silently does nothing is worse than an absent one, because it reports
+         * a restriction that is not there.
+         *
+         * They also do not describe the screen as built. The Employee Master
+         * table renders Photo, Emp Code, Punching No, Name, Stage, Department,
+         * Company/Unit and Status; salary, bank details and Aadhaar appear in
+         * the detail modal, not as columns. Wiring these faithfully means giving
+         * that table a configurable column model and redacting the fields
+         * server-side — the second half being the part that matters, since
+         * hiding a column the API still returns is not data security.
+         *
+         * Deprecating removes them from the snapshot and marks them inactive in
+         * the catalogue, so the Matrix stops offering a control that does
+         * nothing. The existing grants are left in place and become explicitly
+         * inert rather than implicitly so. Undeprecate them when the column
+         * model and the server-side redaction land together.
+         */
         'ui.employees.master.filter.company' => [
-            'type' => self::TYPE_FILTER, 'label' => 'Company', 'order' => 10,
+            'type' => self::TYPE_FILTER, 'label' => 'Company', 'order' => 10, 'deprecated' => true,
             'parent' => 'ui.employees.master.filters',
             'description' => 'Filter employees by company.',
             'scopes' => [self::SCOPE_COMPANY],
         ],
         'ui.employees.master.filter.department' => [
-            'type' => self::TYPE_FILTER, 'label' => 'Department', 'order' => 20,
+            'type' => self::TYPE_FILTER, 'label' => 'Department', 'order' => 20, 'deprecated' => true,
             'parent' => 'ui.employees.master.filters',
             'description' => 'Filter employees by department.',
             'implies' => ['hr.department.read'],
         ],
         'ui.employees.master.filter.designation' => [
-            'type' => self::TYPE_FILTER, 'label' => 'Designation', 'order' => 30,
+            'type' => self::TYPE_FILTER, 'label' => 'Designation', 'order' => 30, 'deprecated' => true,
             'parent' => 'ui.employees.master.filters',
             'description' => 'Filter employees by designation.',
         ],
         'ui.employees.master.filter.status' => [
-            'type' => self::TYPE_FILTER, 'label' => 'Employee Status', 'order' => 40,
+            'type' => self::TYPE_FILTER, 'label' => 'Employee Status', 'order' => 40, 'deprecated' => true,
             'parent' => 'ui.employees.master.filters',
             'description' => 'Filter employees by employment status.',
         ],
@@ -239,55 +311,55 @@ class PermissionRegistry
             'description' => 'Columns rendered on the employee master table.',
         ],
         'ui.employees.master.column.emp_id' => [
-            'type' => self::TYPE_COLUMN, 'label' => 'Employee ID', 'order' => 10,
+            'type' => self::TYPE_COLUMN, 'label' => 'Employee ID', 'order' => 10, 'deprecated' => true,
             'parent' => 'ui.employees.master.columns',
             'description' => 'Show the employee identifier column.',
         ],
         'ui.employees.master.column.name' => [
-            'type' => self::TYPE_COLUMN, 'label' => 'Employee Name', 'order' => 20,
+            'type' => self::TYPE_COLUMN, 'label' => 'Employee Name', 'order' => 20, 'deprecated' => true,
             'parent' => 'ui.employees.master.columns',
             'description' => 'Show the employee name column.',
         ],
         'ui.employees.master.column.department' => [
-            'type' => self::TYPE_COLUMN, 'label' => 'Department', 'order' => 30,
+            'type' => self::TYPE_COLUMN, 'label' => 'Department', 'order' => 30, 'deprecated' => true,
             'parent' => 'ui.employees.master.columns',
             'description' => 'Show the department column.',
         ],
         'ui.employees.master.column.designation' => [
-            'type' => self::TYPE_COLUMN, 'label' => 'Designation', 'order' => 40,
+            'type' => self::TYPE_COLUMN, 'label' => 'Designation', 'order' => 40, 'deprecated' => true,
             'parent' => 'ui.employees.master.columns',
             'description' => 'Show the designation column.',
         ],
         'ui.employees.master.column.email' => [
-            'type' => self::TYPE_COLUMN, 'label' => 'Email', 'order' => 50,
+            'type' => self::TYPE_COLUMN, 'label' => 'Email', 'order' => 50, 'deprecated' => true,
             'parent' => 'ui.employees.master.columns', 'sensitivity' => self::SENSITIVITY_SENSITIVE,
             'description' => 'Show the email column.',
         ],
         'ui.employees.master.column.phone' => [
-            'type' => self::TYPE_COLUMN, 'label' => 'Phone', 'order' => 60,
+            'type' => self::TYPE_COLUMN, 'label' => 'Phone', 'order' => 60, 'deprecated' => true,
             'parent' => 'ui.employees.master.columns', 'sensitivity' => self::SENSITIVITY_SENSITIVE,
             'description' => 'Show the phone column.',
         ],
         'ui.employees.master.column.salary' => [
-            'type' => self::TYPE_COLUMN, 'label' => 'Salary', 'order' => 70,
+            'type' => self::TYPE_COLUMN, 'label' => 'Salary', 'order' => 70, 'deprecated' => true,
             'parent' => 'ui.employees.master.columns', 'sensitivity' => self::SENSITIVITY_CRITICAL,
             'description' => 'Reveal the salary column and salary values in exports and reports.',
             'implies' => ['hr.employee.salary.read'],
         ],
         'ui.employees.master.column.bank_account' => [
-            'type' => self::TYPE_COLUMN, 'label' => 'Bank Details', 'order' => 80,
+            'type' => self::TYPE_COLUMN, 'label' => 'Bank Details', 'order' => 80, 'deprecated' => true,
             'parent' => 'ui.employees.master.columns', 'sensitivity' => self::SENSITIVITY_CRITICAL,
             'description' => 'Reveal employee bank account details.',
             'implies' => ['hr.employee.bank_account.reveal'],
         ],
         'ui.employees.master.column.aadhaar' => [
-            'type' => self::TYPE_COLUMN, 'label' => 'Aadhaar / Tax ID', 'order' => 90,
+            'type' => self::TYPE_COLUMN, 'label' => 'Aadhaar / Tax ID', 'order' => 90, 'deprecated' => true,
             'parent' => 'ui.employees.master.columns', 'sensitivity' => self::SENSITIVITY_CRITICAL,
             'description' => 'Reveal the employee Aadhaar number.',
             'implies' => ['hr.employee.aadhaar.reveal'],
         ],
         'ui.employees.master.column.status' => [
-            'type' => self::TYPE_COLUMN, 'label' => 'Status', 'order' => 100,
+            'type' => self::TYPE_COLUMN, 'label' => 'Status', 'order' => 100, 'deprecated' => true,
             'parent' => 'ui.employees.master.columns',
             'description' => 'Show the employment status column.',
         ],
@@ -710,49 +782,113 @@ class PermissionRegistry
         /* ----------------------------------------------------------- portals */
 
         /*
-         * The agent and employee portals.
+         * The employee and agent shells, page by page.
          *
-         * These three permissions existed, were granted to roles, and gated real
-         * sidebar entries — but had no registry node, so the validator reported
-         * them as orphans and no administrator could see or change them from the
-         * Permission Matrix. They are page visibility only: no route enforces
-         * them, which is why they carry no child actions here.
+         * Every page in both shells now declares its route, so canRoute() and
+         * the sidebar filter resolve them through the same registry the matrix
+         * edits. Before this they declared none, and the browser filtered those
+         * two menus against eight codes — employee_dashboard, employee_payslips,
+         * agent_trial_form and the rest — that were never in the catalogue. The
+         * lookup therefore returned undefined, `undefined !== "no_access"` is
+         * true, and every entry rendered unconditionally. Both shells had a
+         * fixed menu that no permission could change and no URL that could be
+         * refused.
+         *
+         * Declaring a route re-opens a trap worth naming: a portal landing page
+         * that is denied used to redirect to the portal home, which was the page
+         * that had just been refused, and React Router rendered nothing. That is
+         * handled — ProtectedRoute renders AccessDenied when the redirect target
+         * is the current path — but it is why these routes have to arrive with
+         * the backfill that grants them, never on their own.
+         *
+         * `implies` names the legacy code the API already enforces, so a page
+         * the matrix allows is a page whose endpoints answer, and one it denies
+         * is refused at both ends rather than only hidden.
          */
-        /*
-         * Portal landing pages.
-         *
-         * These deliberately declare no `route`. Which portal an account belongs
-         * to is decided by its tier, not by a grant — the same rule that stopped
-         * ui.admin.dashboard.view promoting an employee into the admin portal.
-         *
-         * Publishing a route here made the employee's own landing page a gated
-         * one: a user holding no role failed the gate, and the route guard's
-         * fallback for an employee is /employee, so the redirect targeted the
-         * route that had just been denied. React Router resolved that to nothing
-         * and the portal rendered blank, with no error to explain it.
-         *
-         * They stay in the registry so the matrix can still grant the underlying
-         * dashboard permissions; they simply do not gate the door to the portal
-         * the account already belongs to.
-         */
-        'ui.portals' => [
-            'type' => self::TYPE_MODULE, 'label' => 'Portals', 'order' => 95,
-            'parent' => null,
-            'description' => 'Non-administrator portal landing pages.',
-            'implies' => [],
-        ],
         'ui.portals.agent_dashboard' => [
             'type' => self::TYPE_PAGE, 'label' => 'Agent Dashboard', 'order' => 10,
-            'parent' => 'ui.portals',
+            'parent' => 'ui.portals', 'route' => '/agent',
             'description' => 'Open the agent portal dashboard.',
             'implies' => ['ui.agent.dashboard.view'],
         ],
+        'ui.portals.agent_trial_forms' => [
+            'type' => self::TYPE_PAGE, 'label' => 'Agent Trial Forms', 'order' => 12,
+            'parent' => 'ui.portals', 'route' => '/agent/trial-forms',
+            'description' => 'Open the agent trial form workspace.',
+            'implies' => ['recruitment.trial_form.read'],
+            'scopes' => [self::SCOPE_COMPANY],
+        ],
+        'ui.portals.agent_trial_forms.create' => [
+            'type' => self::TYPE_ACTION, 'label' => 'Submit Trial Form', 'order' => 10,
+            'parent' => 'ui.portals.agent_trial_forms',
+            'description' => 'Submit a trial form from the agent shell.',
+            'implies' => ['recruitment.trial_form.create'],
+        ],
+        'ui.portals.agent_appointments' => [
+            'type' => self::TYPE_PAGE, 'label' => 'Agent Appointments', 'order' => 14,
+            'parent' => 'ui.portals', 'route' => '/agent/appointments',
+            'description' => 'Open the agent appointment form.',
+            'implies' => ['hr.appointment.read'],
+            'scopes' => [self::SCOPE_COMPANY],
+        ],
+        'ui.portals.agent_appointments.create' => [
+            'type' => self::TYPE_ACTION, 'label' => 'Submit Appointment', 'order' => 10,
+            'parent' => 'ui.portals.agent_appointments',
+            'description' => 'Submit an appointment from the agent shell.',
+            'implies' => ['hr.appointment.create'],
+        ],
         'ui.portals.employee_dashboard' => [
             'type' => self::TYPE_PAGE, 'label' => 'Employee Dashboard', 'order' => 20,
-            'parent' => 'ui.portals',
+            'parent' => 'ui.portals', 'route' => '/employee',
             'description' => 'Open the employee self-service dashboard.',
             'implies' => ['ui.employee.dashboard.view', 'self.payslip.read'],
             'api' => [['GET', '/api/dashboard']],
+        ],
+        'ui.portals.employee_payslips' => [
+            'type' => self::TYPE_PAGE, 'label' => 'My Payslips', 'order' => 22,
+            'parent' => 'ui.portals', 'route' => '/employee/payslips',
+            'description' => 'Open the employee payslip list.',
+            'implies' => ['self.payslip.read'],
+        ],
+        'ui.portals.employee_form16' => [
+            'type' => self::TYPE_PAGE, 'label' => 'My Form 16', 'order' => 24,
+            'parent' => 'ui.portals', 'route' => '/employee/form16',
+            'sensitivity' => self::SENSITIVITY_SENSITIVE,
+            'description' => 'Open the employee Form 16 page.',
+            'implies' => ['payroll.form16.read'],
+        ],
+        'ui.portals.employee_tickets' => [
+            'type' => self::TYPE_PAGE, 'label' => 'My Tickets', 'order' => 26,
+            'parent' => 'ui.portals', 'route' => '/employee/tickets',
+            'description' => 'Open the employee support ticket list.',
+            'implies' => ['self.ticket.read'],
+            'api' => [['GET', '/api/tickets/get']],
+        ],
+        'ui.portals.employee_tickets.create' => [
+            'type' => self::TYPE_ACTION, 'label' => 'Raise Ticket', 'order' => 10,
+            'parent' => 'ui.portals.employee_tickets',
+            'description' => 'Raise or reply to a support ticket.',
+            'implies' => ['self.ticket.create'],
+            'api' => [['POST', '/api/tickets/store']],
+        ],
+        /*
+         * Deliberately implies nothing. /api/profile and /api/profile-update
+         * carry no permission middleware at all — every authenticated caller
+         * reaches them — so naming a legacy code here would claim an alignment
+         * that does not exist, and granting one would read as API access this
+         * node does not confer. It gates the menu entry and the route only.
+         */
+        'ui.portals.employee_profile' => [
+            'type' => self::TYPE_PAGE, 'label' => 'My Profile', 'order' => 28,
+            'parent' => 'ui.portals', 'route' => '/employee/profile',
+            'description' => 'Open the employee profile page.',
+            'implies' => [],
+        ],
+        'ui.portals.employee_appointment' => [
+            'type' => self::TYPE_PAGE, 'label' => 'Employee Appointment Form', 'order' => 30,
+            'parent' => 'ui.portals', 'route' => '/employee/appointment',
+            'description' => 'Open the appointment form from the employee shell.',
+            'implies' => ['hr.appointment.read'],
         ],
 
         /* ----------------------------------------------------- access control */

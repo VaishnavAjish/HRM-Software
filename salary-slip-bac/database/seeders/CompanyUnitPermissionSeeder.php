@@ -68,7 +68,10 @@ class CompanyUnitPermissionSeeder extends Seeder
             return;
         }
 
-        $group = PermissionGroup::firstOrCreate(['name' => self::GROUP]);
+        $groupId = Schema::hasTable('permission_groups')
+            ? PermissionGroup::firstOrCreate(['name' => self::GROUP])->id
+            : null;
+
         $permissions = [];
 
         foreach (self::CODES as $code) {
@@ -84,7 +87,7 @@ class CompanyUnitPermissionSeeder extends Seeder
                 'resource' => implode('.', $parts),
                 'action' => $action,
                 'level' => 'ADMINISTRATION',
-                'group_id' => $group->id,
+                'group_id' => $groupId,
                 'description' => ucwords(str_replace(['.', '_'], ' ', $code)),
                 'is_sensitive' => in_array($code, self::SENSITIVE, true),
                 'is_active' => true,

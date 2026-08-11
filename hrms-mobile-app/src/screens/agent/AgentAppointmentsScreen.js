@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, RefreshControl, FlatList, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, RefreshControl, FlatList, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { UserPlus, AlertCircle, Users, ClipboardList, FileText } from 'lucide-react-native';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
@@ -101,17 +101,34 @@ export function AdminAppointmentsList({ onOpen }) {
   return (
     <View style={styles.screen}>
       <View style={styles.adminHeaderArea}>
-        <SearchField value={search} onChangeText={setSearch} placeholder="Search by name, code, mobile…" style={styles.search} />
-        <View style={styles.filterRow}>
-          <View style={{ flex: 1 }}>
-            <SelectField value={status} onChange={setStatus} options={ADMIN_STATUS_OPTIONS} searchable={false} />
-          </View>
-          {canSwitchCompany ? (
-            <View style={{ flex: 1 }}>
-              <SelectField value={companyFilter} onChange={setCompanyFilter} options={ADMIN_COMPANY_OPTIONS} searchable={false} />
-            </View>
-          ) : null}
-        </View>
+        <SearchField value={search} onChangeText={setSearch} placeholder="Search candidate name, code, mobile…" style={{ marginBottom: 10 }} />
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: 'row', gap: 6, paddingBottom: 6 }}>
+          {[
+            { value: '', label: 'All Statuses' },
+            { value: 'pending', label: 'Pending' },
+            { value: 'approved', label: 'Approved' },
+            { value: 'rejected', label: 'Rejected' },
+          ].map((pill) => {
+            const isActive = status === pill.value;
+            return (
+              <TouchableOpacity
+                key={pill.value}
+                onPress={() => setStatus(pill.value)}
+                style={{
+                  paddingHorizontal: 14,
+                  paddingVertical: 6,
+                  borderRadius: 20,
+                  borderWidth: 1,
+                  backgroundColor: isActive ? theme.primary : theme.surfaceElevated,
+                  borderColor: isActive ? theme.primary : theme.border,
+                }}
+                activeOpacity={0.8}
+              >
+                <Text style={{ fontSize: 12, fontWeight: '700', color: isActive ? '#FFFFFF' : theme.textMuted }}>{pill.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
       </View>
 
       {loading ? (

@@ -52,6 +52,30 @@ class TicketController extends Controller
             ->find($id);
     }
 
+    /**
+     * Stamp that the ticket's current authority did something that counts.
+     *
+     * Escalation is measured from this, not from last_activity_at: the employee
+     * chasing their own ticket moves last_activity_at, and letting that reset
+     * the clock would mean an assignee never has to respond as long as the
+     * employee keeps asking. Which actions qualify is configurable — see
+     * HelpdeskSettings::escalationPausingActions().
+     */
+    private function markAuthorityAction(Ticket $ticket, string $action): void
+    {
+        $actor = $this->actor();
+
+        if (! $actor || ! $this->isStaff($actor)) {
+            return;
+        }
+
+        if (! \App\Support\HelpdeskSettings::actionPausesEscalation($action)) {
+            return;
+        }
+
+        $ticket->forceFill(['authority_action_at' => now()])->save();
+    }
+
     private function record(Ticket $ticket, string $action, ?string $old = null, ?string $new = null, ?string $remarks = null): void
     {
         TicketActivityLog::create([
@@ -257,6 +281,17 @@ class TicketController extends Controller
             'priority' => $ticket->priority,
         ]);
 
+        // Hierarchy routing runs after the ticket exists so the snapshot and
+        // the assignment history can reference its id. A failure here must not
+        // lose the ticket — an unrouted ticket is still visible to staff in the
+        // queue and can be assigned by hand.
+        try {
+            app(\App\Services\Tickets\TicketRouter::class)->routeNewTicket($ticket, $actor);
+            $ticket->refresh();
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
         // After the transaction commits: a notification about a ticket that
         // then failed to save would point at nothing.
         TicketNotifier::created($ticket->load('employee:id,name'), $actor);
@@ -319,6 +354,8 @@ class TicketController extends Controller
             'ticket_id' => $ticket->id,
             'ticket_number' => $ticket->ticket_number,
         ]);
+
+        $this->markAuthorityAction($ticket, $internal ? 'internal_note' : 'reply');
 
         TicketNotifier::replied($ticket->load('employee:id,name,role'), $message, $this->actor());
 
@@ -557,6 +594,18 @@ class TicketController extends Controller
             'status' => $ticket->status,
         ]);
 
+        \App\Models\TicketAssignmentHistory::create([
+            'ticket_id' => $ticket->id,
+            'from_user_id' => $before['assigned_to'] ?? null,
+            'to_user_id' => $ticket->assigned_to,
+            'method' => \App\Models\TicketAssignmentHistory::METHOD_MANUAL,
+            'performed_by' => $this->actor()->id,
+            'reason' => $data['remarks'] ?? null,
+            'created_at' => now(),
+        ]);
+
+        $this->markAuthorityAction($ticket, 'assign');
+
         TicketNotifier::assigned($ticket->load('employee:id,name'), $this->actor());
 
         return response()->json([
@@ -611,6 +660,16 @@ class TicketController extends Controller
             'ticket_number' => $ticket->ticket_number,
             'status' => $next,
         ]);
+
+        // waiting_employee hands the ball back to the employee, so it is not
+        // the authority buying themselves more time — it is handled by the
+        // pause logic in the escalation sweep instead.
+        $this->markAuthorityAction(
+            $ticket,
+            $next === Ticket::STATUS_WAITING_EMPLOYEE ? 'request_info'
+                : ($next === Ticket::STATUS_IN_PROGRESS ? 'start_work'
+                    : ($next === Ticket::STATUS_RESOLVED ? 'resolve' : 'status_change'))
+        );
 
         TicketNotifier::statusChanged($ticket->load('employee:id,name'), $old, $next, $this->actor());
 

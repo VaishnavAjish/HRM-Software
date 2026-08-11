@@ -157,8 +157,73 @@ class AuthorizationController extends Controller
             // in the menu and opened on a direct URL.
             'routes' => PermissionRegistry::routes(),
             'roles' => $this->roleSnapshot($actor),
+            'portal' => $this->portalFor($actor, $decisions),
             'featureFlags' => $this->flagSnapshot($actor->company_code),
         ];
+    }
+
+    /**
+     * Which application shell this account signs in to.
+     *
+     * Resolved from the ui.portals.* capabilities so the Permission Matrix
+     * decides it. Previously the browser chose the shell from the legacy numeric
+     * tier, upgrading a non-admin tier only if it happened to hold the
+     * permission governing the /admin route — ui.dashboard. That made the
+     * dashboard a hidden prerequisite for every other business page: a role
+     * granted ui.hr but not ui.dashboard landed in the employee shell and could
+     * never reach HR, whatever the matrix said.
+     *
+     * The fallback is exactly the previous behaviour, on purpose. No existing
+     * role holds these capabilities yet, so nothing moves until an
+     * administrator grants one — this adds a control, it does not reassign
+     * anybody. Once granted, the capability wins.
+     *
+     * A shell is not authority: ui.access_control remains independently denied,
+     * so a business role rendered in the management frame is still not an
+     * administrator.
+     */
+    private function portalFor(User $actor, array $decisions): string
+    {
+        // The protected identity is never subject to matrix configuration.
+        if ($actor->isSuperAdmin()) {
+            return 'admin';
+        }
+
+        $holds = static fn (string $code): bool => (bool) ($decisions[$code]['allowed'] ?? false);
+
+        if ($holds('ui.portals.agent')) {
+            return 'agent';
+        }
+
+        if ($holds('ui.portals.business')) {
+            return 'admin';
+        }
+
+        if ($holds('ui.portals.employee')) {
+            return 'employee';
+        }
+
+        return $this->legacyPortalFor($actor, $decisions);
+    }
+
+    /** The pre-capability rule, kept so an unconfigured deployment is unchanged. */
+    private function legacyPortalFor(User $actor, array $decisions): string
+    {
+        $tier = (int) $actor->role;
+
+        if ($tier === 4 || $actor->type === 'agent') {
+            return 'agent';
+        }
+
+        if (in_array($tier, [0, 1, 2], true)) {
+            return 'admin';
+        }
+
+        $adminRouteCode = PermissionRegistry::routes()['/admin'] ?? null;
+
+        return $adminRouteCode && ($decisions[$adminRouteCode]['allowed'] ?? false)
+            ? 'admin'
+            : 'employee';
     }
 
     /**

@@ -279,6 +279,70 @@ class UserProvisioningTest extends TestCase
         ]);
     }
 
+    public function test_saving_the_edit_form_without_choosing_a_role_leaves_the_role_alone(): void
+    {
+        /*
+         * The legacy tier must never SELECT a role.
+         *
+         * tierForCode() maps every unrecognised code to the employee tier, so
+         * HR Manager, Account and every custom role all report tier 3. The edit
+         * form posts that tier on every save. Deriving the identity from it
+         * therefore resolved "3" back to the `emp` role and replaced whatever
+         * the account actually held — an edit that changed a phone number
+         * silently demoted an HR Manager to Employee, and the audit entry
+         * recorded "tier 3 → 3", which looks like nothing happened.
+         *
+         * Identity changes only when a role is explicitly chosen.
+         */
+        $hrManagerId = $this->roleId('hr_manager');
+
+        $id = $this->asRoot()->postJson('/api/v1/admin/users', [
+            'name' => 'HR Person', 'email' => 'hrperson@prov.local', 'empCode' => 'P-8001',
+            'password' => 'secret1234', 'roleId' => $hrManagerId,
+            'companyIds' => [$this->companyId('nidhi-impex')],
+        ])->assertCreated()->json('data.id');
+
+        $this->assertDatabaseHas('user_roles', ['user_id' => $id, 'role_id' => $hrManagerId]);
+
+        // An ordinary edit: a new phone number, and the tier the form always
+        // sends. No role was chosen.
+        $this->asRoot()->putJson('/api/v1/admin/users/' . $id, [
+            'mobile' => '9998887777',
+            'role' => 3,
+        ])->assertOk();
+
+        $this->assertTrue(
+            DB::table('user_roles')->where('user_id', $id)->where('role_id', $hrManagerId)->exists(),
+            'The edit replaced the role it was never asked to change.',
+        );
+
+        $this->assertDatabaseMissing('user_roles', [
+            'user_id' => $id, 'role_id' => $this->roleId('employee'),
+        ]);
+    }
+
+    public function test_an_explicit_role_choice_still_changes_the_identity(): void
+    {
+        // The other half: refusing to act on the tier must not make the
+        // dropdown stop working.
+        $id = $this->asRoot()->postJson('/api/v1/admin/users', [
+            'name' => 'Promotable', 'email' => 'promotable@prov.local', 'empCode' => 'P-8002',
+            'password' => 'secret1234', 'roleId' => $this->roleId('hr_manager'),
+            'companyIds' => [$this->companyId('nidhi-impex')],
+        ])->assertCreated()->json('data.id');
+
+        $this->asRoot()->putJson('/api/v1/admin/users/' . $id, [
+            'roleId' => $this->roleId('tenant_administrator'),
+        ])->assertOk();
+
+        $this->assertDatabaseHas('user_roles', [
+            'user_id' => $id, 'role_id' => $this->roleId('tenant_administrator'),
+        ]);
+        $this->assertDatabaseMissing('user_roles', [
+            'user_id' => $id, 'role_id' => $this->roleId('hr_manager'),
+        ]);
+    }
+
     public function test_a_role_change_does_not_disturb_company_membership(): void
     {
         $this->asRoot()->putJson('/api/v1/admin/users/' . $this->employee->id, [

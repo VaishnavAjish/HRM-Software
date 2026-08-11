@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, KeyboardAvoidingView, Platform, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, KeyboardAvoidingView, Platform, Alert, StatusBar } from 'react-native';
 import { ChevronLeft, FileText, Printer, Lock, Trash2 } from 'lucide-react-native';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
@@ -305,7 +305,7 @@ export function TrialFormScreen({ initialData, onDone, onCancel }) {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  content: { padding: 16, paddingBottom: 60 },
+  content: { padding: 16, paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 36) + 12 : 50, paddingBottom: 60 },
   headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
   headerActionsRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   backRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },

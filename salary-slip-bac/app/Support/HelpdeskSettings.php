@@ -30,7 +30,35 @@ class HelpdeskSettings
         // Whether the queue may hand a ticket to a manager (role 2) as well as
         // an admin.
         'helpdesk.allow_manager_assignment' => 'true',
+
+        /*
+         * Which actions by the current authority count as meaningful action and
+         * therefore restart the escalation clock.
+         *
+         * Opening a ticket is deliberately not one of them: reading something
+         * is not working on it, and counting a view would let a ticket be kept
+         * alive indefinitely without anybody doing anything. Stored as a
+         * comma-separated list so a Super Admin can narrow or widen it.
+         *
+         * Recognised: assign, reply, internal_note, status_change,
+         *             request_info, start_work, resolve
+         */
+        'helpdesk.escalation_pausing_actions' => 'assign,reply,status_change,request_info,start_work,resolve',
     ];
+
+    /** @return list<string> */
+    public static function escalationPausingActions(): array
+    {
+        return array_values(array_filter(array_map(
+            'trim',
+            explode(',', (string) self::get('helpdesk.escalation_pausing_actions'))
+        )));
+    }
+
+    public static function actionPausesEscalation(string $action): bool
+    {
+        return in_array($action, self::escalationPausingActions(), true);
+    }
 
     private static ?array $cache = null;
 

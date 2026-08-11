@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, KeyboardAvoidingView, Platform, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, KeyboardAvoidingView, Platform, Alert, StatusBar } from 'react-native';
 import { ChevronLeft, UserPlus, Printer, Lock } from 'lucide-react-native';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
@@ -385,7 +385,7 @@ export function AppointmentFormScreen({ initialData, isPrefillFromTrial, onDone,
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  content: { padding: 16, paddingBottom: 60 },
+  content: { padding: 16, paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 36) + 12 : 50, paddingBottom: 60 },
   headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
   backRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   backText: { ...typography.body, fontWeight: '600' },

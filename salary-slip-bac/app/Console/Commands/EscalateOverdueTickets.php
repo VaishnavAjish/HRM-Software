@@ -4,7 +4,9 @@ namespace App\Console\Commands;
 
 use App\Models\Ticket;
 use App\Models\TicketActivityLog;
+use App\Models\TicketEscalationHistory;
 use App\Models\TicketSlaRule;
+use App\Services\Tickets\TicketRouter;
 use App\Support\HelpdeskSettings;
 use App\Support\TicketNotifier;
 use Illuminate\Console\Command;
@@ -48,10 +50,12 @@ class EscalateOverdueTickets extends Command
 
     /**
      * A ticket escalates when its department/priority rule says auto-escalate
-     * and nothing has happened to it for escalate_after_hours.
+     * and the authority holding it has not acted for escalate_after_hours.
      *
-     * "Nothing has happened" is last_activity_at, not created_at: a ticket being
-     * actively discussed is being attended to, even if it is still open.
+     * Already-escalated tickets stay eligible: escalation is now a walk up the
+     * hierarchy rather than a one-off status change, so a level-1 authority who
+     * also sits on it hands off to level 2. escalated_at keeps that to one step
+     * per window.
      */
     private function escalateUnattended(bool $dryRun): int
     {
@@ -68,9 +72,26 @@ class EscalateOverdueTickets extends Command
 
             $query = Ticket::query()
                 ->whereIn('status', Ticket::ACTIVE_STATUSES)
-                ->where('status', '!=', Ticket::STATUS_ESCALATED)
                 ->where('priority', $rule->priority)
-                ->whereRaw('COALESCE(last_activity_at, created_at) < ?', [$cutoff])
+                /*
+                 * Inactivity of the *authority*, not of the ticket.
+                 *
+                 * This used to read last_activity_at, which any event moves —
+                 * including the employee's own replies. A ticket the assignee
+                 * had never touched therefore looked "attended" as long as the
+                 * employee kept chasing it, which is precisely the case
+                 * escalation exists for. authority_action_at is stamped only by
+                 * the configured staff actions; before the first of those it is
+                 * null and the clock runs from creation.
+                 */
+                ->whereRaw('COALESCE(authority_action_at, created_at) < ?', [$cutoff])
+                /*
+                 * Waiting on the employee pauses the clock: the authority
+                 * cannot act until the employee answers, so holding them to an
+                 * inactivity deadline would escalate people for someone else's
+                 * silence.
+                 */
+                ->where('status', '!=', Ticket::STATUS_WAITING_EMPLOYEE)
                 // Don't re-escalate something escalated within this same window.
                 ->where(fn ($q) => $q->whereNull('escalated_at')->orWhere('escalated_at', '<', $cutoff));
 
@@ -108,14 +129,62 @@ class EscalateOverdueTickets extends Command
         return $count;
     }
 
+    /**
+     * Hand the ticket to the next authority in its own chain.
+     *
+     * This used only to set status = escalated and bump a counter, which left
+     * the ticket with the same person who had already not acted on it — the
+     * label changed and nothing else did. It now reassigns up the stored
+     * hierarchy, records who it came from, and notifies the new holder.
+     *
+     * A ticket already sitting with its final authority (the Super Admin) has
+     * nowhere further to go. Rather than escalating in circles it is marked
+     * escalated once and left there, since re-notifying the same person every
+     * fifteen minutes trains people to ignore the alert.
+     */
     private function escalate(Ticket $ticket): void
     {
+        $router = app(TicketRouter::class);
+        $previousHolder = $ticket->assigned_to;
+
+        $next = $router->escalate(
+            $ticket,
+            TicketEscalationHistory::TRIGGER_INACTIVITY,
+            null,
+            'Automatically escalated: the assigned authority took no action within the configured window.'
+        );
+
+        if (! $next) {
+            $this->markStuckAtFinalAuthority($ticket);
+
+            return;
+        }
+
+        TicketNotifier::escalated($ticket->fresh()->load('employee:id,name'), null);
+
+        $from = $previousHolder ? " from user #{$previousHolder}" : '';
+        $this->line("  escalated {$ticket->ticket_number}{$from} to {$next->name} (level {$ticket->fresh()->escalation_level})");
+    }
+
+    /**
+     * Nothing above the current holder: flag it once, then stop.
+     *
+     * escalated_at is stamped so the inactivity query stops selecting it on
+     * every subsequent run.
+     */
+    private function markStuckAtFinalAuthority(Ticket $ticket): void
+    {
+        if ($ticket->status === Ticket::STATUS_ESCALATED) {
+            $ticket->forceFill(['escalated_at' => now()])->save();
+
+            return;
+        }
+
         $old = $ticket->status;
 
         DB::transaction(function () use ($ticket, $old) {
             $ticket->forceFill([
                 'status' => Ticket::STATUS_ESCALATED,
-                'escalation_level' => (int) $ticket->escalation_level + 1,
                 'escalated_at' => now(),
                 'last_activity_at' => now(),
             ])->save();
@@ -123,19 +192,18 @@ class EscalateOverdueTickets extends Command
             TicketActivityLog::create([
                 'ticket_id' => $ticket->id,
                 'action' => 'ESCALATED',
-                // No performer: this was the scheduler, not a person. A user id
-                // here would attribute an automatic action to whoever ran it.
+                // No performer: the scheduler did this, not a person.
                 'performed_by' => null,
                 'old_status' => $old,
                 'new_status' => Ticket::STATUS_ESCALATED,
-                'remarks' => 'Automatically escalated: no activity within the SLA escalation window.',
+                'remarks' => 'Escalated at the final authority — no higher level to route to.',
                 'created_at' => now(),
             ]);
         });
 
         TicketNotifier::escalated($ticket->fresh()->load('employee:id,name'), null);
 
-        $this->line("  escalated {$ticket->ticket_number} to level {$ticket->escalation_level}");
+        $this->line("  {$ticket->ticket_number} is already with the final authority");
     }
 
     /** Closes resolved tickets the employee never came back to. */

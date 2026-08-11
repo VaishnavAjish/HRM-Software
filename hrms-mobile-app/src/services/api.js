@@ -261,6 +261,10 @@ class ApiService {
     return this.request(`/trial-form/delete/${id}`, { method: 'DELETE' });
   }
 
+  deleteAppointment(id) {
+    return this.request(`/appointment/delete/${id}`, { method: 'DELETE' });
+  }
+
   // ----- Admin: Accounts (Super-Admin only in practice) -----
   getAdminAccounts(params = {}) {
     const qs = new URLSearchParams(params).toString();

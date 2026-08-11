@@ -62,8 +62,10 @@ class ReverseRouteCoverageTest extends TestCase
         'hr.training.read',
         'hr.training.update',
         'recruitment.candidate.read',
-        'self.ticket.create',
-        'self.ticket.read',
+        // self.ticket.read and self.ticket.create left this list when
+        // ui.portals.employee_tickets and its create action gave them canonical
+        // owners. The employee shell had no registry nodes at all until then, so
+        // every code its pages enforced was an orphan by construction.
     ];
 
     /** @return array<string,list<string>> business code => routes enforcing it */

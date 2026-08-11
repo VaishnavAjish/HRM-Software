@@ -1,6 +1,6 @@
 import {
-  LifeBuoy, Flame, Clock, AlertTriangle, UserCheck, Eye, User,
-  PieChart, BarChart3, TrendingUp, ShieldAlert, Award, CornerUpRight, CheckCircle2,
+  LifeBuoy, Flame, Clock, AlertTriangle, UserCheck, Eye,
+  PieChart, BarChart3, TrendingUp, ShieldAlert, Award, CheckCircle2,
   Search, RefreshCw,
 } from "lucide-react";
 import { statusMeta, priorityMeta, slaMeta, slaLabel, metric, PRIORITY_ORDER } from "./ticketMeta";

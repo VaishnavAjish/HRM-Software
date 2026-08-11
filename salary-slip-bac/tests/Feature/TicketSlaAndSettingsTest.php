@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\ReportingRelationship;
 use App\Models\Setting;
 use App\Models\Ticket;
 use App\Models\TicketCategory;
@@ -366,18 +367,62 @@ class TicketSlaAndSettingsTest extends TestCase
     // Auto escalation
     // ---------------------------------------------------------------
 
+    /**
+     * Age a ticket past its escalation window.
+     *
+     * The sweep measures the *authority's* inactivity, so the clock is
+     * COALESCE(authority_action_at, created_at) — not last_activity_at, which
+     * the employee's own replies move.
+     */
+    private function ageTicket(Ticket $ticket, int $hours): void
+    {
+        $ticket->forceFill([
+            'created_at' => now()->subHours($hours),
+            'authority_action_at' => null,
+            'last_activity_at' => now()->subHours($hours),
+        ])->save();
+    }
+
+    /**
+     * A chain for the ticket to climb: manager, then Super Admin above them.
+     *
+     * Only the tests that assert movement need this. The ones asserting the
+     * sweep does nothing are clearer without it, since an unrouted ticket stays
+     * plainly open.
+     */
+    private function giveEmployeeAManager(): User
+    {
+        $this->makeUser(['role' => 0]);
+        $manager = $this->makeUser(['role' => 2]);
+
+        ReportingRelationship::create([
+            'employee_user_id' => $this->employee->id,
+            'manager_user_id' => $manager->id,
+            'relationship_type' => ReportingRelationship::TYPE_PRIMARY,
+            'status' => ReportingRelationship::STATUS_ACTIVE,
+            'effective_from' => now()->subMonth(),
+        ]);
+
+        return $manager;
+    }
+
     /** The toggle that previously did nothing. */
     #[Test]
     public function the_sweep_escalates_a_ticket_left_past_its_escalation_window(): void
     {
+        $manager = $this->giveEmployeeAManager();
+
         $ticket = $this->raiseTicket('high'); // global high: escalate after 4h
-        $ticket->forceFill(['last_activity_at' => now()->subHours(9)])->save();
+        $this->ageTicket($ticket, 9);
 
         $this->artisan('tickets:escalate-overdue')->assertSuccessful();
 
         $fresh = $ticket->fresh();
         $this->assertSame(Ticket::STATUS_ESCALATED, $fresh->status);
         $this->assertSame(1, $fresh->escalation_level);
+        // Handed on rather than merely relabelled.
+        $this->assertNotSame($manager->id, $fresh->assigned_to);
+        $this->assertSame($manager->id, $fresh->previous_assigned_to);
         $this->assertDatabaseHas('ticket_activity_logs', [
             'ticket_id' => $ticket->id,
             'action' => 'ESCALATED',
@@ -390,7 +435,8 @@ class TicketSlaAndSettingsTest extends TestCase
     public function the_sweep_leaves_recently_active_tickets_alone(): void
     {
         $ticket = $this->raiseTicket('high');
-        $ticket->forceFill(['last_activity_at' => now()->subMinutes(30)])->save();
+        $this->ageTicket($ticket, 9);
+        $ticket->forceFill(['authority_action_at' => now()->subMinutes(30)])->save();
 
         $this->artisan('tickets:escalate-overdue')->assertSuccessful();
 
@@ -402,7 +448,7 @@ class TicketSlaAndSettingsTest extends TestCase
     {
         // 'low' seeds with auto_escalate false.
         $ticket = $this->raiseTicket('low');
-        $ticket->forceFill(['last_activity_at' => now()->subDays(5)])->save();
+        $this->ageTicket($ticket, 120);
 
         $this->artisan('tickets:escalate-overdue')->assertSuccessful();
 
@@ -413,8 +459,10 @@ class TicketSlaAndSettingsTest extends TestCase
     #[Test]
     public function the_sweep_is_safe_to_run_repeatedly(): void
     {
+        $this->giveEmployeeAManager();
+
         $ticket = $this->raiseTicket('high');
-        $ticket->forceFill(['last_activity_at' => now()->subHours(9)])->save();
+        $this->ageTicket($ticket, 9);
 
         $this->artisan('tickets:escalate-overdue')->assertSuccessful();
         $this->artisan('tickets:escalate-overdue')->assertSuccessful();
@@ -433,7 +481,7 @@ class TicketSlaAndSettingsTest extends TestCase
 
         // Payroll says do not auto-escalate, so the global rule must not apply.
         $ticket = $this->raiseTicket('high');
-        $ticket->forceFill(['last_activity_at' => now()->subHours(9)])->save();
+        $this->ageTicket($ticket, 9);
 
         $this->artisan('tickets:escalate-overdue')->assertSuccessful();
 
@@ -467,7 +515,7 @@ class TicketSlaAndSettingsTest extends TestCase
     public function a_dry_run_reports_without_changing_anything(): void
     {
         $ticket = $this->raiseTicket('high');
-        $ticket->forceFill(['last_activity_at' => now()->subHours(9)])->save();
+        $this->ageTicket($ticket, 9);
 
         $this->artisan('tickets:escalate-overdue --dry-run')->assertSuccessful();
 

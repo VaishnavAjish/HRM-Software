@@ -30,7 +30,9 @@ class ScopeMatcher
         if (array_intersect(['all', 'all-companies'], $subjectTenants)) {
             return true;
         }
-        return in_array($resourceTenant, $subjectTenants, true);
+        $resourceTenants = array_filter(array_map('trim', explode(',', $resourceTenant)));
+
+        return (bool) array_intersect($resourceTenants, $subjectTenants);
     }
 
     public function matches(string $scopeType, ?string $scopeId, array $subject, array $resource): bool

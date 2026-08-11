@@ -42,11 +42,17 @@
     <!-- Android / Chrome splash screen color -->
     <meta name="msapplication-TileColor" content="#1d4ed8" />
 
-    <!-- Preconnect & Preload Inter Font for Ultra-Fast Initial Render -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="preload" href="https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" />
+    <!--
+      Inter is self-hosted (see the @font-face rules in src/index.css), so there
+      is no render-blocking stylesheet from fonts.googleapis.com and no DNS/TLS
+      handshake to a third party before the first paint.
+
+      The preload starts the font fetch immediately rather than waiting for the
+      CSS bundle to parse and discover it. crossorigin is required even for a
+      same-origin font: fonts are always fetched in CORS mode, and without it the
+      browser downloads the file twice.
+    -->
+    <link rel="preload" href="/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin />
 
     <!-- Structured Data (JSON-LD) -->
     <script type="application/ld+json">
@@ -89,10 +95,10 @@
       ]
     }
     </script>
-    <script type="module" crossorigin src="/assets/index-BVCZU3su.js"></script>
+    <script type="module" crossorigin src="/assets/index-J7681DXD.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/recharts-CsrtT6zV.js">
     <link rel="modulepreload" crossorigin href="/assets/jspdf-D3E4-itP.js">
-    <link rel="stylesheet" crossorigin href="/assets/index-Bx9aSCM7.css">
+    <link rel="stylesheet" crossorigin href="/assets/index-a3vOBtpM.css">
   <link rel="manifest" href="/manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="/registerSW.js" defer></script></head>
   <body>
     <div id="root"></div>
