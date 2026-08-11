@@ -8,6 +8,8 @@ import { useAuth } from '../../context/AuthContext';
 import { typography, shadows } from '../../theme';
 import { Card } from '../../components/common/Card';
 import { EmptyState } from '../../components/common/EmptyState';
+import { AgentAppointmentsScreen } from '../agent/AgentAppointmentsScreen';
+import { AgentTrialScreen } from '../agent/AgentTrialScreen';
 
 // Web's admin nav has ~12 destinations; the phone tab bar only fits 5, so
 // everything beyond Dashboard/Employees/Attendance collapses into this grid
@@ -30,6 +32,19 @@ export function AdminMoreScreen() {
 
   const isSuperAdmin = Number(user?.role) === 0;
   const visibleTiles = TILES.filter((t) => !t.superAdminOnly || isSuperAdmin);
+
+  if (activeHubScreen === 'appointments' || activeHubScreen === 'trialForms') {
+    const ScreenComponent = activeHubScreen === 'appointments' ? AgentAppointmentsScreen : AgentTrialScreen;
+    return (
+      <View style={[styles.screen, { backgroundColor: theme.background }]}>
+        <TouchableOpacity style={styles.backRow} onPress={() => setActiveHubScreen(null)} activeOpacity={0.7}>
+          <ChevronLeft size={18} color={theme.primary} />
+          <Text style={[styles.backText, { color: theme.primary }]}>More</Text>
+        </TouchableOpacity>
+        <ScreenComponent />
+      </View>
+    );
+  }
 
   if (activeHubScreen) {
     const tile = TILES.find((t) => t.id === activeHubScreen);

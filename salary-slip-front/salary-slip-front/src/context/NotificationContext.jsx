@@ -237,6 +237,9 @@ export function NotificationProvider({ children }) {
     let cancelled = false;
 
     const pull = async () => {
+      // Pause polling when tab is inactive/hidden to conserve server CPU, bandwidth, and battery
+      if (typeof document !== "undefined" && document.hidden) return;
+
       try {
         const res = await notificationApi.list(user.accessToken, user.tokenType, { limit: 50 });
         if (cancelled || !res?.status) return;

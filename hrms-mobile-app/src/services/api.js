@@ -174,6 +174,29 @@ class ApiService {
     return this.request(`/appointment${qs ? `?${qs}` : ''}`);
   }
 
+  // ----- Admin: Trial Forms -----
+  // Staff-wide (role admin,agent), unpaginated — same shape/scope pattern as
+  // getAdminAppointments but the backend never added pagination to this one.
+  getAdminTrialForms(params = {}) {
+    const qs = new URLSearchParams(params).toString();
+    return this.request(`/trial-form/list${qs ? `?${qs}` : ''}`);
+  }
+
+  // `checkbox: 1|0` is the trial form's actual approve/un-approve flag —
+  // verified against UserController::updateTrialForm's protected-fields list.
+  setTrialFormApproval(id, approved) {
+    const fd = new FormData();
+    fd.append('checkbox', approved ? '1' : '0');
+    return this.updateTrialForm(id, fd);
+  }
+
+  // Admin-only (role:admin, permission recruitment.trial_form.delete) —
+  // distinct from an agent deleting their own draft, which this app doesn't
+  // expose today.
+  deleteTrialForm(id) {
+    return this.request(`/trial-form/delete/${id}`, { method: 'DELETE' });
+  }
+
   // ----- Admin: Upload Batches (shared history for employee/salary/attendance bulk imports) -----
   getUploadBatches(type, params = {}) {
     const qs = new URLSearchParams(params).toString();

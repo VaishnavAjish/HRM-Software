@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, KeyboardAvoidingView, Platform, Alert } from 'react-native';
-import { ChevronLeft, FileText, Printer, Lock } from 'lucide-react-native';
+import { ChevronLeft, FileText, Printer, Lock, Trash2 } from 'lucide-react-native';
 import { useTheme } from '../../context/ThemeContext';
+import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/api';
 import { typography } from '../../theme';
 import { Card } from '../../components/common/Card';
@@ -57,9 +58,14 @@ function buildInitialForm(raw) {
 
 export function TrialFormScreen({ initialData, onDone, onCancel }) {
   const { theme } = useTheme();
+  const { role } = useAuth();
+  const isAdmin = role === 'admin';
   const isEditMode = Boolean(initialData?.id);
   const raw = initialData?.raw;
-  const readOnly = isEditMode && isCandidateProcessed(raw || {});
+  // Agents lose edit access once a trial form is processed into an
+  // appointment; admins keep edit access (and gain a delete action) since
+  // correcting or removing a record after the fact is a normal admin task.
+  const readOnly = isEditMode && !isAdmin && isCandidateProcessed(raw || {});
 
   const [form, setForm] = useState(() => buildInitialForm(raw));
   const [photo, setPhoto] = useState(raw?.photo || null);
@@ -67,6 +73,7 @@ export function TrialFormScreen({ initialData, onDone, onCancel }) {
   const [departments, setDepartments] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [printing, setPrinting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState(null);
 
   const aadhaarOnFile = Boolean(raw?.aadhaar_full || raw?.aadhaar_masked);
@@ -114,6 +121,31 @@ export function TrialFormScreen({ initialData, onDone, onCancel }) {
     }
   };
 
+  const confirmDelete = () => {
+    Alert.alert('Delete trial form', `Remove ${raw?.name || 'this candidate'}? This cannot be undone.`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          setDeleting(true);
+          try {
+            const res = await api.deleteTrialForm(initialData.id);
+            if (res?.status !== false) {
+              onDone();
+            } else {
+              Alert.alert('Could not delete', res?.message || 'Please try again.');
+            }
+          } catch (e) {
+            Alert.alert('Could not delete', e?.message || 'Please try again.');
+          } finally {
+            setDeleting(false);
+          }
+        },
+      },
+    ]);
+  };
+
   const handlePrint = async () => {
     setPrinting(true);
     try {
@@ -136,16 +168,28 @@ export function TrialFormScreen({ initialData, onDone, onCancel }) {
             <Text style={[styles.backText, { color: theme.primary }]}>Cancel</Text>
           </TouchableOpacity>
 
-          {isEditMode ? (
-            <TouchableOpacity
-              onPress={handlePrint}
-              disabled={printing}
-              style={[styles.printBtn, { borderColor: theme.border, backgroundColor: theme.surfaceElevated }]}
-            >
-              <Printer size={15} color={theme.primary} />
-              <Text style={[styles.printText, { color: theme.primary }]}>{printing ? 'Preparing…' : 'Print'}</Text>
-            </TouchableOpacity>
-          ) : null}
+          <View style={styles.headerActionsRow}>
+            {isEditMode ? (
+              <TouchableOpacity
+                onPress={handlePrint}
+                disabled={printing}
+                style={[styles.printBtn, { borderColor: theme.border, backgroundColor: theme.surfaceElevated }]}
+              >
+                <Printer size={15} color={theme.primary} />
+                <Text style={[styles.printText, { color: theme.primary }]}>{printing ? 'Preparing…' : 'Print'}</Text>
+              </TouchableOpacity>
+            ) : null}
+            {isEditMode && isAdmin ? (
+              <TouchableOpacity
+                onPress={confirmDelete}
+                disabled={deleting}
+                style={[styles.printBtn, { borderColor: theme.rose + '40', backgroundColor: theme.roseBg }]}
+              >
+                <Trash2 size={15} color={theme.rose} />
+                <Text style={[styles.printText, { color: theme.rose }]}>{deleting ? 'Deleting…' : 'Delete'}</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
         </View>
 
         <Text style={[styles.formTitle, { color: theme.textPrimary }]}>
@@ -263,6 +307,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1 },
   content: { padding: 16, paddingBottom: 60 },
   headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  headerActionsRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   backRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   backText: { ...typography.body, fontWeight: '600' },
   printBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, borderWidth: 1 },
