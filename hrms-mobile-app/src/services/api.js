@@ -165,6 +165,20 @@ class ApiService {
     return this.request('/employee/import-account-detail', { method: 'POST', body: formData, isForm: true });
   }
 
+  // ----- Admin: Upload Batches (shared history for employee/salary/attendance bulk imports) -----
+  getUploadBatches(type, params = {}) {
+    const qs = new URLSearchParams(params).toString();
+    return this.request(`/upload-batches/${type}${qs ? `?${qs}` : ''}`);
+  }
+
+  getUploadBatchDetail(type, id) {
+    return this.request(`/upload-batches/${type}/${id}`);
+  }
+
+  deleteUploadBatch(type, id) {
+    return this.request(`/upload-batches/${type}/${id}`, { method: 'DELETE' });
+  }
+
   // ----- Employee -----
   getDashboard() {
     return this.request('/dashboard');

@@ -12,6 +12,7 @@ import { FormSelect } from '../../components/common/FormSelect';
 import { SelectField } from '../../components/common/SelectField';
 import { DatePickerField } from '../../components/common/DatePickerField';
 import { EmptyState } from '../../components/common/EmptyState';
+import { BulkUploadFlow } from '../../components/admin/BulkUploadFlow';
 import { useDepartmentOptions } from '../../hooks/useDepartmentOptions';
 import { COMPANY_OPTIONS, getCompanyUnits } from '../../utils/companyConfig';
 
@@ -149,6 +150,37 @@ function SingleEmployeeForm({ onDone, onCancel }) {
   );
 }
 
+const BULK_COMPANY_OPTIONS = [{ value: '', label: "Each row's own company" }, ...COMPANY_OPTIONS];
+
+function BulkEmployeeImport() {
+  const { theme } = useTheme();
+  const [companyCode, setCompanyCode] = useState('');
+  const unitOptions = useMemo(() => getCompanyUnits(companyCode), [companyCode]);
+  const [unit, setUnit] = useState('');
+
+  return (
+    <BulkUploadFlow
+      type="employee"
+      title="Bulk Import Employees"
+      getColumns={() => api.getEmployeeImportColumns()}
+      uploadFn={(formData) => api.importEmployees(formData)}
+      extra={{ company_code: companyCode, unit }}
+      renderExtraFields={() => (
+        <>
+          <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Default Company / Unit</Text>
+          <Text style={[styles.hintText, { color: theme.textMuted }]}>
+            Used only for rows in the spreadsheet that don't specify their own company/unit.
+          </Text>
+          <SelectField value={companyCode} onChange={(v) => { setCompanyCode(v); setUnit(''); }} options={BULK_COMPANY_OPTIONS} searchable={false} />
+          {companyCode ? (
+            <SelectField label="Unit / Branch" value={unit} onChange={setUnit} options={unitOptions} placeholder="Any unit" searchable={false} />
+          ) : null}
+        </>
+      )}
+    />
+  );
+}
+
 export function AddEmployeeScreen({ onDone, onCancel }) {
   const { theme } = useTheme();
   const [mode, setMode] = useState('single');
@@ -176,11 +208,12 @@ export function AddEmployeeScreen({ onDone, onCancel }) {
       </View>
 
       {mode === 'single' ? <SingleEmployeeForm onDone={onDone} onCancel={onCancel} /> : null}
-      {mode !== 'single' ? (
+      {mode === 'bulk' ? <BulkEmployeeImport /> : null}
+      {mode === 'pending' ? (
         <EmptyState
           icon={UserPlus}
           title="Coming soon"
-          message={mode === 'bulk' ? 'Bulk Excel import is being built next.' : 'Assigning credentials to pending appointments is planned for a later rollout.'}
+          message="Assigning credentials to pending appointments is planned for a later rollout."
         />
       ) : null}
     </View>
@@ -198,5 +231,6 @@ const styles = StyleSheet.create({
   errorText: { ...typography.caption, marginBottom: 8 },
   sectionCard: { marginBottom: 12 },
   sectionTitle: { ...typography.h4, marginBottom: 14 },
+  hintText: { ...typography.caption, marginBottom: 12, marginTop: -8 },
   actionsRow: { flexDirection: 'row', gap: 10, marginTop: 6 },
 });

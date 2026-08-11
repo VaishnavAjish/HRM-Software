@@ -1,12 +1,18 @@
 import { saveJsonToXlsx, downloadCsvFile } from "./excel";
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
 import {
   buildForm16DocumentData,
   FORM16_COMPANY_DETAILS,
   formatForm16Amount,
 } from "./form16Utils";
 import { buildPayslipData, COMPANY_DETAILS } from "./payslipUtils";
+
+async function getJsPDFAndAutoTable() {
+  const [jsPDFModule, autoTableModule] = await Promise.all([
+    import("jspdf").then((m) => m.default),
+    import("jspdf-autotable").then((m) => m.default),
+  ]);
+  return { jsPDF: jsPDFModule, autoTable: autoTableModule };
+}
 
 export function downloadExcel(rows, filename) {
   saveJsonToXlsx(`${filename}.xlsx`, "Sheet1", rows);
@@ -16,7 +22,9 @@ export function downloadCSV(rows, filename) {
   downloadCsvFile(`${filename}.csv`, rows);
 }
 
-export function downloadTablePDF({ title, subtitle, columns, rows, filename }) {
+export async function downloadTablePDF({ title, subtitle, columns, rows, filename }) {
+  const { jsPDF, autoTable } = await getJsPDFAndAutoTable();
+
   const doc = new jsPDF();
   doc.setFillColor(59, 130, 246);
   doc.rect(0, 0, 210, 22, "F");
@@ -250,8 +258,9 @@ function legacyComputeForm16Data(emp, fy = "2024-25") {
 
 // ─── Form 16 PDF ─────────────────────────────────────────────────────────────
 
-function legacyDownloadForm16PDF({ emp, fy = "2024-25", data: d }) {
+async function legacyDownloadForm16PDF({ emp, fy = "2024-25", data: d }) {
   if (!d) d = computeForm16Data(emp, fy);
+  const { jsPDF, autoTable } = await getJsPDFAndAutoTable();
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const PW = 210;
   const ML = 12;
@@ -475,8 +484,10 @@ export function computeForm16Data(emp, fy = "2024-25") {
   return buildForm16DocumentData(emp, fy);
 }
 
-export function downloadForm16PDF({ emp, fy = "2024-25", data: d }) {
+export async function downloadForm16PDF({ emp, fy = "2024-25", data: d }) {
   if (!d) d = buildForm16DocumentData(emp, fy);
+
+  const { jsPDF, autoTable } = await getJsPDFAndAutoTable();
 
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const PW = 210;
@@ -1424,7 +1435,8 @@ export function downloadForm16PDF({ emp, fy = "2024-25", data: d }) {
 
 // ─── main payslip export ──────────────────────────────────────────────────────
 
-function legacyDownloadPayslipPDF({ emp, payslip }) {
+async function legacyDownloadPayslipPDF({ emp, payslip }) {
+  const { jsPDF, autoTable } = await getJsPDFAndAutoTable();
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const PW = 210;
   const ML = 14;
@@ -1730,7 +1742,8 @@ function legacyDownloadPayslipPDF({ emp, payslip }) {
 
 void legacyDownloadPayslipPDF;
 
-export function downloadPayslipPDF({ emp, payslip }) {
+export async function downloadPayslipPDF({ emp, payslip }) {
+  const { jsPDF, autoTable } = await getJsPDFAndAutoTable();
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const PW = 210;
   const ML = 14;
