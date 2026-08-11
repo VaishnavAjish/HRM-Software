@@ -22,8 +22,19 @@ class UpdateUserRequest extends FormRequest
             'email' => ['sometimes', 'required', 'email', 'max:190', Rule::unique('users', 'email')->ignore($id)],
             'empCode' => ['sometimes', 'required', 'string', 'max:64', Rule::unique('users', 'emp_code')->ignore($id)],
             'mobile' => ['sometimes', 'nullable', 'string', 'max:20', Rule::unique('users', 'mobile_number')->ignore($id)],
-            'role' => ['sometimes', 'integer', Rule::in([0, 1, 2, 3, 4])],
+            'role' => ['sometimes', 'nullable', 'integer', Rule::in([0, 1, 2, 3, 4])],
+            'roleId' => ['sometimes', 'nullable', 'integer', 'exists:roles,id'],
             'companyCode' => ['sometimes', 'required', 'string', 'max:190'],
+            // Absent means "leave membership alone". An empty array is not sent
+            // by the form for that reason: it would read as "belongs to nothing".
+            'companyIds' => ['sometimes', 'array', 'min:1', 'max:50'],
+            'companyIds.*' => ['integer'],
+            // Unlike companies, an empty unitIds IS meaningful: an account may
+            // legitimately belong to no unit, and clearing the selection has to
+            // be expressible.
+            'unitIds' => ['sometimes', 'array', 'max:50'],
+            'unitIds.*' => ['integer'],
+            'primaryUnitId' => ['sometimes', 'nullable', 'integer'],
             'unit' => ['sometimes', 'nullable', 'string', 'max:190'],
             'department' => ['sometimes', 'nullable', 'string', 'max:190'],
             'designation' => ['sometimes', 'nullable', 'string', 'max:190'],
@@ -81,8 +92,24 @@ class UpdateUserRequest extends FormRequest
             }
         }
 
-        if (array_key_exists('role', $data)) {
+        if (array_key_exists('role', $data) && $data['role'] !== null) {
             $out['role'] = (int) $data['role'];
+        }
+
+        if (array_key_exists('roleId', $data) && $data['roleId'] !== null) {
+            $out['roleId'] = (int) $data['roleId'];
+        }
+
+        if (array_key_exists('companyIds', $data)) {
+            $out['companyIds'] = array_map('intval', $data['companyIds']);
+        }
+
+        if (array_key_exists('unitIds', $data)) {
+            $out['unitIds'] = array_map('intval', $data['unitIds']);
+        }
+
+        if (array_key_exists('primaryUnitId', $data) && $data['primaryUnitId'] !== null) {
+            $out['primaryUnitId'] = (int) $data['primaryUnitId'];
         }
 
         $out['businessReason'] = $data['businessReason'] ?? null;

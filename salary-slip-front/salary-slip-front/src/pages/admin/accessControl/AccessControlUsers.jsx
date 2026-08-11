@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import Button from "../../../components/ui/Button";
 import Card from "../../../components/ui/Card";
+import CheckboxMultiSelect from "../../../components/ui/CheckboxMultiSelect";
 import Badge from "../../../components/ui/Badge";
 import Modal from "../../../components/ui/Modal";
 import Pagination from "../../../components/ui/Pagination";
@@ -36,8 +37,9 @@ const BLANK_FILTERS = {
 
 const BLANK_USER = {
   name: "", username: "", email: "", empCode: "", mobile: "", password: "",
-  role: 3, companyCode: "", unit: "", department: "", designation: "", branch: "",
-  joiningDate: "", managerName: "",
+  role: null, roleId: null, companyIds: [], unitIds: [], primaryUnitId: null,
+  department: "", designation: "",
+  branch: "", joiningDate: "", managerName: "",
 };
 
 const USER_TYPE_LABEL = {
@@ -479,14 +481,18 @@ function ActionDialog({ dialog, options, token, tokenType, busy, setBusy, onDone
           empCode: detail?.empCode ?? "",
           mobile: detail?.mobile ?? "",
           password: "",
-          role: detail?.legacyRole ?? 3,
-          companyCode: detail?.companyCode ?? "",
-          unit: detail?.unit ?? "",
-          department: detail?.department ?? "",
-          designation: detail?.designation ?? "",
-          branch: detail?.branch ?? "",
-          joiningDate: detail?.joiningDate ?? "",
-          managerName: detail?.managerName ?? "",
+          role: detail?.legacyRole ?? null,
+          roleId: null,
+          // Ids, not the legacy comma-separated string. The form must not have
+          // to reverse a display value it never wrote.
+          companyIds: detail?.companyIds ?? [],
+          unitIds: detail?.unitIds ?? [],
+          primaryUnitId: detail?.primaryUnitId ?? null,
+          department: detail?.employment?.department ?? detail?.department ?? "",
+          designation: detail?.employment?.designation ?? detail?.designation ?? "",
+          branch: detail?.employment?.branch ?? detail?.branch ?? "",
+          joiningDate: detail?.employment?.joiningDate ?? detail?.joiningDate ?? "",
+          managerName: detail?.reportingManager?.name ?? detail?.managerName ?? "",
         });
         setRoleIds((detail?.roles ?? []).map((role) => role.id));
         setPermissionRows(detail?.directPermissions ?? []);
@@ -514,15 +520,31 @@ function ActionDialog({ dialog, options, token, tokenType, busy, setBusy, onDone
       }
 
       if (dialog.kind === "create") {
-        await adminUserApi.create({ ...form, role: Number(form.role), roleIds }, token, tokenType);
+        // roleId is the canonical value; the numeric tier travels only so an
+        // older server keeps working, and the new one recomputes it from the
+        // role's code rather than trusting it.
+        await adminUserApi.create(
+          { ...form, role: form.role === null ? null : Number(form.role) },
+          token, tokenType,
+        );
         toast.success("User created");
         onDone();
         return;
       }
 
       if (dialog.kind === "edit") {
-        const payload = { ...form, role: Number(form.role), businessReason: reason || null };
+        const payload = {
+          ...form,
+          role: form.role === null ? undefined : Number(form.role),
+          businessReason: reason || null,
+        };
         delete payload.password;
+        // An empty selection is omitted rather than sent: the server reads an
+        // absent companyIds as "leave membership alone", and an empty array
+        // would read as "belongs to no company".
+        if (!payload.companyIds?.length) delete payload.companyIds;
+        if (!payload.roleId) delete payload.roleId;
+
         await adminUserApi.update(target.id, payload, token, tokenType);
         toast.success("User updated");
         onDone();
@@ -590,40 +612,96 @@ function ActionDialog({ dialog, options, token, tokenType, busy, setBusy, onDone
   };
 
   /*
-   * User type is the role list.
+   * User type is the role list, and which roles are on it depends on the screen.
    *
-   * The server unions the canonical tiers with every active role and resolves
-   * each option's tier from the role CODE, so the browser never has to guess an
-   * identity from a display name. There is no hardcoded fallback: an empty
-   * list means no assignable roles exist, and the form says so.
-   */
-  /*
-   * No fallback. An empty list means no assignable roles exist.
+   * Create and Edit are intentionally different lists. Employee is absent from
+   * Create because employee accounts arrive through the Trial and Appointment
+   * forms carrying a company, a unit and their documents; it is present on Edit
+   * because promotion and demotion have to be possible. Reusing one filtered
+   * array for both is the bug this replaces — whichever rule it applied was
+   * wrong on the other screen.
    *
-   * This used to drop back to a hardcoded five when the server sent nothing,
-   * which is the failure it was supposed to prevent: with every role deleted the
-   * Roles page correctly showed none while this dropdown still offered Super
-   * Admin, Admin, Unit Admin, Employee and Agent — none of which existed. An
-   * empty list is information, not an error to paper over.
+   * The server builds both lists from the same resolver its create/update guards
+   * call, so an option shown here is one the API accepts, and a missing one is
+   * refused rather than merely hidden.
+   *
+   * No hardcoded fallback. An empty list means no assignable roles exist, and
+   * the form says so — it used to drop back to five names that in one case
+   * existed nowhere in the database.
    */
-  const userTypeOptions = options?.userTypeOptions ?? [];
+  const context = dialog.kind === "create" ? "direct_create" : "edit_user";
+  const contextOptions = options?.userTypeOptionsByContext?.[context];
+  const userTypeOptions = contextOptions ?? options?.userTypeOptions ?? [];
   const rolesLoaded = options !== null;
   const noRolesAvailable = rolesLoaded && userTypeOptions.length === 0;
 
+  const companyOptions = (options?.companies ?? []).map((company) => ({
+    value: company.id,
+    label: company.name,
+  }));
+
+  /*
+   * Units follow the companies that are actually selected.
+   *
+   * Grouped by company name because two companies each own a unit called
+   * "Ichapur" — a flat list would show the name twice with nothing to choose
+   * between them. The server re-checks the same rule on save; this list is the
+   * convenience, not the boundary.
+   */
+  const companyNameById = new Map((options?.companies ?? []).map((company) => [company.id, company.name]));
+
+  const unitOptions = (options?.unitOptions ?? [])
+    .filter((unit) => form.companyIds.includes(unit.companyId))
+    .map((unit) => ({
+      value: unit.id,
+      label: unit.name,
+      group: companyNameById.get(unit.companyId) ?? "",
+    }));
+
+  /*
+   * A unit whose company has just been unticked is dropped from the selection
+   * rather than left behind. Leaving it would submit a unit the server refuses,
+   * turning a policy boundary into what looks like a broken form.
+   */
+  const setCompanies = (nextCompanyIds) => {
+    const stillValid = new Set(
+      (options?.unitOptions ?? [])
+        .filter((unit) => nextCompanyIds.includes(unit.companyId))
+        .map((unit) => unit.id),
+    );
+
+    setForm((current) => ({
+      ...current,
+      companyIds: nextCompanyIds,
+      unitIds: current.unitIds.filter((id) => stillValid.has(id)),
+    }));
+  };
+
+  /*
+   * The primary unit is chosen, not derived.
+   *
+   * users.unit is the employee's home unit — the value attendance, payroll,
+   * imports and every unit filter read — so it is real employment data. It was
+   * briefly taken as the alphabetically first selection, which meant "Daduk
+   * beats Ichapur" decided where somebody worked. One unit needs no question;
+   * two or more do, and the server refuses the save without an answer.
+   */
+  const selectedUnits = unitOptions.filter((unit) => form.unitIds.includes(unit.value));
+  const needsPrimary = selectedUnits.length > 1;
+
   const userTypeValue =
-    userTypeOptions.find((item) => item.roleId && roleIds.includes(item.roleId))?.value
-    ?? userTypeOptions.find((item) => !item.roleId && item.tier === Number(form.role))?.value
-    ?? userTypeOptions.find((item) => item.tier === Number(form.role))?.value
+    userTypeOptions.find((item) => item.roleId === form.roleId)?.value
+    ?? userTypeOptions.find((item) => item.roleId && roleIds.includes(item.roleId))?.value
     ?? "";
 
   const selectUserType = (value) => {
     const picked = userTypeOptions.find((item) => item.value === value);
     if (!picked) return;
 
-    // Both halves move together: the numeric tier the legacy checks read, and
-    // the role assignment RBAC resolves. Picking one can no longer contradict
-    // the other, which is what having two fields allowed.
-    setForm((current) => ({ ...current, role: picked.tier }));
+    // The role id is the answer; the tier rides along for the legacy column and
+    // is recomputed server-side from the role's code, so the two halves can no
+    // longer disagree the way a separate type field and role checkbox did.
+    setForm((current) => ({ ...current, role: picked.tier, roleId: picked.roleId }));
     setRoleIds(picked.roleId ? [picked.roleId] : []);
   };
 
@@ -653,7 +731,13 @@ function ActionDialog({ dialog, options, token, tokenType, busy, setBusy, onDone
 
   const canSubmit = !busy
     && !(reasonMeta?.required && reason.trim().length < 5)
-    && !(dialog.kind === "create" && (!form.name || !form.email || !form.empCode || !form.password || !form.companyCode));
+    && !(dialog.kind === "create" && (
+      !form.name || !form.email || !form.empCode || !form.password
+      || !form.companyIds.length || !form.roleId
+    ))
+    // Two or more units without a primary is a save the server refuses; the
+    // button says so rather than letting the request fail.
+    && !(needsPrimary && !form.primaryUnitId);
 
   return (
     <Modal
@@ -715,7 +799,9 @@ function ActionDialog({ dialog, options, token, tokenType, busy, setBusy, onDone
                 {noRolesAvailable && <option value="">No active roles available</option>}
                 {rolesLoaded && !noRolesAvailable && <option value="">Select role</option>}
                 {userTypeOptions.map((item) => (
-                  <option key={item.value} value={item.value}>{item.label}</option>
+                  <option key={item.value} value={item.value} disabled={item.selectable === false}>
+                    {item.label}{item.selectable === false ? " (current — no longer assignable)" : ""}
+                  </option>
                 ))}
               </select>
               {noRolesAvailable && (
@@ -723,15 +809,68 @@ function ActionDialog({ dialog, options, token, tokenType, busy, setBusy, onDone
                   Create a role in Access Control → Roles before adding users.
                 </span>
               )}
+              {dialog.kind === "create" && (
+                <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
+                  Employee accounts are created from the Trial or Appointment form.
+                </span>
+              )}
             </label>
             <label className="block">
               <span className={labelClass}>Company *</span>
-              <input type="text" className={inputClass} value={form.companyCode} onChange={set("companyCode")} />
+              <CheckboxMultiSelect
+                ariaLabel="Company"
+                options={companyOptions}
+                value={form.companyIds}
+                onChange={setCompanies}
+                loading={!rolesLoaded}
+                placeholder="Select company"
+                emptyMessage="No companies are available to you."
+              />
             </label>
             <label className="block">
               <span className={labelClass}>Unit</span>
-              <input type="text" className={inputClass} value={form.unit} onChange={set("unit")} />
+              <CheckboxMultiSelect
+                ariaLabel="Unit"
+                options={unitOptions}
+                value={form.unitIds}
+                onChange={(next) => setForm((current) => ({
+                  ...current,
+                  unitIds: next,
+                  // A primary that is no longer selected is not a primary.
+                  primaryUnitId: next.includes(current.primaryUnitId)
+                    ? current.primaryUnitId
+                    : (next.length === 1 ? next[0] : null),
+                }))}
+                disabled={form.companyIds.length === 0}
+                loading={!rolesLoaded}
+                placeholder={form.companyIds.length === 0 ? "Select company first" : "Select unit"}
+                emptyMessage="No units are recorded for the selected companies."
+              />
             </label>
+
+            {needsPrimary && (
+              <label className="block">
+                <span className={labelClass}>Primary unit *</span>
+                <select
+                  className={inputClass}
+                  value={form.primaryUnitId ?? ""}
+                  onChange={(event) => setForm((current) => ({
+                    ...current,
+                    primaryUnitId: event.target.value ? Number(event.target.value) : null,
+                  }))}
+                >
+                  <option value="">Select primary unit</option>
+                  {selectedUnits.map((unit) => (
+                    <option key={unit.value} value={unit.value}>
+                      {unit.group ? `${unit.group} — ${unit.label}` : unit.label}
+                    </option>
+                  ))}
+                </select>
+                <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
+                  The home unit attendance, payroll and unit filters read.
+                </span>
+              </label>
+            )}
             <label className="block">
               <span className={labelClass}>Department</span>
               <input type="text" className={inputClass} value={form.department} onChange={set("department")} />

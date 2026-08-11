@@ -89,10 +89,24 @@ const otherAgent: Actor = { id: 11, role: 4, type: 'agent', company_code: 'nidhi
 
 let repo: FakeRepo;
 let service: TrialFormService;
+/*
+ * Provisioning is stubbed, not mocked away.
+ *
+ * These tests run against a fake repository with no database behind it, so the
+ * real provisioner would fail on a foreign key for a user that was never
+ * inserted. Recording the calls keeps the assertion that matters — a trial form
+ * gets the employee tier, and gets it from the server rather than the payload.
+ */
+const provisioned: Array<{ userId: number; tier: number; companyCode: string | null }> = [];
 
 beforeEach(() => {
   repo = new FakeRepo();
-  service = new TrialFormService(repo);
+  provisioned.length = 0;
+  service = new TrialFormService(repo, {
+    async provision(userId, tier, companyCode) {
+      provisioned.push({ userId, tier, companyCode });
+    },
+  });
 });
 
 describe('stripProtectedFields', () => {
@@ -214,6 +228,18 @@ describe('create', () => {
     expect(repo.created[0]!.role).toBe(3);
     expect(repo.created[0]).not.toHaveProperty('password');
     expect(repo.created[0]).not.toHaveProperty('is_deleted');
+
+    // And the canonical assignment follows the server's tier, not the body's.
+    expect(provisioned).toHaveLength(1);
+    expect(provisioned[0]!.tier).toBe(3);
+  });
+
+  it('provisions the canonical employee role with the form’s company', async () => {
+    await service.create(admin1, { name: 'Candidate', company_code: 'silver-star' });
+
+    expect(provisioned).toEqual([
+      { userId: expect.any(Number), tier: 3, companyCode: 'silver-star' },
+    ]);
   });
 });
 

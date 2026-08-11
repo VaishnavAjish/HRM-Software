@@ -269,16 +269,32 @@ describe('guardPrivilegedFields', () => {
 describe('create', () => {
   let repo: FakeRepo;
   let service: EmployeeService;
+  // Stubbed because this suite has no database behind its fake repository; the
+  // recorded calls are what let the canonical-role assertions below stand.
+  let provisioned: Array<{ userId: number; tier: number; companyCode: string | null }>;
 
   beforeEach(() => {
     repo = new FakeRepo([]);
-    service = new EmployeeService(repo);
+    provisioned = [];
+    service = new EmployeeService(repo, {
+      async provision(userId, tier, companyCode) {
+        provisioned.push({ userId, tier, companyCode });
+      },
+    });
   });
 
   const valid = { name: 'New Worker', company_code: 'nidhi-impex', unit: 'Ichapur', role: 3 };
 
   it('creates an employee', async () => {
     await expect(service.create(admin1, valid)).resolves.toMatchObject({ name: 'New Worker' });
+  });
+
+  it('gives the new account its canonical role rather than only the tier', async () => {
+    await service.create(admin1, valid);
+
+    expect(provisioned).toEqual([
+      { userId: expect.any(Number), tier: 3, companyCode: 'nidhi-impex' },
+    ]);
   });
 
   it('refuses an admin account unless the caller is a super admin', async () => {

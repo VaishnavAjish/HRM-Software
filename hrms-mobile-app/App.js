@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { LayoutDashboard, UserPlus, FileText as FileTextIcon, Home, Ticket, User, Users, CalendarCheck, Grid3x3 } from 'lucide-react-native';
+import { LayoutDashboard, UserPlus, FileText as FileTextIcon, Home, Ticket, User, Users, CalendarCheck, Wallet, FileCheck } from 'lucide-react-native';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { ThemeProvider, useTheme } from './src/context/ThemeContext';
 import { Header } from './src/components/common/Header';
@@ -15,11 +15,31 @@ import { AgentAppointmentsScreen } from './src/screens/agent/AgentAppointmentsSc
 import { AgentTrialScreen } from './src/screens/agent/AgentTrialScreen';
 import { AdminDashboardScreen } from './src/screens/admin/AdminDashboardScreen';
 import { AdminEmployeesScreen } from './src/screens/admin/AdminEmployeesScreen';
-import { AdminAttendanceScreen } from './src/screens/admin/AdminAttendanceScreen';
+import { AdminSalaryScreen } from './src/screens/admin/AdminSalaryScreen';
+import { AdminFormsScreen } from './src/screens/admin/AdminFormsScreen';
 import { AdminMoreScreen } from './src/screens/admin/AdminMoreScreen';
 import { TicketScreen } from './src/screens/TicketScreen';
 import { ProfileScreen } from './src/screens/ProfileScreen';
 import { computeProfileCompletion } from './src/utils/profileCompletion';
+
+function MoreIcon({ size = 20, color = '#64748B' }) {
+  const s = Math.round(size * 0.32);
+  const g = Math.round(size * 0.16);
+  return (
+    <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
+      <View style={{ flexDirection: 'row', gap: g }}>
+        <View style={{ width: s, height: s, borderRadius: 2, backgroundColor: color }} />
+        <View style={{ width: s, height: s, borderRadius: 2, backgroundColor: color }} />
+      </View>
+      <View style={{ flexDirection: 'row', gap: g, marginTop: g }}>
+        <View style={{ width: s, height: s, borderRadius: 2, backgroundColor: color }} />
+        <View style={{ width: s, height: s, borderRadius: 2, backgroundColor: color }} />
+      </View>
+    </View>
+  );
+}
+
+import { AdminTicketsScreen } from './src/screens/admin/AdminTicketsScreen';
 
 const EMPLOYEE_TABS = [
   { id: 'home', label: 'Home', icon: Home },
@@ -28,8 +48,6 @@ const EMPLOYEE_TABS = [
   { id: 'profile', label: 'Profile', icon: User },
 ];
 
-// Profile is a tab for agents too: logout lives on that screen now, so without
-// it an agent would have no way to sign out.
 const AGENT_TABS = [
   { id: 'agent-dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'agent-appointments', label: 'Appointment', icon: UserPlus },
@@ -37,16 +55,12 @@ const AGENT_TABS = [
   { id: 'profile', label: 'Profile', icon: User },
 ];
 
-// Web's admin nav has ~12 destinations across Dashboard/Employees/Salary/
-// Attendance/Appointments/Trial Form/Tickets/admin accounts — a phone tab bar
-// only fits ~5, so only the two highest-frequency actions (Employees,
-// Attendance) get their own tab; everything else collapses into "More".
 const ADMIN_TABS = [
   { id: 'admin-dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'admin-employees', label: 'Employees', icon: Users },
-  { id: 'admin-attendance', label: 'Attendance', icon: CalendarCheck },
-  { id: 'admin-more', label: 'More', icon: Grid3x3 },
-  { id: 'profile', label: 'Profile', icon: User },
+  { id: 'admin-salary', label: 'Salary', icon: Wallet },
+  { id: 'admin-forms', label: 'Forms', icon: FileCheck },
+  { id: 'admin-tickets', label: 'Tickets', icon: Ticket },
 ];
 
 function MainAppContent() {
@@ -55,15 +69,12 @@ function MainAppContent() {
   const isAgent = role === 'agent';
   const isAdmin = role === 'admin';
   const [activeTab, setActiveTab] = useState(isAgent ? 'agent-dashboard' : isAdmin ? 'admin-dashboard' : 'home');
-  // A ticket conversation takes over the whole screen, WhatsApp-style, so the
-  // app chrome gets out of the way while one is open.
   const [immersive, setImmersive] = useState(false);
 
-  React.useEffect(() => { setImmersive(false); }, [activeTab]);
+  React.useEffect(() => {
+    setImmersive(false);
+  }, [activeTab]);
 
-  // Employees must finish their profile before they can use anything else —
-  // mirrors the web's ProtectedRoute redirect-to-profile-until-100% behavior.
-  // Agents and admins skip this gate entirely, same as agents already did.
   const profileComplete = isAgent || isAdmin || computeProfileCompletion(user).isComplete;
 
   React.useEffect(() => {
@@ -80,8 +91,6 @@ function MainAppContent() {
     }
   }, [isAgent, isAdmin, profileComplete, activeTab]);
 
-  // Once a previously-incomplete profile crosses 100%, jump straight to Home
-  // instead of leaving the employee stranded on the Profile tab.
   const prevProfileCompleteRef = React.useRef(profileComplete);
   React.useEffect(() => {
     if (!isAgent && !isAdmin && !prevProfileCompleteRef.current && profileComplete) {
@@ -116,12 +125,12 @@ function MainAppContent() {
       switch (activeTab) {
         case 'admin-employees':
           return <AdminEmployeesScreen />;
-        case 'admin-attendance':
-          return <AdminAttendanceScreen />;
-        case 'admin-more':
-          return <AdminMoreScreen />;
-        case 'profile':
-          return <ProfileScreen />;
+        case 'admin-salary':
+          return <AdminSalaryScreen />;
+        case 'admin-forms':
+          return <AdminFormsScreen />;
+        case 'admin-tickets':
+          return <AdminTicketsScreen onImmersiveChange={setImmersive} />;
         default:
           return <AdminDashboardScreen />;
       }

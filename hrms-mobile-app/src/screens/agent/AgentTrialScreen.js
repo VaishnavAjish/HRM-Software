@@ -87,7 +87,7 @@ function AdminTrialRow({ trial, onView, onToggleApproval, onDelete, busy }) {
 // caller's own). Unlike Appointments, this backend endpoint never got
 // pagination, so it's fetched whole and filtered client-side like the
 // original agent view — just with a wider scope and admin-only actions.
-function AdminTrialList({ onOpen }) {
+export function AdminTrialList({ onOpen }) {
   const { theme } = useTheme();
   const { user } = useAuth();
   const canSwitchCompany = [0, 1].includes(Number(user?.role));
@@ -183,10 +183,6 @@ function AdminTrialList({ onOpen }) {
         <EmptyState icon={AlertCircle} title="Couldn't load trial forms" message={error} tone="error" actionLabel="Retry" onAction={() => load()} />
       ) : (
         <>
-          <View style={styles.statsRow}>
-            <StatCard icon={Users} label="Total" value={trials.length} tint="cyan" />
-          </View>
-
           <SearchField value={search} onChangeText={setSearch} placeholder="Search by name, mobile…" style={styles.search} />
           <View style={styles.filterRow}>
             <View style={{ flex: 1 }}>

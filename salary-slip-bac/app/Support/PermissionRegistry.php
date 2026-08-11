@@ -831,6 +831,98 @@ class PermissionRegistry
             'description' => 'Delete a role.',
             'implies' => ['admin.role.delete'],
         ],
+        /*
+         * Company & Unit — the tenant master data.
+         *
+         * CRITICAL throughout, including the page itself, which is a higher
+         * sensitivity than Users or Roles carry. That is deliberate: a role
+         * governs what someone may do, and a company governs which records
+         * exist for them at all. Renaming a company code moves every account
+         * that carries it, so this page reaches further than either.
+         *
+         * The `api` mappings are the real method+URI pairs from routes/api.php.
+         * RegistryApiContractTest asserts each one resolves, is protected, and
+         * enforces a code this node implies — the API Permissions tab once
+         * listed nine endpoints that did not exist.
+         */
+        'ui.access_control.company_units' => [
+            'type' => self::TYPE_PAGE, 'label' => 'Company & Unit', 'order' => 25,
+            'parent' => 'ui.access_control', 'route' => '/admin/access-control/company-units',
+            'sensitivity' => self::SENSITIVITY_CRITICAL,
+            'description' => 'Manage companies and the units that belong to them.',
+            'implies' => ['admin.company.read'],
+            'api' => [['GET', '/api/v1/admin/companies']],
+        ],
+        'ui.access_control.company_units.companies' => [
+            'type' => self::TYPE_FEATURE, 'label' => 'Companies', 'order' => 10,
+            'parent' => 'ui.access_control.company_units', 'sensitivity' => self::SENSITIVITY_CRITICAL,
+            'description' => 'View the company master list.',
+            'implies' => ['admin.company.read'],
+            'api' => [['GET', '/api/v1/admin/companies']],
+        ],
+        'ui.access_control.company_units.companies.create' => [
+            'type' => self::TYPE_ACTION, 'label' => 'Create Company', 'order' => 10,
+            'parent' => 'ui.access_control.company_units.companies', 'sensitivity' => self::SENSITIVITY_CRITICAL,
+            'description' => 'Create a company. The code becomes a tenant key.',
+            'implies' => ['admin.company.create'],
+            'api' => [['POST', '/api/v1/admin/companies']],
+        ],
+        'ui.access_control.company_units.companies.update' => [
+            'type' => self::TYPE_ACTION, 'label' => 'Update Company', 'order' => 20,
+            'parent' => 'ui.access_control.company_units.companies', 'sensitivity' => self::SENSITIVITY_CRITICAL,
+            'description' => 'Rename a company. The code is locked once anything depends on it.',
+            'implies' => ['admin.company.update'],
+            'api' => [['PUT', '/api/v1/admin/companies/{id}']],
+        ],
+        'ui.access_control.company_units.companies.status' => [
+            'type' => self::TYPE_ACTION, 'label' => 'Activate / Deactivate Company', 'order' => 30,
+            'parent' => 'ui.access_control.company_units.companies', 'sensitivity' => self::SENSITIVITY_CRITICAL,
+            'description' => 'Withdraw a company from new assignments, keeping its history.',
+            'implies' => ['admin.company.status'],
+            'api' => [['PATCH', '/api/v1/admin/companies/{id}/status']],
+        ],
+        'ui.access_control.company_units.companies.delete' => [
+            'type' => self::TYPE_ACTION, 'label' => 'Delete Company', 'order' => 40,
+            'parent' => 'ui.access_control.company_units.companies', 'sensitivity' => self::SENSITIVITY_CRITICAL,
+            'description' => 'Delete a company. Refused while any user or unit depends on it.',
+            'implies' => ['admin.company.delete'],
+            'api' => [['DELETE', '/api/v1/admin/companies/{id}']],
+        ],
+        'ui.access_control.company_units.units' => [
+            'type' => self::TYPE_FEATURE, 'label' => 'Units', 'order' => 20,
+            'parent' => 'ui.access_control.company_units', 'sensitivity' => self::SENSITIVITY_PRIVILEGED,
+            'description' => 'View the units belonging to each company.',
+            'implies' => ['admin.unit.read'],
+            'api' => [['GET', '/api/v1/admin/units'], ['GET', '/api/v1/admin/units/legacy']],
+        ],
+        'ui.access_control.company_units.units.create' => [
+            'type' => self::TYPE_ACTION, 'label' => 'Create Unit', 'order' => 10,
+            'parent' => 'ui.access_control.company_units.units', 'sensitivity' => self::SENSITIVITY_PRIVILEGED,
+            'description' => 'Create a unit under a company, or adopt a legacy unit name into one.',
+            'implies' => ['admin.unit.create'],
+            'api' => [['POST', '/api/v1/admin/units'], ['POST', '/api/v1/admin/units/legacy/adopt']],
+        ],
+        'ui.access_control.company_units.units.update' => [
+            'type' => self::TYPE_ACTION, 'label' => 'Update Unit', 'order' => 20,
+            'parent' => 'ui.access_control.company_units.units', 'sensitivity' => self::SENSITIVITY_CRITICAL,
+            'description' => 'Rename a unit. Its company is locked once users are assigned.',
+            'implies' => ['admin.unit.update'],
+            'api' => [['PUT', '/api/v1/admin/units/{id}']],
+        ],
+        'ui.access_control.company_units.units.status' => [
+            'type' => self::TYPE_ACTION, 'label' => 'Activate / Deactivate Unit', 'order' => 30,
+            'parent' => 'ui.access_control.company_units.units', 'sensitivity' => self::SENSITIVITY_PRIVILEGED,
+            'description' => 'Withdraw a unit from new assignments, keeping its history.',
+            'implies' => ['admin.unit.status'],
+            'api' => [['PATCH', '/api/v1/admin/units/{id}/status']],
+        ],
+        'ui.access_control.company_units.units.delete' => [
+            'type' => self::TYPE_ACTION, 'label' => 'Delete Unit', 'order' => 40,
+            'parent' => 'ui.access_control.company_units.units', 'sensitivity' => self::SENSITIVITY_CRITICAL,
+            'description' => 'Delete a unit. Refused while any user is assigned to it.',
+            'implies' => ['admin.unit.delete'],
+            'api' => [['DELETE', '/api/v1/admin/units/{id}']],
+        ],
         'ui.access_control.permission_matrix' => [
             'type' => self::TYPE_PAGE, 'label' => 'Permission Matrix', 'order' => 30,
             'parent' => 'ui.access_control', 'route' => '/admin/access-control/permission-matrix',

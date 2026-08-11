@@ -4,16 +4,16 @@ import { X, Square, CheckSquare } from 'lucide-react-native';
 import { useTheme } from '../../context/ThemeContext';
 import { typography } from '../../theme';
 
-// Wraps a FlatList with a checkbox-select mode: long-press any row to enter
-// selection, tap toggles thereafter, a header bar shows "N selected" plus
-// whatever bulk actions the caller supplies. Shared by Employees (bulk
-// delete), Shifts (assign employees), and Tickets (bulk actions).
 export function BulkSelectList({
   data,
   keyExtractor,
+  renderItem,
   renderRow,
+  bulkActions,
   renderBulkActions,
+  ListEmptyComponent,
   emptyComponent,
+  ListFooterComponent,
   footerComponent,
   refreshControl,
   onEndReached,
@@ -23,6 +23,10 @@ export function BulkSelectList({
   const { theme } = useTheme();
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
+
+  const rowRenderer = renderItem || renderRow;
+  const emptyRes = ListEmptyComponent || emptyComponent;
+  const footerRes = ListFooterComponent || footerComponent;
 
   const toggle = (id) => {
     setSelectedIds((prev) => {
@@ -52,21 +56,37 @@ export function BulkSelectList({
             <X size={18} color={theme.textPrimary} />
             <Text style={[styles.barTitle, { color: theme.textPrimary }]}>{selectedIds.size} selected</Text>
           </TouchableOpacity>
-          {renderBulkActions ? renderBulkActions(Array.from(selectedIds), { clearSelection }) : null}
+          {Array.isArray(bulkActions) && bulkActions.length > 0 ? (
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {bulkActions.map((action) => (
+                <TouchableOpacity
+                  key={action.key || action.label}
+                  onPress={() => action.onPress(Array.from(selectedIds))}
+                  style={[styles.actionBtn, action.variant === 'destructive' && { backgroundColor: theme.roseBg }]}
+                >
+                  <Text style={[styles.actionText, action.variant === 'destructive' && { color: theme.rose }]}>
+                    {action.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : renderBulkActions ? (
+            renderBulkActions(Array.from(selectedIds), { clearSelection })
+          ) : null}
         </View>
       ) : null}
 
       <FlatList
-        data={data}
-        keyExtractor={keyExtractor}
+        data={Array.isArray(data) ? data : []}
+        keyExtractor={keyExtractor || ((item, index) => String(item?.id || index))}
         contentContainerStyle={contentContainerStyle}
         refreshControl={refreshControl}
         onEndReached={onEndReached}
         onEndReachedThreshold={onEndReachedThreshold}
-        ListEmptyComponent={emptyComponent}
-        ListFooterComponent={footerComponent}
-        renderItem={({ item }) => {
-          const id = keyExtractor(item);
+        ListEmptyComponent={emptyRes}
+        ListFooterComponent={footerRes}
+        renderItem={({ item, index }) => {
+          const id = keyExtractor ? keyExtractor(item) : String(item?.id || index);
           const selected = selectedIds.has(id);
           return (
             <View style={styles.rowWrap}>
@@ -76,12 +96,11 @@ export function BulkSelectList({
                 </TouchableOpacity>
               ) : null}
               <View style={{ flex: 1 }}>
-                {renderRow(item, {
-                  selected,
-                  selectionMode,
-                  toggle: () => toggle(id),
-                  enterSelection: () => enterSelection(id),
-                })}
+                {rowRenderer
+                  ? rowRenderer(item, selected, toggle, selectionMode, {
+                      enterSelection: () => enterSelection(id),
+                    })
+                  : null}
               </View>
             </View>
           );
@@ -98,10 +117,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 10,
-    borderBottomWidth: 1,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  barLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  barLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   barTitle: { ...typography.body, fontWeight: '700' },
-  rowWrap: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16 },
-  checkbox: { marginRight: 10 },
+  rowWrap: { flexDirection: 'row', alignItems: 'center' },
+  checkbox: { paddingRight: 10 },
+  actionBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
+  actionText: { ...typography.micro, fontWeight: '700' },
 });

@@ -13,7 +13,7 @@ export function SelectField({ label, value, onChange, options, placeholder = 'Se
   const [query, setQuery] = useState('');
 
   const normalized = useMemo(
-    () => options.map((o) => (typeof o === 'string' ? { value: o, label: o } : o)),
+    () => (Array.isArray(options) ? options : []).map((o) => (typeof o === 'string' ? { value: o, label: o } : o)),
     [options]
   );
 

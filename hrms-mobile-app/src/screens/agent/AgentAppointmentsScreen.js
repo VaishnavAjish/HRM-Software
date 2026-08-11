@@ -37,7 +37,7 @@ const PAGE_SIZE = 20;
 // Staff-wide, server-paginated register — every agent's submissions, not just
 // the caller's own. Distinct data source/shape from useAgentCandidates(),
 // which is why this lives inline here rather than reusing that hook.
-function AdminAppointmentsList({ onOpen }) {
+export function AdminAppointmentsList({ onOpen }) {
   const { theme } = useTheme();
   const { user } = useAuth();
   const canSwitchCompany = [0, 1].includes(Number(user?.role));
@@ -101,9 +101,6 @@ function AdminAppointmentsList({ onOpen }) {
   return (
     <View style={styles.screen}>
       <View style={styles.adminHeaderArea}>
-        <View style={styles.statsRow}>
-          <StatCard icon={Users} label="Total" value={total} tint="cyan" />
-        </View>
         <SearchField value={search} onChangeText={setSearch} placeholder="Search by name, code, mobile…" style={styles.search} />
         <View style={styles.filterRow}>
           <View style={{ flex: 1 }}>
@@ -226,5 +223,5 @@ const styles = StyleSheet.create({
   sectionTitle: { ...typography.h3, marginBottom: 12 },
   adminHeaderArea: { paddingHorizontal: 16, paddingTop: 16 },
   filterRow: { flexDirection: 'row', gap: 10 },
-  adminListContent: { paddingHorizontal: 16, paddingBottom: 40 },
+  adminListContent: { paddingHorizontal: 16, paddingBottom: 110 },
 });

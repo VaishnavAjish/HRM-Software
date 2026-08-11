@@ -2,6 +2,11 @@ import { ResourceError } from '../../lib/errors.js';
 import { isValid, normalise } from '../../lib/laravel/aadhaar.js';
 import { serializeUser, type SerializedUser } from '../users/user.serializer.js';
 import {
+  PROVISIONING_SOURCE,
+  prismaProvisioner,
+  type Provisioner,
+} from '../provisioning/provisioning.service.js';
+import {
   companyCodesOf,
   mayDiscloseAadhaar,
   scopeFor,
@@ -82,7 +87,10 @@ export function stripProtectedFields(data: Record<string, unknown>): Record<stri
 }
 
 export class TrialFormService {
-  constructor(private readonly repo: TrialFormRepository) {}
+  constructor(
+    private readonly repo: TrialFormRepository,
+    private readonly provisioner: Provisioner = prismaProvisioner,
+  ) {}
 
   /** GET /api/trial-form/list — unprocessed forms only. */
   async list(
@@ -129,7 +137,18 @@ export class TrialFormService {
       throw new ResourceError('The company code field is required.', 422);
     }
 
-    return serializeUser(await this.repo.create(data));
+    const created = await this.repo.create(data);
+
+    // Same rule as the Laravel path: the Employee role is resolved by the
+    // server from its canonical code, never taken from the submission.
+    await this.provisioner.provision(
+      Number(created.id),
+      3,
+      (data.company_code as string | null) ?? null,
+      PROVISIONING_SOURCE.TRIAL,
+    );
+
+    return serializeUser(created);
   }
 
   async update(actor: Actor, id: number, input: Record<string, unknown>): Promise<void> {

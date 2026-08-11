@@ -13,7 +13,7 @@ import PrintableForm from "../../components/forms/PrintableForm";
 import { authApi, salaryApi, appointmentV1Api, resolveWriteCompanyId } from "../../utils/api";
 import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";
-import { getCompanyUnits, COMPANY_OPTIONS } from "../../config/companyConfig";
+import { useProvisioningOptions } from "../../hooks/useProvisioningOptions";
 import useIsMobile from "../../hooks/useIsMobile";
 import usePhotoCapture from "../../hooks/usePhotoCapture";
 import AppointmentDocumentsStep from "./AppointmentDocumentsStep";
@@ -328,9 +328,12 @@ const AppointmentModal = ({
     setPhotoPreview("");
   };
 
-  const unitOptions = selectedCompanyId
-    ? getCompanyUnits(selectedCompanyId)
-    : [];
+  // Canonical master data rather than a build-time constant: a company added in
+  // Company & Unit Management is offered here without a rebuild, and the list
+  // is already scoped to what the server will accept on write.
+  const { companies: companyOptions, unitsForCompany } = useProvisioningOptions();
+
+  const unitOptions = unitsForCompany(selectedCompanyId).map((unit) => unit.name);
 
   const [formData, setFormData] = useState(() =>
     getBlankFormData(isAllCompanies ? "" : companyId),
@@ -1572,9 +1575,9 @@ const AppointmentModal = ({
                         className={`border-b flex-grow h-6 outline-none text-[13px] bg-transparent ${errors.company_code ? "border-red-500" : "border-black"}`}
                       >
                         <option value="">Select Company</option>
-                        {COMPANY_OPTIONS.map((co) => (
-                          <option key={co.id} value={co.id}>
-                            {co.label}
+                        {companyOptions.map((company) => (
+                          <option key={company.id} value={company.code}>
+                            {company.name}
                           </option>
                         ))}
                       </select>

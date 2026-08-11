@@ -247,7 +247,7 @@ function AssignShift({ shift, onDone, onCancel }) {
   );
 }
 
-export function AdminShiftsScreen() {
+export function AdminShiftsScreen({ onBack }) {
   const { theme } = useTheme();
   const { user } = useAuth();
   const canSwitchCompany = [0, 1].includes(Number(user?.role));

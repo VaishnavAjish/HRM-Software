@@ -46,6 +46,7 @@ const Settings = lazy(() => import("./pages/admin/Settings"));
 const PermissionMatrix = lazy(() => import("./features/permissionMatrix/pages/PermissionMatrixPage"));
 const AccessControlUsers = lazy(() => import("./pages/admin/accessControl/AccessControlUsers"));
 const Roles = lazy(() => import("./pages/admin/accessControl/Roles"));
+const CompanyUnits = lazy(() => import("./pages/admin/accessControl/CompanyUnits"));
 const Policies = lazy(() => import("./pages/admin/accessControl/Policies"));
 const AccessRequests = lazy(() => import("./pages/admin/accessControl/AccessRequests"));
 const Delegations = lazy(() => import("./pages/admin/accessControl/Delegations"));
@@ -375,6 +376,14 @@ function AppRoutes() {
           element={
             <ProtectedRoute requiredPermission="admin.role.read">
               <Roles />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="access-control/company-units"
+          element={
+            <ProtectedRoute requiredPermission="admin.company.read">
+              <CompanyUnits />
             </ProtectedRoute>
           }
         />

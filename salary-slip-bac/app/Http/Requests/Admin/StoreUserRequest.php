@@ -21,8 +21,24 @@ class StoreUserRequest extends FormRequest
             'empCode' => ['required', 'string', 'max:64', Rule::unique('users', 'emp_code')],
             'mobile' => ['nullable', 'string', 'max:20', Rule::unique('users', 'mobile_number')],
             'password' => ['required', 'string', 'min:8', 'max:128'],
-            'role' => ['required', 'integer', Rule::in([0, 1, 2, 3, 4])],
-            'companyCode' => ['required', 'string', 'max:190'],
+            // The tier is legacy and advisory. The account's identity comes from
+            // roleId, and the tier is recomputed from that role's code — a
+            // request may no longer name a type and a contradicting role.
+            'role' => ['nullable', 'integer', Rule::in([0, 1, 2, 3, 4])],
+            'roleId' => ['required_without:role', 'nullable', 'integer', 'exists:roles,id'],
+            // Either shape is accepted: companyIds is canonical, companyCode is
+            // what the form sent before companies were records rather than text.
+            'companyCode' => ['required_without:companyIds', 'nullable', 'string', 'max:190'],
+            'companyIds' => ['nullable', 'array', 'max:50'],
+            'companyIds.*' => ['integer'],
+            // unit is the legacy single value the scope queries still match on;
+            // unitIds is the membership. Sending unitIds overwrites unit with
+            // the primary, so the two cannot disagree.
+            'unitIds' => ['nullable', 'array', 'max:50'],
+            'unitIds.*' => ['integer'],
+            // Which of them is the home unit. Required by the service when more
+            // than one is selected, rather than decided by the alphabet.
+            'primaryUnitId' => ['nullable', 'integer'],
             'unit' => ['nullable', 'string', 'max:190'],
             'department' => ['nullable', 'string', 'max:190'],
             'designation' => ['nullable', 'string', 'max:190'],
@@ -65,8 +81,12 @@ class StoreUserRequest extends FormRequest
             'emp_code' => $data['empCode'],
             'mobile_number' => $data['mobile'] ?? null,
             'password' => $data['password'],
-            'role' => (int) $data['role'],
-            'company_code' => $data['companyCode'],
+            'role' => isset($data['role']) ? (int) $data['role'] : null,
+            'roleId' => $data['roleId'] ?? null,
+            'company_code' => $data['companyCode'] ?? '',
+            'companyIds' => $data['companyIds'] ?? [],
+            'unitIds' => $data['unitIds'] ?? [],
+            'primaryUnitId' => $data['primaryUnitId'] ?? null,
             'unit' => $data['unit'] ?? null,
             'department' => $data['department'] ?? null,
             'designation' => $data['designation'] ?? null,

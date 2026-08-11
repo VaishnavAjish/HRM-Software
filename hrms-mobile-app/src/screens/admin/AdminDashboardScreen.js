@@ -1,39 +1,102 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, RefreshControl } from 'react-native';
-import { Users, UserCheck, Wallet, FileText, AlertCircle, UploadCloud } from 'lucide-react-native';
+import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity } from 'react-native';
+import { Users, UserCheck, Wallet, FileText, AlertCircle, ChevronDown, ChevronUp, Activity, CheckCircle2 } from 'lucide-react-native';
+import Svg, { G, Circle } from 'react-native-svg';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
-import { typography } from '../../theme';
+import { typography, shadows } from '../../theme';
 import { api } from '../../services/api';
 import { Card } from '../../components/common/Card';
-import { StatCard } from '../../components/common/StatCard';
 import { Badge } from '../../components/common/Badge';
-import { SelectField } from '../../components/common/SelectField';
 import { LoadingView } from '../../components/common/LoadingView';
 import { EmptyState } from '../../components/common/EmptyState';
-import { formatCurrency, monthName, timeAgo } from '../../utils/format';
-import { COMPANY_OPTIONS } from '../../utils/companyConfig';
+import { formatCurrency, monthName } from '../../utils/format';
 
-const COMPANY_FILTER_OPTIONS = [{ value: 'all', label: 'All Companies' }, ...COMPANY_OPTIONS];
+const DONUT_COLORS = [
+  '#2563EB', // Blue
+  '#059669', // Emerald
+  '#7C3AED', // Violet
+  '#3B82F6', // Light Blue
+  '#10B981', // Mint Green
+  '#F59E0B', // Amber
+  '#EC4899', // Pink
+  '#6366F1', // Indigo
+];
+
+function DonutChart({ data, size = 126, strokeWidth = 20 }) {
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const total = useMemo(() => data.reduce((acc, item) => acc + (Number(item.value) || 0), 0), [data]);
+
+  if (total === 0) {
+    return (
+      <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <Circle cx={size / 2} cy={size / 2} r={radius} stroke="#E2E8F0" strokeWidth={strokeWidth} fill="transparent" />
+      </Svg>
+    );
+  }
+
+  let accumulatedPercent = 0;
+
+  return (
+    <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <G rotation="-90" origin={`${size / 2}, ${size / 2}`}>
+        {data.map((item, index) => {
+          const val = Number(item.value) || 0;
+          const percent = val / total;
+          const strokeDasharray = `${Math.max(1, percent * circumference - 2)} ${circumference}`;
+          const strokeDashoffset = -accumulatedPercent * circumference;
+          accumulatedPercent += percent;
+
+          return (
+            <Circle
+              key={item.label || index}
+              cx={size / 2}
+              cy={size / 2}
+              r={radius}
+              stroke={item.color}
+              strokeWidth={strokeWidth}
+              strokeDasharray={strokeDasharray}
+              strokeDashoffset={strokeDashoffset}
+              fill="transparent"
+            />
+          );
+        })}
+      </G>
+    </Svg>
+  );
+}
+
+function MetricBox({ icon: Icon, label, value, badgeLabel, badgeVariant, tintColor }) {
+  const { theme } = useTheme();
+  return (
+    <Card style={styles.kpiCard} elevated>
+      <View style={styles.kpiHeader}>
+        <View style={[styles.iconWrap, { backgroundColor: tintColor + '15' }]}>
+          <Icon size={18} color={tintColor} />
+        </View>
+        {badgeLabel ? <Badge label={badgeLabel} variant={badgeVariant || 'emerald'} size="small" /> : null}
+      </View>
+      <Text style={[styles.kpiVal, { color: theme.textPrimary }]}>{value}</Text>
+      <Text style={[styles.kpiLbl, { color: theme.textMuted }]}>{label}</Text>
+    </Card>
+  );
+}
 
 export function AdminDashboardScreen() {
   const { theme } = useTheme();
   const { user } = useAuth();
-  // Role 0 (Super Admin) and role 1 (company-wide Admin) can switch which
-  // company's numbers they're looking at; role 2 is hard-locked server-side
-  // to their own company_code+unit, so the switcher is pointless for them.
-  const canSwitchCompany = [0, 1].includes(Number(user?.role));
-  const [companyFilter, setCompanyFilter] = useState('all');
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
+  const [expandedDept, setExpandedDept] = useState(null);
 
   const load = useCallback(async (isRefresh = false) => {
     isRefresh ? setRefreshing(true) : setLoading(true);
     setError(null);
     try {
-      const res = await api.getAdminDashboard(canSwitchCompany ? { company_code: companyFilter } : {});
+      const res = await api.getAdminDashboard({});
       if (res?.status) {
         setData(res.data);
       } else {
@@ -45,16 +108,19 @@ export function AdminDashboardScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [canSwitchCompany, companyFilter]);
+  }, []);
 
-  useEffect(() => { load(); }, [companyFilter]);
+  useEffect(() => { load(); }, []);
 
   const departments = useMemo(() => {
     const list = data?.department_distribution || [];
-    const maxCount = Math.max(1, ...list.map((d) => Number(d.total_employees) || 0));
     return [...list]
       .sort((a, b) => (Number(b.total_employees) || 0) - (Number(a.total_employees) || 0))
-      .map((d) => ({ ...d, pct: Math.round(((Number(d.total_employees) || 0) / maxCount) * 100) }));
+      .map((d, idx) => ({
+        ...d,
+        color: DONUT_COLORS[idx % DONUT_COLORS.length],
+        value: Number(d.total_employees) || 0,
+      }));
   }, [data]);
 
   const monthlyStats = useMemo(() => {
@@ -63,9 +129,7 @@ export function AdminDashboardScreen() {
     return list.map((m) => ({ ...m, pct: Math.round(((Number(m.total_net) || 0) / maxNet) * 100) }));
   }, [data]);
 
-  const recentBatches = data?.recent_batches || [];
-
-  if (loading) return <LoadingView fullscreen label="Loading dashboard…" />;
+  if (loading) return <LoadingView fullscreen label="Loading executive dashboard…" />;
 
   return (
     <ScrollView
@@ -73,88 +137,151 @@ export function AdminDashboardScreen() {
       contentContainerStyle={styles.content}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={theme.primary} />}
     >
-      <Text style={[styles.title, { color: theme.textPrimary }]}>Dashboard</Text>
-
-      {canSwitchCompany ? (
-        <SelectField
-          label="Company"
-          value={companyFilter}
-          onChange={setCompanyFilter}
-          options={COMPANY_FILTER_OPTIONS}
-          searchable={false}
-        />
-      ) : null}
-
       {error ? (
         <EmptyState icon={AlertCircle} title="Couldn't load dashboard" message={error} tone="error" actionLabel="Retry" onAction={() => load()} />
       ) : (
         <>
-          <View style={styles.statsRow}>
-            <StatCard icon={Users} label="Total Employees" value={data?.total_employee ?? 0} tint="cyan" />
-            <StatCard icon={UserCheck} label="Active" value={data?.active_employee ?? 0} tint="emerald" />
-          </View>
-          <View style={styles.statsRow}>
-            <StatCard icon={Wallet} label="Salary Paid" value={formatCurrency(data?.total_salary_paid)} tint="primary" />
-            <StatCard icon={FileText} label="Payslips" value={data?.total_slips ?? 0} tint="amber" />
+          {/* Executive Metrics 2x2 Grid */}
+          <View style={styles.kpiGrid}>
+            <View style={styles.kpiCol}>
+              <MetricBox
+                icon={Users}
+                label="Total Workforce"
+                value={data?.total_employee ?? 0}
+                badgeLabel="Enrolled"
+                badgeVariant="default"
+                tintColor={theme.primary}
+              />
+            </View>
+            <View style={styles.kpiCol}>
+              <MetricBox
+                icon={UserCheck}
+                label="Active Staff"
+                value={data?.active_employee ?? 0}
+                badgeLabel="Active"
+                badgeVariant="emerald"
+                tintColor={theme.emerald}
+              />
+            </View>
           </View>
 
-          <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Department Headcount</Text>
+          <View style={styles.kpiGrid}>
+            <View style={styles.kpiCol}>
+              <MetricBox
+                icon={Wallet}
+                label="Total Salary Paid"
+                value={formatCurrency(data?.total_salary_paid)}
+                badgeLabel="Disbursed"
+                badgeVariant="violet"
+                tintColor={theme.violet}
+              />
+            </View>
+            <View style={styles.kpiCol}>
+              <MetricBox
+                icon={FileText}
+                label="Payslips Issued"
+                value={data?.total_slips ?? 0}
+                badgeLabel="Records"
+                badgeVariant="amber"
+                tintColor={theme.amber}
+              />
+            </View>
+          </View>
+
+          {/* Department Distribution Section with Donut Chart */}
+          <View style={styles.sectionHeaderRow}>
+            <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Department Distribution</Text>
+            <Badge label="Compare" variant="default" />
+          </View>
+
           {departments.length === 0 ? (
-            <EmptyState icon={Users} title="No department data yet" />
+            <EmptyState icon={Users} title="No department data available" />
           ) : (
-            <Card style={styles.listCard}>
-              {departments.map((d, idx) => (
-                <View key={d.department} style={[styles.row, idx !== departments.length - 1 && styles.rowDivider, { borderColor: theme.border }]}>
-                  <View style={styles.rowHeader}>
-                    <Text style={[styles.rowLabel, { color: theme.textPrimary }]} numberOfLines={1}>{d.department}</Text>
-                    <Text style={[styles.rowValue, { color: theme.textMuted }]}>{d.total_employees} · {formatCurrency(d.total_net_payable)}</Text>
-                  </View>
-                  <View style={[styles.barTrack, { backgroundColor: theme.surfaceElevated }]}>
-                    <View style={[styles.barFill, { width: `${d.pct}%`, backgroundColor: theme.primary }]} />
-                  </View>
+            <Card style={styles.deptCard} elevated>
+              <View style={styles.deptCardBody}>
+                {/* Left Side Donut Chart */}
+                <View style={styles.donutWrap}>
+                  <DonutChart data={departments} size={124} strokeWidth={18} />
                 </View>
-              ))}
+
+                {/* Right Side Department Items */}
+                <View style={styles.deptListWrap}>
+                  {departments.map((d) => {
+                    const isExpanded = expandedDept === d.department;
+                    const avgSalary = d.value > 0 ? Math.round(Number(d.total_net_payable) / d.value) : 0;
+                    return (
+                      <View key={d.department} style={styles.deptItem}>
+                        <TouchableOpacity
+                          style={styles.deptItemHeader}
+                          activeOpacity={0.7}
+                          onPress={() => setExpandedDept(isExpanded ? null : d.department)}
+                        >
+                          <View style={styles.deptItemTitleRow}>
+                            <View style={[styles.colorDot, { backgroundColor: d.color }]} />
+                            <Text style={[styles.deptName, { color: theme.textPrimary }]} numberOfLines={1}>
+                              {d.department}
+                            </Text>
+                          </View>
+
+                          <View style={styles.deptItemMetaRow}>
+                            <Text style={[styles.deptMetaText, { color: theme.textMuted }]}>
+                              <Text style={{ fontWeight: '700', color: theme.primary }}>{d.value}</Text> Staff · {formatCurrency(d.total_net_payable)}
+                            </Text>
+                            <View style={styles.detailsToggle}>
+                              <Text style={[styles.detailsText, { color: theme.textMuted }]}>Details</Text>
+                              {isExpanded ? <ChevronUp size={14} color={theme.textMuted} /> : <ChevronDown size={14} color={theme.textMuted} />}
+                            </View>
+                          </View>
+                        </TouchableOpacity>
+
+                        {isExpanded ? (
+                          <View style={[styles.deptExpandedBox, { backgroundColor: theme.surfaceElevated }]}>
+                            <View style={styles.deptExpRow}>
+                              <Text style={[styles.deptExpLabel, { color: theme.textMuted }]}>Avg Salary / Staff:</Text>
+                              <Text style={[styles.deptExpVal, { color: theme.textPrimary }]}>{formatCurrency(avgSalary)}</Text>
+                            </View>
+                            <View style={styles.deptExpRow}>
+                              <Text style={[styles.deptExpLabel, { color: theme.textMuted }]}>Workforce Share:</Text>
+                              <Text style={[styles.deptExpVal, { color: theme.textPrimary }]}>
+                                {Math.round((d.value / Math.max(1, data?.total_employee || 1)) * 100)}%
+                              </Text>
+                            </View>
+                          </View>
+                        ) : null}
+                      </View>
+                    );
+                  })}
+                </View>
+              </View>
             </Card>
           )}
 
-          <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Salary Trend</Text>
-          {monthlyStats.length === 0 ? (
-            <EmptyState icon={Wallet} title="No salary history yet" />
-          ) : (
-            <Card style={styles.listCard}>
-              {monthlyStats.map((m, idx) => (
-                <View key={`${m.year}-${m.month}`} style={[styles.row, idx !== monthlyStats.length - 1 && styles.rowDivider, { borderColor: theme.border }]}>
-                  <View style={styles.rowHeader}>
-                    <Text style={[styles.rowLabel, { color: theme.textPrimary }]}>{monthName(m.month)} {m.year}</Text>
-                    <Text style={[styles.rowValue, { color: theme.textMuted }]}>{formatCurrency(m.total_net)}</Text>
-                  </View>
-                  <View style={[styles.barTrack, { backgroundColor: theme.surfaceElevated }]}>
-                    <View style={[styles.barFill, { width: `${m.pct}%`, backgroundColor: theme.emerald }]} />
-                  </View>
-                </View>
-              ))}
-            </Card>
-          )}
+          {/* Team Activity Section */}
+          <Text style={[styles.sectionTitle, { color: theme.textPrimary, marginTop: 18 }]}>Team Activity</Text>
+          <Card style={styles.activityCard} elevated>
+            <View style={styles.activityRow}>
+              <View style={[styles.activityIconBox, { backgroundColor: theme.emerald + '15' }]}>
+                <CheckCircle2 size={18} color={theme.emerald} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.activityTitle, { color: theme.textPrimary }]}>HR System Status</Text>
+                <Text style={[styles.activitySub, { color: theme.textMuted }]}>All services operating normally</Text>
+              </View>
+              <Badge label="Healthy" variant="emerald" size="small" />
+            </View>
 
-          <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Recent Uploads</Text>
-          {recentBatches.length === 0 ? (
-            <EmptyState icon={UploadCloud} title="No uploads yet" message="Bulk salary/employee/attendance uploads will show up here." />
-          ) : (
-            <Card style={styles.listCard}>
-              {recentBatches.map((b, idx) => (
-                <View key={b.id} style={[styles.batchRow, idx !== recentBatches.length - 1 && styles.rowDivider, { borderColor: theme.border }]}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.rowLabel, { color: theme.textPrimary }]} numberOfLines={1}>{b.file_name || `${b.type} upload`}</Text>
-                    <Text style={[styles.batchMeta, { color: theme.textMuted }]}>{timeAgo(b.created_at)}</Text>
-                  </View>
-                  <Badge label={`${b.success_count ?? 0} ok`} variant="emerald" size="small" />
-                  {Number(b.failed_count) > 0 ? (
-                    <Badge label={`${b.failed_count} failed`} variant="rose" size="small" style={{ marginLeft: 6 }} />
-                  ) : null}
-                </View>
-              ))}
-            </Card>
-          )}
+            <View style={[styles.activityRow, { borderBottomWidth: 0, paddingTop: 10 }]}>
+              <View style={[styles.activityIconBox, { backgroundColor: theme.primary + '15' }]}>
+                <Activity size={18} color={theme.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.activityTitle, { color: theme.textPrimary }]}>Active Workforce</Text>
+                <Text style={[styles.activitySub, { color: theme.textMuted }]}>
+                  {data?.active_employee ?? 0} active out of {data?.total_employee ?? 0} total employees
+                </Text>
+              </View>
+            </View>
+          </Card>
         </>
       )}
     </ScrollView>
@@ -163,18 +290,36 @@ export function AdminDashboardScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  content: { padding: 16, paddingBottom: 40 },
-  title: { ...typography.h2, marginBottom: 16 },
-  statsRow: { flexDirection: 'row', gap: 10, marginBottom: 10 },
-  sectionTitle: { ...typography.h3, marginTop: 18, marginBottom: 10 },
-  listCard: { padding: 4 },
-  row: { paddingVertical: 12, paddingHorizontal: 12 },
-  rowDivider: { borderBottomWidth: StyleSheet.hairlineWidth },
-  rowHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  rowLabel: { ...typography.body, fontWeight: '600', flexShrink: 1, marginRight: 8 },
-  rowValue: { ...typography.caption },
-  barTrack: { height: 6, borderRadius: 3, overflow: 'hidden' },
-  barFill: { height: '100%', borderRadius: 3 },
-  batchRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 12 },
-  batchMeta: { ...typography.micro, marginTop: 2 },
+  content: { padding: 16, paddingTop: 12, paddingBottom: 110 },
+  kpiGrid: { flexDirection: 'row', gap: 10, marginBottom: 10 },
+  kpiCol: { flex: 1 },
+  kpiCard: { padding: 12 },
+  kpiHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  iconWrap: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  kpiVal: { ...typography.h3, fontWeight: '800', marginBottom: 2 },
+  kpiLbl: { ...typography.micro, fontWeight: '600' },
+  sectionHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 14, marginBottom: 10 },
+  sectionTitle: { ...typography.h4 },
+  deptCard: { padding: 14 },
+  deptCardBody: { flexDirection: 'column' },
+  donutWrap: { alignItems: 'center', justifyContent: 'center', marginVertical: 10 },
+  deptListWrap: { marginTop: 10 },
+  deptItem: { paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E2E8F0' },
+  deptItemHeader: {},
+  deptItemTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
+  colorDot: { width: 10, height: 10, borderRadius: 5 },
+  deptName: { ...typography.body, fontWeight: '700', flex: 1 },
+  deptItemMetaRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingLeft: 18 },
+  deptMetaText: { ...typography.caption },
+  detailsToggle: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  detailsText: { ...typography.micro, fontWeight: '600' },
+  deptExpandedBox: { marginTop: 8, marginLeft: 18, padding: 10, borderRadius: 10 },
+  deptExpRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
+  deptExpLabel: { ...typography.micro },
+  deptExpVal: { ...typography.micro, fontWeight: '700' },
+  activityCard: { padding: 12 },
+  activityRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E2E8F0' },
+  activityIconBox: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  activityTitle: { ...typography.body, fontWeight: '700' },
+  activitySub: { ...typography.caption, marginTop: 1 },
 });

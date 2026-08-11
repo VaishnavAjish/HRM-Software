@@ -8,8 +8,10 @@ use App\Models\Document;
 use App\Models\User;
 use App\Services\Documents\DocumentAudit;
 use App\Services\Documents\DocumentAuthorizer as Auth;
+use App\Services\Provisioning\UserProvisioningService;
 use App\Support\AadhaarDisclosure;
 use App\Support\AadhaarReference;
+use App\Support\ProvisioningContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -24,6 +26,10 @@ use Throwable;
  */
 class AppointmentController extends Controller
 {
+    public function __construct(
+        private readonly UserProvisioningService $provisioning,
+    ) {}
+
     /** Fields the appointment form owns. Deliberately excludes files. */
     private const FIELDS = [
         'emp_code', 'joining_date', 'department', 'designation', 'manager_name', 'salary',
@@ -138,13 +144,20 @@ class AppointmentController extends Controller
             }
 
             $appointment = DB::transaction(function () use ($data, $actor) {
-                return User::create($data + [
+                $created = User::create($data + [
                     'type'     => 'appointment',
                     'role'     => 3,
                     'status'   => 0,
                     'password' => Str::random(32), // placeholder until onboarding
                     'added_by' => $actor->id,
                 ]);
+
+                // Inside the same transaction: an appointment that exists
+                // without its canonical role is a record the authorization
+                // tables have never heard of.
+                $this->provisioning->provisionEmployee($created, ProvisioningContext::APPOINTMENT, $actor);
+
+                return $created;
             });
 
             DocumentAudit::record('APPOINTMENT_CREATED', null, null, [

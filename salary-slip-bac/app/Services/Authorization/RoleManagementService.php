@@ -310,12 +310,15 @@ class RoleManagementService
             return $query;
         }
 
-        // Not permitted to see the Admin tier.
+        // Not permitted to see the Admin tier. The codes come from the
+        // hierarchy rather than being listed here: this named
+        // `tenant_administrator` only, so on a database whose administrator role
+        // is coded `admin` the tier it was hiding stayed fully visible.
         return $query->where(function ($inner) {
             $inner->where(function ($q) {
                 $q->whereNull('roles.role_class')
                     ->orWhere('roles.role_class', '!=', RoleHierarchy::ADMIN);
-            })->whereNotIn('roles.code', ['tenant_administrator']);
+            })->whereNotIn('roles.code', RoleHierarchy::codesForClass(RoleHierarchy::ADMIN));
         });
     }
 

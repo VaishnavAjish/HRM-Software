@@ -6,7 +6,7 @@ import toast from "react-hot-toast";
 import { authApi, salaryApi, resolveWriteCompanyId } from "../../utils/api";
 import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";
-import { getCompanyUnits } from "../../config/companyConfig";
+import { useProvisioningOptions } from "../../hooks/useProvisioningOptions";
 import usePhotoCapture from "../../hooks/usePhotoCapture";
 import { normaliseAadhaar, formatFullAadhaar } from "../../utils/aadhaar";
 
@@ -167,6 +167,18 @@ const SignatureField = ({ label, name, value, onChange, disabled }) => (
 const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess, isViewMode = false, extraActions }) => {
   const { user } = useAuth();
   const { companyId } = useCompany();
+  const { unitsForCompany, companyIdFor, loading: optionsLoading } = useProvisioningOptions();
+
+  /*
+   * The company this trial is filed into.
+   *
+   * Sent as an id so the server resolves the tenant from a record rather than
+   * from a string the browser composed — and it re-checks the id against the
+   * submitter's own companies either way, so this is a convenience, not the
+   * boundary.
+   */
+  const writeCompanyCode = resolveWriteCompanyId(companyId || "nidhi-impex");
+  const writeCompanyId = companyIdFor(writeCompanyCode);
   const isEditMode = Boolean(initialData);
   // The record as it was when the modal opened, so the update payload can send
   // only the fields that actually changed. State rather than a ref: it is
@@ -380,7 +392,8 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess, isView
       const submitData = {
         ...formData,
         punching_no: formData.form_no || formData.punching_no || "",
-        company_code: resolveWriteCompanyId(companyId || "nidhi-impex")
+        company_code: writeCompanyCode,
+        ...(writeCompanyId ? { companyId: writeCompanyId } : {}),
       };
 
       if (submitData.aadhar_card_no) {
@@ -564,11 +577,21 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess, isView
                 value={formData.unit}
                 onChange={handleChange}
                 disabled={isViewMode}
+                /*
+                 * Units of the company this form is actually filing into.
+                 *
+                 * This was pinned to getCompanyUnits("nidhi-impex"), so a
+                 * Silver Star submission was offered Nidhi's units — a wrong
+                 * list rather than a short one.
+                 */
                 options={[
-                  { value: "", label: "Select Branch" },
-                  ...getCompanyUnits("nidhi-impex").map((u) => ({
-                    value: u,
-                    label: u,
+                  {
+                    value: "",
+                    label: optionsLoading ? "Loading branches…" : "Select Branch",
+                  },
+                  ...unitsForCompany(writeCompanyCode).map((unit) => ({
+                    value: unit.name,
+                    label: unit.name,
                   })),
                 ]}
               />

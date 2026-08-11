@@ -121,7 +121,13 @@ class ApiService {
 
   // ----- Admin: Employees -----
   getAdminEmployees(params = {}) {
-    const qs = new URLSearchParams(params).toString();
+    const cleanParams = {};
+    Object.keys(params).forEach((key) => {
+      if (params[key] !== undefined && params[key] !== null && params[key] !== '') {
+        cleanParams[key] = params[key];
+      }
+    });
+    const qs = new URLSearchParams(cleanParams).toString();
     return this.request(`/employee/get${qs ? `?${qs}` : ''}`);
   }
 

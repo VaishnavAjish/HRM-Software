@@ -46,6 +46,9 @@ vi.mock("../../utils/api", () => ({
   appointmentV1Api: { get: vi.fn(), revealAadhaar: vi.fn() },
   confidentialExportApi: { authorize: vi.fn(), printPayload: vi.fn(), downloadPdf: vi.fn() },
   salaryApi: { getDepartments: vi.fn() },
+  // The lifecycle forms read companies and units from canonical master data
+  // now, through useProvisioningOptions.
+  provisioningLookupApi: { companyOptions: vi.fn().mockResolvedValue({ data: { companies: [], units: [] } }) },
 }));
 
 let mockUser = {};

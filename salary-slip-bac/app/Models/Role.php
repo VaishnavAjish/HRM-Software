@@ -9,6 +9,7 @@ class Role extends Model
     protected $fillable = [
         'name', 'code', 'description', 'type', 'role_type', 'tenant_id',
         'is_active', 'is_system', 'is_assignable', 'is_sensitive',
+        'is_direct_creatable',
         'requires_approval', 'default_scope_type', 'status', 'version',
         'created_by', 'updated_by',
     ];
@@ -20,6 +21,7 @@ class Role extends Model
             'is_system' => 'boolean',
             'is_assignable' => 'boolean',
             'is_sensitive' => 'boolean',
+            'is_direct_creatable' => 'boolean',
             'requires_approval' => 'boolean',
         ];
     }

@@ -89,6 +89,11 @@ class AdminUserDirectoryApiTest extends TestCase
         );
     }
 
+    private function roleId(string $code): int
+    {
+        return (int) Role::query()->where('code', $code)->firstOrFail()->id;
+    }
+
     private function asRoot(): static
     {
         return $this->withToken(auth('api')->login($this->superAdmin));
@@ -175,7 +180,8 @@ class AdminUserDirectoryApiTest extends TestCase
     {
         $id = $this->asRoot()->postJson('/api/v1/admin/users', [
             'name' => 'New Joiner', 'email' => 'joiner@test.local', 'empCode' => 'E-3001',
-            'username' => 'new.joiner', 'password' => 'secret1234', 'role' => 3,
+            'username' => 'new.joiner', 'password' => 'secret1234',
+            'roleId' => $this->roleId('hr_manager'),
             'companyCode' => 'nidhi-impex', 'department' => 'Polish',
             'businessReason' => 'Onboarding for the new shift.',
         ])->assertCreated()->json('data.id');

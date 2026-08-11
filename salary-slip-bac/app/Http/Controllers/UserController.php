@@ -9,11 +9,15 @@ use App\Models\UploadBatch;
 use App\Models\User;
 use App\Services\Documents\DocumentService;
 use App\Services\DocumentStorageService;
+use App\Services\Provisioning\CompanyMembershipService;
+use App\Services\Provisioning\UnitMembershipService;
+use App\Services\Provisioning\UserProvisioningService;
 use App\Support\AadhaarDisclosure;
 use App\Support\AadhaarReference;
 use App\Support\AuditLogger;
 use App\Support\DocumentType;
 use App\Support\HiddenAccounts;
+use App\Support\ProvisioningContext;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
@@ -28,6 +32,63 @@ use RuntimeException;
 
 class UserController extends Controller
 {
+    /**
+     * The shared provisioning core.
+     *
+     * Every path in this controller that creates an account — the employee form,
+     * its bulk import, the trial form, the appointment form — hands the row to
+     * this so the canonical role and company membership are written the same way
+     * the admin console writes them. They previously wrote users.role and
+     * nothing else, which is how accounts ended up with a numeric tier and no
+     * role in the authorization tables.
+     */
+    public function __construct(
+        private readonly UserProvisioningService $provisioning,
+        private readonly CompanyMembershipService $companies,
+        private readonly UnitMembershipService $units,
+    ) {}
+
+    /**
+     * The home unit a trial submission names, validated against its company.
+     *
+     * A unit id is checked to belong to the company the record is being filed
+     * into — a unit is meaningless without its company, and two companies each
+     * own one called "Ichapur", so the name alone identifies nothing.
+     *
+     * A legacy free-text unit is still accepted and stored as-is. It has to be:
+     * the historical strings have no confirmed company ownership, so rejecting
+     * them would break the form for the units people actually use, and mapping
+     * them would be the guess the whole unit migration is gated on avoiding.
+     *
+     * @throws \App\Services\Provisioning\ProvisioningException
+     */
+    private function resolveTrialUnit(Request $request, string $companyCode): ?string
+    {
+        if (! $request->filled('unitId')) {
+            $legacy = trim((string) $request->input('unit', ''));
+
+            return $legacy === '' ? null : $legacy;
+        }
+
+        $companyId = DB::table('companies')->where('code', $companyCode)->value('id');
+
+        $unit = DB::table('units')
+            ->where('id', (int) $request->input('unitId'))
+            ->when($companyId, fn ($query) => $query->where('company_id', $companyId))
+            ->where('is_active', true)
+            ->first(['name']);
+
+        if (! $unit) {
+            throw new \App\Services\Provisioning\ProvisioningException(
+                'UNIT_OUTSIDE_COMPANY',
+                'That unit does not belong to the company this record is being filed into.',
+                422
+            );
+        }
+
+        return $unit->name;
+    }
+
     // Fields an appointment/trial-form submission (or an admin/agent editing
     // one) is allowed to write. Deliberately excludes role, is_deleted, type,
     // added_by, password, processed — those are only ever set by server-side
@@ -40,6 +101,30 @@ class UserController extends Controller
         'aadhar_card_no', 'bank_name', 'pan_card_no', 'bank_ifsc_code', 'education',
         'bank_account_no', 'company_code', 'unit', 'emp_signature', 'members',
         'photo', 'adhar_image', 'pan_image', 'check_image', 'account_book',
+    ];
+
+    /**
+     * Fields a trial-form submission is allowed to write.
+     *
+     * Mirrors the form's own field set, and deliberately excludes everything
+     * that decides who the record is or what it may do: role, type, password,
+     * status, is_deleted, processed, added_by. Those are set by postTrialForm
+     * itself. The list matches Node's TRIAL_FORM_PROTECTED_FIELDS in intent —
+     * that port stripped them from the outset, and this side did not.
+     *
+     * company_code is NOT on this list. The tenant is resolved from the actor by
+     * CompanyMembershipService::resolveCodeFor(), because that value is what
+     * every scope check partitions on — a request naming a company is asking to
+     * place a record inside a tenant, which is an authorization question and not
+     * a fact about the candidate.
+     */
+    private const TRIAL_FIELDS = [
+        'form_no', 'trial_date', 'department', 'designation', 'name', 'address',
+        'mobile_number', 'mobile_no_2', 'gender', 'email', 'unit', 'punching_no',
+        'last_company_name', 'last_company_address', 'experience', 'reason_for_leaving',
+        'hastak_name', 'hastak_code', 'hastak_mobile', 'hastak_department',
+        'contractor', 'manager_name', 'akar', 'emp_signature', 'manager_signature',
+        'hastak_signature', 'hr_signature', 'aadhar_card_no',
     ];
 
     // Fields a logged-in user may change on their own profile via /profile-update.
@@ -614,7 +699,20 @@ class UserController extends Controller
             }
         }
 
-        $employee = User::create($data);
+        // One transaction: an account that exists without its canonical role is
+        // worse than no account, because the operator is told it worked and the
+        // user holds nothing.
+        $employee = DB::transaction(function () use ($data, $actingUser) {
+            $created = User::create($data);
+
+            // This form still posts a numeric tier rather than a role id, so the
+            // canonical role is derived from it. Deriving it is the change: until
+            // now the tier was the only thing written, and the account appeared in
+            // the Permission Matrix holding nothing.
+            $this->provisioning->provisionFromTier($created, ProvisioningContext::EMPLOYEE_FORM, $actingUser);
+
+            return $created;
+        });
 
         return response()->json(['status' => true, 'message' => 'Employee created', 'data' => $employee]);
     }
@@ -1090,6 +1188,11 @@ class UserController extends Controller
         }
 
         $hashedPasswordsCache = [];
+        // Ids of the rows that actually landed, so their canonical roles and
+        // company memberships are written once for the batch rather than per
+        // row — an import of several hundred employees must not turn into
+        // several hundred separate role transactions.
+        $provisioned = [];
 
         // Wrap the insertion loop in a single DB transaction for optimal performance
         DB::beginTransaction();
@@ -1155,7 +1258,7 @@ class UserController extends Controller
                 $rowData['status'] = 0;
 
                 try {
-                    User::create($rowData);
+                    $provisioned[] = User::create($rowData)->id;
                     $imported++;
                     $rowReports[] = ['row_number' => $excelRowNum, 'status' => 'passed', 'reason' => null, 'row_data' => $rowData];
 
@@ -1205,6 +1308,12 @@ class UserController extends Controller
             } catch (\Throwable $e) {
                 \Log::error('Failed to record employee import batch: '.$e->getMessage());
             }
+
+            // Inside the same transaction as the inserts. A batch that imports
+            // the rows and then fails to give them roles is worse than one that
+            // imports nothing: the operator is told it succeeded and the
+            // accounts hold no permissions.
+            $this->provisioning->provisionManyFromTier($provisioned, ProvisioningContext::IMPORT, auth('api')->user());
 
             DB::commit();
         } catch (\Throwable $e) {
@@ -1564,10 +1673,23 @@ class UserController extends Controller
                     return response()->json(['status' => false, 'message' => $validator->errors()->first()], 422);
                 }
 
-                $employee->update($data);
-                if ($trialForm) {
-                    $trialForm->update(['processed' => 1]);
-                }
+                DB::transaction(function () use ($employee, $data, $trialForm) {
+                    $employee->update($data);
+
+                    // Idempotent by construction: an appointment re-submitted
+                    // against an employee code that already exists updates that
+                    // record and re-asserts the same role, rather than minting a
+                    // second account for one person.
+                    $this->provisioning->provisionEmployee(
+                        $employee,
+                        ProvisioningContext::APPOINTMENT,
+                        auth('api')->user()
+                    );
+
+                    if ($trialForm) {
+                        $trialForm->update(['processed' => 1]);
+                    }
+                });
 
                 return response()->json(['status' => true, 'message' => 'Appointment form updated']);
             }
@@ -1594,11 +1716,17 @@ class UserController extends Controller
             $data['added_by'] = $addedBy;
         }
 
-        $employee = User::create($data);
+        $employee = DB::transaction(function () use ($data, $userAuth, $trialForm) {
+            $created = User::create($data);
 
-        if ($trialForm) {
-            $trialForm->update(['processed' => 1]);
-        }
+            $this->provisioning->provisionEmployee($created, ProvisioningContext::APPOINTMENT, $userAuth);
+
+            if ($trialForm) {
+                $trialForm->update(['processed' => 1]);
+            }
+
+            return $created;
+        });
 
         return response()->json(['status' => true, 'message' => 'Appointment form submitted', 'data' => $employee]);
     }
@@ -1933,25 +2061,94 @@ class UserController extends Controller
         ]);
     }
 
+    /**
+     * Record a trial form.
+     *
+     * The payload is an allowlist, not the request.
+     *
+     * This read `$request->all()` and passed it straight into User::create.
+     * User::$fillable is shared with real account creation, so `password`,
+     * `status`, `is_deleted`, `emp_code` and `processed` all came from the
+     * browser — and a trial record is a `users` row with role 3 that the login
+     * endpoint does not filter out by type. An agent could therefore submit a
+     * "trial form" carrying a password of their choosing and end up with a
+     * working employee login that nobody created deliberately.
+     *
+     * Only the fields the trial form actually has are accepted. Identity,
+     * credentials and lifecycle state are set here, from the server, every time
+     * — not defaulted when the request happens to omit them.
+     */
     public function postTrialForm(Request $request)
     {
-        $data = $request->all();
-        $data['type'] = 'trial';
-        // The users.role column defaults to 1 (Admin) at the DB level, and a
-        // public trial-form submission never carries a role of its own — so
-        // without this every trial submission silently became an Admin
-        // account instead of a regular (role 3) candidate record.
-        $data['role'] = 3;
+        $userAuth = auth('api')->user();
 
-        // If password is required by DB, give a random one — never a shared
-        // default, which would leave every trial record on the same credential.
-        if (empty($data['password'])) {
-            $data['password'] = bin2hex(random_bytes(16));
+        $data = array_intersect_key(
+            $request->except(self::FILE_UPLOAD_FIELDS),
+            array_flip(self::TRIAL_FIELDS)
+        );
+
+        /*
+         * The tenant, decided from the actor.
+         *
+         * The route is authenticated — jwt.auth, then role:admin,agent, then
+         * recruitment.trial_form.create — so there is a real scope to check
+         * against, and this checks it. Previously company_code travelled
+         * straight from the body into users.company_code, which meant an agent
+         * scoped to one company could file a candidate into another simply by
+         * editing the request, and every later scope check would honour it.
+         *
+         * companyId is the canonical form and wins; company_code is still read
+         * so the existing form keeps working while it is rewired.
+         */
+        try {
+            $data['company_code'] = $this->companies->resolveCodeFor(
+                $userAuth,
+                $request->filled('companyId') ? (int) $request->input('companyId') : null,
+                $request->input('company_code'),
+            );
+
+            $data['unit'] = $this->resolveTrialUnit($request, $data['company_code']);
+        } catch (\App\Services\Provisioning\ProvisioningException $e) {
+            return response()->json([
+                'status' => false,
+                'message' => $e->getMessage(),
+                'error' => ['code' => $e->errorCode, 'message' => $e->getMessage()],
+            ], $e->status);
         }
 
-        $userAuth = auth('api')->user();
-        if ($userAuth && empty($data['id'])) {
-            $data['added_by'] = $data['added_by'] ?? $userAuth->id;
+        if ($data['unit'] === null) {
+            unset($data['unit']);
+        }
+
+        $data['type'] = 'trial';
+        // The users.role column defaults to 1 (Admin) at the DB level, and a
+        // trial-form submission never carries a role of its own — so without
+        // this every trial submission silently became an Admin account instead
+        // of a regular (role 3) candidate record.
+        $data['role'] = 3;
+
+        /*
+         * A credential the submitter cannot choose.
+         *
+         * This used to generate one only when the request omitted the field,
+         * which made a supplied password authoritative — the opposite of what
+         * the comment claimed. There is no trial workflow that sets a password:
+         * the account's owner establishes one through the OTP reset flow, so
+         * this value exists solely to satisfy the NOT NULL column.
+         */
+        $data['password'] = bin2hex(random_bytes(16));
+
+        // Lifecycle state belongs to the server. `processed` in particular
+        // decides whether the record still appears as an open trial.
+        $data['status'] = 0;
+        $data['is_deleted'] = '0';
+        $data['processed'] = 0;
+
+        // Taken from the authenticated actor rather than the body: added_by is
+        // what scopes an agent's list to their own submissions, so a request
+        // that names someone else is a request to file under their identity.
+        if ($userAuth) {
+            $data['added_by'] = $userAuth->id;
         }
 
         $data = $this->withSafeAadhaar($data);
@@ -1960,7 +2157,17 @@ class UserController extends Controller
             $data['punching_no'] = $data['form_no'];
         }
 
-        $trialForm = User::create($data);
+        $trialForm = DB::transaction(function () use ($data, $userAuth) {
+            $created = User::create($data);
+
+            // The Employee role is resolved by the server, never sent by the
+            // form. A trial submission is a statement about a person, not about
+            // authorization, and this record previously carried users.role = 3
+            // and no canonical role at all.
+            $this->provisioning->provisionEmployee($created, ProvisioningContext::TRIAL, $userAuth);
+
+            return $created;
+        });
 
         $files = $this->storeUploadedFiles($request, ['photo', 'adhar_image'], $trialForm);
         if (! empty($files)) {

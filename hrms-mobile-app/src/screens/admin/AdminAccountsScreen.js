@@ -74,17 +74,17 @@ function CreateAdminForm({ isSuperAdmin, onDone, onCancel }) {
   );
 }
 
-export function AdminAccountsScreen() {
+export function AdminAccountsScreen({ onBack }) {
   const { theme } = useTheme();
   const { user } = useAuth();
   const isSuperAdmin = Number(user?.role) === 0;
 
-  const [creating, setCreating] = useState(false);
-  const [search, setSearch] = useState('');
   const [accounts, setAccounts] = useState([]);
+  const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
+  const [creating, setCreating] = useState(false);
 
   const load = useCallback(async (isRefresh = false) => {
     isRefresh ? setRefreshing(true) : setLoading(true);
@@ -111,6 +111,12 @@ export function AdminAccountsScreen() {
   if (!isSuperAdmin) {
     return (
       <View style={[styles.screen, { backgroundColor: theme.background }]}>
+        {onBack ? (
+          <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', gap: 4, margin: 16 }} onPress={onBack} activeOpacity={0.7}>
+            <ChevronLeft size={18} color={theme.primary} />
+            <Text style={{ ...typography.body, fontWeight: '600', color: theme.primary }}>Back to Profile</Text>
+          </TouchableOpacity>
+        ) : null}
         <EmptyState icon={ShieldCheck} title="Super Admin only" message="Only a Super Admin account can manage other admin accounts." />
       </View>
     );
@@ -123,6 +129,12 @@ export function AdminAccountsScreen() {
   return (
     <View style={[styles.screen, { backgroundColor: theme.background }]}>
       <View style={styles.headerArea}>
+        {onBack ? (
+          <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 8 }} onPress={onBack} activeOpacity={0.7}>
+            <ChevronLeft size={18} color={theme.primary} />
+            <Text style={{ ...typography.body, fontWeight: '600', color: theme.primary }}>Back to Profile</Text>
+          </TouchableOpacity>
+        ) : null}
         <Text style={[styles.title, { color: theme.textPrimary }]}>Manage Admins</Text>
         <SearchField value={search} onChangeText={setSearch} placeholder="Search name, email, code…" />
       </View>

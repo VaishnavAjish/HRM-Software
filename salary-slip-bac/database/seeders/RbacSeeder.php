@@ -162,14 +162,26 @@ class RbacSeeder extends Seeder
         bool $system = false
     ): Role {
         $role = Role::query()->where('code', $code)->orWhere('name', $name)->first() ?: new Role();
-        $role->fill([
+        $attributes = [
             'name' => $name, 'code' => $code, 'description' => "$name authorization role",
             'type' => $system ? 'System' : 'Custom', 'role_type' => $roleType,
             'tenant_id' => $tenantId, 'is_active' => true, 'is_system' => $system,
             'is_assignable' => true, 'is_sensitive' => $system,
             'requires_approval' => $system && $code !== 'super_administrator',
             'default_scope_type' => $defaultScope, 'status' => 'ACTIVE',
-        ])->save();
+        ];
+
+        // Employee is assignable but not directly creatable: those accounts come
+        // from the Trial and Appointment forms, which carry the company, unit
+        // and documents the record needs. Set here as well as in the migration
+        // because this seeder runs after it and would otherwise take the
+        // column's permissive default.
+        if (\App\Services\Authorization\SchemaSupport::hasColumn('roles', 'is_direct_creatable')) {
+            $attributes['is_direct_creatable'] = ! in_array($code, ['employee', 'emp'], true);
+        }
+
+        $role->fill($attributes)->save();
+
         return $role;
     }
 

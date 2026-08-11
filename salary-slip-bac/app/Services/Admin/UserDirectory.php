@@ -4,6 +4,10 @@ namespace App\Services\Admin;
 
 use App\Models\User;
 use App\Services\Authorization\SchemaSupport;
+use App\Services\Provisioning\CompanyMembershipService;
+use App\Services\Provisioning\RoleResolver;
+use App\Services\Provisioning\UnitMembershipService;
+use App\Support\ProvisioningContext;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 
@@ -170,8 +174,18 @@ class UserDirectory
         ];
     }
 
-    public function filterOptions(User $actor): array
-    {
+    public function filterOptions(
+        User $actor,
+        ?RoleResolver $resolver = null,
+        ?CompanyMembershipService $companies = null,
+        ?UnitMembershipService $units = null,
+    ): array {
+        $resolver ??= app(RoleResolver::class);
+        $companies ??= app(CompanyMembershipService::class);
+        $units ??= app(UnitMembershipService::class);
+
+        $companyOptions = $companies->optionsFor($actor);
+
         $distinct = fn (string $column) => $this->applyScopeOnly($actor, [])
             ->where('is_deleted', '0')
             ->whereNotNull($column)
@@ -207,10 +221,30 @@ class UserDirectory
             'roles' => $roles,
             'statuses' => self::STATUSES,
             'userTypes' => self::USER_TYPES,
-            // The User type dropdown. Canonical tiers unioned with the real
-            // roles, each carrying the tier its CODE resolves to, so the form
-            // never has to infer identity from a display name.
-            'userTypeOptions' => \App\Support\UserTypeRoles::options($actor),
+            /*
+             * Two lists, deliberately.
+             *
+             * Create and Edit ask different questions. Create asks "what kind of
+             * account is this operator setting up", and Employee is not an answer
+             * — employees arrive from the Trial and Appointment forms with a
+             * company, a unit and their documents. Edit asks "what is this
+             * account now", and Employee must be there or an administrator could
+             * never be moved back to one.
+             *
+             * One filtered array serving both screens is the bug this replaces:
+             * whichever rule it applied was wrong on the other screen.
+             */
+            'userTypeOptionsByContext' => [
+                ProvisioningContext::DIRECT_CREATE => $resolver->options($actor, ProvisioningContext::DIRECT_CREATE),
+                ProvisioningContext::EDIT_USER => $resolver->options($actor, ProvisioningContext::EDIT_USER),
+            ],
+            // Retained under its old name for any caller still reading it; it is
+            // the edit list, which is the superset.
+            'userTypeOptions' => $resolver->options($actor, ProvisioningContext::EDIT_USER),
+            'companies' => $companyOptions,
+            // Every unit within reach, carrying its company id so the picker can
+            // group and filter without a second request.
+            'unitOptions' => $units->optionsForCompanies(array_column($companyOptions, 'id')),
         ];
     }
 

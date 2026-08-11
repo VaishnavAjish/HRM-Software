@@ -3,8 +3,8 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'rea
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
-  ShieldCheck, Pencil, BadgeCheck, Download, Camera, FileText, ChevronRight, AlertTriangle, LogOut,
-  Mail, Phone, Calendar, Users, Building2, Briefcase, Home, MapPin, Hash, CreditCard, Landmark, Wallet,
+  ShieldCheck, Pencil, BadgeCheck, Download, Camera, FileText, ChevronRight, ChevronLeft, AlertTriangle, LogOut,
+  Mail, Phone, Calendar, Users, Building2, Briefcase, Home, MapPin, Hash, CreditCard, Landmark, Wallet, Clock, Ticket,
 } from 'lucide-react-native';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
@@ -63,7 +63,7 @@ const FIELD_VALIDATORS = {
   bank_account_no: (v) => (!v || /^\d{6,18}$/.test(v) ? null : 'Enter a valid account number'),
 };
 
-export function ProfileScreen({ requireCompletion = false }) {
+export function ProfileScreen({ requireCompletion = false, onNavigateAdminScreen, onBack }) {
   const { theme } = useTheme();
   const { user, role, updateUser, logout } = useAuth();
   // Agents and admins have no employee record — no payroll, no appointment
@@ -227,6 +227,12 @@ export function ProfileScreen({ requireCompletion = false }) {
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+      {onBack ? (
+        <TouchableOpacity style={styles.backRow} onPress={onBack} activeOpacity={0.7}>
+          <ChevronLeft size={18} color={theme.primary} />
+          <Text style={[styles.backText, { color: theme.primary }]}>Back to More</Text>
+        </TouchableOpacity>
+      ) : null}
       {requireCompletion ? (
         <View style={[styles.completionBanner, { backgroundColor: theme.amberBg, borderColor: theme.amber + '40' }]}>
           <AlertTriangle size={16} color={theme.amber} />
@@ -290,6 +296,74 @@ export function ProfileScreen({ requireCompletion = false }) {
           </View>
         ) : null}
       </Card>
+
+      {isAdmin ? (
+        <Card style={styles.fieldsCard} elevated>
+          <Text style={[styles.fieldsTitle, { color: theme.textPrimary, marginBottom: 14 }]}>
+            Admin Controls & Operations
+          </Text>
+
+          <TouchableOpacity
+            style={styles.adminRowOption}
+            onPress={() => onNavigateAdminScreen?.('attendance')}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.adminOptionIcon, { backgroundColor: theme.primary + '15' }]}>
+              <Calendar size={18} color={theme.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.adminOptionTitle, { color: theme.textPrimary }]}>Attendance Logs</Text>
+              <Text style={[styles.adminOptionSub, { color: theme.textMuted }]}>View daily attendance & employee punch records</Text>
+            </View>
+            <ChevronRight size={18} color={theme.textMuted} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.adminRowOption}
+            onPress={() => onNavigateAdminScreen?.('shifts')}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.adminOptionIcon, { backgroundColor: theme.primary + '15' }]}>
+              <Clock size={18} color={theme.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.adminOptionTitle, { color: theme.textPrimary }]}>Shifts & Rosters</Text>
+              <Text style={[styles.adminOptionSub, { color: theme.textMuted }]}>Manage shift timings and employee assignments</Text>
+            </View>
+            <ChevronRight size={18} color={theme.textMuted} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.adminRowOption}
+            onPress={() => onNavigateAdminScreen?.('tickets')}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.adminOptionIcon, { backgroundColor: theme.primary + '15' }]}>
+              <Ticket size={18} color={theme.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.adminOptionTitle, { color: theme.textPrimary }]}>Helpdesk Tickets</Text>
+              <Text style={[styles.adminOptionSub, { color: theme.textMuted }]}>Review and resolve employee support issues</Text>
+            </View>
+            <ChevronRight size={18} color={theme.textMuted} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.adminRowOption, { borderBottomWidth: 0 }]}
+            onPress={() => onNavigateAdminScreen?.('accounts')}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.adminOptionIcon, { backgroundColor: theme.primary + '15' }]}>
+              <ShieldCheck size={18} color={theme.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.adminOptionTitle, { color: theme.textPrimary }]}>Manage Admins</Text>
+              <Text style={[styles.adminOptionSub, { color: theme.textMuted }]}>View admin accounts & manage permissions</Text>
+            </View>
+            <ChevronRight size={18} color={theme.textMuted} />
+          </TouchableOpacity>
+        </Card>
+      ) : null}
 
       {!simplified ? (
       <>
@@ -736,7 +810,30 @@ const styles = StyleSheet.create({
     ...typography.h4,
   },
   logoutSubtitle: {
-    ...typography.caption,
+    ...typography.micro,
+    marginTop: 2,
+  },
+  adminRowOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#E2E8F0',
+  },
+  adminOptionIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  adminOptionTitle: {
+    ...typography.body,
+    fontWeight: '700',
+  },
+  adminOptionSub: {
+    ...typography.micro,
     marginTop: 2,
   },
 });

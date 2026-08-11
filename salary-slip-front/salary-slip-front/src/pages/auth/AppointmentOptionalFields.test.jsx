@@ -18,6 +18,9 @@ import { createInitialData, setAppointmentRoute } from "./testUtils/appointmentF
 
 vi.mock("../../utils/api", () => ({
   resolveWriteCompanyId: (value) => value,
+  // The lifecycle forms read companies and units from canonical master data
+  // now, through useProvisioningOptions.
+  provisioningLookupApi: { companyOptions: vi.fn().mockResolvedValue({ data: { companies: [], units: [] } }) },
   authApi: {
     submitAppointmentForm: vi.fn(),
     updateAppointment: vi.fn(),

@@ -23,6 +23,7 @@ use App\Http\Controllers\Admin\UploadBatchController;
 use App\Http\Controllers\Admin\UserRoleController;
 use App\Http\Controllers\Api\ModuleAvailabilityController;
 use App\Http\Controllers\Api\V1\AadhaarExportController as V1AadhaarExportController;
+use App\Http\Controllers\Api\V1\Admin\CompanyUnitController as V1CompanyUnitController;
 use App\Http\Controllers\Api\V1\Admin\UserController as V1AdminUserController;
 use App\Http\Controllers\Api\V1\AppointmentController as V1AppointmentController;
 use App\Http\Controllers\Api\V1\Authorization\AccessRequestController as V1AccessRequestController;
@@ -141,6 +142,18 @@ Route::middleware('jwt.auth')->group(function () {
     Route::get('my-permissions', [PermissionDimensionController::class, 'myPermissions'])->middleware('throttle:60,1');
 
     /*
+     * Companies and units this actor may file a record into.
+     *
+     * Any authenticated actor, because the response is already scoped to the
+     * companies they belong to — it tells them nothing they do not have. It is
+     * deliberately not behind admin.company.read: filling in a trial form and
+     * administering tenant configuration are different capabilities, and the
+     * agent who does the first must not be handed the second.
+     */
+    Route::get('v1/provisioning/company-options', [V1CompanyUnitController::class, 'assignableOptions'])
+        ->middleware('throttle:60,1');
+
+    /*
      * A schema probe, not configuration — and not admin-only.
      *
      * It answers "has this module been migrated?" with a boolean per module and
@@ -244,6 +257,10 @@ Route::middleware('jwt.auth')->group(function () {
             ->middleware('permission:admin.user.read');
         Route::get('filter-options', [V1AdminUserController::class, 'filterOptions'])
             ->middleware('permission:admin.user.read');
+        // ?context=direct_create|edit_user. The context selects a policy and is
+        // validated against a closed list; it can never widen what is returned.
+        Route::get('assignable-roles', [V1AdminUserController::class, 'assignableRoles'])
+            ->middleware('permission:admin.user.read');
         Route::get('export', [V1AdminUserController::class, 'export'])
             ->middleware(['throttle:20,1', 'permission:admin.user.read']);
         Route::post('bulk', [V1AdminUserController::class, 'bulk'])
@@ -274,6 +291,46 @@ Route::middleware('jwt.auth')->group(function () {
             ->whereNumber('id')->middleware('permission:admin.user.assign_role');
         Route::post('{id}/assign-permissions', [V1AdminUserController::class, 'assignPermissions'])
             ->whereNumber('id')->middleware('permission:admin.user.assign_permission');
+    });
+
+    /*
+     * Access Control > Company & Unit — the tenant master data.
+     *
+     * Read is separated from write on purpose. Every user-facing picker needs the
+     * company and unit lists, so `read` is granted alongside user administration;
+     * the mutations are not, because a company code is the tenant key that
+     * ScopeMatcher partitions on and editing one reaches every account that
+     * carries it. The seeder grants those to the super administrator only.
+     */
+    Route::prefix('v1/admin')->middleware('module.schema:authorization')->group(function () {
+        Route::get('companies', [V1CompanyUnitController::class, 'companies'])
+            ->middleware('permission:admin.company.read');
+        Route::post('companies', [V1CompanyUnitController::class, 'storeCompany'])
+            ->middleware(['throttle:30,1', 'permission:admin.company.create']);
+        Route::put('companies/{id}', [V1CompanyUnitController::class, 'updateCompany'])
+            ->whereNumber('id')->middleware('permission:admin.company.update');
+        Route::patch('companies/{id}/status', [V1CompanyUnitController::class, 'setCompanyStatus'])
+            ->whereNumber('id')->middleware('permission:admin.company.status');
+        Route::delete('companies/{id}', [V1CompanyUnitController::class, 'destroyCompany'])
+            ->whereNumber('id')->middleware('permission:admin.company.delete');
+
+        // `legacy-units` before `{id}` so the literal segment is never captured
+        // as a numeric id, the collision the roles group documents above.
+        Route::get('units/legacy', [V1CompanyUnitController::class, 'legacyUnits'])
+            ->middleware('permission:admin.unit.read');
+        Route::post('units/legacy/adopt', [V1CompanyUnitController::class, 'adoptLegacyUnit'])
+            ->middleware(['throttle:20,1', 'permission:admin.unit.create']);
+
+        Route::get('units', [V1CompanyUnitController::class, 'units'])
+            ->middleware('permission:admin.unit.read');
+        Route::post('units', [V1CompanyUnitController::class, 'storeUnit'])
+            ->middleware(['throttle:30,1', 'permission:admin.unit.create']);
+        Route::put('units/{id}', [V1CompanyUnitController::class, 'updateUnit'])
+            ->whereNumber('id')->middleware('permission:admin.unit.update');
+        Route::patch('units/{id}/status', [V1CompanyUnitController::class, 'setUnitStatus'])
+            ->whereNumber('id')->middleware('permission:admin.unit.status');
+        Route::delete('units/{id}', [V1CompanyUnitController::class, 'destroyUnit'])
+            ->whereNumber('id')->middleware('permission:admin.unit.delete');
     });
 
     Route::prefix('v1/delegations')->group(function () {

@@ -17,6 +17,9 @@ vi.mock("../../utils/api", () => ({
   // module, so omitting it makes the import undefined and the save throws before
   // it reaches the API — which reads as "nothing was submitted".
   resolveWriteCompanyId: (value) => value,
+  // The lifecycle forms read companies and units from canonical master data
+  // now, through useProvisioningOptions.
+  provisioningLookupApi: { companyOptions: vi.fn().mockResolvedValue({ data: { companies: [], units: [] } }) },
   authApi: {
     submitAppointmentForm: vi.fn(),
     updateAppointment: vi.fn(),

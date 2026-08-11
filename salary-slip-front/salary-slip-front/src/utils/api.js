@@ -987,6 +987,125 @@ export const adminUserApi = {
   },
 };
 
+/**
+ * Access Control → Company & Unit.
+ *
+ * The canonical master data. Every company and unit selector in the product —
+ * New User, Edit User, and in time the Trial and Appointment forms — resolves
+ * through here rather than through a constant, so creating a company once makes
+ * it appear everywhere without a deployment.
+ */
+export const companyUnitApi = {
+  companies(filters, accessToken, tokenType = "Bearer") {
+    const params = new URLSearchParams();
+    if (filters?.search) params.set("search", filters.search);
+    if (filters?.status) params.set("status", filters.status);
+    const query = params.toString();
+
+    return apiRequest(`/v1/admin/companies${query ? `?${query}` : ""}`, {
+      headers: authHeaders(accessToken, tokenType),
+    });
+  },
+
+  createCompany(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest("/v1/admin/companies", {
+      method: "POST", headers: authHeaders(accessToken, tokenType),
+      body: JSON.stringify(payload),
+    });
+  },
+
+  updateCompany(id, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/admin/companies/${id}`, {
+      method: "PUT", headers: authHeaders(accessToken, tokenType),
+      body: JSON.stringify(payload),
+    });
+  },
+
+  setCompanyStatus(id, isActive, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/admin/companies/${id}/status`, {
+      method: "PATCH", headers: authHeaders(accessToken, tokenType),
+      body: JSON.stringify({ isActive }),
+    });
+  },
+
+  deleteCompany(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/admin/companies/${id}`, {
+      method: "DELETE", headers: authHeaders(accessToken, tokenType),
+    });
+  },
+
+  units(filters, accessToken, tokenType = "Bearer") {
+    const params = new URLSearchParams();
+    (filters?.companyIds ?? []).forEach((id) => params.append("company_ids[]", id));
+    if (filters?.search) params.set("search", filters.search);
+    if (filters?.status) params.set("status", filters.status);
+    const query = params.toString();
+
+    return apiRequest(`/v1/admin/units${query ? `?${query}` : ""}`, {
+      headers: authHeaders(accessToken, tokenType),
+    });
+  },
+
+  createUnit(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest("/v1/admin/units", {
+      method: "POST", headers: authHeaders(accessToken, tokenType),
+      body: JSON.stringify(payload),
+    });
+  },
+
+  updateUnit(id, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/admin/units/${id}`, {
+      method: "PUT", headers: authHeaders(accessToken, tokenType),
+      body: JSON.stringify(payload),
+    });
+  },
+
+  setUnitStatus(id, isActive, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/admin/units/${id}/status`, {
+      method: "PATCH", headers: authHeaders(accessToken, tokenType),
+      body: JSON.stringify({ isActive }),
+    });
+  },
+
+  deleteUnit(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/admin/units/${id}`, {
+      method: "DELETE", headers: authHeaders(accessToken, tokenType),
+    });
+  },
+
+  // Unit names that predate the units table, with the number of people carrying
+  // each. Ownership is chosen by an administrator, never inferred from counts.
+  legacyUnits(accessToken, tokenType = "Bearer") {
+    return apiRequest("/v1/admin/units/legacy", { headers: authHeaders(accessToken, tokenType) });
+  },
+
+  adoptLegacyUnit(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest("/v1/admin/units/legacy/adopt", {
+      method: "POST", headers: authHeaders(accessToken, tokenType),
+      body: JSON.stringify(payload),
+    });
+  },
+};
+
+/**
+ * Companies and units the signed-in actor may file a record into.
+ *
+ * The employee-lifecycle forms read this rather than the build-time
+ * companyConfig constant, so a company created in Company & Unit Management
+ * appears in the Trial and Appointment forms without a deployment — and a form
+ * cannot offer a tenant the server would refuse.
+ *
+ * Separate from companyUnitApi on purpose: this is a scoped lookup any
+ * authenticated actor may make, not the management surface.
+ */
+export const provisioningLookupApi = {
+  companyOptions(accessToken, tokenType = "Bearer") {
+    return apiRequest("/v1/provisioning/company-options", {
+      headers: authHeaders(accessToken, tokenType),
+    });
+  },
+};
+
 export const documentApi = {
   // Catalogue for the Document Type selector, grouped by category.
   getTypes(accessToken, tokenType = "Bearer") {

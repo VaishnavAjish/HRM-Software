@@ -1,6 +1,11 @@
 import { ResourceError } from '../../lib/errors.js';
 import { isValid, normalise } from '../../lib/laravel/aadhaar.js';
 import { serializeUser, type SerializedUser } from '../users/user.serializer.js';
+import {
+  PROVISIONING_SOURCE,
+  prismaProvisioner,
+  type Provisioner,
+} from '../provisioning/provisioning.service.js';
 
 /**
  * Employees — the read/write half of UserController.
@@ -209,7 +214,10 @@ export function mayDiscloseAadhaar(actor: Actor | null | undefined, employee: Em
 }
 
 export class EmployeeService {
-  constructor(private readonly repo: EmployeeRepository) {}
+  constructor(
+    private readonly repo: EmployeeRepository,
+    private readonly provisioner: Provisioner = prismaProvisioner,
+  ) {}
 
   async list(actor: Actor, query: ListQuery): Promise<{ result: ListResult; disclosed: number }> {
     const result = await this.repo.list(scopeFor(actor), query);
@@ -288,7 +296,19 @@ export class EmployeeService {
       }
     }
 
-    return serializeUser(await this.repo.create(data));
+    const created = await this.repo.create(data);
+
+    // This surface posts a numeric tier rather than a role id, so the canonical
+    // role is derived from it. Before this, the tier was all that was written
+    // and the account held no role at all.
+    await this.provisioner.provision(
+      Number(created.id),
+      requestedRole < 0 ? 3 : requestedRole,
+      (data.company_code as string | null) ?? null,
+      PROVISIONING_SOURCE.EMPLOYEE_FORM,
+    );
+
+    return serializeUser(created);
   }
 
   async update(

@@ -37,12 +37,37 @@ class RoleHierarchy
         self::CUSTOM => 30,
     ];
 
-    /** Codes that map to a class. Everything else is CUSTOM. */
+    /**
+     * Codes that map to a class. Everything else is CUSTOM.
+     *
+     * Both administrator codes and both employee codes are listed, because
+     * deployments disagree about which they use and the omission is not a
+     * cosmetic one. This database's administrator role is `admin`; the seeder's
+     * is `tenant_administrator`. Only the second was listed, so on the live
+     * schema the Admin role classified as CUSTOM at rank 30 instead of ADMIN at
+     * rank 80 — and CUSTOM is a tier an administrator may manage. Three
+     * consequences followed, all of them silent:
+     *
+     *   - an Admin could grant the Admin role to anybody, themselves included;
+     *   - an Admin could edit the Admin role's own permission matrix, which is
+     *     unbounded self-escalation: add any permission to the role you hold;
+     *   - a user holding the Admin role whose legacy tier was not 1 classified
+     *     as CUSTOM, so their peers could rewrite their roles.
+     *
+     * The existing test suite never caught it because RbacSeeder seeds
+     * `tenant_administrator`, a code the production database does not contain.
+     *
+     * UserTypeRoles::CODES already listed both spellings for the same tier. Two
+     * maps answering one question, and only one of them complete, is the whole
+     * defect; they now agree.
+     */
     private const CODE_CLASS = [
         'super_administrator' => self::INTERNAL_SUPER_ADMIN,
         'super_admin' => self::INTERNAL_SUPER_ADMIN,
         'tenant_administrator' => self::ADMIN,
+        'admin' => self::ADMIN,
         'employee' => self::EMPLOYEE,
+        'emp' => self::EMPLOYEE,
         'viewer' => self::VIEWER,
     ];
 
@@ -152,6 +177,25 @@ class RoleHierarchy
     public static function reservedCodes(): array
     {
         return array_keys(self::CODE_CLASS);
+    }
+
+    /**
+     * Every code that carries a given class.
+     *
+     * So a query that needs to exclude a tier asks for its codes rather than
+     * naming one. RoleManagementService listed `tenant_administrator` inline and
+     * therefore failed to hide `admin` — the same omission as CODE_CLASS, in a
+     * second place, which is what happens when the list is copied instead of
+     * referenced.
+     *
+     * @return list<string>
+     */
+    public static function codesForClass(string $class): array
+    {
+        return array_keys(array_filter(
+            self::CODE_CLASS,
+            static fn (string $mapped) => $mapped === $class
+        ));
     }
 
     /**

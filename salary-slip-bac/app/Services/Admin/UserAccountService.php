@@ -6,7 +6,6 @@ use App\Models\User;
 use App\Services\Authorization\AuthorizationCache;
 use App\Services\Authorization\SchemaSupport;
 use App\Support\AuditLogger;
-use App\Support\UserTypeRoles;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -39,90 +38,73 @@ class UserAccountService
     ) {
     }
 
+    /**
+     * Persist a new account. The identity role is not assigned here.
+     *
+     * This used to derive the RBAC assignment from users.role itself, which made
+     * it a second decision-maker about identity alongside the caller that had
+     * just resolved one. Worse, it derived it from the numeric TIER: a role whose
+     * code is not one of the five canonical ones — HR Manager — falls back to the
+     * employee tier, so creating an HR Manager also attached the Employee role.
+     * UserProvisioningService now resolves exactly one role and
+     * RoleAssignmentService writes it.
+     */
     public function create(array $data, User $actor): User
     {
-        $user = new User();
-        $user->fill($this->fillable($data));
-        $user->password = $data['password'];
-        $user->role = (int) ($data['role'] ?? 3);
-        $user->is_deleted = '0';
-        $user->status = $data['status'] ?? '0';
-        $user->added_by = $actor->id;
+        return DB::transaction(function () use ($data, $actor) {
+            $user = new User();
+            $user->fill($this->fillable($data));
+            $user->password = $data['password'];
+            $user->role = (int) ($data['role'] ?? 3);
+            $user->is_deleted = '0';
+            $user->status = $data['status'] ?? '0';
+            $user->added_by = $actor->id;
 
-        if (SchemaSupport::hasColumn('users', 'username') && !empty($data['username'])) {
-            $user->username = $data['username'];
-        }
+            if (SchemaSupport::hasColumn('users', 'username') && !empty($data['username'])) {
+                $user->username = $data['username'];
+            }
 
-        $user->save();
+            $user->save();
 
-        if (!empty($data['roleIds'])) {
-            $this->assignRoles($user, $data['roleIds'], $actor, 'Created with the account');
-        }
+            if (!empty($data['roleIds'])) {
+                $this->assignRoles($user, $data['roleIds'], $actor, 'Created with the account');
+            }
 
-        $this->syncIdentityRole($user);
+            $this->audit($user, self::CHANGE_CREATE, null, $this->snapshot($user), $data['businessReason'] ?? null);
+            $this->cache->invalidate($user->company_code ?: null);
 
-        $this->audit($user, self::CHANGE_CREATE, null, $this->snapshot($user), $data['businessReason'] ?? null);
-
-        return $user;
+            return $user;
+        });
     }
 
     public function update(User $user, array $data, User $actor): User
     {
-        $before = $this->snapshot($user);
+        return DB::transaction(function () use ($user, $data, $actor) {
+            $before = $this->snapshot($user);
+            // The tenant the account is leaving has to be busted too. Invalidating
+            // only the new company_code leaves the old tenant's cached snapshot
+            // naming a user who is no longer in it.
+            $previousTenant = $user->company_code ?: null;
 
-        $user->fill($this->fillable($data));
+            $user->fill($this->fillable($data));
 
-        if (SchemaSupport::hasColumn('users', 'username') && array_key_exists('username', $data)) {
-            $user->username = $data['username'] ?: null;
-        }
-
-        if (array_key_exists('role', $data) && $data['role'] !== null) {
-            $user->role = (int) $data['role'];
-        }
-
-        $user->save();
-
-        if (array_key_exists('role', $data) && $data['role'] !== null) {
-            $this->syncIdentityRole($user);
-        }
-
-        $this->audit($user, self::CHANGE_UPDATE, $before, $this->snapshot($user), $data['businessReason'] ?? null);
-        $this->cache->invalidate($user->company_code ?: null);
-
-        return $user;
-    }
-
-    /**
-     * Bring the RBAC assignment in line with the user's type.
-     *
-     * Only identity roles are touched. A user granted HR Manager or ACC keeps
-     * them across a type change — those are additional capability, not a second
-     * answer to "who is this person", and silently revoking them here would make
-     * an unrelated edit remove access nobody asked to remove.
-     */
-    private function syncIdentityRole(User $user): void
-    {
-        if (! SchemaSupport::hasTable('user_roles')) {
-            return;
-        }
-
-        try {
-            $identityIds = UserTypeRoles::identityRoleIds();
-            $target = UserTypeRoles::roleFor($user->role);
-
-            $keep = $user->roles()->pluck('roles.id')
-                ->reject(fn ($id) => in_array($id, $identityIds, true))
-                ->all();
-
-            if ($target !== null) {
-                $keep[] = $target->id;
+            if (SchemaSupport::hasColumn('users', 'username') && array_key_exists('username', $data)) {
+                $user->username = $data['username'] ?: null;
             }
 
-            $user->roles()->sync(array_values(array_unique($keep)));
-        } catch (\Throwable $e) {
-            // A deployment without the pivot must not fail account creation.
-            report($e);
-        }
+            if (array_key_exists('role', $data) && $data['role'] !== null) {
+                $user->role = (int) $data['role'];
+            }
+
+            $user->save();
+
+            $this->audit($user, self::CHANGE_UPDATE, $before, $this->snapshot($user), $data['businessReason'] ?? null);
+
+            $this->cache->invalidate($previousTenant);
+            $this->cache->invalidate($user->company_code ?: null);
+
+            return $user;
+        });
     }
 
     public function softDelete(User $user, User $actor, ?string $reason = null): void

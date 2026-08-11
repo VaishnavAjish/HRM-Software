@@ -20,6 +20,7 @@ const pageTitles = {
   "/admin/settings": "Settings",
   "/admin/access-control/users": "Access Control - Users",
   "/admin/access-control/roles": "Access Control - Roles",
+  "/admin/access-control/company-units": "Access Control - Company & Unit",
   "/admin/tickets": "Support Tickets",
   "/admin/tickets/control-center": "Ticket Control Center",
   "/admin/profile": "Profile",

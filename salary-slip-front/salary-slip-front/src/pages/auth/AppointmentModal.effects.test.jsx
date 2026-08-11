@@ -11,6 +11,7 @@ vi.mock("../../utils/api", () => ({
     checkEmpCodeAvailability: vi.fn(),
   },
   salaryApi: { getDepartments: vi.fn() },
+  provisioningLookupApi: { companyOptions: vi.fn().mockResolvedValue({ data: { companies: [], units: [] } }) },
   appointmentV1Api: {
     get: vi.fn(),
     uploadDocument: vi.fn(),

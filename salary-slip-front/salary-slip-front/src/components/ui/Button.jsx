@@ -16,6 +16,15 @@ const sizes = {
   lg: "px-6 py-2.5 text-base",
 };
 
+/*
+ * Remaining props reach the <button>.
+ *
+ * They were dropped before, which silently discarded aria-label and title on
+ * every icon-only button in the app: nothing but an SVG inside, so the
+ * accessible name was empty and a screen reader announced "button". The same
+ * omission hid the explanatory tooltip on disabled destructive actions, so a
+ * greyed-out Delete gave no reason for being greyed out.
+ */
 export default function Button({
   children,
   variant = "primary",
@@ -25,12 +34,14 @@ export default function Button({
   disabled,
   onClick,
   type = "button",
+  ...rest
 }) {
   return (
     <button
       type={type}
       onClick={onClick}
       disabled={disabled}
+      {...rest}
       className={`inline-flex items-center gap-1.5 rounded-lg font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed ${variants[variant]} ${sizes[size]} ${className}`}
     >
       {icon && <span className="flex-shrink-0">{icon}</span>}

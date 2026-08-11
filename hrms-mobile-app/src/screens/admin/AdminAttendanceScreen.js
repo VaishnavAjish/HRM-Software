@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Modal, Alert, ActivityIndicator } from 'react-native';
-import { CalendarCheck, AlertCircle, Upload, Check } from 'lucide-react-native';
+import { CalendarCheck, AlertCircle, Upload, Check, ChevronLeft } from 'lucide-react-native';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { typography, shadows } from '../../theme';
@@ -52,13 +52,12 @@ function StatusPickerModal({ visible, onClose, onSelect, current }) {
   );
 }
 
-export function AdminAttendanceScreen() {
+export function AdminAttendanceScreen({ onBack }) {
   const { theme } = useTheme();
   const { user } = useAuth();
   const isUnitScoped = Number(user?.role) === 2;
   const canSwitchCompany = [0, 1].includes(Number(user?.role));
 
-  const [showUpload, setShowUpload] = useState(false);
   const [month, setMonth] = useState(String(CURRENT.getMonth() + 1));
   const [year, setYear] = useState(String(CURRENT.getFullYear()));
   const [companyCode, setCompanyCode] = useState(isUnitScoped ? user.company_code : COMPANY_OPTIONS[0].value);
@@ -125,24 +124,17 @@ export function AdminAttendanceScreen() {
     }
   };
 
-  if (showUpload) {
-    return (
-      <AdminAttendanceUploadScreen
-        onDone={() => { setShowUpload(false); load(); }}
-        onCancel={() => setShowUpload(false)}
-      />
-    );
-  }
-
   return (
     <View style={[styles.screen, { backgroundColor: theme.background }]}>
       <View style={styles.headerArea}>
-        <View style={styles.titleRow}>
-          <Text style={[styles.title, { color: theme.textPrimary }]}>Attendance</Text>
-          <TouchableOpacity style={[styles.uploadBtn, { borderColor: theme.border, backgroundColor: theme.surfaceElevated }]} onPress={() => setShowUpload(true)}>
-            <Upload size={14} color={theme.primary} />
-            <Text style={[styles.uploadBtnText, { color: theme.primary }]}>Bulk Upload</Text>
+        {onBack ? (
+          <TouchableOpacity style={styles.backRow} onPress={onBack} activeOpacity={0.7}>
+            <ChevronLeft size={18} color={theme.primary} />
+            <Text style={[styles.backText, { color: theme.primary }]}>Back to Profile</Text>
           </TouchableOpacity>
+        ) : null}
+        <View style={styles.titleRow}>
+          <Text style={[styles.title, { color: theme.textPrimary }]}>Attendance Logs</Text>
         </View>
 
         <View style={styles.filterRow}>

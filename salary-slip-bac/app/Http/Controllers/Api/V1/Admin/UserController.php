@@ -12,6 +12,12 @@ use App\Models\Role;
 use App\Services\Admin\UserAccountService;
 use App\Services\Admin\UserDirectory;
 use App\Services\Authorization\SchemaSupport;
+use App\Services\Provisioning\CompanyMembershipService;
+use App\Services\Provisioning\ProvisioningException;
+use App\Services\Provisioning\RoleResolver;
+use App\Services\Provisioning\UnitMembershipService;
+use App\Services\Provisioning\UserProvisioningService;
+use App\Support\ProvisioningContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -57,6 +63,10 @@ class UserController extends Controller
     public function __construct(
         private readonly UserDirectory $directory,
         private readonly UserAccountService $accounts,
+        private readonly UserProvisioningService $provisioning,
+        private readonly RoleResolver $roles,
+        private readonly CompanyMembershipService $companies,
+        private readonly UnitMembershipService $units,
     ) {}
 
     public function index(Request $request)
@@ -92,7 +102,7 @@ class UserController extends Controller
     {
         return response()->json([
             'success' => true,
-            'data' => $this->directory->filterOptions(auth('api')->user()),
+            'data' => $this->directory->filterOptions(auth('api')->user(), $this->roles, $this->companies, $this->units),
         ]);
     }
 
@@ -140,6 +150,15 @@ class UserController extends Controller
                     'punchingNo' => $user->punching_no,
                     'shiftId' => $user->shift_id,
                 ],
+                // Flat, alongside the legacy companyCode, because the edit form
+                // preselects from ids and must not have to reverse-engineer them
+                // from a comma-separated string it did not write.
+                'companyIds' => $this->companies->companyIdsOf($user),
+                'unitIds' => $this->units->unitIdsOf($user),
+                'primaryUnitId' => $this->units->primaryUnitIdOf($user),
+                'provisioningSource' => SchemaSupport::hasColumn('users', 'provisioning_source')
+                    ? $user->provisioning_source
+                    : null,
                 'departments' => $this->departmentsOf($user),
                 'branches' => $this->branchesOf($user),
                 'reportingManager' => $this->reportingManager($user),
@@ -152,23 +171,74 @@ class UserController extends Controller
         ]);
     }
 
+    /**
+     * The roles this actor may pick from, for the screen that is asking.
+     *
+     * The context comes from the query string but is validated against a closed
+     * list and then used only to SELECT a policy — it can never widen one. Both
+     * lists are computed by the same resolver the store/update guards call, so
+     * an option the dropdown offers is an option the server accepts, and one it
+     * omits is one the server refuses.
+     */
+    public function assignableRoles(Request $request)
+    {
+        $actor = auth('api')->user();
+        $context = (string) $request->query('context', ProvisioningContext::DIRECT_CREATE);
+
+        if (! ProvisioningContext::isSelectable($context)) {
+            return $this->error('VALIDATION_FAILED', 'Unknown role assignment context.', 422);
+        }
+
+        $target = null;
+
+        if ($context === ProvisioningContext::EDIT_USER && $request->query('userId')) {
+            $target = User::query()->find((int) $request->query('userId'));
+
+            if ($target && ($this->isConcealed($actor, $target) || ! $this->directory->scopeAllows($actor, $target))) {
+                $target = null;
+            }
+        }
+
+        $companies = $this->companies->optionsFor($actor);
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'context' => $context,
+                'roles' => $this->roles->options($actor, $context, $target),
+                'companies' => $companies,
+                // Every unit the actor could reach, each carrying its company.
+                // Filtering to the selected companies happens in the browser
+                // from this list, and again on the server when the request
+                // arrives — the first is convenience, the second is the rule.
+                'units' => $this->units->optionsForCompanies(array_column($companies, 'id')),
+            ],
+        ]);
+    }
+
     public function store(StoreUserRequest $request)
     {
         $actor = auth('api')->user();
         $data = $request->payload();
 
-        if ($guard = $this->guardTargetRole($actor, (int) $data['role'])) {
+        if ($data['role'] !== null && ($guard = $this->guardTargetRole($actor, (int) $data['role']))) {
             return $guard;
         }
 
-        if ($guard = $this->guardCompany($actor, $data['company_code'])) {
+        // Only the legacy string path is checked here; company ids carry their
+        // own scope check inside the provisioning service, against the same
+        // company list the picker was populated from.
+        if (($data['companyIds'] ?? []) === [] && ($guard = $this->guardCompany($actor, (string) $data['company_code']))) {
             return $guard;
         }
 
-        return response()->json([
-            'success' => true,
-            'data' => ['id' => $this->accounts->create($data, $actor)->id],
-        ], 201);
+        try {
+            $user = $this->provisioning->createDirectUser($data, $actor);
+        } catch (ProvisioningException $e) {
+            return $this->error($e->errorCode, $e->getMessage(), $e->status);
+        }
+
+        return response()->json(['success' => true, 'data' => ['id' => $user->id]], 201);
     }
 
     public function update(UpdateUserRequest $request, int $id)
@@ -190,11 +260,32 @@ class UserController extends Controller
             return $guard;
         }
 
+        /*
+         * Changing an account's identity is a role assignment, so it goes
+         * through the guards role assignment already has. It did not: this path
+         * wrote users.role and derived the RBAC role from it, bypassing both the
+         * "may you grant this role" and "may you touch this user's roles" checks
+         * that /assign-role enforces — the same escalation by a different route.
+         */
+        if (array_key_exists('roleId', $data)) {
+            if ($guard = $this->guardTargetUserRoles($actor, $user)) {
+                return $guard;
+            }
+
+            if ($guard = $this->guardSensitiveRoles($actor, [$data['roleId']])) {
+                return $guard;
+            }
+        }
+
         if (array_key_exists('company_code', $data) && ($guard = $this->guardCompany($actor, $data['company_code']))) {
             return $guard;
         }
 
-        $this->accounts->update($user, $data, $actor);
+        try {
+            $this->provisioning->updateUser($user, $data, $actor);
+        } catch (ProvisioningException $e) {
+            return $this->error($e->errorCode, $e->getMessage(), $e->status);
+        }
 
         return response()->json(['success' => true, 'data' => ['id' => $user->id]]);
     }

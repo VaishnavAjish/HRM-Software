@@ -10,6 +10,7 @@ const MASKED = "XXXX XXXX 1345";
 vi.mock("../../utils/api", () => ({
   authApi: { getProfile: vi.fn(), updateProfile: vi.fn() },
   salaryApi: { getDepartments: vi.fn() },
+  provisioningLookupApi: { companyOptions: vi.fn().mockResolvedValue({ data: { companies: [], units: [] } }) },
 }));
 
 vi.mock("../../context/AuthContext", () => ({

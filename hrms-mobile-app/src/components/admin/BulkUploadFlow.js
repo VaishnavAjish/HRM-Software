@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert, Modal } from 'react-native';
-import * as DocumentPicker from 'expo-document-picker';
 import { Download, FileUp, UploadCloud, CheckCircle2, AlertCircle, X, Trash2, ChevronRight } from 'lucide-react-native';
 import { useTheme } from '../../context/ThemeContext';
 import { typography } from '../../theme';
@@ -179,13 +178,25 @@ export function BulkUploadFlow({ type, title, getColumns, uploadFn, renderExtraF
 
   const pickFile = async () => {
     try {
+      // Required lazily, not as a top-level import: this native module was
+      // added late and needs a native rebuild (`npx expo run:android`) to
+      // link. A static import would crash the instant this file is merely
+      // loaded (e.g. just opening the Employees tab, which imports this
+      // component) on any build that predates that rebuild — a deferred
+      // require confines the failure to the moment this button is pressed.
+      const DocumentPicker = require('expo-document-picker');
       const res = await DocumentPicker.getDocumentAsync({ type: SPREADSHEET_MIME_TYPES, copyToCacheDirectory: true });
       if (res.canceled || !res.assets?.[0]) return;
       setPickedFile(res.assets[0]);
       setResult(null);
       setError(null);
     } catch (e) {
-      Alert.alert('Could not open file picker', e?.message || 'Please try again.');
+      Alert.alert(
+        'Could not open file picker',
+        e?.message?.includes('native module')
+          ? 'This build needs to be rebuilt (npx expo run:android) before file picking works.'
+          : e?.message || 'Please try again.'
+      );
     }
   };
 
