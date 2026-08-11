@@ -716,7 +716,8 @@ function TicketDetail({ id, onBack, onImmersiveChange }) {
         ) : error && !ticket ? (
           <EmptyState icon={AlertCircle} title="Couldn't load ticket" message={error} tone="error" actionLabel="Retry" onAction={load} />
         ) : (
-          <ChatWallpaper style={styles.chatBody}>
+          <>
+            <ChatWallpaper style={styles.chatBody}>
             <ScrollView
               ref={scrollRef}
               style={{ flex: 1 }}
@@ -804,6 +805,7 @@ function TicketDetail({ id, onBack, onImmersiveChange }) {
                     </View>
                   </View>
                 );
+              })}
             </ScrollView>
           </ChatWallpaper>
 
