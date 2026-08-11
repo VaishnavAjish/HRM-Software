@@ -614,10 +614,13 @@ export default function Login() {
 
               <form onSubmit={handleLogin} className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                  <label htmlFor="login-username" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
                     Email Address or Employee Code
                   </label>
                   <input
+                    id="login-username"
+                    name="username"
+                    autoComplete="username"
                     value={empCode}
                     onChange={(e) => setEmpCode(e.target.value)}
                     placeholder="Enter your email or employee code"
@@ -626,11 +629,14 @@ export default function Login() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                  <label htmlFor="login-password" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
                     Password
                   </label>
                   <div className="relative">
                     <input
+                      id="login-password"
+                      name="password"
+                      autoComplete="current-password"
                       type={showPass ? "text" : "password"}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
@@ -710,11 +716,14 @@ export default function Login() {
 
                 <div className="mt-7 space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                    <label htmlFor="forgot-emp-code" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
                       Employee Code
                     </label>
                     <div className="relative">
                       <input
+                        id="forgot-emp-code"
+                        name="emp_code"
+                        autoComplete="username"
                         value={fEmpCode}
                         onChange={(e) => {
                           setFEmpCode(e.target.value.toUpperCase());
@@ -738,10 +747,12 @@ export default function Login() {
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                      <label htmlFor="forgot-company-select" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
                         Company
                       </label>
                       <select
+                        id="forgot-company-select"
+                        name="company_id"
                         value={fCompanyId}
                         disabled
                         className={inCls + " opacity-60 cursor-not-allowed"}
@@ -755,10 +766,12 @@ export default function Login() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                      <label htmlFor="forgot-unit-select" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
                         Branch / Unit
                       </label>
                       <select
+                        id="forgot-unit-select"
+                        name="unit"
                         value={fUnit}
                         disabled
                         className={inCls + " opacity-60 cursor-not-allowed"}
@@ -780,10 +793,12 @@ export default function Login() {
                   )}
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                    <label htmlFor="forgot-mobile-num" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
                       Mobile Number
                     </label>
                     <input
+                      id="forgot-mobile-num"
+                      name="mobile_num"
                       value={fMobileNum}
                       onChange={(e) => setFMobileNum(e.target.value.replace(/\D/g, "").slice(0, 10))}
                       placeholder="10-digit mobile number"
@@ -843,11 +858,14 @@ export default function Login() {
                 <div className="mt-7 space-y-4">
                   {/* Email input + Send OTP */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                    <label htmlFor="forgot-email" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
                       Email Address
                     </label>
                     <div className="flex gap-2">
                       <input
+                        id="forgot-email"
+                        name="email"
+                        autoComplete="email"
                         value={emailInput}
                         onChange={(e) => {
                           setEmailInput(e.target.value);
@@ -978,6 +996,9 @@ export default function Login() {
                 <div className="mt-5 space-y-4">
                   {[
                     {
+                      id: "new-password",
+                      name: "new_password",
+                      autoComplete: "new-password",
                       label: "New Password",
                       val: newPass,
                       set: setNewPass,
@@ -985,19 +1006,25 @@ export default function Login() {
                       toggle: () => setShowNew((p) => !p),
                     },
                     {
+                      id: "confirm-password",
+                      name: "confirm_password",
+                      autoComplete: "new-password",
                       label: "Confirm Password",
                       val: confPass,
                       set: setConfPass,
                       show: showConf,
                       toggle: () => setShowConf((p) => !p),
                     },
-                  ].map(({ label, val, set, show, toggle }) => (
+                  ].map(({ id, name, autoComplete, label, val, set, show, toggle }) => (
                     <div key={label}>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                      <label htmlFor={id} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
                         {label}
                       </label>
                       <div className="relative">
                         <input
+                          id={id}
+                          name={name}
+                          autoComplete={autoComplete}
                           type={show ? "text" : "password"}
                           value={val}
                           onChange={(e) => set(e.target.value)}
