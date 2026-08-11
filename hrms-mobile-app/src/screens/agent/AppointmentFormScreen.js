@@ -74,9 +74,12 @@ function buildInitialForm(raw, agentCompanyCode) {
 
 export function AppointmentFormScreen({ initialData, isPrefillFromTrial, onDone, onCancel }) {
   const { theme } = useTheme();
-  const { user } = useAuth();
+  const { user, role } = useAuth();
   const isEditMode = Boolean(initialData?.id) && !isPrefillFromTrial;
-  const readOnly = isEditMode && isCandidateApproved(initialData.raw || {});
+  // Agents lose edit access once a submission is approved — the record is
+  // now the admin's to correct. Admins themselves keep edit access even on
+  // approved records (fixing a typo post-approval is a normal admin task).
+  const readOnly = isEditMode && role !== 'admin' && isCandidateApproved(initialData.raw || {});
   const [printing, setPrinting] = useState(false);
 
   const [form, setForm] = useState(() => buildInitialForm(initialData?.raw, user?.company_code));

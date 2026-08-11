@@ -165,6 +165,15 @@ class ApiService {
     return this.request('/employee/import-account-detail', { method: 'POST', body: formData, isForm: true });
   }
 
+  // ----- Admin: Appointments -----
+  // Distinct from getAgentCandidates() — that one is scoped to the calling
+  // agent's own submissions and unpaginated; this is the staff-wide,
+  // server-paginated register (role:admin,agent + hr.appointment.read).
+  getAdminAppointments(params = {}) {
+    const qs = new URLSearchParams(params).toString();
+    return this.request(`/appointment${qs ? `?${qs}` : ''}`);
+  }
+
   // ----- Admin: Upload Batches (shared history for employee/salary/attendance bulk imports) -----
   getUploadBatches(type, params = {}) {
     const qs = new URLSearchParams(params).toString();

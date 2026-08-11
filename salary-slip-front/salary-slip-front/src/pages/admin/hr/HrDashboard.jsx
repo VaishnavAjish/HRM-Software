@@ -2,18 +2,16 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
-  Users, UserCheck, UserPlus, Clock, ClipboardList, Briefcase, CalendarDays, Laptop,
-  FileClock, Sparkles, Plus, RefreshCw, Download, TrendingUp,
-  UserPlus2, FileText, Star, Award, PackageCheck, PackageX,
-  AlertTriangle, CalendarClock, UsersRound, LogOut, BarChart3, FileBarChart, Wallet,
-  ChevronRight, ArrowUpRight, Activity
+  Users, UserCheck, UserPlus, Briefcase, CalendarDays, Laptop,
+  FileClock, UserPlus2, FileText, Star, Award, PackageCheck, PackageX,
+  AlertTriangle, CalendarClock, LogOut, BarChart3, TrendingUp,
+  ClipboardList, FileBarChart
 } from "lucide-react";
 import {
   ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   Legend, BarChart,
 } from "recharts";
 import { StatCard } from "../../../components/ui/Card";
-import Badge from "../../../components/ui/Badge";
 import { SkeletonTable } from "../../../components/ui/Skeleton";
 import { useAuth } from "../../../context/AuthContext";
 import { useCompany } from "../../../context/CompanyContext";
@@ -128,7 +126,7 @@ export default function HrDashboard() {
           <SectionCard title="Hiring Funnel" subtitle="Candidates currently in recruitment stages" icon={<TrendingUp size={18} />}>
             <div className="h-72">
               {funnelData.length ? (
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={50}>
                   <BarChart data={funnelData} layout="vertical" margin={{ left: 20 }}>
                     <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e5e7eb" />
                     <XAxis type="number" allowDecimals={false} tick={{ fontSize: 12, fill: "#6b7280" }} />
@@ -143,7 +141,7 @@ export default function HrDashboard() {
 
           <SectionCard title="Workforce Dynamics" subtitle="Net Joiners vs Resignations (6-Month Trend)" icon={<BarChart3 size={18} />}>
             <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={50}>
                 <ComposedChart data={growthTrend}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
                   <XAxis dataKey="month" tick={{ fontSize: 12, fill: "#6b7280" }} />
