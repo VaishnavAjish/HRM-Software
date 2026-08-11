@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasColumn('users', 'form_no')) {
+            return;
+        }
+
         Schema::table('users', function (Blueprint $table) {
             $table->string('form_no')->nullable();
             $table->date('trial_date')->nullable();

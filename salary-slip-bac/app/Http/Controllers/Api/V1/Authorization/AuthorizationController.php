@@ -189,7 +189,22 @@ class AuthorizationController extends Controller
             return 'admin';
         }
 
-        $holds = static fn (string $code): bool => (bool) ($decisions[$code]['allowed'] ?? false);
+        /*
+         * The engine's own answer, not the shadow-widened one.
+         *
+         * `allowed` in the snapshot is `engineAllowed || (shadow && legacy)`.
+         * Shadow mode is on in production, and the legacy decision grants a
+         * tier-1 administrator effectively everything — so every portal
+         * capability read as held, the first branch below won, and every Admin
+         * was sent to the AGENT shell.
+         *
+         * Shadow mode exists so the new engine cannot wrongly deny during the
+         * migration. Letting it grant is the opposite of that: a shell is a
+         * choice between mutually exclusive answers, so "the legacy system
+         * would not have objected" is not a vote for any particular one. Read
+         * the engine, and fall through to the legacy rule when it says nothing.
+         */
+        $holds = static fn (string $code): bool => (bool) ($decisions[$code]['engineAllowed'] ?? false);
 
         if ($holds('ui.portals.agent')) {
             return 'agent';

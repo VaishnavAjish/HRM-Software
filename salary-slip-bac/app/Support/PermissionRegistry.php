@@ -871,18 +871,19 @@ class PermissionRegistry
             'implies' => ['self.ticket.create'],
             'api' => [['POST', '/api/tickets/store']],
         ],
-        /*
-         * Deliberately implies nothing. /api/profile and /api/profile-update
-         * carry no permission middleware at all — every authenticated caller
-         * reaches them — so naming a legacy code here would claim an alignment
-         * that does not exist, and granting one would read as API access this
-         * node does not confer. It gates the menu entry and the route only.
-         */
         'ui.portals.employee_profile' => [
             'type' => self::TYPE_PAGE, 'label' => 'My Profile', 'order' => 28,
             'parent' => 'ui.portals', 'route' => '/employee/profile',
             'description' => 'Open the employee profile page.',
-            'implies' => [],
+            'implies' => ['self.profile.read'],
+            'api' => [['GET', '/api/profile']],
+        ],
+        'ui.portals.employee_profile.update' => [
+            'type' => self::TYPE_ACTION, 'label' => 'Edit Own Profile', 'order' => 10,
+            'parent' => 'ui.portals.employee_profile',
+            'description' => 'Edit own profile details.',
+            'implies' => ['self.profile.update'],
+            'api' => [['POST', '/api/profile-update']],
         ],
         'ui.portals.employee_appointment' => [
             'type' => self::TYPE_PAGE, 'label' => 'Employee Appointment Form', 'order' => 30,

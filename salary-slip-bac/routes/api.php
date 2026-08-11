@@ -137,9 +137,9 @@ Route::post('logout', [AuthController::class, 'logout'])->middleware('throttle:3
 
 Route::middleware('jwt.auth')->group(function () {
     // Any authenticated role (admin, agent, employee)
-    Route::get('profile', [AuthController::class, 'me'])->middleware('throttle:30,1');
+    Route::get('profile', [AuthController::class, 'me'])->middleware(['throttle:30,1', 'permission:self.profile.read']);
     Route::post('change-password', [AuthController::class, 'changePassword'])->middleware('throttle:10,1');
-    Route::post('profile-update', [UserController::class, 'updateProfile'])->middleware('throttle:30,1');
+    Route::post('profile-update', [UserController::class, 'updateProfile'])->middleware(['throttle:30,1', 'permission:self.profile.update']);
     Route::get('my-permissions', [PermissionDimensionController::class, 'myPermissions'])->middleware('throttle:60,1');
 
     /*

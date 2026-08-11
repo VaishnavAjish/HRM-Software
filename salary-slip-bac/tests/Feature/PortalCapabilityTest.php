@@ -166,6 +166,49 @@ class PortalCapabilityTest extends TestCase
         $this->assertSame('admin', $this->snapshotFor($this->userWith($role, 'Q-6'))['portal']);
     }
 
+    public function test_shadow_mode_cannot_grant_a_shell(): void
+    {
+        /*
+         * The regression that put every administrator in the agent portal.
+         *
+         * The snapshot reports `allowed` as `engineAllowed || (shadow &&
+         * legacy)`. Shadow mode is on in production and the legacy decision
+         * grants a tier-1 administrator effectively everything, so every portal
+         * capability read as held, the agent branch matched first, and Admins
+         * signed in to the agent shell.
+         *
+         * Shadow mode exists so the new engine cannot wrongly DENY during the
+         * migration. A shell is a choice between mutually exclusive answers, so
+         * "the legacy system would not have objected" is not a vote for any one
+         * of them.
+         */
+        DB::table('authorization_feature_flags')->updateOrInsert(
+            ['tenant_id' => '*', 'key' => 'authorization_shadow_mode'],
+            ['enabled' => true, 'created_at' => now(), 'updated_at' => now()]
+        );
+
+        foreach ([null, 'nidhi-impex'] as $tenant) {
+            app(FeatureFlags::class)->forget('authorization_shadow_mode', $tenant);
+        }
+
+        // A legacy administrator holding no portal capability at all.
+        $role = $this->roleWith('legacy_admin_shell', 'Legacy Admin Shell', []);
+        $admin = $this->userWith($role, 'Q-SHADOW', 1);
+
+        $snapshot = $this->snapshotFor($admin);
+
+        $this->assertSame(
+            'admin',
+            $snapshot['portal'],
+            'A tier-1 administrator must reach the management shell, never the agent shell.',
+        );
+
+        // The shadow fallback does report them as "allowed" — which is exactly
+        // why portal resolution must not read that field.
+        $this->assertTrue($snapshot['permissions']['ui.portals.agent']['allowed']);
+        $this->assertFalse($snapshot['permissions']['ui.portals.agent']['engineAllowed']);
+    }
+
     public function test_a_super_admin_is_never_subject_to_portal_configuration(): void
     {
         $root = User::create([
