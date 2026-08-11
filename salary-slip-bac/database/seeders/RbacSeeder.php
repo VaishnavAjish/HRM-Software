@@ -151,6 +151,13 @@ class RbacSeeder extends Seeder
 
         $this->populateCatalog($permissions);
         $this->migrateLegacyAssignments($roles);
+
+        // The employee shell's own pages. Called from here as well as from its
+        // migration because a migration cannot grant to a role that does not
+        // exist yet, and the roles above are created after migrations run — so
+        // a fresh install would otherwise leave the employee portal missing
+        // half its pages.
+        (new EmployeeSelfServicePermissionSeeder())->run();
     }
 
     private function role(
