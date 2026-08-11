@@ -222,7 +222,7 @@ export function AddEmployeeScreen({ onDone, onCancel }) {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  backRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 50, marginBottom: 16, marginLeft: 16 },
+  backRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 16, marginBottom: 16, marginLeft: 16 },
   backText: { ...typography.body, fontWeight: '600' },
   tabBar: { flexDirection: 'row', padding: 4, borderRadius: 16, marginHorizontal: 16, marginBottom: 12 },
   tabItem: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 10, borderRadius: 12 },

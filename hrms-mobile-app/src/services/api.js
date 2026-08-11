@@ -165,6 +165,64 @@ class ApiService {
     return this.request('/employee/import-account-detail', { method: 'POST', body: formData, isForm: true });
   }
 
+  // ----- Admin: Salary -----
+  // Same endpoints an employee's own getPayslips()/getPayslipDetail() call —
+  // the backend scopes by role automatically (admin sees every employee's
+  // slips, filterable by company/unit/month/year/department/search).
+  getAdminPayslips(params = {}) {
+    const qs = new URLSearchParams(params).toString();
+    return this.request(`/salary-slip/get${qs ? `?${qs}` : ''}`);
+  }
+
+  getAdminPayslipDetail(id) {
+    return this.request(`/salary-slip/show/${id}`);
+  }
+
+  // Registered as GET with an `id` query param on the backend, despite being
+  // a delete action — not a mobile-side choice, matching the real route.
+  deleteAdminPayslip(id) {
+    return this.request(`/admin/salary-slip/delete?id=${encodeURIComponent(id)}`);
+  }
+
+  getSalaryImportColumns() {
+    return this.request('/admin/salary-slip/import-columns');
+  }
+
+  importSalarySlips(formData) {
+    return this.request('/admin/salary-slip/store', { method: 'POST', body: formData, isForm: true });
+  }
+
+  // ----- Admin: Attendance & Shifts -----
+  getAttendanceGrid(params = {}) {
+    const qs = new URLSearchParams(params).toString();
+    return this.request(`/attendance/grid${qs ? `?${qs}` : ''}`);
+  }
+
+  upsertAttendanceCell(payload) {
+    return this.request('/attendance/cell', { method: 'POST', body: payload });
+  }
+
+  getShifts(params = {}) {
+    const qs = new URLSearchParams(params).toString();
+    return this.request(`/shifts/get${qs ? `?${qs}` : ''}`);
+  }
+
+  createShift(payload) {
+    return this.request('/shifts/store', { method: 'POST', body: payload });
+  }
+
+  updateShift(id, payload) {
+    return this.request(`/shifts/update/${id}`, { method: 'PUT', body: payload });
+  }
+
+  deleteShift(id) {
+    return this.request(`/shifts/delete/${id}`, { method: 'DELETE' });
+  }
+
+  assignShift(payload) {
+    return this.request('/shifts/assign', { method: 'POST', body: payload });
+  }
+
   // ----- Admin: Appointments -----
   // Distinct from getAgentCandidates() — that one is scoped to the calling
   // agent's own submissions and unpaginated; this is the staff-wide,
@@ -195,6 +253,41 @@ class ApiService {
   // expose today.
   deleteTrialForm(id) {
     return this.request(`/trial-form/delete/${id}`, { method: 'DELETE' });
+  }
+
+  // ----- Admin: Accounts (Super-Admin only in practice) -----
+  getAdminAccounts(params = {}) {
+    const qs = new URLSearchParams(params).toString();
+    return this.request(`/rbac/user-roles${qs ? `?${qs}` : ''}`);
+  }
+
+  createAdminAccount(payload) {
+    return this.request('/register', { method: 'POST', body: payload });
+  }
+
+  // ----- Admin: Tickets -----
+  // Same rows/endpoint as getTickets() (employee self-service) — the backend
+  // scopes what's visible by role, this just omits the `mine: true` default
+  // so admin sees the full queue rather than only their own assigned tickets.
+  getAdminTickets(params = {}) {
+    const qs = new URLSearchParams(params).toString();
+    return this.request(`/tickets/get${qs ? `?${qs}` : ''}`);
+  }
+
+  getTicketAssignees() {
+    return this.request('/tickets/assignees');
+  }
+
+  assignTicket(id, payload) {
+    return this.request(`/tickets/${id}/assign`, { method: 'PUT', body: payload });
+  }
+
+  updateTicketStatus(id, status, remarks) {
+    return this.request(`/tickets/${id}/status`, { method: 'PUT', body: { status, remarks } });
+  }
+
+  escalateTicket(id, remarks) {
+    return this.request(`/tickets/${id}/escalate`, { method: 'POST', body: { remarks } });
   }
 
   // ----- Admin: Upload Batches (shared history for employee/salary/attendance bulk imports) -----

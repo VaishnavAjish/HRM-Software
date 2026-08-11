@@ -497,7 +497,7 @@ export function AdminEmployeesScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  headerArea: { paddingHorizontal: 16, paddingTop: 50 },
+  headerArea: { paddingHorizontal: 16, paddingTop: 16 },
   title: { ...typography.h2, marginBottom: 12 },
   filterRow: { flexDirection: 'row', gap: 10 },
   listContent: { paddingTop: 12, paddingBottom: 100 },
@@ -508,7 +508,7 @@ const styles = StyleSheet.create({
   rowMeta: { ...typography.caption },
   bulkDeleteBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12 },
   bulkDeleteText: { ...typography.caption, fontWeight: '700' },
-  backRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 20, marginLeft: 16, marginTop: 50 },
+  backRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 20, marginLeft: 16, marginTop: 16 },
   backText: { ...typography.body, fontWeight: '600' },
   detailContent: { paddingHorizontal: 16, paddingBottom: 40 },
   errorText: { ...typography.caption, marginBottom: 8 },

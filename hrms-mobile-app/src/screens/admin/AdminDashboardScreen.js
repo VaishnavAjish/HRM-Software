@@ -163,7 +163,7 @@ export function AdminDashboardScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  content: { padding: 16, paddingTop: 50, paddingBottom: 40 },
+  content: { padding: 16, paddingBottom: 40 },
   title: { ...typography.h2, marginBottom: 16 },
   statsRow: { flexDirection: 'row', gap: 10, marginBottom: 10 },
   sectionTitle: { ...typography.h3, marginTop: 18, marginBottom: 10 },

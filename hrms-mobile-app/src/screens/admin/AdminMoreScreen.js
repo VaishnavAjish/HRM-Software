@@ -10,6 +10,11 @@ import { Card } from '../../components/common/Card';
 import { EmptyState } from '../../components/common/EmptyState';
 import { AgentAppointmentsScreen } from '../agent/AgentAppointmentsScreen';
 import { AgentTrialScreen } from '../agent/AgentTrialScreen';
+import { AdminSalaryScreen } from './AdminSalaryScreen';
+import { AdminSalaryUploadScreen } from './AdminSalaryUploadScreen';
+import { AdminShiftsScreen } from './AdminShiftsScreen';
+import { AdminTicketsScreen } from './AdminTicketsScreen';
+import { AdminAccountsScreen } from './AdminAccountsScreen';
 
 // Web's admin nav has ~12 destinations; the phone tab bar only fits 5, so
 // everything beyond Dashboard/Employees/Attendance collapses into this grid
@@ -33,8 +38,18 @@ export function AdminMoreScreen() {
   const isSuperAdmin = Number(user?.role) === 0;
   const visibleTiles = TILES.filter((t) => !t.superAdminOnly || isSuperAdmin);
 
-  if (activeHubScreen === 'appointments' || activeHubScreen === 'trialForms') {
-    const ScreenComponent = activeHubScreen === 'appointments' ? AgentAppointmentsScreen : AgentTrialScreen;
+  const WIRED_SCREENS = {
+    appointments: AgentAppointmentsScreen,
+    trialForms: AgentTrialScreen,
+    salary: AdminSalaryScreen,
+    salaryUpload: AdminSalaryUploadScreen,
+    shifts: AdminShiftsScreen,
+    tickets: AdminTicketsScreen,
+    admins: AdminAccountsScreen,
+  };
+
+  if (WIRED_SCREENS[activeHubScreen]) {
+    const ScreenComponent = WIRED_SCREENS[activeHubScreen];
     return (
       <View style={[styles.screen, { backgroundColor: theme.background }]}>
         <TouchableOpacity style={styles.backRow} onPress={() => setActiveHubScreen(null)} activeOpacity={0.7}>
@@ -93,7 +108,7 @@ export function AdminMoreScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  content: { padding: 16, paddingTop: 50, paddingBottom: 40 },
+  content: { padding: 16, paddingBottom: 40 },
   title: { ...typography.h2, marginBottom: 16 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   tileWrap: { width: '47%' },
@@ -101,6 +116,6 @@ const styles = StyleSheet.create({
   iconWrap: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
   tileLabel: { ...typography.body, fontWeight: '600' },
   chevron: { position: 'absolute', right: 0, top: 0 },
-  backRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 20 },
+  backRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 16, marginBottom: 20, marginHorizontal: 16 },
   backText: { ...typography.body, fontWeight: '600' },
 });

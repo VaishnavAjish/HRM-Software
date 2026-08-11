@@ -43,11 +43,18 @@ export async function downloadTextFileToDevice(content, filename, mimeType = 'te
   return { uri: cacheUri, saved: false };
 }
 
+const TECHNICAL_COLUMNS = new Set(['id', 'created_at', 'updated_at', 'deleted_at']);
+
 // Builds a CSV whose header row is exactly the backend's expected DB column
 // keys — the import endpoint only auto-matches columns without an explicit
 // mapping when the header text matches a key verbatim, so a template built
-// this way always imports cleanly with no mapping step required.
+// this way always imports cleanly with no mapping step required. `columns`
+// may be either `[{key, label, ...}]` (employee import-columns) or a flat
+// array of raw column name strings (salary/attendance import-columns, which
+// just introspect the DB table) — both are normalised to a key list here.
 export function buildCsvTemplate(columns) {
-  const header = columns.map((c) => c.key).join(',');
-  return `${header}\n`;
+  const keys = columns
+    .map((c) => (typeof c === 'string' ? c : c.key))
+    .filter((k) => k && !TECHNICAL_COLUMNS.has(k));
+  return `${keys.join(',')}\n`;
 }

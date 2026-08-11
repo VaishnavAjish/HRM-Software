@@ -127,8 +127,12 @@ function BatchDetailModal({ type, batchId, visible, onClose, onDeleted }) {
  * FormData and must return the standard {status, imported, skipped, batch_id}
  * response. `extraFields` (optional) renders extra pre-upload inputs (e.g.
  * company/month/year pickers) and their values are merged into the FormData.
+ * `fileFieldName` must match the backend's multipart field name for the
+ * uploaded file — it is NOT the same across all three types ("file" for
+ * employees, "salary_slip" for salary — verified against the real
+ * controllers, not assumed).
  */
-export function BulkUploadFlow({ type, title, getColumns, uploadFn, renderExtraFields, extra, templateFilename }) {
+export function BulkUploadFlow({ type, title, getColumns, uploadFn, renderExtraFields, extra, templateFilename, fileFieldName = 'file' }) {
   const { theme } = useTheme();
   const [pickedFile, setPickedFile] = useState(null);
   const [uploading, setUploading] = useState(false);
@@ -191,7 +195,7 @@ export function BulkUploadFlow({ type, title, getColumns, uploadFn, renderExtraF
     setError(null);
     try {
       const fd = new FormData();
-      fd.append('file', {
+      fd.append(fileFieldName, {
         uri: pickedFile.uri,
         name: pickedFile.name || `${type}-import.csv`,
         type: pickedFile.mimeType || 'text/csv',
