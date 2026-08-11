@@ -855,7 +855,20 @@ class PermissionRegistry
             'parent' => 'ui.portals', 'route' => '/employee/form16',
             'sensitivity' => self::SENSITIVITY_SENSITIVE,
             'description' => 'Open the employee Form 16 page.',
-            'implies' => ['payroll.form16.read'],
+            /*
+             * The self-service read, not the payroll one.
+             *
+             * This implied payroll.form16.read, which guards the ADMINISTRATIVE
+             * Form 16 employee listing — a code no employee should hold. The
+             * effect was that the page could only be granted by handing every
+             * employee an admin capability, so it was granted to nobody and the
+             * menu entry disappeared for all 341 of them.
+             *
+             * pages/employee/Form16.jsx calls salaryApi.getEmployeeDashboard,
+             * which is guarded by self.payslip.read. That is the code the page
+             * actually depends on, so that is what it implies.
+             */
+            'implies' => ['self.payslip.read'],
         ],
         'ui.portals.employee_tickets' => [
             'type' => self::TYPE_PAGE, 'label' => 'My Tickets', 'order' => 26,
@@ -889,7 +902,20 @@ class PermissionRegistry
             'type' => self::TYPE_PAGE, 'label' => 'Employee Appointment Form', 'order' => 30,
             'parent' => 'ui.portals', 'route' => '/employee/appointment',
             'description' => 'Open the appointment form from the employee shell.',
-            'implies' => ['hr.appointment.read'],
+            /*
+             * The employee's own profile, not the appointment directory.
+             *
+             * This implied hr.appointment.read, which guards the administrative
+             * appointment list — granting it to the Employee role would let
+             * every employee read every appointment in the company. So it was
+             * correctly granted to nobody, and the page vanished from the
+             * employee menu instead.
+             *
+             * pages/employee/EmployeeAppointment.jsx calls authApi.getProfile
+             * and nothing else: the form is prefilled from the signed-in user's
+             * own record. self.profile.read is the capability it needs.
+             */
+            'implies' => ['self.profile.read'],
         ],
 
         /* ----------------------------------------------------- access control */

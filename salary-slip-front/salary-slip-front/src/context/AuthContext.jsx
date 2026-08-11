@@ -12,10 +12,17 @@ const AuthContext = createContext(null);
 const STORAGE_KEY = "auth_user";
 
 function getUserRole(value, type) {
-  if (type === "agent" || Number(value) === 4) {
+  if (type === "agent" || Number(value) === 4 || String(value || "").toLowerCase() === "agent") {
     return "agent";
   }
-  if (Number(value) === 0 || Number(value) === 1 || Number(value) === 2 || String(value).toLowerCase() === "admin") {
+  const numVal = Number(value);
+  const strVal = String(value || "").toLowerCase();
+  if (
+    numVal === 0 ||
+    numVal === 1 ||
+    numVal === 2 ||
+    ["admin", "super_admin", "superadmin", "owner", "security_admin", "tenant_admin", "hr_manager", "hr"].includes(strVal)
+  ) {
     return "admin";
   }
   return "employee";

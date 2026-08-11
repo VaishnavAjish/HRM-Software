@@ -325,9 +325,10 @@ export default function Login() {
     );
     if (result.success) {
       toast.success("Welcome back!");
-      const fallbackPath = result.role === "admin" ? "/admin" : (result.role === "agent" ? "/agent" : (result.role === "candidate" ? "/candidate" : "/employee"));
+      const isAdminRole = ["admin", "super_admin", "superadmin", "owner", "security_admin", "tenant_admin"].includes(result.role) || result.role === "admin";
+      const fallbackPath = isAdminRole ? "/admin" : (result.role === "agent" ? "/agent" : (result.role === "candidate" ? "/candidate" : "/employee"));
       const requestedPath = location.state?.from?.pathname;
-      const roleHomePrefix = result.role === "admin" ? "/admin" : (result.role === "agent" ? "/agent" : (result.role === "candidate" ? "/candidate" : "/employee"));
+      const roleHomePrefix = isAdminRole ? "/admin" : (result.role === "agent" ? "/agent" : (result.role === "candidate" ? "/candidate" : "/employee"));
       const nextPath = requestedPath?.startsWith(roleHomePrefix)
         ? requestedPath
         : fallbackPath;
