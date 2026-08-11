@@ -105,6 +105,66 @@ class ApiService {
     return this.request('/change-password', { method: 'POST', body: payload });
   }
 
+  // ----- Authorization -----
+  // Read-only permission snapshot the admin portal uses to show/hide its own
+  // in-screen actions (e.g. hide "Delete" if the caller can't). Never used to
+  // edit roles/policies — that console doesn't exist on mobile.
+  getMyPermissions() {
+    return this.request('/v1/authorization/me');
+  }
+
+  // ----- Admin: Dashboard -----
+  getAdminDashboard(params = {}) {
+    const qs = new URLSearchParams(params).toString();
+    return this.request(`/admin-dashboard${qs ? `?${qs}` : ''}`);
+  }
+
+  // ----- Admin: Employees -----
+  getAdminEmployees(params = {}) {
+    const qs = new URLSearchParams(params).toString();
+    return this.request(`/employee/get${qs ? `?${qs}` : ''}`);
+  }
+
+  getAdminEmployee(id) {
+    return this.request(`/employee/show/${id}`);
+  }
+
+  createEmployee(payload) {
+    const isForm = typeof FormData !== 'undefined' && payload instanceof FormData;
+    return this.request('/employee/store', { method: 'POST', body: payload, isForm });
+  }
+
+  updateEmployee(id, payload) {
+    const isForm = typeof FormData !== 'undefined' && payload instanceof FormData;
+    return this.request(`/employee/edit/${id}`, { method: 'PUT', body: payload, isForm });
+  }
+
+  // Registered as a GET on the backend despite being a delete action — not a
+  // mobile-side choice, matching the real route.
+  deleteEmployee(id) {
+    return this.request(`/employee/delete/${id}`);
+  }
+
+  deleteEmployeesBulk(ids) {
+    return this.request('/employee/delete-multiple', { method: 'POST', body: { ids } });
+  }
+
+  createAccountFromAppointment(payload) {
+    return this.request('/appointment/create-account', { method: 'POST', body: payload });
+  }
+
+  getEmployeeImportColumns() {
+    return this.request('/employee/import-columns');
+  }
+
+  importEmployees(formData) {
+    return this.request('/employee/import', { method: 'POST', body: formData, isForm: true });
+  }
+
+  importEmployeeAccountDetail(formData) {
+    return this.request('/employee/import-account-detail', { method: 'POST', body: formData, isForm: true });
+  }
+
   // ----- Employee -----
   getDashboard() {
     return this.request('/dashboard');

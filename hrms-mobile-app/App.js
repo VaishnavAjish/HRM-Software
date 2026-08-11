@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { LayoutDashboard, UserPlus, FileText as FileTextIcon, Home, Ticket, User } from 'lucide-react-native';
+import { LayoutDashboard, UserPlus, FileText as FileTextIcon, Home, Ticket, User, Users, CalendarCheck, Grid3x3 } from 'lucide-react-native';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { ThemeProvider, useTheme } from './src/context/ThemeContext';
 import { Header } from './src/components/common/Header';
@@ -13,6 +13,10 @@ import { PayslipScreen } from './src/screens/employee/PayslipScreen';
 import { AgentDashboardScreen } from './src/screens/agent/AgentDashboardScreen';
 import { AgentAppointmentsScreen } from './src/screens/agent/AgentAppointmentsScreen';
 import { AgentTrialScreen } from './src/screens/agent/AgentTrialScreen';
+import { AdminDashboardScreen } from './src/screens/admin/AdminDashboardScreen';
+import { AdminEmployeesScreen } from './src/screens/admin/AdminEmployeesScreen';
+import { AdminAttendanceScreen } from './src/screens/admin/AdminAttendanceScreen';
+import { AdminMoreScreen } from './src/screens/admin/AdminMoreScreen';
 import { TicketScreen } from './src/screens/TicketScreen';
 import { ProfileScreen } from './src/screens/ProfileScreen';
 import { computeProfileCompletion } from './src/utils/profileCompletion';
@@ -33,11 +37,24 @@ const AGENT_TABS = [
   { id: 'profile', label: 'Profile', icon: User },
 ];
 
+// Web's admin nav has ~12 destinations across Dashboard/Employees/Salary/
+// Attendance/Appointments/Trial Form/Tickets/admin accounts — a phone tab bar
+// only fits ~5, so only the two highest-frequency actions (Employees,
+// Attendance) get their own tab; everything else collapses into "More".
+const ADMIN_TABS = [
+  { id: 'admin-dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { id: 'admin-employees', label: 'Employees', icon: Users },
+  { id: 'admin-attendance', label: 'Attendance', icon: CalendarCheck },
+  { id: 'admin-more', label: 'More', icon: Grid3x3 },
+  { id: 'profile', label: 'Profile', icon: User },
+];
+
 function MainAppContent() {
   const { theme } = useTheme();
   const { isAuthenticated, bootstrapping, role, user } = useAuth();
   const isAgent = role === 'agent';
-  const [activeTab, setActiveTab] = useState(isAgent ? 'agent-dashboard' : 'home');
+  const isAdmin = role === 'admin';
+  const [activeTab, setActiveTab] = useState(isAgent ? 'agent-dashboard' : isAdmin ? 'admin-dashboard' : 'home');
   // A ticket conversation takes over the whole screen, WhatsApp-style, so the
   // app chrome gets out of the way while one is open.
   const [immersive, setImmersive] = useState(false);
@@ -46,30 +63,32 @@ function MainAppContent() {
 
   // Employees must finish their profile before they can use anything else —
   // mirrors the web's ProtectedRoute redirect-to-profile-until-100% behavior.
-  const profileComplete = isAgent || computeProfileCompletion(user).isComplete;
+  // Agents and admins skip this gate entirely, same as agents already did.
+  const profileComplete = isAgent || isAdmin || computeProfileCompletion(user).isComplete;
 
   React.useEffect(() => {
-    const validTabs = (isAgent ? AGENT_TABS : EMPLOYEE_TABS).map((t) => t.id);
+    const tabsForRole = isAgent ? AGENT_TABS : isAdmin ? ADMIN_TABS : EMPLOYEE_TABS;
+    const validTabs = tabsForRole.map((t) => t.id);
     if (!validTabs.includes(activeTab)) {
-      setActiveTab(isAgent ? 'agent-dashboard' : 'home');
+      setActiveTab(isAgent ? 'agent-dashboard' : isAdmin ? 'admin-dashboard' : 'home');
     }
   }, [role]);
 
   React.useEffect(() => {
-    if (!isAgent && !profileComplete && activeTab !== 'profile') {
+    if (!isAgent && !isAdmin && !profileComplete && activeTab !== 'profile') {
       setActiveTab('profile');
     }
-  }, [isAgent, profileComplete, activeTab]);
+  }, [isAgent, isAdmin, profileComplete, activeTab]);
 
   // Once a previously-incomplete profile crosses 100%, jump straight to Home
   // instead of leaving the employee stranded on the Profile tab.
   const prevProfileCompleteRef = React.useRef(profileComplete);
   React.useEffect(() => {
-    if (!isAgent && !prevProfileCompleteRef.current && profileComplete) {
+    if (!isAgent && !isAdmin && !prevProfileCompleteRef.current && profileComplete) {
       setActiveTab('home');
     }
     prevProfileCompleteRef.current = profileComplete;
-  }, [isAgent, profileComplete]);
+  }, [isAgent, isAdmin, profileComplete]);
 
   if (bootstrapping) {
     return <LoadingView fullscreen label="Signing you in…" />;
@@ -93,6 +112,21 @@ function MainAppContent() {
       }
     }
 
+    if (isAdmin) {
+      switch (activeTab) {
+        case 'admin-employees':
+          return <AdminEmployeesScreen />;
+        case 'admin-attendance':
+          return <AdminAttendanceScreen />;
+        case 'admin-more':
+          return <AdminMoreScreen />;
+        case 'profile':
+          return <ProfileScreen />;
+        default:
+          return <AdminDashboardScreen />;
+      }
+    }
+
     if (!profileComplete) {
       return <ProfileScreen requireCompletion />;
     }
@@ -110,7 +144,7 @@ function MainAppContent() {
   };
 
   const handleSelectTab = (tabId) => {
-    if (!isAgent && !profileComplete && tabId !== 'profile') return;
+    if (!isAgent && !isAdmin && !profileComplete && tabId !== 'profile') return;
     setActiveTab(tabId);
   };
 
@@ -123,7 +157,11 @@ function MainAppContent() {
       <View style={styles.screenContainer}>{renderActiveScreen()}</View>
 
       {!immersive ? (
-        <FloatingTabBar tabs={isAgent ? AGENT_TABS : EMPLOYEE_TABS} activeTab={activeTab} onSelectTab={handleSelectTab} />
+        <FloatingTabBar
+          tabs={isAgent ? AGENT_TABS : isAdmin ? ADMIN_TABS : EMPLOYEE_TABS}
+          activeTab={activeTab}
+          onSelectTab={handleSelectTab}
+        />
       ) : null}
     </View>
   );

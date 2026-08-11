@@ -149,9 +149,18 @@ export default defineConfig(({ mode }) => {
 
         // Workbox service-worker config
         workbox: {
-          // precache all built assets
+          // precache essential app shell assets
           globPatterns: ["**/*.{js,css,html,ico,png,svg,woff,woff2,ttf,eot}"],
-          // allow larger bundles (main chunk) to be precached
+          globIgnores: [
+            "**/assets/ag-grid-*.js",
+            "**/assets/exceljs*.js",
+            "**/assets/jspdf*.js",
+            "**/assets/html2canvas*.js",
+            "**/assets/CartesianChart-*.js",
+            "**/assets/AddEmployeePage-*.js",
+            "**/assets/HiringProcess-*.js",
+          ],
+          // allow app shell bundles to be precached
           maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
           // serve index.html for all navigation requests (SPA routing)
           navigateFallback: "index.html",
@@ -216,6 +225,10 @@ export default defineConfig(({ mode }) => {
         output: {
           manualChunks: {
             "ag-grid": ["ag-grid-community", "ag-grid-react"],
+            "exceljs": ["exceljs"],
+            "jspdf": ["jspdf", "jspdf-autotable"],
+            "html2canvas": ["html2canvas"],
+            "recharts": ["recharts"],
           },
         },
       },

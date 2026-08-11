@@ -66,9 +66,14 @@ const FIELD_VALIDATORS = {
 export function ProfileScreen({ requireCompletion = false }) {
   const { theme } = useTheme();
   const { user, role, updateUser, logout } = useAuth();
-  // Agents have no employee record — no payroll, no appointment form, no
-  // completion requirement. Their profile is just who they are and a way out.
+  // Agents and admins have no employee record — no payroll, no appointment
+  // form, no completion requirement. Their profile is just who they are, a
+  // way to edit contact details, and a way out.
   const isAgent = role === 'agent';
+  const isAdmin = role === 'admin';
+  const simplified = isAgent || isAdmin;
+  const roleLabel = isAgent ? 'Agent' : isAdmin ? 'Admin' : 'Employee';
+  const roleBadgeVariant = isAgent ? 'violet' : isAdmin ? 'primary' : 'cyan';
   const [activeTab, setActiveTab] = useState('basic');
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -82,7 +87,7 @@ export function ProfileScreen({ requireCompletion = false }) {
   const departmentOptions = departments.length ? departments : DEFAULT_DEPARTMENTS;
 
   useEffect(() => {
-    if (isAgent) return;
+    if (simplified) return;
     (async () => {
       try {
         const res = await api.getDepartments();
@@ -245,17 +250,17 @@ export function ProfileScreen({ requireCompletion = false }) {
           {uploadingPhoto ? <Text style={[styles.uploadingText, { color: theme.textMuted }]}>Uploading…</Text> : null}
           <Text style={[styles.name, { color: theme.textPrimary }]}>{user?.name || '—'}</Text>
           <Text style={[styles.designation, { color: theme.textMuted }]}>
-            {user?.designation || (role === 'agent' ? 'Agent' : 'Employee')}
+            {user?.designation || roleLabel}
             {user?.department ? ` · ${user.department}` : ''}
           </Text>
 
           <View style={styles.badgeRow}>
-            <Badge label={role === 'agent' ? 'Agent' : 'Employee'} variant={role === 'agent' ? 'violet' : 'cyan'} />
+            <Badge label={roleLabel} variant={roleBadgeVariant} />
             {user?.emp_code ? <Badge label={`ID ${user.emp_code}`} variant="default" /> : null}
             {user?.status === 0 || user?.status === '0' ? <Badge label="Active" variant="emerald" /> : null}
           </View>
 
-          {!isAgent ? (
+          {!simplified ? (
             <View style={styles.completionRow}>
               <View style={[styles.progressTrack, { backgroundColor: theme.surfaceElevated }]}>
                 <View style={[styles.progressFill, { width: `${completion}%`, backgroundColor: completion >= 100 ? theme.emerald : theme.primary }]} />
@@ -268,14 +273,14 @@ export function ProfileScreen({ requireCompletion = false }) {
 
       <Card style={styles.infoCard} elevated>
         <View style={styles.infoGrid}>
-          {!isAgent ? <InfoTile icon={Briefcase} label="Employee Code" value={user?.emp_code} theme={theme} /> : null}
-          <InfoTile icon={Building2} label={isAgent ? 'Company' : 'Company Code'} value={user?.company_code} theme={theme} />
-          <InfoTile icon={MapPin} label={isAgent ? 'Branch' : 'Unit / Branch'} value={user?.unit} theme={theme} />
-          {!isAgent ? (
+          {!simplified ? <InfoTile icon={Briefcase} label="Employee Code" value={user?.emp_code} theme={theme} /> : null}
+          <InfoTile icon={Building2} label={simplified ? 'Company' : 'Company Code'} value={user?.company_code} theme={theme} />
+          <InfoTile icon={MapPin} label={simplified ? 'Branch' : 'Unit / Branch'} value={user?.unit} theme={theme} />
+          {!simplified ? (
             <InfoTile icon={Calendar} label="Joining Date" value={user?.joining_date ? formatDate(user.joining_date) : '—'} theme={theme} />
           ) : null}
         </View>
-        {!isAgent && user?.has_aadhaar ? (
+        {!simplified && user?.has_aadhaar ? (
           <View style={styles.aadhaarRow}>
             <ShieldCheck size={14} color={theme.emerald} />
             <Text style={[styles.aadhaarText, { color: theme.textMuted }]}>
@@ -286,7 +291,7 @@ export function ProfileScreen({ requireCompletion = false }) {
         ) : null}
       </Card>
 
-      {!isAgent ? (
+      {!simplified ? (
       <>
       <TouchableOpacity onPress={downloadAppointmentForm} disabled={downloading} activeOpacity={0.85}>
         <Card style={styles.downloadCard} elevated>
