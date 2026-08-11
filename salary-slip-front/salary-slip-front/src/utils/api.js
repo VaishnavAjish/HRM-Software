@@ -148,11 +148,29 @@ export async function apiRequest(path, options = {}) {
   // Debug log to help identify connectivity issues in the mobile app.
   console.log(`[API] Request: ${options.method || "GET"} ${url}`);
 
-  const response = await fetch(url, {
-    ...options,
-    headers,
-    cache: "no-store",
-  });
+  const timeoutMs = options.timeout ?? 15000;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  let response;
+  try {
+    response = await fetch(url, {
+      ...options,
+      headers,
+      cache: "no-store",
+      signal: options.signal || controller.signal,
+    });
+  } catch (err) {
+    if (err.name === "AbortError") {
+      throw new Error(`Request timed out after ${Math.round(timeoutMs / 1000)}s. Please check if backend API server on port 8000 is running.`, { cause: err });
+    }
+    if (err instanceof TypeError && (err.message?.includes("Failed to fetch") || err.message?.includes("fetch"))) {
+      throw new Error("Unable to connect to backend server at http://127.0.0.1:8000/api. Please ensure backend server is running.", { cause: err });
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   const contentType = response.headers.get("content-type") || "";
   const responseText = await response.text();
