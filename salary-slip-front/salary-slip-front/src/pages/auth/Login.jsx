@@ -570,7 +570,7 @@ export default function Login() {
     <div className="min-h-screen bg-gradient-to-br from-brand-100 via-white to-brand-50 dark:from-gray-900 dark:via-gray-900 dark:to-gray-800 flex items-center justify-center p-4">
 
 
-      <div className={`w-full ${mode === "forgot" ? "max-w-lg" : "max-w-md"}`}>
+      <main className={`w-full ${mode === "forgot" ? "max-w-lg" : "max-w-md"}`}>
         {/* Logo */}
         {mode === "login" && (
           <div className="text-center mb-8">
@@ -646,10 +646,11 @@ export default function Login() {
                     />
                     <button
                       type="button"
+                      aria-label={showPass ? "Hide password" : "Show password"}
                       onClick={() => setShowPass((p) => !p)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-2.5 min-w-[36px] min-h-[36px] flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded-lg touch-manipulation focus:outline-none focus:ring-2 focus:ring-brand-500"
                     >
-                      {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                      {showPass ? <EyeOff size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}
                     </button>
                   </div>
                   <button
@@ -1033,10 +1034,11 @@ export default function Login() {
                         />
                         <button
                           type="button"
+                          aria-label={show ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
                           onClick={toggle}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                          className="absolute right-2 top-1/2 -translate-y-1/2 p-2.5 min-w-[36px] min-h-[36px] flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded-lg touch-manipulation focus:outline-none focus:ring-2 focus:ring-brand-500"
                         >
-                          {show ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}
+                          {show ? <EyeOff size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}
                         </button>
                       </div>
                     </div>
@@ -1089,17 +1091,19 @@ export default function Login() {
           </div>
         )}
 
-        {/* Footer Brand Link */}
-        <div className="mt-8 text-center text-xs text-gray-500 dark:text-gray-400 space-y-1.5">
-          <p>
-            <Link to="/about-niss" className="font-semibold text-brand-600 dark:text-brand-400 hover:underline">
-              About NISS HRMS
-            </Link>{" "}
-            • Nidhi Impex Silver Star
+        {/* Footer Link */}
+        <div className="text-center mt-6">
+          <Link
+            to="/about-niss"
+            className="text-xs text-brand-600 dark:text-brand-400 hover:underline font-medium"
+          >
+            About NISS HRMS • Nidhi Impex Silver Star
+          </Link>
+          <p className="text-[11px] text-gray-400 mt-1">
+            © 2026 Nidhi Impex Silver Star. All rights reserved.
           </p>
-          <p>© {new Date().getFullYear()} Nidhi Impex Silver Star. All rights reserved.</p>
         </div>
-      </div>
+      </main>
     </div>
   );
 }
