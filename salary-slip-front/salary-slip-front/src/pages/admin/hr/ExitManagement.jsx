@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import toast from "react-hot-toast";
-import { Plus, ArrowRight, RotateCcw, CalendarClock, Mail, UserX, Clock, FileCheck, CheckCircle2, ShieldAlert } from "lucide-react";
+import { Plus, ArrowRight, RotateCcw, CalendarClock, Mail, UserX, Clock, FileCheck, CheckCircle2, ShieldAlert, Search, ChevronDown } from "lucide-react";
 import Button from "../../../components/ui/Button";
 import Badge from "../../../components/ui/Badge";
 import Modal from "../../../components/ui/Modal";
@@ -26,6 +26,82 @@ const TERMINAL_STATUSES = ["exited", "withdrawn"];
 
 const EMPTY_FORM = { user_id: "", resignation_date: "", notice_period_days: "30", last_working_day: "", reason: "", notes: "" };
 
+function EmployeeCombobox({ employees, value, onChange }) {
+  const [search, setSearch] = useState("");
+  const [open, setOpen] = useState(false);
+  const wrapperRef = useRef(null);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const selected = employees.find(e => String(e.id) === String(value));
+
+  const filtered = employees.filter(e => {
+    const s = search.toLowerCase();
+    return e.name?.toLowerCase().includes(s) || 
+           e.emp_code?.toLowerCase().includes(s) || 
+           e.department?.toLowerCase().includes(s);
+  });
+
+  return (
+    <div className="relative" ref={wrapperRef}>
+      <div 
+        className={inputClass + " flex justify-between items-center cursor-pointer"}
+        onClick={() => setOpen(!open)}
+      >
+        <span className={selected ? "text-gray-900 dark:text-white" : "text-gray-500"}>
+          {selected ? `${selected.name} (${selected.emp_code ? selected.emp_code + " - " : ""}${selected.department || "General"})` : "— Select employee —"}
+        </span>
+        <ChevronDown size={14} className="text-gray-500" />
+      </div>
+      
+      {open && (
+        <div className="absolute z-[60] w-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg max-h-60 overflow-y-auto overflow-x-hidden">
+          <div className="sticky top-0 z-10 bg-white dark:bg-gray-800 p-2 border-b border-gray-100 dark:border-gray-700">
+            <div className="relative">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                autoFocus
+                className="w-full pl-8 pr-3 py-1.5 text-xs bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg outline-none focus:border-brand-500"
+                placeholder="Search by name, code..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+          </div>
+          {filtered.length > 0 ? (
+            <div className="p-1">
+              {filtered.map(e => (
+                <div 
+                  key={e.id}
+                  className="px-3 py-2 text-xs text-gray-700 dark:text-gray-300 hover:bg-brand-50 dark:hover:bg-brand-900/30 hover:text-brand-700 dark:hover:text-brand-400 cursor-pointer rounded-lg truncate"
+                  onClick={() => {
+                    onChange(e.id);
+                    setOpen(false);
+                    setSearch("");
+                  }}
+                >
+                  {e.name} <span className="text-gray-400">({e.emp_code ? e.emp_code + " - " : ""}{e.department || "General"})</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="p-3 text-xs text-center text-gray-500">No employees found</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ExitManagement() {
   const { user } = useAuth();
   const { companyScope, scopeKey } = useCompany();
@@ -49,7 +125,7 @@ export default function ExitManagement() {
   useEffect(() => {
     if (!user?.accessToken) return;
     reload();
-    salaryApi.getAllEmployees(user.accessToken, user.tokenType, { status: "Active", per_page: 100 }, companyScope?.companyId)
+    salaryApi.getAllEmployees(user.accessToken, user.tokenType, { status: "Active", per_page: 5000 }, companyScope?.companyId)
       .then((res) => setEmployees(res?.data?.users?.data ?? res?.data?.users ?? []))
       .catch(() => {});
   }, [user, scopeKey]);
@@ -243,12 +319,11 @@ export default function ExitManagement() {
         <div className="space-y-4">
           <div>
             <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">Employee</label>
-            <select className={inputClass} value={form.user_id} onChange={(e) => setForm({ ...form, user_id: e.target.value })}>
-              <option value="">— Select employee —</option>
-              {selectableEmployees.map((e) => (
-                <option key={e.id} value={e.id}>{e.name} ({e.department || "General"})</option>
-              ))}
-            </select>
+            <EmployeeCombobox 
+              employees={selectableEmployees} 
+              value={form.user_id} 
+              onChange={(val) => setForm({ ...form, user_id: val })} 
+            />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>

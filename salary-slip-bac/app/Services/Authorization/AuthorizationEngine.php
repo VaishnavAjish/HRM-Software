@@ -8,6 +8,7 @@ use App\Models\AuthorizationRoleAssignment;
 use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
+use App\Support\PermissionRegistry;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
@@ -16,6 +17,9 @@ use Throwable;
 
 class AuthorizationEngine
 {
+    /** @var array<string,bool> Ancestor gate results, memoised for this request. */
+    private array $gateCache = [];
+
     public function __construct(
         private readonly ConditionEvaluator $conditions,
         private readonly ScopeMatcher $scopes,
@@ -118,6 +122,39 @@ class AuthorizationEngine
             $decision = new AuthorizationDecision(false, 'PERMISSION_NOT_ASSIGNED', effectiveState: 'NOT_ASSIGNED');
         }
 
+        /*
+         * A grant only holds while the resource above it does.
+         *
+         * The engine resolved each code on its own, so a role holding
+         * ui.portals.employee_dashboard was allowed it even though ui.portals —
+         * the module that contains it — was denied. The Permission Matrix showed
+         * that child as effectively DENY and the browser refused it, so the two
+         * disagreed with the thing that actually authorises requests.
+         *
+         * The ancestor chain comes from PermissionRegistry, the same source the
+         * matrix resolves against and the same one the client's requires chain is
+         * published from, so all three now derive the hierarchy from one place
+         * instead of two of them compensating for this one.
+         *
+         * Configuration is untouched: the grant stays on the role and becomes
+         * effective again the moment its parent is allowed.
+         */
+        if ($decision->allowed) {
+            $blockedBy = $this->deniedAncestor($actor, $permissionCode, $resourceData, $context, $tenantId, $global);
+
+            if ($blockedBy !== null) {
+                $decision = new AuthorizationDecision(
+                    false,
+                    'PARENT_DENIED',
+                    $decision->matchedPolicyIds,
+                    $decision->sources,
+                    [],
+                    $decision->failedConditions,
+                    'DENY',
+                );
+            }
+        }
+
         $legacy = $this->legacyDecision($actor, $permissionCode, $resourceData);
         $decision = new AuthorizationDecision(
             $decision->allowed,
@@ -136,6 +173,94 @@ class AuthorizationEngine
     public function legacyAllows(User $actor, string $permissionCode, array|Model|null $resource = null): bool
     {
         return $this->legacyDecision($actor, $permissionCode, $this->resourceArray($resource, []))['allowed'];
+    }
+
+    /**
+     * The nearest ancestor of this permission that the actor does not hold.
+     *
+     * Only registry codes have a hierarchy. A business code such as
+     * hr.attendance.read is enforced directly by route middleware and has no
+     * parent to consult, so it is returned unchanged.
+     *
+     * Grouping rows carry no permission record of their own — they exist to
+     * organise the tree — so they are stepped over rather than treated as a gate
+     * nobody can satisfy.
+     */
+    private function deniedAncestor(
+        User $actor,
+        string $permissionCode,
+        array $resource,
+        array $context,
+        ?string $tenantId,
+        bool $global
+    ): ?string {
+        if (! PermissionRegistry::has($permissionCode)) {
+            return null;
+        }
+
+        foreach (PermissionRegistry::requiredCodesFor($permissionCode) as $ancestor) {
+            if ($ancestor === $permissionCode) {
+                continue;
+            }
+
+            if (PermissionRegistry::node($ancestor)['permission'] === null) {
+                continue;
+            }
+
+            if (! $this->holdsDirectly($actor, $ancestor, $resource, $context, $tenantId, $global)) {
+                return $ancestor;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Whether the actor holds this code on its own terms.
+     *
+     * Deliberately not decide(): the ancestors of a chain are themselves walked
+     * by their own gate check, so recursing through the full path would re-walk
+     * the same chain once per level and log a decision for every node the caller
+     * never asked about. This resolves the same sources and policies decide()
+     * does and answers only the question the gate needs.
+     *
+     * Memoised per actor, code and tenant for the life of the request. Building
+     * one user's snapshot resolves several hundred permissions whose chains
+     * overlap heavily, and without this each one would re-query the same handful
+     * of modules.
+     */
+    private function holdsDirectly(
+        User $actor,
+        string $permissionCode,
+        array $resource,
+        array $context,
+        ?string $tenantId,
+        bool $global
+    ): bool {
+        $key = $actor->id.'|'.$permissionCode.'|'.($tenantId ?? '-').'|'.($resource['resource_type'] ?? '-');
+
+        if (array_key_exists($key, $this->gateCache)) {
+            return $this->gateCache[$key];
+        }
+
+        $sources = $this->permissionSources($actor, $permissionCode, $resource, $context, $global);
+        $policies = $this->matchingPolicies($actor, $permissionCode, $resource, $context, $tenantId, $global);
+
+        $denied = array_filter(
+            array_merge($sources, $policies),
+            fn ($row) => $row['effect'] === 'DENY'
+        );
+
+        if ($denied !== []) {
+            return $this->gateCache[$key] = false;
+        }
+
+        $allowed = array_filter(
+            array_merge($sources, $policies),
+            fn ($row) => $row['effect'] === 'ALLOW'
+        );
+
+        return $this->gateCache[$key] = $allowed !== [];
     }
 
     private function permissionSources(

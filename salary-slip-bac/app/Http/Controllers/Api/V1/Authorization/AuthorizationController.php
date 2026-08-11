@@ -150,6 +150,12 @@ class AuthorizationController extends Controller
             'cacheVersion' => $this->cache->version($tenantId),
             'permissions' => $decisions,
             'requires' => $this->chainSnapshot(),
+            // Frontend route → the registry code that governs it. Without this
+            // the sidebar and route guards had no way to know which permission
+            // a page belongs to, so they fell back to a module-wide check and
+            // every sub-page inherited it — a page denied in the matrix stayed
+            // in the menu and opened on a direct URL.
+            'routes' => PermissionRegistry::routes(),
             'roles' => $this->roleSnapshot($actor),
             'featureFlags' => $this->flagSnapshot($actor->company_code),
         ];
@@ -178,6 +184,17 @@ class AuthorizationController extends Controller
 
         foreach (PermissionRegistry::all() as $key => $node) {
             $required = PermissionRegistry::requiredCodesFor($key);
+
+            // The registry key itself is a grantable permission — the catalogue
+            // sync creates a row for it, and the matrix writes against it — so
+            // it needs its own chain. Without this, canRoute() resolved a page
+            // to ui.salary.upload, found no chain, and let a denied module
+            // through: the exact bypass the hierarchy exists to stop.
+            $ownChain = array_values(array_diff($required, [$key]));
+
+            if ($ownChain !== []) {
+                $out[$key] = $ownChain;
+            }
 
             foreach (PermissionRegistry::impliedCodes($key) as $code) {
                 // A code reached through several nodes keeps the shortest chain:

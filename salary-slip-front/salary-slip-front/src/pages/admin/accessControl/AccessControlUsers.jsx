@@ -247,6 +247,18 @@ function DetailDrawer({ userId, token, tokenType, onClose }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    document.body.style.overflow = "hidden";
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape") onClose?.();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = "";
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onClose]);
+
+  useEffect(() => {
     if (!userId || !token) return undefined;
 
     let active = true;
@@ -260,29 +272,29 @@ function DetailDrawer({ userId, token, tokenType, onClose }) {
     return () => { active = false; };
   }, [userId, token, tokenType]);
 
-  return (
-    <div className="fixed inset-0 z-[1000] flex justify-end bg-black/50 backdrop-blur-sm">
-      <button type="button" aria-label="Close" className="flex-1" onClick={onClose} />
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex justify-end bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+      <button type="button" aria-label="Close" className="flex-1 cursor-default" onClick={onClose} />
 
-      <aside className="flex w-full max-w-2xl flex-col overflow-hidden bg-white shadow-xl dark:bg-gray-800">
-        <header className="flex items-start justify-between gap-3 border-b border-gray-200 px-5 py-4 dark:border-gray-700">
+      <aside className="relative flex h-full w-full max-w-2xl flex-col overflow-hidden bg-white shadow-2xl dark:bg-gray-800 animate-in slide-in-from-right duration-200">
+        <header className="flex shrink-0 items-center justify-between gap-3 border-b border-gray-200 bg-gray-50/80 px-6 py-4 dark:border-gray-700 dark:bg-gray-800/80">
           <div className="min-w-0">
-            <h3 className="truncate text-lg font-semibold text-gray-900 dark:text-white">{detail?.name || "User"}</h3>
-            <p className="truncate text-xs text-gray-500 dark:text-gray-400">
-              {detail?.empCode ? `${detail.empCode} · ` : ""}{detail?.email}
+            <h3 className="truncate text-lg font-bold text-gray-900 dark:text-white">{detail?.name || "User Details"}</h3>
+            <p className="mt-0.5 truncate text-xs font-medium text-gray-500 dark:text-gray-400">
+              {detail?.empCode ? `${detail.empCode} · ` : ""}{detail?.email || ""}
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close panel"
-            className="rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 dark:hover:bg-gray-700"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-200 hover:text-gray-700 dark:hover:bg-gray-700 dark:hover:text-gray-200"
           >
             <X size={18} />
           </button>
         </header>
 
-        <div className="flex-1 space-y-6 overflow-y-auto px-5 py-4">
+        <div className="flex-1 space-y-6 overflow-y-auto px-6 py-5">
           {loading && <SkeletonTable rows={6} />}
 
           {!loading && detail && (
@@ -431,7 +443,8 @@ function DetailDrawer({ userId, token, tokenType, onClose }) {
           )}
         </div>
       </aside>
-    </div>
+    </div>,
+    document.body
   );
 }
 

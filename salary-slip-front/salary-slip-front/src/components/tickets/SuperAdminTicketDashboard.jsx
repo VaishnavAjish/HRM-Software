@@ -1,6 +1,7 @@
 import {
-  LifeBuoy, Flame, Clock, AlertTriangle, UserCheck,
+  LifeBuoy, Flame, Clock, AlertTriangle, UserCheck, Eye, User,
   PieChart, BarChart3, TrendingUp, ShieldAlert, Award, CornerUpRight, CheckCircle2,
+  Search, RefreshCw,
 } from "lucide-react";
 import { statusMeta, priorityMeta, slaMeta, slaLabel, metric, PRIORITY_ORDER } from "./ticketMeta";
 
@@ -14,11 +15,8 @@ import { statusMeta, priorityMeta, slaMeta, slaLabel, metric, PRIORITY_ORDER } f
  * branches that were never in the database. There are no fallback values now:
  * where the API has nothing to say, the panel says so.
  */
-export default function SuperAdminTicketDashboard({ summary, tickets = [], loading, onFilterSelect, onSelectTicket }) {
+export function HelpdeskMetricCards({ summary, loading, onFilterSelect }) {
   const byStatus = summary?.by_status || {};
-  const byPriority = summary?.by_priority || {};
-  const byDept = summary?.by_department || [];
-  const byBranch = summary?.by_branch || [];
 
   const cards = [
     { key: "open", label: "Open Tickets", value: byStatus.open, icon: Clock, cls: "bg-blue-500/10 text-blue-600 dark:text-blue-400" },
@@ -26,11 +24,9 @@ export default function SuperAdminTicketDashboard({ summary, tickets = [], loadi
     { key: "overdue", label: "Overdue (SLA Breached)", value: summary?.sla_breached, icon: AlertTriangle, cls: "bg-rose-500/15 text-rose-700 dark:text-rose-400" },
     { key: "escalated", label: "Escalated", value: byStatus.escalated, icon: ShieldAlert, cls: "bg-red-500/15 text-red-700 dark:text-red-300" },
     { key: "resolved", label: "Resolved Today", value: summary?.resolved_today, icon: CheckCircle2, cls: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" },
-    { key: "pending_approval", label: "Pending Approval", value: byStatus.pending_approval, icon: CornerUpRight, cls: "bg-amber-500/10 text-amber-600 dark:text-amber-400" },
     {
       key: "avg_resolution",
       label: "Avg Resolution Time",
-      // Null until something has actually been resolved — never a placeholder.
       value: summary?.avg_resolution_hours == null ? null : `${summary.avg_resolution_hours}h`,
       icon: TrendingUp,
       cls: "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400",
@@ -47,173 +43,58 @@ export default function SuperAdminTicketDashboard({ summary, tickets = [], loadi
   ];
 
   return (
-    <div className="space-y-6">
-      {/* Metric cards */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
-        {cards.map((card) => {
-          const Icon = card.icon;
-          const clickable = !card.static && onFilterSelect;
-          const Wrapper = clickable ? "button" : "div";
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
+      {cards.map((card) => {
+        const Icon = card.icon;
+        const clickable = !card.static && onFilterSelect;
+        const Wrapper = clickable ? "button" : "div";
 
-          return (
-            <Wrapper
-              key={card.key}
-              {...(clickable ? { onClick: () => onFilterSelect(card.key), type: "button" } : {})}
-              className={`flex flex-col justify-between rounded-2xl border border-gray-200 bg-white p-3.5 text-left dark:border-gray-800 dark:bg-gray-900 ${
-                clickable ? "transition hover:border-brand-300 hover:shadow-sm" : ""
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span className={`flex h-8 w-8 items-center justify-center rounded-xl ${card.cls}`}>
-                  <Icon size={16} />
-                </span>
-                <span className="text-lg font-extrabold text-gray-900 dark:text-white">
-                  {loading ? "…" : metric(card.value)}
-                </span>
-              </div>
-              <p className="mt-2 truncate text-[11px] font-semibold text-gray-500 dark:text-gray-400">
-                {card.label}
-              </p>
-            </Wrapper>
-          );
-        })}
-      </div>
-
-      {/* Live queue preview */}
-      <div className="space-y-4 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900">
-        <div className="flex items-center justify-between border-b border-gray-100 pb-3 dark:border-gray-800">
-          <div>
-            <h3 className="flex items-center gap-2 text-sm font-extrabold text-gray-900 dark:text-white">
-              <LifeBuoy size={16} className="text-brand-500" /> Live Ticket Queue
-            </h3>
-            <p className="text-[11px] text-gray-400">Most recent requests, with their SLA countdown</p>
-          </div>
-          <button
-            onClick={() => onFilterSelect && onFilterSelect("inbox")}
-            className="text-xs font-bold text-brand-600 hover:underline dark:text-brand-400"
+        return (
+          <Wrapper
+            key={card.key}
+            {...(clickable ? { onClick: () => onFilterSelect(card.key), type: "button" } : {})}
+            className={`flex flex-col justify-between rounded-2xl border border-gray-200 bg-white p-3.5 text-left dark:border-gray-800 dark:bg-gray-900 ${
+              clickable ? "transition hover:border-brand-300 hover:shadow-sm" : ""
+            }`}
           >
-            View full inbox ({tickets.length})
-          </button>
-        </div>
-
-        {tickets.length === 0 ? (
-          <p className="py-8 text-center text-xs text-gray-400">
-            {loading ? "Loading tickets…" : "No tickets in your scope yet."}
-          </p>
-        ) : (
-          <>
-            {/* Desktop Table View */}
-            <div className="hidden md:block overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="border-b border-gray-100 text-[11px] font-bold uppercase text-gray-400 dark:border-gray-800">
-                    <th className="px-3 py-2.5">Ticket #</th>
-                    <th className="px-3 py-2.5">Employee</th>
-                    <th className="px-3 py-2.5">Department</th>
-                    <th className="px-3 py-2.5">Priority</th>
-                    <th className="px-3 py-2.5">Escalation</th>
-                    <th className="px-3 py-2.5">Assigned To</th>
-                    <th className="px-3 py-2.5">SLA</th>
-                    <th className="px-3 py-2.5">Status</th>
-                    <th className="px-3 py-2.5 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 text-gray-700 dark:divide-gray-800/60 dark:text-gray-300">
-                  {tickets.slice(0, 5).map((t) => {
-                    const s = statusMeta(t.status);
-                    const p = priorityMeta(t.priority);
-                    const sla = slaMeta(t.sla_status);
-
-                    return (
-                      <tr key={t.id} className="transition-colors hover:bg-gray-50/80 dark:hover:bg-gray-800/40">
-                        <td className="px-3 py-3 font-mono font-bold text-brand-600 dark:text-brand-400">
-                          {t.ticket_number}
-                        </td>
-                        <td className="px-3 py-3 font-semibold text-gray-900 dark:text-white">
-                          {t.employee?.name || "—"}
-                        </td>
-                        <td className="px-3 py-3 text-gray-600 dark:text-gray-300">{t.department || "—"}</td>
-                        <td className="px-3 py-3">
-                          <span className={`inline-flex rounded-md px-2 py-0.5 text-[10px] ${p.colorCls}`}>{p.label}</span>
-                        </td>
-                        <td className="px-3 py-3 font-semibold text-gray-600 dark:text-gray-300">
-                          {t.escalation_level > 0 ? `Level ${t.escalation_level}` : "—"}
-                        </td>
-                        <td className="px-3 py-3 text-gray-800 dark:text-gray-200">
-                          {t.assignee?.name || <span className="text-gray-400">Unassigned</span>}
-                        </td>
-                        <td className="px-3 py-3">
-                          <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 font-mono text-[10px] ${sla.cls}`}>
-                            <Clock size={11} /> {slaLabel(t)}
-                          </span>
-                        </td>
-                        <td className="px-3 py-3">
-                          <span className={`inline-flex rounded-md px-2 py-0.5 text-[10px] font-bold ${s.badgeBg}`}>{s.label}</span>
-                        </td>
-                        <td className="px-3 py-3 text-right">
-                          <button
-                            onClick={() => onSelectTicket && onSelectTicket(t.id)}
-                            className="rounded-lg bg-gray-100 px-2.5 py-1 font-bold text-brand-600 hover:bg-brand-50 dark:bg-gray-800 dark:text-brand-400"
-                          >
-                            Inspect
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            <div className="flex items-center justify-between">
+              <span className={`flex h-8 w-8 items-center justify-center rounded-xl ${card.cls}`}>
+                <Icon size={16} />
+              </span>
+              <span className="text-lg font-extrabold text-gray-900 dark:text-white">
+                {loading ? "…" : metric(card.value)}
+              </span>
             </div>
+            <p className="mt-2 truncate text-[11px] font-semibold text-gray-500 dark:text-gray-400">
+              {card.label}
+            </p>
+          </Wrapper>
+        );
+      })}
+    </div>
+  );
+}
 
-            {/* Mobile Card List View */}
-            <div className="space-y-3 md:hidden">
-              {tickets.slice(0, 5).map((t) => {
-                const s = statusMeta(t.status);
-                const p = priorityMeta(t.priority);
-                const sla = slaMeta(t.sla_status);
+export default function SuperAdminTicketDashboard({
+  summary,
+  tickets = [],
+  loading,
+  onFilterSelect,
+  onSelectTicket,
+  hideCards = false,
+  search = "",
+  onSearchChange,
+  onRefresh,
+}) {
+  const byPriority = summary?.by_priority || {};
+  const byDept = summary?.by_department || [];
+  const byBranch = summary?.by_branch || [];
 
-                return (
-                  <div
-                    key={t.id}
-                    className="rounded-2xl border border-gray-100 bg-gray-50/50 p-4 space-y-3 dark:border-gray-800 dark:bg-gray-800/40"
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="font-mono text-xs font-bold text-brand-600 dark:text-brand-400">
-                        {t.ticket_number}
-                      </span>
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold ${s.badgeBg}`}>{s.label}</span>
-                        <span className={`rounded-md px-2 py-0.5 text-[10px] ${p.colorCls}`}>{p.label}</span>
-                        <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 font-mono text-[10px] ${sla.cls}`}>
-                          <Clock size={10} /> {slaLabel(t)}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between text-xs">
-                      <div>
-                        <p className="font-bold text-gray-900 dark:text-white">{t.employee?.name || "—"}</p>
-                        <p className="text-[10px] text-gray-500 dark:text-gray-400">{t.department || "—"}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-[10px] uppercase font-bold tracking-wider text-gray-400">Assigned To</p>
-                        <p className="font-semibold text-gray-800 dark:text-gray-200">{t.assignee?.name || "Unassigned"}</p>
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={() => onSelectTicket && onSelectTicket(t.id)}
-                      className="flex h-11 w-full items-center justify-center rounded-xl bg-brand-600 text-xs font-bold text-white shadow-xs transition active:scale-95"
-                    >
-                      Inspect Ticket
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </>
-        )}
-      </div>
+  return (
+    <div className="space-y-6">
+      {!hideCards && (
+        <HelpdeskMetricCards summary={summary} loading={loading} onFilterSelect={onFilterSelect} />
+      )}
 
       {/* Breakdowns */}
       <div className="grid gap-4 lg:grid-cols-4">
@@ -292,6 +173,215 @@ export default function SuperAdminTicketDashboard({ summary, tickets = [], loadi
             )}
           </div>
         </div>
+      </div>
+
+      {/* Live queue preview */}
+      <div className="space-y-4 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 pb-3 dark:border-gray-800">
+          <div>
+            <h3 className="flex items-center gap-2 text-sm font-extrabold text-gray-900 dark:text-white">
+              <LifeBuoy size={16} className="text-brand-500" /> Live Ticket Queue
+            </h3>
+            <p className="text-[11px] text-gray-400">Most recent requests, with their SLA countdown</p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            {onSearchChange && (
+              <form onSubmit={(e) => { e.preventDefault(); onRefresh && onRefresh(); }} className="relative w-full sm:w-60">
+                <input
+                  value={search}
+                  onChange={(e) => onSearchChange(e.target.value)}
+                  placeholder="Search ticket #, subject, employee…"
+                  className="w-full rounded-xl border border-gray-200 bg-gray-50 py-1.5 pl-8 pr-3 text-xs text-gray-900 outline-none transition focus:border-brand-500 focus:bg-white dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+                />
+                <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-gray-400" />
+              </form>
+            )}
+
+            {onRefresh && (
+              <button
+                onClick={() => onRefresh()}
+                className="flex h-8 w-8 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-600 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                title="Refresh"
+              >
+                <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
+              </button>
+            )}
+
+            <button
+              onClick={() => onFilterSelect && onFilterSelect("inbox")}
+              className="text-xs font-bold text-brand-600 hover:underline dark:text-brand-400"
+            >
+              View full inbox ({tickets.length})
+            </button>
+          </div>
+        </div>
+
+        {tickets.length === 0 ? (
+          <p className="py-8 text-center text-xs text-gray-400">
+            {loading ? "Loading tickets…" : "No tickets in your scope yet."}
+          </p>
+        ) : (
+          <>
+            {/* Desktop Table View */}
+            <div className="hidden md:block overflow-x-auto rounded-xl border border-gray-100 dark:border-gray-800">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="bg-gray-50/80 text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:bg-gray-800/60 dark:text-gray-400 border-b border-gray-100 dark:border-gray-800">
+                    <th className="px-3.5 py-3">Ticket #</th>
+                    <th className="px-3.5 py-3">Employee</th>
+                    <th className="px-3.5 py-3">Department</th>
+                    <th className="px-3.5 py-3">Priority</th>
+                    <th className="px-3.5 py-3">Escalation</th>
+                    <th className="px-3.5 py-3">Assigned To</th>
+                    <th className="px-3.5 py-3">SLA</th>
+                    <th className="px-3.5 py-3">Status</th>
+                    <th className="px-3.5 py-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100/80 text-gray-700 dark:divide-gray-800/60 dark:text-gray-300">
+                  {tickets.slice(0, 5).map((t) => {
+                    const s = statusMeta(t.status);
+                    const p = priorityMeta(t.priority);
+                    const sla = slaMeta(t.sla_status);
+
+                    return (
+                      <tr
+                        key={t.id}
+                        className="group transition-all duration-150 hover:bg-brand-50/40 dark:hover:bg-gray-800/60"
+                      >
+                        <td className="px-3.5 py-3">
+                          <span className="inline-flex items-center font-mono text-[11px] font-bold text-brand-600 bg-brand-50/80 border border-brand-200/60 dark:bg-brand-950/40 dark:text-brand-300 dark:border-brand-800/50 rounded-lg px-2.5 py-1 shadow-2xs group-hover:border-brand-300">
+                            {t.ticket_number}
+                          </span>
+                        </td>
+                        <td className="px-3.5 py-3">
+                          <div className="flex items-center gap-2.5">
+                            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-500 to-indigo-600 text-[11px] font-bold text-white shadow-2xs">
+                              {(t.employee?.name || "?").trim().charAt(0).toUpperCase()}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-bold text-gray-900 dark:text-white text-xs truncate max-w-[150px]">
+                                {t.employee?.name || "—"}
+                              </p>
+                              {t.employee?.emp_code && (
+                                <p className="text-[10px] text-gray-400 font-mono">{t.employee.emp_code}</p>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-3.5 py-3">
+                          <span className="inline-flex items-center rounded-md bg-gray-100/80 px-2.5 py-1 text-xs font-semibold text-gray-700 dark:bg-gray-800 dark:text-gray-300 border border-gray-200/50 dark:border-gray-700/50">
+                            {t.department || "—"}
+                          </span>
+                        </td>
+                        <td className="px-3.5 py-3">
+                          <span className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[10px] font-bold ${p.colorCls}`}>
+                            {t.priority?.toLowerCase() === "urgent" && (
+                              <span className="h-1.5 w-1.5 rounded-full bg-rose-500 animate-pulse" />
+                            )}
+                            {t.priority?.toLowerCase() === "high" && (
+                              <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                            )}
+                            {p.label}
+                          </span>
+                        </td>
+                        <td className="px-3.5 py-3">
+                          {t.escalation_level > 0 ? (
+                            <span className="inline-flex items-center gap-1 rounded-md bg-rose-50 px-2 py-0.5 text-[10px] font-extrabold text-rose-700 border border-rose-200/80 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800">
+                              <Flame size={11} className="text-rose-500" /> Level {t.escalation_level}
+                            </span>
+                          ) : (
+                            <span className="text-gray-300 dark:text-gray-600 font-medium">—</span>
+                          )}
+                        </td>
+                        <td className="px-3.5 py-3">
+                          {t.assignee?.name ? (
+                            <div className="flex items-center gap-1.5 text-xs font-semibold text-gray-800 dark:text-gray-200">
+                              <div className="flex h-5 w-5 items-center justify-center rounded-full bg-purple-100 text-[9px] font-bold text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">
+                                {t.assignee.name.charAt(0).toUpperCase()}
+                              </div>
+                              <span>{t.assignee.name}</span>
+                            </div>
+                          ) : (
+                            <span className="inline-flex items-center rounded-md bg-gray-100 px-2 py-0.5 text-[10px] font-medium italic text-gray-400 dark:bg-gray-800 dark:text-gray-500">
+                              Unassigned
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3.5 py-3">
+                          <span className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 font-mono text-[10px] font-bold shadow-2xs ${sla.cls}`}>
+                            <Clock size={11} /> {slaLabel(t)}
+                          </span>
+                        </td>
+                        <td className="px-3.5 py-3">
+                          <span className={`inline-flex items-center rounded-full px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider shadow-2xs ${s.badgeBg}`}>
+                            {s.label}
+                          </span>
+                        </td>
+                        <td className="px-3.5 py-3 text-right">
+                          <button
+                            onClick={() => onSelectTicket && onSelectTicket(t.id)}
+                            className="inline-flex items-center gap-1.5 rounded-xl bg-brand-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-xs transition-all duration-150 hover:bg-brand-700 hover:shadow-md hover:scale-105 active:scale-95 ml-auto"
+                          >
+                            <Eye size={13} /> Inspect
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile Card List View */}
+            <div className="space-y-3 md:hidden">
+              {tickets.slice(0, 5).map((t) => {
+                const s = statusMeta(t.status);
+                const p = priorityMeta(t.priority);
+                const sla = slaMeta(t.sla_status);
+
+                return (
+                  <div
+                    key={t.id}
+                    className="rounded-2xl border border-gray-100 bg-gray-50/50 p-4 space-y-3 dark:border-gray-800 dark:bg-gray-800/40"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="font-mono text-xs font-bold text-brand-600 dark:text-brand-400">
+                        {t.ticket_number}
+                      </span>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold ${s.badgeBg}`}>{s.label}</span>
+                        <span className={`rounded-md px-2 py-0.5 text-[10px] ${p.colorCls}`}>{p.label}</span>
+                        <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 font-mono text-[10px] ${sla.cls}`}>
+                          <Clock size={10} /> {slaLabel(t)}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs">
+                      <div>
+                        <p className="font-bold text-gray-900 dark:text-white">{t.employee?.name || "—"}</p>
+                        <p className="text-[10px] text-gray-500 dark:text-gray-400">{t.department || "—"}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-[10px] uppercase font-bold tracking-wider text-gray-400">Assigned To</p>
+                        <p className="font-semibold text-gray-800 dark:text-gray-200">{t.assignee?.name || "Unassigned"}</p>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => onSelectTicket && onSelectTicket(t.id)}
+                      className="flex h-11 w-full items-center justify-center rounded-xl bg-brand-600 text-xs font-bold text-white shadow-xs transition active:scale-95"
+                    >
+                      Inspect Ticket
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

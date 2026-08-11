@@ -254,7 +254,7 @@ export default function Login() {
   const [fCompanyId, setFCompanyId] = useState("");
   const [fUnit, setFUnit] = useState("");
   const [fEmpCode, setFEmpCode] = useState("");
-  const [fAadharNum, setFAadharNum] = useState("");
+  const [fMobileNum, setFMobileNum] = useState("");
   const [s1Loading, setS1Loading] = useState(false);
   const [s1Err, setS1Err] = useState("");
   const [verificationToken, setVerificationToken] = useState("");
@@ -299,7 +299,7 @@ export default function Login() {
     setFCompanyId("");
     setFUnit("");
     setFEmpCode("");
-    setFAadharNum("");
+    setFMobileNum("");
     setS1Err("");
     setVerificationToken("");
     setCodeChecking(false);
@@ -386,8 +386,8 @@ export default function Login() {
       return;
     }
     const code = fEmpCode.trim().toUpperCase();
-    if (!/^\d{12}$/.test(fAadharNum.trim())) {
-      setS1Err("Enter a valid 12-digit Aadhar card number");
+    if (!/^\d{10}$/.test(fMobileNum.trim())) {
+      setS1Err("Enter a valid 10-digit mobile number");
       return;
     }
 
@@ -395,8 +395,7 @@ export default function Login() {
     setS1Loading(true);
     try {
       const res = await authApi.verifyEmpCode(code, fCompanyId, fUnit, {
-        aadhar_num: fAadharNum.trim(),
-        mob_num: fAadharNum.trim(),
+        mobile_num: fMobileNum.trim(),
       });
       setVerificationToken(res?.verification_token || "");
       // Prefills whatever email is already on file — blank for a genuinely
@@ -527,7 +526,7 @@ export default function Login() {
       setFCompanyId("");
       setFUnit("");
       setFEmpCode("");
-      setFAadharNum("");
+      setFMobileNum("");
       setS1Err("");
       setVerificationToken("");
       setCodeChecking(false);
@@ -705,7 +704,7 @@ export default function Login() {
                     Verify Employee
                   </h2>
                   <p className="text-sm text-gray-500 dark:text-gray-400 mt-2 max-w-sm mx-auto">
-                    First time here? Confirm your employee code and Aadhar card number to get started.
+                    First time here? Confirm your employee code and registered mobile number to get started.
                   </p>
                 </div>
 
@@ -782,17 +781,21 @@ export default function Login() {
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                      Aadhar Card Number
+                      Mobile Number
                     </label>
                     <input
-                      value={fAadharNum}
-                      onChange={(e) => setFAadharNum(e.target.value.replace(/\D/g, "").slice(0, 12))}
-                      placeholder="12-digit Aadhar card number"
-                      type="text"
+                      value={fMobileNum}
+                      onChange={(e) => setFMobileNum(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                      placeholder="10-digit mobile number"
+                      type="tel"
                       inputMode="numeric"
-                      maxLength={12}
+                      autoComplete="tel"
+                      maxLength={10}
                       className={inCls}
                     />
+                    <p className="mt-1 text-xs text-gray-400">
+                      The number registered on your employee record.
+                    </p>
                   </div>
 
                   {s1Err && (
@@ -1073,3 +1076,5 @@ export default function Login() {
     </div>
   );
 }
+
+

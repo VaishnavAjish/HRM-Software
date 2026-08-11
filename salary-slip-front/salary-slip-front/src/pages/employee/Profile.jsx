@@ -456,7 +456,7 @@ export default function Profile() {
           <div className="flex items-center gap-2">
             <AlertCircle className="text-amber-500" size={18} />
             <p className="text-sm font-medium">
-              Please complete your profile details and hit Save to unlock all features.
+              Please complete your profile details and hit Save to keep your employee record up to date.
             </p>
           </div>
         </div>

@@ -4,6 +4,16 @@ use App\Models\User;
 
 return [
 
+
+    /*
+     * Returns the reset code to the caller when SMTP fails.
+     *
+     * A developer convenience for a machine with no working mail, and nothing
+     * else. The reset endpoint does not disclose whether an address exists, so
+     * with this on, anyone who can reach it can request any account's code and
+     * be handed it. Never enable it anywhere real users can reach.
+     */
+    'otp_dev_fallback' => env('OTP_DEV_FALLBACK', false),
     /*
     |--------------------------------------------------------------------------
     | Authentication Defaults

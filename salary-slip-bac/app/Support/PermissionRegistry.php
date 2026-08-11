@@ -45,8 +45,8 @@ class PermissionRegistry
             'type' => self::TYPE_MODULE, 'label' => 'Dashboard', 'order' => 10,
             'parent' => null, 'route' => '/admin',
             'description' => 'Access the administration dashboard.',
-            'implies' => ['ui.admin.dashboard.view'],
-            'api' => [['GET', '/api/dashboard-stats']],
+            'implies' => ['ui.admin.dashboard.view', 'hr.dashboard.read'],
+            'api' => [['GET', '/api/admin-dashboard']],
         ],
         'ui.dashboard.employee_count' => [
             'type' => self::TYPE_FEATURE, 'label' => 'Employee Count Card', 'order' => 10,
@@ -74,7 +74,7 @@ class PermissionRegistry
             'parent' => 'ui.forms', 'route' => '/admin/appointments',
             'description' => 'Open the appointment form workspace.',
             'implies' => ['ui.admin.appointments.view', 'hr.appointment.read'],
-            'api' => [['GET', '/api/appointments']],
+            'api' => [['GET', '/api/appointment']],
             'scopes' => [self::SCOPE_COMPANY],
         ],
         'ui.forms.appointment.create' => [
@@ -82,7 +82,7 @@ class PermissionRegistry
             'parent' => 'ui.forms.appointment',
             'description' => 'Create a new appointment record.',
             'implies' => ['hr.appointment.create'],
-            'api' => [['POST', '/api/appointments']],
+            'api' => [['POST', '/api/appointment']],
         ],
         'ui.forms.appointment.update' => [
             'type' => self::TYPE_ACTION, 'label' => 'Update', 'order' => 30,
@@ -155,7 +155,7 @@ class PermissionRegistry
             'parent' => 'ui.employees', 'route' => '/admin/employees/add',
             'description' => 'Open the employee master record workspace.',
             'implies' => ['hr.employee.read'],
-            'api' => [['GET', '/api/employees']],
+            'api' => [['GET', '/api/employee/get']],
             'scopes' => [self::SCOPE_COMPANY, self::SCOPE_DEPARTMENT, self::SCOPE_OWN],
         ],
         'ui.employees.master.list' => [
@@ -163,28 +163,28 @@ class PermissionRegistry
             'parent' => 'ui.employees.master',
             'description' => 'List employee records.',
             'implies' => ['hr.employee.read'],
-            'api' => [['GET', '/api/employees']],
+            'api' => [['GET', '/api/employee/get']],
         ],
         'ui.employees.master.create' => [
             'type' => self::TYPE_ACTION, 'label' => 'Create Employee', 'order' => 20,
             'parent' => 'ui.employees.master',
             'description' => 'Create a new employee record.',
             'implies' => ['hr.employee.create'],
-            'api' => [['POST', '/api/employees']],
+            'api' => [['POST', '/api/employee/store']],
         ],
         'ui.employees.master.update' => [
             'type' => self::TYPE_ACTION, 'label' => 'Update Employee', 'order' => 30,
             'parent' => 'ui.employees.master',
             'description' => 'Update an existing employee record.',
             'implies' => ['hr.employee.update'],
-            'api' => [['PUT', '/api/employees/{id}']],
+            'api' => [['PUT', '/api/employee/edit/{id}']],
         ],
         'ui.employees.master.delete' => [
             'type' => self::TYPE_ACTION, 'label' => 'Delete Employee', 'order' => 40,
             'parent' => 'ui.employees.master', 'sensitivity' => self::SENSITIVITY_CRITICAL,
             'description' => 'Allows user to delete or deactivate an employee record.',
             'implies' => ['hr.employee.delete'],
-            'api' => [['DELETE', '/api/employees/{id}']],
+            'api' => [['GET', '/api/employee/delete/{id}']],
         ],
         'ui.employees.master.import' => [
             'type' => self::TYPE_ACTION, 'label' => 'Import', 'order' => 50,
@@ -315,7 +315,7 @@ class PermissionRegistry
             'sensitivity' => self::SENSITIVITY_SENSITIVE,
             'description' => 'Open the monthly payroll batch workspace.',
             'implies' => ['payroll.payslip.read'],
-            'api' => [['GET', '/api/salary']],
+            'api' => [['GET', '/api/salary-slip/get']],
         ],
         'ui.salary.batch.create' => [
             'type' => self::TYPE_ACTION, 'label' => 'Create Payslip', 'order' => 20,
@@ -718,6 +718,23 @@ class PermissionRegistry
          * Permission Matrix. They are page visibility only: no route enforces
          * them, which is why they carry no child actions here.
          */
+        /*
+         * Portal landing pages.
+         *
+         * These deliberately declare no `route`. Which portal an account belongs
+         * to is decided by its tier, not by a grant — the same rule that stopped
+         * ui.admin.dashboard.view promoting an employee into the admin portal.
+         *
+         * Publishing a route here made the employee's own landing page a gated
+         * one: a user holding no role failed the gate, and the route guard's
+         * fallback for an employee is /employee, so the redirect targeted the
+         * route that had just been denied. React Router resolved that to nothing
+         * and the portal rendered blank, with no error to explain it.
+         *
+         * They stay in the registry so the matrix can still grant the underlying
+         * dashboard permissions; they simply do not gate the door to the portal
+         * the account already belongs to.
+         */
         'ui.portals' => [
             'type' => self::TYPE_MODULE, 'label' => 'Portals', 'order' => 95,
             'parent' => null,
@@ -726,15 +743,16 @@ class PermissionRegistry
         ],
         'ui.portals.agent_dashboard' => [
             'type' => self::TYPE_PAGE, 'label' => 'Agent Dashboard', 'order' => 10,
-            'parent' => 'ui.portals', 'route' => '/agent',
+            'parent' => 'ui.portals',
             'description' => 'Open the agent portal dashboard.',
             'implies' => ['ui.agent.dashboard.view'],
         ],
         'ui.portals.employee_dashboard' => [
             'type' => self::TYPE_PAGE, 'label' => 'Employee Dashboard', 'order' => 20,
-            'parent' => 'ui.portals', 'route' => '/employee',
+            'parent' => 'ui.portals',
             'description' => 'Open the employee self-service dashboard.',
-            'implies' => ['ui.employee.dashboard.view'],
+            'implies' => ['ui.employee.dashboard.view', 'self.payslip.read'],
+            'api' => [['GET', '/api/dashboard']],
         ],
 
         /* ----------------------------------------------------- access control */

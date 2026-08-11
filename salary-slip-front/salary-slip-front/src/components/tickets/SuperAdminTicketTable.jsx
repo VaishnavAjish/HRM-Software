@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Search, Eye, Clock, Loader2, Trash2 } from "lucide-react";
+import { Search, Eye, Clock, Loader2, Trash2, Flame } from "lucide-react";
 import {
   statusMeta, priorityMeta, slaMeta, slaLabel, formatDate,
   departmentsFrom, STATUS_ORDER, PRIORITY_ORDER,
@@ -130,11 +130,11 @@ export default function SuperAdminTicketTable({
       </div>
 
       {/* Desktop Table View */}
-      <div className="hidden md:block overflow-x-auto">
+      <div className="hidden md:block overflow-x-auto rounded-xl border border-gray-100 dark:border-gray-800">
         <table className="w-full text-left text-xs">
           <thead>
-            <tr className="border-b border-gray-100 text-[11px] font-bold uppercase text-gray-400 dark:border-gray-800">
-              <th className="w-8 px-3 py-3">
+            <tr className="bg-gray-50/80 text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:bg-gray-800/60 dark:text-gray-400 border-b border-gray-100 dark:border-gray-800">
+              <th className="w-8 px-3.5 py-3">
                 <input
                   type="checkbox"
                   checked={allSelected}
@@ -142,19 +142,19 @@ export default function SuperAdminTicketTable({
                   className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
                 />
               </th>
-              <th className="px-3 py-3">Ticket #</th>
-              <th className="px-3 py-3">Employee</th>
-              <th className="px-3 py-3">Department</th>
-              <th className="px-3 py-3">Priority</th>
-              <th className="px-3 py-3">Escalation</th>
-              <th className="px-3 py-3">Assigned To</th>
-              <th className="px-3 py-3">SLA</th>
-              <th className="px-3 py-3">Created</th>
-              <th className="px-3 py-3">Status</th>
-              <th className="px-3 py-3 text-right">Actions</th>
+              <th className="px-3.5 py-3">Ticket #</th>
+              <th className="px-3.5 py-3">Employee</th>
+              <th className="px-3.5 py-3">Department</th>
+              <th className="px-3.5 py-3">Priority</th>
+              <th className="px-3.5 py-3">Escalation</th>
+              <th className="px-3.5 py-3">Assigned To</th>
+              <th className="px-3.5 py-3">SLA</th>
+              <th className="px-3.5 py-3">Created</th>
+              <th className="px-3.5 py-3">Status</th>
+              <th className="px-3.5 py-3 text-right">Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100 text-gray-700 dark:divide-gray-800 dark:text-gray-300">
+          <tbody className="divide-y divide-gray-100/80 text-gray-700 dark:divide-gray-800/60 dark:text-gray-300">
             {loading ? (
               <tr>
                 <td colSpan={11} className="py-12 text-center">
@@ -179,11 +179,11 @@ export default function SuperAdminTicketTable({
                 return (
                   <tr
                     key={t.id}
-                    className={`transition-colors hover:bg-gray-50/80 dark:hover:bg-gray-800/40 ${
+                    className={`group transition-all duration-150 hover:bg-brand-50/40 dark:hover:bg-gray-800/60 ${
                       isSelected ? "bg-brand-50/30 dark:bg-brand-950/20" : ""
                     }`}
                   >
-                    <td className="px-3 py-3">
+                    <td className="px-3.5 py-3">
                       <input
                         type="checkbox"
                         checked={isSelected}
@@ -191,46 +191,88 @@ export default function SuperAdminTicketTable({
                         className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
                       />
                     </td>
-                    <td className="px-3 py-3 font-mono font-bold text-brand-600 dark:text-brand-400">
-                      {t.ticket_number}
+                    <td className="px-3.5 py-3">
+                      <span className="inline-flex items-center font-mono text-[11px] font-bold text-brand-600 bg-brand-50/80 border border-brand-200/60 dark:bg-brand-950/40 dark:text-brand-300 dark:border-brand-800/50 rounded-lg px-2.5 py-1 shadow-2xs group-hover:border-brand-300">
+                        {t.ticket_number}
+                      </span>
                     </td>
-                    <td className="px-3 py-3">
-                      <p className="font-bold text-gray-900 dark:text-white">{t.employee?.name || "—"}</p>
-                      <p className="text-[10px] text-gray-400">{t.employee?.emp_code || ""}</p>
+                    <td className="px-3.5 py-3">
+                      <div className="flex items-center gap-2.5">
+                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-500 to-indigo-600 text-[11px] font-bold text-white shadow-2xs">
+                          {(t.employee?.name || "?").trim().charAt(0).toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-bold text-gray-900 dark:text-white text-xs truncate max-w-[150px]">
+                            {t.employee?.name || "—"}
+                          </p>
+                          {t.employee?.emp_code && (
+                            <p className="text-[10px] text-gray-400 font-mono">{t.employee.emp_code}</p>
+                          )}
+                        </div>
+                      </div>
                     </td>
-                    <td className="px-3 py-3 font-semibold text-gray-700 dark:text-gray-300">
-                      {t.department || "—"}
+                    <td className="px-3.5 py-3">
+                      <span className="inline-flex items-center rounded-md bg-gray-100/80 px-2.5 py-1 text-xs font-semibold text-gray-700 dark:bg-gray-800 dark:text-gray-300 border border-gray-200/50 dark:border-gray-700/50">
+                        {t.department || "—"}
+                      </span>
                     </td>
-                    <td className="px-3 py-3">
-                      <span className={`inline-flex rounded-md px-2 py-0.5 text-[10px] ${p.colorCls}`}>{p.label}</span>
+                    <td className="px-3.5 py-3">
+                      <span className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[10px] font-bold ${p.colorCls}`}>
+                        {t.priority?.toLowerCase() === "urgent" && (
+                          <span className="h-1.5 w-1.5 rounded-full bg-rose-500 animate-pulse" />
+                        )}
+                        {t.priority?.toLowerCase() === "high" && (
+                          <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                        )}
+                        {p.label}
+                      </span>
                     </td>
-                    <td className="px-3 py-3 font-semibold text-gray-600 dark:text-gray-300">
-                      {t.escalation_level > 0 ? `Level ${t.escalation_level}` : "—"}
+                    <td className="px-3.5 py-3">
+                      {t.escalation_level > 0 ? (
+                        <span className="inline-flex items-center gap-1 rounded-md bg-rose-50 px-2 py-0.5 text-[10px] font-extrabold text-rose-700 border border-rose-200/80 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800">
+                          <Flame size={11} className="text-rose-500" /> Level {t.escalation_level}
+                        </span>
+                      ) : (
+                        <span className="text-gray-300 dark:text-gray-600 font-medium">—</span>
+                      )}
                     </td>
-                    <td className="px-3 py-3 font-medium text-gray-800 dark:text-gray-200">
-                      {t.assignee?.name || <span className="text-gray-400">Unassigned</span>}
+                    <td className="px-3.5 py-3">
+                      {t.assignee?.name ? (
+                        <div className="flex items-center gap-1.5 text-xs font-semibold text-gray-800 dark:text-gray-200">
+                          <div className="flex h-5 w-5 items-center justify-center rounded-full bg-purple-100 text-[9px] font-bold text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">
+                            {t.assignee.name.charAt(0).toUpperCase()}
+                          </div>
+                          <span>{t.assignee.name}</span>
+                        </div>
+                      ) : (
+                        <span className="inline-flex items-center rounded-md bg-gray-100 px-2 py-0.5 text-[10px] font-medium italic text-gray-400 dark:bg-gray-800 dark:text-gray-500">
+                          Unassigned
+                        </span>
+                      )}
                     </td>
-                    <td className="px-3 py-3">
-                      <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 font-mono text-[10px] ${sla.cls}`}>
+                    <td className="px-3.5 py-3">
+                      <span className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 font-mono text-[10px] font-bold shadow-2xs ${sla.cls}`}>
                         <Clock size={11} /> {slaLabel(t)}
                       </span>
                     </td>
-                    <td className="px-3 py-3 text-gray-500 dark:text-gray-400">{formatDate(t.created_at)}</td>
-                    <td className="px-3 py-3">
-                      <span className={`inline-flex rounded-md px-2 py-0.5 text-[10px] font-bold ${s.badgeBg}`}>{s.label}</span>
+                    <td className="px-3.5 py-3 font-medium text-gray-500 dark:text-gray-400 text-xs">{formatDate(t.created_at)}</td>
+                    <td className="px-3.5 py-3">
+                      <span className={`inline-flex items-center rounded-full px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider shadow-2xs ${s.badgeBg}`}>
+                        {s.label}
+                      </span>
                     </td>
-                    <td className="px-3 py-3 text-right">
+                    <td className="px-3.5 py-3 text-right">
                       <div className="inline-flex items-center justify-end gap-1.5">
                         <button
                           onClick={() => onSelectTicket && onSelectTicket(t.id)}
-                          className="inline-flex items-center gap-1 rounded-xl bg-brand-600 px-3 py-1.5 text-xs font-bold text-white transition-all hover:bg-brand-700"
+                          className="inline-flex items-center gap-1 rounded-xl bg-brand-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-xs transition-all duration-150 hover:bg-brand-700 hover:shadow-md hover:scale-105 active:scale-95"
                         >
                           <Eye size={13} /> View
                         </button>
                         {String(t.status).toLowerCase() === "closed" && (
                           <button
                             onClick={() => onDeleteTicket && onDeleteTicket(t.id)}
-                            className="inline-flex items-center gap-1 rounded-xl bg-rose-600 px-3 py-1.5 text-xs font-bold text-white transition-all hover:bg-rose-700"
+                            className="inline-flex items-center gap-1 rounded-xl bg-rose-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-xs transition-all duration-150 hover:bg-rose-700 hover:shadow-md hover:scale-105 active:scale-95"
                             title="Delete Ticket"
                           >
                             <Trash2 size={13} /> Delete

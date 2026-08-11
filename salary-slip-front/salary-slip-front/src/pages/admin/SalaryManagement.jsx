@@ -29,6 +29,7 @@ import { useCompany } from "../../context/CompanyContext";
 import { useTheme } from "../../context/theme-context";
 import useGridHeaderContextMenu from "../../hooks/useGridHeaderContextMenu";
 import useIsMobile from "../../hooks/useIsMobile";
+import { useAuthorization } from "../../hooks/useAuthorization";
 
 import { AllCommunityModule, ModuleRegistry } from "ag-grid-community";
 import { AgGridReact } from "ag-grid-react";
@@ -154,6 +155,10 @@ function mapRecord(item) {
 
 export default function SalaryManagement() {
   const { user } = useAuth();
+  const { can } = useAuthorization();
+  const canDelete = can("ui.salary.batch.delete");
+  const canApprove = can("ui.salary.batch.approve");
+  const canExport = can("ui.salary.batch.export");
   const {
     companyId,
     companyScope,
@@ -636,7 +641,7 @@ export default function SalaryManagement() {
                       <Eye size={13} />
                       View
                     </button>
-                    {record.status === "Pending" && (
+                    {canApprove && record.status === "Pending" && (
                       <button
                         onClick={() => markPaid(record.id)}
                         className="flex min-w-0 flex-1 justify-center items-center gap-1.5 rounded-lg bg-green-50 px-2 py-2 text-xs font-semibold text-green-600 transition hover:bg-green-100 min-h-[36px]"
@@ -644,13 +649,15 @@ export default function SalaryManagement() {
                         Mark Paid
                       </button>
                     )}
-                    <button
-                      onClick={() => setDeleteRecord(record)}
-                      className="flex min-w-0 flex-1 justify-center items-center gap-1.5 rounded-lg bg-red-50 px-2 py-2 text-xs font-semibold text-red-600 transition hover:bg-red-100 min-h-[36px]"
-                    >
-                      <Trash2 size={13} />
-                      Delete
-                    </button>
+                    {canDelete && (
+                      <button
+                        onClick={() => setDeleteRecord(record)}
+                        className="flex min-w-0 flex-1 justify-center items-center gap-1.5 rounded-lg bg-red-50 px-2 py-2 text-xs font-semibold text-red-600 transition hover:bg-red-100 min-h-[36px]"
+                      >
+                        <Trash2 size={13} />
+                        Delete
+                      </button>
+                    )}
                   </div>
                   <Badge variant="gray" className="shrink-0 font-mono text-xs">{record.month}</Badge>
                 </div>
@@ -836,7 +843,7 @@ export default function SalaryManagement() {
                 <Eye size={14} />
               </button>
 
-              {record.status === "Pending" && (
+              {canApprove && record.status === "Pending" && (
                 <button
                   onClick={() => markPaid(record.id)}
                   className="whitespace-nowrap rounded-lg bg-green-50 px-2.5 py-1.5 text-xs font-medium text-green-600 transition hover:bg-green-100 dark:bg-green-900/20"
@@ -845,19 +852,21 @@ export default function SalaryManagement() {
                 </button>
               )}
 
-              <button
-                onClick={() => setDeleteRecord(record)}
-                className="flex items-center justify-center gap-1.5 rounded-lg bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-600 transition hover:bg-red-100 dark:bg-red-900/20"
-                title="Delete"
-              >
-                <Trash2 size={14} />
-              </button>
+              {canDelete && (
+                <button
+                  onClick={() => setDeleteRecord(record)}
+                  className="flex items-center justify-center gap-1.5 rounded-lg bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-600 transition hover:bg-red-100 dark:bg-red-900/20"
+                  title="Delete"
+                >
+                  <Trash2 size={14} />
+                </button>
+              )}
             </div>
           );
         },
       },
     ];
-  }, [currencyColumn, markPaid, isMobile, visibleColumns]);
+  }, [currencyColumn, markPaid, isMobile, visibleColumns, canDelete, canApprove]);
 
   if (initialLoading) {
     return (
@@ -1004,20 +1013,22 @@ export default function SalaryManagement() {
             Columns
           </Button>
 
-          <Button
-            variant="secondary"
-            onClick={handleExportCSV}
-            disabled={exportLoading || tableLoading}
-            icon={
-              exportLoading ? (
-                <Loader2 size={16} className="animate-spin" />
-              ) : (
-                <Download size={16} />
-              )
-            }
-          >
-            {exportLoading ? "Exporting..." : "Export CSV"}
-          </Button>
+          {canExport && (
+            <Button
+              variant="secondary"
+              onClick={handleExportCSV}
+              disabled={exportLoading || tableLoading}
+              icon={
+                exportLoading ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  <Download size={16} />
+                )
+              }
+            >
+              {exportLoading ? "Exporting..." : "Export CSV"}
+            </Button>
+          )}
 
           <Button
             variant="secondary"

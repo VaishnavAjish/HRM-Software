@@ -407,6 +407,25 @@ class AuthController extends Controller
         return $emp;
     }
 
+    /**
+     * Reduce a mobile number to the 10 significant digits.
+     *
+     * Numbers reach this table from bulk Excel imports, appointment forms and
+     * manual entry, so the same person can be stored as "9876543210",
+     * "+91 98765 43210", "091-9876543210" or with a stray trailing space.
+     * Comparing raw strings would reject the right person for a formatting
+     * difference they cannot see, so both sides are reduced to the last ten
+     * digits before they are compared.
+     */
+    private static function normaliseMobile(string $value): string
+    {
+        $digits = preg_replace('/\D+/', '', $value) ?? '';
+
+        // Trims a country code (91) or trunk prefix (0) without touching a
+        // number that is already ten digits.
+        return strlen($digits) > 10 ? substr($digits, -10) : $digits;
+    }
+
     private function verifyEmployeeIdentity(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -426,47 +445,46 @@ class AuthController extends Controller
             return response()->json(['status' => false, 'message' => 'Account is deactivated'], 403);
         }
 
-        // The "Verify Employee" screen collects an Aadhaar card number, not a
-        // mobile number — the frontend sends it under several legacy field
-        // name aliases (aadhar_card_no, aadhaar_no, mobile_number, ...) left
-        // over from earlier iterations of this flow. This used to validate
-        // $request->mobile_number against $emp->mobile_number, which meant
-        // the Aadhaar the user actually typed was never checked and instead
-        // compared (as a "mobile number") against the real mobile on file —
-        // failing for every already-registered employee.
-        $submittedAadhaar = AadhaarReference::normalise((string) (
-            $request->aadhar_card_no
-                ?? $request->aadhaar_card_no
-                ?? $request->aadhar_no
-                ?? $request->aadhaar_no
-                ?? $request->aadhar
-                ?? $request->aadhaar
-                ?? $request->mobile_number
+        /*
+         * The "Verify Employee" screen confirms the employee's mobile number
+         * against the one on file. It previously asked for an Aadhaar card
+         * number; that was changed because Aadhaar is a national identity
+         * number rather than a rotatable credential, and the rest of this
+         * application treats it as sensitive data to be encrypted and
+         * disclosure-audited — not typed into a login screen.
+         *
+         * The aliases below are the field names earlier revisions of this flow
+         * used. They are accepted so a cached copy of the old frontend does not
+         * start failing the moment this deploys.
+         */
+        $submittedMobile = self::normaliseMobile((string) (
+            $request->mobile_number
+                ?? $request->mobile_no
+                ?? $request->mob_num
+                ?? $request->phone
+                ?? ''
         ));
 
-        if (! AadhaarReference::isValid($submittedAadhaar)) {
-            return response()->json(['status' => false, 'message' => 'Enter a valid 12-digit Aadhar card number'], 422);
+        if (strlen($submittedMobile) !== 10) {
+            return response()->json(['status' => false, 'message' => 'Enter a valid 10-digit mobile number'], 422);
         }
 
-        // Aadhaar can be on file in either the legacy plaintext column or the
-        // newer encrypted one (set via setAadhaarNumber()/the Aadhaar export
-        // flow) — prefer the encrypted value when present since that's the
-        // one later-verified employees actually have populated.
-        $onFileAadhaar = AadhaarReference::normalise(
-            (string) ($emp->encrypted_aadhaar_number ?? $emp->getRawOriginal('aadhar_card_no'))
-        );
+        $onFileMobile = self::normaliseMobile((string) $emp->mobile_number);
 
-        // SECURITY FIX: Never auto-accept a first-claim Aadhaar.
-        // If no Aadhaar is on file, the employee cannot self-serve password reset.
-        // They must contact their administrator to configure a recovery method.
-        if ($onFileAadhaar === '') {
+        // Never auto-accept a first claim. With no mobile on file there is
+        // nothing to check the caller against, so anyone holding the employee
+        // code could pass this step — the account has to be recovered by an
+        // administrator instead.
+        if ($onFileMobile === '') {
             return response()->json([
                 'status' => false,
                 'message' => 'No recovery method configured. Contact your administrator to set up password recovery.',
             ], 422);
         }
 
-        if ($onFileAadhaar !== $submittedAadhaar) {
+        // Constant-time: this is a credential check, and a length-sensitive
+        // comparison leaks how much of the number was right.
+        if (! hash_equals($onFileMobile, $submittedMobile)) {
             return response()->json(['status' => false, 'message' => 'Details do not match our records'], 422);
         }
 
@@ -591,21 +609,38 @@ class AuthController extends Controller
                 'reason' => self::scrubTransportError($lastError->getMessage()),
             ]);
 
-            if (config('app.env') === 'local' || config('app.env') === 'testing') {
-                Log::info("LOCAL DEV FALLBACK OTP for {$emp->email}: [ {$otp} ]");
-                $otpData = [
+            /*
+             * The development fallback, behind an explicit opt-in.
+             *
+             * It previously triggered on APP_ENV=local alone and did two things
+             * that cannot be allowed near real users: it wrote the code to the
+             * log in cleartext, and it returned the code in the API response.
+             * The reset endpoint is deliberately enumeration-safe, so anyone who
+             * could reach it could post any address and be handed that account's
+             * reset code — takeover of any account, no credentials needed. This
+             * deployment runs APP_ENV=local and serves the LAN, so it was live.
+             *
+             * It now requires OTP_DEV_FALLBACK=true, absent by default, and the
+             * code is never logged. A developer who wants it opts in on their own
+             * machine; nobody enables it by accident.
+             */
+            if (config('auth.otp_dev_fallback', false)) {
+                Log::warning('Password reset OTP dev fallback used — code returned to caller', [
+                    'user_id' => $emp->id,
+                ]);
+
+                $emp->otp = json_encode([
                     'hash' => Hash::make($otp),
                     'expires_at' => now()->addMinutes(10)->toISOString(),
                     'attempts' => 0,
                     'verified' => false,
-                ];
-                $emp->otp = json_encode($otpData);
+                ]);
                 $emp->save();
 
                 return response()->json([
                     'status' => true,
                     'success' => true,
-                    'message' => 'If an account exists for this email, a verification code has been sent.',
+                    'message' => self::RESET_REQUEST_ACCEPTED,
                     'dev_otp' => $otp,
                 ]);
             }

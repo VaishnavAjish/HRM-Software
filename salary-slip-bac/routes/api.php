@@ -141,6 +141,21 @@ Route::middleware('jwt.auth')->group(function () {
     Route::get('my-permissions', [PermissionDimensionController::class, 'myPermissions'])->middleware('throttle:60,1');
 
     /*
+     * A schema probe, not configuration — and not admin-only.
+     *
+     * It answers "has this module been migrated?" with a boolean per module and
+     * discloses nothing else: no records, no settings, no counts. It sat inside
+     * the role:admin group behind admin.configuration.read, yet the navigation
+     * calls it on every page load for every signed-in user to decide whether HR
+     * and Tickets exist. Every non-admin therefore got a 403 and a menu built
+     * from a failed probe.
+     *
+     * Authentication is the right boundary: the checks that matter still sit on
+     * each module's own routes.
+     */
+    Route::get('modules', [ModuleAvailabilityController::class, 'index'])->middleware('throttle:60,1');
+
+    /*
      * What remains of the enterprise authorization API after the Access Control
      * console was removed.
      *
@@ -545,7 +560,6 @@ Route::middleware('jwt.auth')->group(function () {
         // Lets the client leave a module out of the navigation rather than
         // offer a menu item that can only fail. No permission gate: it reports
         // what exists, not what the caller may do.
-        Route::get('modules', [ModuleAvailabilityController::class, 'index'])->middleware('permission:admin.configuration.read');
 
         // Gated on schema, not just permission: the thirteen HR tables are not
         // in production yet, and without this every route below is a 500.

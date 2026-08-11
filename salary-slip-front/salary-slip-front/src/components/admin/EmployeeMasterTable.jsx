@@ -59,24 +59,30 @@ function isResigned(row) {
 // Rows come from four different endpoints (trial, appointment, pending,
 // employee) but all of them carry the same raw `photo` field, so one
 // resolver/fallback works across every stage.
-function EmployeePhoto({ row, size = 36 }) {
-  const src = getEmployeePhotoUrl(row.photo);
-  const initial = (row.name || "?").trim().charAt(0).toUpperCase() || "?";
+function EmployeePhoto({ row, size = 36, onClick }) {
+  const src = getEmployeePhotoUrl(row?.photo);
+  const initial = (row?.name || "?").trim().charAt(0).toUpperCase() || "?";
+  const Wrapper = onClick ? "button" : "div";
+
   return (
-    <div
-      className="relative flex flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-brand-100 text-xs font-bold text-brand-600 dark:bg-brand-900/30 dark:text-brand-300"
+    <Wrapper
+      {...(onClick ? { type: "button", onClick } : {})}
+      className={`group relative flex flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-brand-100 text-xs font-bold text-brand-600 dark:bg-brand-900/30 dark:text-brand-300 transition-all duration-200 ${
+        onClick ? "cursor-pointer hover:scale-110 hover:ring-2 hover:ring-brand-500/60 hover:shadow-md active:scale-95" : ""
+      }`}
       style={{ height: size, width: size }}
+      title={onClick ? `Click to view ${row?.name || "employee"}'s photo` : undefined}
     >
       <span>{initial}</span>
       {src && (
         <img
           src={src}
-          alt={row.name ? `${row.name} photo` : "Employee photo"}
-          className="absolute inset-0 h-full w-full rounded-full object-cover"
+          alt={row?.name ? `${row.name} photo` : "Employee photo"}
+          className="absolute inset-0 h-full w-full rounded-full object-cover transition-transform duration-200 group-hover:scale-105"
           onError={(e) => { e.currentTarget.style.display = "none"; }}
         />
       )}
-    </div>
+    </Wrapper>
   );
 }
 
@@ -138,6 +144,7 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
   // Pending/Employee rows get a purpose-built edit form below instead of the
   // full AddEditEmployeeModal, which is tightly coupled to EmployeeManagement's
   // own page-level state and not designed to be dropped in elsewhere.
+  const [photoModalRow, setPhotoModalRow] = useState(null);
   const [appointmentModalRow, setAppointmentModalRow] = useState(null);
   const [trialModalRow, setTrialModalRow] = useState(null);
   const [trialModalMode, setTrialModalMode] = useState(null); // 'view' or 'edit'
@@ -568,7 +575,7 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
                   <li key={row.id} className="p-4">
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex min-w-0 flex-1 items-center gap-3">
-                        <EmployeePhoto row={row} size={40} />
+                        <EmployeePhoto row={row} size={40} onClick={() => setPhotoModalRow(row)} />
                         <div className="min-w-0 flex-1">
                           <p className="font-medium text-gray-900 dark:text-white break-words">{row.name || "—"}</p>
                           <p className="text-xs text-gray-500 dark:text-gray-400 break-all">{row.email || "No email"}</p>
@@ -701,7 +708,7 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
                     return (
                       <tr key={row.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/40">
                         <td className="px-4 py-1.5 border-b border-gray-100 dark:border-gray-700">
-                          <EmployeePhoto row={row} />
+                          <EmployeePhoto row={row} onClick={() => setPhotoModalRow(row)} />
                         </td>
                         <td className="px-4 py-1.5 border-b border-gray-100 dark:border-gray-700">
                           <input
@@ -821,7 +828,7 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
           <div className="bg-white dark:bg-gray-800 w-full max-w-lg max-h-[85vh] flex flex-col rounded-2xl shadow-xl overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="px-6 py-5 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-800/50 shrink-0">
               <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                <EmployeePhoto row={viewRow} size={28} />
+                <EmployeePhoto row={viewRow} size={28} onClick={() => setPhotoModalRow(viewRow)} />
                 {viewRow.name || "Record"} Details
               </h3>
               <button onClick={() => setViewRow(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
@@ -992,6 +999,135 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
           </div>
         </form>
       </Modal>
+
+      {/* ── Photo Popup Modal ── */}
+      {photoModalRow && (
+        <div
+          onClick={() => setPhotoModalRow(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative bg-white dark:bg-gray-800 w-full max-w-md flex flex-col rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 border border-gray-100 dark:border-gray-700"
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-800/80">
+              <h3 className="text-base font-extrabold text-gray-900 dark:text-white flex items-center gap-2">
+                <span>Employee Photo</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setPhotoModalRow(null)}
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-200/60 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-200 transition-colors"
+                title="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Content Body */}
+            <div className="p-6 flex flex-col items-center text-center">
+              {/* Photo Display Box */}
+              <div className="relative group flex items-center justify-center w-56 h-56 sm:w-64 sm:h-64 rounded-2xl bg-gradient-to-br from-brand-500/10 via-gray-100 to-brand-500/5 dark:from-brand-900/30 dark:via-gray-800 dark:to-gray-900 border-2 border-brand-500/20 shadow-inner overflow-hidden mb-5">
+                {getEmployeePhotoUrl(photoModalRow.photo) ? (
+                  <img
+                    src={getEmployeePhotoUrl(photoModalRow.photo)}
+                    alt={photoModalRow.name || "Employee"}
+                    className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                    onError={(e) => {
+                      e.currentTarget.onerror = null;
+                      e.currentTarget.style.display = "none";
+                      if (e.currentTarget.nextSibling) {
+                        e.currentTarget.nextSibling.style.display = "flex";
+                      }
+                    }}
+                  />
+                ) : null}
+                <div
+                  className={`flex flex-col items-center justify-center h-full w-full font-black text-6xl text-brand-600 dark:text-brand-400 ${
+                    getEmployeePhotoUrl(photoModalRow.photo) ? "hidden" : "flex"
+                  }`}
+                >
+                  {(photoModalRow.name || "?").trim().charAt(0).toUpperCase()}
+                </div>
+              </div>
+
+              {/* Employee Info Details */}
+              <h4 className="text-xl font-black tracking-tight text-gray-900 dark:text-white mb-1">
+                {photoModalRow.name || "Unnamed Employee"}
+              </h4>
+              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-3">
+                {photoModalRow.email || "No email"}
+              </p>
+
+              {/* Stage & Status Badges */}
+              <div className="flex flex-wrap items-center justify-center gap-2 mb-4">
+                <Badge variant={(STAGE_META[photoModalRow.__stage] || STAGE_META.appointment).tone}>
+                  {(STAGE_META[photoModalRow.__stage] || STAGE_META.appointment).label}
+                </Badge>
+                <Badge variant={
+                  photoModalRow.__stage === "trial" ? "gray"
+                  : photoModalRow.__stage === "appointment" ? "blue"
+                  : isResigned(photoModalRow) ? "red"
+                  : isActive(photoModalRow) ? "green"
+                  : (photoModalRow.status === 2 || photoModalRow.status === "2") ? "yellow"
+                  : "red"
+                }>
+                  {photoModalRow.__stage === "trial" ? "Trial"
+                  : photoModalRow.__stage === "appointment" ? "Appointment"
+                  : isResigned(photoModalRow) ? "Resigned"
+                  : isActive(photoModalRow) ? "Active"
+                  : (photoModalRow.status === 2 || photoModalRow.status === "2") ? "Pending"
+                  : "Inactive"}
+                </Badge>
+              </div>
+
+              {/* Metadata Grid */}
+              <div className="w-full grid grid-cols-2 gap-2 p-3 rounded-xl bg-gray-50 dark:bg-gray-900/50 border border-gray-100 dark:border-gray-800 text-left text-xs">
+                <div>
+                  <span className="block text-[10px] font-bold uppercase tracking-wider text-gray-400">Emp Code</span>
+                  <span className="font-semibold text-gray-800 dark:text-gray-200">{photoModalRow.emp_code || "—"}</span>
+                </div>
+                <div>
+                  <span className="block text-[10px] font-bold uppercase tracking-wider text-gray-400">Punching No</span>
+                  <span className="font-semibold text-gray-800 dark:text-gray-200">{photoModalRow.punching_no || "—"}</span>
+                </div>
+                <div>
+                  <span className="block text-[10px] font-bold uppercase tracking-wider text-gray-400">Department</span>
+                  <span className="font-semibold text-gray-800 dark:text-gray-200">{photoModalRow.department || "—"}</span>
+                </div>
+                <div>
+                  <span className="block text-[10px] font-bold uppercase tracking-wider text-gray-400">Company</span>
+                  <span className="font-semibold text-gray-800 dark:text-gray-200">
+                    {getCompanyConfig(photoModalRow.company_code)?.label || photoModalRow.company_code || "—"}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 border-t border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 flex gap-3">
+              {getEmployeePhotoUrl(photoModalRow.photo) && (
+                <a
+                  href={getEmployeePhotoUrl(photoModalRow.photo)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2 bg-brand-50 hover:bg-brand-100 dark:bg-brand-950/40 dark:hover:bg-brand-900/40 text-brand-600 dark:text-brand-300 text-xs font-bold rounded-xl transition-colors"
+                >
+                  <Eye size={14} /> Full Image
+                </a>
+              )}
+              <button
+                type="button"
+                onClick={() => setPhotoModalRow(null)}
+                className="flex-1 px-4 py-2 bg-gray-900 hover:bg-gray-800 dark:bg-gray-700 dark:hover:bg-gray-600 text-white text-xs font-bold rounded-xl transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

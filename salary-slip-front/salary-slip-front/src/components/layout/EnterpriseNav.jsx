@@ -164,6 +164,25 @@ export default function EnterpriseNav({ onFlyoutChange }) {
                     }`}
                   >
                     {item.subItems.map((sub) => {
+                      /*
+                       * A denied page is shown closed rather than removed, so it
+                       * is visible as something to ask for. It is a span, not a
+                       * disabled link: there is no href to follow and nothing
+                       * for the keyboard to land on.
+                       */
+                      if (sub.disabled) {
+                        return (
+                          <span
+                            key={sub.to}
+                            aria-disabled="true"
+                            title="You do not have access to this page"
+                            className="block cursor-not-allowed rounded-lg px-3 py-2 text-sm font-medium whitespace-nowrap text-gray-600 opacity-60"
+                          >
+                            {sub.label}
+                          </span>
+                        );
+                      }
+
                       return (
                         <NavLink
                           key={sub.to}
@@ -184,6 +203,31 @@ export default function EnterpriseNav({ onFlyoutChange }) {
                   </div>
                 )}
               </div>
+            );
+          }
+
+          if (item.disabled) {
+            return (
+              <span
+                key={itemKey(item, index)}
+                aria-disabled="true"
+                title="You do not have access to this page"
+                className="group relative flex h-11 w-full cursor-not-allowed items-center rounded-xl px-2.5 text-sm font-medium text-gray-600 opacity-60"
+              >
+                <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg">
+                  <Icon size={18} />
+                </span>
+
+                <div
+                  className={`overflow-hidden transition-all duration-300 ease-in-out ${
+                    isHovered ? "max-w-[180px] opacity-100 ml-3" : "max-w-0 opacity-0 ml-0 pointer-events-none"
+                  }`}
+                >
+                  <span className="truncate whitespace-nowrap text-sm font-medium">
+                    {item.label}
+                  </span>
+                </div>
+              </span>
             );
           }
 

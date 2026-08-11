@@ -44,11 +44,76 @@ export function useAuthorization() {
     return required.every(holds);
   }, [user]);
 
+  /*
+   * May this route be opened?
+   *
+   * The registry knows which permission governs each page, and until now the
+   * browser did not: the sidebar checked one module-wide code and then listed
+   * every child under it, so a page denied in the Permission Matrix stayed in
+   * the menu and opened on a direct URL. Resolving the route through the same
+   * map the matrix edits means a page is governed by exactly one permission,
+   * wherever it is reached from.
+   *
+   * A route the registry does not describe is not silently denied — plenty of
+   * pages have no node yet, and hiding them would remove working navigation.
+   * Those keep their previous behaviour; the backend remains the boundary.
+   */
+  const canRoute = useCallback((path) => {
+    if (!path) return true;
+
+    const code = user?.authorization?.routes?.[path];
+
+    return code ? can(code) : true;
+  }, [user, can]);
+
+  /*
+   * Why a resource is unavailable, not just that it is.
+   *
+   * Deny and Not Assigned both refuse access, but they mean different things to
+   * the person looking at the screen. Deny is a decision someone made about them
+   * — the page exists and is closed. Not Assigned is the absence of a decision,
+   * and showing a permanently dead entry for it is just clutter.
+   *
+   * "allow"      grant holds, and its whole chain holds
+   * "deny"       explicitly denied, or an ancestor is closing it
+   * "unassigned" nothing grants it and nothing denies it
+   *
+   * This never widens access: deny and unassigned are equally refused by
+   * can(), by the route guard, and by the API. It only decides how the refusal
+   * is presented.
+   */
+  const accessState = useCallback((permissionCode) => {
+    if (!permissionCode) return "allow";
+    if (Number(user?.rawRole) === 0) return "allow";
+    if (user?.permissions?.["*"] === "read_write") return "allow";
+
+    const decision = user?.authorization?.permissions?.[permissionCode];
+
+    if (!decision) {
+      return user?.permissions?.[permissionCode] === "read_write" ? "allow" : "unassigned";
+    }
+
+    if (decision.allowed) {
+      // A grant an ancestor is suppressing is a denial, not an absence.
+      return can(permissionCode) ? "allow" : "deny";
+    }
+
+    return decision.state === "NOT_ASSIGNED" ? "unassigned" : "deny";
+  }, [user, can]);
+
+  const routeState = useCallback((path) => {
+    if (!path) return "allow";
+
+    const code = user?.authorization?.routes?.[path];
+
+    return code ? accessState(code) : "allow";
+  }, [user, accessState]);
+
   const check = useCallback(async (permissionCode, resource = {}) => {
     if (!user?.accessToken) return { allowed: false, reasonCode: "AUTHENTICATION_REQUIRED" };
     const response = await authorizationApi.check(permissionCode, resource, user.accessToken, user.tokenType);
     return response?.data ?? { allowed: false, reasonCode: "DECISION_UNAVAILABLE" };
   }, [user]);
 
-  return { can, check, snapshot: user?.authorization ?? null };
+  return { can, canRoute, accessState, routeState, check, snapshot: user?.authorization ?? null };
 }

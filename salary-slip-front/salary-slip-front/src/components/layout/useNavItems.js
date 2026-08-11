@@ -1,7 +1,7 @@
 import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";
 import { useModuleAvailability } from "../../hooks/useModuleAvailability";
-import { hasStoredAadhaar } from "../../utils/aadhaar";
+import { useAuthorization } from "../../hooks/useAuthorization";
 import {
   LayoutDashboard,
   Users,
@@ -187,6 +187,7 @@ export function useNavItems() {
   const { user } = useAuth();
   const { companyId, isAllCompanies } = useCompany();
   const { isAvailable: isModuleAvailable } = useModuleAvailability();
+  const { routeState } = useAuthorization();
 
   const nav = (() => {
     if (user?.role === "admin") {
@@ -215,30 +216,23 @@ export function useNavItems() {
       });
     }
 
-    const fields = [
-      "name", "email", "phone", "dob", "address", "city", "district", "state", "pin",
-      "aadhar_card_no", "pan_card_no", "bank_name", "bank_ifsc_code", "bank_account_no",
-      "gender", "department", "designation", "joining_date"
-    ];
-    const source = {
-      ...user,
-      phone: user?.mobile_number || user?.mobile_no || user?.phone,
-      // Presence only — this is a completeness percentage, not a display.
-      aadhar_card_no: hasStoredAadhaar(user) ? "stored" : ""
-    };
-    let filled = 0;
-    fields.forEach(f => {
-      if (source[f] !== undefined && source[f] !== null && String(source[f]).trim() !== "") {
-        filled++;
-      }
-    });
-    const isProfileComplete = (filled === fields.length);
-    const baseNav = (isProfileComplete
-      ? employeeNav
-      : employeeNav.filter(item => item.to === "/employee/profile")
-    // Same module probe the admin side applies: without the ticket tables the
-    // pages behind these two entries can only fail.
-    ).filter(item => item.label !== "Tickets" || isModuleAvailable("tickets"));
+    /*
+     * The employee menu is the permitted menu, not the profile-completion menu.
+     *
+     * This used to collapse to the single Profile entry whenever any of eighteen
+     * profile fields was blank, and it ran before the permission filter below —
+     * so everything the Permission Matrix granted the Employee role was thrown
+     * away before it could be considered. An administrator would grant Salary
+     * and Attendance, the employee would sign in, and see only Profile.
+     *
+     * The completion figure still appears on the profile page. Reminding someone
+     * to finish their details and deciding which pages they may open are
+     * different jobs, and only the second one belongs here.
+     */
+    const baseNav = employeeNav
+      // Same module probe the admin side applies: without the ticket tables the
+      // pages behind these two entries can only fail.
+      .filter(item => item.label !== "Tickets" || isModuleAvailable("tickets"));
 
     const keyMap = {
       "/employee": "employee_dashboard",
@@ -256,7 +250,47 @@ export function useNavItems() {
     });
   })();
 
-  return nav;
+  /*
+   * Every entry is filtered by the permission that governs its route.
+   *
+   * The module check above decides whether a section exists at all; it said
+   * nothing about the pages inside it, so a page denied in the Permission
+   * Matrix stayed in the menu. A parent whose children have all been filtered
+   * away is dropped too — a section that opens onto nothing reads as broken
+   * rather than as forbidden.
+   */
+  /*
+   * Denied entries stay, disabled. Unassigned entries do not appear.
+   *
+   * Both states refuse access, so this changes nothing about what can be opened
+   * — the route guard and the API answer identically for either. It changes what
+   * the person is told. A page an administrator explicitly denied is shown
+   * closed, so they can see it exists and ask for it; a page nobody has decided
+   * anything about is simply absent rather than a permanently dead link.
+   *
+   * A parent whose children are all unassigned disappears with them. A parent
+   * keeping any visible child stays, and is disabled only when every remaining
+   * child is denied.
+   */
+  const decorate = (item) => {
+    const state = routeState(item.to);
+
+    return state === "unassigned" ? null : { ...item, disabled: state === "deny" };
+  };
+
+  const permitted = nav
+    .map((item) => {
+      if (!item.subItems) return decorate(item);
+
+      const subItems = item.subItems.map(decorate).filter(Boolean);
+
+      if (subItems.length === 0) return null;
+
+      return { ...item, subItems, disabled: subItems.every((sub) => sub.disabled) };
+    })
+    .filter(Boolean);
+
+  return permitted;
 }
 
 export function dashboardPathFor(user) {

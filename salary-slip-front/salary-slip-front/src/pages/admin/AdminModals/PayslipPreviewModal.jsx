@@ -2,6 +2,7 @@ import { Download, Loader2 } from "lucide-react";
 import PayslipDocument from "../../../components/payslip/PayslipDocument";
 import Modal from "../../../components/ui/Modal";
 import Badge from "../../../components/ui/Badge";
+import { useAuthorization } from "../../../hooks/useAuthorization";
 
 function PayslipPreviewModal({
   viewModal,
@@ -14,6 +15,8 @@ function PayslipPreviewModal({
   payslipRef,
   companyId,
 }) {
+  const { can } = useAuthorization();
+
   return (
     <Modal
       isOpen={!!viewModal}
@@ -42,19 +45,21 @@ function PayslipPreviewModal({
               {viewModal?.status}
             </Badge>
 
-            <button
-              onClick={handleDownloadPDF}
-              disabled={detailLoading || !detail || pdfLoading}
-              className="flex items-center gap-2 rounded-xl bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-brand-600/25 transition-colors hover:bg-brand-700 disabled:opacity-50"
-            >
-              {pdfLoading ? (
-                <Loader2 size={15} className="animate-spin" />
-              ) : (
-                <Download size={15} />
-              )}
+            {can("ui.salary.batch.print") && (
+              <button
+                onClick={handleDownloadPDF}
+                disabled={detailLoading || !detail || pdfLoading}
+                className="flex items-center gap-2 rounded-xl bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-brand-600/25 transition-colors hover:bg-brand-700 disabled:opacity-50"
+              >
+                {pdfLoading ? (
+                  <Loader2 size={15} className="animate-spin" />
+                ) : (
+                  <Download size={15} />
+                )}
 
-              {pdfLoading ? "Generating…" : "Download PDF"}
-            </button>
+                {pdfLoading ? "Generating…" : "Download PDF"}
+              </button>
+            )}
           </div>
         </div>
       }

@@ -7,7 +7,7 @@ import {
 import { ticketApi } from "../../utils/api";
 import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";
-import SuperAdminTicketDashboard from "../../components/tickets/SuperAdminTicketDashboard";
+import SuperAdminTicketDashboard, { HelpdeskMetricCards } from "../../components/tickets/SuperAdminTicketDashboard";
 import SuperAdminTicketTable from "../../components/tickets/SuperAdminTicketTable";
 import SuperAdminTicketDrawer from "../../components/tickets/SuperAdminTicketDrawer";
 import TicketReportsView from "../../components/tickets/TicketReportsView";
@@ -28,7 +28,6 @@ import TicketSettingsView from "../../components/tickets/TicketSettingsView";
 const SECTIONS = [
   { id: "dashboard", label: "Helpdesk Dashboard", icon: LayoutDashboard, kind: "view" },
   { id: "inbox", label: "Ticket Queue (Inbox)", icon: Inbox, kind: "queue" },
-  { id: "pending_approval", label: "Pending Approval", icon: CornerUpRight, kind: "status" },
   { id: "open", label: "Open Tickets", icon: Clock, kind: "status" },
   { id: "assigned", label: "Assigned Tickets", icon: UserCheck, kind: "status" },
   { id: "escalated", label: "Escalated Tickets", icon: ShieldAlert, kind: "status", alert: true },
@@ -167,45 +166,19 @@ export default function SuperAdminTicketControlCenter() {
 
   return (
     <div className="space-y-5">
-      <header className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-500/10 text-brand-600 dark:text-brand-400">
-            <LifeBuoy size={20} />
-          </span>
-          <div>
-            <h1 className="text-xl font-extrabold tracking-tight text-gray-900 dark:text-white">
-              Internal Helpdesk
-            </h1>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              Ticket queue, assignment, SLA tracking and reporting for your companies.
-            </p>
-          </div>
-        </div>
+      {/* 1. Metric Cards at Top */}
+      <HelpdeskMetricCards
+        summary={summary}
+        loading={loading}
+        onFilterSelect={(id) => {
+          const target = SECTIONS.find((s) => s.id === id);
+          setActiveSection(target ? target.id : "inbox");
+        }}
+      />
 
-        <div className="flex flex-wrap items-center gap-3">
-          <form onSubmit={(e) => { e.preventDefault(); setLoading(true); load(); }} className="relative w-full sm:w-64">
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search ticket #, subject, employee…"
-              className="w-full rounded-xl border border-gray-200 bg-gray-50 py-2 pl-8 pr-3 text-xs text-gray-900 outline-none transition focus:border-brand-500 focus:bg-white dark:border-gray-700 dark:bg-gray-800 dark:text-white"
-            />
-            <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-gray-400" />
-          </form>
-
-          <button
-            onClick={() => { setLoading(true); load(); }}
-            className="flex h-9 w-9 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-600 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
-            title="Refresh"
-          >
-            <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
-          </button>
-        </div>
-      </header>
-
-      {/* Horizontal Helpdesk Control Navigation Card Bar */}
-      <div className="rounded-2xl border border-gray-200 bg-white p-2.5 dark:border-gray-800 dark:bg-gray-900 shadow-2xs">
-        <div className="flex items-center gap-2 overflow-x-auto pb-0.5 scrollbar-none">
+      {/* 2. Helpdesk Control Navigation Card Bar */}
+      <div className="rounded-2xl border border-gray-200 bg-white p-2.5 dark:border-gray-800 dark:bg-gray-900 shadow-xs">
+        <div className="flex items-center gap-1.5 xl:gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {SECTIONS.map((item) => {
             const Icon = item.icon;
             const isActive = activeSection === item.id;
@@ -214,23 +187,22 @@ export default function SuperAdminTicketControlCenter() {
             return (
               <button
                 key={item.id}
+                type="button"
                 onClick={() => setActiveSection(item.id)}
-                className={`flex h-9 shrink-0 items-center gap-2 rounded-xl px-3 text-xs font-semibold transition-all active:scale-95 ${
+                className={`flex h-9 shrink-0 items-center gap-1.5 sm:gap-2 rounded-xl px-2.5 sm:px-3 text-xs transition-all duration-150 active:scale-95 ${
                   isActive
-                    ? "bg-brand-600 font-bold text-white shadow-sm shadow-brand-600/25"
-                    : "text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800/60"
+                    ? "bg-brand-600 font-bold text-white shadow-md shadow-brand-600/30 ring-1 ring-brand-500"
+                    : "border border-gray-200/80 bg-gray-50/70 font-semibold text-gray-700 hover:bg-gray-100 hover:text-gray-900 dark:border-gray-800 dark:bg-gray-800/50 dark:text-gray-300 dark:hover:bg-gray-800"
                 }`}
               >
-                <Icon size={14} className={item.alert && !isActive && badge ? "text-rose-500" : ""} />
+                <Icon size={14} className={isActive ? "text-white" : "text-gray-500 dark:text-gray-400"} />
                 <span className="whitespace-nowrap">{item.label}</span>
                 {badge && (
                   <span
-                    className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                    className={`rounded-full px-2 py-0.5 text-[11px] font-black leading-none ${
                       isActive
-                        ? "bg-white/20 text-white"
-                        : item.alert
-                          ? "bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300"
-                          : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                        ? "bg-red-500 text-white shadow-2xs"
+                        : "bg-red-100 text-red-600 dark:bg-red-950/80 dark:text-red-400 border border-red-200 dark:border-red-800/60"
                     }`}
                   >
                     {badge}
@@ -248,6 +220,10 @@ export default function SuperAdminTicketControlCenter() {
             summary={summary}
             tickets={tickets}
             loading={loading}
+            hideCards={true}
+            search={search}
+            onSearchChange={setSearch}
+            onRefresh={() => { setLoading(true); load(); }}
             onFilterSelect={(id) => {
               // Cards map onto sections where one exists; "overdue" has no
               // tab of its own, so it opens the full queue.

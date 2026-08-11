@@ -92,20 +92,48 @@ function buildAuthUser(apiUser, fallbackUser = {}, loginData = {}) {
   };
 }
 
+/*
+ * Why the snapshot is empty matters as much as that it is empty.
+ *
+ * Every failure here used to end at the same place — an empty permissions map —
+ * so a 500 from the authorization service, an expired token and an account that
+ * genuinely holds nothing were indistinguishable downstream. The UI then told a
+ * user whose backend was simply unreachable that they had no permissions
+ * assigned, which sends them to an administrator to fix something that is not
+ * broken.
+ *
+ * authorizationStatus records which of those happened so the screen can say the
+ * true thing. It never widens access: an unavailable snapshot still denies.
+ */
 async function loadPermissionsForUser(builtUser) {
   if (!builtUser?.accessToken) return builtUser;
+
+  let authorizationStatus = "loaded";
 
   try {
     const enterprise = await authorizationApi.me(builtUser.accessToken, builtUser.tokenType);
     if (enterprise?.success && enterprise?.data?.permissions) {
       const decisions = enterprise.data.permissions;
-      const enterprisePortalRole = decisions["ui.admin.dashboard.view"]?.allowed ||
-        decisions["ui.admin.authorization.view"]?.allowed
-        ? "admin"
-        : builtUser.role;
+      /*
+       * Which portal someone belongs to comes from the account, never a grant.
+       *
+       * This promoted anyone holding ui.admin.dashboard.view — or
+       * ui.admin.authorization.view — to role "admin". Those govern whether a
+       * page is visible, not who the account is, so granting an employee sight
+       * of a dashboard also moved them into the admin portal and past every
+       * `requiredRole="admin"` guard. An employee on role 3 reached
+       * /admin/attendance that way, and the only thing that stopped them going
+       * further was the API refusing the data.
+       *
+       * Tier is decided by getUserRole() from the account's own role, which the
+       * user cannot grant themselves. Permissions still decide what is visible
+       * inside whichever portal they land in.
+       */
+      const enterprisePortalRole = builtUser.role;
       return {
         ...builtUser,
         role: enterprisePortalRole,
+        authorizationStatus: "loaded",
         authorization: enterprise.data,
         permissions: Object.fromEntries(
           Object.entries(decisions).map(([code, decision]) => [code, decision.allowed ? "read_write" : "no_access"]),
@@ -114,22 +142,32 @@ async function loadPermissionsForUser(builtUser) {
     }
   } catch (err) {
     console.warn("Enterprise authorization snapshot unavailable; using compatibility permissions.", err);
+    authorizationStatus = "unavailable";
   }
 
   try {
-    if (builtUser.rawRole === 0) return { ...builtUser, permissions: { "*": "read_write" } };
+    if (builtUser.rawRole === 0) {
+      return { ...builtUser, authorizationStatus: "loaded", permissions: { "*": "read_write" } };
+    }
     const res = await rbacApi.getMyPermissions(builtUser.accessToken, builtUser.tokenType);
     if (res.status) {
       const perms = {};
       (res.data || []).forEach((row) => {
         perms[row.key_name] = row.value; // e.g. "view_only", "no_access", "read_write"
       });
-      return { ...builtUser, permissions: perms };
+      return { ...builtUser, authorizationStatus, permissions: perms };
     }
+    authorizationStatus = "unavailable";
   } catch (err) {
     console.error("Failed to load user permissions", err);
+    authorizationStatus = "unavailable";
   }
-  return { ...builtUser, permissions: {}, authorization: { permissions: {}, featureFlags: {} } };
+  return {
+    ...builtUser,
+    authorizationStatus,
+    permissions: {},
+    authorization: { permissions: {}, featureFlags: {}, roles: [] },
+  };
 }
 
 export function AuthProvider({ children }) {

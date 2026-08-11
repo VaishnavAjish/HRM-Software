@@ -114,17 +114,35 @@ class RoleMatrixWriter
      * a screen that shows access it cannot deliver — and a canonical deny that did
      * not reach them would leave the API open behind a UI that claims it is shut.
      *
-     * Only codes implied by the rows in this save are reconciled. A wider sweep
-     * would strip business grants configured outside the matrix that the
-     * administrator never touched.
+     * The edited rows and their descendants are reconciled — not the whole
+     * registry, which would strip business grants configured outside the matrix
+     * that the administrator never touched.
+     *
+     * Descendants have to be included because an edit changes their effective
+     * state without appearing in the save. Granting a child while its module is
+     * unassigned resolves to DENY, so nothing is projected; granting the module
+     * afterwards sends only the module's own implied codes, and the child's stay
+     * missing forever. That left ui.attendance.view effectively ALLOW on the
+     * matrix while hr.attendance.read — the code the route actually enforces —
+     * was never written, so the page opened and its data came back 403.
+     *
+     * The subtree is exactly the set whose effective state this edit can move,
+     * so reconciling it is precise rather than a sweep.
      */
     private function projectImpliedCodes(Role $role, array $changes, int $actorId, ?string $businessReason): array
     {
         $touched = [];
 
         foreach ($changes as $change) {
-            foreach (PermissionRegistry::impliedCodes($change['permissionCode']) as $code) {
-                $touched[$code] = true;
+            $keys = array_merge(
+                [$change['permissionCode']],
+                PermissionRegistry::assignableDescendantsOf($change['permissionCode']),
+            );
+
+            foreach ($keys as $key) {
+                foreach (PermissionRegistry::impliedCodes($key) as $code) {
+                    $touched[$code] = true;
+                }
             }
         }
 

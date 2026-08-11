@@ -6,6 +6,7 @@ use App\Http\Middleware\RequireModuleSchema;
 use App\Models\User;
 use App\Services\Authorization\SchemaSupport;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -189,16 +190,35 @@ class HrModuleSchemaGateTest extends TestCase
      */
     private function dropHrSchema(): void
     {
-        Schema::disableForeignKeyConstraints();
-        foreach ([
+        $tables = [
             'performance_reviews', 'performance_goals', 'performance_cycles',
             'asset_allocations', 'assets', 'offer_revisions', 'offers',
             'interview_feedback', 'interview_panelists', 'interviews',
             'candidate_stage_history', 'candidates', 'job_requisitions',
-        ] as $table) {
-            Schema::dropIfExists($table);
+        ];
+
+        /*
+         * CASCADE, because disabling constraints does not work here.
+         *
+         * Schema::disableForeignKeyConstraints() suppresses checks on MySQL but
+         * is not honoured for DDL on PostgreSQL, so dropping `interviews` failed
+         * with "Dependent objects still exist" — a table outside this list still
+         * referenced it. Listing every dependant would make the test a
+         * maintenance burden that breaks whenever the HR schema grows; dropping
+         * the dependency graph is what "this module was never migrated" actually
+         * means.
+         */
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            foreach ($tables as $table) {
+                DB::statement('DROP TABLE IF EXISTS "' . $table . '" CASCADE');
+            }
+        } else {
+            Schema::disableForeignKeyConstraints();
+            foreach ($tables as $table) {
+                Schema::dropIfExists($table);
+            }
+            Schema::enableForeignKeyConstraints();
         }
-        Schema::enableForeignKeyConstraints();
 
         SchemaSupport::flush();
 

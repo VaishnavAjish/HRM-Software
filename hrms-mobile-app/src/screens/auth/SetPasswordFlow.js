@@ -8,7 +8,6 @@ import { typography, shadows } from '../../theme';
 import { api, ApiError } from '../../services/api';
 import { Button } from '../../components/common/Button';
 import { OtpInput } from '../../components/auth/OtpInput';
-import { normaliseAadhaar, isCompleteAadhaar, formatAadhaarInput } from '../../utils/aadhaar';
 import { COMPANY_OPTIONS } from '../../utils/companyConfig';
 
 function companyLabel(code) {
@@ -83,7 +82,7 @@ export function SetPasswordFlow({ onDone, onCancel }) {
 
   // Step 1
   const [empCode, setEmpCode] = useState('');
-  const [aadhaar, setAadhaar] = useState('');
+  const [mobileNumber, setMobileNumber] = useState('');
   const [companyCode, setCompanyCode] = useState('');
   const [unit, setUnit] = useState('');
   const [checkingEmpCode, setCheckingEmpCode] = useState(false);
@@ -135,7 +134,7 @@ export function SetPasswordFlow({ onDone, onCancel }) {
   const submitStep1 = async () => {
     setError(null);
     if (!empCode.trim()) return setError('Enter your employee code.');
-    if (!isCompleteAadhaar(aadhaar)) return setError('Enter a valid 12-digit Aadhaar card number.');
+    if (!/^\d{10}$/.test(mobileNumber.trim())) return setError('Enter a valid 10-digit mobile number.');
 
     // Belt-and-braces: guarantees company/unit are resolved even if the field
     // never blurred (e.g. the user tapped straight from the keyboard).
@@ -147,7 +146,7 @@ export function SetPasswordFlow({ onDone, onCancel }) {
       fd.append('emp_code', empCode.trim());
       fd.append('company_code', companyCode || 'nidhi-impex');
       if (unit) fd.append('unit', unit);
-      fd.append('aadhar_card_no', normaliseAadhaar(aadhaar));
+      fd.append('mobile_number', mobileNumber.trim());
       fd.append('type', '0');
 
       const res = await api.verifyEmployeeIdentity(fd);
@@ -285,7 +284,7 @@ export function SetPasswordFlow({ onDone, onCancel }) {
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.stepTitle, { color: theme.textPrimary }]}>Verify Employee</Text>
                   <Text style={[styles.stepSubtitle, { color: theme.textMuted }]}>
-                    First time here? Confirm your employee code and Aadhaar card number to get started.
+                    First time here? Confirm your employee code and registered mobile number to get started.
                   </Text>
                 </View>
               </View>
@@ -330,14 +329,14 @@ export function SetPasswordFlow({ onDone, onCancel }) {
                 )
               ) : null}
 
-              <Text style={[styles.label, { color: theme.textSecondary, marginTop: 14 }]}>Aadhaar Card Number</Text>
+              <Text style={[styles.label, { color: theme.textSecondary, marginTop: 14 }]}>Mobile Number</Text>
               <TextInput
                 style={[styles.input, { color: theme.textPrimary, backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}
-                value={aadhaar}
-                onChangeText={(v) => setAadhaar(formatAadhaarInput(v))}
+                value={mobileNumber}
+                onChangeText={(v) => setMobileNumber(v.replace(/\D/g, '').slice(0, 10))}
                 keyboardType="number-pad"
-                maxLength={14}
-                placeholder="XXXX XXXX XXXX"
+                maxLength={10}
+                placeholder="10-digit mobile number"
                 placeholderTextColor={theme.textMuted}
               />
 

@@ -334,7 +334,7 @@ const PrintableTrialForm = ({ data, formRef }) => {
                 <span className="text-[13px] font-bold text-center underline">View PDF Document</span>
               </a>
             ) : (
-              <img src={data.adharImage} alt="Aadhaar Card" className="max-h-[600px] max-w-full rounded border border-gray-300 object-contain shadow-sm print:max-h-full print:border-none print:shadow-none" />
+              <img src={data.adharImage} alt="Aadhaar Card" className="max-h-[600px] max-w-full rounded border border-gray-300 object-contain shadow-sm print:max-h-[900px] print:border-none print:shadow-none" />
             )}
           </div>
         </div>

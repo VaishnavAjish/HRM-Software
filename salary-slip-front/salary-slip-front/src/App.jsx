@@ -66,7 +66,6 @@ const MyTickets = lazy(() => import("./pages/employee/MyTickets"));
 
 // Agent pages
 const AgentDashboard = lazy(() => import("./pages/agent/AgentDashboard"));
-import { hasStoredAadhaar } from "./utils/aadhaar";
 import { useAuthorization } from "./hooks/useAuthorization";
 
 // HR module
@@ -94,48 +93,132 @@ function RouteLoader() {
   );
 }
 
+/*
+ * Why access was refused, from the snapshot itself.
+ *
+ * These are four different faults and only one of them is the user's to act on.
+ * A single "no permissions assigned" message covered all of them, so an
+ * authorization service that was simply down told people to go and ask an
+ * administrator for permissions they already had — and an account with no role
+ * at all got the same wording as one whose role is configured but does not
+ * cover this page, which is the difference between a missing assignment and a
+ * deliberate denial.
+ *
+ * None of these widen access. They only name the cause.
+ */
+function accessRefusal(user) {
+  if (user?.authorizationStatus === "unavailable") {
+    return {
+      title: "Unable to load your permissions",
+      detail:
+        "We could not reach the authorization service, so access cannot be confirmed. Try again in a moment.",
+    };
+  }
+
+  if ((user?.authorization?.roles ?? []).length === 0) {
+    return {
+      title: "No role assigned to your account",
+      detail:
+        "Your account has not been assigned a role yet, so it holds no permissions. Ask your administrator to assign one.",
+    };
+  }
+
+  const decisions = user?.authorization?.permissions ?? {};
+
+  if (!Object.values(decisions).some((decision) => decision?.allowed)) {
+    return {
+      title: "No permissions assigned",
+      detail:
+        "Your role does not grant access to anything yet. Ask your administrator to review it.",
+    };
+  }
+
+  return {
+    title: "You do not have access to this page",
+    detail: "Your role does not include this page. Other pages may still be available to you.",
+  };
+}
+
+/*
+ * Shown when the page we would send someone to is the one being refused.
+ *
+ * Only reachable when a portal's own landing page is denied — but a refusal the
+ * user can read beats a redirect loop that renders an empty screen.
+ */
+function AccessDenied({ user }) {
+  const { title, detail } = accessRefusal(user);
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4 dark:bg-gray-900">
+      <div className="max-w-md rounded-2xl border border-gray-200 bg-white px-6 py-7 text-center shadow-sm dark:border-gray-700 dark:bg-gray-800">
+        <h1 className="text-base font-semibold text-gray-900 dark:text-white">{title}</h1>
+        <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">{detail}</p>
+      </div>
+    </div>
+  );
+}
+
 function ProtectedRoute({ children, requiredRole, requiredPermission }) {
   const location = useLocation();
   const { user, initializing, isAuthenticated } = useAuth();
-  const { can } = useAuthorization();
+  const { can, canRoute } = useAuthorization();
 
   if (initializing) return <RouteLoader />;
   if (!isAuthenticated) {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
+  /*
+   * Where to send someone who may not be here.
+   *
+   * Landing on the path we are already refusing produces a redirect to itself:
+   * the guard denies, redirects, denies again, and React Router settles on
+   * rendering nothing. That is how a denied /employee turned into a blank page
+   * with a clean console — no error, because nothing threw.
+   *
+   * The portal home is the account's own tier, so it is normally reachable by
+   * definition. Returning null when it is not keeps the failure visible as a
+   * refusal rather than dressing it up as a loop.
+   */
+  const portalHome = user.role === "admin" ? "/admin" : (user.role === "agent" ? "/agent" : "/employee");
+  const leaveFor = (path) =>
+    path === location.pathname ? <AccessDenied user={user} /> : <Navigate to={path} replace />;
+
   if (requiredRole && user.role !== requiredRole) {
-    const fallbackPath = user.role === "admin" ? "/admin" : (user.role === "agent" ? "/agent" : "/employee");
-    return <Navigate to={fallbackPath} replace />;
+    return leaveFor(portalHome);
   }
   if (requiredPermission && !can(requiredPermission)) {
-    const fallbackPath = user.role === "admin" ? "/admin" : (user.role === "agent" ? "/agent" : "/employee");
-    return <Navigate to={fallbackPath} replace />;
+    return leaveFor(portalHome);
   }
 
-  if (user.role === "employee") {
-    const fields = [
-      "name", "email", "phone", "dob", "address", "city", "district", "state", "pin",
-      "aadhar_card_no", "pan_card_no", "bank_name", "bank_ifsc_code", "bank_account_no",
-      "gender", "department", "designation", "joining_date"
-    ];
-    const source = {
-      ...user,
-      phone: user.mobile_number || user.mobile_no || user.phone,
-      // Presence only — this is a completeness percentage, not a display.
-      aadhar_card_no: hasStoredAadhaar(user) ? "stored" : ""
-    };
-    let filled = 0;
-    fields.forEach(f => {
-      if (source[f] !== undefined && source[f] !== null && String(source[f]).trim() !== "") {
-        filled++;
-      }
-    });
-    const isProfileComplete = (filled === fields.length);
-    if (!isProfileComplete && location.pathname !== "/employee/profile") {
-       return <Navigate to="/employee/profile" replace />;
-    }
+  /*
+   * Every registered page is guarded by the permission that governs its route,
+   * without each route having to declare it.
+   *
+   * Only a handful of routes carried requiredPermission, so the rest were
+   * reachable by typing the URL even when the Permission Matrix denied them —
+   * hiding a menu item is not a boundary. Resolving the path through the same
+   * registry the matrix edits closes that for every page at once, and for pages
+   * added later. Routes the registry does not describe are unaffected.
+   */
+  if (!canRoute(location.pathname)) {
+    return leaveFor(portalHome);
   }
+
+  /*
+   * An incomplete profile no longer confines an employee to /employee/profile.
+   *
+   * This redirect predates the Permission Matrix and outranked it: every page an
+   * administrator granted the Employee role was unreachable until all eighteen
+   * profile fields were filled, so a role configured with Salary, Attendance and
+   * the employee dashboard still arrived at a single-item menu. Three of those
+   * fields — department, designation, joining date — are set by HR and not
+   * editable here, so some accounts could not have satisfied it at all.
+   *
+   * Completion is still shown on the profile page, which is the honest form of
+   * the reminder: it tells someone what is missing without deciding what they
+   * are allowed to open. Access is the Permission Matrix's answer alone.
+   */
 
   return children;
 }

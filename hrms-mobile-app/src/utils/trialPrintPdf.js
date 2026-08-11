@@ -47,8 +47,9 @@ function signature(value, caption) {
 }
 
 function attachmentsSection(raw) {
+  // The candidate photo now prints inline in the header, matching the web's
+  // admin TrialForm.jsx layout — listing it here too would duplicate it.
   const docs = [
-    { label: 'Candidate Photo', url: raw?.photo },
     { label: 'Aadhaar Card', url: raw?.adhar_image },
   ].filter((d) => typeof d.url === 'string' && d.url.length > 0);
 
@@ -83,6 +84,12 @@ export function buildTrialPrintHtml(raw) {
         }
         .header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 4px; }
         .header .side { flex: 1; }
+        .photo-box {
+          width: 30mm; height: 40mm; border: 1px solid #000; background: #F9FAFB;
+          display: flex; align-items: center; justify-content: center; overflow: hidden;
+        }
+        .photo-box img { width: 100%; height: 100%; object-fit: cover; }
+        .photo-box span { font-size: 10px; color: #9CA3AF; }
         .header .center { flex: 1; text-align: center; }
         .header h1 { font-size: 24px; font-weight: 900; letter-spacing: 3px; text-transform: uppercase; margin: 0; }
         .badge {
@@ -93,7 +100,13 @@ export function buildTrialPrintHtml(raw) {
         .header .right { flex: 1; text-align: right; font-size: 13px; font-weight: 600; }
         .header .right p { margin: 0 0 4px; }
         .header .right span { font-weight: 700; }
-        .rule { border-top: 2px solid #000; margin: 8px 0; }
+        .rule { border-top: 2px solid #000; margin: 8px 0 12px; }
+
+        .section-banner {
+          border-radius: 6px; background: #4F46E5; color: #fff;
+          font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px;
+          padding: 7px 12px; margin-bottom: 12px;
+        }
 
         .table-wrap { border: 1px solid #000; border-radius: 8px; overflow: hidden; }
         table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -133,7 +146,9 @@ export function buildTrialPrintHtml(raw) {
     <body>
       <div class="doc">
         <div class="header">
-          <div class="side"></div>
+          <div class="side">
+            <div class="photo-box">${raw?.photo ? `<img src="${raw.photo}" />` : '<span>Photo</span>'}</div>
+          </div>
           <div class="center">
             <h1>Nidhi Impex</h1>
             <div class="badge">Trial Form</div>
@@ -144,6 +159,8 @@ export function buildTrialPrintHtml(raw) {
           </div>
         </div>
         <div class="rule"></div>
+
+        <div class="section-banner">Candidate Details</div>
 
         <div class="table-wrap">
           <table>

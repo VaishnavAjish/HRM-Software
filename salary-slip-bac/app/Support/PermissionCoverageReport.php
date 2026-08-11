@@ -109,21 +109,26 @@ class PermissionCoverageReport
         }
     }
 
-    /** A permission code claimed by more than one registry node. */
+    /**
+     * A registry key claimed twice.
+     *
+     * Keys, not business codes. This read `$node['permission']`, a field the
+     * registry no longer has — it now declares `implies`, a list — so the check
+     * silently compared nulls and reported no duplicates whatever the data. A
+     * business code being implied by several nodes is legitimate and common
+     * (a page and its list feature both imply the same read), so flagging that
+     * would be noise; a duplicated key is the genuine fault.
+     */
     private static function duplicateNodeCodes(): array
     {
         $seen = [];
         $dupes = [];
 
-        foreach (PermissionRegistry::all() as $key => $node) {
-            $code = $node['permission'] ?? null;
-            if ($code === null) {
-                continue;
+        foreach (array_keys(PermissionRegistry::all()) as $key) {
+            if (isset($seen[$key])) {
+                $dupes[] = $key;
             }
-            if (isset($seen[$code])) {
-                $dupes[] = $code . ' (' . $seen[$code] . ', ' . $key . ')';
-            }
-            $seen[$code] = $key;
+            $seen[$key] = true;
         }
 
         return $dupes;
