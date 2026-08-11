@@ -96,9 +96,12 @@ Route::middleware(['jwt.auth', 'role:admin,agent'])->group(function () {
     Route::get('/appointment/check-emp-code', [UserController::class, 'checkEmployeeCode'])->middleware('permission:hr.appointment.read');
 });
 
+use App\Http\Controllers\Api\V1\Admin\SystemHealthController;
+
 // Dev/maintenance utilities — destructive or environment-mutating, so they
 // require an authenticated admin rather than being reachable by anyone.
 Route::middleware(['jwt.auth', 'role:admin'])->group(function () {
+    Route::get('/v1/admin/system/health', [SystemHealthController::class, 'index']);
     Route::get('/user-data', function (Request $request) {
         Artisan::call('optimize:clear');
         Artisan::call('config:clear');

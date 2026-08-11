@@ -2417,3 +2417,11 @@ export const notificationApi = {
     });
   },
 };
+
+export const systemHealthApi = {
+  getHealth(accessToken, tokenType = "Bearer") {
+    return apiRequest("/v1/admin/system/health", {
+      headers: hrAuthHeaders(accessToken, tokenType),
+    });
+  },
+};

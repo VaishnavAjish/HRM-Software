@@ -15,6 +15,7 @@ import { useCompany } from "../../context/CompanyContext";
 import { salaryApi, rbacApi } from "../../utils/api";
 import toast from "react-hot-toast";
 import ManageDepartmentsModal from "./AdminModals/ManageDepartmentsModal";
+import SystemHealthWidget from "../../components/admin/SystemHealthWidget";
 import {
   LineChart,
   Line,
@@ -453,6 +454,9 @@ export default function AdminDashboard() {
           </div>
         </div>
       </div>
+
+      {/* System Infrastructure Telemetry Widget */}
+      <SystemHealthWidget />
 
       <ManageDepartmentsModal 
         isOpen={isManageDeptModalOpen} 

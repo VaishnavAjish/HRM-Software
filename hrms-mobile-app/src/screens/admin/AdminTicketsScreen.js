@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, FlatList, ScrollView, RefreshControl, TouchableOpacity,
-  ActivityIndicator, Modal, Alert, KeyboardAvoidingView, Platform, TextInput, Image,
+  ActivityIndicator, Modal, Alert, KeyboardAvoidingView, Platform, TextInput, Image, StatusBar,
 } from 'react-native';
 import {
   Ticket as TicketIcon, AlertCircle, ChevronLeft, ChevronRight, UserCog, ArrowUpCircle, Send, X,
-  Check, CheckCheck, Camera as CameraIcon, Info, Clock, User, Tag, ShieldCheck, CornerDownRight,
+  Check, CheckCheck, Camera as CameraIcon, Info, Clock, User, Tag, ShieldCheck, ChevronDown,
 } from 'lucide-react-native';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
@@ -20,6 +20,7 @@ import { LoadingView } from '../../components/common/LoadingView';
 import { EmptyState } from '../../components/common/EmptyState';
 import { timeAgo, formatDate } from '../../utils/format';
 import { pickImage } from '../../utils/pickImage';
+import { ChatWallpaper } from '../../components/common/ChatWallpaper';
 
 const STATUS_VARIANT = {
   open: 'violet', assigned: 'amber', in_progress: 'amber', waiting_employee: 'amber',
@@ -103,6 +104,7 @@ function AdminTicketDetail({ id, onBack, onChanged, onImmersiveChange }) {
   const [sending, setSending] = useState(false);
   const [busy, setBusy] = useState(false);
   const [assigneePickerOpen, setAssigneePickerOpen] = useState(false);
+  const [statusPickerOpen, setStatusPickerOpen] = useState(false);
   const [assignees, setAssignees] = useState([]);
   const [uploadingImage, setUploadingImage] = useState(false);
   const scrollRef = useRef(null);
@@ -219,6 +221,7 @@ function AdminTicketDetail({ id, onBack, onChanged, onImmersiveChange }) {
   };
 
   const changeStatus = (newStatus) => {
+    setStatusPickerOpen(false);
     Alert.alert(`Mark as "${label(newStatus)}"?`, undefined, [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -296,7 +299,7 @@ function AdminTicketDetail({ id, onBack, onChanged, onImmersiveChange }) {
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={[styles.screen, { backgroundColor: theme.background }]}>
-        {/* Clean WhatsApp Chat Header */}
+        {/* WhatsApp Chat Header with Safe Top Padding for Camera Cutout */}
         <View style={[styles.chatHeader, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
           <TouchableOpacity onPress={onBack} hitSlop={10} style={styles.chatBack}>
             <ChevronLeft size={24} color={theme.textPrimary} />
@@ -322,72 +325,115 @@ function AdminTicketDetail({ id, onBack, onChanged, onImmersiveChange }) {
           </TouchableOpacity>
         </View>
 
+        {/* Executive Admin Control Bar (Instant 1-Tap Access for Staff, Escalate, & Status) */}
+        {ticket ? (
+          <View style={[styles.adminActionRow, { backgroundColor: theme.surfaceCard, borderBottomColor: theme.border }]}>
+            <TouchableOpacity
+              style={[styles.actionChip, { backgroundColor: theme.primary + '15', borderColor: theme.primary + '30' }]}
+              onPress={openAssigneePicker}
+              disabled={busy}
+              activeOpacity={0.8}
+            >
+              <UserCog size={13} color={theme.primary} />
+              <Text style={[styles.actionChipText, { color: theme.primary }]} numberOfLines={1}>
+                {ticket.assignee?.name ? ticket.assignee.name.split(' ')[0] : 'Assign Staff'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.actionChip, { backgroundColor: theme.roseBg, borderColor: theme.rose + '30' }]}
+              onPress={doEscalate}
+              disabled={busy}
+              activeOpacity={0.8}
+            >
+              <ArrowUpCircle size={13} color={theme.rose} />
+              <Text style={[styles.actionChipText, { color: theme.rose }]}>Escalate</Text>
+            </TouchableOpacity>
+
+            {meta?.next_statuses?.length ? (
+              <TouchableOpacity
+                style={[styles.actionChip, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}
+                onPress={() => setStatusPickerOpen(true)}
+                disabled={busy}
+                activeOpacity={0.8}
+              >
+                <Badge label={label(ticket.status)} variant={STATUS_VARIANT[ticket.status] || 'default'} size="small" />
+                <ChevronDown size={13} color={theme.textMuted} style={{ marginLeft: 3 }} />
+              </TouchableOpacity>
+            ) : (
+              <Badge label={label(ticket.status)} variant={STATUS_VARIANT[ticket.status] || 'default'} size="small" />
+            )}
+          </View>
+        ) : null}
+
         {loading ? (
           <LoadingView label="Loading ticket timeline…" />
         ) : error && !ticket ? (
           <EmptyState icon={AlertCircle} title="Couldn't load ticket" message={error} tone="error" actionLabel="Retry" onAction={() => load()} />
         ) : (
           <>
-            {/* WhatsApp Chat Body */}
-            <ScrollView
-              ref={scrollRef}
-              style={styles.chatBody}
-              contentContainerStyle={styles.chatBodyContent}
-              onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}
-            >
-              {thread.map((m, i) => {
-                const showDay = i === 0 || dayKey(m.created_at) !== dayKey(thread[i - 1].created_at);
-                const isImage = m.kind === 'attachment' && String(m.attachment.mime_type || '').startsWith('image/');
-                const imgSrc = isImage
-                  ? (m.attachment._pending
-                      ? { uri: m.attachment._localUri }
-                      : { uri: api.getTicketAttachmentUrl(id, m.attachment.id), headers: api.authHeaders() })
-                  : null;
+            {/* WhatsApp Chat Body with Authentic Doodle Wallpaper */}
+            <ChatWallpaper style={styles.chatBody}>
+              <ScrollView
+                ref={scrollRef}
+                style={{ flex: 1 }}
+                contentContainerStyle={styles.chatBodyContent}
+                onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}
+              >
+                {thread.map((m, i) => {
+                  const showDay = i === 0 || dayKey(m.created_at) !== dayKey(thread[i - 1].created_at);
+                  const isImage = m.kind === 'attachment' && String(m.attachment.mime_type || '').startsWith('image/');
+                  const imgSrc = isImage
+                    ? (m.attachment._pending
+                        ? { uri: m.attachment._localUri }
+                        : { uri: api.getTicketAttachmentUrl(id, m.attachment.id), headers: api.authHeaders() })
+                    : null;
 
-                return (
-                  <View key={`${m.kind}-${m.id ?? i}`}>
-                    {showDay ? (
-                      <View style={styles.dayChipWrap}>
-                        <View style={[styles.dayChip, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
-                          <Text style={[styles.dayChipText, { color: theme.textMuted }]}>{dayLabel(m.created_at)}</Text>
-                        </View>
-                      </View>
-                    ) : null}
-
-                    <View style={[styles.bubbleRow, m.mine ? styles.bubbleRowMine : styles.bubbleRowTheirs]}>
-                      {m.kind === 'attachment' ? (
-                        isImage ? (
-                          <View style={[styles.imageBubble, m.mine ? styles.bubbleMine : styles.bubbleTheirs]}>
-                            <Image source={imgSrc} style={styles.imageBubblePic} resizeMode="cover" />
-                            <Text style={[styles.bubbleTime, m.mine ? styles.bubbleTimeMine : { color: theme.textMuted }]}>
-                              {chatTime(m.created_at)}
-                            </Text>
+                  return (
+                    <View key={`${m.kind}-${m.id ?? i}`}>
+                      {showDay ? (
+                        <View style={styles.dayChipWrap}>
+                          <View style={[styles.dayChip, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
+                            <Text style={[styles.dayChipText, { color: theme.textMuted }]}>{dayLabel(m.created_at)}</Text>
                           </View>
+                        </View>
+                      ) : null}
+
+                      <View style={[styles.bubbleRow, m.mine ? styles.bubbleRowMine : styles.bubbleRowTheirs]}>
+                        {m.kind === 'attachment' ? (
+                          isImage ? (
+                            <View style={[styles.imageBubble, m.mine ? styles.bubbleMine : styles.bubbleTheirs]}>
+                              <Image source={imgSrc} style={styles.imageBubblePic} resizeMode="cover" />
+                              <Text style={[styles.bubbleTime, m.mine ? styles.bubbleTimeMine : { color: theme.textMuted }]}>
+                                {chatTime(m.created_at)}
+                              </Text>
+                            </View>
+                          ) : (
+                            <View style={[styles.bubble, m.mine ? styles.bubbleMine : styles.bubbleTheirs, { backgroundColor: m.mine ? theme.primary : theme.surfaceElevated }]}>
+                              <Text style={[styles.bubbleSender, { color: m.mine ? '#E0E7FF' : theme.primary }]}>{m.attachment.file_name || 'Attachment'}</Text>
+                              <Text style={[styles.bubbleTime, m.mine ? styles.bubbleTimeMine : { color: theme.textMuted }]}>{chatTime(m.created_at)}</Text>
+                            </View>
+                          )
                         ) : (
                           <View style={[styles.bubble, m.mine ? styles.bubbleMine : styles.bubbleTheirs, { backgroundColor: m.mine ? theme.primary : theme.surfaceElevated }]}>
-                            <Text style={[styles.bubbleSender, { color: m.mine ? '#E0E7FF' : theme.primary }]}>{m.attachment.file_name || 'Attachment'}</Text>
-                            <Text style={[styles.bubbleTime, m.mine ? styles.bubbleTimeMine : { color: theme.textMuted }]}>{chatTime(m.created_at)}</Text>
+                            {!m.mine ? (
+                              <Text style={[styles.bubbleSender, { color: theme.primary }]}>{m.sender?.name || 'Employee'}</Text>
+                            ) : null}
+                            <Text style={[styles.bubbleText, { color: m.mine ? '#FFFFFF' : theme.textPrimary }]}>{m.message}</Text>
+                            <View style={styles.bubbleFooter}>
+                              <Text style={[styles.bubbleTime, m.mine ? styles.bubbleTimeMine : { color: theme.textMuted }]}>
+                                {chatTime(m.created_at)}
+                              </Text>
+                              {m.mine ? <CheckCheck size={14} color="#A5B4FC" style={{ marginLeft: 4 }} /> : null}
+                            </View>
                           </View>
-                        )
-                      ) : (
-                        <View style={[styles.bubble, m.mine ? styles.bubbleMine : styles.bubbleTheirs, { backgroundColor: m.mine ? theme.primary : theme.surfaceElevated }]}>
-                          {!m.mine ? (
-                            <Text style={[styles.bubbleSender, { color: theme.primary }]}>{m.sender?.name || 'Employee'}</Text>
-                          ) : null}
-                          <Text style={[styles.bubbleText, { color: m.mine ? '#FFFFFF' : theme.textPrimary }]}>{m.message}</Text>
-                          <View style={styles.bubbleFooter}>
-                            <Text style={[styles.bubbleTime, m.mine ? styles.bubbleTimeMine : { color: theme.textMuted }]}>
-                              {chatTime(m.created_at)}
-                            </Text>
-                            {m.mine ? <CheckCheck size={14} color="#A5B4FC" style={{ marginLeft: 4 }} /> : null}
-                          </View>
-                        </View>
-                      )}
+                        )}
+                      </View>
                     </View>
-                  </View>
-                );
-              })}
-            </ScrollView>
+                  );
+                })}
+              </ScrollView>
+            </ChatWallpaper>
 
             {/* WhatsApp Bottom Composer */}
             <View style={[styles.composer, { borderTopColor: theme.border, backgroundColor: theme.surface }]}>
@@ -410,47 +456,20 @@ function AdminTicketDetail({ id, onBack, onChanged, onImmersiveChange }) {
         )}
       </View>
 
-      {/* Ticket Details & Action Sheet (statusBarTranslucent covers 100% of notch & screen) */}
+      {/* Ticket Details Sheet (statusBarTranslucent covers 100% of notch & screen) */}
       <Modal visible={showInfo} transparent statusBarTranslucent animationType="slide" onRequestClose={() => setShowInfo(false)}>
         <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowInfo(false)}>
           <TouchableOpacity activeOpacity={1} style={[styles.modalSheet, { backgroundColor: theme.surfaceCard, borderColor: theme.border }]}>
             <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>Ticket Details & Actions</Text>
+              <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>Ticket Details</Text>
               <TouchableOpacity onPress={() => setShowInfo(false)} hitSlop={8}><X size={20} color={theme.textMuted} /></TouchableOpacity>
             </View>
             {ticket ? (
-              <ScrollView style={{ maxHeight: 460 }}>
+              <ScrollView style={{ maxHeight: 420 }}>
                 <Text style={[styles.infoNumber, { color: theme.textMuted }]}>{ticket.ticket_number}</Text>
                 <Text style={[styles.infoSubject, { color: theme.textPrimary }]}>{ticket.subject}</Text>
                 <Text style={[styles.infoDesc, { color: theme.textMuted }]}>{ticket.description}</Text>
-
-                {/* Practical Admin Action Buttons */}
-                <View style={styles.infoActionRow}>
-                  <TouchableOpacity style={[styles.infoActionBtn, { backgroundColor: theme.primary + '15', borderColor: theme.primary + '40' }]} onPress={() => { setShowInfo(false); openAssigneePicker(); }} disabled={busy}>
-                    <UserCog size={15} color={theme.primary} />
-                    <Text style={[styles.infoActionBtnText, { color: theme.primary }]}>
-                      {ticket?.assignee?.name ? `Assign (${ticket.assignee.name.split(' ')[0]})` : 'Assign Staff'}
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity style={[styles.infoActionBtn, { backgroundColor: theme.roseBg, borderColor: theme.rose + '40' }]} onPress={() => { setShowInfo(false); doEscalate(); }} disabled={busy}>
-                    <ArrowUpCircle size={15} color={theme.rose} />
-                    <Text style={[styles.infoActionBtnText, { color: theme.rose }]}>Escalate</Text>
-                  </TouchableOpacity>
-                </View>
-
-                {meta?.next_statuses?.length ? (
-                  <View style={styles.statusChipsGrid}>
-                    {meta.next_statuses.map((s) => (
-                      <TouchableOpacity key={s} style={[styles.statusChipBtn, { borderColor: theme.border, backgroundColor: theme.surfaceElevated }]} onPress={() => { setShowInfo(false); changeStatus(s); }} disabled={busy}>
-                        <Text style={[styles.statusChipBtnText, { color: theme.textPrimary }]}>Mark as {label(s)}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                ) : null}
-
                 <View style={styles.infoDivider} />
-
                 <View style={styles.infoRow}><Text style={[styles.infoLabel, { color: theme.textMuted }]}>Raised by:</Text><Text style={[styles.infoVal, { color: theme.textPrimary }]}>{ticket.employee?.name || '—'} (#{ticket.employee?.emp_code || '—'})</Text></View>
                 <View style={styles.infoRow}><Text style={[styles.infoLabel, { color: theme.textMuted }]}>Category:</Text><Text style={[styles.infoVal, { color: theme.textPrimary }]}>{ticket.category?.name || '—'}</Text></View>
                 <View style={styles.infoRow}><Text style={[styles.infoLabel, { color: theme.textMuted }]}>Priority:</Text><Badge label={label(ticket.priority)} variant={PRIORITY_VARIANT[ticket.priority] || 'default'} size="small" /></View>
@@ -463,12 +482,22 @@ function AdminTicketDetail({ id, onBack, onChanged, onImmersiveChange }) {
         </TouchableOpacity>
       </Modal>
 
+      {/* Staff Assignee Picker */}
       <PickerModal
         visible={assigneePickerOpen}
-        title="Assign to Staff"
+        title="Assign Staff Member"
         options={assignees.map((a) => ({ value: a.id, label: `${a.name} (${a.emp_code || a.role})` }))}
         onSelect={doAssign}
         onClose={() => setAssigneePickerOpen(false)}
+      />
+
+      {/* Status Picker Modal */}
+      <PickerModal
+        visible={statusPickerOpen}
+        title="Update Ticket Status"
+        options={(meta?.next_statuses || []).map((s) => ({ value: s, label: `Mark as ${label(s)}` }))}
+        onSelect={changeStatus}
+        onClose={() => setStatusPickerOpen(false)}
       />
     </KeyboardAvoidingView>
   );
@@ -651,14 +680,43 @@ const styles = StyleSheet.create({
   rowMetaLine: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   rowTicketNum: { ...typography.micro, flex: 1, marginRight: 6 },
 
-  /* WhatsApp Chat Header */
-  chatHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingTop: 14, paddingBottom: 14, borderBottomWidth: 1 },
+  /* WhatsApp Chat Header with Safe Top Padding for Camera Cutout */
+  chatHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 36) + 6 : 50,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+  },
   chatBack: { marginRight: 8 },
   chatHeaderTap: { flex: 1, flexDirection: 'row', alignItems: 'center' },
   chatHeaderText: { marginLeft: 10, flex: 1 },
   chatHeaderTitle: { ...typography.body, fontWeight: '700' },
   chatHeaderSub: { ...typography.micro },
   infoTouchBtn: { padding: 6 },
+
+  /* Executive Admin Control Bar */
+  adminActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    gap: 8,
+  },
+  actionChip: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 7,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  actionChipText: { ...typography.micro, fontWeight: '700', marginLeft: 4 },
 
   /* WhatsApp Chat Body */
   chatBody: { flex: 1 },
@@ -705,11 +763,4 @@ const styles = StyleSheet.create({
   infoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
   infoLabel: { ...typography.caption },
   infoVal: { ...typography.body, fontWeight: '700' },
-
-  infoActionRow: { flexDirection: 'row', gap: 10, marginTop: 14, marginBottom: 10 },
-  infoActionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 12, borderWidth: 1 },
-  infoActionBtnText: { ...typography.caption, fontWeight: '700' },
-  statusChipsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 },
-  statusChipBtn: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10, borderWidth: 1 },
-  statusChipBtnText: { ...typography.micro, fontWeight: '600' },
 });

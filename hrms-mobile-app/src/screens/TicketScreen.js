@@ -21,6 +21,7 @@ import { Fab } from '../components/common/Fab';
 import { LoadingView } from '../components/common/LoadingView';
 import { EmptyState } from '../components/common/EmptyState';
 import { pickImage } from '../utils/pickImage';
+import { ChatWallpaper } from '../components/common/ChatWallpaper';
 
 const PRIORITIES = ['low', 'medium', 'high', 'urgent'];
 
@@ -715,10 +716,10 @@ function TicketDetail({ id, onBack, onImmersiveChange }) {
         ) : error && !ticket ? (
           <EmptyState icon={AlertCircle} title="Couldn't load ticket" message={error} tone="error" actionLabel="Retry" onAction={load} />
         ) : (
-          <>
+          <ChatWallpaper style={styles.chatBody}>
             <ScrollView
               ref={scrollRef}
-              style={styles.chatBody}
+              style={{ flex: 1 }}
               contentContainerStyle={styles.chatBodyContent}
               onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}
             >
@@ -803,18 +804,18 @@ function TicketDetail({ id, onBack, onImmersiveChange }) {
                     </View>
                   </View>
                 );
-              })}
             </ScrollView>
+          </ChatWallpaper>
 
-            {/* composer */}
-            {meta?.can_reply ? (
-              <View style={[styles.composer, { backgroundColor: theme.surface, borderTopColor: theme.border }]}>
-                <TouchableOpacity
-                  onPress={sendImage}
-                  disabled={uploadingImage}
-                  style={[styles.attachBtn, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }, uploadingImage && { opacity: 0.5 }]}
-                  activeOpacity={0.75}
-                >
+          {/* composer */}
+          {meta?.can_reply ? (
+            <View style={[styles.composer, { backgroundColor: theme.surface, borderTopColor: theme.border }]}>
+              <TouchableOpacity
+                onPress={sendImage}
+                disabled={uploadingImage}
+                style={[styles.attachBtn, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }, uploadingImage && { opacity: 0.5 }]}
+                activeOpacity={0.75}
+              >
                   <Plus size={20} color={theme.primary} />
                 </TouchableOpacity>
                 <View style={[styles.composerPill, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
