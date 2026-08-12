@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, FlatList, ScrollView, RefreshControl, TouchableOpacity,
-  ActivityIndicator, Modal, Alert, KeyboardAvoidingView, Platform, TextInput, Image, StatusBar,
+  ActivityIndicator, Modal, Alert, KeyboardAvoidingView, Platform, TextInput, Image, StatusBar, BackHandler,
 } from 'react-native';
 import {
   Ticket as TicketIcon, AlertCircle, ChevronLeft, ChevronRight, UserCog, ArrowUpCircle, Send, X,
@@ -505,7 +505,7 @@ function AdminTicketDetail({ id, onBack, onChanged, onImmersiveChange }) {
 
 const PAGE_SIZE = 20;
 
-export function AdminTicketsScreen({ onImmersiveChange }) {
+export function AdminTicketsScreen({ onImmersiveChange, onBack }) {
   const { theme } = useTheme();
   const [selectedId, setSelectedId] = useState(null);
   const [search, setSearch] = useState('');
@@ -519,6 +519,20 @@ export function AdminTicketsScreen({ onImmersiveChange }) {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const requestId = useRef(0);
+
+  // Handle hardware back press on ticket list screen
+  useEffect(() => {
+    if (selectedId) return;
+    const onBackPress = () => {
+      if (onBack) {
+        onBack();
+        return true;
+      }
+      return false;
+    };
+    const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => subscription.remove();
+  }, [selectedId, onBack]);
 
   const fetchPage = useCallback(async (pageNum, { append = false, isRefresh = false } = {}) => {
     const myRequest = ++requestId.current;
@@ -566,12 +580,19 @@ export function AdminTicketsScreen({ onImmersiveChange }) {
 
   if (selectedId) {
     return (
-      <AdminTicketDetail
-        id={selectedId}
-        onBack={() => { setSelectedId(null); fetchPage(1); }}
-        onChanged={() => fetchPage(1)}
-        onImmersiveChange={onImmersiveChange}
-      />
+      <Modal
+        visible={true}
+        animationType="slide"
+        statusBarTranslucent
+        onRequestClose={() => { setSelectedId(null); fetchPage(1); }}
+      >
+        <AdminTicketDetail
+          id={selectedId}
+          onBack={() => { setSelectedId(null); fetchPage(1); }}
+          onChanged={() => fetchPage(1)}
+          onImmersiveChange={onImmersiveChange}
+        />
+      </Modal>
     );
   }
 
@@ -579,6 +600,12 @@ export function AdminTicketsScreen({ onImmersiveChange }) {
     <View style={[styles.screen, { backgroundColor: theme.background }]}>
       {/* Header & Filter Area */}
       <View style={styles.headerArea}>
+        {onBack ? (
+          <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 8 }} onPress={onBack} activeOpacity={0.7}>
+            <ChevronLeft size={18} color={theme.primary} />
+            <Text style={{ ...typography.body, fontWeight: '600', color: theme.primary }}>Back to More</Text>
+          </TouchableOpacity>
+        ) : null}
         <Text style={[styles.title, { color: theme.textPrimary }]}>Helpdesk Tickets</Text>
         <SearchField value={search} onChangeText={setSearch} placeholder="Search ticket #, subject, employee…" style={{ marginBottom: 10 }} />
 
@@ -685,7 +712,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 14,
-    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 36) + 6 : 50,
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 24) + 8 : 44,
     paddingBottom: 12,
     borderBottomWidth: 1,
   },

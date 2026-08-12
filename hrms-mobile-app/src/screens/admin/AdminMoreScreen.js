@@ -1,25 +1,36 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, BackHandler } from 'react-native';
 import {
-  Ticket, Users, ShieldCheck, Calculator, CalendarCheck, ChevronRight
+  Ticket, Users, ShieldCheck, Calculator, CalendarCheck, ChevronRight, ChevronLeft
 } from 'lucide-react-native';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { typography } from '../../theme';
 import { Card } from '../../components/common/Card';
+import { EmptyState } from '../../components/common/EmptyState';
 import { AdminTicketsScreen } from './AdminTicketsScreen';
 import { AdminHrScreen } from './AdminHrScreen';
 import { AdminAccountsScreen } from './AdminAccountsScreen';
-import { AdminAttendanceScreen } from './AdminAttendanceScreen';
-import { AdminTdsScreen } from './AdminTdsScreen';
 
-export function AdminMoreScreen({ onNavigateTab }) {
+export function AdminMoreScreen({ onNavigateTab, onImmersiveChange }) {
   const { theme } = useTheme();
   const { user } = useAuth();
   const [activeSubScreen, setActiveSubScreen] = useState(null);
 
+  // Handle Hardware Back Button
+  useEffect(() => {
+    if (activeSubScreen) {
+      const onBackPress = () => {
+        setActiveSubScreen(null);
+        return true;
+      };
+      const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+      return () => subscription.remove();
+    }
+  }, [activeSubScreen]);
+
   if (activeSubScreen === 'ticket') {
-    return <AdminTicketsScreen onBack={() => setActiveSubScreen(null)} />;
+    return <AdminTicketsScreen onBack={() => setActiveSubScreen(null)} onImmersiveChange={onImmersiveChange} />;
   }
 
   if (activeSubScreen === 'hr') {
@@ -31,11 +42,35 @@ export function AdminMoreScreen({ onNavigateTab }) {
   }
 
   if (activeSubScreen === 'tds') {
-    return <AdminTdsScreen onBack={() => setActiveSubScreen(null)} />;
+    return (
+      <View style={[styles.screen, { backgroundColor: theme.background, padding: 16 }]}>
+        <TouchableOpacity style={styles.backRow} onPress={() => setActiveSubScreen(null)} activeOpacity={0.7}>
+          <ChevronLeft size={18} color={theme.primary} />
+          <Text style={[styles.backText, { color: theme.primary }]}>Back to More</Text>
+        </TouchableOpacity>
+        <EmptyState
+          icon={Calculator}
+          title="TDS Module Coming Soon"
+          message="Tax Deduction at Source calculations, PAN declarations & Form 16 reports are coming soon in an upcoming update."
+        />
+      </View>
+    );
   }
 
   if (activeSubScreen === 'attendance') {
-    return <AdminAttendanceScreen onBack={() => setActiveSubScreen(null)} />;
+    return (
+      <View style={[styles.screen, { backgroundColor: theme.background, padding: 16 }]}>
+        <TouchableOpacity style={styles.backRow} onPress={() => setActiveSubScreen(null)} activeOpacity={0.7}>
+          <ChevronLeft size={18} color={theme.primary} />
+          <Text style={[styles.backText, { color: theme.primary }]}>Back to More</Text>
+        </TouchableOpacity>
+        <EmptyState
+          icon={CalendarCheck}
+          title="Attendance Module Coming Soon"
+          message="Daily attendance logs, punches, shift timings & overrides are coming soon in an upcoming update."
+        />
+      </View>
+    );
   }
 
   const OPTIONS = [
@@ -118,6 +153,8 @@ export function AdminMoreScreen({ onNavigateTab }) {
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   content: { padding: 16, paddingBottom: 40 },
+  backRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 16 },
+  backText: { ...typography.body, fontWeight: '600' },
   title: { ...typography.h2, fontWeight: '800' },
   subtitle: { ...typography.caption, marginTop: 2, marginBottom: 16 },
   menuCard: { paddingHorizontal: 16, paddingVertical: 4 },

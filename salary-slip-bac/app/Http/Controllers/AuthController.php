@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Mail\PortalOtpMail;
 use App\Models\User;
 use App\Services\Authorization\SchemaSupport;
 use App\Services\Sms\Fast2SmsService;
@@ -13,19 +12,12 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Tymon\JWTAuth\Facades\JWTAuth;
 
 class AuthController extends Controller
 {
-    /** Same reply for known and unknown addresses, so neither is disclosed. */
-    private const RESET_REQUEST_ACCEPTED =
-        'If an account exists for this email, a verification code has been sent.';
-
-    private const OTP_MAIL_ATTEMPTS = 3;
-
     private const OTP_LOGIN_ACCEPTED =
         'If this mobile number is registered, an OTP has been sent.';
 
@@ -36,16 +28,6 @@ class AuthController extends Controller
     private const OTP_LOGIN_MAX_SENDS_PER_HOUR = 5;
 
     private const OTP_LOGIN_RESEND_COOLDOWN_SECONDS = 45;
-
-    /** Keep the provider's reason, drop anything that looks like a credential. */
-    private static function scrubTransportError(string $message): string
-    {
-        $message = preg_replace('/\S+@\S+/', '<address>', $message) ?? $message;
-        $message = preg_replace('/(?<=password|passwd|pwd)\s*\S+/i', ' <redacted>', $message) ?? $message;
-        $message = preg_replace('/\s+/', ' ', $message) ?? $message;
-
-        return mb_substr(trim($message), 0, 300);
-    }
 
     public function login(Request $request)
     {
@@ -714,173 +696,83 @@ class AuthController extends Controller
 
     private function sendPasswordResetOtp(Request $request)
     {
-        $validator = Validator::make($request->all(), [
-            'email' => 'required|email',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json(['status' => false, 'message' => $validator->errors()->first()], 422);
-        }
-
-        // A step-1 identity check (emp_code + Aadhaar, see verifyEmployeeIdentity)
-        // may have just run and handed back a verification_token. That's what
-        // lets a first-time employee with no email on file yet "claim" one
-        // here, instead of the plain findUserByEmail() lookup below failing
-        // with nothing to match against.
         $emp = null;
         if ($request->filled('emp_code') && $request->filled('verification_token')) {
             $emp = $this->findVerifiedEmployee($request);
-            if ($emp && $emp->email !== $request->email) {
-                $conflict = User::where('email', $request->email)->where('id', '!=', $emp->id)->first();
-                if ($conflict) {
-                    return response()->json(['status' => false, 'message' => 'This email is already registered to another account.'], 422);
-                }
-                $emp->email = $request->email;
-                $emp->save();
+        }
+
+        if (! $emp && $request->filled('mobile')) {
+            $mobile = self::normaliseMobile((string) $request->mobile);
+            if (strlen($mobile) === 10) {
+                $emp = $this->findUserForOtpLogin($mobile);
             }
         }
 
-        if (! $emp) {
+        if (! $emp && $request->filled('email')) {
             $emp = $this->findUserByEmail($request);
         }
 
         if (! $emp) {
-            // The hashing and SMTP round-trip take real time. Returning
-            // instantly here would make the timing itself the disclosure.
             usleep(random_int(180_000, 320_000));
+            return response()->json(['status' => false, 'message' => 'Verification session expired or employee not found. Please try Step 1 again.'], 422);
+        }
 
-            return response()->json(['status' => true, 'success' => true, 'message' => self::RESET_REQUEST_ACCEPTED]);
+        $mobileOnFile = self::normaliseMobile((string) ($emp->mobile_number ?? $request->mobile_number ?? $request->mobile ?? ''));
+
+        if (strlen($mobileOnFile) !== 10) {
+            return response()->json(['status' => false, 'message' => 'No mobile number on file. Contact your administrator.'], 422);
         }
 
         $otp = (string) random_int(100000, 999999); // 6-digit OTP
 
-        // The code itself is never logged. It is a single-use credential that
-        // resets an account, so writing it to a file that operators, backups and
-        // log shippers can all read turns the log into a password store.
-        Log::info('Password reset OTP delivery initiated', [
+        Log::info('Password reset mobile OTP delivery initiated', [
             'user_id' => $emp->id,
-            'email' => self::maskEmail($emp->email),
+            'mobile' => $mobileOnFile,
         ]);
 
-        /*
-         * Retried, because the provider throttles rather than fails outright.
-         *
-         * GoDaddy's relay answered a burst of sends with a temporary rejection:
-         * three attempts inside two minutes were refused, then the same message
-         * to the same address went out moments later. One try turned that into a
-         * hard 500 and an employee who could not reset their password, so a
-         * transient refusal is retried before it becomes the user's problem.
-         */
-        $sent = false;
-        $lastError = null;
-        $used = 0;
+        $delivered = app(Fast2SmsService::class)->sendOtp($mobileOnFile, $otp);
 
-        for ($attempt = 1; $attempt <= self::OTP_MAIL_ATTEMPTS; $attempt++) {
-            $used = $attempt;
-
-            try {
-                Mail::to($emp->email)->send(new PortalOtpMail($otp, $emp->name ?? 'there'));
-                $sent = true;
-                break;
-            } catch (\Throwable $e) {
-                $lastError = $e;
-
-                if ($attempt < self::OTP_MAIL_ATTEMPTS) {
-                    usleep($attempt * 400000);
-                }
-            }
+        if ($delivered) {
+            Log::info('Password reset OTP sent by SMS', ['user_id' => $emp->id]);
         }
 
-        if (! $sent) {
-            // The provider's refusal text is what separates throttling from a bad
-            // credential, so it is kept — scrubbed of anything resembling the
-            // account it authenticated with, and truncated.
-            Log::error('Password reset OTP delivery failed', [
-                'user_id' => $emp->id,
-                'attempts' => $used,
-                'exception' => $lastError::class,
-                'reason' => self::scrubTransportError($lastError->getMessage()),
-            ]);
-
-            /*
-             * The development fallback, behind an explicit opt-in.
-             *
-             * It previously triggered on APP_ENV=local alone and did two things
-             * that cannot be allowed near real users: it wrote the code to the
-             * log in cleartext, and it returned the code in the API response.
-             * The reset endpoint is deliberately enumeration-safe, so anyone who
-             * could reach it could post any address and be handed that account's
-             * reset code — takeover of any account, no credentials needed. This
-             * deployment runs APP_ENV=local and serves the LAN, so it was live.
-             *
-             * It now requires OTP_DEV_FALLBACK=true, absent by default, and the
-             * code is never logged. A developer who wants it opts in on their own
-             * machine; nobody enables it by accident.
-             */
-            if (config('auth.otp_dev_fallback', false)) {
-                Log::warning('Password reset OTP dev fallback used — code returned to caller', [
-                    'user_id' => $emp->id,
-                ]);
-
-                $emp->otp = json_encode([
-                    'hash' => Hash::make($otp),
-                    'expires_at' => now()->addMinutes(10)->toISOString(),
-                    'attempts' => 0,
-                    'verified' => false,
-                ]);
-                $emp->save();
-
-                return response()->json([
-                    'status' => true,
-                    'success' => true,
-                    'message' => self::RESET_REQUEST_ACCEPTED,
-                    'dev_otp' => $otp,
-                ]);
-            }
-
-            return response()->json([
-                'status' => false,
-                'success' => false,
-                'message' => 'Unable to send the verification email right now. Please try again.',
-            ], 500);
+        // Same rule as sendLoginOtp(): a failed send is only ever masked behind
+        // a fabricated "sent" response when OTP_DEV_FALLBACK is explicitly on
+        // (local/dev). In any other environment, a failed send must surface as
+        // an error — silently disclosing the OTP to the caller instead of
+        // actually delivering it would let anyone who can reach this endpoint
+        // read a code intended for the employee's phone.
+        if (! $delivered && ! config('auth.otp_dev_fallback', false)) {
+            return response()->json(['status' => false, 'message' => 'Unable to send the OTP right now. Please try again.'], 500);
         }
 
-        Log::info('Password reset OTP mail submitted', [
-            'user_id' => $emp->id,
-            'attempts' => $used,
-        ]);
-
-        // Store OTP as hash with expiry and attempt counter (JSON in otp column)
-        $otpData = [
+        $emp->otp = json_encode([
             'hash' => Hash::make($otp),
             'expires_at' => now()->addMinutes(10)->toISOString(),
             'attempts' => 0,
             'verified' => false,
-        ];
-        $emp->otp = json_encode($otpData);
+        ]);
         $emp->save();
 
-        // Identical to the unknown-address reply above, deliberately.
-        return response()->json(['status' => true, 'success' => true, 'message' => self::RESET_REQUEST_ACCEPTED]);
-    }
+        $payload = [
+            'status' => true,
+            'success' => true,
+            'message' => 'OTP sent to your registered mobile number.',
+        ];
 
-    /** p***@example.com — enough to correlate a report, not enough to harvest. */
-    private static function maskEmail(?string $email): string
-    {
-        $email = (string) $email;
-        $at = strpos($email, '@');
-
-        if ($at === false || $at === 0) {
-            return '***';
+        if ($delivered) {
+            $payload['channel'] = 'sms';
+        } else {
+            Log::warning('Password reset OTP dev fallback used — code returned to caller', ['user_id' => $emp->id]);
+            $payload['dev_otp'] = $otp;
         }
 
-        return substr($email, 0, 1) . '***' . substr($email, $at);
+        return response()->json($payload);
     }
 
     private function verifyPasswordResetOtp(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'email' => 'required|email',
             'otp' => 'required|digits:6',
         ]);
 
@@ -888,31 +780,36 @@ class AuthController extends Controller
             return response()->json(['status' => false, 'message' => $validator->errors()->first()], 422);
         }
 
-        $found = $this->findUserByEmail($request);
-        if (! $found) {
-            return response()->json(['status' => false, 'message' => 'Invalid OTP'], 422);
+        $found = null;
+        if ($request->filled('emp_code') && $request->filled('verification_token')) {
+            $found = $this->findVerifiedEmployee($request);
         }
 
-        /*
-         * The challenge row is read and written under a row lock.
-         *
-         * Reading the JSON, incrementing `attempts` and writing it back is a
-         * read-modify-write: two wrong guesses arriving together both read the
-         * same counter and both store the same increment, so the fifth attempt
-         * never arrives and the five-guess ceiling stops bounding anything. The
-         * lock also makes verification single-use under concurrency, so the same
-         * code cannot be redeemed twice in parallel.
-         */
+        if (! $found && $request->filled('mobile')) {
+            $mobile = self::normaliseMobile((string) $request->mobile);
+            if (strlen($mobile) === 10) {
+                $found = $this->findUserForOtpLogin($mobile);
+            }
+        }
+
+        if (! $found && $request->filled('email')) {
+            $found = $this->findUserByEmail($request);
+        }
+
+        if (! $found) {
+            return response()->json(['status' => false, 'message' => 'Invalid or expired session. Please restart verification.'], 422);
+        }
+
         return DB::transaction(function () use ($request, $found) {
             $emp = User::query()->whereKey($found->id)->lockForUpdate()->first();
 
             if (! $emp || ! $emp->otp) {
-                return response()->json(['status' => false, 'message' => 'Invalid OTP'], 422);
+                return response()->json(['status' => false, 'message' => 'Invalid OTP or no OTP requested'], 422);
             }
 
             $otpData = json_decode($emp->otp, true);
             if (! $otpData || ! isset($otpData['hash'], $otpData['expires_at'], $otpData['attempts'])) {
-                return response()->json(['status' => false, 'message' => 'Invalid OTP'], 422);
+                return response()->json(['status' => false, 'message' => 'Invalid OTP session'], 422);
             }
 
             if (now()->greaterThan($otpData['expires_at'])) {
@@ -923,7 +820,7 @@ class AuthController extends Controller
                 return response()->json(['status' => false, 'message' => 'Too many attempts. Please request a new OTP.'], 422);
             }
 
-            if (! Hash::check($request->otp, $otpData['hash'])) {
+            if (! Hash::check((string) $request->otp, $otpData['hash'])) {
                 $otpData['attempts']++;
                 $emp->otp = json_encode($otpData);
                 $emp->save();
@@ -933,47 +830,62 @@ class AuthController extends Controller
                     'attempts' => $otpData['attempts'],
                 ]);
 
-                return response()->json(['status' => false, 'message' => 'Invalid OTP'], 422);
+                return response()->json(['status' => false, 'message' => 'Incorrect OTP. Please try again.'], 422);
             }
 
             $otpData['verified'] = true;
             $emp->otp = json_encode($otpData);
             $emp->save();
 
-            Log::info('Password reset OTP verified', ['user_id' => $emp->id]);
+            Log::info('Password reset OTP verified successfully', ['user_id' => $emp->id]);
 
-            return response()->json(['status' => true, 'message' => 'OTP verified']);
+            return response()->json(['status' => true, 'message' => 'OTP verified successfully']);
         });
     }
 
     private function setNewPasswordAfterVerification(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'email' => 'required|email',
-            'password' => 'required|min:8',
+            'password' => 'required|min:6',
         ]);
 
         if ($validator->fails()) {
             return response()->json(['status' => false, 'message' => $validator->errors()->first()], 422);
         }
 
-        $emp = $this->findUserByEmail($request);
+        $emp = null;
+        if ($request->filled('emp_code') && $request->filled('verification_token')) {
+            $emp = $this->findVerifiedEmployee($request);
+        }
+
+        if (! $emp && $request->filled('mobile')) {
+            $mobile = self::normaliseMobile((string) $request->mobile);
+            if (strlen($mobile) === 10) {
+                $emp = $this->findUserForOtpLogin($mobile);
+            }
+        }
+
+        if (! $emp && $request->filled('email')) {
+            $emp = $this->findUserByEmail($request);
+        }
+
         if (! $emp || ! $emp->otp) {
             return response()->json(['status' => false, 'message' => 'Verification expired. Please request a new OTP.'], 422);
         }
 
         $otpData = json_decode($emp->otp, true);
         if (! $otpData || ! isset($otpData['verified']) || ! $otpData['verified']) {
-            return response()->json(['status' => false, 'message' => 'OTP not verified. Please verify the OTP first.'], 422);
+            return response()->json(['status' => false, 'message' => 'OTP not verified. Please verify OTP first.'], 422);
         }
 
-        // Check expiry even for verified OTP
         if (isset($otpData['expires_at']) && now()->greaterThan($otpData['expires_at'])) {
             return response()->json(['status' => false, 'message' => 'Verification expired. Please request a new OTP.'], 422);
         }
 
         $emp->password = $request->password;
         $emp->otp = null;
+        $emp->verification_token = null;
+        $emp->verification_token_expires_at = null;
         if ((int) $emp->status === 2) {
             $emp->status = 0;
         }

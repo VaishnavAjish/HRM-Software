@@ -7,12 +7,20 @@ import {
   ClipboardList,
   AlertCircle,
   ArrowLeft,
-  Mail,
   KeyRound,
   CheckCircle2,
   ChevronRight,
-  Send,
+  ArrowRight,
+  Smartphone,
   UserCheck,
+  User,
+  Lock,
+  IdCard,
+  Phone,
+  ShieldCheck,
+  Building2,
+  Star,
+  Sparkles,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { authApi } from "../../utils/api";
@@ -20,36 +28,38 @@ import { COMPANY_OPTIONS, getCompanyUnits, getCompanyConfig, normalizeCompanyId 
 
 /* ─── Step indicator ─── */
 function StepBar({ step }) {
-  const steps = ["Verify Employee", "Verify Email", "Set Password"];
+  const steps = ["Verify Employee", "Verify Mobile", "Set Password"];
   return (
-    <div className="flex items-center justify-center mb-7">
+    <div className="flex items-start justify-center mb-8 px-1">
       {steps.map((label, i) => {
         const idx = i + 1;
         const done = step > idx;
         const active = step === idx;
         return (
-          <div key={label} className="flex items-center">
+          <div key={label} className="flex items-start">
             <div className="flex flex-col items-center relative w-20 sm:w-28">
               <div
-                className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300
-                ${done ? "bg-green-500 text-white shadow-sm shadow-green-500/40" : ""}
-                ${active ? "bg-brand-600 text-white ring-4 ring-brand-100 dark:ring-brand-900/40 shadow-sm shadow-brand-600/40" : ""}
-                ${!done && !active ? "bg-gray-100 dark:bg-gray-700 text-gray-400" : ""}`}
+                className={`relative w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300
+                ${done ? "bg-gradient-to-br from-green-500 to-emerald-600 text-white shadow-md shadow-green-500/30" : ""}
+                ${active ? "bg-gradient-to-br from-indigo-600 to-purple-600 text-white shadow-lg shadow-indigo-600/40 login-badge-pulse scale-110" : ""}
+                ${!done && !active ? "bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-slate-700" : ""}`}
               >
-                {done ? <CheckCircle2 size={15} /> : idx}
+                {done ? <CheckCircle2 size={16} /> : idx}
               </div>
               <span
-                className={`text-[10px] sm:text-xs mt-1.5 font-medium text-center leading-tight
-                ${active ? "text-brand-600 dark:text-brand-400" : done ? "text-green-500" : "text-gray-400"}`}
+                className={`text-[10px] sm:text-xs mt-2 font-semibold text-center leading-tight transition-colors duration-300
+                ${active ? "text-indigo-600 dark:text-indigo-400" : done ? "text-green-600 dark:text-green-400" : "text-slate-400 dark:text-slate-500"}`}
               >
                 {label}
               </span>
             </div>
             {i < steps.length - 1 && (
-              <div
-                className={`w-10 sm:w-16 h-0.5 mx-1 mb-6 sm:mb-4 rounded-full transition-all duration-500
-                ${step > idx ? "bg-green-400" : "bg-gray-200 dark:bg-gray-700"}`}
-              />
+              <div className="w-10 sm:w-16 h-[3px] mx-1 mt-[18px] rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-green-400 to-emerald-500 transition-all duration-700 ease-out"
+                  style={{ width: step > idx ? "100%" : "0%" }}
+                />
+              </div>
             )}
           </div>
         );
@@ -59,30 +69,21 @@ function StepBar({ step }) {
 }
 
 // Per-box animation delay (ms) used below for the staggered wave/drop effect.
-// The error timer in handleVerifyOtp adds this in so the last box's animation
-// is never cut off before it finishes.
 const OTP_BOX_STAGGER_MS = 90;
 
-/* ── Correct-OTP dial sequence. These mirror the animation durations in
-      index.css (.otp-slot-gather / .otp-orbit-spinning / .otp-check-burst),
-      so the phase timers below never cut an animation short. ── */
-const OTP_GATHER_MS = 600; // row → evenly spaced around the dial
-const OTP_SPIN_MS = 1200; // full orbit around the dial
+/* ── Correct-OTP dial sequence duration tokens ── */
+const OTP_GATHER_MS = 600;
+const OTP_SPIN_MS = 1200;
 const OTP_ORBIT_MS = OTP_GATHER_MS + OTP_SPIN_MS;
-const OTP_CHECK_MS = 950; // digits fade + checkmark burst, then redirect
+const OTP_CHECK_MS = 950;
 
-const OTP_BOX_SIZE = 56; // w-14
-const OTP_ROW_PITCH = OTP_BOX_SIZE + 12; // box + gap-3
+const OTP_BOX_SIZE = 56;
+const OTP_ROW_PITCH = OTP_BOX_SIZE + 12;
 const OTP_DIAL_RADIUS = 70;
 const OTP_STAGE_HEIGHT = OTP_DIAL_RADIUS * 2 + OTP_BOX_SIZE + 16;
 
-/* The server issues six digits (random_int(100000, 999999)) and validates
-   `digits:6`. This constant drives every box, index and length check below so
-   the two ends cannot drift apart again. */
 export const OTP_LENGTH = 6;
-
 const OTP_SLOTS = Array.from({ length: OTP_LENGTH }, (_, i) => i);
-
 const OTP_BLANK = " ".repeat(OTP_LENGTH);
 
 /* Evenly spaced around the dial starting at twelve o'clock. */
@@ -135,10 +136,8 @@ function OtpInput({ value, onChange, status = "idle" }) {
   const boxStateClass =
     status === "error"
       ? "border-red-400 dark:border-red-500"
-      : "border-gray-200 dark:border-gray-600";
+      : "border-slate-200 dark:border-slate-700";
 
-  // Once the OTP checks out the row breaks apart into a clock dial: the digits
-  // swing out around the dial, orbit together, then dissolve into the checkmark.
   const onDial = status === "orbit" || status === "success";
 
   return (
@@ -162,8 +161,6 @@ function OtpInput({ value, onChange, status = "idle" }) {
                     "--otp-row-x": `${(i - (OTP_LENGTH - 1) / 2) * OTP_ROW_PITCH}px`,
                     "--otp-clock-x": `${pos.x}px`,
                     "--otp-clock-y": `${pos.y}px`,
-                    // The gather animation holds this position via `forwards`;
-                    // once it's done the inline transform keeps them parked.
                     ...(status === "success"
                       ? { transform: `translate(${pos.x}px, ${pos.y}px)` }
                       : {}),
@@ -174,7 +171,7 @@ function OtpInput({ value, onChange, status = "idle" }) {
                       status === "orbit" ? "otp-digit-upright" : "otp-digit-fade"
                     }
                   >
-                    <div className="w-14 h-14 flex items-center justify-center text-2xl font-bold rounded-xl border-2 border-brand-500 bg-brand-50 dark:bg-brand-900/30 text-brand-700 dark:text-brand-300 shadow-sm shadow-brand-500/30">
+                    <div className="w-14 h-14 flex items-center justify-center text-2xl font-bold rounded-2xl border-2 border-indigo-400 dark:border-indigo-500 bg-gradient-to-br from-indigo-50 to-indigo-100 dark:from-indigo-950 dark:to-indigo-900/60 text-indigo-700 dark:text-indigo-300 shadow-lg shadow-indigo-500/25">
                       {ch === " " ? "" : ch}
                     </div>
                   </div>
@@ -214,7 +211,7 @@ function OtpInput({ value, onChange, status = "idle" }) {
                 onPaste={handlePaste}
                 disabled={disabled}
                 style={{ animationDelay: `${i * OTP_BOX_STAGGER_MS}ms` }}
-                className={`w-11 h-12 sm:w-14 sm:h-14 text-center text-xl sm:text-2xl font-bold bg-gray-50 dark:bg-gray-700 border-2 rounded-xl text-gray-900 dark:text-white focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 dark:focus:ring-brand-900/40 transition-all disabled:cursor-not-allowed ${boxStateClass} ${boxAnimClass}`}
+                className={`w-11 h-12 sm:w-14 sm:h-14 text-center text-xl sm:text-2xl font-bold bg-slate-50/90 dark:bg-slate-800/60 border-2 rounded-2xl text-slate-900 dark:text-white shadow-sm focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 dark:focus:ring-indigo-900/40 focus:scale-105 transition-all disabled:cursor-not-allowed ${boxStateClass} ${boxAnimClass}`}
               />
             );
           })}
@@ -224,43 +221,23 @@ function OtpInput({ value, onChange, status = "idle" }) {
   );
 }
 
-/* ══════════════════════════════
-   Main Login Page
-══════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════════════════ */
 export default function Login() {
-  const { login, loginWithOtp, loading } = useAuth();
+  const { login, loading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
-
-
-  /* ── Normal login ── */
+  /* ── Normal login state ── */
   const [empCode, setEmpCode] = useState("");
   const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
   const [loginErr, setLoginErr] = useState("");
 
-  /* ── OTP login ── */
-  const [loginMethod, setLoginMethod] = useState("password");
-  const [otpMobile, setOtpMobile] = useState("");
-  const [otpLoginSent, setOtpLoginSent] = useState(false);
-  const [otpLogin, setOtpLogin] = useState(OTP_BLANK);
-  const [otpLoginErr, setOtpLoginErr] = useState("");
-  const [otpLoginSending, setOtpLoginSending] = useState(false);
-  const [otpLoginVerifying, setOtpLoginVerifying] = useState(false);
-  const [otpLoginAnim, setOtpLoginAnim] = useState("idle");
-
-  /* ── Forgot flow ── */
+  /* ── Forgot / Set Password flow state ── */
   const [mode, setMode] = useState("login"); // 'login' | 'forgot'
   const [step, setStep] = useState(1);
 
-  /* ── Appointment ── */
-  // (Removed showAppointment state)
-
-  // Step 1 — Verify Employee (emp code + mobile). This is what makes "Set
-  // Password" double as first-time registration: it's the same identity
-  // check verifyEmployeeIdentity() runs, so a brand-new employee and someone
-  // resetting a known password go through one unified flow.
+  // Step 1 — Verify Employee
   const [fCompanyId, setFCompanyId] = useState("");
   const [fUnit, setFUnit] = useState("");
   const [fEmpCode, setFEmpCode] = useState("");
@@ -268,25 +245,18 @@ export default function Login() {
   const [s1Loading, setS1Loading] = useState(false);
   const [s1Err, setS1Err] = useState("");
   const [verificationToken, setVerificationToken] = useState("");
-  // Company/branch are looked up from the employee code itself (GET
-  // /check-emp-code/{code}) rather than picked manually — codeResolved gates
-  // both the "locked" display and the submit button, since verifyEmpCode
-  // needs a real company_id/unit to scope its query correctly.
   const [codeChecking, setCodeChecking] = useState(false);
   const [codeResolved, setCodeResolved] = useState(false);
 
-  // Step 2 — email + OTP (formerly Step 1)
-  const [emailInput, setEmailInput] = useState("");
+  // Step 2 — Mobile OTP Verification
   const [otpSent, setOtpSent] = useState(false);
   const [otp, setOtp] = useState(OTP_BLANK);
+  const [devOtp, setDevOtp] = useState("");
   const [otpErr, setOtpErr] = useState("");
   const [sendLoading, setSendLoading] = useState(false);
   const [otpVerifyLoading, setOtpVerifyLoading] = useState(false);
-  // 'idle' | 'verifying' | 'orbit' | 'success' | 'error'
   const [otpAnim, setOtpAnim] = useState("idle");
 
-  // Pending phase timers for the OTP animation, so leaving the flow mid-way
-  // can't land the user on step 2 after they've already backed out.
   const otpTimers = useRef([]);
   const clearOtpTimers = () => {
     otpTimers.current.forEach(clearTimeout);
@@ -294,7 +264,7 @@ export default function Login() {
   };
   useEffect(() => clearOtpTimers, []);
 
-  // Step 3 (formerly Step 2)
+  // Step 3 — Set Password
   const [newPass, setNewPass] = useState("");
   const [confPass, setConfPass] = useState("");
   const [showNew, setShowNew] = useState(false);
@@ -314,9 +284,9 @@ export default function Login() {
     setVerificationToken("");
     setCodeChecking(false);
     setCodeResolved(false);
-    setEmailInput("");
     setOtpSent(false);
     setOtp(OTP_BLANK);
+    setDevOtp("");
     setOtpErr("");
     setOtpAnim("idle");
     setNewPass("");
@@ -349,79 +319,7 @@ export default function Login() {
     }
   };
 
-  const switchLoginMethod = (method) => {
-    if (method === loginMethod) return;
-    clearOtpTimers();
-    setLoginMethod(method);
-    setLoginErr("");
-    setOtpMobile("");
-    setOtpLoginSent(false);
-    setOtpLogin(OTP_BLANK);
-    setOtpLoginErr("");
-    setOtpLoginSending(false);
-    setOtpLoginVerifying(false);
-    setOtpLoginAnim("idle");
-  };
-
-  const handleSendLoginOtp = async () => {
-    if (!/^\d{10}$/.test(otpMobile.trim())) {
-      setOtpLoginErr("Enter a valid 10-digit mobile number");
-      return;
-    }
-
-    setOtpLoginErr("");
-    setOtpLoginSending(true);
-    try {
-      await authApi.sendLoginOtp(otpMobile.trim());
-      setOtpLogin(OTP_BLANK);
-      setOtpLoginVerifying(false);
-      setOtpLoginAnim("idle");
-      setOtpLoginSent(true);
-      toast.success("OTP sent to your mobile number");
-    } catch (error) {
-      setOtpLoginErr(error.message || "Unable to send OTP. Please try again.");
-    } finally {
-      setOtpLoginSending(false);
-    }
-  };
-
-  const handleVerifyLoginOtp = async () => {
-    const entered = otpLogin.replace(/\s/g, "");
-    if (entered.length < OTP_LENGTH) {
-      setOtpLoginErr(`Please enter the ${OTP_LENGTH}-digit OTP`);
-      return;
-    }
-
-    setOtpLoginErr("");
-    setOtpLoginVerifying(true);
-    setOtpLoginAnim("verifying");
-
-    const result = await loginWithOtp(otpMobile.trim(), entered);
-
-    if (result.success) {
-      setOtpLoginAnim("orbit");
-      otpTimers.current.push(
-        setTimeout(() => {
-          setOtpLoginAnim("success");
-          otpTimers.current.push(
-            setTimeout(() => redirectAfterLogin(result.role), OTP_CHECK_MS),
-          );
-        }, OTP_ORBIT_MS),
-      );
-    } else {
-      setOtpLoginErr(result.message || "Incorrect OTP. Please try again.");
-      setOtpLoginAnim("error");
-      otpTimers.current.push(
-        setTimeout(() => {
-          setOtpLogin(OTP_BLANK);
-          setOtpLoginAnim("idle");
-          setOtpLoginVerifying(false);
-        }, 3 * OTP_BOX_STAGGER_MS + 500 + 100),
-      );
-    }
-  };
-
-  /* ── Step 1a: look up company/branch from the employee code itself ── */
+  /* ── Step 1a: auto-detect company & unit ── */
   const handleEmpCodeBlur = async () => {
     const code = fEmpCode.trim().toUpperCase();
     setFEmpCode(code);
@@ -437,10 +335,6 @@ export default function Login() {
     try {
       const res = await authApi.checkEmpCode(code);
       const normalizedId = normalizeCompanyId(res?.company_code);
-      // The DB value's casing doesn't always match the exact unit string this
-      // company's config uses (e.g. "shreeji" vs "Shreeji") — match loosely
-      // rather than showing a locked field with a value that isn't one of
-      // the options anyone would ever have picked from the select.
       const units = getCompanyUnits(normalizedId);
       const matchedUnit =
         units.find((u) => u.toLowerCase() === String(res?.unit || "").toLowerCase()) || res?.unit || "";
@@ -458,7 +352,7 @@ export default function Login() {
     }
   };
 
-  /* ── Step 1: verify employee code + mobile ── */
+  /* ── Step 1: verify employee details ── */
   const handleVerifyEmployee = async () => {
     if (!fEmpCode.trim()) {
       setS1Err("Enter your employee code");
@@ -480,11 +374,32 @@ export default function Login() {
       const res = await authApi.verifyEmpCode(code, fCompanyId, fUnit, {
         mobile_num: fMobileNum.trim(),
       });
-      setVerificationToken(res?.verification_token || "");
-      // Prefills whatever email is already on file — blank for a genuinely
-      // first-time registrant, who then simply types a new one in step 2.
-      setEmailInput(res?.data?.email || "");
+      const token = res?.verification_token || "";
+      setVerificationToken(token);
       setFEmpCode(code);
+
+      setSendLoading(true);
+      try {
+        const otpRes = await authApi.sendMobileOtp(fMobileNum.trim(), {
+          emp_code: code,
+          verification_token: token,
+          company_code: fCompanyId,
+          unit: fUnit,
+        });
+        setOtpSent(true);
+        if (otpRes?.dev_otp) {
+          setDevOtp(otpRes.dev_otp);
+          toast.success(`OTP generated! Code: ${otpRes.dev_otp}`, { duration: 8000 });
+        } else {
+          toast.success(`OTP sent to ${fMobileNum.trim()}`);
+        }
+      } catch (otpError) {
+        toast.error(otpError.message || "Failed to send OTP. You can retry on the next step.");
+        setOtpSent(false);
+      } finally {
+        setSendLoading(false);
+      }
+
       setStep(2);
     } catch (error) {
       setS1Err(error.message || "Could not verify your details. Please check and try again.");
@@ -493,16 +408,16 @@ export default function Login() {
     }
   };
 
-  /* ── Step 2: send OTP to email ── */
+  /* ── Step 2: send/resend Mobile OTP ── */
   const handleSendOtp = async () => {
-    if (!emailInput.trim() || !emailInput.includes("@")) {
-      toast.error("Enter a valid email address");
+    if (!/^\d{10}$/.test(fMobileNum.trim())) {
+      toast.error("Valid mobile number is required");
       return;
     }
 
     setSendLoading(true);
     try {
-      await authApi.verifyEmail(emailInput.trim(), {
+      const res = await authApi.sendMobileOtp(fMobileNum.trim(), {
         emp_code: fEmpCode,
         verification_token: verificationToken,
         company_code: fCompanyId,
@@ -513,7 +428,12 @@ export default function Login() {
       setOtpAnim("idle");
       setOtpSent(true);
       setOtpErr("");
-      toast.success(`OTP sent to ${emailInput}`);
+      if (res?.dev_otp) {
+        setDevOtp(res.dev_otp);
+        toast.success(`OTP re-generated! Code: ${res.dev_otp}`, { duration: 8000 });
+      } else {
+        toast.success(`OTP sent to ${fMobileNum.trim()}`);
+      }
     } catch (error) {
       toast.error(error.message || "Unable to send OTP. Please try again.");
     } finally {
@@ -521,7 +441,7 @@ export default function Login() {
     }
   };
 
-  /* ── Step 2 (OTP verification) → go to step 3 ── */
+  /* ── Step 2: verify Mobile OTP ── */
   const handleVerifyOtp = async () => {
     const entered = otp.replace(/\s/g, "");
     if (entered.length < OTP_LENGTH) {
@@ -533,17 +453,17 @@ export default function Login() {
     setOtpErr("");
     setOtpAnim("verifying");
     try {
-      await authApi.verifyEmailOtp(emailInput.trim(), entered);
+      await authApi.verifyMobileOtp(fMobileNum.trim(), entered, {
+        emp_code: fEmpCode,
+        verification_token: verificationToken,
+      });
 
-      // Phase 1 — digits swing out to 12/3/6/9 and orbit the dial.
       setOtpAnim("orbit");
       otpTimers.current.push(
         setTimeout(() => {
-          // Phase 2 — digits dissolve, checkmark bursts in.
           setOtpAnim("success");
           otpTimers.current.push(
             setTimeout(() => {
-              // Phase 3 — only now move on to the password step.
               setNewPass("");
               setConfPass("");
               setPwdErr("");
@@ -557,8 +477,6 @@ export default function Login() {
     } catch (error) {
       setOtpErr(error.message || "Incorrect OTP. Please try again.");
       setOtpAnim("error");
-      // Wait for the last (most-delayed) box's otp-drop (0.5s) to fully
-      // finish falling, plus a small buffer, before clearing the boxes.
       otpTimers.current.push(
         setTimeout(() => {
           setOtp(OTP_BLANK);
@@ -595,16 +513,18 @@ export default function Login() {
     setPwdLoading(true);
 
     try {
-      // Same normalisation handleVerifyOtp() used, so the value the server
-      // compares against is exactly the one that was verified.
-      await authApi.setNewPassword(newPass, emailInput.trim(), otp.replace(/\s/g, ""));
+      await authApi.setNewPassword(newPass, fMobileNum.trim(), otp.replace(/\s/g, ""), {
+        emp_code: fEmpCode,
+        verification_token: verificationToken,
+        company_code: fCompanyId,
+        unit: fUnit,
+      });
       toast.success("Password updated! You can now log in.");
 
       setMode("login");
-      setEmpCode(emailInput.trim());
+      setEmpCode(fEmpCode);
       setPassword("");
 
-      // reset forgot state
       setStep(1);
       setFCompanyId("");
       setFUnit("");
@@ -614,9 +534,9 @@ export default function Login() {
       setVerificationToken("");
       setCodeChecking(false);
       setCodeResolved(false);
-      setEmailInput("");
       setOtpSent(false);
       setOtp(OTP_BLANK);
+      setDevOtp("");
       setOtpErr("");
       setOtpVerifyLoading(false);
       setNewPass("");
@@ -638,705 +558,599 @@ export default function Login() {
     if (newPass.length < 9)
       return { w: "50%", color: "bg-yellow-400", label: "Fair" };
     if (newPass.length < 12)
-      return { w: "75%", color: "bg-brand-400", label: "Good" };
+      return { w: "75%", color: "bg-indigo-400", label: "Good" };
     return { w: "100%", color: "bg-green-500", label: "Strong" };
   };
   const strength = pwdStrength();
 
-  /* ─── shared input style ─── */
+  /* ─── Shared UI class tokens ─── */
   const inCls =
-    "w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500 text-sm transition";
-
-
+    "w-full pl-10 pr-3.5 py-2.5 sm:py-3 bg-[#f8fafc] dark:bg-slate-800/80 border border-[#e2e8f0] dark:border-slate-700 rounded-xl text-slate-900 dark:text-white placeholder:text-[#94a3b8] dark:placeholder:text-slate-500 text-xs sm:text-sm font-medium focus:outline-none focus:bg-white dark:focus:bg-slate-800 focus:border-indigo-600 dark:focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100 dark:focus:ring-indigo-900/30 transition-all duration-200 shadow-sm";
+  const iconCls =
+    "pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#94a3b8] dark:text-slate-500";
+  const primaryBtnCls =
+    "login-shine-btn h-10 sm:h-11 w-full bg-gradient-to-r from-indigo-600 via-indigo-600 to-purple-600 hover:from-indigo-700 hover:via-indigo-700 hover:to-purple-700 disabled:from-indigo-400 disabled:to-purple-400 text-white rounded-xl font-semibold text-xs sm:text-sm shadow-md shadow-indigo-500/25 hover:shadow-lg hover:shadow-indigo-500/35 hover:scale-[1.01] active:scale-[0.99] disabled:hover:scale-100 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer mt-4 sm:mt-5";
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-brand-100 via-white to-brand-50 dark:from-gray-900 dark:via-gray-900 dark:to-gray-800 flex items-center justify-center p-4">
+    <div className="relative min-h-screen bg-[#f8fafc] dark:bg-[#0b0f19] flex flex-col justify-between p-3 sm:p-6 lg:p-8 overflow-hidden select-none">
+      {/* ── Ambient Mesh Background Glows + Moving Dot Grids & Orbit Rings ── */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
+        {/* Soft background radial glows */}
+        <div className="absolute -top-40 -left-40 w-[38rem] h-[38rem] rounded-full bg-gradient-to-br from-indigo-300/40 via-purple-200/25 to-transparent blur-3xl dark:from-indigo-900/30 dark:via-purple-900/20 login-aurora-glow" />
+        <div className="absolute -bottom-40 -right-40 w-[42rem] h-[42rem] rounded-full bg-gradient-to-tr from-purple-300/30 via-indigo-200/25 to-transparent blur-3xl dark:from-purple-900/25 dark:via-indigo-900/20 login-aurora-glow" style={{ animationDelay: "-7s" }} />
+        
+        {/* Decorative Top-Right Moving Dot Grid */}
+        <div
+          className="absolute top-12 right-12 w-44 h-44 opacity-25 dark:opacity-15 hidden sm:block login-dots-tr"
+          style={{
+            backgroundImage: "radial-gradient(#6366f1 1.5px, transparent 1.5px)",
+            backgroundSize: "16px 16px",
+          }}
+        />
 
+        {/* Decorative Bottom-Left Moving Dot Grid */}
+        <div
+          className="absolute bottom-12 left-12 w-44 h-44 opacity-25 dark:opacity-15 hidden sm:block login-dots-bl"
+          style={{
+            backgroundImage: "radial-gradient(#6366f1 1.5px, transparent 1.5px)",
+            backgroundSize: "16px 16px",
+          }}
+        />
 
-      <main className={`w-full ${mode === "forgot" ? "max-w-lg" : "max-w-md"}`}>
-        {/* Logo */}
-        {mode === "login" && (
-          <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-14 h-14 bg-brand-600 rounded-2xl shadow-lg shadow-brand-600/30 mb-3">
-              <ClipboardList size={28} className="text-white" />
+        {/* Orbiting Ambient Rings */}
+        <div className="hidden lg:block absolute top-1/4 -right-16 w-96 h-96 rounded-full border border-indigo-200/30 dark:border-indigo-800/20 login-orbit-ring" />
+        <div className="hidden lg:block absolute -bottom-20 left-1/3 w-80 h-80 rounded-full border border-purple-200/20 dark:border-purple-800/15 login-orbit-ring" style={{ animationDelay: "-10s" }} />
+      </div>
+
+      {/* ── Center Hero Row: Brand Section + Login Card ── */}
+      <div className="flex-1 flex items-center justify-center w-full max-w-6xl mx-auto my-auto z-10 py-3 sm:py-6">
+        <div className="w-full flex flex-col lg:flex-row items-center justify-between gap-8 lg:gap-16">
+          {/* ══ LEFT: Hero Brand Section (Centered Desktop) ══ */}
+          <aside className="hidden lg:flex flex-col items-center text-center max-w-md login-left-rise my-auto mx-auto">
+            {/* Logo Badge */}
+            <div className="relative inline-flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-tr from-indigo-600 via-indigo-600 to-purple-600 rounded-[20px] sm:rounded-[24px] shadow-2xl shadow-indigo-500/35 mb-5 sm:mb-7 login-badge-pulse hover:scale-105 transition-transform duration-300">
+              <ClipboardList size={34} className="text-white" />
             </div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+
+            <h1 className="text-3xl sm:text-4xl xl:text-5xl font-black tracking-tight text-[#0f172a] dark:text-white leading-none">
               NISS HRMS
             </h1>
-            <p className="text-xs font-semibold uppercase tracking-wider text-brand-600 dark:text-brand-400 mt-1">
-              Nidhi Impex Silver Star
+            <p className="text-[11px] sm:text-xs font-extrabold uppercase tracking-[0.25em] text-indigo-600 dark:text-indigo-400 mt-2.5 sm:mt-3">
+              NIDHI IMPEX SILVER STAR
             </p>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1 font-medium">
               Human Resource Management System
             </p>
-          </div>
-        )}
 
-        {/* ══ NORMAL LOGIN ══ */}
-        {mode === "login" && (
-          <>
-            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-100 dark:border-gray-700 border-t-4 border-t-brand-600 p-8">
-              <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-1">
-                Sign in
-              </h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">
-                {loginMethod === "password"
-                  ? "Enter your credentials to continue"
-                  : "Sign in with an OTP sent to your registered mobile number"}
+            <div className="w-12 sm:w-14 h-1 sm:h-1.5 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-full my-5 sm:my-7 opacity-80 mx-auto" />
+
+            <div className="space-y-3.5 flex flex-col items-center">
+              <p className="text-base sm:text-lg font-extrabold text-indigo-600 dark:text-indigo-400">
+                Empowering people. Simplifying HR.
+              </p>
+              <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 leading-relaxed max-w-sm text-center">
+                A secure and intelligent platform to manage your workforce efficiently and effectively.
               </p>
 
-              <div className="grid grid-cols-2 gap-1 p-1 bg-gray-100 dark:bg-gray-700/60 rounded-xl mb-5">
-                {[
-                  { id: "password", label: "Password" },
-                  { id: "otp", label: "OTP" },
-                ].map(({ id, label }) => (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() => switchLoginMethod(id)}
-                    className={`py-2 rounded-lg text-sm font-semibold transition-colors ${
-                      loginMethod === id
-                        ? "bg-white dark:bg-gray-800 text-brand-600 dark:text-brand-400 shadow-sm"
-                        : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
+              {/* Feature Pills */}
+              <div className="pt-1 flex flex-col items-center gap-2">
+                <div className="flex items-center gap-2.5 text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <div className="w-5 h-5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 flex items-center justify-center shrink-0">
+                    <Sparkles size={11} className="text-indigo-600 dark:text-indigo-400" />
+                  </div>
+                  Enterprise-grade workforce security & role control
+                </div>
+                <div className="flex items-center gap-2.5 text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <div className="w-5 h-5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 flex items-center justify-center shrink-0">
+                    <CheckCircle2 size={11} className="text-indigo-600 dark:text-indigo-400" />
+                  </div>
+                  Automated salary slip & attendance tracking
+                </div>
               </div>
+            </div>
+          </aside>
 
-              {loginMethod === "password" && loginErr && (
-                <div className="flex items-center gap-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg px-4 py-3 mb-4">
-                  <AlertCircle
-                    size={15}
-                    className="text-red-500 flex-shrink-0"
-                  />
-                  <p className="text-sm text-red-600 dark:text-red-400">
-                    {loginErr}
-                  </p>
+          {/* ══ RIGHT: Auth Form Card ══ */}
+          <main className={`relative w-full ${mode === "forgot" ? "max-w-lg" : "max-w-[410px]"} shrink-0 mx-auto`}>
+            {/* Mobile Top Header Logo */}
+            {mode === "login" && (
+              <div className="lg:hidden text-center mb-3 sm:mb-5 login-left-rise">
+                <div className="relative inline-flex items-center justify-center w-12 h-12 bg-gradient-to-tr from-indigo-600 to-purple-600 rounded-xl shadow-md shadow-indigo-500/25 mb-2 login-badge-pulse">
+                  <ClipboardList size={24} className="text-white" />
                 </div>
-              )}
+                <h1 className="text-xl sm:text-2xl font-black tracking-tight text-[#0f172a] dark:text-white">
+                  NISS HRMS
+                </h1>
+                <p className="text-[10px] sm:text-[11px] font-bold uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-400 mt-0.5">
+                  Nidhi Impex Silver Star
+                </p>
+                <p className="text-[11px] sm:text-xs text-slate-400 dark:text-slate-500 mt-0.5">
+                  Human Resource Management System
+                </p>
+              </div>
+            )}
 
-              {loginMethod === "password" && (
-              <form onSubmit={handleLogin} className="space-y-4">
-                <div>
-                  <label htmlFor="login-username" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                    Email Address or Employee Code
-                  </label>
-                  <input
-                    id="login-username"
-                    name="username"
-                    autoComplete="username"
-                    value={empCode}
-                    onChange={(e) => setEmpCode(e.target.value)}
-                    placeholder="Enter your email or employee code"
-                    required
-                    className={inCls}
-                  />
-                </div>
-                <div>
-                  <label htmlFor="login-password" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                    Password
-                  </label>
-                  <div className="relative">
-                    <input
-                      id="login-password"
-                      name="password"
-                      autoComplete="current-password"
-                      type={showPass ? "text" : "password"}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Enter your password"
-                      required
-                      className={inCls + " pr-11"}
-                    />
+            {/* ══ NORMAL LOGIN ══ */}
+            {mode === "login" && (
+              <div className="w-full bg-white dark:bg-slate-900 rounded-[24px] sm:rounded-[28px] shadow-[0_20px_50px_-15px_rgba(79,70,229,0.12)] dark:shadow-[0_20px_50px_-15px_rgba(0,0,0,0.6)] border border-slate-200/80 dark:border-slate-800 p-5 sm:p-8 login-card-rise">
+                <h2 className="text-xl sm:text-2xl font-extrabold text-[#0f172a] dark:text-white text-center tracking-tight mb-1">
+                  Welcome Back
+                </h2>
+                <p className="text-xs text-[#64748b] dark:text-slate-400 text-center mb-5">
+                  Sign in to continue to NISS HRMS
+                </p>
+
+                {loginErr && (
+                  <div className="flex items-center gap-2.5 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/80 rounded-xl px-4 py-3 mb-6">
+                    <AlertCircle size={16} className="text-red-500 flex-shrink-0" />
+                    <p className="text-xs font-medium text-red-600 dark:text-red-400">
+                      {loginErr}
+                    </p>
+                  </div>
+                )}
+
+                <form onSubmit={handleLogin} className="space-y-4">
+                  <div>
+                    <label htmlFor="login-username" className="block text-xs font-semibold text-[#334155] dark:text-slate-300 mb-2">
+                      Email Address or Employee Code
+                    </label>
+                    <div className="relative flex items-center">
+                      <User size={18} className={iconCls} aria-hidden="true" />
+                      <input
+                        id="login-username"
+                        name="username"
+                        autoComplete="username"
+                        value={empCode}
+                        onChange={(e) => setEmpCode(e.target.value)}
+                        placeholder="Enter your email or employee code"
+                        required
+                        className={inCls}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label htmlFor="login-password" className="block text-xs font-semibold text-[#334155] dark:text-slate-300 mb-2">
+                      Password
+                    </label>
+                    <div className="relative flex items-center">
+                      <Lock size={18} className={iconCls} aria-hidden="true" />
+                      <input
+                        id="login-password"
+                        name="password"
+                        autoComplete="current-password"
+                        type={showPass ? "text" : "password"}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="Enter your password"
+                        required
+                        className={inCls + " pr-11"}
+                      />
+                      <button
+                        type="button"
+                        aria-label={showPass ? "Hide password" : "Show password"}
+                        onClick={() => setShowPass((p) => !p)}
+                        className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1.5 text-[#94a3b8] hover:text-slate-600 dark:hover:text-slate-300 rounded-lg focus:outline-none transition-colors"
+                      >
+                        {showPass ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
+                    </div>
                     <button
                       type="button"
-                      aria-label={showPass ? "Hide password" : "Show password"}
-                      onClick={() => setShowPass((p) => !p)}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 p-2.5 min-w-[36px] min-h-[36px] flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded-lg touch-manipulation focus:outline-none focus:ring-2 focus:ring-brand-500"
+                      onClick={enterForgot}
+                      className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 hover:underline underline-offset-2 mt-2.5 block text-right w-full cursor-pointer transition-colors"
                     >
-                      {showPass ? <EyeOff size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}
+                      Set Password
                     </button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={enterForgot}
-                    className="text-xs text-brand-600 dark:text-brand-400 hover:underline mt-1.5 block text-right w-full"
-                  >
-                    Set Password
-                  </button>
-                </div>
 
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full py-2.5 bg-brand-600 hover:bg-brand-700 disabled:bg-brand-400 text-white rounded-xl font-semibold text-sm transition-colors shadow-sm shadow-brand-600/20 flex items-center justify-center gap-2"
-                >
-                  {loading ? (
-                    <>
-                      <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      Signing in...
-                    </>
-                  ) : (
-                    "Sign In"
-                  )}
-                </button>
-              </form>
-              )}
-
-              {loginMethod === "otp" && (
-                <div className="space-y-4">
-                  <div>
-                    <label htmlFor="otp-login-mobile" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                      Mobile Number
-                    </label>
-                    <div className="flex gap-2">
-                      <input
-                        id="otp-login-mobile"
-                        name="mobile"
-                        type="tel"
-                        inputMode="numeric"
-                        autoComplete="tel"
-                        maxLength={10}
-                        value={otpMobile}
-                        onChange={(e) => {
-                          setOtpMobile(e.target.value.replace(/\D/g, "").slice(0, 10));
-                          setOtpLoginSent(false);
-                          setOtpLogin(OTP_BLANK);
-                          setOtpLoginErr("");
-                        }}
-                        placeholder="10-digit mobile number"
-                        disabled={otpLoginSent}
-                        className={inCls + (otpLoginSent ? " opacity-60 cursor-not-allowed" : "")}
-                      />
-                      <button
-                        type="button"
-                        onClick={handleSendLoginOtp}
-                        disabled={otpMobile.length !== 10 || otpLoginSending || otpLoginSent}
-                        className="flex-shrink-0 flex items-center gap-1.5 px-4 py-2.5 bg-brand-600 hover:bg-brand-700 disabled:bg-brand-400 text-white rounded-xl text-sm font-semibold transition-colors whitespace-nowrap"
-                      >
-                        {otpLoginSending ? (
-                          <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                        ) : (
-                          <>
-                            <Send size={14} /> Send OTP
-                          </>
-                        )}
-                      </button>
-                    </div>
-                    {otpLoginSent && (
-                      <div className="flex items-center justify-between mt-1.5">
-                        <p className="text-xs text-green-600 dark:text-green-400 font-medium">
-                          OTP sent to {otpMobile}
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            clearOtpTimers();
-                            setOtpLoginSent(false);
-                            setOtpLogin(OTP_BLANK);
-                            setOtpLoginVerifying(false);
-                            setOtpLoginAnim("idle");
-                            setOtpMobile("");
-                            setOtpLoginErr("");
-                          }}
-                          className="text-xs text-brand-500 hover:underline"
-                        >
-                          Change number
-                        </button>
-                      </div>
-                    )}
-                  </div>
-
-                  {!otpLoginSent && otpLoginErr && (
-                    <div className="flex items-center gap-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg px-3 py-2">
-                      <AlertCircle size={14} className="text-red-500 flex-shrink-0" />
-                      <p className="text-xs text-red-600 dark:text-red-400">{otpLoginErr}</p>
-                    </div>
-                  )}
-
-                  {otpLoginSent && (
-                    <div className="space-y-3 pt-2">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3 text-center">
-                          Enter {OTP_LENGTH}-digit OTP
-                        </label>
-                        <OtpInput value={otpLogin} onChange={setOtpLogin} status={otpLoginAnim} />
-                      </div>
-
-                      {otpLoginErr && (
-                        <div className="flex items-center gap-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg px-3 py-2">
-                          <AlertCircle size={14} className="text-red-500 flex-shrink-0" />
-                          <p className="text-xs text-red-600 dark:text-red-400">{otpLoginErr}</p>
-                        </div>
-                      )}
-
-                      <button
-                        type="button"
-                        onClick={handleVerifyLoginOtp}
-                        disabled={otpLogin.replace(/\s/g, "").length < OTP_LENGTH || otpLoginVerifying}
-                        className={`w-full py-2.5 text-white rounded-xl font-semibold text-sm transition-colors flex items-center justify-center gap-2 shadow-sm ${
-                          otpLoginAnim === "orbit" || otpLoginAnim === "success"
-                            ? "bg-green-600 disabled:bg-green-600 shadow-green-600/20"
-                            : "bg-brand-600 hover:bg-brand-700 disabled:bg-brand-400 shadow-brand-600/20"
-                        }`}
-                      >
-                        {otpLoginAnim === "orbit" || otpLoginAnim === "success" ? (
-                          <>
-                            <CheckCircle2 size={16} /> Signed in
-                          </>
-                        ) : otpLoginVerifying ? (
-                          <>
-                            <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                            Verifying...
-                          </>
-                        ) : (
-                          <>
-                            Verify & Sign In <ChevronRight size={16} />
-                          </>
-                        )}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={handleSendLoginOtp}
-                        disabled={otpLoginVerifying || otpLoginSending}
-                        className="w-full py-1.5 text-sm text-gray-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        Didn't receive it? Resend OTP
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </>
-        )}
-
-        {/* ══ FORGOT PASSWORD (3-step) ══ */}
-        {mode === "forgot" && (
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-100 dark:border-gray-700 border-t-4 border-t-brand-600 p-8">
-            <button
-              onClick={() => {
-                clearOtpTimers();
-                setOtpAnim("idle");
-                setOtpVerifyLoading(false);
-                setMode("login");
-              }}
-              className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 mb-5 transition-colors"
-            >
-              <ArrowLeft size={15} /> Back to Login
-            </button>
-
-            <StepBar step={step} />
-
-            {/* ── STEP 1: Verify Employee ── */}
-            {step === 1 && (
-              <div className="animate-in fade-in slide-in-from-right-4 duration-300">
-                <div className="text-center">
-                  <div className="inline-flex items-center justify-center w-12 h-12 bg-indigo-100 dark:bg-indigo-900/30 rounded-full mb-4">
-                    <UserCheck size={24} className="text-indigo-600 dark:text-indigo-400" />
-                  </div>
-                  <h2 className="text-2xl font-bold text-gray-950 dark:text-white">
-                    Verify Employee
-                  </h2>
-                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-2 max-w-sm mx-auto">
-                    First time here? Confirm your employee code and registered mobile number to get started.
-                  </p>
-                </div>
-
-                <div className="mt-7 space-y-4">
-                  <div>
-                    <label htmlFor="forgot-emp-code" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                      Employee Code
-                    </label>
-                    <div className="relative">
-                      <input
-                        id="forgot-emp-code"
-                        name="emp_code"
-                        autoComplete="username"
-                        value={fEmpCode}
-                        onChange={(e) => {
-                          setFEmpCode(e.target.value.toUpperCase());
-                          if (codeResolved) setCodeResolved(false);
-                        }}
-                        onBlur={handleEmpCodeBlur}
-                        placeholder="e.g. NI1234"
-                        className={inCls + " pr-9"}
-                      />
-                      {codeChecking && (
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 border-2 border-gray-300 border-t-brand-500 rounded-full animate-spin" />
-                      )}
-                      {!codeChecking && codeResolved && (
-                        <CheckCircle2
-                          size={16}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-green-500"
-                        />
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label htmlFor="forgot-company-select" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                        Company
-                      </label>
-                      <select
-                        id="forgot-company-select"
-                        name="company_id"
-                        value={fCompanyId}
-                        disabled
-                        className={inCls + " opacity-60 cursor-not-allowed"}
-                      >
-                        <option value="">
-                          {codeChecking ? "Detecting..." : "Auto-detected"}
-                        </option>
-                        {COMPANY_OPTIONS.map((c) => (
-                          <option key={c.id} value={c.id}>{c.label}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label htmlFor="forgot-unit-select" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                        Branch / Unit
-                      </label>
-                      <select
-                        id="forgot-unit-select"
-                        name="unit"
-                        value={fUnit}
-                        disabled
-                        className={inCls + " opacity-60 cursor-not-allowed"}
-                      >
-                        <option value="">
-                          {codeChecking ? "Detecting..." : "Auto-detected"}
-                        </option>
-                        {getCompanyUnits(fCompanyId).map((u) => (
-                          <option key={u} value={u}>{u}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                  {codeResolved && (
-                    <p className="text-xs text-green-600 dark:text-green-400 -mt-2 flex items-center gap-1">
-                      <CheckCircle2 size={12} />
-                      Detected {getCompanyConfig(fCompanyId)?.label} — {fUnit}
-                    </p>
-                  )}
-
-                  <div>
-                    <label htmlFor="forgot-mobile-num" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                      Mobile Number
-                    </label>
-                    <input
-                      id="forgot-mobile-num"
-                      name="mobile_num"
-                      value={fMobileNum}
-                      onChange={(e) => setFMobileNum(e.target.value.replace(/\D/g, "").slice(0, 10))}
-                      placeholder="10-digit mobile number"
-                      type="tel"
-                      inputMode="numeric"
-                      autoComplete="tel"
-                      maxLength={10}
-                      className={inCls}
-                    />
-                    <p className="mt-1 text-xs text-gray-400">
-                      The number registered on your employee record.
-                    </p>
-                  </div>
-
-                  {s1Err && (
-                    <div className="flex items-center gap-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg px-3 py-2">
-                      <AlertCircle size={14} className="text-red-500 flex-shrink-0" />
-                      <p className="text-xs text-red-600 dark:text-red-400">{s1Err}</p>
-                    </div>
-                  )}
-
-                  <button
-                    onClick={handleVerifyEmployee}
-                    disabled={s1Loading || codeChecking}
-                    className="w-full py-2.5 bg-brand-600 hover:bg-brand-700 disabled:bg-brand-400 text-white rounded-xl font-semibold text-sm transition-colors flex items-center justify-center gap-2 shadow-sm shadow-brand-600/20"
-                  >
-                    {s1Loading ? (
+                  <button type="submit" disabled={loading} className={primaryBtnCls}>
+                    {loading ? (
                       <>
                         <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                        Verifying...
+                        Signing in...
                       </>
                     ) : (
                       <>
-                        Verify & Next <ChevronRight size={16} />
+                        Sign In <ArrowRight size={17} />
                       </>
                     )}
                   </button>
+                </form>
+
+                <div className="flex items-center gap-4 my-6" aria-hidden="true">
+                  <div className="h-px flex-1 bg-[#f1f5f9] dark:bg-slate-800" />
+                  <span className="text-xs text-[#cbd5e1] dark:text-slate-600 font-medium">or</span>
+                  <div className="h-px flex-1 bg-[#f1f5f9] dark:bg-slate-800" />
+                </div>
+
+                <div className="text-center pt-0.5">
+                  <p className="flex items-center justify-center gap-1.5 text-xs font-bold text-[#334155] dark:text-slate-200">
+                    <ShieldCheck size={16} className="text-indigo-600 dark:text-indigo-400" />
+                    Secure. Reliable. Trusted.
+                  </p>
+                  <p className="text-[11px] text-[#94a3b8] dark:text-slate-400 mt-1">
+                    Your data is protected with enterprise-grade security.
+                  </p>
                 </div>
               </div>
             )}
 
-            {/* ── STEP 2: Verify Email ── */}
-            {step === 2 && (
-              <div className="animate-in fade-in slide-in-from-right-4 duration-300">
-                <div className="text-center">
-                  <div className="inline-flex items-center justify-center w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-full mb-4">
-                    <Mail size={24} className="text-blue-600 dark:text-blue-400" />
-                  </div>
-                  <h2 className="text-2xl font-bold text-gray-950 dark:text-white">
-                    Verify Email
-                  </h2>
-                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-2 max-w-sm mx-auto">
-                    Enter your registered email address to receive a one-time password
-                  </p>
-                </div>
+            {/* ══ FORGOT / SET PASSWORD (3-step) ══ */}
+            {mode === "forgot" && (
+              <div className="w-full bg-white dark:bg-slate-900 rounded-[28px] shadow-[0_25px_60px_-15px_rgba(79,70,229,0.14)] dark:shadow-[0_25px_60px_-15px_rgba(0,0,0,0.6)] border border-slate-200/80 dark:border-slate-800 p-8 sm:p-10 login-card-rise">
+                <button
+                  onClick={() => {
+                    clearOtpTimers();
+                    setOtpAnim("idle");
+                    setOtpVerifyLoading(false);
+                    setMode("login");
+                  }}
+                  className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 mb-6 transition-colors cursor-pointer"
+                >
+                  <ArrowLeft size={15} /> Back to Login
+                </button>
 
-                <div className="mt-7 space-y-4">
-                  {/* Email input + Send OTP */}
-                  <div>
-                    <label htmlFor="forgot-email" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                      Email Address
-                    </label>
-                    <div className="flex gap-2">
-                      <input
-                        id="forgot-email"
-                        name="email"
-                        autoComplete="email"
-                        value={emailInput}
-                        onChange={(e) => {
-                          setEmailInput(e.target.value);
-                          setOtpSent(false);
-                          setOtp(OTP_BLANK);
-                        }}
-                        placeholder="Enter your email"
-                        type="email"
-                        disabled={otpSent}
-                        className={
-                          inCls +
-                          (otpSent ? " opacity-60 cursor-not-allowed" : "")
-                        }
-                      />
+                <StepBar step={step} />
+
+                {/* ── STEP 1: Verify Employee ── */}
+                {step === 1 && (
+                  <div className="animate-in fade-in duration-300">
+                    <div className="text-center">
+                      <div className="inline-flex items-center justify-center w-14 h-14 bg-gradient-to-tr from-indigo-600 to-purple-600 rounded-2xl shadow-lg shadow-indigo-500/25 mb-4">
+                        <UserCheck size={26} className="text-white" />
+                      </div>
+                      <h2 className="text-2xl font-extrabold text-[#0f172a] dark:text-white tracking-tight">
+                        Verify Employee
+                      </h2>
+                      <p className="text-xs sm:text-sm text-[#64748b] dark:text-slate-400 mt-1.5 max-w-xs mx-auto">
+                        Confirm your employee code and registered mobile number to set your password.
+                      </p>
+                    </div>
+
+                    <div className="mt-7 space-y-4">
+                      <div>
+                        <label htmlFor="forgot-emp-code" className="block text-xs font-semibold text-[#334155] dark:text-slate-300 mb-1.5">
+                          Employee Code
+                        </label>
+                        <div className="relative flex items-center">
+                          <IdCard size={18} className={iconCls} aria-hidden="true" />
+                          <input
+                            id="forgot-emp-code"
+                            name="emp_code"
+                            autoComplete="username"
+                            value={fEmpCode}
+                            onChange={(e) => {
+                              setFEmpCode(e.target.value.toUpperCase());
+                              if (codeResolved) setCodeResolved(false);
+                            }}
+                            onBlur={handleEmpCodeBlur}
+                            placeholder="e.g. NI1234"
+                            className={inCls + " pr-9"}
+                          />
+                          {codeChecking && (
+                            <span className="absolute right-3.5 w-4 h-4 border-2 border-slate-300 border-t-indigo-600 rounded-full animate-spin" />
+                          )}
+                          {!codeChecking && codeResolved && (
+                            <CheckCircle2
+                              size={18}
+                              className="absolute right-3.5 text-emerald-500"
+                            />
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label htmlFor="forgot-company-select" className="block text-xs font-semibold text-[#334155] dark:text-slate-300 mb-1.5">
+                            Company
+                          </label>
+                          <div className="relative flex items-center">
+                            <Building2 size={16} className={iconCls} aria-hidden="true" />
+                            <select
+                              id="forgot-company-select"
+                              name="company_id"
+                              value={fCompanyId}
+                              disabled
+                              className={inCls + " opacity-60 cursor-not-allowed text-xs"}
+                            >
+                              <option value="">
+                                {codeChecking ? "Detecting..." : "Auto-detected"}
+                              </option>
+                              {COMPANY_OPTIONS.map((c) => (
+                                <option key={c.id} value={c.id}>{c.label}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                        <div>
+                          <label htmlFor="forgot-unit-select" className="block text-xs font-semibold text-[#334155] dark:text-slate-300 mb-1.5">
+                            Branch / Unit
+                          </label>
+                          <select
+                            id="forgot-unit-select"
+                            name="unit"
+                            value={fUnit}
+                            disabled
+                            className={inCls + " opacity-60 cursor-not-allowed pl-4 text-xs"}
+                          >
+                            <option value="">
+                              {codeChecking ? "Detecting..." : "Auto-detected"}
+                            </option>
+                            {getCompanyUnits(fCompanyId).map((u) => (
+                              <option key={u} value={u}>{u}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                      {codeResolved && (
+                        <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium -mt-1 flex items-center gap-1">
+                          <CheckCircle2 size={13} />
+                          Detected {getCompanyConfig(fCompanyId)?.label} — {fUnit}
+                        </p>
+                      )}
+
+                      <div>
+                        <label htmlFor="forgot-mobile-num" className="block text-xs font-semibold text-[#334155] dark:text-slate-300 mb-1.5">
+                          Registered Mobile Number
+                        </label>
+                        <div className="relative flex items-center">
+                          <Phone size={18} className={iconCls} aria-hidden="true" />
+                          <input
+                            id="forgot-mobile-num"
+                            name="mobile_num"
+                            value={fMobileNum}
+                            onChange={(e) => setFMobileNum(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                            placeholder="10-digit mobile number"
+                            type="tel"
+                            inputMode="numeric"
+                            autoComplete="tel"
+                            maxLength={10}
+                            className={inCls}
+                          />
+                        </div>
+                        <p className="mt-1 text-[11px] text-[#94a3b8]">
+                          Enter the mobile number registered in your employee profile.
+                        </p>
+                      </div>
+
+                      {s1Err && (
+                        <div className="flex items-center gap-2 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/80 rounded-xl px-3.5 py-2.5">
+                          <AlertCircle size={15} className="text-red-500 flex-shrink-0" />
+                          <p className="text-xs font-medium text-red-600 dark:text-red-400">{s1Err}</p>
+                        </div>
+                      )}
+
                       <button
-                        onClick={handleSendOtp}
-                        disabled={!emailInput.trim() || sendLoading || otpSent}
-                        className="flex-shrink-0 flex items-center gap-1.5 px-4 py-2.5 bg-brand-600 hover:bg-brand-700 disabled:bg-brand-400 text-white rounded-xl text-sm font-semibold transition-colors whitespace-nowrap"
+                        onClick={handleVerifyEmployee}
+                        disabled={s1Loading || codeChecking}
+                        className={primaryBtnCls}
                       >
-                        {sendLoading ? (
-                          <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        {s1Loading || sendLoading ? (
+                          <>
+                            <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            Verifying & Sending OTP...
+                          </>
                         ) : (
                           <>
-                            <Send size={14} /> Send OTP
+                            Verify & Send OTP <ChevronRight size={17} />
                           </>
                         )}
                       </button>
                     </div>
-                    {otpSent && (
-                      <div className="flex items-center justify-between mt-1.5">
-                        <p className="text-xs text-green-600 dark:text-green-400 font-medium">
-                          OTP sent to {emailInput}
+                  </div>
+                )}
+
+                {/* ── STEP 2: Verify Mobile OTP ── */}
+                {step === 2 && (
+                  <div className="animate-in fade-in duration-300">
+                    <div className="text-center">
+                      <div className="inline-flex items-center justify-center w-14 h-14 bg-gradient-to-tr from-indigo-600 to-purple-600 rounded-2xl shadow-lg shadow-indigo-500/25 mb-4">
+                        <Smartphone size={26} className="text-white" />
+                      </div>
+                      <h2 className="text-2xl font-extrabold text-[#0f172a] dark:text-white tracking-tight">
+                        Verify Mobile OTP
+                      </h2>
+                      <p className="text-xs sm:text-sm text-[#64748b] dark:text-slate-400 mt-1.5 max-w-xs mx-auto">
+                        We sent a 6-digit OTP to your registered mobile number: <span className="font-semibold text-slate-700 dark:text-slate-200">+91 {fMobileNum}</span>
+                      </p>
+                    </div>
+
+                    {devOtp && (
+                      <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-2xl text-center">
+                        <p className="text-xs text-amber-800 dark:text-amber-300 font-medium">
+                          Verification Code: <span className="font-bold tracking-widest text-sm text-amber-900 dark:text-amber-200">{devOtp}</span>
                         </p>
-                        <button
-                          onClick={() => {
-                            clearOtpTimers();
-                            setOtpSent(false);
-                            setOtp(OTP_BLANK);
-                            setOtpVerifyLoading(false);
-                            setOtpAnim("idle");
-                            setEmailInput("");
-                          }}
-                          className="text-xs text-brand-500 hover:underline"
-                        >
-                          Change email
-                        </button>
                       </div>
                     )}
-                  </div>
 
-                  {/* OTP section — only visible after Send OTP */}
-                  {otpSent && (
-                    <div className="space-y-3 pt-2">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3 text-center">
-                          Enter {OTP_LENGTH}-digit OTP
-                        </label>
-                        <OtpInput value={otp} onChange={setOtp} status={otpAnim} />
+                    <div className="mt-6 space-y-4">
+                      <div className="space-y-3">
+                        <div>
+                          <label className="block text-xs font-semibold text-[#334155] dark:text-slate-300 mb-3 text-center">
+                            Enter {OTP_LENGTH}-digit OTP
+                          </label>
+                          <OtpInput value={otp} onChange={setOtp} status={otpAnim} />
+                        </div>
+
+                        {otpErr && (
+                          <div className="flex items-center gap-2 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/80 rounded-xl px-3.5 py-2.5">
+                            <AlertCircle size={15} className="text-red-500 flex-shrink-0" />
+                            <p className="text-xs font-medium text-red-600 dark:text-red-400">{otpErr}</p>
+                          </div>
+                        )}
+
+                        <button
+                          onClick={handleVerifyOtp}
+                          disabled={
+                            otp.replace(/\s/g, "").length < OTP_LENGTH || otpVerifyLoading
+                          }
+                          className={`login-shine-btn h-12 w-full text-white rounded-xl font-semibold text-sm transition-all duration-200 flex items-center justify-center gap-2 shadow-md hover:scale-[1.01] active:scale-[0.99] disabled:hover:scale-100 disabled:cursor-not-allowed ${
+                            otpAnim === "orbit" || otpAnim === "success"
+                              ? "bg-gradient-to-r from-emerald-600 to-green-600 disabled:from-emerald-600 disabled:to-green-600 shadow-emerald-500/25"
+                              : "bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 disabled:from-indigo-400 disabled:to-purple-400 shadow-indigo-500/25"
+                          }`}
+                        >
+                          {otpAnim === "orbit" || otpAnim === "success" ? (
+                            <>
+                              <CheckCircle2 size={17} /> Verified
+                            </>
+                          ) : otpVerifyLoading ? (
+                            <>
+                              <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                              Verifying...
+                            </>
+                          ) : (
+                            <>
+                              Verify OTP & Next <ChevronRight size={17} />
+                            </>
+                          )}
+                        </button>
+
+                        <button
+                          onClick={handleSendOtp}
+                          disabled={otpVerifyLoading || sendLoading}
+                          className="w-full py-2 text-xs font-semibold text-[#94a3b8] hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                        >
+                          {sendLoading ? "Sending..." : "Didn't receive it? Resend Mobile OTP"}
+                        </button>
                       </div>
+                    </div>
+                  </div>
+                )}
 
-                      {otpErr && (
-                        <div className="flex items-center gap-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg px-3 py-2">
-                          <AlertCircle
-                            size={14}
-                            className="text-red-500 flex-shrink-0"
-                          />
-                          <p className="text-xs text-red-600 dark:text-red-400">
-                            {otpErr}
+                {/* ── STEP 3: Set New Password ── */}
+                {step === 3 && (
+                  <div className="animate-in fade-in duration-300">
+                    <div className="text-center mb-6">
+                      <div className="inline-flex items-center justify-center w-14 h-14 bg-gradient-to-tr from-emerald-500 to-teal-600 rounded-2xl shadow-lg shadow-emerald-500/25 mb-4">
+                        <KeyRound size={26} className="text-white" />
+                      </div>
+                      <h2 className="text-2xl font-extrabold text-[#0f172a] dark:text-white tracking-tight">
+                        Set New Password
+                      </h2>
+                      <p className="text-xs text-[#64748b] dark:text-slate-400 mt-1">
+                        Choose a strong password for your account
+                      </p>
+                    </div>
+
+                    <div className="space-y-4">
+                      {[
+                        {
+                          id: "new-password",
+                          name: "new_password",
+                          autoComplete: "new-password",
+                          label: "New Password",
+                          val: newPass,
+                          set: setNewPass,
+                          show: showNew,
+                          toggle: () => setShowNew((p) => !p),
+                        },
+                        {
+                          id: "confirm-password",
+                          name: "confirm_password",
+                          autoComplete: "new-password",
+                          label: "Confirm Password",
+                          val: confPass,
+                          set: setConfPass,
+                          show: showConf,
+                          toggle: () => setShowConf((p) => !p),
+                        },
+                      ].map(({ id, name, autoComplete, label, val, set, show, toggle }) => (
+                        <div key={label}>
+                          <label htmlFor={id} className="block text-xs font-semibold text-[#334155] dark:text-slate-300 mb-1.5">
+                            {label}
+                          </label>
+                          <div className="relative flex items-center">
+                            <Lock size={18} className={iconCls} aria-hidden="true" />
+                            <input
+                              id={id}
+                              name={name}
+                              autoComplete={autoComplete}
+                              type={show ? "text" : "password"}
+                              value={val}
+                              onChange={(e) => set(e.target.value)}
+                              placeholder="Create password"
+                              className={inCls + " pr-11"}
+                            />
+                            <button
+                              type="button"
+                              aria-label={show ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
+                              onClick={toggle}
+                              className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1.5 text-[#94a3b8] hover:text-slate-600 dark:hover:text-slate-[#300] rounded-lg focus:outline-none transition-colors"
+                            >
+                              {show ? <EyeOff size={18} /> : <Eye size={18} />}
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+
+                      {/* Strength bar */}
+                      {strength && (
+                        <div className="space-y-1.5 pt-1">
+                          <div className="h-1.5 bg-[#f1f5f9] dark:bg-slate-800 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all duration-500 ${strength.color}`}
+                              style={{ width: strength.w }}
+                            />
+                          </div>
+                          <p className="text-xs text-[#94a3b8] dark:text-slate-400 flex items-center gap-1">
+                            <ShieldCheck size={13} /> {strength.label}
                           </p>
                         </div>
                       )}
 
+                      {pwdErr && (
+                        <div className="flex items-center gap-2 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/80 rounded-xl px-3.5 py-2.5">
+                          <AlertCircle size={15} className="text-red-500 flex-shrink-0" />
+                          <p className="text-xs font-medium text-red-600 dark:text-red-400">{pwdErr}</p>
+                        </div>
+                      )}
+
                       <button
-                        onClick={handleVerifyOtp}
-                        disabled={
-                          otp.replace(/\s/g, "").length < OTP_LENGTH || otpVerifyLoading
-                        }
-                        className={`w-full py-2.5 text-white rounded-xl font-semibold text-sm transition-colors flex items-center justify-center gap-2 shadow-sm ${
-                          otpAnim === "orbit" || otpAnim === "success"
-                            ? "bg-green-600 disabled:bg-green-600 shadow-green-600/20"
-                            : "bg-brand-600 hover:bg-brand-700 disabled:bg-brand-400 shadow-brand-600/20"
-                        }`}
+                        onClick={handleSetPassword}
+                        disabled={!newPass || !confPass || pwdLoading}
+                        className={primaryBtnCls}
                       >
-                        {otpAnim === "orbit" || otpAnim === "success" ? (
-                          <>
-                            <CheckCircle2 size={16} /> Verified
-                          </>
-                        ) : otpVerifyLoading ? (
+                        {pwdLoading ? (
                           <>
                             <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                            Verifying...
+                            Updating...
                           </>
                         ) : (
                           <>
-                            Verify & Next <ChevronRight size={16} />
+                            <CheckCircle2 size={17} /> Set Password
                           </>
                         )}
                       </button>
-
-                      <button
-                        onClick={handleSendOtp}
-                        disabled={otpVerifyLoading}
-                        className="w-full py-1.5 text-sm text-gray-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        Didn't receive it? Resend OTP
-                      </button>
                     </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* ── STEP 3: Set New Password ── */}
-            {step === 3 && (
-              <div className="animate-in fade-in slide-in-from-right-4 duration-300">
-                <div className="text-center mb-6">
-                  <div className="inline-flex items-center justify-center w-12 h-12 bg-green-100 dark:bg-green-900/30 rounded-full mb-4">
-                    <KeyRound size={24} className="text-green-600 dark:text-green-400" />
                   </div>
-                  <h2 className="text-2xl font-bold text-gray-950 dark:text-white">
-                    Set New Password
-                  </h2>
-                  <p className="text-xs text-gray-400 mt-2">
-                    Choose a strong password for your account
-                  </p>
-                </div>
-
-                <div className="mt-5 space-y-4">
-                  {[
-                    {
-                      id: "new-password",
-                      name: "new_password",
-                      autoComplete: "new-password",
-                      label: "New Password",
-                      val: newPass,
-                      set: setNewPass,
-                      show: showNew,
-                      toggle: () => setShowNew((p) => !p),
-                    },
-                    {
-                      id: "confirm-password",
-                      name: "confirm_password",
-                      autoComplete: "new-password",
-                      label: "Confirm Password",
-                      val: confPass,
-                      set: setConfPass,
-                      show: showConf,
-                      toggle: () => setShowConf((p) => !p),
-                    },
-                  ].map(({ id, name, autoComplete, label, val, set, show, toggle }) => (
-                    <div key={label}>
-                      <label htmlFor={id} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                        {label}
-                      </label>
-                      <div className="relative">
-                        <input
-                          id={id}
-                          name={name}
-                          autoComplete={autoComplete}
-                          type={show ? "text" : "password"}
-                          value={val}
-                          onChange={(e) => set(e.target.value)}
-                          placeholder="Create password"
-                          className={inCls + " pr-11"}
-                        />
-                        <button
-                          type="button"
-                          aria-label={show ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
-                          onClick={toggle}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 p-2.5 min-w-[36px] min-h-[36px] flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded-lg touch-manipulation focus:outline-none focus:ring-2 focus:ring-brand-500"
-                        >
-                          {show ? <EyeOff size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-
-                  {/* Strength bar */}
-                  {strength && (
-                    <div className="space-y-1">
-                      <div className="h-1.5 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full rounded-full transition-all duration-500 ${strength.color}`}
-                          style={{ width: strength.w }}
-                        />
-                      </div>
-                      <p className="text-xs text-gray-400">{strength.label}</p>
-                    </div>
-                  )}
-
-                  {pwdErr && (
-                    <div className="flex items-center gap-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg px-3 py-2">
-                      <AlertCircle
-                        size={14}
-                        className="text-red-500 flex-shrink-0"
-                      />
-                      <p className="text-xs text-red-600 dark:text-red-400">
-                        {pwdErr}
-                      </p>
-                    </div>
-                  )}
-
-                  <button
-                    onClick={handleSetPassword}
-                    disabled={!newPass || !confPass || pwdLoading}
-                    className="w-full py-2.5 bg-brand-600 hover:bg-brand-700 disabled:bg-brand-400 text-white rounded-xl font-semibold text-sm transition-colors flex items-center justify-center gap-2 shadow-sm shadow-brand-600/20"
-                  >
-                    {pwdLoading ? (
-                      <>
-                        <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                        Updating...
-                      </>
-                    ) : (
-                      <>
-                        <CheckCircle2 size={16} /> Set Password
-                      </>
-                    )}
-                  </button>
-                </div>
+                )}
               </div>
             )}
-          </div>
-        )}
-
-        {/* Footer Link */}
-        <div className="text-center mt-6">
-          <Link
-            to="/about-niss"
-            className="text-xs text-brand-600 dark:text-brand-400 hover:underline font-medium"
-          >
-            About NISS HRMS • Nidhi Impex Silver Star
-          </Link>
-          <p className="text-[11px] text-gray-400 mt-1">
-            © 2026 Nidhi Impex Silver Star. All rights reserved.
-          </p>
+          </main>
         </div>
-      </main>
+      </div>
+
+      {/* Outer Footer Links */}
+      <footer className="w-full text-center z-10 pb-2 pt-2">
+        <div className="flex items-center justify-center gap-3 text-xs font-medium text-[#64748b] dark:text-slate-400">
+          <Link to="/about-niss" className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
+            About NISS HRMS
+          </Link>
+          <span>•</span>
+          <a href="#help" onClick={(e) => { e.preventDefault(); toast("Help center coming soon!"); }} className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
+            Help
+          </a>
+          <span>•</span>
+          <a href="#privacy" onClick={(e) => { e.preventDefault(); toast("Enterprise Privacy Policy"); }} className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
+            Privacy Policy
+          </a>
+        </div>
+        <p className="text-[11px] text-[#94a3b8] dark:text-slate-500 mt-1">
+          © 2026 Nidhi Impex Silver Star. All rights reserved.
+        </p>
+      </footer>
     </div>
   );
 }
-
-

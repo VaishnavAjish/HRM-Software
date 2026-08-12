@@ -5,13 +5,12 @@ import { VitePWA } from "vite-plugin-pwa";
 import { execSync } from "child_process";
 import path from "path";
 
+import fs from "fs";
+
 // On Windows, import.meta.url and process.cwd() can resolve to different
-// drive letters when the project lives on a mapped network share (e.g. both
-// F:\ and Z:\ point to the same UNC path). Vite computes the HTML fileName
-// as path.relative(config.root, htmlId). If root and htmlId are on different
-// drive letters, path.relative() returns an absolute path and Rollup rejects
-// it with "fileName must not be absolute". Fix: always anchor root to
-// process.cwd() so both root and the HTML id use the same drive letter.
+// drive letters when the project lives on a mapped network share (e.g. T:\ and Z:\).
+// Keep projectRoot anchored to process.cwd() so config.root and Vite's HTML
+// plugin use the exact same drive letter.
 const projectRoot = process.cwd();
 
 let gitBranch = "master";
@@ -82,17 +81,49 @@ export default defineConfig(({ mode }) => {
       {
         name: "normalize-html-drive-letter",
         enforce: "pre",
+        configResolved(config) {
+          try {
+            const realRoot = fs.realpathSync(config.root || projectRoot);
+            config.root = realRoot;
+            if (config.build) {
+              config.build.outDir = path.resolve(realRoot, gitBranch);
+            }
+          } catch {}
+        },
         resolveId(source) {
-          if (!path.isAbsolute(source)) return null;
-          if (!source.match(/\.html$/i)) return null;
-          const rootDrive = projectRoot.match(/^([A-Za-z]:)/)?.[1];
-          const srcDrive  = source.match(/^([A-Za-z]:)/)?.[1];
-          if (rootDrive && srcDrive && rootDrive.toLowerCase() !== srcDrive.toLowerCase()) {
-            // Replace the drive letter prefix; keep the rest of the path identical.
-            const normalized = rootDrive + source.slice(2);
-            return { id: normalized };
+          if (!source || typeof source !== "string") return null;
+          if (source.match(/^[A-Za-z]:/i)) {
+            try {
+              return { id: fs.realpathSync(source) };
+            } catch {}
           }
           return null;
+        },
+        transformIndexHtml: {
+          order: "pre",
+          handler(html, ctx) {
+            if (ctx && ctx.filename) {
+              try {
+                ctx.filename = fs.realpathSync(ctx.filename);
+              } catch {
+                ctx.filename = path.resolve(projectRoot, "index.html");
+              }
+            }
+            return html;
+          },
+        },
+        generateBundle(options, bundle) {
+          for (const key of Object.keys(bundle)) {
+            const chunk = bundle[key];
+            if (key.match(/^[A-Za-z]:/i)) {
+              const baseName = path.basename(key);
+              bundle[baseName] = chunk;
+              if (bundle[baseName]) {
+                bundle[baseName].fileName = baseName;
+              }
+              delete bundle[key];
+            }
+          }
         },
       },
       // ─────────────────────────────────────────────────────────────────────
@@ -221,7 +252,7 @@ export default defineConfig(({ mode }) => {
         // through a different code path that returns the Z: mapped drive
         // letter, causing path.relative(F:\root, Z:\index.html) to return
         // an absolute path — which Rollup 4+ rejects as a fileName.
-        input: path.resolve(projectRoot, "index.html"),
+        input: "index.html",
         output: {
           manualChunks: {
             "ag-grid": ["ag-grid-community", "ag-grid-react"],

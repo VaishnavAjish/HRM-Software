@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity, TextInput,
-  KeyboardAvoidingView, Platform, Image,
+  KeyboardAvoidingView, Platform, Image, Modal, StatusBar,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
@@ -144,7 +144,16 @@ export function TicketScreen({ onImmersiveChange }) {
     return <CreateTicket onDone={() => setView({ mode: 'list' })} onCancel={() => setView({ mode: 'list' })} />;
   }
   if (view.mode === 'detail') {
-    return <TicketDetail id={view.id} onBack={() => setView({ mode: 'list' })} onImmersiveChange={onImmersiveChange} />;
+    return (
+      <Modal
+        visible={true}
+        animationType="slide"
+        statusBarTranslucent
+        onRequestClose={() => setView({ mode: 'list' })}
+      >
+        <TicketDetail id={view.id} onBack={() => setView({ mode: 'list' })} onImmersiveChange={onImmersiveChange} />
+      </Modal>
+    );
   }
   return <TicketList onOpen={(id) => setView({ mode: 'detail', id })} onCreate={() => setView({ mode: 'create' })} />;
 }
@@ -1031,8 +1040,11 @@ const styles = StyleSheet.create({
   /* chat header */
   chatHeader: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
-    // The app header is hidden in this view, so the chat bar owns the status-bar inset.
-    paddingHorizontal: 12, paddingTop: 46, paddingBottom: 10, borderBottomWidth: 1,
+    // statusBarTranslucent Modal — own the status-bar inset precisely.
+    paddingHorizontal: 12,
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 24) + 8 : 44,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
   },
   chatBack: { padding: 2 },
   chatHeaderTap: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, minWidth: 0 },

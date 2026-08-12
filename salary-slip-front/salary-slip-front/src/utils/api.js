@@ -1563,10 +1563,31 @@ export const authApi = {
     return apiRequest("/new-emp_code", { method: "POST", body: formData });
   },
 
-  // `extra` carries emp_code/verification_token/company_code/unit from a
-  // preceding verifyEmpCode() call — the backend uses those to resolve the
-  // already-identity-verified employee and let them claim this email even
-  // when they don't have one on file yet (first-time registration).
+  sendMobileOtp(mobile, extra = {}) {
+    return apiRequest("/new-email", {
+      method: "POST",
+      body: JSON.stringify({
+        mobile_number: mobile,
+        mobile,
+        type: 1,
+        ...extra,
+      }),
+    });
+  },
+
+  verifyMobileOtp(mobile, otp, extra = {}) {
+    return apiRequest("/new-email-otp", {
+      method: "POST",
+      body: JSON.stringify({
+        mobile_number: mobile,
+        mobile,
+        otp,
+        type: 2,
+        ...extra,
+      }),
+    });
+  },
+
   verifyEmail(email, extra = {}) {
     return apiRequest("/new-email", {
       method: "POST",
@@ -1590,23 +1611,18 @@ export const authApi = {
   },
 
   /**
-   * Step 3 of the email reset.
-   *
-   * `otp` is the code the user already entered at step 2, forwarded rather
-   * than re-prompted. The Laravel endpoint ignores it — it checks only that
-   * some OTP is outstanding, which is why knowing an email address is
-   * currently enough to reset an account. The Node implementation verifies
-   * it. Sending it is a no-op against the old backend and a requirement
-   * against the new one.
+   * Step 3 of password reset.
    */
-  setNewPassword(password, email, otp) {
+  setNewPassword(password, mobile, otp, extra = {}) {
     return apiRequest("/new-password", {
       method: "POST",
       body: JSON.stringify({
         password,
-        email,
+        mobile_number: mobile,
+        mobile,
         otp,
         type: 3,
+        ...extra,
       }),
     });
   },

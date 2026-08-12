@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, BackHandler } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { LayoutDashboard, UserPlus, FileText as FileTextIcon, Home, Ticket, User, Users, CalendarCheck, Wallet, FileCheck } from 'lucide-react-native';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
@@ -100,6 +100,29 @@ function MainAppContent() {
       setActiveTab('profile');
     }
   }, [isAgent, isAdmin, profileComplete, activeTab]);
+
+  // Handle Android Hardware Back Button to prevent closing whole app on back press!
+  useEffect(() => {
+    const rootTab = isAgent ? 'agent-dashboard' : isAdmin ? 'admin-dashboard' : 'home';
+    const onBackPress = () => {
+      if (activeTab === 'admin-attendance' || activeTab === 'admin-shifts' || activeTab === 'admin-accounts' || activeTab === 'admin-tickets' || activeTab === 'admin-tds' || activeTab === 'admin-hr') {
+        setActiveTab('admin-more');
+        return true;
+      }
+      if (activeTab === 'profile') {
+        setActiveTab(rootTab);
+        return true;
+      }
+      if (activeTab !== rootTab) {
+        setActiveTab(rootTab);
+        return true;
+      }
+      return false; // Exit app only if already on root dashboard tab
+    };
+
+    const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => subscription.remove();
+  }, [activeTab, isAgent, isAdmin]);
 
   if (bootstrapping) {
     return <LoadingView fullscreen label="Signing you in…" />;

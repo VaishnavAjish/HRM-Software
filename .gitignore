@@ -5,6 +5,10 @@
 .env.*
 # Template of required variables with placeholder values only — no secrets.
 !.env.example
+# Public Mozilla CA root bundle — no private key material, needed at runtime
+# so outbound HTTPS calls (e.g. Fast2SMS) don't depend on the server's own
+# (possibly stale) system CA store.
+!salary-slip-bac/storage/certs/cacert.pem
 
 # Dependencies
 node_modules/
