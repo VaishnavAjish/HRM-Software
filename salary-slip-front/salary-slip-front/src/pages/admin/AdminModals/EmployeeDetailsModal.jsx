@@ -4,6 +4,7 @@ import {
   X,
   Edit2,
   User,
+  Users,
   Mail,
   Briefcase,
   MapPin,
@@ -259,6 +260,30 @@ export default function EmployeeDetailsModal({
                   <Section icon={Mail} title="Contact Information">
                     <Field label="Email Address" value={selected.email} />
                     <Field label="Mobile Number" value={selected.mobileNo} />
+                  </Section>
+
+                  <Section icon={Users} title="Family Details">
+                    <div className="space-y-4 sm:col-span-2">
+                      {(selected.familyDetails || []).length === 0 ? (
+                        <p className="text-sm text-gray-400 dark:text-slate-500">
+                          No family members added
+                        </p>
+                      ) : (
+                        (selected.familyDetails || []).map((member, index) => (
+                          <div
+                            key={member.id ?? index}
+                            className="grid grid-cols-1 gap-4 sm:grid-cols-3"
+                          >
+                            <Field label="Name" value={member.name} />
+                            <Field label="Relation" value={member.relation} />
+                            <Field
+                              label="Mobile Number"
+                              value={member.mobileNumber}
+                            />
+                          </div>
+                        ))
+                      )}
+                    </div>
                   </Section>
                 </>
               )}

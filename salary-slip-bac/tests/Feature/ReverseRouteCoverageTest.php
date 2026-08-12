@@ -52,8 +52,6 @@ class ReverseRouteCoverageTest extends TestCase
         'hr.offer.approve',
         'hr.offer.create',
         'hr.offer.update',
-        'hr.onboarding.document.read',
-        'hr.onboarding.journey.read',
         'hr.performance.update',
         'hr.requisition.delete',
         'hr.requisition.update',

@@ -5,6 +5,7 @@ import {
   X,
   Edit2,
   User,
+  Users,
   MapPin,
   Briefcase,
   CreditCard,
@@ -15,6 +16,7 @@ import {
   Plus,
   Check,
   CheckCircle2,
+  Trash2,
 } from "lucide-react";
 import Button from "../../../components/ui/Button";
 import { salaryApi } from "../../../utils/api";
@@ -26,6 +28,7 @@ import { formatDateInputValue } from "./employee-helpers";
 
 const SECTIONS = [
   { key: "basic", label: "Basic Info", subtitle: "Personal particulars", icon: User },
+  { key: "family", label: "Family Details", subtitle: "Dependents & kin", icon: Users },
   { key: "address", label: "Address Details", subtitle: "Location records", icon: MapPin },
   { key: "employment", label: "Employment Info", subtitle: "Role & placement", icon: Briefcase },
   {
@@ -44,6 +47,18 @@ const SECTIONS = [
 
 const fieldCls =
   "w-full rounded-xl border border-gray-200 bg-gray-100 px-3.5 py-2.5 text-sm text-gray-900 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-500/20 dark:border-white/10 dark:bg-slate-950/60 dark:text-white";
+
+const RELATION_OPTIONS = [
+  "Father",
+  "Mother",
+  "Spouse",
+  "Son",
+  "Daughter",
+  "Brother",
+  "Sister",
+  "Guardian",
+  "Other",
+];
 
 function Label({ children, required }) {
   return (
@@ -188,8 +203,36 @@ export default function AddEditEmployeeModal({
     </div>
   );
 
+  const updateFamily = (index, key) => (e) => {
+    const value =
+      key === "mobileNumber"
+        ? e.target.value.replace(/\D/g, "")
+        : e.target.value;
+    setForm((prev) => {
+      const list = [...(prev.familyDetails || [])];
+      list[index] = { ...list[index], [key]: value };
+      return { ...prev, familyDetails: list };
+    });
+  };
+
+  const addFamilyMember = () =>
+    setForm((prev) => ({
+      ...prev,
+      familyDetails: [
+        ...(prev.familyDetails || []),
+        { name: "", relation: "", mobileNumber: "" },
+      ],
+    }));
+
+  const removeFamilyMember = (index) =>
+    setForm((prev) => ({
+      ...prev,
+      familyDetails: (prev.familyDetails || []).filter((_, i) => i !== index),
+    }));
+
   const sectionComplete = {
     basic: Boolean(form.empCode && form.name && form.email),
+    family: (form.familyDetails || []).length > 0,
     address: Boolean(form.address || form.city),
     employment: Boolean(form.department || form.designation || form.unit),
     identity: Boolean(form.aadharCardNo || form.bankName),
@@ -337,10 +380,89 @@ export default function AddEditEmployeeModal({
             </div>
 
             <div
+              data-section="family"
+              ref={(el) => (sectionRefs.current.family = el)}
+            >
+              <SectionCard icon={Users} title="Family Details" index={2}>
+                <div className="space-y-4 sm:col-span-2">
+                  {(form.familyDetails || []).length === 0 && (
+                    <p className="text-sm text-gray-400 dark:text-slate-500">
+                      No family members added yet.
+                    </p>
+                  )}
+
+                  {(form.familyDetails || []).map((member, index) => (
+                    <div
+                      key={member.id ?? `new-${index}`}
+                      className="grid grid-cols-1 items-end gap-4 rounded-xl border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-black/20 sm:grid-cols-[1fr_1fr_1fr_auto]"
+                    >
+                      <div>
+                        <Label>Name</Label>
+                        <input
+                          value={member.name || ""}
+                          onChange={updateFamily(index, "name")}
+                          placeholder="Rameshbhai Parmar"
+                          className={fieldCls}
+                        />
+                      </div>
+
+                      <div>
+                        <Label>Relation</Label>
+                        <select
+                          value={member.relation || ""}
+                          onChange={updateFamily(index, "relation")}
+                          className={fieldCls}
+                        >
+                          <option value="">Select Relation</option>
+                          {RELATION_OPTIONS.map((relation) => (
+                            <option key={relation} value={relation}>
+                              {relation}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <Label>Mobile Number</Label>
+                        <input
+                          type="tel"
+                          inputMode="numeric"
+                          maxLength={10}
+                          value={member.mobileNumber || ""}
+                          onChange={updateFamily(index, "mobileNumber")}
+                          placeholder="9876543210"
+                          className={fieldCls}
+                        />
+                      </div>
+
+                      <button
+                        type="button"
+                        title="Remove family member"
+                        aria-label={`Remove family member ${index + 1}`}
+                        onClick={() => removeFamilyMember(index)}
+                        className="flex h-[42px] w-[42px] items-center justify-center rounded-xl border border-gray-200 text-red-500 transition hover:border-red-300 hover:bg-red-50 dark:border-white/10 dark:hover:border-red-500/40 dark:hover:bg-red-500/10"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  ))}
+
+                  <button
+                    type="button"
+                    onClick={addFamilyMember}
+                    className="flex items-center gap-1.5 rounded-xl border border-dashed border-gray-300 px-4 py-2.5 text-sm font-semibold text-brand-600 transition hover:border-brand-400 hover:bg-brand-50 dark:border-white/15 dark:text-brand-400 dark:hover:border-brand-500/50 dark:hover:bg-brand-500/10"
+                  >
+                    <Plus size={15} /> Add Family Member
+                  </button>
+                </div>
+              </SectionCard>
+            </div>
+
+            <div
               data-section="address"
               ref={(el) => (sectionRefs.current.address = el)}
             >
-              <SectionCard icon={MapPin} title="Address Details" index={2}>
+              <SectionCard icon={MapPin} title="Address Details" index={3}>
                 <div className="sm:col-span-2">
                   <Label>Street Address</Label>
                   <input
@@ -365,7 +487,7 @@ export default function AddEditEmployeeModal({
               data-section="employment"
               ref={(el) => (sectionRefs.current.employment = el)}
             >
-              <SectionCard icon={Briefcase} title="Employment Information" index={3}>
+              <SectionCard icon={Briefcase} title="Employment Information" index={4}>
                 <div>
                   <Label>Department</Label>
                   <div className="flex gap-2">
@@ -500,7 +622,7 @@ export default function AddEditEmployeeModal({
               data-section="identity"
               ref={(el) => (sectionRefs.current.identity = el)}
             >
-              <SectionCard icon={CreditCard} title="Identity & Bank Details" index={4}>
+              <SectionCard icon={CreditCard} title="Identity & Bank Details" index={5}>
                 <div>
                   {input({
                     label: "Aadhaar Card No",
@@ -551,7 +673,7 @@ export default function AddEditEmployeeModal({
               data-section="security"
               ref={(el) => (sectionRefs.current.security = el)}
             >
-              <SectionCard icon={Lock} title="Account Security" index={5}>
+              <SectionCard icon={Lock} title="Account Security" index={6}>
                 <div className="sm:col-span-2">
                   <Label>
                     {modal === "edit"

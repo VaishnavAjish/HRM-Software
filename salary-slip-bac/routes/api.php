@@ -678,11 +678,11 @@ Route::middleware('jwt.auth')->group(function () {
             });
 
             Route::group(['prefix' => 'onboarding'], function () {
-                Route::get('dashboard', [OnboardingController::class, 'dashboard'])->middleware('permission:hr.onboarding.journey.read');
-                Route::get('journeys', [OnboardingController::class, 'journeys'])->middleware('permission:hr.onboarding.journey.read');
-                Route::get('journeys/{id}', [OnboardingController::class, 'showJourney'])->middleware('permission:hr.onboarding.journey.read');
-                Route::get('documents', [OnboardingController::class, 'documents'])->middleware('permission:hr.onboarding.document.read');
-                Route::post('documents/{id}/{decision}', [OnboardingController::class, 'reviewDocument'])->middleware('permission:hr.onboarding.document.read');
+                Route::get('dashboard', [OnboardingController::class, 'dashboard'])->middleware('permission:hr.onboarding.read');
+                Route::get('journeys', [OnboardingController::class, 'journeys'])->middleware('permission:hr.onboarding.read');
+                Route::get('journeys/{id}', [OnboardingController::class, 'showJourney'])->middleware('permission:hr.onboarding.read');
+                Route::get('documents', [OnboardingController::class, 'documents'])->middleware('permission:document.file.read');
+                Route::post('documents/{id}/{decision}', [OnboardingController::class, 'reviewDocument'])->middleware('permission:document.file.read');
             });
 
             Route::group(['prefix' => 'candidates'], function () {

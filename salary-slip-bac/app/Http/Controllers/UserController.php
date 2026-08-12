@@ -4,9 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Exceptions\DocumentException;
 use App\Models\Document;
+use App\Models\EmployeeFamilyMember;
 use App\Models\SalarySlip;
 use App\Models\UploadBatch;
 use App\Models\User;
+use App\Services\Authorization\SchemaSupport;
 use App\Services\Documents\DocumentService;
 use App\Services\DocumentStorageService;
 use App\Services\Provisioning\CompanyMembershipService;
@@ -629,6 +631,13 @@ class UserController extends Controller
             'EMPLOYEE_FULL_AADHAAR_VIEWED'
         );
 
+        if (SchemaSupport::hasTable('employee_family_members')) {
+            $payload['family_members'] = EmployeeFamilyMember::where('user_id', $employee->id)
+                ->orderBy('id')
+                ->get(['id', 'name', 'relation', 'mobile_number'])
+                ->toArray();
+        }
+
         return response()->json(['status' => true, 'data' => $payload]);
     }
 
@@ -679,6 +688,11 @@ class UserController extends Controller
             return response()->json(['status' => false, 'message' => $validator->errors()->first()], 422);
         }
 
+        [$familyRows, $familyError] = $this->parseFamilyMembers($request);
+        if ($familyError) {
+            return $familyError;
+        }
+
         $data = $request->all();
         // SECURITY FIX: Generate a cryptographically random default password instead of '12345678'.
         $data['password'] = $request->password ?? bin2hex(random_bytes(16));
@@ -714,6 +728,8 @@ class UserController extends Controller
             return $created;
         });
 
+        $this->saveFamilyMembers($employee, $familyRows);
+
         return response()->json(['status' => true, 'message' => 'Employee created', 'data' => $employee]);
     }
 
@@ -727,6 +743,11 @@ class UserController extends Controller
         $userAuth = auth('api')->user();
         if (! $this->inManagedScope($userAuth, $employee)) {
             return response()->json(['status' => false, 'message' => 'Employee not found'], 404);
+        }
+
+        [$familyRows, $familyError] = $this->parseFamilyMembers($request);
+        if ($familyError) {
+            return $familyError;
         }
 
         $data = $this->guardPrivilegedFields($userAuth, $request->all());
@@ -769,8 +790,78 @@ class UserController extends Controller
         }
 
         $this->applyUpdate($employee, $data);
+        $this->saveFamilyMembers($employee, $familyRows);
 
         return response()->json(['status' => true, 'message' => 'Employee updated', 'data' => $employee]);
+    }
+
+    private function parseFamilyMembers(Request $request): array
+    {
+        if (! $request->has('family_members') || ! SchemaSupport::hasTable('employee_family_members')) {
+            return [null, null];
+        }
+
+        $rows = $request->input('family_members');
+
+        if (! is_array($rows)) {
+            return [null, response()->json(['status' => false, 'message' => 'Family details must be a list of members.'], 422)];
+        }
+
+        $relations = ['Father', 'Mother', 'Spouse', 'Son', 'Daughter', 'Brother', 'Sister', 'Guardian', 'Other'];
+        $clean = [];
+
+        foreach (array_values($rows) as $i => $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+
+            $name = trim((string) ($row['name'] ?? ''));
+            $relation = trim((string) ($row['relation'] ?? ''));
+            $rawMobile = trim((string) ($row['mobile_number'] ?? ''));
+            $mobile = preg_replace('/\D+/', '', $rawMobile);
+            $mobile = strlen($mobile) > 10 ? substr($mobile, -10) : $mobile;
+
+            if ($name === '' && $relation === '' && $rawMobile === '') {
+                continue;
+            }
+
+            $n = $i + 1;
+
+            if ($name === '' || mb_strlen($name) > 150) {
+                return [null, response()->json(['status' => false, 'message' => "Family member {$n}: enter a valid name."], 422)];
+            }
+
+            if ($relation === '' || (! in_array($relation, $relations, true) && mb_strlen($relation) > 50)) {
+                return [null, response()->json(['status' => false, 'message' => "Family member {$n}: select a valid relation."], 422)];
+            }
+
+            if ($rawMobile !== '' && strlen($mobile) !== 10) {
+                return [null, response()->json(['status' => false, 'message' => "Family member {$n}: enter a valid 10-digit mobile number."], 422)];
+            }
+
+            $clean[] = [
+                'name' => $name,
+                'relation' => $relation,
+                'mobile_number' => $mobile === '' ? null : $mobile,
+            ];
+        }
+
+        return [$clean, null];
+    }
+
+    private function saveFamilyMembers(User $employee, ?array $rows): void
+    {
+        if ($rows === null) {
+            return;
+        }
+
+        DB::transaction(function () use ($employee, $rows) {
+            EmployeeFamilyMember::where('user_id', $employee->id)->delete();
+
+            foreach ($rows as $row) {
+                EmployeeFamilyMember::create($row + ['user_id' => $employee->id]);
+            }
+        });
     }
 
     public function destroy($id, Request $request)

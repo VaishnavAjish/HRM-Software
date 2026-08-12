@@ -185,11 +185,27 @@ function ProtectedRoute({ children, requiredRole, requiredPermission }) {
   const leaveFor = (path) =>
     path === location.pathname ? <AccessDenied user={user} /> : <Navigate to={path} replace />;
 
-  if (requiredRole && user.role !== requiredRole) {
+  const refuse = (reason, permission) => {
+    if (import.meta.env.DEV) {
+      console.debug("[route-guard]", {
+        user: user.empCode || user.id,
+        role: user.role,
+        authorizationStatus: user.authorizationStatus ?? null,
+        path: location.pathname,
+        permission: permission ?? null,
+        result: "DENIED",
+        reason,
+        redirectTo: portalHome,
+      });
+    }
     return leaveFor(portalHome);
+  };
+
+  if (requiredRole && user.role !== requiredRole) {
+    return refuse("role mismatch", requiredRole);
   }
   if (requiredPermission && !can(requiredPermission)) {
-    return leaveFor(portalHome);
+    return refuse("permission denied", requiredPermission);
   }
 
   /*
@@ -203,7 +219,7 @@ function ProtectedRoute({ children, requiredRole, requiredPermission }) {
    * added later. Routes the registry does not describe are unaffected.
    */
   if (!canRoute(location.pathname)) {
-    return leaveFor(portalHome);
+    return refuse("route permission denied", user?.authorization?.routes?.[location.pathname]);
   }
 
   /*
@@ -348,7 +364,7 @@ function AppRoutes() {
             link working by sending it straight to that tab. */}
         <Route path="hr/interviews" element={<Navigate to="/admin/hr/hiring?tab=interview" replace />} />
         <Route path="hr/assets" element={<ProtectedRoute requiredPermission="hr.asset.read"><AssetAllocation /></ProtectedRoute>} />
-        <Route path="hr/onboarding" element={<ProtectedRoute requiredPermission="hr.onboarding.journey.read"><OnboardingWorkspace /></ProtectedRoute>} />
+        <Route path="hr/onboarding" element={<ProtectedRoute requiredPermission="hr.onboarding.read"><OnboardingWorkspace /></ProtectedRoute>} />
         <Route path="hr/onboarding/journeys" element={<Navigate to="/admin/hr/onboarding?tab=employees" replace />} />
         <Route path="hr/onboarding/welcome" element={<Navigate to="/admin/hr/onboarding" replace />} />
         <Route path="hr/onboarding/documents" element={<Navigate to="/admin/hr/onboarding?tab=documents" replace />} />

@@ -190,6 +190,14 @@ function mapEmployee(item) {
       item.profile_image,
       item.avatar,
     ),
+    familyDetails: Array.isArray(item.family_members)
+      ? item.family_members.map((m) => ({
+          id: m.id,
+          name: m.name ?? "",
+          relation: m.relation ?? "",
+          mobileNumber: m.mobile_number ?? "",
+        }))
+      : undefined,
   };
 }
 
@@ -589,6 +597,44 @@ export default function EmployeeManagement() {
       return;
     }
 
+    const familyDetails = Array.isArray(form.familyDetails)
+      ? form.familyDetails
+          .map((m) => ({
+            name: (m.name || "").trim(),
+            relation: (m.relation || "").trim(),
+            mobileNumber: (m.mobileNumber || "").trim(),
+          }))
+          .filter((m) => m.name || m.relation || m.mobileNumber)
+      : null;
+
+    if (familyDetails) {
+      for (let i = 0; i < familyDetails.length; i++) {
+        const member = familyDetails[i];
+        if (!member.name) {
+          toast.error(`Family member ${i + 1}: name is required`);
+          return;
+        }
+        if (!member.relation) {
+          toast.error(`Family member ${i + 1}: select a relation`);
+          return;
+        }
+        if (member.mobileNumber && !/^\d{10}$/.test(member.mobileNumber)) {
+          toast.error(`Family member ${i + 1}: enter a valid 10-digit mobile number`);
+          return;
+        }
+      }
+    }
+
+    const familyPayload = familyDetails
+      ? {
+          family_members: familyDetails.map((m) => ({
+            name: m.name,
+            relation: m.relation,
+            mobile_number: m.mobileNumber,
+          })),
+        }
+      : {};
+
     if (modal === "add") {
       if (!form.empCode.trim() || !form.email.trim() || !form.password.trim()) {
         toast.error("Emp Code, Email and Password are required");
@@ -645,6 +691,7 @@ export default function EmployeeManagement() {
           pan_card_no: form.panCardNo || null,
           joining_date: form.joiningDate || null,
           resignation_date: form.resignationDate || null,
+          ...familyPayload,
         };
 
         await salaryApi.storeEmployee(
@@ -716,6 +763,7 @@ export default function EmployeeManagement() {
         pan_card_no: form.panCardNo || null,
         joining_date: form.joiningDate || null,
         resignation_date: form.resignationDate || null,
+        ...familyPayload,
       };
 
       if (form.password.trim()) {
