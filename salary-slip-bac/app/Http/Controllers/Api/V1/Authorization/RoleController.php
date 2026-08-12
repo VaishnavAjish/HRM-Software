@@ -10,6 +10,7 @@ use App\Services\Authorization\RoleManagementService;
 use App\Support\ProtectedRoles;
 use App\Support\RoleHierarchy;
 use App\Support\RoleAudit;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -182,7 +183,28 @@ class RoleController extends Controller
             RoleAudit::denied(request(), $actor, 'ROLE_FORCE_DELETED_WITH_HOLDERS', $model);
         }
 
-        $this->roles->delete($model, $forced);
+        try {
+            $this->roles->delete($model, $forced);
+        } catch (QueryException $e) {
+            report($e);
+
+            // A foreign-key constraint violation means a table we do not yet
+            // clean up in RoleManagementService::delete() still holds a row
+            // that points at this role. Return a structured JSON 409 so the
+            // client receives a parseable response instead of an HTML 500 page.
+            if (in_array($e->getCode(), ['23000', '23503', '1451', '1452'], true)) {
+                return $this->conflict(
+                    'This role cannot be deleted because it is still referenced by other records. Contact your administrator.',
+                    'ROLE_HAS_REFERENCES'
+                );
+            }
+
+            return response()->json([
+                'success' => false,
+                'code'    => 'DELETE_FAILED',
+                'message' => 'An unexpected error occurred while deleting the role. Please try again.',
+            ], 500);
+        }
 
         return response()->json(['success' => true, 'data' => ['id' => $role, 'deleted' => true]]);
     }
