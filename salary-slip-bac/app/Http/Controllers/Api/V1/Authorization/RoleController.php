@@ -185,14 +185,24 @@ class RoleController extends Controller
 
         try {
             $this->roles->delete($model, $forced);
-        } catch (QueryException $e) {
+        } catch (\Throwable $e) {
             report($e);
 
-            // A foreign-key constraint violation means a table we do not yet
-            // clean up in RoleManagementService::delete() still holds a row
-            // that points at this role. Return a structured JSON 409 so the
-            // client receives a parseable response instead of an HTML 500 page.
-            if (in_array($e->getCode(), ['23000', '23503', '1451', '1452'], true)) {
+            // Log enough to diagnose the root cause from laravel.log without
+            // disclosing internals to the browser.
+            \Illuminate\Support\Facades\Log::error('Role delete failed', [
+                'role_id'   => $model->id,
+                'exception' => $e::class,
+                'message'   => $e->getMessage(),
+                'code'      => $e->getCode(),
+            ]);
+
+            // Foreign-key constraint violation — a table not yet cleaned up in
+            // RoleManagementService::delete() still holds a row pointing here.
+            // Return JSON 409 so the browser gets a parseable error, not HTML.
+            if ($e instanceof \Illuminate\Database\QueryException
+                && in_array((string) $e->getCode(), ['23000', '23503', '1451', '1452'], true)
+            ) {
                 return $this->conflict(
                     'This role cannot be deleted because it is still referenced by other records. Contact your administrator.',
                     'ROLE_HAS_REFERENCES'
