@@ -1491,6 +1491,20 @@ export const authApi = {
     });
   },
 
+  sendLoginOtp(mobile) {
+    return apiRequest("/login/otp/send", {
+      method: "POST",
+      body: JSON.stringify({ mobile }),
+    });
+  },
+
+  verifyLoginOtp(mobile, otp) {
+    return apiRequest("/login/otp/verify", {
+      method: "POST",
+      body: JSON.stringify({ mobile, otp }),
+    });
+  },
+
   buildScopedResetPayload(companyId, unit, payload = {}) {
     const scope = resolveCompanyScope({ companyId, unit });
 

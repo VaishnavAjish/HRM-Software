@@ -307,6 +307,31 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
+  const loginWithOtp = useCallback(async (mobile, otp) => {
+    setLoading(true);
+    try {
+      setUser(null);
+      clearStoredSession();
+
+      const data = await authApi.verifyLoginOtp(mobile, otp);
+      const apiUser =
+        data?.login || data?.data || data?.user || data?.employee || data;
+      let loggedInUser = buildAuthUser(apiUser, {}, data);
+      loggedInUser = await loadPermissionsForUser(loggedInUser);
+
+      setUser(loggedInUser);
+      saveUserToStorage(loggedInUser);
+      return { success: true, role: loggedInUser.role };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message || "Incorrect OTP. Please try again.",
+      };
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   const lookupUser = useCallback(() => {
     return null;
   }, []);
@@ -409,6 +434,7 @@ export function AuthProvider({ children }) {
       user,
       users,
       login,
+      loginWithOtp,
       logout,
       loading,
       initializing,
@@ -423,6 +449,7 @@ export function AuthProvider({ children }) {
       user,
       users,
       login,
+      loginWithOtp,
       logout,
       loading,
       initializing,

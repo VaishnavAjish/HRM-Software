@@ -41,6 +41,11 @@ return [
         'token' => env('CANDIDATE_INTAKE_TOKEN'),
     ],
 
+    'fast2sms' => [
+        'key' => env('FAST2SMS_API_KEY'),
+        'route' => env('FAST2SMS_ROUTE', 'otp'),
+    ],
+
     // Base URL of the React frontend, used to build candidate-facing links
     // in hiring emails (e.g. the public quiz link). APP_URL above is this
     // Laravel API's own address, not the SPA's — they're different origins.

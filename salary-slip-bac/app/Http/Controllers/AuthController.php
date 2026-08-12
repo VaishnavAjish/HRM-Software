@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Mail\PortalOtpMail;
 use App\Models\User;
 use App\Services\Authorization\SchemaSupport;
+use App\Services\Sms\Fast2SmsService;
 use App\Support\AadhaarDisclosure;
 use App\Support\AadhaarReference;
 use App\Support\AuthSession;
@@ -24,6 +25,17 @@ class AuthController extends Controller
         'If an account exists for this email, a verification code has been sent.';
 
     private const OTP_MAIL_ATTEMPTS = 3;
+
+    private const OTP_LOGIN_ACCEPTED =
+        'If this mobile number is registered, an OTP has been sent.';
+
+    private const OTP_LOGIN_TTL_MINUTES = 5;
+
+    private const OTP_LOGIN_MAX_ATTEMPTS = 5;
+
+    private const OTP_LOGIN_MAX_SENDS_PER_HOUR = 5;
+
+    private const OTP_LOGIN_RESEND_COOLDOWN_SECONDS = 45;
 
     /** Keep the provider's reason, drop anything that looks like a credential. */
     private static function scrubTransportError(string $message): string
@@ -112,6 +124,187 @@ class AuthController extends Controller
             'token_type' => 'Bearer',
             'user' => $user,
         ]));
+    }
+
+    public function sendLoginOtp(Request $request, Fast2SmsService $sms)
+    {
+        $validator = Validator::make($request->all(), [
+            'mobile' => 'required|string',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['status' => false, 'message' => $validator->errors()->first()], 422);
+        }
+
+        $mobile = self::normaliseMobile((string) $request->input('mobile'));
+
+        if (strlen($mobile) !== 10) {
+            return response()->json(['status' => false, 'message' => 'Enter a valid 10-digit mobile number'], 422);
+        }
+
+        if (! SchemaSupport::hasTable('login_otps')) {
+            return response()->json(['status' => false, 'message' => 'OTP login is not available right now.'], 503);
+        }
+
+        $user = $this->findUserForOtpLogin($mobile);
+
+        if (! $user) {
+            usleep(random_int(180_000, 320_000));
+
+            return response()->json(['status' => true, 'message' => self::OTP_LOGIN_ACCEPTED]);
+        }
+
+        $now = now();
+        $row = DB::table('login_otps')->where('user_id', $user->id)->first();
+
+        if ($row && $row->last_sent_at
+            && $now->diffInSeconds($row->last_sent_at, true) < self::OTP_LOGIN_RESEND_COOLDOWN_SECONDS) {
+            return response()->json(['status' => false, 'message' => 'Please wait a moment before requesting another OTP.'], 429);
+        }
+
+        $sentCount = 0;
+        $windowStartedAt = $now;
+
+        if ($row && $row->window_started_at && $now->diffInMinutes($row->window_started_at, true) < 60) {
+            $sentCount = (int) $row->sent_count;
+            $windowStartedAt = $row->window_started_at;
+        }
+
+        if ($sentCount >= self::OTP_LOGIN_MAX_SENDS_PER_HOUR) {
+            return response()->json(['status' => false, 'message' => 'Too many OTP requests. Please try again after an hour.'], 429);
+        }
+
+        $otp = (string) random_int(100000, 999999);
+        $delivered = $sms->sendOtp($mobile, $otp);
+
+        if (! $delivered && ! config('auth.otp_dev_fallback', false)) {
+            return response()->json(['status' => false, 'message' => 'Unable to send the OTP right now. Please try again.'], 500);
+        }
+
+        DB::table('login_otps')->updateOrInsert(
+            ['user_id' => $user->id],
+            [
+                'mobile' => $mobile,
+                'otp_hash' => Hash::make($otp),
+                'expires_at' => $now->copy()->addMinutes(self::OTP_LOGIN_TTL_MINUTES),
+                'attempts' => 0,
+                'sent_count' => $sentCount + 1,
+                'window_started_at' => $windowStartedAt,
+                'last_sent_at' => $now,
+                'created_at' => $row?->created_at ?? $now,
+                'updated_at' => $now,
+            ]
+        );
+
+        Log::info('Login OTP sent', ['user_id' => $user->id]);
+
+        $payload = ['status' => true, 'message' => self::OTP_LOGIN_ACCEPTED];
+
+        if (! $delivered) {
+            Log::warning('Login OTP dev fallback used — code returned to caller', ['user_id' => $user->id]);
+            $payload['dev_otp'] = $otp;
+        }
+
+        return response()->json($payload);
+    }
+
+    public function verifyLoginOtp(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'mobile' => 'required|string',
+            'otp' => 'required|digits:6',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['status' => false, 'message' => $validator->errors()->first()], 422);
+        }
+
+        $mobile = self::normaliseMobile((string) $request->input('mobile'));
+
+        if (strlen($mobile) !== 10) {
+            return response()->json(['status' => false, 'message' => 'Enter a valid 10-digit mobile number'], 422);
+        }
+
+        if (! SchemaSupport::hasTable('login_otps')) {
+            return response()->json(['status' => false, 'message' => 'OTP login is not available right now.'], 503);
+        }
+
+        $user = $this->findUserForOtpLogin($mobile);
+
+        if (! $user) {
+            return response()->json(['status' => false, 'message' => 'Invalid OTP'], 401);
+        }
+
+        $verdict = DB::transaction(function () use ($request, $user) {
+            $row = DB::table('login_otps')->where('user_id', $user->id)->lockForUpdate()->first();
+
+            if (! $row || ! $row->otp_hash || ! $row->expires_at) {
+                return ['ok' => false, 'message' => 'Invalid OTP', 'code' => 401];
+            }
+
+            if (now()->greaterThan($row->expires_at)) {
+                return ['ok' => false, 'message' => 'OTP expired. Please request a new one.', 'code' => 401];
+            }
+
+            if ((int) $row->attempts >= self::OTP_LOGIN_MAX_ATTEMPTS) {
+                return ['ok' => false, 'message' => 'Too many attempts. Please request a new OTP.', 'code' => 429];
+            }
+
+            if (! Hash::check((string) $request->input('otp'), $row->otp_hash)) {
+                DB::table('login_otps')->where('user_id', $user->id)->update([
+                    'attempts' => (int) $row->attempts + 1,
+                    'updated_at' => now(),
+                ]);
+
+                return ['ok' => false, 'message' => 'Invalid OTP', 'code' => 401];
+            }
+
+            DB::table('login_otps')->where('user_id', $user->id)->delete();
+
+            return ['ok' => true];
+        });
+
+        if (! $verdict['ok']) {
+            $this->recordLoginEvent($request, $user, 'failed', 'otp_login_rejected');
+
+            return response()->json(['status' => false, 'message' => $verdict['message']], $verdict['code']);
+        }
+
+        if ($denial = $this->accountDenial($user)) {
+            $this->recordLoginEvent($request, $user, 'failed', $denial['reason']);
+
+            return response()->json(['status' => false, 'message' => $denial['message']], 403);
+        }
+
+        if ((int) $user->status === 2) {
+            $user->status = 0;
+            $user->save();
+        }
+
+        $token = JWTAuth::fromUser($user);
+
+        $this->stampLogin($request, $user);
+        $this->recordLoginEvent($request, $user, 'success', null);
+
+        return AuthSession::noStore(response()->json([
+            'status' => true,
+            'message' => 'Login successful',
+            'token' => $token,
+            'token_type' => 'Bearer',
+            'user' => $user,
+        ]));
+    }
+
+    private function findUserForOtpLogin(string $mobile): ?User
+    {
+        $matches = User::where('is_deleted', 0)
+            ->whereNotNull('mobile_number')
+            ->where('mobile_number', 'LIKE', '%' . substr($mobile, -4) . '%')
+            ->get()
+            ->filter(fn (User $u) => self::normaliseMobile((string) $u->mobile_number) === $mobile)
+            ->values();
+
+        return $matches->count() === 1 ? $matches->first() : null;
     }
 
     /**

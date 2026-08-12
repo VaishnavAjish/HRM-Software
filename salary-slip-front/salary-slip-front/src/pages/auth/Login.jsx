@@ -228,7 +228,7 @@ function OtpInput({ value, onChange, status = "idle" }) {
    Main Login Page
 ══════════════════════════════ */
 export default function Login() {
-  const { login, loading } = useAuth();
+  const { login, loginWithOtp, loading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -239,6 +239,16 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
   const [loginErr, setLoginErr] = useState("");
+
+  /* ── OTP login ── */
+  const [loginMethod, setLoginMethod] = useState("password");
+  const [otpMobile, setOtpMobile] = useState("");
+  const [otpLoginSent, setOtpLoginSent] = useState(false);
+  const [otpLogin, setOtpLogin] = useState(OTP_BLANK);
+  const [otpLoginErr, setOtpLoginErr] = useState("");
+  const [otpLoginSending, setOtpLoginSending] = useState(false);
+  const [otpLoginVerifying, setOtpLoginVerifying] = useState(false);
+  const [otpLoginAnim, setOtpLoginAnim] = useState("idle");
 
   /* ── Forgot flow ── */
   const [mode, setMode] = useState("login"); // 'login' | 'forgot'
@@ -314,6 +324,15 @@ export default function Login() {
     setPwdErr("");
   };
 
+  const redirectAfterLogin = (role) => {
+    toast.success("Welcome back!");
+    const isAdminRole = ["admin", "super_admin", "superadmin", "owner", "security_admin", "tenant_admin"].includes(role);
+    const homePath = isAdminRole ? "/admin" : role === "agent" ? "/agent" : role === "candidate" ? "/candidate" : "/employee";
+    const requestedPath = location.state?.from?.pathname;
+
+    navigate(requestedPath?.startsWith(homePath) ? requestedPath : homePath, { replace: true });
+  };
+
   /* ── Normal login handler ── */
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -324,18 +343,81 @@ export default function Login() {
       COMPANY_OPTIONS.length > 1 ? "all" : COMPANY_OPTIONS[0]?.id,
     );
     if (result.success) {
-      toast.success("Welcome back!");
-      const isAdminRole = ["admin", "super_admin", "superadmin", "owner", "security_admin", "tenant_admin"].includes(result.role) || result.role === "admin";
-      const fallbackPath = isAdminRole ? "/admin" : (result.role === "agent" ? "/agent" : (result.role === "candidate" ? "/candidate" : "/employee"));
-      const requestedPath = location.state?.from?.pathname;
-      const roleHomePrefix = isAdminRole ? "/admin" : (result.role === "agent" ? "/agent" : (result.role === "candidate" ? "/candidate" : "/employee"));
-      const nextPath = requestedPath?.startsWith(roleHomePrefix)
-        ? requestedPath
-        : fallbackPath;
-
-      navigate(nextPath, { replace: true });
+      redirectAfterLogin(result.role);
     } else {
       setLoginErr(result.message);
+    }
+  };
+
+  const switchLoginMethod = (method) => {
+    if (method === loginMethod) return;
+    clearOtpTimers();
+    setLoginMethod(method);
+    setLoginErr("");
+    setOtpMobile("");
+    setOtpLoginSent(false);
+    setOtpLogin(OTP_BLANK);
+    setOtpLoginErr("");
+    setOtpLoginSending(false);
+    setOtpLoginVerifying(false);
+    setOtpLoginAnim("idle");
+  };
+
+  const handleSendLoginOtp = async () => {
+    if (!/^\d{10}$/.test(otpMobile.trim())) {
+      setOtpLoginErr("Enter a valid 10-digit mobile number");
+      return;
+    }
+
+    setOtpLoginErr("");
+    setOtpLoginSending(true);
+    try {
+      await authApi.sendLoginOtp(otpMobile.trim());
+      setOtpLogin(OTP_BLANK);
+      setOtpLoginVerifying(false);
+      setOtpLoginAnim("idle");
+      setOtpLoginSent(true);
+      toast.success("OTP sent to your mobile number");
+    } catch (error) {
+      setOtpLoginErr(error.message || "Unable to send OTP. Please try again.");
+    } finally {
+      setOtpLoginSending(false);
+    }
+  };
+
+  const handleVerifyLoginOtp = async () => {
+    const entered = otpLogin.replace(/\s/g, "");
+    if (entered.length < OTP_LENGTH) {
+      setOtpLoginErr(`Please enter the ${OTP_LENGTH}-digit OTP`);
+      return;
+    }
+
+    setOtpLoginErr("");
+    setOtpLoginVerifying(true);
+    setOtpLoginAnim("verifying");
+
+    const result = await loginWithOtp(otpMobile.trim(), entered);
+
+    if (result.success) {
+      setOtpLoginAnim("orbit");
+      otpTimers.current.push(
+        setTimeout(() => {
+          setOtpLoginAnim("success");
+          otpTimers.current.push(
+            setTimeout(() => redirectAfterLogin(result.role), OTP_CHECK_MS),
+          );
+        }, OTP_ORBIT_MS),
+      );
+    } else {
+      setOtpLoginErr(result.message || "Incorrect OTP. Please try again.");
+      setOtpLoginAnim("error");
+      otpTimers.current.push(
+        setTimeout(() => {
+          setOtpLogin(OTP_BLANK);
+          setOtpLoginAnim("idle");
+          setOtpLoginVerifying(false);
+        }, 3 * OTP_BOX_STAGGER_MS + 500 + 100),
+      );
     }
   };
 
@@ -597,11 +679,33 @@ export default function Login() {
               <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-1">
                 Sign in
               </h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
-                Enter your credentials to continue
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">
+                {loginMethod === "password"
+                  ? "Enter your credentials to continue"
+                  : "Sign in with an OTP sent to your registered mobile number"}
               </p>
 
-              {loginErr && (
+              <div className="grid grid-cols-2 gap-1 p-1 bg-gray-100 dark:bg-gray-700/60 rounded-xl mb-5">
+                {[
+                  { id: "password", label: "Password" },
+                  { id: "otp", label: "OTP" },
+                ].map(({ id, label }) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => switchLoginMethod(id)}
+                    className={`py-2 rounded-lg text-sm font-semibold transition-colors ${
+                      loginMethod === id
+                        ? "bg-white dark:bg-gray-800 text-brand-600 dark:text-brand-400 shadow-sm"
+                        : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {loginMethod === "password" && loginErr && (
                 <div className="flex items-center gap-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg px-4 py-3 mb-4">
                   <AlertCircle
                     size={15}
@@ -613,6 +717,7 @@ export default function Login() {
                 </div>
               )}
 
+              {loginMethod === "password" && (
               <form onSubmit={handleLogin} className="space-y-4">
                 <div>
                   <label htmlFor="login-username" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
@@ -678,8 +783,133 @@ export default function Login() {
                   )}
                 </button>
               </form>
+              )}
 
+              {loginMethod === "otp" && (
+                <div className="space-y-4">
+                  <div>
+                    <label htmlFor="otp-login-mobile" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                      Mobile Number
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        id="otp-login-mobile"
+                        name="mobile"
+                        type="tel"
+                        inputMode="numeric"
+                        autoComplete="tel"
+                        maxLength={10}
+                        value={otpMobile}
+                        onChange={(e) => {
+                          setOtpMobile(e.target.value.replace(/\D/g, "").slice(0, 10));
+                          setOtpLoginSent(false);
+                          setOtpLogin(OTP_BLANK);
+                          setOtpLoginErr("");
+                        }}
+                        placeholder="10-digit mobile number"
+                        disabled={otpLoginSent}
+                        className={inCls + (otpLoginSent ? " opacity-60 cursor-not-allowed" : "")}
+                      />
+                      <button
+                        type="button"
+                        onClick={handleSendLoginOtp}
+                        disabled={otpMobile.length !== 10 || otpLoginSending || otpLoginSent}
+                        className="flex-shrink-0 flex items-center gap-1.5 px-4 py-2.5 bg-brand-600 hover:bg-brand-700 disabled:bg-brand-400 text-white rounded-xl text-sm font-semibold transition-colors whitespace-nowrap"
+                      >
+                        {otpLoginSending ? (
+                          <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        ) : (
+                          <>
+                            <Send size={14} /> Send OTP
+                          </>
+                        )}
+                      </button>
+                    </div>
+                    {otpLoginSent && (
+                      <div className="flex items-center justify-between mt-1.5">
+                        <p className="text-xs text-green-600 dark:text-green-400 font-medium">
+                          OTP sent to {otpMobile}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            clearOtpTimers();
+                            setOtpLoginSent(false);
+                            setOtpLogin(OTP_BLANK);
+                            setOtpLoginVerifying(false);
+                            setOtpLoginAnim("idle");
+                            setOtpMobile("");
+                            setOtpLoginErr("");
+                          }}
+                          className="text-xs text-brand-500 hover:underline"
+                        >
+                          Change number
+                        </button>
+                      </div>
+                    )}
+                  </div>
 
+                  {!otpLoginSent && otpLoginErr && (
+                    <div className="flex items-center gap-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg px-3 py-2">
+                      <AlertCircle size={14} className="text-red-500 flex-shrink-0" />
+                      <p className="text-xs text-red-600 dark:text-red-400">{otpLoginErr}</p>
+                    </div>
+                  )}
+
+                  {otpLoginSent && (
+                    <div className="space-y-3 pt-2">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3 text-center">
+                          Enter {OTP_LENGTH}-digit OTP
+                        </label>
+                        <OtpInput value={otpLogin} onChange={setOtpLogin} status={otpLoginAnim} />
+                      </div>
+
+                      {otpLoginErr && (
+                        <div className="flex items-center gap-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg px-3 py-2">
+                          <AlertCircle size={14} className="text-red-500 flex-shrink-0" />
+                          <p className="text-xs text-red-600 dark:text-red-400">{otpLoginErr}</p>
+                        </div>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={handleVerifyLoginOtp}
+                        disabled={otpLogin.replace(/\s/g, "").length < OTP_LENGTH || otpLoginVerifying}
+                        className={`w-full py-2.5 text-white rounded-xl font-semibold text-sm transition-colors flex items-center justify-center gap-2 shadow-sm ${
+                          otpLoginAnim === "orbit" || otpLoginAnim === "success"
+                            ? "bg-green-600 disabled:bg-green-600 shadow-green-600/20"
+                            : "bg-brand-600 hover:bg-brand-700 disabled:bg-brand-400 shadow-brand-600/20"
+                        }`}
+                      >
+                        {otpLoginAnim === "orbit" || otpLoginAnim === "success" ? (
+                          <>
+                            <CheckCircle2 size={16} /> Signed in
+                          </>
+                        ) : otpLoginVerifying ? (
+                          <>
+                            <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            Verifying...
+                          </>
+                        ) : (
+                          <>
+                            Verify & Sign In <ChevronRight size={16} />
+                          </>
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleSendLoginOtp}
+                        disabled={otpLoginVerifying || otpLoginSending}
+                        className="w-full py-1.5 text-sm text-gray-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Didn't receive it? Resend OTP
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </>
         )}

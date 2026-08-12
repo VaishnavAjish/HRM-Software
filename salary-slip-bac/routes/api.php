@@ -62,6 +62,8 @@ Route::get('/user', function (Request $request) {
  */
 
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:30,1');
+Route::post('/login/otp/send', [AuthController::class, 'sendLoginOtp'])->middleware('throttle:6,1');
+Route::post('/login/otp/verify', [AuthController::class, 'verifyLoginOtp'])->middleware('throttle:12,1');
 Route::post('new{data}', [AuthController::class, 'newData'])->middleware('throttle:15,1');
 
 /*
