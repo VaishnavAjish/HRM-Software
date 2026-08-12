@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { LayoutDashboard, UserPlus, FileText as FileTextIcon, Home, Ticket, User, Users, CalendarCheck, Wallet, FileCheck } from 'lucide-react-native';
@@ -18,6 +18,12 @@ import { AdminEmployeesScreen } from './src/screens/admin/AdminEmployeesScreen';
 import { AdminSalaryScreen } from './src/screens/admin/AdminSalaryScreen';
 import { AdminFormsScreen } from './src/screens/admin/AdminFormsScreen';
 import { AdminMoreScreen } from './src/screens/admin/AdminMoreScreen';
+import { AdminTicketsScreen } from './src/screens/admin/AdminTicketsScreen';
+import { AdminAttendanceScreen } from './src/screens/admin/AdminAttendanceScreen';
+import { AdminShiftsScreen } from './src/screens/admin/AdminShiftsScreen';
+import { AdminAccountsScreen } from './src/screens/admin/AdminAccountsScreen';
+import { AdminTdsScreen } from './src/screens/admin/AdminTdsScreen';
+import { AdminHrScreen } from './src/screens/admin/AdminHrScreen';
 import { TicketScreen } from './src/screens/TicketScreen';
 import { ProfileScreen } from './src/screens/ProfileScreen';
 import { computeProfileCompletion } from './src/utils/profileCompletion';
@@ -39,8 +45,6 @@ function MoreIcon({ size = 20, color = '#64748B' }) {
   );
 }
 
-import { AdminTicketsScreen } from './src/screens/admin/AdminTicketsScreen';
-
 const EMPLOYEE_TABS = [
   { id: 'home', label: 'Home', icon: Home },
   { id: 'payslips', label: 'Payslips', icon: FileTextIcon },
@@ -60,7 +64,7 @@ const ADMIN_TABS = [
   { id: 'admin-employees', label: 'Employees', icon: Users },
   { id: 'admin-salary', label: 'Salary', icon: Wallet },
   { id: 'admin-forms', label: 'Forms', icon: FileCheck },
-  { id: 'admin-tickets', label: 'Tickets', icon: Ticket },
+  { id: 'admin-more', label: 'More', icon: MoreIcon },
 ];
 
 function MainAppContent() {
@@ -71,33 +75,31 @@ function MainAppContent() {
   const [activeTab, setActiveTab] = useState(isAgent ? 'agent-dashboard' : isAdmin ? 'admin-dashboard' : 'home');
   const [immersive, setImmersive] = useState(false);
 
-  React.useEffect(() => {
+  useEffect(() => {
     setImmersive(false);
   }, [activeTab]);
 
   const profileComplete = isAgent || isAdmin || computeProfileCompletion(user).isComplete;
 
-  React.useEffect(() => {
-    const tabsForRole = isAgent ? AGENT_TABS : isAdmin ? ADMIN_TABS : EMPLOYEE_TABS;
-    const validTabs = tabsForRole.map((t) => t.id);
-    if (!validTabs.includes(activeTab)) {
-      setActiveTab(isAgent ? 'agent-dashboard' : isAdmin ? 'admin-dashboard' : 'home');
+  // Force Admin to land directly on Dashboard on login or role load
+  const hasInitializedRole = useRef(false);
+  useEffect(() => {
+    if (isAuthenticated && role) {
+      if (isAdmin && !hasInitializedRole.current) {
+        setActiveTab('admin-dashboard');
+        hasInitializedRole.current = true;
+      } else if (isAgent && !hasInitializedRole.current) {
+        setActiveTab('agent-dashboard');
+        hasInitializedRole.current = true;
+      }
     }
-  }, [role]);
+  }, [isAuthenticated, role, isAdmin, isAgent]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!isAgent && !isAdmin && !profileComplete && activeTab !== 'profile') {
       setActiveTab('profile');
     }
   }, [isAgent, isAdmin, profileComplete, activeTab]);
-
-  const prevProfileCompleteRef = React.useRef(profileComplete);
-  React.useEffect(() => {
-    if (!isAgent && !isAdmin && !prevProfileCompleteRef.current && profileComplete) {
-      setActiveTab('home');
-    }
-    prevProfileCompleteRef.current = profileComplete;
-  }, [isAgent, isAdmin, profileComplete]);
 
   if (bootstrapping) {
     return <LoadingView fullscreen label="Signing you in…" />;
@@ -115,7 +117,7 @@ function MainAppContent() {
         case 'agent-trial':
           return <AgentTrialScreen />;
         case 'profile':
-          return <ProfileScreen />;
+          return <ProfileScreen onBack={() => setActiveTab('agent-dashboard')} />;
         default:
           return <AgentDashboardScreen />;
       }
@@ -130,9 +132,22 @@ function MainAppContent() {
         case 'admin-forms':
           return <AdminFormsScreen onImmersiveChange={setImmersive} />;
         case 'admin-tickets':
-          return <AdminTicketsScreen onImmersiveChange={setImmersive} />;
+          return <AdminTicketsScreen onImmersiveChange={setImmersive} onBack={() => setActiveTab('admin-more')} />;
+        case 'admin-attendance':
+          return <AdminAttendanceScreen onBack={() => setActiveTab('admin-more')} />;
+        case 'admin-shifts':
+          return <AdminShiftsScreen onBack={() => setActiveTab('admin-more')} />;
+        case 'admin-accounts':
+          return <AdminAccountsScreen onBack={() => setActiveTab('admin-more')} />;
+        case 'admin-tds':
+          return <AdminTdsScreen onBack={() => setActiveTab('admin-more')} />;
+        case 'admin-hr':
+          return <AdminHrScreen onBack={() => setActiveTab('admin-more')} onNavigateTab={setActiveTab} />;
+        case 'admin-more':
+          return <AdminMoreScreen onNavigateTab={setActiveTab} />;
         case 'profile':
-          return <ProfileScreen onBack={() => setActiveTab('dashboard')} />;
+          return <ProfileScreen onBack={() => setActiveTab('admin-dashboard')} />;
+        case 'admin-dashboard':
         default:
           return <AdminDashboardScreen />;
       }
@@ -148,7 +163,7 @@ function MainAppContent() {
       case 'tickets':
         return <TicketScreen onImmersiveChange={setImmersive} />;
       case 'profile':
-        return <ProfileScreen />;
+        return <ProfileScreen onBack={() => setActiveTab('home')} />;
       default:
         return <HomeScreen onNavigateTab={setActiveTab} />;
     }
@@ -163,7 +178,11 @@ function MainAppContent() {
     <View style={[styles.mainWrapper, { backgroundColor: theme.background }]}>
       <StatusBar style="dark" />
 
-      {!immersive ? <Header onNavigateProfile={() => setActiveTab('profile')} /> : null}
+      {!immersive ? (
+        <Header
+          onNavigateProfile={() => setActiveTab('profile')}
+        />
+      ) : null}
 
       <View style={styles.screenContainer}>{renderActiveScreen()}</View>
 

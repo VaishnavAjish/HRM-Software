@@ -139,9 +139,9 @@ Route::post('logout', [AuthController::class, 'logout'])->middleware('throttle:3
 Route::middleware('jwt.auth')->group(function () {
     // Any authenticated role (admin, agent, employee)
     Route::get('profile', [AuthController::class, 'me'])->middleware(['throttle:30,1', 'permission:self.profile.read']);
-    Route::post('change-password', [AuthController::class, 'changePassword'])->middleware('throttle:10,1');
+    Route::post('change-password', [AuthController::class, 'changePassword'])->middleware(['throttle:10,1', 'permission:self.profile.update']);
     Route::post('profile-update', [UserController::class, 'updateProfile'])->middleware(['throttle:30,1', 'permission:self.profile.update']);
-    Route::get('my-permissions', [PermissionDimensionController::class, 'myPermissions'])->middleware('throttle:60,1');
+    Route::get('my-permissions', [PermissionDimensionController::class, 'myPermissions'])->middleware(['throttle:60,1', 'permission:self.profile.read']);
 
     /*
      * Companies and units this actor may file a record into.
@@ -153,7 +153,7 @@ Route::middleware('jwt.auth')->group(function () {
      * agent who does the first must not be handed the second.
      */
     Route::get('v1/provisioning/company-options', [V1CompanyUnitController::class, 'assignableOptions'])
-        ->middleware('throttle:60,1');
+        ->middleware(['throttle:60,1', 'permission:self.profile.read']);
 
     /*
      * A schema probe, not configuration — and not admin-only.
@@ -168,7 +168,7 @@ Route::middleware('jwt.auth')->group(function () {
      * Authentication is the right boundary: the checks that matter still sit on
      * each module's own routes.
      */
-    Route::get('modules', [ModuleAvailabilityController::class, 'index'])->middleware('throttle:60,1');
+    Route::get('modules', [ModuleAvailabilityController::class, 'index'])->middleware(['throttle:60,1', 'permission:self.profile.read']);
 
     /*
      * What remains of the enterprise authorization API after the Access Control
@@ -186,9 +186,9 @@ Route::middleware('jwt.auth')->group(function () {
         // The permission snapshot is expensive to build (see AuthorizationController::me)
         // and it is served from a cache afterwards, so it is throttled on the same
         // per-IP basis as the other decision endpoints rather than left unlimited.
-        Route::get('me', [V1AuthorizationController::class, 'me'])->middleware('throttle:30,1');
-        Route::post('check', [V1AuthorizationController::class, 'check'])->middleware('throttle:120,1');
-        Route::post('check-batch', [V1AuthorizationController::class, 'checkBatch'])->middleware('throttle:60,1');
+        Route::get('me', [V1AuthorizationController::class, 'me'])->middleware(['throttle:30,1', 'permission:self.profile.read']);
+        Route::post('check', [V1AuthorizationController::class, 'check'])->middleware(['throttle:120,1', 'permission:self.profile.read']);
+        Route::post('check-batch', [V1AuthorizationController::class, 'checkBatch'])->middleware(['throttle:60,1', 'permission:self.profile.read']);
 
         /*
          * Administration surface for the Permission Matrix screen.
@@ -367,7 +367,7 @@ Route::middleware('jwt.auth')->group(function () {
         Route::get('/', [V1AccessRequestController::class, 'index'])
             ->middleware('permission:admin.access_request.read');
         Route::post('/', [V1AccessRequestController::class, 'store'])
-            ->middleware('throttle:20,1');
+            ->middleware(['throttle:20,1', 'permission:self.profile.read']);
         Route::post('{id}/approve', [V1AccessRequestController::class, 'approve'])
             ->whereNumber('id')->middleware('permission:admin.access_request.approve');
         Route::post('{id}/reject', [V1AccessRequestController::class, 'reject'])
@@ -401,7 +401,7 @@ Route::middleware('jwt.auth')->group(function () {
     // presigned credential.
     Route::group(['prefix' => 'v1/documents'], function () {
         Route::get('types', [V1DocumentController::class, 'types'])->middleware('permission:document.file.read');
-        Route::get('health', [V1DocumentController::class, 'health']);
+        Route::get('health', [V1DocumentController::class, 'health'])->middleware('permission:document.file.read');
         Route::get('/', [V1DocumentController::class, 'index'])->middleware('permission:document.file.read');
         Route::get('{id}', [V1DocumentController::class, 'show'])->whereNumber('id')->middleware('permission:document.file.read');
         Route::get('{id}/versions', [V1DocumentController::class, 'versions'])->whereNumber('id')->middleware('permission:document.file.read');
@@ -439,7 +439,7 @@ Route::middleware('jwt.auth')->group(function () {
         // audited either way.
         Route::post('{appointmentId}/aadhaar/reveal', [V1AppointmentController::class, 'revealAadhaar'])
             ->whereNumber('appointmentId')
-            ->middleware('throttle:10,1');
+            ->middleware(['throttle:10,1', 'permission:hr.appointment.read']);
 
         // The Aadhaar number comes from the appointment record, so the client
         // never sends (and cannot influence) it.
@@ -470,25 +470,26 @@ Route::middleware('jwt.auth')->group(function () {
         'v1/employees' => AadhaarExportAccess::SURFACE_EMPLOYEE,
     ] as $prefix => $surface) {
         Route::group(['prefix' => $prefix], function () use ($surface) {
+            $perm = $surface === AadhaarExportAccess::SURFACE_APPOINTMENT ? 'hr.appointment' : 'hr.employee';
             Route::post('{id}/aadhaar/export-authorization', [V1AadhaarExportController::class, 'authorizeExport'])
                 ->whereNumber('id')
                 ->defaults('surface', $surface)
-                ->middleware('throttle:10,1');
+                ->middleware(['throttle:10,1', "permission:{$perm}.export"]);
 
             Route::post('{id}/confidential-pdf', [V1AadhaarExportController::class, 'confidentialPdf'])
                 ->whereNumber('id')
                 ->defaults('surface', $surface)
-                ->middleware('throttle:10,1');
+                ->middleware(['throttle:10,1', "permission:{$perm}.export"]);
 
             Route::post('{id}/confidential-print-payload', [V1AadhaarExportController::class, 'confidentialPrintPayload'])
                 ->whereNumber('id')
                 ->defaults('surface', $surface)
-                ->middleware('throttle:10,1');
+                ->middleware(['throttle:10,1', "permission:{$perm}.print"]);
         });
     }
 
     // Allow any authenticated user (like Agent) to fetch departments
-    Route::get('/department/get', [AdminController::class, 'getDepartment'])->middleware('throttle:60,1');
+    Route::get('/department/get', [AdminController::class, 'getDepartment'])->middleware(['throttle:60,1', 'permission:hr.department.read']);
 
     /*
      * In-app notifications — the caller's own, whatever their role.
@@ -497,7 +498,7 @@ Route::middleware('jwt.auth')->group(function () {
      * controller never looks anything up without that anchor. The bell polls
      * unread-count, so it is throttled a little more loosely than the feed.
      */
-    Route::group(['prefix' => 'notifications', 'middleware' => 'module.schema:notifications'], function () {
+    Route::group(['prefix' => 'notifications', 'middleware' => ['module.schema:notifications', 'permission:self.profile.read']], function () {
         Route::get('/', [NotificationController::class, 'index'])->middleware('throttle:120,1');
         Route::get('unread-count', [NotificationController::class, 'unreadCount'])->middleware('throttle:240,1');
         Route::post('{id}/read', [NotificationController::class, 'markRead'])->whereNumber('id');
@@ -519,7 +520,7 @@ Route::middleware('jwt.auth')->group(function () {
      * up" is both truthful and something the client already handles.
      */
     Route::group(['prefix' => 'tickets', 'middleware' => 'module.schema:tickets'], function () {
-        Route::get('categories', [TicketController::class, 'categories']);
+        Route::get('categories', [TicketController::class, 'categories'])->middleware('permission:self.ticket.read');
         Route::get('dashboard', [TicketController::class, 'dashboard'])->middleware('permission:self.ticket.read');
         Route::get('get', [TicketController::class, 'index'])->middleware('permission:self.ticket.read');
         Route::get('show/{id}', [TicketController::class, 'show'])->whereNumber('id')->middleware('permission:self.ticket.read');

@@ -158,6 +158,10 @@ class RbacSeeder extends Seeder
         // a fresh install would otherwise leave the employee portal missing
         // half its pages.
         (new EmployeeSelfServicePermissionSeeder())->run();
+        (new HrTalentRbacSeeder())->run();
+        (new AdminUserManagementPermissionSeeder())->run();
+        (new CompanyUnitPermissionSeeder())->run();
+        (new AadhaarRevealPermissionSeeder())->run();
     }
 
     private function role(

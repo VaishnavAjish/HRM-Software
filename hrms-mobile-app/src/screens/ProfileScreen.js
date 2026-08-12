@@ -230,7 +230,7 @@ export function ProfileScreen({ requireCompletion = false, onNavigateAdminScreen
       {onBack ? (
         <TouchableOpacity style={styles.backRow} onPress={onBack} activeOpacity={0.7}>
           <ChevronLeft size={18} color={theme.primary} />
-          <Text style={[styles.backText, { color: theme.primary }]}>Back to More</Text>
+          <Text style={[styles.backText, { color: theme.primary }]}>Back to Dashboard</Text>
         </TouchableOpacity>
       ) : null}
       {requireCompletion ? (
