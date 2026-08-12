@@ -59,7 +59,7 @@ class CandidateController extends Controller
     public function show($id)
     {
         $candidate = Candidate::with(['requisition', 'recruiter', 'stageHistory.changedBy', 'interviews.panelists.user', 'interviews.feedback', 'offers'])->find($id);
-        if (!$candidate) {
+        if (!$candidate || !$this->candidateWithinActorScope($candidate)) {
             return response()->json(['status' => false, 'message' => 'Candidate not found'], 404);
         }
 
@@ -183,10 +183,28 @@ class CandidateController extends Controller
     /**
      * Stream candidate resume directly with inline headers and iframe permission headers.
      */
+    protected function candidateWithinActorScope(Candidate $candidate): bool
+    {
+        $actor = auth('api')->user();
+
+        if ($this->hasGlobalCompanyScope($actor)) {
+            return true;
+        }
+
+        $authorized = \App\Support\CompanyMembership::parse($actor?->company_code);
+        $owning = \App\Support\CompanyMembership::parse($candidate->company_code);
+
+        return $owning !== [] && array_intersect($owning, $authorized) !== [];
+    }
+
     public function resume($id)
     {
         $candidate = Candidate::find($id);
         if (!$candidate || !$candidate->resume_path) {
+            return response()->json(['status' => false, 'message' => 'Resume not found for candidate'], 404);
+        }
+
+        if (! $this->candidateWithinActorScope($candidate)) {
             return response()->json(['status' => false, 'message' => 'Resume not found for candidate'], 404);
         }
 
@@ -225,7 +243,7 @@ class CandidateController extends Controller
                 return response()->file($fullPath, [
                     'Content-Type' => $mimeType,
                     'Content-Disposition' => $disposition . '; filename="' . $filename . '"',
-                    'Access-Control-Allow-Origin' => '*',
+                    'X-Content-Type-Options' => 'nosniff',
                 ]);
             }
         }

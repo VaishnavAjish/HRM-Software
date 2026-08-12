@@ -74,9 +74,10 @@ Route::post('new{data}', [AuthController::class, 'newData'])->middleware('thrott
 Route::get('/check-emp-code/{code}', [AuthController::class, 'checkEmpCode'])
     ->middleware('throttle:10,1');
 
-// Candidate Resume Streamer (Public for PDF iframe embedding & browser tabs)
-Route::get('candidates/{id}/resume', [CandidateController::class, 'resume']);
-Route::get('v1/candidates/{id}/resume', [CandidateController::class, 'resume']);
+Route::middleware(['jwt.auth', 'permission:hr.candidate.read'])->group(function () {
+    Route::get('candidates/{id}/resume', [CandidateController::class, 'resume']);
+    Route::get('v1/candidates/{id}/resume', [CandidateController::class, 'resume']);
+});
 
 /*
  * Appointment endpoints are staff-only.

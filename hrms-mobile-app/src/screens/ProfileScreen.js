@@ -297,113 +297,49 @@ export function ProfileScreen({ requireCompletion = false, onNavigateAdminScreen
         ) : null}
       </Card>
 
-      {isAdmin ? (
-        <Card style={styles.fieldsCard} elevated>
-          <Text style={[styles.fieldsTitle, { color: theme.textPrimary, marginBottom: 14 }]}>
-            Admin Controls & Operations
-          </Text>
 
-          <TouchableOpacity
-            style={styles.adminRowOption}
-            onPress={() => onNavigateAdminScreen?.('attendance')}
-            activeOpacity={0.7}
-          >
-            <View style={[styles.adminOptionIcon, { backgroundColor: theme.primary + '15' }]}>
-              <Calendar size={18} color={theme.primary} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.adminOptionTitle, { color: theme.textPrimary }]}>Attendance Logs</Text>
-              <Text style={[styles.adminOptionSub, { color: theme.textMuted }]}>View daily attendance & employee punch records</Text>
-            </View>
-            <ChevronRight size={18} color={theme.textMuted} />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.adminRowOption}
-            onPress={() => onNavigateAdminScreen?.('shifts')}
-            activeOpacity={0.7}
-          >
-            <View style={[styles.adminOptionIcon, { backgroundColor: theme.primary + '15' }]}>
-              <Clock size={18} color={theme.primary} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.adminOptionTitle, { color: theme.textPrimary }]}>Shifts & Rosters</Text>
-              <Text style={[styles.adminOptionSub, { color: theme.textMuted }]}>Manage shift timings and employee assignments</Text>
-            </View>
-            <ChevronRight size={18} color={theme.textMuted} />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.adminRowOption}
-            onPress={() => onNavigateAdminScreen?.('tickets')}
-            activeOpacity={0.7}
-          >
-            <View style={[styles.adminOptionIcon, { backgroundColor: theme.primary + '15' }]}>
-              <Ticket size={18} color={theme.primary} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.adminOptionTitle, { color: theme.textPrimary }]}>Helpdesk Tickets</Text>
-              <Text style={[styles.adminOptionSub, { color: theme.textMuted }]}>Review and resolve employee support issues</Text>
-            </View>
-            <ChevronRight size={18} color={theme.textMuted} />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.adminRowOption, { borderBottomWidth: 0 }]}
-            onPress={() => onNavigateAdminScreen?.('accounts')}
-            activeOpacity={0.7}
-          >
-            <View style={[styles.adminOptionIcon, { backgroundColor: theme.primary + '15' }]}>
-              <ShieldCheck size={18} color={theme.primary} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.adminOptionTitle, { color: theme.textPrimary }]}>Manage Admins</Text>
-              <Text style={[styles.adminOptionSub, { color: theme.textMuted }]}>View admin accounts & manage permissions</Text>
-            </View>
-            <ChevronRight size={18} color={theme.textMuted} />
-          </TouchableOpacity>
-        </Card>
-      ) : null}
 
       {!simplified ? (
-      <>
-      <TouchableOpacity onPress={downloadAppointmentForm} disabled={downloading} activeOpacity={0.85}>
-        <Card style={styles.downloadCard} elevated>
-          <LinearGradient colors={theme.primaryGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.downloadIconWrap}>
-            <FileText size={20} color="#FFFFFF" />
-          </LinearGradient>
-          <View style={styles.downloadTextWrap}>
-            <Text style={[styles.downloadTitle, { color: theme.textPrimary }]}>
-              {downloading ? 'Preparing PDF…' : 'Download Appointment Form'}
-            </Text>
-            <Text style={[styles.downloadSubtitle, { color: theme.textMuted }]}>Saved as a PDF to your device</Text>
-          </View>
-          {downloading ? <Download size={18} color={theme.textMuted} /> : <ChevronRight size={18} color={theme.textMuted} />}
-        </Card>
-      </TouchableOpacity>
+        <>
+          <TouchableOpacity onPress={downloadAppointmentForm} disabled={downloading} activeOpacity={0.85}>
+            <Card style={styles.downloadCard} elevated>
+              <LinearGradient colors={theme.primaryGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.downloadIconWrap}>
+                <FileText size={20} color="#FFFFFF" />
+              </LinearGradient>
+              <View style={styles.downloadTextWrap}>
+                <Text style={[styles.downloadTitle, { color: theme.textPrimary }]}>
+                  {downloading ? 'Preparing PDF…' : 'Download Appointment Form'}
+                </Text>
+                <Text style={[styles.downloadSubtitle, { color: theme.textMuted }]}>Saved as a PDF to your device</Text>
+              </View>
+              {downloading ? <Download size={18} color={theme.textMuted} /> : <ChevronRight size={18} color={theme.textMuted} />}
+            </Card>
+          </TouchableOpacity>
 
-      <View style={[styles.tabBar, { backgroundColor: theme.surfaceElevated }]}>
-        {TABS.map((tab) => {
-          const Icon = tab.icon;
-          const active = activeTab === tab.id;
-          return (
-            <TouchableOpacity
-              key={tab.id}
-              style={[styles.tabItem, active && { backgroundColor: theme.primary }]}
-              onPress={() => switchTab(tab.id)}
-            >
-              <Icon size={13} color={active ? '#FFFFFF' : theme.textMuted} />
-              <Text style={[styles.tabLabel, { color: active ? '#FFFFFF' : theme.textMuted }]}>{tab.label}</Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
+          <View style={[styles.tabBar, { backgroundColor: theme.surfaceElevated }]}>
+            {TABS.map((tab) => {
+              const Icon = tab.icon;
+              const active = activeTab === tab.id;
+              return (
+                <TouchableOpacity
+                  key={tab.id}
+                  style={[styles.tabItem, active && { backgroundColor: theme.primary }]}
+                  onPress={() => switchTab(tab.id)}
+                >
+                  <Icon size={13} color={active ? '#FFFFFF' : theme.textMuted} />
+                  <Text style={[styles.tabLabel, { color: active ? '#FFFFFF' : theme.textMuted }]}>{tab.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </>
+      ) : null}
 
       <Card style={styles.fieldsCard} elevated>
         <View style={styles.fieldsHeader}>
           <View style={{ flex: 1 }}>
             <Text style={[styles.fieldsTitle, { color: theme.textPrimary }]}>
-              {TABS.find((t) => t.id === activeTab)?.label} Details
+              {simplified ? 'Profile Details' : `${TABS.find((t) => t.id === activeTab)?.label} Details`}
             </Text>
             {editing ? (
               <Text style={[styles.editingHint, { color: theme.primary }]}>Editing — update the fields below</Text>
@@ -466,8 +402,6 @@ export function ProfileScreen({ requireCompletion = false, onNavigateAdminScreen
           </>
         )}
       </Card>
-      </>
-      ) : null}
 
       <TouchableOpacity onPress={confirmLogout} activeOpacity={0.85}>
         <Card style={styles.logoutCard} elevated>

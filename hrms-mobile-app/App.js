@@ -131,6 +131,8 @@ function MainAppContent() {
           return <AdminFormsScreen onImmersiveChange={setImmersive} />;
         case 'admin-tickets':
           return <AdminTicketsScreen onImmersiveChange={setImmersive} />;
+        case 'profile':
+          return <ProfileScreen onBack={() => setActiveTab('dashboard')} />;
         default:
           return <AdminDashboardScreen />;
       }

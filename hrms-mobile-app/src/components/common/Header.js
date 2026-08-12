@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Animated, Easing, Modal, Alert } from 'react-native';
-import { Bell, User, LogOut, X, ShieldCheck } from 'lucide-react-native';
+import { Bell, User, LogOut, X, ChevronRight } from 'lucide-react-native';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { typography, shadows } from '../../theme';
@@ -13,7 +13,7 @@ export function Header({ onNavigateProfile }) {
   const { theme } = useTheme();
   const { user, role, logout } = useAuth();
   const [panelOpen, setPanelOpen] = useState(false);
-  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
   const notifications = useNotifications();
 
   const firstName = (user?.name || '').split(' ')[0] || 'there';
@@ -41,22 +41,25 @@ export function Header({ onNavigateProfile }) {
 
   const bellRotate = swing.interpolate({ inputRange: [-1, 1], outputRange: ['-16deg', '16deg'] });
 
-  const handleLogout = () => {
+  const handleLogoutPress = () => {
+    setProfileModalOpen(false);
     Alert.alert(
-      'Sign Out of NISS?',
-      'Are you sure you want to sign out of your account?',
+      'Sign Out',
+      'Are you sure you want to log out of your account?',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Sign Out',
+          text: 'Log Out',
           style: 'destructive',
-          onPress: () => {
-            setProfileMenuOpen(false);
-            logout();
-          },
+          onPress: logout,
         },
       ]
     );
+  };
+
+  const handleProfileDetailsPress = () => {
+    setProfileModalOpen(false);
+    onNavigateProfile?.();
   };
 
   return (
@@ -91,49 +94,42 @@ export function Header({ onNavigateProfile }) {
           ) : null}
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => setProfileMenuOpen(true)} activeOpacity={0.8}>
+        <TouchableOpacity onPress={() => setProfileModalOpen(true)} activeOpacity={0.8} hitSlop={10}>
           <Avatar name={user?.name} uri={user?.photo} size={42} />
         </TouchableOpacity>
       </View>
 
       <NotificationPanel visible={panelOpen} onClose={() => setPanelOpen(false)} {...notifications} />
 
-      {/* Profile & Account Action Modal */}
+      {/* Admin Profile Modal */}
       <Modal
-        visible={profileMenuOpen}
+        visible={profileModalOpen}
         transparent
-        statusBarTranslucent
         animationType="fade"
-        onRequestClose={() => setProfileMenuOpen(false)}
+        onRequestClose={() => setProfileModalOpen(false)}
       >
         <TouchableOpacity
-          style={styles.modalOverlay}
+          style={styles.modalBackdrop}
           activeOpacity={1}
-          onPress={() => setProfileMenuOpen(false)}
+          onPress={() => setProfileModalOpen(false)}
         >
           <TouchableOpacity
             activeOpacity={1}
-            style={[
-              styles.profileSheet,
-              { backgroundColor: theme.surfaceCard, borderColor: theme.border },
-              shadows.glass,
-            ]}
+            style={[styles.modalCard, { backgroundColor: theme.surfaceCard, borderColor: theme.border }, shadows.glass]}
           >
-            <View style={styles.sheetTop}>
-              <Text style={[styles.sheetTitle, { color: theme.textPrimary }]}>Account & Profile</Text>
-              <TouchableOpacity onPress={() => setProfileMenuOpen(false)} hitSlop={8}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>Account Menu</Text>
+              <TouchableOpacity onPress={() => setProfileModalOpen(false)} hitSlop={8}>
                 <X size={20} color={theme.textMuted} />
               </TouchableOpacity>
             </View>
 
-            {/* User Brief */}
-            <View style={[styles.profileBrief, { backgroundColor: theme.surfaceElevated }]}>
-              <Avatar name={user?.name} uri={user?.photo} size={54} />
-              <View style={styles.briefInfo}>
-                <Text style={[styles.briefName, { color: theme.textPrimary }]}>
-                  {user?.name || 'User Profile'}
-                </Text>
-                <Text style={[styles.briefEmail, { color: theme.textMuted }]} numberOfLines={1}>
+            {/* Profile Brief */}
+            <View style={[styles.userBrief, { backgroundColor: theme.surfaceElevated }]}>
+              <Avatar name={user?.name} uri={user?.photo} size={50} />
+              <View style={styles.userBriefText}>
+                <Text style={[styles.userName, { color: theme.textPrimary }]}>{user?.name || 'User'}</Text>
+                <Text style={[styles.userEmail, { color: theme.textMuted }]} numberOfLines={1}>
                   {user?.email || user?.emp_code || 'Staff Member'}
                 </Text>
                 <View style={{ marginTop: 4, flexDirection: 'row' }}>
@@ -146,37 +142,36 @@ export function Header({ onNavigateProfile }) {
               </View>
             </View>
 
-            {/* Menu Options */}
-            <View style={styles.menuGroup}>
+            {/* Only Profile Options */}
+            <View style={styles.optionsList}>
               <TouchableOpacity
-                style={[styles.menuOption, { backgroundColor: theme.surfaceElevated }]}
-                onPress={() => {
-                  setProfileMenuOpen(false);
-                  onNavigateProfile?.();
-                }}
-                activeOpacity={0.8}
+                style={[styles.optionItem, { backgroundColor: theme.surfaceElevated }]}
+                onPress={handleProfileDetailsPress}
+                activeOpacity={0.7}
               >
-                <View style={[styles.optionIconWrap, { backgroundColor: theme.primary + '15' }]}>
+                <View style={[styles.optionIconWrap, { backgroundColor: theme.primary + '18' }]}>
                   <User size={18} color={theme.primary} />
                 </View>
-                <View style={{ flex: 1 }}>
+                <View style={styles.optionTextWrap}>
                   <Text style={[styles.optionTitle, { color: theme.textPrimary }]}>My Profile Details</Text>
-                  <Text style={[styles.optionSub, { color: theme.textMuted }]}>View & edit personal info</Text>
+                  <Text style={[styles.optionSub, { color: theme.textMuted }]}>View & edit personal profile</Text>
                 </View>
+                <ChevronRight size={18} color={theme.textMuted} />
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.menuOption, { backgroundColor: theme.roseBg || '#FEF2F2' }]}
-                onPress={handleLogout}
-                activeOpacity={0.8}
+                style={[styles.optionItem, { backgroundColor: theme.roseBg || '#FEF2F2' }]}
+                onPress={handleLogoutPress}
+                activeOpacity={0.7}
               >
-                <View style={[styles.optionIconWrap, { backgroundColor: theme.rose + '15' }]}>
+                <View style={[styles.optionIconWrap, { backgroundColor: theme.rose + '18' }]}>
                   <LogOut size={18} color={theme.rose} />
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.optionTitle, { color: theme.rose }]}>Logout / Sign Out</Text>
+                <View style={styles.optionTextWrap}>
+                  <Text style={[styles.optionTitle, { color: theme.rose }]}>Log Out</Text>
                   <Text style={[styles.optionSub, { color: theme.rose + 'AA' }]}>Sign out of your account</Text>
                 </View>
+                <ChevronRight size={18} color={theme.rose} />
               </TouchableOpacity>
             </View>
           </TouchableOpacity>
@@ -243,70 +238,76 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 
-  modalOverlay: {
+  modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.45)',
     justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: 20,
   },
-  profileSheet: {
-    width: '88%',
-    padding: 20,
+  modalCard: {
+    width: '100%',
+    maxWidth: 360,
     borderRadius: 22,
     borderWidth: 1,
+    padding: 18,
   },
-  sheetTop: {
+  modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 14,
   },
-  sheetTitle: {
-    ...typography.h3,
-    fontWeight: '800',
-  },
-  profileBrief: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 14,
-    borderRadius: 16,
-    marginBottom: 16,
-  },
-  briefInfo: {
-    marginLeft: 12,
-    flex: 1,
-  },
-  briefName: {
+  modalTitle: {
     ...typography.h4,
     fontWeight: '800',
   },
-  briefEmail: {
-    ...typography.micro,
-    marginTop: 2,
-  },
-  menuGroup: {
-    gap: 10,
-  },
-  menuOption: {
+  userBrief: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 14,
+    padding: 12,
     borderRadius: 16,
+    marginBottom: 14,
+  },
+  userBriefText: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  userName: {
+    ...typography.body,
+    fontWeight: '800',
+  },
+  userEmail: {
+    ...typography.micro,
+    marginTop: 1,
+  },
+  optionsList: {
+    gap: 10,
+  },
+  optionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 14,
     gap: 12,
   },
   optionIconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
+    width: 36,
+    height: 36,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  optionTextWrap: {
+    flex: 1,
   },
   optionTitle: {
     ...typography.body,
     fontWeight: '700',
+    fontSize: 14,
   },
   optionSub: {
     ...typography.micro,
-    marginTop: 2,
+    marginTop: 1,
   },
 });
