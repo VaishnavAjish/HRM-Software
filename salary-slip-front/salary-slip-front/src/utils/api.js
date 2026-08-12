@@ -101,7 +101,9 @@ export async function apiRequest(path, options = {}) {
 
   if (useNativeHttp) {
     const url = `${baseUrl}/api${path}`;
-    console.log(`[API] Native Request (${platform}): ${options.method || "GET"} ${url}`);
+    if (import.meta.env.DEV) {
+      console.log(`[API] Native Request (${platform}): ${options.method || "GET"} ${url}`);
+    }
 
     try {
       const response = await CapacitorHttp.request({
@@ -146,7 +148,9 @@ export async function apiRequest(path, options = {}) {
 
   const url = `${baseUrl}/api${path}`;
   // Debug log to help identify connectivity issues in the mobile app.
-  console.log(`[API] Request: ${options.method || "GET"} ${url}`);
+  if (import.meta.env.DEV) {
+    console.log(`[API] Request: ${options.method || "GET"} ${url}`);
+  }
 
   const timeoutMs = options.timeout ?? 15000;
   const controller = new AbortController();

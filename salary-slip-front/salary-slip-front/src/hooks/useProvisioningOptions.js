@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { provisioningLookupApi } from "../utils/api";
 
+let inFlight = { token: null, promise: null };
+
 /**
  * Companies and units the signed-in actor may file a record into.
  *
@@ -35,8 +37,16 @@ export function useProvisioningOptions() {
 
     let active = true;
 
-    provisioningLookupApi
-      .companyOptions(token, tokenType)
+    if (inFlight.token !== token) {
+      inFlight = {
+        token,
+        promise: provisioningLookupApi.companyOptions(token, tokenType),
+      };
+    }
+
+    const pending = inFlight.promise;
+
+    pending
       .then((res) => {
         if (!active) return;
         setResult({
@@ -47,6 +57,7 @@ export function useProvisioningOptions() {
         });
       })
       .catch((err) => {
+        if (inFlight.promise === pending) inFlight = { token: null, promise: null };
         if (!active) return;
         // Reported, never silently replaced with a hardcoded list: a form that
         // invents companies when the lookup fails is how the constant got

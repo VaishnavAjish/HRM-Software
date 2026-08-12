@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import DOMPurify from "dompurify";
 import { Pencil, Info, Clock, Users, BarChart3 } from "lucide-react";
 import Drawer, { CollapsibleSection } from "../../../../components/ui/Drawer";
 import Badge from "../../../../components/ui/Badge";
@@ -163,7 +164,7 @@ function RichText({ html }) {
     return (
       <div
         className="text-sm text-gray-700 dark:text-gray-300 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_h2]:font-bold [&_h2]:mt-2"
-        dangerouslySetInnerHTML={{ __html: html }}
+        dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(html) }}
       />
     );
   }

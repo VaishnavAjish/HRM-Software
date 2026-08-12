@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import {
   Mail, Phone as PhoneIcon, MapPin, Clock, Trash2, ArrowRight, ChevronRight,
   CheckCircle2, Circle, XCircle, PauseCircle, User2, CalendarClock, FileText, StickyNote, Lock,
@@ -7,24 +8,72 @@ import Drawer, { CollapsibleSection } from "../../../../components/ui/Drawer";
 import Badge from "../../../../components/ui/Badge";
 import Button from "../../../../components/ui/Button";
 import { baseUrl } from "../../../../utils/url";
+import { useAuth } from "../../../../context/AuthContext";
 
 const PRIORITY_VARIANT = { high: "red", medium: "yellow", low: "gray" };
 
 /** Same safety rules as getEmployeePhotoUrl — a candidate's resume_path is a
  *  server-relative `public` disk path, never a browser-loadable one as-is. */
-function getResumeUrl(candidate) {
-  if (!candidate) return "";
+function getResumeSource(candidate) {
+  if (!candidate) return null;
   const path = candidate.resume_path;
-  if (!path) return "";
+  if (!path) return null;
   const value = String(path).trim();
-  if (!value) return "";
-  if (/^(https?:)?\/\//i.test(value) || value.startsWith("data:")) return value;
-  if (/^[a-z]:[\\/]/i.test(value) || value.startsWith("\\\\") || /^file:/i.test(value)) return "";
+  if (!value) return null;
+  if (/^(https?:)?\/\//i.test(value) || value.startsWith("data:")) {
+    return { kind: "direct", url: value };
+  }
+  if (/^[a-z]:[\\/]/i.test(value) || value.startsWith("\\\\") || /^file:/i.test(value)) return null;
   if (candidate.id) {
-    return `${baseUrl}/api/v1/candidates/${candidate.id}/resume`;
+    return { kind: "api", url: `${baseUrl}/api/v1/candidates/${candidate.id}/resume` };
   }
   const cleanPath = value.replace(/^\/?(storage\/)?/i, "");
-  return `${baseUrl}/storage/${cleanPath}`;
+  return { kind: "direct", url: `${baseUrl}/storage/${cleanPath}` };
+}
+
+/*
+ * The resume endpoint is authenticated, so it cannot be handed to an <iframe>
+ * or an <a href> as a bare URL — those load without the Authorization header
+ * and come back 401. It is fetched once with the session token and published
+ * to the DOM as a blob URL, which every consumer below can use unchanged.
+ */
+function useResumeObjectUrl(candidate, user) {
+  const source = getResumeSource(candidate);
+  const endpoint = source?.kind === "api" ? source.url : null;
+  const [objectUrl, setObjectUrl] = useState("");
+
+  useEffect(() => {
+    if (!endpoint) {
+      setObjectUrl("");
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    let created = "";
+    let cancelled = false;
+
+    fetch(endpoint, {
+      headers: { Authorization: `${user?.tokenType || "bearer"} ${user?.accessToken}` },
+      signal: controller.signal,
+    })
+      .then((response) => (response.ok ? response.blob() : Promise.reject(new Error(String(response.status)))))
+      .then((blob) => {
+        if (cancelled) return;
+        created = URL.createObjectURL(blob);
+        setObjectUrl(created);
+      })
+      .catch(() => {
+        if (!cancelled) setObjectUrl("");
+      });
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+      if (created) URL.revokeObjectURL(created);
+    };
+  }, [endpoint, user?.accessToken, user?.tokenType]);
+
+  return source?.kind === "direct" ? source.url : objectUrl;
 }
 
 /** Which tab a candidate belongs to once they've moved past this drawer's owning tab — only used for the "manage them elsewhere" banner. */
@@ -54,6 +103,9 @@ export default function CandidateDrawer({
   candidate, loadingDetail, onClose, onAdvance, onDelete, advancing,
   mainStages, terminalStages, stageIndex, ownedStages,
 }) {
+  const { user } = useAuth();
+  const resumeUrl = useResumeObjectUrl(candidate, user);
+
   if (!candidate) return <Drawer isOpen={false} onClose={onClose} />;
 
   const canProcess = !ownedStages || ownedStages.includes(candidate.stage);
@@ -68,7 +120,6 @@ export default function CandidateDrawer({
   const interviews = candidate.interviews || [];
   const offers = candidate.offers || [];
 
-  const resumeUrl = getResumeUrl(candidate);
   const resumeExt = (candidate.resume_original_name || candidate.resume_path || "").split(".").pop()?.toLowerCase();
   const isUnmatchedFormSubmission = candidate.source === "google_form" && !candidate.requisition_id;
 
@@ -160,7 +211,7 @@ export default function CandidateDrawer({
                      className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700/60">
                     <ExternalLink size={15} />
                   </a>
-                  <a href={`${resumeUrl}?download=1`} download={candidate.resume_original_name || undefined} title="Download"
+                  <a href={resumeUrl} download={candidate.resume_original_name || "resume"} title="Download"
                      className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700/60">
                     <Download size={15} />
                   </a>
