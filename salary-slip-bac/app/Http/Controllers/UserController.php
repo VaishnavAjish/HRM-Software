@@ -1247,7 +1247,7 @@ class UserController extends Controller
             }
             $fileName = 'json-import-'.now()->format('Ymd_His').'.json';
         } else {
-            $request->validate(['file' => 'required|file']);
+            $request->validate(['file' => 'required|file|max:10240|mimes:xlsx,xls,csv,txt']);
             $file = $request->file('file');
             $mapping = $request->mapping ? json_decode($request->mapping, true) : [];
 
@@ -1459,7 +1459,7 @@ class UserController extends Controller
 
     public function importAccountDetail(Request $request)
     {
-        $request->validate(['file' => 'required|file']);
+        $request->validate(['file' => 'required|file|max:10240|mimes:xlsx,xls,csv,txt']);
 
         $imported = 0;
         $skipped = 0;
@@ -2095,7 +2095,7 @@ class UserController extends Controller
 
     public function accountMaster(Request $request)
     {
-        $request->validate(['file' => 'required|file']);
+        $request->validate(['file' => 'required|file|max:10240|mimes:xlsx,xls,csv,txt']);
 
         $company_code = $request->company_code ?? 'nidhi-impex';
         $unit = $request->unit;

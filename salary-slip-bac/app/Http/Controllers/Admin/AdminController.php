@@ -314,7 +314,7 @@ class AdminController extends Controller
 
     public function salarySlipImport(Request $request)
     {
-        $request->validate(['salary_slip' => 'required|file']);
+        $request->validate(['salary_slip' => 'required|file|max:10240|mimes:xlsx,xls,csv,txt']);
 
         $userAuth = auth('api')->user();
         if ($userAuth && (int) $userAuth->role === 1) {
@@ -587,7 +587,7 @@ class AdminController extends Controller
     // agree. Read-only: no DB writes, no employee lookups.
     public function salarySlipPreview(Request $request)
     {
-        $request->validate(['salary_slip' => 'required|file']);
+        $request->validate(['salary_slip' => 'required|file|max:10240|mimes:xlsx,xls,csv,txt']);
 
         try {
             $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($request->file('salary_slip')->getPathname());
