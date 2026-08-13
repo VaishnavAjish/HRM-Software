@@ -49,19 +49,6 @@ function readNumber(...values) {
   return Number(value ?? 0);
 }
 
-function splitAmount(total, ratios) {
-  const safeTotal = Math.max(0, Math.round(Number(total || 0)));
-  let remaining = safeTotal;
-
-  return ratios.map((ratio, index) => {
-    if (index === ratios.length - 1) return remaining;
-
-    const value = Math.round(safeTotal * ratio);
-    remaining -= value;
-    return value;
-  });
-}
-
 export function parseMonthYear(monthStr) {
   const today = new Date();
   const [name, yearPart] = (monthStr || "").split(" ");
@@ -227,7 +214,12 @@ export function buildPayslipData({ emp = {}, payslip = {}, companyId } = {}) {
     emp.product_incentive,
   );
 
-  // Use actual per-component values from API when present, otherwise ratio-split lump-sum
+  // Only stored per-component values are shown. A lump-sum allowance or
+  // deduction with no stored breakdown renders as a single unitemised row —
+  // never invented component figures (the old ratio-split fabricated PT/PF/TDS
+  // and allowance lines that were indistinguishable from real data).
+  let unallocatedAllowances = 0;
+  let unallocatedDeductions = 0;
   let dailyAllowance,
     hra,
     wa,
@@ -268,14 +260,12 @@ export function buildPayslipData({ emp = {}, payslip = {}, companyId } = {}) {
     lta = readNumber(payslip.lta, payslip.l_t_a);
     ha = readNumber(payslip.ha, payslip.h_a);
   } else {
-    const allowances = Number(payslip.allowances ?? emp.allowances ?? 0);
-    [
-      dailyAllowance,
-      hra,
-      conveyanceAllowance,
-      educationAllowance,
-      medicalAllowance,
-    ] = splitAmount(allowances, [0.36, 0.28, 0.1, 0.08, 0.18]);
+    unallocatedAllowances = Math.max(0, Number(payslip.allowances ?? emp.allowances ?? 0));
+    dailyAllowance = 0;
+    hra = 0;
+    conveyanceAllowance = 0;
+    educationAllowance = 0;
+    medicalAllowance = 0;
     wa = 0;
     mobileAllowance = 0;
   }
@@ -285,11 +275,12 @@ export function buildPayslipData({ emp = {}, payslip = {}, companyId } = {}) {
     computedGrossSalary =
       basicSalary + dailyAllowance + hra + wa + conveyanceAllowance +
       educationAllowance + owa + ppa + pda + medicalAllowance + bonus +
-      lta + ha + mobileAllowance + productIncentive;
+      lta + ha + mobileAllowance + productIncentive + unallocatedAllowances;
   } else {
     computedGrossSalary =
       basicSalary + dailyAllowance + hra + wa + conveyanceAllowance +
-      educationAllowance + medicalAllowance + mobileAllowance + bonus;
+      educationAllowance + medicalAllowance + mobileAllowance + bonus +
+      unallocatedAllowances;
   }
 
   const grossSalary =
@@ -314,7 +305,6 @@ export function buildPayslipData({ emp = {}, payslip = {}, companyId } = {}) {
     inferredDeductions,
   );
 
-  // Use actual per-component deduction values from API when present, otherwise ratio-split
   let professionalTax, providentFund, esiAmount, tds, lwf, advance;
   const hasExplicitDeductionBreakdown =
     payslip.pt != null ||
@@ -332,13 +322,13 @@ export function buildPayslipData({ emp = {}, payslip = {}, companyId } = {}) {
     lwf = readNumber(payslip.lwf);
     advance = readNumber(payslip.advance);
   } else {
-    [professionalTax, providentFund, tds] =
-      deductionTotal <= 300
-        ? [deductionTotal, 0, 0]
-        : splitAmount(deductionTotal, [0.12, 0.58, 0.3]);
+    professionalTax = 0;
+    providentFund = 0;
+    tds = 0;
     esiAmount = 0;
     lwf = 0;
     advance = 0;
+    unallocatedDeductions = Math.max(0, deductionTotal);
   }
 
   let earningRows = [];
@@ -362,6 +352,9 @@ export function buildPayslipData({ emp = {}, payslip = {}, companyId } = {}) {
       { label: "Mob. A.", amount: mobileAllowance },
       { label: "Product Incentive", amount: productIncentive },
     ];
+    if (unallocatedAllowances > 0) {
+      earningRows.push({ label: "Allowances", amount: unallocatedAllowances });
+    }
     deductionRows = [
       { label: "PT", amount: professionalTax },
       { label: "PF", amount: providentFund },
@@ -370,6 +363,9 @@ export function buildPayslipData({ emp = {}, payslip = {}, companyId } = {}) {
       { label: "LWF", amount: lwf },
       { label: "Advance", amount: advance },
     ];
+    if (unallocatedDeductions > 0) {
+      deductionRows.push({ label: "Other Deduction", amount: unallocatedDeductions });
+    }
   } else {
     earningRows = [
       { label: "BASIC", amount: basicSalary },
@@ -381,6 +377,9 @@ export function buildPayslipData({ emp = {}, payslip = {}, companyId } = {}) {
       { label: "Med.A", amount: medicalAllowance },
       { label: "Prod. Ince.", amount: bonus },
     ];
+    if (unallocatedAllowances > 0) {
+      earningRows.push({ label: "ALLOWANCES", amount: unallocatedAllowances });
+    }
     deductionRows = [
       { label: "PROFESSIONAL TAX", amount: professionalTax },
       { label: "PF", amount: providentFund },
@@ -389,6 +388,9 @@ export function buildPayslipData({ emp = {}, payslip = {}, companyId } = {}) {
       { label: "LWF", amount: lwf },
       { label: "ADVANCE", amount: advance },
     ];
+    if (unallocatedDeductions > 0) {
+      deductionRows.push({ label: "OTHER DEDUCTION", amount: unallocatedDeductions });
+    }
   }
 
   const totalEarnings = grossSalary || earningRows.reduce((sum, row) => sum + row.amount, 0);
