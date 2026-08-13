@@ -117,12 +117,48 @@ class RoleManagementService
 
             $role = Role::create($attributes);
 
+            $this->grantBaseline($role);
+
             $this->audit($role, 'CREATE', ['name' => $role->name, 'code' => $role->code]);
 
             return $role;
         });
 
         return $role;
+    }
+
+    /**
+     * Every new custom role gets the self-service baseline so a user assigned
+     * only this role can still load their own portal/profile. Without it a
+     * fresh custom role denies self.profile.read, and no amount of page
+     * permissions granted in the matrix makes the portal usable under enforced
+     * mode. Self-scoped only — never admin/authorization/reveal permissions.
+     */
+    private function grantBaseline(Role $role): void
+    {
+        $baseline = [
+            'self.profile.read',
+            'self.profile.update',
+            'self.payslip.read',
+            'self.ticket.read',
+            'self.ticket.create',
+        ];
+
+        $permissions = DB::table('permissions')
+            ->whereIn('code', $baseline)
+            ->where('is_active', true)
+            ->get(['id', 'is_sensitive']);
+
+        foreach ($permissions as $permission) {
+            DB::table('role_permissions')->updateOrInsert(
+                ['role_id' => $role->id, 'permission_id' => $permission->id],
+                [
+                    'effect' => 'ALLOW',
+                    'obligations' => null,
+                    'inherit_to_children' => ! filter_var($permission->is_sensitive, FILTER_VALIDATE_BOOLEAN),
+                ]
+            );
+        }
     }
 
     public function update(Role $role, array $data): Role
