@@ -452,13 +452,31 @@ class UserController extends Controller
      */
     private function guardPrivilegedFields($userAuth, array $data): array
     {
+        // Account/security flags are never client-settable through a profile
+        // edit, whoever the actor is: they are managed only by dedicated,
+        // audited provisioning/role flows. Stripping them here closes stealth
+        // (is_hidden/is_system_account) and escalation (is_super_admin) mass
+        // assignment even for a Super Admin editing through this generic form.
+        unset(
+            $data['is_super_admin'],
+            $data['is_hidden'],
+            $data['is_system_account'],
+            $data['is_protected'],
+            $data['added_by'],
+            $data['permissions']
+        );
+
         if (! $userAuth || (int) $userAuth->role === 0) {
             return $data;
         }
 
-        if (array_key_exists('role', $data) && (int) $data['role'] === 0) {
-            unset($data['role']);
-        }
+        // A normal employee edit must not change authorization-bearing fields.
+        // Tier/role changes go through the role-assignment endpoints (which
+        // enforce RoleHierarchy); soft-delete has its own guarded flow. Under
+        // shadow enforcement the numeric `role`/`type` tier is the effective
+        // authority, so allowing it here mints admin/agent accounts.
+        unset($data['role'], $data['type'], $data['is_deleted']);
+
         if ((int) $userAuth->role === 1 && array_key_exists('company_code', $data)) {
             unset($data['company_code']);
         }
@@ -694,6 +712,18 @@ class UserController extends Controller
         }
 
         $data = $request->all();
+        // Account/security flags are never client-settable at create time:
+        // strip is_super_admin / stealth flags / is_deleted / added_by so a
+        // mass-assigned create cannot mint a hidden or super-admin account.
+        unset(
+            $data['is_super_admin'],
+            $data['is_hidden'],
+            $data['is_system_account'],
+            $data['is_protected'],
+            $data['is_deleted'],
+            $data['added_by'],
+            $data['permissions']
+        );
         // SECURITY FIX: Generate a cryptographically random default password instead of '12345678'.
         $data['password'] = $request->password ?? bin2hex(random_bytes(16));
         $data['role'] = $request->role ?? 3;

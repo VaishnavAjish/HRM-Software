@@ -652,33 +652,42 @@ class AdminController extends Controller
 
     public function getDepartment(Request $request)
     {
-        $existingDeptNames = Department::pluck('name')->map(fn($n) => trim(strtolower($n)))->toArray();
+        // Read-only. This endpoint previously created a Department row for every
+        // distinct department string found across users / salary_slips, so any
+        // GET silently wrote to the table (and after the permission was dropped,
+        // any authenticated caller could trigger those writes). Surface the same
+        // union of registered + in-use department names WITHOUT persisting;
+        // reconciling free-text names into the master is a separate write flow.
+        $departments = Department::orderBy('name')->get();
+        $known = $departments->map(fn ($d) => trim(strtolower($d->name)))->all();
 
-        $userDepts = \App\Models\User::whereNotNull('department')
+        $usedNames = \App\Models\User::whereNotNull('department')
             ->where('department', '!=', '')
             ->distinct()
             ->pluck('department')
-            ->toArray();
+            ->merge(
+                \Illuminate\Support\Facades\DB::table('salary_slips')
+                    ->whereNotNull('department')
+                    ->where('department', '!=', '')
+                    ->distinct()
+                    ->pluck('department')
+            );
 
-        $slipDepts = \Illuminate\Support\Facades\DB::table('salary_slips')
-            ->whereNotNull('department')
-            ->where('department', '!=', '')
-            ->distinct()
-            ->pluck('department')
-            ->toArray();
+        $merged = $departments->map(fn ($d) => ['id' => $d->id, 'name' => $d->name])->all();
 
-        $allUsed = array_unique(array_merge($userDepts, $slipDepts));
-
-        foreach ($allUsed as $deptName) {
-            $normalized = trim($deptName);
-            if ($normalized !== '' && !in_array(strtolower($normalized), $existingDeptNames, true)) {
-                Department::create(['name' => $normalized]);
-                $existingDeptNames[] = strtolower($normalized);
+        foreach ($usedNames as $name) {
+            $normalized = trim((string) $name);
+            if ($normalized === '' || in_array(strtolower($normalized), $known, true)) {
+                continue;
             }
+            $known[] = strtolower($normalized);
+            // id:null marks a name in use in data but not yet in the master table.
+            $merged[] = ['id' => null, 'name' => $normalized];
         }
 
-        $departments = Department::orderBy('name')->get();
-        return response()->json(['status' => true, 'data' => $departments]);
+        usort($merged, fn ($a, $b) => strcasecmp($a['name'], $b['name']));
+
+        return response()->json(['status' => true, 'data' => array_values($merged)]);
     }
 
     public function storeDepartment(Request $request)
