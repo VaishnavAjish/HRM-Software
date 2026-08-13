@@ -18,8 +18,15 @@ class AuditRoleMigration extends Command
         $codes = array_values(array_filter(array_map('trim', explode(',', (string) $this->option('permissions')))));
         $engine = app(AuthorizationEngine::class);
 
+        // Portal users only: exclude pre-hire records (appointment / pending /
+        // trial) — they never log in (no emp_code, no sessions), so an enforced
+        // denial for them is expected, not a legitimate lockout. NULL type is a
+        // real employee and must be kept (SQL NOT IN drops NULLs, hence the OR).
         $users = User::where('is_deleted', 0)
             ->whereNotIn('role', [0])
+            ->where(function ($q) {
+                $q->whereNull('type')->orWhereNotIn('type', ['appointment', 'pending_employee', 'trial']);
+            })
             ->with('roles:id,code,name')
             ->get();
 

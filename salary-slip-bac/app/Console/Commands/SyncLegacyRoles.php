@@ -35,6 +35,9 @@ class SyncLegacyRoles extends Command
         $heldRoleIds = DB::table('user_roles')
             ->join('users', 'users.id', '=', 'user_roles.user_id')
             ->where('users.is_deleted', 0)
+            ->where(function ($q) {
+                $q->whereNull('users.type')->orWhereNotIn('users.type', ['appointment', 'pending_employee', 'trial']);
+            })
             ->distinct()
             ->pluck('user_roles.role_id');
 
@@ -60,6 +63,9 @@ class SyncLegacyRoles extends Command
         $roleLess = DB::table('users')
             ->where('is_deleted', 0)
             ->whereNotIn('role', [0])
+            ->where(function ($q) {
+                $q->whereNull('type')->orWhereNotIn('type', ['appointment', 'pending_employee', 'trial']);
+            })
             ->whereNotExists(function ($q) {
                 $q->select(DB::raw(1))->from('user_roles')->whereColumn('user_roles.user_id', 'users.id');
             })
