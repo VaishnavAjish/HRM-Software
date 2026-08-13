@@ -4,18 +4,26 @@ namespace App\Services\Documents;
 
 use App\Exceptions\DocumentException;
 use App\Support\ObjectKeyBuilder;
+use Illuminate\Support\Facades\URL;
 
 /**
  * Filesystem provider retained only so DOCUMENT_STORAGE_PROVIDER=local keeps
  * working during rollout and in environments without AWS credentials.
  *
- * It is not the production path: files land under public/ and its "presigned"
- * URLs are ordinary signed application URLs with no real expiry enforcement at
- * the storage layer. Prefer S3 everywhere it is available.
+ * Files live under storage/app/private/uploads (never the public webroot) and
+ * are served through the signed local-documents.view route, so a URL expires
+ * like an S3 presigned link and nothing is fetchable without one.
  */
 class LocalStorageProvider implements StorageProvider
 {
     private function absolute(string $objectKey): string
+    {
+        ObjectKeyBuilder::assertSafe($objectKey);
+
+        return storage_path('app/private/uploads/' . $objectKey);
+    }
+
+    private function legacyPublicPath(string $objectKey): string
     {
         ObjectKeyBuilder::assertSafe($objectKey);
 
@@ -54,20 +62,26 @@ class LocalStorageProvider implements StorageProvider
 
     public function exists(string $objectKey): bool
     {
-        return is_file($this->absolute($objectKey));
+        return is_file($this->absolute($objectKey)) || is_file($this->legacyPublicPath($objectKey));
     }
 
     public function delete(string $objectKey): void
     {
-        $path = $this->absolute($objectKey);
-
-        if (is_file($path)) {
-            @unlink($path);
+        foreach ([$this->absolute($objectKey), $this->legacyPublicPath($objectKey)] as $path) {
+            if (is_file($path)) {
+                @unlink($path);
+            }
         }
     }
 
     public function copy(string $fromKey, string $toKey): void
     {
+        $source = $this->absolute($fromKey);
+
+        if (!is_file($source)) {
+            $source = $this->legacyPublicPath($fromKey);
+        }
+
         $target = $this->absolute($toKey);
         $dir = dirname($target);
 
@@ -75,23 +89,35 @@ class LocalStorageProvider implements StorageProvider
             @mkdir($dir, 0755, true);
         }
 
-        @copy($this->absolute($fromKey), $target);
+        @copy($source, $target);
     }
 
     public function viewUrl(string $objectKey, int $ttlSeconds, string $mimeType): string
     {
         ObjectKeyBuilder::assertSafe($objectKey);
 
-        return url('/uploads/' . $objectKey);
+        return URL::temporarySignedRoute(
+            'local-documents.view',
+            now()->addSeconds(max(60, $ttlSeconds)),
+            ['path' => $objectKey]
+        );
     }
 
     public function downloadUrl(string $objectKey, int $ttlSeconds, string $downloadName): string
     {
-        return $this->viewUrl($objectKey, $ttlSeconds, '');
+        ObjectKeyBuilder::assertSafe($objectKey);
+
+        return URL::temporarySignedRoute(
+            'local-documents.view',
+            now()->addSeconds(max(60, $ttlSeconds)),
+            ['path' => $objectKey, 'download' => basename($downloadName) ?: 'document']
+        );
     }
 
     public function healthy(): bool
     {
-        return is_dir(public_path('uploads')) || @mkdir(public_path('uploads'), 0755, true);
+        $base = storage_path('app/private/uploads');
+
+        return is_dir($base) || @mkdir($base, 0755, true);
     }
 }

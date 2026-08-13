@@ -1,5 +1,6 @@
 <?php
 
+use App\Support\ObjectKeyBuilder;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
 
@@ -59,3 +60,39 @@ Route::get('/storage/{path}', function (string $path) {
         'Cache-Control' => 'private, max-age=300',
     ]);
 })->where('path', '.*');
+
+/**
+ * Expiring signed URLs for locally stored v1 documents — the local-provider
+ * counterpart of an S3 presigned link. Only URLs minted by
+ * LocalStorageProvider::viewUrl/downloadUrl validate; everything else 403s.
+ */
+Route::get('/local-documents/{path}', function (string $path) {
+    $decoded = rawurldecode($path);
+
+    try {
+        ObjectKeyBuilder::assertSafe($decoded);
+    } catch (InvalidArgumentException) {
+        abort(404);
+    }
+
+    $absolute = storage_path('app/private/uploads/' . $decoded);
+
+    if (! is_file($absolute)) {
+        $absolute = public_path('uploads/' . $decoded);
+    }
+
+    if (! is_file($absolute)) {
+        abort(404);
+    }
+
+    $mimeType = @mime_content_type($absolute) ?: 'application/octet-stream';
+    $download = request()->query('download');
+
+    return response()->file($absolute, [
+        'Content-Type' => $mimeType,
+        'Content-Disposition' => ($download ? 'attachment' : 'inline')
+            . '; filename="' . basename($download ?: $decoded) . '"',
+        'X-Content-Type-Options' => 'nosniff',
+        'Cache-Control' => 'private, no-store',
+    ]);
+})->where('path', '.*')->name('local-documents.view')->middleware('signed');

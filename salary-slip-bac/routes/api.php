@@ -395,6 +395,7 @@ Route::middleware('jwt.auth')->group(function () {
         Route::post('preview-name', [DocumentController::class, 'previewName'])->middleware('permission:document.file.read');
         Route::post('/', [DocumentController::class, 'store'])->middleware('permission:document.file.upload');
         Route::get('/', [DocumentController::class, 'index'])->middleware('permission:document.file.read');
+        Route::get('{id}/file', [DocumentController::class, 'file'])->whereNumber('id')->middleware('permission:document.file.read');
         Route::delete('{id}', [DocumentController::class, 'destroy'])->middleware('permission:document.file.delete');
     });
 
@@ -651,6 +652,7 @@ Route::middleware('jwt.auth')->group(function () {
             Route::group(['prefix' => 'requisitions'], function () {
                 Route::get('get', [JobRequisitionController::class, 'index'])->middleware('permission:hr.requisition.read');
                 Route::get('show/{id}', [JobRequisitionController::class, 'show'])->middleware('permission:hr.requisition.read');
+                Route::get('departments/{id}/managers', [JobRequisitionController::class, 'departmentManagers'])->middleware('permission:hr.requisition.read');
                 Route::post('store', [JobRequisitionController::class, 'store'])->middleware('permission:hr.requisition.create');
                 Route::put('update/{id}', [JobRequisitionController::class, 'update'])->middleware('permission:hr.requisition.update');
                 Route::delete('delete/{id}', [JobRequisitionController::class, 'destroy'])->middleware('permission:hr.requisition.delete');

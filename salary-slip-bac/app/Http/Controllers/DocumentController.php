@@ -244,9 +244,9 @@ class DocumentController extends Controller
             return response()->json(['status' => false, 'message' => 'Document not found'], 404);
         }
 
-        $absolute = public_path($document->storage_path);
+        $absolute = $document->storage_path ? $this->resolveStoredFile($document->storage_path) : null;
 
-        if ($document->storage_path && is_file($absolute)) {
+        if ($absolute) {
             @unlink($absolute);
         }
 
@@ -260,6 +260,57 @@ class DocumentController extends Controller
         $document->delete();
 
         return response()->json(['status' => true, 'message' => 'Document deleted']);
+    }
+
+    public function file(Request $request, int $id)
+    {
+        $document = DocumentUpload::find($id);
+
+        if (! $document || ! $document->storage_path) {
+            return response()->json(['status' => false, 'message' => 'Document not found'], 404);
+        }
+
+        $owner = User::find($document->user_id);
+        if (! $owner || ! $this->canAccessOwner($owner)) {
+            return response()->json(['status' => false, 'message' => 'Document not found'], 404);
+        }
+
+        $absolute = $this->resolveStoredFile($document->storage_path);
+
+        if (! $absolute) {
+            return response()->json(['status' => false, 'message' => 'File missing from storage'], 404);
+        }
+
+        AuditLogger::log($request, 'VIEW', 'Documents', null, [
+            'document_id' => $document->id,
+            'generated_name' => $document->generated_name,
+            'document_type' => $document->document_type,
+            'emp_code' => $document->emp_code,
+        ]);
+
+        return response()->file($absolute, [
+            'Content-Type' => $document->mime_type ?: 'application/octet-stream',
+            'Content-Disposition' => 'inline; filename="' . basename($document->generated_name ?: 'document') . '"',
+            'X-Content-Type-Options' => 'nosniff',
+            'Cache-Control' => 'private, no-store',
+        ]);
+    }
+
+    private function resolveStoredFile(string $relative): ?string
+    {
+        $relative = ltrim(str_replace('\\', '/', $relative), '/');
+
+        if ($relative === '' || str_contains($relative, "\0") || preg_match('#(^|/)\.\.(/|$)#', $relative)) {
+            return null;
+        }
+
+        foreach ([storage_path('app/private/' . $relative), public_path($relative)] as $candidate) {
+            if (is_file($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return null;
     }
 
     /** Target employee: explicit user_id/emp_code, else the caller themselves. */

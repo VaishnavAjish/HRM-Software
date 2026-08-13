@@ -13,7 +13,9 @@ use RuntimeException;
  *
  * Naming:  <EmpCode>_<UserName>_<DOC_TYPE>_V<n>_<YYYYMMDDHHMMSS>.<ext>
  * Example: EMP1025_RohitSaket_PAN_CARD_V1_20260729154530.pdf
- * Path:    uploads/users/<EmpCode>/<DOC_TYPE>/<filename>
+ * Path:    storage/app/private/uploads/users/<EmpCode>/<DOC_TYPE>/<filename>
+ *          (never under public/ — identity documents must not be reachable
+ *          without authentication; serving goes through DocumentController)
  *
  * Callers never choose the filename — that is the point of the feature. The
  * user's original name is preserved only as metadata on document_uploads.
@@ -185,7 +187,7 @@ class DocumentStorageService
         $generatedName = self::previewName($owner, $documentType, $originalName, $version);
         $directory = 'uploads/users/' . $ownerCode . '/' . $documentType;
 
-        $file->move(public_path($directory), $generatedName);
+        $file->move(storage_path('app/private/' . $directory), $generatedName);
 
         return DocumentUpload::create([
             'user_id'           => $owner?->id,

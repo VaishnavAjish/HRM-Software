@@ -93,13 +93,28 @@ class MigrateDocumentsToS3 extends Command
             return;
         }
 
-        $localPath = public_path($version->s3_object_key);
-        $realBase = realpath(public_path('uploads'));
-        $real = realpath($localPath);
+        $bases = array_filter([
+            realpath(storage_path('app/private/uploads')),
+            realpath(public_path('uploads')),
+        ]);
 
-        // Only files genuinely inside public/uploads may be migrated —
-        // guards against a poisoned path escaping the upload root.
-        if (!$real || !$realBase || !str_starts_with($real, $realBase)) {
+        $real = null;
+        foreach ([storage_path('app/private/' . $version->s3_object_key), public_path($version->s3_object_key)] as $candidate) {
+            $resolved = realpath($candidate);
+            if (!$resolved) {
+                continue;
+            }
+            foreach ($bases as $base) {
+                if (str_starts_with($resolved, $base)) {
+                    $real = $resolved;
+                    break 2;
+                }
+            }
+        }
+
+        // Only files genuinely inside an upload root may be migrated —
+        // guards against a poisoned path escaping it.
+        if (!$real) {
             $this->report['missing_local']++;
             $this->line("  <fg=yellow>missing/outside root</> #{$version->id} {$version->s3_object_key}");
 
