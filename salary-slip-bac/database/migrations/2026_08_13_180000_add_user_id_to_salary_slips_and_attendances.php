@@ -25,18 +25,23 @@ return new class extends Migration
         }
 
         foreach (['salary_slips', 'attendances'] as $table) {
-            Schema::table($table, function (Blueprint $blueprint) {
-                $blueprint->foreignId('user_id')->nullable()->constrained('users')->nullOnDelete();
-                $blueprint->index('user_id');
-            });
+            if (! Schema::hasColumn($table, 'user_id')) {
+                Schema::table($table, function (Blueprint $blueprint) {
+                    $blueprint->foreignId('user_id')->nullable()->constrained('users')->nullOnDelete();
+                    $blueprint->index('user_id');
+                });
+            }
 
             $this->backfill($table);
         }
 
-        DB::statement(
-            "CREATE UNIQUE INDEX users_company_emp_code_unique ON users (company_code, emp_code) WHERE emp_code IS NOT NULL AND emp_code <> ''"
-        );
-        DB::statement('CREATE INDEX users_emp_code_index ON users (emp_code)');
+        $driver = DB::connection()->getDriverName();
+        if ($driver === 'sqlite' || $driver === 'pgsql') {
+            DB::statement(
+                "CREATE UNIQUE INDEX IF NOT EXISTS users_company_emp_code_unique ON users (company_code, emp_code) WHERE emp_code IS NOT NULL AND emp_code <> ''"
+            );
+            DB::statement('CREATE INDEX IF NOT EXISTS users_emp_code_index ON users (emp_code)');
+        }
     }
 
     public function down(): void
