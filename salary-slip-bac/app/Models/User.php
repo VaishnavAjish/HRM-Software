@@ -109,6 +109,7 @@ class User extends Authenticatable implements JWTSubject
         'password', 'remember_token',
         'encrypted_aadhaar_number', 'aadhar_card_no',
         'is_super_admin', 'is_hidden', 'is_system_account', 'is_protected',
+        'otp', 'verification_token', 'verification_token_expires_at',
     ];
 
     protected $appends = ['aadhaar_masked', 'has_aadhaar'];
