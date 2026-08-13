@@ -1938,6 +1938,9 @@ export const hrApi = {
   publishToIndeed(id, payload = {}, accessToken, tokenType = "Bearer") {
     return apiRequest(`/hr/requisitions/publish-indeed/${id}`, { method: "POST", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(payload) });
   },
+  getDepartmentManagers(departmentId, accessToken, tokenType = "Bearer", filters = {}) {
+    return apiRequest(`/hr/requisitions/departments/${departmentId}/managers${hrQuery(filters)}`, { headers: hrAuthHeaders(accessToken, tokenType) });
+  },
 
   // Quizzes
   getQuizzes(accessToken, tokenType = "Bearer", filters = {}) {
@@ -2053,6 +2056,11 @@ export const hrApi = {
   },
   getAssetDashboard(accessToken, tokenType = "Bearer", filters = {}) {
     return apiRequest(`/hr/assets/dashboard${hrQuery(filters)}`, { headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+
+  // Onboarding
+  getOnboardingDashboard(accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/onboarding/dashboard`, { headers: hrAuthHeaders(accessToken, tokenType) });
   },
   getAsset(id, accessToken, tokenType = "Bearer") {
     return apiRequest(`/hr/assets/show/${id}`, { headers: hrAuthHeaders(accessToken, tokenType) });

@@ -71,6 +71,8 @@ export default function RequisitionDrawer({ requisition, onClose, onEdit }) {
             <dl className="grid grid-cols-2 gap-3 text-sm">
               <Detail label="Designation" value={requisition.designation} />
               <Detail label="Employment Type" value={requisition.employment_type?.replace("_", " ")} />
+              <Detail label="Department" value={requisition.department?.name} />
+              <Detail label="Department Manager" value={requisition.department_manager?.name} />
               <Detail label="Hiring Manager" value={requisition.requestedBy?.name} />
               <Detail label="Approved By" value={requisition.approvedBy?.name} />
               <Detail label="Experience" value={requisition.min_experience != null ? `${requisition.min_experience}–${requisition.max_experience ?? "?"} yrs` : "—"} />

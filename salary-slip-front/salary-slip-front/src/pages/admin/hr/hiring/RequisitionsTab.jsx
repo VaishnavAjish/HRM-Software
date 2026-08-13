@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import {
   Plus, CheckCircle2, Send, Pencil, Trash2, Copy, Archive,
@@ -117,6 +117,7 @@ const PRIORITY_VARIANT = { low: "gray", medium: "blue", high: "yellow", urgent: 
 
 const ALL_COLUMNS = [
   { key: "department", label: "Department" },
+  { key: "deptManager", label: "Dept. Manager" },
   { key: "hiringManager", label: "Hiring Manager" },
   { key: "openings", label: "Openings" },
   { key: "candidates", label: "Candidates" },
@@ -129,10 +130,18 @@ const ALL_COLUMNS = [
 const VISIBLE_COLS_KEY = "hr_req_visible_columns";
 
 const EMPTY_FORM = {
+  department_id: "", department_manager_id: "",
   title: "", designation: "", employment_type: "full_time", openings: 1,
   priority: "medium", min_experience: "", max_experience: "", salary_min: "",
   salary_max: "", description: "", requirements: "", target_closing_date: "",
 };
+
+const STEP2_FIELDS = [
+  "title", "designation", "employment_type", "openings", "priority",
+  "target_closing_date", "min_experience", "max_experience", "salary_min",
+  "salary_max", "description", "requirements",
+];
+const step2Snapshot = (f) => JSON.stringify(STEP2_FIELDS.map((k) => f[k] ?? ""));
 
 export default function RequisitionsTab({ departments = [], people = [] }) {
   const { user } = useAuth();
@@ -146,10 +155,71 @@ export default function RequisitionsTab({ departments = [], people = [] }) {
   const [perPage, setPerPage] = useState(25);
 
   const [modalOpen, setModalOpen] = useState(false);
+  const [step, setStep] = useState(1);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [drawerTarget, setDrawerTarget] = useState(null);
+
+  const [managers, setManagers] = useState([]);
+  const [managersLoading, setManagersLoading] = useState(false);
+  const [managersError, setManagersError] = useState(false);
+  const managerSeq = useRef(0);
+  const baselineRef = useRef(step2Snapshot(EMPTY_FORM));
+
+  const deptOptions = useMemo(() => departments.filter((d) => d.id != null), [departments]);
+
+  const resetManagers = () => {
+    managerSeq.current += 1;
+    setManagers([]);
+    setManagersLoading(false);
+    setManagersError(false);
+  };
+
+  const loadManagers = (deptId, keepManagerId = "") => {
+    const seq = ++managerSeq.current;
+    setManagersLoading(true);
+    setManagersError(false);
+    setManagers([]);
+    hrApi.getDepartmentManagers(deptId, user?.accessToken, user?.tokenType, { ...companyScope })
+      .then((res) => {
+        if (seq !== managerSeq.current) return;
+        const list = res.data || [];
+        setManagers(list);
+        setForm((f) => {
+          if (keepManagerId && list.some((m) => String(m.id) === String(keepManagerId))) return f;
+          return { ...f, department_manager_id: list.length === 1 ? String(list[0].id) : "" };
+        });
+      })
+      .catch(() => { if (seq === managerSeq.current) setManagersError(true); })
+      .finally(() => { if (seq === managerSeq.current) setManagersLoading(false); });
+  };
+
+  const onDepartmentChange = (value) => {
+    setForm((f) => ({ ...f, department_id: value, department_manager_id: "" }));
+    if (value) loadManagers(value);
+    else resetManagers();
+  };
+
+  const goToStep1 = () => {
+    setStep(1);
+    if (form.department_id) loadManagers(form.department_id, form.department_manager_id);
+  };
+
+  const canGoNext = Boolean(form.department_id && form.department_manager_id) && !managersLoading;
+
+  const selectedDeptName =
+    deptOptions.find((d) => String(d.id) === String(form.department_id))?.name
+    || editing?.department?.name || "Not set";
+  const selectedManagerName =
+    managers.find((m) => String(m.id) === String(form.department_manager_id))?.name
+    || (form.department_manager_id && editing?.department_manager?.name) || "Not set";
+
+  const requestClose = () => {
+    if (step2Snapshot(form) !== baselineRef.current
+      && !window.confirm("Discard this requisition?\n\nYour unsaved changes will be lost.")) return;
+    setModalOpen(false);
+  };
 
   // Live JD preview: regenerated from the form on every change until the
   // recruiter edits it directly, at which point their wording wins until
@@ -242,26 +312,56 @@ export default function RequisitionsTab({ departments = [], people = [] }) {
     return r;
   }, [rows, hr.filters.hiringManagerId, hr.filters.priority, hr.filters.dateFrom, hr.filters.dateTo, hr.filters.sort]);
 
-  const openCreate = () => { setEditing(null); setForm(EMPTY_FORM); setJdEdited(false); setModalOpen(true); };
+  const openCreate = () => {
+    setEditing(null);
+    setForm(EMPTY_FORM);
+    baselineRef.current = step2Snapshot(EMPTY_FORM);
+    setJdEdited(false);
+    resetManagers();
+    setStep(1);
+    setModalOpen(true);
+  };
+
   const openEdit = (r) => {
     setEditing(r);
-    setForm({
+    const f = {
+      department_id: r.department_id ?? "", department_manager_id: r.department_manager_id ?? "",
       title: r.title || "", designation: r.designation || "", employment_type: r.employment_type || "full_time",
       openings: r.openings || 1, priority: r.priority || "medium", min_experience: r.min_experience ?? "",
       max_experience: r.max_experience ?? "", salary_min: r.salary_min ?? "", salary_max: r.salary_max ?? "",
       description: r.description || "", requirements: r.requirements || "", target_closing_date: r.target_closing_date || "",
-    });
+    };
+    setForm(f);
+    baselineRef.current = step2Snapshot(f);
     setJdEdited(false);
+    resetManagers();
+    if (r.department_manager) {
+      setManagers([{ id: r.department_manager.id, name: r.department_manager.name, designation: r.department_manager.designation }]);
+    }
+    setStep(2);
     setModalOpen(true);
   };
 
   const save = async () => {
     if (!form.title.trim()) { toast.error("Title is required"); return; }
+    if (!editing && (!form.department_id || !form.department_manager_id)) {
+      setStep(1);
+      toast.error("Select a Department and Department Manager first");
+      return;
+    }
     setSaving(true);
     try {
+      const payload = { ...form };
+      if (form.department_id && form.department_manager_id) {
+        payload.department_id = Number(form.department_id);
+        payload.department_manager_id = Number(form.department_manager_id);
+      } else {
+        delete payload.department_id;
+        delete payload.department_manager_id;
+      }
       const res = editing
-        ? await hrApi.updateRequisition(editing.id, form, user?.accessToken, user?.tokenType)
-        : await hrApi.storeRequisition(form, user?.accessToken, user?.tokenType);
+        ? await hrApi.updateRequisition(editing.id, payload, user?.accessToken, user?.tokenType)
+        : await hrApi.storeRequisition(payload, user?.accessToken, user?.tokenType);
       if (res.status) { toast.success(res.message || "Saved"); setModalOpen(false); load(); }
     } catch (err) {
       toast.error(err.message || "Failed to save requisition");
@@ -317,9 +417,27 @@ export default function RequisitionsTab({ departments = [], people = [] }) {
   };
 
   const duplicate = async (r) => {
+    if (!r.department_id || !r.department_manager_id) {
+      setEditing(null);
+      setForm({
+        ...EMPTY_FORM,
+        title: `${r.title} (Copy)`, designation: r.designation || "", employment_type: r.employment_type || "full_time",
+        openings: r.openings || 1, priority: r.priority || "medium", min_experience: r.min_experience ?? "",
+        max_experience: r.max_experience ?? "", salary_min: r.salary_min ?? "", salary_max: r.salary_max ?? "",
+        description: r.description || "", requirements: r.requirements || "",
+      });
+      baselineRef.current = step2Snapshot(EMPTY_FORM);
+      setJdEdited(false);
+      resetManagers();
+      setStep(1);
+      setModalOpen(true);
+      toast("Select the Department and Department Manager to finish duplicating");
+      return;
+    }
     try {
       const res = await hrApi.storeRequisition({
-        title: `${r.title} (Copy)`, designation: r.designation, employment_type: r.employment_type,
+        title: `${r.title} (Copy)`, department_id: r.department_id, department_manager_id: r.department_manager_id,
+        designation: r.designation, employment_type: r.employment_type,
         openings: r.openings, priority: r.priority, min_experience: r.min_experience, max_experience: r.max_experience,
         salary_min: r.salary_min, salary_max: r.salary_max, description: r.description, requirements: r.requirements,
       }, user?.accessToken, user?.tokenType);
@@ -353,7 +471,7 @@ export default function RequisitionsTab({ departments = [], people = [] }) {
   const bulkExport = (format) => {
     const selected = visibleRows.filter((r) => hr.selectedIds.includes(r.id));
     const exportRows = selected.map((r) => ({
-      Title: r.title, Department: r.department?.name || "—", "Hiring Manager": r.requestedBy?.name || "—",
+      Title: r.title, Department: r.department?.name || "—", "Dept. Manager": r.department_manager?.name || "—", "Hiring Manager": r.requestedBy?.name || "—",
       Openings: r.openings, Candidates: r.candidates_count ?? 0, Priority: r.priority, Status: r.status,
       Created: r.created_at, "Target Joining": r.target_closing_date || "—",
     }));
@@ -440,6 +558,7 @@ export default function RequisitionsTab({ departments = [], people = [] }) {
                   </th>
                   <th className="text-left px-4 py-3">Job Title</th>
                   {isVisible("department") && <th className="text-left px-4 py-3">Department</th>}
+                  {isVisible("deptManager") && <th className="text-left px-4 py-3">Dept. Manager</th>}
                   {isVisible("hiringManager") && <th className="text-left px-4 py-3">Hiring Manager</th>}
                   {isVisible("openings") && <th className="text-left px-4 py-3">Openings</th>}
                   {isVisible("candidates") && <th className="text-left px-4 py-3">Candidates</th>}
@@ -463,6 +582,7 @@ export default function RequisitionsTab({ departments = [], people = [] }) {
                       </button>
                     </td>
                     {isVisible("department") && <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{r.department?.name || "—"}</td>}
+                    {isVisible("deptManager") && <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{r.department_manager?.name || "—"}</td>}
                     {isVisible("hiringManager") && <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{r.requestedBy?.name || "—"}</td>}
                     {isVisible("openings") && <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{r.openings}</td>}
                     {isVisible("candidates") && (
@@ -531,13 +651,88 @@ export default function RequisitionsTab({ departments = [], people = [] }) {
         </div>
       </div>
 
-      <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={editing ? "Edit Requisition" : "New Requisition"} size="xl"
-        footer={<div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? "Saving..." : "Save"}</Button></div>}>
+      <Modal isOpen={modalOpen} onClose={requestClose} title={editing ? "Edit Requisition" : "New Job Requisition"} size={step === 1 ? "md" : "xl"}
+        footer={step === 1 ? (
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={requestClose}>Cancel</Button>
+            <Button onClick={() => canGoNext && setStep(2)} disabled={!canGoNext}>Next →</Button>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between gap-2">
+            <Button variant="secondary" onClick={goToStep1}>← Back</Button>
+            <div className="flex gap-2">
+              <Button variant="secondary" onClick={requestClose}>Cancel</Button>
+              <Button onClick={save} disabled={saving}>{saving ? "Saving..." : "Save"}</Button>
+            </div>
+          </div>
+        )}>
+        {step === 1 && (
+          <FormSection title="Department & Approver">
+            <div className="space-y-4">
+              <Field label="Department" required>
+                <select
+                  className={inputClass}
+                  aria-label="Department"
+                  value={form.department_id}
+                  onChange={(e) => onDepartmentChange(e.target.value)}
+                  autoFocus
+                >
+                  <option value="">{deptOptions.length === 0 ? "Loading departments..." : "Select Department"}</option>
+                  {deptOptions.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                </select>
+              </Field>
+              <Field label="Department Manager" required>
+                <select
+                  className={inputClass}
+                  aria-label="Department Manager"
+                  value={form.department_manager_id}
+                  disabled={!form.department_id || managersLoading || managersError || managers.length === 0}
+                  onChange={(e) => setForm({ ...form, department_manager_id: e.target.value })}
+                >
+                  <option value="">
+                    {!form.department_id ? "Select Department first"
+                      : managersLoading ? "Loading managers..."
+                      : "Select Department Manager"}
+                  </option>
+                  {managers.map((m) => (
+                    <option key={m.id} value={m.id}>{m.name}{m.designation ? ` — ${m.designation}` : ""}</option>
+                  ))}
+                </select>
+                {managersError && (
+                  <p className="mt-1.5 text-xs text-red-600 dark:text-red-400">
+                    Unable to load Department Managers.{" "}
+                    <button type="button" onClick={() => loadManagers(form.department_id, form.department_manager_id)} className="font-semibold underline">
+                      Retry
+                    </button>
+                  </p>
+                )}
+                {!managersError && !managersLoading && form.department_id && managers.length === 0 && (
+                  <p className="mt-1.5 text-xs text-amber-600 dark:text-amber-400">
+                    No Department Manager is assigned to this department.
+                  </p>
+                )}
+              </Field>
+            </div>
+          </FormSection>
+        )}
+        {step === 2 && (
+        <>
+        <div className="mb-4 flex flex-wrap items-center gap-x-5 gap-y-1 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 px-4 py-2.5 text-sm">
+          <span className="text-gray-500 dark:text-gray-400">
+            Department: <span className="font-semibold text-gray-900 dark:text-white">{selectedDeptName}</span>
+          </span>
+          <span className="text-gray-500 dark:text-gray-400">
+            Manager: <span className="font-semibold text-gray-900 dark:text-white">{selectedManagerName}</span>
+          </span>
+          <button type="button" onClick={goToStep1} className="ml-auto text-xs font-semibold text-brand-600 dark:text-brand-400 hover:underline">
+            Change
+          </button>
+        </div>
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
           <div className="lg:col-span-3 space-y-5 content-start">
             <FormSection title="Role Basics">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Field label="Title" required><input className={inputClass} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></Field>
+                <Field label="Title" required><input className={inputClass} aria-label="Title" autoFocus value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></Field>
                 <Field label="Designation"><input className={inputClass} value={form.designation} onChange={(e) => setForm({ ...form, designation: e.target.value })} /></Field>
                 <Field label="Employment Type">
                   <select className={inputClass} value={form.employment_type} onChange={(e) => setForm({ ...form, employment_type: e.target.value })}>
@@ -645,6 +840,8 @@ export default function RequisitionsTab({ departments = [], people = [] }) {
             </div>
           </div>
         </div>
+        </>
+        )}
       </Modal>
 
       <RequisitionDrawer
