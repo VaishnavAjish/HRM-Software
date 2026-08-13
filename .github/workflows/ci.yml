@@ -343,7 +343,9 @@ jobs:
 
       - name: Refuse tracked secrets
         run: |
-          MATCHES=$(git ls-files | grep -iE '\.pem$|(^|/)\.env$|\.key$|id_rsa|\.p12$' || true)
+          # storage/certs/cacert.pem is the public Mozilla CA root bundle (no
+          # private key material); it is deliberately tracked, so exclude it.
+          MATCHES=$(git ls-files | grep -iE '\.pem$|(^|/)\.env$|\.key$|id_rsa|\.p12$' | grep -vE '(^|/)storage/certs/cacert\.pem$' || true)
           if [ -n "$MATCHES" ]; then
             echo "::error::Secret-bearing files are tracked:"
             echo "$MATCHES"
@@ -354,7 +356,8 @@ jobs:
       - name: Refuse secrets in history
         run: |
           HIST=$(git log --all --diff-filter=A --name-only --pretty=format: \
-                 | grep -iE '\.pem$|(^|/)\.env$|\.key$|id_rsa' | sort -u || true)
+                 | grep -iE '\.pem$|(^|/)\.env$|\.key$|id_rsa' \
+                 | grep -vE '(^|/)storage/certs/cacert\.pem$' | sort -u || true)
           if [ -n "$HIST" ]; then
             echo "::error::Secret-bearing files exist in git history:"
             echo "$HIST"

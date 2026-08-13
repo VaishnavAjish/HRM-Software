@@ -22,17 +22,32 @@ class DatabaseSeeder extends Seeder
         // deleted by the 2026_07_29_000001_remove_legacy_super_admin_accounts
         // migration — do not reintroduce them here.
 
+        // The seeded super-admin password must never be a constant published in
+        // this repository — a fresh install or re-seed would otherwise create a
+        // root account whose password is known to anyone with the source.
+        $seedPassword = env('SEED_SUPER_ADMIN_PASSWORD');
+        if (blank($seedPassword)) {
+            if (app()->environment('production')) {
+                throw new \RuntimeException(
+                    'SEED_SUPER_ADMIN_PASSWORD is not set. Refusing to seed admin@niss.pro '
+                    .'with a hardcoded default. Set it in .env before seeding production.'
+                );
+            }
+            // Non-production: generate a random password rather than a known
+            // literal, so no environment ever ships a guessable super admin.
+            // Reset it with a password-reset flow after seeding if you need to log in.
+            $seedPassword = \Illuminate\Support\Str::password(24);
+        }
+
         // ── NISS Super Admin ───────────────────────────────────
+        // password is only applied when the row is new; an existing password is
+        // never overwritten (see the fill() below, which excludes it).
         $nissSuperAdmin = User::firstOrCreate(
             ['email' => 'admin@niss.pro'],
             [
                 'emp_code'     => 1000000002,
                 'name'         => 'NISS Super Admin',
-                // Only used when the account does not exist yet; an existing
-                // password is never overwritten. Set SEED_SUPER_ADMIN_PASSWORD
-                // in .env so a fresh install does not start with a password
-                // that is published in this repository's history.
-                'password'     => env('SEED_SUPER_ADMIN_PASSWORD', 'Admin@niss123'),
+                'password'     => $seedPassword,
                 'role'         => 0,
                 'company_code' => 'nidhi-impex',
                 'status'       => 0,
