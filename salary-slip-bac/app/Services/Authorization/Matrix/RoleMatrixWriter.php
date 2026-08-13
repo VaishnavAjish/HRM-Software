@@ -88,7 +88,9 @@ class RoleMatrixWriter
                 $applied++;
             }
 
-            $projection = $this->projectImpliedCodes($role, $changes, $actorId, $businessReason);
+            $ancestors = $this->grantRequiredAncestors($role, $changes, $actorId, $businessReason);
+
+            $projection = $this->projectImpliedCodes($role, $changes, $actorId, $businessReason, array_keys($ancestors));
 
             $version = $currentVersion;
 
@@ -101,9 +103,83 @@ class RoleMatrixWriter
                 'applied' => $applied,
                 'projected' => $projection['granted'],
                 'revoked' => $projection['revoked'],
+                'ancestorsGranted' => count($ancestors),
                 'version' => $version,
             ];
         });
+    }
+
+    /**
+     * A grant is only effective while every ancestor in its registry chain is
+     * held — the engine's deniedAncestor() gate refuses the child otherwise.
+     * The matrix used to save exactly what was clicked, so an administrator who
+     * granted ui.portals.employee on a fresh custom role produced a row the
+     * engine would never honour (the director role shipped in precisely this
+     * state: portal children ALLOW, ui.portals absent, every check DENIED).
+     *
+     * Missing ancestors are granted automatically and audited as ANCESTOR
+     * changes. An ancestor that is explicitly DENY is a contradiction the save
+     * must not silently resolve in either direction, so the whole save is
+     * refused and the administrator decides.
+     */
+    private function grantRequiredAncestors(Role $role, array $changes, int $actorId, ?string $businessReason): array
+    {
+        $needed = [];
+
+        foreach ($changes as $change) {
+            if (! in_array($change['state'], [EffectiveStateResolver::ALLOW, EffectiveStateResolver::CONDITIONAL], true)) {
+                continue;
+            }
+
+            foreach (PermissionRegistry::requiredCodesFor($change['permissionCode']) as $ancestor) {
+                if ($ancestor === $change['permissionCode']) {
+                    continue;
+                }
+
+                if ((PermissionRegistry::node($ancestor)['permission'] ?? null) === null) {
+                    continue;
+                }
+
+                $needed[$ancestor] = true;
+            }
+        }
+
+        if ($needed === []) {
+            return [];
+        }
+
+        $ids = DB::table('permissions')->whereIn('code', array_keys($needed))->pluck('id', 'code');
+
+        $missing = array_values(array_diff(array_keys($needed), $ids->keys()->all()));
+
+        if ($missing !== []) {
+            throw new RuntimeException('CATALOG_OUT_OF_SYNC:' . implode(',', $missing));
+        }
+
+        $granted = [];
+        $denied = [];
+
+        foreach (array_keys($needed) as $ancestor) {
+            $state = $this->currentState($role->id, $ids[$ancestor]);
+
+            if ($state === EffectiveStateResolver::DENY) {
+                $denied[] = $ancestor;
+
+                continue;
+            }
+
+            if ($state === EffectiveStateResolver::NOT_ASSIGNED) {
+                $this->writeCell($role->id, $ids[$ancestor], EffectiveStateResolver::ALLOW, []);
+                $this->audit($role, $actorId, $ancestor, EffectiveStateResolver::NOT_ASSIGNED, EffectiveStateResolver::ALLOW, $businessReason, 'ANCESTOR');
+                $granted[$ancestor] = true;
+            }
+        }
+
+        if ($denied !== []) {
+            throw new RuntimeException('PARENT_EXPLICIT_DENY:' . implode(',', $denied));
+        }
+
+        return $granted;
     }
 
     /**
@@ -129,14 +205,14 @@ class RoleMatrixWriter
      * The subtree is exactly the set whose effective state this edit can move,
      * so reconciling it is precise rather than a sweep.
      */
-    private function projectImpliedCodes(Role $role, array $changes, int $actorId, ?string $businessReason): array
+    private function projectImpliedCodes(Role $role, array $changes, int $actorId, ?string $businessReason, array $extraCodes = []): array
     {
         $touched = [];
 
-        foreach ($changes as $change) {
+        foreach (array_merge(array_column($changes, 'permissionCode'), $extraCodes) as $editedCode) {
             $keys = array_merge(
-                [$change['permissionCode']],
-                PermissionRegistry::assignableDescendantsOf($change['permissionCode']),
+                [$editedCode],
+                PermissionRegistry::assignableDescendantsOf($editedCode),
             );
 
             foreach ($keys as $key) {

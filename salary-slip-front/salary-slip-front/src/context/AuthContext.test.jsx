@@ -9,6 +9,7 @@ vi.mock("../utils/api", () => ({
     login: vi.fn(),
     logout: vi.fn(),
   },
+  authorizationApi: { me: vi.fn() },
   rbacApi: { getMyPermissions: vi.fn() },
 }));
 
@@ -17,7 +18,7 @@ vi.mock("react-hot-toast", () => ({
 }));
 
 import { AuthProvider, useAuth } from "./AuthContext";
-import { authApi, rbacApi } from "../utils/api";
+import { authApi, authorizationApi, rbacApi } from "../utils/api";
 
 /**
  * The provider used to build its context value inline:
@@ -70,6 +71,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   sessionStorage.clear();
   rbacApi.getMyPermissions.mockResolvedValue({ status: true, data: [] });
+  authorizationApi.me.mockRejectedValue(new Error("snapshot unavailable"));
 });
 
 describe("AuthProvider — context value identity", () => {
@@ -143,6 +145,42 @@ describe("AuthProvider — context value identity", () => {
     expect(after.user?.email).toBe("new@example.com");
     expect(after.isAuthenticated).toBe(true);
     expect(await screen.findByTestId("probe")).toHaveTextContent("new@example.com");
+  });
+
+  it("uses the authorization snapshot to place a custom tier-3 user in the management shell", async () => {
+    authApi.login.mockResolvedValue({
+      access_token: "custom-token",
+      token_type: "bearer",
+      data: { id: 9, email: "custom@example.com", role: 3, name: "Custom" },
+    });
+    authorizationApi.me.mockResolvedValue({
+      success: true,
+      data: {
+        portal: "admin",
+        permissions: {
+          "ui.portals.business": { allowed: true, state: "ALLOW" },
+          "ui.salary": { allowed: true, state: "ALLOW" },
+        },
+        routes: { "/admin/salary": "ui.salary" },
+        requires: {},
+        roles: [{ code: "accounts_operator", name: "Accounts Operator" }],
+        featureFlags: {},
+      },
+    });
+
+    const { seen, Probe } = makeProbe();
+    render(<AuthProvider><Probe /></AuthProvider>);
+    await waitFor(() => expect(seen.length).toBeGreaterThan(0));
+
+    await act(async () => {
+      await seen[seen.length - 1].login("custom@example.com", "pw", "nidhi-impex");
+    });
+
+    const current = seen[seen.length - 1].user;
+    expect(current.role).toBe("admin");
+    expect(current.rawRole).toBe(3);
+    expect(current.permissions["ui.salary"]).toBe("read_write");
+    expect(current.authorization.routes["/admin/salary"]).toBe("ui.salary");
   });
 
   it("re-issues the value when permissions change on the user", async () => {

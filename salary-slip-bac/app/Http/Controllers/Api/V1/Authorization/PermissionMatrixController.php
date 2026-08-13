@@ -478,6 +478,14 @@ class PermissionMatrixController extends Controller
                     'details' => explode(',', $detail),
                 ],
             ], 422),
+            'PARENT_EXPLICIT_DENY' => response()->json([
+                'success' => false,
+                'error' => [
+                    'code' => 'PARENT_EXPLICIT_DENY',
+                    'message' => 'A required parent permission is explicitly denied on this role. Allow the parent or remove its deny, then save again.',
+                    'details' => explode(',', $detail),
+                ],
+            ], 422),
             'CATALOG_OUT_OF_SYNC' => response()->json([
                 'success' => false,
                 'error' => [

@@ -31,11 +31,13 @@ import Modal from "../../components/ui/Modal";
 import { SkeletonTable } from "../../components/ui/Skeleton";
 import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";
+import { useAuthorization } from "../../hooks/useAuthorization";
 import { authApi } from "../../utils/api";
 import { exportNodeToPdf } from "../../utils/pdfUtils";
 import TrialFormModal from "../auth/TrialFormModal";
 import AppointmentModal from "../auth/AppointmentModal";
 import { escapeHtml } from "../../utils/html";
+import { trialActionAccess } from "../../utils/formActionAccess";
 
 function firstPresent(...values) {
   return values.find((value) => value !== undefined && value !== null) ?? "";
@@ -345,7 +347,13 @@ const PrintableTrialForm = ({ data, formRef }) => {
 
 export default function TrialForm() {
   const { user } = useAuth();
+  const { can } = useAuthorization();
   const { companyId, companyScope, scopeKey } = useCompany();
+  const trialAccess = trialActionAccess(can);
+  const canCreateTrial = trialAccess.create;
+  const canUpdateTrial = trialAccess.update;
+  const canDeleteTrial = trialAccess.deleteRecord;
+  const canCreateAppointment = trialAccess.processIntoAppointment;
   const [loading, setLoading] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [prefillTrialData, setPrefillTrialData] = useState(null);
@@ -408,8 +416,6 @@ export default function TrialForm() {
     }),
     [forms],
   );
-
-  const isAgentUser = user?.type === "agent" || user?.role === "agent" || Number(user?.role) === 4;
 
   const pendingForms = forms.filter(f => f.status !== "Approved" && f.status !== "Rejected");
   const historyForms = forms.filter(f => f.status === "Approved" || f.status === "Rejected");
@@ -833,7 +839,7 @@ export default function TrialForm() {
         headerName: "Actions",
         field: "id",
         pinned: "right",
-        width: user?.role === 'agent' ? 200 : 380,
+        width: canUpdateTrial || canDeleteTrial || canCreateAppointment ? 380 : 100,
         sortable: false,
         filter: false,
         cellRenderer: ({ data }) => {
@@ -848,7 +854,7 @@ export default function TrialForm() {
               >
                 View
               </Button>
-              {user?.role !== 'agent' && !isHistory && (
+              {canUpdateTrial && !isHistory && (
                 <>
                   <button
                     onClick={() => handleStatusUpdate(data.id, true)}
@@ -876,7 +882,7 @@ export default function TrialForm() {
                   </button>
                 </>
               )}
-              {user?.role !== 'agent' && (
+              {canDeleteTrial && (
                 <button
                   onClick={() => setDeleteTarget(data)}
                   className="inline-flex items-center gap-1 rounded-lg bg-red-50 px-2.5 py-1.5 text-xs font-bold text-red-700 transition hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400"
@@ -884,7 +890,7 @@ export default function TrialForm() {
                   <Trash2 size={11} />
                 </button>
               )}
-              {!isHistory && (data.status === "Approved" || data.status === "1") && (user?.role === 'agent' || ["0", "1", "2", "admin", "superadmin"].includes(String(user?.role).toLowerCase())) && (
+              {(data.status === "Approved" || data.status === "1") && canCreateAppointment && (
                 data.processed ? (
                   <span className="inline-flex items-center gap-1 rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs font-bold text-gray-500 dark:bg-gray-700 dark:text-gray-400 whitespace-nowrap">
                     <CheckCircle2 size={11} /> Processed
@@ -906,7 +912,7 @@ export default function TrialForm() {
         },
       },
     ],
-    [statusLoading, handleStatusUpdate, visibleColumns, user?.role],
+    [statusLoading, handleStatusUpdate, visibleColumns, canUpdateTrial, canDeleteTrial, canCreateAppointment],
   );
 
   const defaultColDef = useMemo(
@@ -1069,14 +1075,16 @@ export default function TrialForm() {
                     <Eye size={13} />
                     View Full Application
                   </button>
-                  <button
-                    onClick={() => setEditTarget(form)}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-xs font-semibold text-brand-700 transition hover:bg-brand-100 dark:border-brand-700 dark:bg-brand-900/20 dark:text-brand-400"
-                  >
-                    <Pencil size={13} />
-                    Edit
-                  </button>
-                  {user?.role !== 'agent' && (
+                  {canUpdateTrial && (
+                    <button
+                      onClick={() => setEditTarget(form)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-xs font-semibold text-brand-700 transition hover:bg-brand-100 dark:border-brand-700 dark:bg-brand-900/20 dark:text-brand-400"
+                    >
+                      <Pencil size={13} />
+                      Edit
+                    </button>
+                  )}
+                  {canUpdateTrial && (
                     <>
                       <button
                         onClick={() => handleStatusUpdate(form.id, true)}
@@ -1114,15 +1122,17 @@ export default function TrialForm() {
                         )}
                         Reject
                       </button>
-                      <button
-                        onClick={() => setDeleteTarget(form)}
-                        className="inline-flex items-center gap-1.5 rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-600 transition hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400"
-                      >
-                        <Trash2 size={13} />
-                      </button>
                     </>
                   )}
-                  {(form.status === "Approved" || form.status === "1") && (user?.role === 'agent' || ["0", "1", "2", "admin", "superadmin"].includes(String(user?.role).toLowerCase())) && (
+                  {canDeleteTrial && (
+                    <button
+                      onClick={() => setDeleteTarget(form)}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-600 transition hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  )}
+                  {(form.status === "Approved" || form.status === "1") && canCreateAppointment && (
                     form.processed ? (
                       <span className="inline-flex items-center gap-1.5 rounded-lg bg-gray-100 px-3 py-2 text-xs font-semibold text-gray-500 dark:bg-gray-700 dark:text-gray-400">
                         <CheckCircle2 size={13} /> Processed
@@ -1223,7 +1233,7 @@ export default function TrialForm() {
           selected && (
             <div className="flex flex-wrap items-center gap-2">
               <div className="flex flex-wrap items-center gap-2 border-r border-gray-200 pr-3 mr-1">
-                {user?.role !== 'agent' && (
+                {canUpdateTrial && (
                   <>
                     <button
                       onClick={() => handleStatusUpdate(selected.id, true)}
@@ -1265,7 +1275,7 @@ export default function TrialForm() {
                     </button>
                   </>
                 )}
-                {(selected.status === "Approved" || selected.status === "1") && (user?.role === 'agent' || ["0", "1", "2", "admin", "superadmin"].includes(String(user?.role).toLowerCase())) && (
+                {(selected.status === "Approved" || selected.status === "1") && canCreateAppointment && (
                   selected.processed ? (
                     <span className="inline-flex items-center gap-1.5 rounded-xl bg-gray-100 px-4 py-2 text-sm font-semibold text-gray-500 dark:bg-gray-700 dark:text-gray-400">
                       <CheckCircle2 size={14} /> Processed
@@ -1287,16 +1297,18 @@ export default function TrialForm() {
                 <Button variant="secondary" onClick={() => setSelected(null)}>
                   Close
                 </Button>
-                <button
-                  onClick={() => {
-                    setSelected(null);
-                    setEditTarget(selected);
-                  }}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-brand-300 bg-brand-50 px-4 py-2 text-sm font-semibold text-brand-700 shadow-sm transition hover:bg-brand-100 dark:border-brand-700 dark:bg-brand-900/20 dark:text-brand-400 dark:hover:bg-brand-900/40"
-                >
-                  <Pencil size={14} />
-                  Edit
-                </button>
+                {canUpdateTrial && (
+                  <button
+                    onClick={() => {
+                      setSelected(null);
+                      setEditTarget(selected);
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-brand-300 bg-brand-50 px-4 py-2 text-sm font-semibold text-brand-700 shadow-sm transition hover:bg-brand-100 dark:border-brand-700 dark:bg-brand-900/20 dark:text-brand-400 dark:hover:bg-brand-900/40"
+                  >
+                    <Pencil size={14} />
+                    Edit
+                  </button>
+                )}
                 <button
                   onClick={handlePrint}
                   className="inline-flex items-center gap-1.5 rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
@@ -1457,13 +1469,15 @@ export default function TrialForm() {
         )}
         {isNidhiScope && (
           <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="primary"
-              onClick={() => setAddFormOpen(true)}
-              icon={<Plus size={14} />}
-            >
-              New Trial Form
-            </Button>
+            {canCreateTrial && (
+              <Button
+                variant="primary"
+                onClick={() => setAddFormOpen(true)}
+                icon={<Plus size={14} />}
+              >
+                New Trial Form
+              </Button>
+            )}
             <Button
               variant="secondary"
               onClick={() => setShowColModal(true)}

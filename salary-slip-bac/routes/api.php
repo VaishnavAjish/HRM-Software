@@ -188,9 +188,13 @@ Route::middleware('jwt.auth')->group(function () {
         // The permission snapshot is expensive to build (see AuthorizationController::me)
         // and it is served from a cache afterwards, so it is throttled on the same
         // per-IP basis as the other decision endpoints rather than left unlimited.
-        Route::get('me', [V1AuthorizationController::class, 'me'])->middleware(['throttle:30,1', 'permission:self.profile.read']);
-        Route::post('check', [V1AuthorizationController::class, 'check'])->middleware(['throttle:120,1', 'permission:self.profile.read']);
-        Route::post('check-batch', [V1AuthorizationController::class, 'checkBatch'])->middleware(['throttle:60,1', 'permission:self.profile.read']);
+        // These endpoints only describe or evaluate the authenticated actor.
+        // Requiring self.profile.read here is circular: the browser needs this
+        // snapshot to learn which permissions the actor holds in the first
+        // place. The outer jwt.auth group remains the security boundary.
+        Route::get('me', [V1AuthorizationController::class, 'me'])->middleware('throttle:30,1');
+        Route::post('check', [V1AuthorizationController::class, 'check'])->middleware('throttle:120,1');
+        Route::post('check-batch', [V1AuthorizationController::class, 'checkBatch'])->middleware('throttle:60,1');
 
         /*
          * Administration surface for the Permission Matrix screen.

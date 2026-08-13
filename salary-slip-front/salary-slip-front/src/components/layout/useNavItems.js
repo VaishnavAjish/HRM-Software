@@ -264,13 +264,18 @@ export function useNavItems() {
    * keeping any visible child stays, and is disabled only when every remaining
    * child is denied.
    */
+  return decorateNavigation(nav, routeState);
+}
+
+/** Pure navigation projection used by both the hook and regression tests. */
+export function decorateNavigation(nav, routeState) {
   const decorate = (item) => {
     const state = routeState(item.to);
 
     return state === "unassigned" ? null : { ...item, disabled: state === "deny" };
   };
 
-  const permitted = nav
+  return nav
     .map((item) => {
       if (!item.subItems) return decorate(item);
 
@@ -281,8 +286,6 @@ export function useNavItems() {
       return { ...item, subItems, disabled: subItems.every((sub) => sub.disabled) };
     })
     .filter(Boolean);
-
-  return permitted;
 }
 
 export function dashboardPathFor(user) {

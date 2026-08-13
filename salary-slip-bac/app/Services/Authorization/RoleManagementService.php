@@ -144,6 +144,14 @@ class RoleManagementService
             'self.ticket.create',
         ];
 
+        // BUSINESS is the default custom-role type and represents a role that
+        // works in the management shell. The shell grants no page or action by
+        // itself; those remain controlled independently by the matrix.
+        if (strtoupper((string) $role->role_type) === 'BUSINESS') {
+            $baseline[] = 'ui.portals';
+            $baseline[] = 'ui.portals.business';
+        }
+
         $permissions = DB::table('permissions')
             ->whereIn('code', $baseline)
             ->where('is_active', true)

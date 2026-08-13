@@ -39,6 +39,7 @@ import Modal from "../../components/ui/Modal";
 import { SkeletonTable } from "../../components/ui/Skeleton";
 import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";
+import { useAuthorization } from "../../hooks/useAuthorization";
 import { authApi, salaryApi, appointmentV1Api, documentV1Api } from "../../utils/api";
 import DocumentViewerModal from "../../components/documents/DocumentViewerModal";
 import PrintableForm from "../../components/forms/PrintableForm";
@@ -50,6 +51,7 @@ import {
 } from "../auth/appointmentRouteState";
 import { getCompanyUnits } from "../../config/companyConfig";
 import { escapeHtml } from "../../utils/html";
+import { appointmentActionAccess } from "../../utils/formActionAccess";
 
 const inputCls =
   "w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-brand-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white";
@@ -920,7 +922,15 @@ function CreateCandidateModal({ isOpen, onClose, onSuccess }) {
 export default function Appointments() {
   const isMobile = useIsMobile();
   const { user } = useAuth();
+  const { can } = useAuthorization();
   const { companyScope, scopeKey } = useCompany();
+  const appointmentAccess = appointmentActionAccess(can);
+  const canCreateAppointment = appointmentAccess.create;
+  const canUpdateAppointment = appointmentAccess.update;
+  const canDeleteAppointment = appointmentAccess.deleteRecord;
+  const canCreateEmployee = appointmentAccess.createEmployee;
+  const canPrintAppointment = appointmentAccess.print;
+  const canExportAppointment = appointmentAccess.export;
   const [loading, setLoading] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [statusLoading, setStatusLoading] = useState({});
@@ -1552,9 +1562,9 @@ export default function Appointments() {
                       <Eye size={13} />
                       View
                     </button>
-                    {user?.role !== 'agent' && (
+                    {(canUpdateAppointment || canDeleteAppointment) && (
                       <>
-                        {data.empCode ? (
+                        {data.empCode && canUpdateAppointment ? (
                           <button
                             onClick={() => setEditTarget(data)}
                             className="flex min-w-0 flex-1 justify-center items-center gap-1.5 rounded-lg bg-yellow-50 px-2 py-2 text-xs font-semibold text-yellow-600 transition hover:bg-yellow-100 min-h-[36px]"
@@ -1562,7 +1572,7 @@ export default function Appointments() {
                             <Pencil size={13} />
                             Edit
                           </button>
-                        ) : data.status === "Rejected" ? (
+                        ) : data.status === "Rejected" && canDeleteAppointment ? (
                           <button
                             onClick={() => handleDeleteAppointment(data.id)}
                             disabled={statusLoading[data.id] === "Deleting"}
@@ -1575,7 +1585,7 @@ export default function Appointments() {
                             )}
                             Delete
                           </button>
-                        ) : (
+                        ) : canUpdateAppointment ? (
                           <>
                             <button
                               onClick={() => handleStatusUpdate(data.id, true)}
@@ -1608,7 +1618,7 @@ export default function Appointments() {
                               Reject
                             </button>
                           </>
-                        )}
+                        ) : null}
                       </>
                     )}
                   </div>
@@ -1967,7 +1977,7 @@ export default function Appointments() {
         headerName: "Actions",
         field: "id",
         pinned: "right",
-        width: user?.role === 'agent' ? 100 : 270,
+        width: canUpdateAppointment || canDeleteAppointment ? 270 : 100,
         sortable: false,
         filter: false,
         cellRenderer: ({ data }) => (
@@ -1980,9 +1990,9 @@ export default function Appointments() {
             >
               View
             </Button>
-            {user?.role !== 'agent' && (
+            {(canUpdateAppointment || canDeleteAppointment) && (
               <>
-                {data.empCode ? (
+                {data.empCode && canUpdateAppointment ? (
                   <Button
                     size="sm"
                     variant="warning"
@@ -1991,7 +2001,7 @@ export default function Appointments() {
                   >
                     Edit
                   </Button>
-                ) : data.status === "Rejected" ? (
+                ) : data.status === "Rejected" && canDeleteAppointment ? (
                   <button
                     onClick={() => handleDeleteAppointment(data.id)}
                     disabled={statusLoading[data.id] === "Deleting"}
@@ -2004,7 +2014,7 @@ export default function Appointments() {
                     )}
                     Delete
                   </button>
-                ) : (
+                ) : canUpdateAppointment ? (
                   <>
                     <button
                       onClick={() => handleStatusUpdate(data.id, true)}
@@ -2037,14 +2047,14 @@ export default function Appointments() {
                       Reject
                     </button>
                   </>
-                )}
+                ) : null}
               </>
             )}
           </div>
         ),
       },
     ];
-  }, [statusLoading, handleStatusUpdate, handleDeleteAppointment, setEditTarget, setGridLightbox, isMobile, user?.role, visibleColumns]);
+  }, [statusLoading, handleStatusUpdate, handleDeleteAppointment, setEditTarget, setGridLightbox, isMobile, canUpdateAppointment, canDeleteAppointment, visibleColumns]);
 
   const defaultColDef = useMemo(
     () => ({
@@ -2117,7 +2127,7 @@ export default function Appointments() {
           </select>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {user?.role !== 'agent' && (
+          {canCreateEmployee && (
             <Button
               variant="outline"
               onClick={() => setCreateAccountOpen(true)}
@@ -2126,13 +2136,15 @@ export default function Appointments() {
               Create Account
             </Button>
           )}
-          <Button
-            variant="primary"
-            onClick={() => setAddFormOpen(true)}
-            icon={<Plus size={14} />}
-          >
-            New Appointment
-          </Button>
+          {canCreateAppointment && (
+            <Button
+              variant="primary"
+              onClick={() => setAddFormOpen(true)}
+              icon={<Plus size={14} />}
+            >
+              New Appointment
+            </Button>
+          )}
           <Button
             variant="secondary"
             onClick={() => setShowColModal(true)}
@@ -2339,11 +2351,11 @@ export default function Appointments() {
             <div className="flex flex-wrap justify-between items-center gap-3 w-full">
               {/* Status actions — left side */}
               <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-                {user?.role !== 'agent' && (
+                {(canUpdateAppointment || canDeleteAppointment) && (
                   <>
                     {!selected.empCode && (
                       <>
-                        {selected.status === "Rejected" ? (
+                        {selected.status === "Rejected" && canDeleteAppointment ? (
                           <button
                             onClick={() => handleDeleteAppointment(selected.id)}
                             disabled={statusLoading[selected.id] === "Deleting"}
@@ -2356,7 +2368,7 @@ export default function Appointments() {
                             )}
                             Delete
                           </button>
-                        ) : (
+                        ) : canUpdateAppointment ? (
                           <>
                             <button
                               onClick={() => handleStatusUpdate(selected.id, true)}
@@ -2390,7 +2402,7 @@ export default function Appointments() {
                               Reject
                             </button>
                           </>
-                        )}
+                        ) : null}
                       </>
                     )}
                   </>
@@ -2401,35 +2413,41 @@ export default function Appointments() {
                 <Button variant="secondary" onClick={() => setSelected(null)}>
                   Close
                 </Button>
-                <button
-                  onClick={() => {
-                    setSelected(null);
-                    setEditTarget(selected);
-                  }}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-brand-300 bg-brand-50 dark:bg-brand-900/20 dark:border-brand-700 px-4 py-2 text-sm font-semibold text-brand-700 dark:text-brand-400 hover:bg-brand-100 dark:hover:bg-brand-900/40 transition shadow-sm"
-                >
-                  <Pencil size={14} />
-                  Edit
-                </button>
-                <button
-                  onClick={handlePrint}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-4 py-2 text-sm font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600 transition shadow-sm"
-                >
-                  <Printer size={14} />
-                  Print
-                </button>
-                <button
-                  onClick={handleDownloadPDF}
-                  disabled={pdfLoading}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-gray-900 dark:bg-gray-600 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-800 dark:hover:bg-gray-500 disabled:opacity-50 transition shadow-sm"
-                >
-                  {pdfLoading ? (
-                    <Loader2 size={14} className="animate-spin" />
-                  ) : (
-                    <Download size={14} />
-                  )}
-                  {pdfLoading ? "Generating…" : "Download PDF"}
-                </button>
+                {canUpdateAppointment && (
+                  <button
+                    onClick={() => {
+                      setSelected(null);
+                      setEditTarget(selected);
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-brand-300 bg-brand-50 dark:bg-brand-900/20 dark:border-brand-700 px-4 py-2 text-sm font-semibold text-brand-700 dark:text-brand-400 hover:bg-brand-100 dark:hover:bg-brand-900/40 transition shadow-sm"
+                  >
+                    <Pencil size={14} />
+                    Edit
+                  </button>
+                )}
+                {canPrintAppointment && (
+                  <button
+                    onClick={handlePrint}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-4 py-2 text-sm font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600 transition shadow-sm"
+                  >
+                    <Printer size={14} />
+                    Print
+                  </button>
+                )}
+                {canExportAppointment && (
+                  <button
+                    onClick={handleDownloadPDF}
+                    disabled={pdfLoading}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-gray-900 dark:bg-gray-600 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-800 dark:hover:bg-gray-500 disabled:opacity-50 transition shadow-sm"
+                  >
+                    {pdfLoading ? (
+                      <Loader2 size={14} className="animate-spin" />
+                    ) : (
+                      <Download size={14} />
+                    )}
+                    {pdfLoading ? "Generating…" : "Download PDF"}
+                  </button>
+                )}
               </div>
             </div>
           )
