@@ -476,6 +476,7 @@ class AdminController extends Controller
                     'month' => (string) $monthNum,
                     'year' => $year,
                     'emp_code' => $empCodeRaw,
+                    'user_id' => $employee->id,
                     'emp_name' => $canonical['emp_name'] ?? $employee->name ?? null,
                     'department' => $canonical['department'] ?? $employee->department ?? null,
                     'main_department' => $canonical['main_department'] ?? null,

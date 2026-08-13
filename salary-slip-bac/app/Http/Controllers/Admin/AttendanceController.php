@@ -136,9 +136,10 @@ class AttendanceController extends Controller
                 'unit' => $employee->unit,
                 'status' => $data['status'],
                 'marked_by' => auth('api')->id(),
+                'user_id' => $employee->id,
             ]],
             ['emp_code', 'company_code', 'date'],
-            ['unit', 'status', 'marked_by'],
+            ['unit', 'status', 'marked_by', 'user_id'],
         );
 
         $attendance = Attendance::where('emp_code', $data['emp_code'])
@@ -203,10 +204,11 @@ class AttendanceController extends Controller
                     'unit' => $employee->unit,
                     'status' => $status,
                     'marked_by' => $userId,
+                    'user_id' => $employee->id,
                 ];
             }
             if ($dayRows) {
-                Attendance::upsert($dayRows, ['emp_code', 'company_code', 'date'], ['unit', 'status', 'marked_by']);
+                Attendance::upsert($dayRows, ['emp_code', 'company_code', 'date'], ['unit', 'status', 'marked_by', 'user_id']);
                 $imported++;
                 $rowReports[] = ['row_number' => $excelRowNum, 'status' => 'passed', 'reason' => null, 'row_data' => $row];
             } else {
