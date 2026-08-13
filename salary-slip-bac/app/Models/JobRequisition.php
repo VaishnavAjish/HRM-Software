@@ -10,7 +10,7 @@ class JobRequisition extends Model
     use SoftDeletes;
 
     protected $fillable = [
-        'title', 'department_id', 'designation', 'employment_type', 'openings',
+        'title', 'department_id', 'department_manager_id', 'designation', 'employment_type', 'openings',
         'priority', 'status', 'min_experience', 'max_experience', 'salary_min',
         'salary_max', 'description', 'requirements', 'company_code', 'unit',
         'requested_by', 'approved_by', 'target_closing_date', 'approved_at',
@@ -30,6 +30,11 @@ class JobRequisition extends Model
     public function department()
     {
         return $this->belongsTo(Department::class, 'department_id');
+    }
+
+    public function departmentManager()
+    {
+        return $this->belongsTo(User::class, 'department_manager_id');
     }
 
     public function requestedBy()
