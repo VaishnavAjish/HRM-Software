@@ -1,5 +1,7 @@
 # Remediation Status & Operational Runbook — 2026-08-13
 
+> **Updated by a second remediation session later the same day — see §7 for what it closed and what remains.**
+
 Follows the audit in [AUDIT-2026-08-13-full-application-readonly.md](AUDIT-2026-08-13-full-application-readonly.md).
 Work was done **directly on the live tree** (LAN + prod serve from this working copy) at the operator's request, with small verified commits. Another session was concurrently editing `salary-slip-front/.../utils/api.js` and `HrDashboard.jsx`; those files were left untouched.
 
@@ -66,3 +68,34 @@ These are larger or coordinated changes that should be landed with testing, not 
 
 - Done: `php -l` on every changed PHP file; the migration ran clean; the duplicate-period preflight returned 0.
 - **Not run** (per read-only test-DB rule + live-system caution): the PHPUnit suite (auto-targets protected `niss_hrms_test`), the frontend build/lint. Run these in an isolated environment before considering the batch verified. Add regression tests for each fix (candidate cross-company 404, employee-edit role strip, assign-permissions ceiling, `/storage` denies private paths, duplicate-slip insert rejected).
+
+## 7. Second session — 2026-08-13 afternoon (commits `e5d4d266`…`a2c3ab0c`)
+
+### Closed
+- **F-S1b (P0)** `e5d4d266` — the 135 identity files were **moved out of `public/uploads`** into `storage/app/private/uploads` (verified 404 over HTTP afterwards; none had DB references, so nothing broke). `DocumentStorageService` and `LocalStorageProvider` now write only to private storage; serving goes through authenticated `GET /api/documents/{id}/file` (scope + audit) or expiring signed `local-documents.view` URLs. **Also discovered:** Laravel 12's `FilesystemServiceProvider` had been silently shadowing the custom `/storage/{path}` route (both the original vulnerable one and the F-S1a hardened one) with its own `storage.local` GET+PUT serve routes against the private disk; `serve => false` now disables that, so the hardened route actually runs and the framework's unauthenticated `PUT /storage/{path}` upload endpoint is gone.
+- **F-S10 (partial)** `50d867d8` — `otp`, `verification_token`, `verification_token_expires_at` added to `User::$hidden`. Full Resource/DTO layer (salary/bank/PAN fields) still open — needs coordinated SPA changes.
+- **F-F2** `a254a878`/`50d867d8` — onboarding mock fallback removed from `onboardingApi.js`; 7 orphaned fiction pages deleted. Live workspace tabs all call real routes.
+- **F-B4** `30358985` — payslip ratio-split fabrication removed; unitemised lump sums render as single "Allowances"/"Other Deduction" rows.
+- **F-S6/S7/S8/S9** `4e60c78f` — CORS origin allow-list (`CORS_ALLOWED_ORIGINS`, niss.pro + Capacitor + LAN dev patterns); baseline `throttle:api` (`API_RATE_LIMIT`, 120/min default); login lockout (5 fails / 5 min per identifier+IP, verified live); JWT revocation on password change/reset via `users.password_changed_at` (migration applied) + `iat` check in `JwtMiddleware`.
+- **F-B1** `11165323` — 10 MB + spreadsheet-MIME caps on all five import endpoints.
+- **F-D4** `11165323` — `UploadBatchRow` drops password/otp/token and masks account/phone to last-4 on write; **999 existing rows scrubbed in place**.
+- **F-D1 stage 1** `1282fd67` — nullable `user_id` FK (null-on-delete) on `salary_slips`/`attendances`, applied + backfilled: **667/667 slips linked**; the 17 attendance rows (emp_code `'1'`) remain the only orphans. Import/upsert paths now stamp `user_id`. Unique index `users(company_code, emp_code)` (partial, 0 duplicates found) + index on `users.emp_code` added.
+- **F-B7** `a2c3ab0c` — department rename cascade is transactional.
+- **F-S3 remainder** — `laravel.log` (45.7 MB of Aadhaar/presigned-URL/PII lines) truncated; `.env` switched to `LOG_CHANNEL=daily`, `LOG_LEVEL=info`.
+- **Debris** `27de25f7` — 16 tracked root debris files removed, incl. `image.png` (PII screenshot) and `run.txt` (LAN share). History still retains them; purging needs `git filter-repo`.
+
+### F-A1 enforcement readiness — measured, DO NOT flip yet
+`authorization_decision_logs`: 4,406 shadow DENY vs 1,162 ALLOW. Nearly all denies are `PERMISSION_NOT_ASSIGNED` on everyday actions (`payroll.payslip.read` 1,489, `recruitment.candidate.read` 1,191, `self.ticket.read` 567, `self.profile.read` 254…). Root cause: legacy `user_roles` covers **347/347** active users, but the canonical engine's `authorization_role_assignments` covers **6 users**. Flipping `AUTHZ_ENFORCED_PREFIXES` today would lock 341 users out of core flows. **Prerequisite:** sync/seed canonical role assignments from the legacy pivots (carefully — a past sync deactivated the agent/employee portals), re-check deny volume, then enforce prefix-by-prefix.
+
+### Cross-session note
+Commit `a254a878` accidentally included three files (`RequisitionDrawer.jsx`, `RequisitionsTab.jsx`, `api.js`) another session had staged mid-work on the job-requisition feature — a shared-index race (`git commit` picked up its staged files after an `add` lock collision). Functionally harmless (worktree intact, that feature's own commits will supersede), but the snapshot in that commit is mid-work. Later commits used path-limited `git commit -- <paths>` to avoid recurrence.
+
+### Still open (in priority order)
+1. Operator actions from §3: **secret rotation**, `HRM.pem`/zip removal, EC2 key rotation.
+2. **Restart the API server** in a quiet window (it may still hold the pre-change env; `.env` now also carries daily/info logging).
+3. F-A1 canonical role-assignment sync, then staged enforcement.
+4. F-S10 full User Resource/DTO + F-S1b SPA signed-URL consumption (same seam).
+5. F-S11 CSP (`unsafe-inline`/`unsafe-eval`), shorter JWT TTL, HttpOnly cookie storage.
+6. F-B3 multi-company import scope key, F-B6 chunked-import atomicity, F-B8 dashboard cross-company sum, F-B9 destructive GETs → DELETE (needs `api.js`, owned by the other session), F-C1 422 error bag.
+7. Money columns → `numeric(12,2)` (F-D2 remainder), mirror-column collapse, F-D5–D12 hygiene, F-O1/F-X2 ops (Sentry, backups, cron, real app server, deploy guide rewrite).
+8. Run PHPUnit + frontend build in an isolated env; add regression tests for every fix above.
