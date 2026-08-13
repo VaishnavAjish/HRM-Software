@@ -710,13 +710,16 @@ class AdminController extends Controller
         }
 
         $oldName = $department->name;
-        $department->name = $request->name;
-        $department->save();
 
-        if ($oldName && $oldName !== $request->name) {
-            \App\Models\User::where('department', $oldName)->update(['department' => $request->name]);
-            \Illuminate\Support\Facades\DB::table('salary_slips')->where('department', $oldName)->update(['department' => $request->name]);
-        }
+        \Illuminate\Support\Facades\DB::transaction(function () use ($department, $request, $oldName) {
+            $department->name = $request->name;
+            $department->save();
+
+            if ($oldName && $oldName !== $request->name) {
+                \App\Models\User::where('department', $oldName)->update(['department' => $request->name]);
+                \Illuminate\Support\Facades\DB::table('salary_slips')->where('department', $oldName)->update(['department' => $request->name]);
+            }
+        });
 
         return response()->json(['status' => true, 'message' => 'Department updated', 'data' => $department]);
     }
