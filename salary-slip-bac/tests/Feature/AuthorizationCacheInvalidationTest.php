@@ -208,19 +208,17 @@ class AuthorizationCacheInvalidationTest extends TestCase
         );
     }
 
-    public function test_a_leaf_granted_under_an_unassigned_parent_stays_denied(): void
+    public function test_a_leaf_grant_pulls_its_required_ancestors_and_is_effective(): void
     {
         /*
-         * Not a bug, and the second reason a grant can appear not to take.
-         *
-         * A child never bypasses an ancestor: granting "export assets" while the
-         * Assets page itself is unassigned resolves to an effective DENY. The
-         * configured ALLOW is kept — re-enabling the parent restores the child
-         * rather than requiring every descendant to be set again — so the
-         * database genuinely holds ALLOW while the engine answers DENY.
-         *
-         * The matrix shows this inline on each row, but an administrator who
-         * ticks one action and saves will see exactly the reported symptom.
+         * This used to assert the opposite: a leaf granted while its ancestors
+         * were unassigned stayed an effective DENY, and administrators who
+         * ticked one action saw exactly the reported "permission doesn't work"
+         * symptom. The writer now normalises the save — missing registry
+         * ancestors are granted (and audited as ANCESTOR) alongside the leaf,
+         * so a saved grant is always effective. An ancestor carrying an
+         * explicit DENY still refuses the save outright rather than being
+         * silently overridden (covered in RoleMatrixAncestorNormalizationTest).
          */
         $this->seed(RbacSeeder::class);
         $this->seed(\Database\Seeders\PermissionRegistrySeeder::class);
@@ -254,18 +252,21 @@ class AuthorizationCacheInvalidationTest extends TestCase
                 'businessReason' => 'Leaf only.',
             ])->assertOk();
 
-        // Stored...
-        $this->assertDatabaseHas('role_permissions', [
-            'role_id' => $employeeRole->id,
-            'permission_id' => Permission::query()->where('name', $code)->value('id'),
-            'effect' => 'ALLOW',
-        ]);
+        // Stored, together with the registry ancestors the engine's gate
+        // requires — the writer normalises them with the save, so a granted
+        // leaf can never again be a dead row the engine refuses.
+        foreach ([$code, 'ui.hr.assets', 'ui.hr'] as $held) {
+            $this->assertDatabaseHas('role_permissions', [
+                'role_id' => $employeeRole->id,
+                'permission_id' => Permission::query()->where('name', $held)->value('id'),
+                'effect' => 'ALLOW',
+            ]);
+        }
 
-        // ...and still denied, because its ancestors grant nothing.
         $snapshot = $this->withToken(auth('api')->login($employee))
             ->getJson('/api/v1/authorization/me')->assertOk()->json('data');
 
-        $this->assertFalse($snapshot['permissions'][$code]['allowed']);
+        $this->assertTrue($snapshot['permissions'][$code]['allowed']);
         $this->assertSame(['ui.hr.assets', 'ui.hr'], $snapshot['requires'][$code]);
     }
 }
