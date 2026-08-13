@@ -180,7 +180,7 @@ class AuthController extends Controller
         $delivered = $sms->sendOtp($mobile, $otp);
 
         if (! $delivered && ! config('auth.otp_dev_fallback', false)) {
-            return response()->json(['status' => false, 'message' => 'Unable to send the OTP right now. Please try again.'], 500);
+            return response()->json(['status' => false, 'message' => 'Unable to send the OTP right now. Please verify your mobile number or contact support.'], 422);
         }
 
         DB::table('login_otps')->updateOrInsert(
@@ -769,7 +769,7 @@ class AuthController extends Controller
         // actually delivering it would let anyone who can reach this endpoint
         // read a code intended for the employee's phone.
         if (! $delivered && ! config('auth.otp_dev_fallback', false)) {
-            return response()->json(['status' => false, 'message' => 'Unable to send the OTP right now. Please try again.'], 500);
+            return response()->json(['status' => false, 'message' => 'Unable to send the OTP right now. Please verify your mobile number or contact support.'], 422);
         }
 
         $emp->otp = json_encode([
