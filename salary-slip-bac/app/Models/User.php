@@ -127,6 +127,7 @@ class User extends Authenticatable implements JWTSubject
             'is_hidden' => 'boolean',
             'is_system_account' => 'boolean',
             'is_protected' => 'boolean',
+            'password_changed_at' => 'datetime',
         ];
     }
 

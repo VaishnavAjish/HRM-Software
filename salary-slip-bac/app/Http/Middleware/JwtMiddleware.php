@@ -23,6 +23,17 @@ class JwtMiddleware extends BaseMiddleware
                 return response()->json(['status' => false, 'message' => 'Authorization Token not found'], 401);
             }
         }
+
+        // A password change/reset stamps password_changed_at; every token
+        // issued before that moment (iat in seconds) is dead, so a stolen
+        // 30-day token cannot outlive a password rotation.
+        if ($user && $user->password_changed_at) {
+            $issuedAt = (int) JWTAuth::getPayload()->get('iat');
+            if ($issuedAt > 0 && $issuedAt < $user->password_changed_at->getTimestamp()) {
+                return response()->json(['status' => false, 'message' => 'Token is Invalid'], 401);
+            }
+        }
+
         return $next($request);
     }
 }

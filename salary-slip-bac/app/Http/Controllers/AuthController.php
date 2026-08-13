@@ -12,6 +12,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Tymon\JWTAuth\Facades\JWTAuth;
@@ -29,6 +30,10 @@ class AuthController extends Controller
 
     private const OTP_LOGIN_RESEND_COOLDOWN_SECONDS = 45;
 
+    private const LOGIN_LOCKOUT_MAX_ATTEMPTS = 5;
+
+    private const LOGIN_LOCKOUT_DECAY_SECONDS = 300;
+
     public function login(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -42,6 +47,17 @@ class AuthController extends Controller
 
         $loginInput = trim((string) $request->input('email'));
         $password = $request->input('password');
+
+        $lockoutKey = 'login|' . strtolower($loginInput) . '|' . $request->ip();
+
+        if (RateLimiter::tooManyAttempts($lockoutKey, self::LOGIN_LOCKOUT_MAX_ATTEMPTS)) {
+            $seconds = RateLimiter::availableIn($lockoutKey);
+
+            return response()->json([
+                'status' => false,
+                'message' => 'Too many failed login attempts. Try again in ' . $seconds . ' seconds.',
+            ], 429);
+        }
 
         $field = filter_var($loginInput, FILTER_VALIDATE_EMAIL) ? 'email' : 'emp_code';
 
@@ -67,8 +83,12 @@ class AuthController extends Controller
         }
 
         if (! $token) {
+            RateLimiter::hit($lockoutKey, self::LOGIN_LOCKOUT_DECAY_SECONDS);
+
             return response()->json(['status' => false, 'message' => 'Invalid credentials'], 401);
         }
+
+        RateLimiter::clear($lockoutKey);
 
         JWTAuth::setToken($token);
         $user = JWTAuth::authenticate();
@@ -502,9 +522,15 @@ class AuthController extends Controller
         }
 
         $user->password = $request->new_password;
+        $user->password_changed_at = now();
         $user->save();
 
-        return response()->json(['status' => true, 'message' => 'Password changed successfully']);
+        AuthSession::revokeCurrentToken();
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Password changed successfully. Please log in again.',
+        ]);
     }
 
     public function checkEmpCode($code)
@@ -883,6 +909,7 @@ class AuthController extends Controller
         }
 
         $emp->password = $request->password;
+        $emp->password_changed_at = now();
         $emp->otp = null;
         $emp->verification_token = null;
         $emp->verification_token_expires_at = null;

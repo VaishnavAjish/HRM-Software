@@ -35,6 +35,10 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // Global security headers on every response
         $middleware->append(SecurityHeaders::class);
+
+        // Baseline throttle on every /api route (RateLimiter 'api' in
+        // AppServiceProvider). Route-level throttles like login's stay tighter.
+        $middleware->throttleApi();
     })
     ->withExceptions(function (Exceptions $exceptions) {
         $exceptions->shouldRenderJsonWhen(function (Request $request, Throwable $e) {
