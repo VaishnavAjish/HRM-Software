@@ -16,6 +16,6 @@ class SalarySlip extends Model
         'esi', 'esi_no', 'tds', 'lwf', 'advance', 'total_deduct', 'net_payable',
         'account_no', 'account_name', 'bank_ifsc', 'mobile_no', 'company_code', 'unit',
         'resignation_date', 'working_days', 'present_days', 'salary', 'comm', 'other',
-        'total_deduction', 'net_salary', 'user_id'
+        'total_deduction', 'net_salary', 'user_id', 'bonus', 'lta', 'ha'
     ];
 }

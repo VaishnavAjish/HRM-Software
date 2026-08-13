@@ -81,15 +81,61 @@ class ApiService {
   }
 
   sendPasswordResetOtp(payload) {
-    return this.request('/new-email', { method: 'POST', body: { ...payload, type: 1 }, auth: false });
+    const mob = payload.mobile_number || payload.mobile || payload.mobileNumber || payload.email;
+    return this.request('/new-email', {
+      method: 'POST',
+      body: {
+        ...payload,
+        mobile_number: mob,
+        mobile: mob,
+        type: 1,
+      },
+      auth: false,
+    });
   }
 
   verifyPasswordResetOtp(payload) {
-    return this.request('/new-email-otp', { method: 'POST', body: { ...payload, type: 2 }, auth: false });
+    const mob = payload.mobile_number || payload.mobile || payload.mobileNumber || payload.email;
+    return this.request('/new-email-otp', {
+      method: 'POST',
+      body: {
+        ...payload,
+        mobile_number: mob,
+        mobile: mob,
+        type: 2,
+      },
+      auth: false,
+    });
   }
 
   setNewPasswordAfterVerification(payload) {
-    return this.request('/new-password', { method: 'POST', body: { ...payload, type: 3 }, auth: false });
+    const mob = payload.mobile_number || payload.mobile || payload.mobileNumber || payload.email;
+    return this.request('/new-password', {
+      method: 'POST',
+      body: {
+        ...payload,
+        mobile_number: mob,
+        mobile: mob,
+        type: 3,
+      },
+      auth: false,
+    });
+  }
+
+  sendLoginOtp(mobile) {
+    return this.request('/login/otp/send', {
+      method: 'POST',
+      body: { mobile, mobile_number: mobile },
+      auth: false,
+    });
+  }
+
+  verifyLoginOtp(mobile, otp) {
+    return this.request('/login/otp/verify', {
+      method: 'POST',
+      body: { mobile, mobile_number: mobile, otp },
+      auth: false,
+    });
   }
 
   getProfile() {

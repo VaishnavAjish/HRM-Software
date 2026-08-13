@@ -95,6 +95,7 @@ export function SetPasswordFlow({ onDone, onCancel }) {
   const [emailLocked, setEmailLocked] = useState(false);
   const [sendingOtp, setSendingOtp] = useState(false);
   const [otp, setOtp] = useState('');
+  const [devOtp, setDevOtp] = useState('');
   const [otpStatus, setOtpStatus] = useState('idle');
 
   // Step 3
@@ -166,26 +167,31 @@ export function SetPasswordFlow({ onDone, onCancel }) {
 
   const sendOtp = async () => {
     setError(null);
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return setError('Enter a valid email address.');
+    const targetMobile = mobileNumber.trim();
+    if (!/^\d{10}$/.test(targetMobile)) return setError('Enter a valid 10-digit mobile number.');
 
     setSendingOtp(true);
+    setDevOtp('');
     try {
       const res = await api.sendPasswordResetOtp({
-        email: email.trim(),
+        mobile_number: targetMobile,
+        mobile: targetMobile,
+        email: email.trim() || undefined,
         emp_code: empCode.trim(),
         verification_token: verificationToken,
         company_code: companyCode || 'nidhi-impex',
         unit,
       });
-      if (res?.status) {
+      if (res?.status || res?.dev_otp) {
         setEmailLocked(true);
         setOtp('');
         setOtpStatus('idle');
+        if (res?.dev_otp) setDevOtp(res.dev_otp);
       } else {
-        setError(res?.message || 'Could not send the verification code.');
+        setError(res?.message || 'Could not send verification OTP to your mobile.');
       }
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Could not send the verification code.');
+      setError(e instanceof ApiError ? e.message : 'Could not send verification OTP to your mobile.');
     } finally {
       setSendingOtp(false);
     }
@@ -195,12 +201,18 @@ export function SetPasswordFlow({ onDone, onCancel }) {
     if (otp.length !== 6) return;
     setError(null);
     setOtpStatus('verifying');
+    const targetMobile = mobileNumber.trim();
     try {
-      const res = await api.verifyPasswordResetOtp({ email: email.trim(), otp });
+      const res = await api.verifyPasswordResetOtp({
+        mobile_number: targetMobile,
+        mobile: targetMobile,
+        email: email.trim() || undefined,
+        emp_code: empCode.trim(),
+        verification_token: verificationToken,
+        otp,
+      });
       if (res?.status) {
         setOtpStatus('success');
-        // Step advance is triggered by OtpInput's onSuccessEnd once the
-        // gather → spin → checkmark animation actually finishes playing.
       } else {
         setOtpStatus('error');
         setError(res?.message || 'Incorrect OTP. Please try again.');
@@ -227,8 +239,17 @@ export function SetPasswordFlow({ onDone, onCancel }) {
     if (password !== confirmPassword) return setError('Passwords do not match.');
 
     setSubmitting3(true);
+    const targetMobile = mobileNumber.trim();
     try {
-      const res = await api.setNewPasswordAfterVerification({ email: email.trim(), password, otp });
+      const res = await api.setNewPasswordAfterVerification({
+        mobile_number: targetMobile,
+        mobile: targetMobile,
+        email: email.trim() || undefined,
+        emp_code: empCode.trim(),
+        verification_token: verificationToken,
+        password,
+        otp,
+      });
       if (res?.status) {
         setDone(true);
       } else {
@@ -382,7 +403,7 @@ export function SetPasswordFlow({ onDone, onCancel }) {
 
               {emailLocked && (
                 <View style={styles.sentRow}>
-                  <Text style={[styles.hint, { color: theme.emerald }]}>OTP sent to {email}</Text>
+                  <Text style={[styles.hint, { color: theme.emerald }]}>OTP sent to {mobileNumber} {devOtp ? `(Dev Code: ${devOtp})` : ''}</Text>
                   <TouchableOpacity
                     onPress={() => {
                       setEmailLocked(false);

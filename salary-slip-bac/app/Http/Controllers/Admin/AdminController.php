@@ -201,6 +201,30 @@ class AdminController extends Controller
         'conal' => 'conv_a',
         'conveyance' => 'conv_a',
         'conv_a' => 'conv_a',
+        'edu_a' => 'edu_a',
+        'edu' => 'edu_a',
+        'education' => 'edu_a',
+        'educational_allowance' => 'edu_a',
+        'o_w_a' => 'owa',
+        'owa' => 'owa',
+        'other_washing_allowance' => 'owa',
+        'p_p_a' => 'ppa',
+        'ppa' => 'ppa',
+        'p_d_a' => 'pda',
+        'pda' => 'pda',
+        'med_a' => 'med_a',
+        'med' => 'med_a',
+        'medical' => 'med_a',
+        'medical_allowance' => 'med_a',
+        'mob_a' => 'mob_a',
+        'mobile_allowance' => 'mob_a',
+        'product_incentive' => 'product_incentive',
+        'productincentive' => 'product_incentive',
+        'bonus' => 'bonus',
+        'l_t_a' => 'lta',
+        'lta' => 'lta',
+        'h_a' => 'ha',
+        'ha' => 'ha',
         'comm' => 'comm',
         'commission' => 'comm',
         // "Perfo" (Performance) is the current business label for this same
@@ -443,10 +467,21 @@ class AdminController extends Controller
                 $da = self::numOrNull($canonical['da'] ?? null) ?? 0;
                 $wa = self::numOrNull($canonical['wa'] ?? null) ?? 0;
                 $convA = self::numOrNull($canonical['conv_a'] ?? null) ?? 0;
+                $eduA = self::numOrNull($canonical['edu_a'] ?? null) ?? 0;
+                $owa = self::numOrNull($canonical['owa'] ?? null) ?? 0;
+                $ppa = self::numOrNull($canonical['ppa'] ?? null) ?? 0;
+                $pda = self::numOrNull($canonical['pda'] ?? null) ?? 0;
+                $medA = self::numOrNull($canonical['med_a'] ?? null) ?? 0;
+                $mobA = self::numOrNull($canonical['mob_a'] ?? null) ?? 0;
+                $productIncentive = self::numOrNull($canonical['product_incentive'] ?? null) ?? 0;
+                $bonus = self::numOrNull($canonical['bonus'] ?? null) ?? 0;
+                $lta = self::numOrNull($canonical['lta'] ?? null) ?? 0;
+                $ha = self::numOrNull($canonical['ha'] ?? null) ?? 0;
                 $comm = self::numOrNull($canonical['comm'] ?? null) ?? 0;
                 $other = self::numOrNull($canonical['other'] ?? null) ?? 0;
                 $salary = self::numOrNull($canonical['salary'] ?? null) ?? 0;
-                $componentGross = $basic + $hra + $da + $wa + $convA + $comm + $other;
+                $componentGross = $basic + $hra + $da + $wa + $convA + $eduA + $owa + $ppa + $pda
+                    + $medA + $mobA + $productIncentive + $bonus + $lta + $ha + $comm + $other;
                 // Prefer the sum of earning components; fall back to a flat
                 // "Salary" figure for sheets that only give one number.
                 $grossSalary = $componentGross > 0
@@ -491,6 +526,16 @@ class AdminController extends Controller
                     'da' => $da,
                     'wa' => $wa,
                     'conv_a' => $convA,
+                    'edu_a' => $eduA,
+                    'owa' => $owa,
+                    'ppa' => $ppa,
+                    'pda' => $pda,
+                    'med_a' => $medA,
+                    'mob_a' => $mobA,
+                    'product_incentive' => $productIncentive,
+                    'bonus' => $bonus,
+                    'lta' => $lta,
+                    'ha' => $ha,
                     'comm' => $comm,
                     'other' => $other,
                     'gross_salary' => $grossSalary,
