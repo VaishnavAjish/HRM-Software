@@ -2,8 +2,11 @@
  *  so this just serializes whatever rows are currently on screen. */
 export function downloadCsv(filename, columns, rows) {
   const escape = (v) => {
-    const s = v === null || v === undefined ? "" : String(v);
-    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    let s = v === null || v === undefined ? "" : String(v);
+    if (typeof v === "string" && /^[=+\-@\t\r]/.test(s)) {
+      s = `'${s}`;
+    }
+    return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
   const header = columns.map((c) => escape(c.label)).join(",");
   const body = rows.map((row) => columns.map((c) => escape(c.value(row))).join(",")).join("\n");

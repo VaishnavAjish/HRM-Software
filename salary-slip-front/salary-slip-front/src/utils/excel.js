@@ -102,7 +102,10 @@ export async function buildXlsxBuffer(sheetName, matrix) {
 }
 
 function csvCell(v) {
-  const s = v === null || v === undefined ? "" : String(v);
+  let s = v === null || v === undefined ? "" : String(v);
+  if (typeof v === "string" && /^[=+\-@\t\r]/.test(s)) {
+    s = "'" + s;
+  }
   return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
 }
 
