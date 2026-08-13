@@ -108,7 +108,7 @@ class CandidateController extends Controller
     public function update(Request $request, $id)
     {
         $candidate = Candidate::find($id);
-        if (!$candidate) {
+        if (!$candidate || !$this->candidateWithinActorScope($candidate)) {
             return response()->json(['status' => false, 'message' => 'Candidate not found'], 404);
         }
 
@@ -137,7 +137,7 @@ class CandidateController extends Controller
     public function destroy($id)
     {
         $candidate = Candidate::find($id);
-        if (!$candidate) {
+        if (!$candidate || !$this->candidateWithinActorScope($candidate)) {
             return response()->json(['status' => false, 'message' => 'Candidate not found'], 404);
         }
 
@@ -149,7 +149,7 @@ class CandidateController extends Controller
     public function moveStage(Request $request, $id)
     {
         $candidate = Candidate::find($id);
-        if (!$candidate) {
+        if (!$candidate || !$this->candidateWithinActorScope($candidate)) {
             return response()->json(['status' => false, 'message' => 'Candidate not found'], 404);
         }
 
