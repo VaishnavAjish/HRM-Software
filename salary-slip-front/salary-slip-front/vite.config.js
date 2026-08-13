@@ -82,49 +82,16 @@ export default defineConfig(({ mode }) => {
         name: "normalize-html-drive-letter",
         enforce: "pre",
         configResolved(config) {
-          try {
-            const realRoot = fs.realpathSync(config.root || projectRoot);
-            config.root = realRoot;
-            if (config.build) {
-              config.build.outDir = path.resolve(realRoot, gitBranch);
-            }
-          } catch {}
+          if (config.build) {
+            config.build.outDir = path.resolve(projectRoot, gitBranch);
+          }
         },
         resolveId(source) {
-          if (!source || typeof source !== "string") return null;
-          if (source.match(/^[A-Za-z]:/i)) {
-            try {
-              return { id: fs.realpathSync(source) };
-            } catch {}
+          if (source && typeof source === "string" && source.endsWith("index.html")) {
+            return path.resolve(projectRoot, "index.html");
           }
           return null;
-        },
-        transformIndexHtml: {
-          order: "pre",
-          handler(html, ctx) {
-            if (ctx && ctx.filename) {
-              try {
-                ctx.filename = fs.realpathSync(ctx.filename);
-              } catch {
-                ctx.filename = path.resolve(projectRoot, "index.html");
-              }
-            }
-            return html;
-          },
-        },
-        generateBundle(options, bundle) {
-          for (const key of Object.keys(bundle)) {
-            const chunk = bundle[key];
-            if (key.match(/^[A-Za-z]:/i)) {
-              const baseName = path.basename(key);
-              bundle[baseName] = chunk;
-              if (bundle[baseName]) {
-                bundle[baseName].fileName = baseName;
-              }
-              delete bundle[key];
-            }
-          }
-        },
+        }
       },
       // ─────────────────────────────────────────────────────────────────────
       {

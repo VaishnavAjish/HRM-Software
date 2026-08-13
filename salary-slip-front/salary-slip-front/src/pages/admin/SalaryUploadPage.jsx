@@ -103,13 +103,24 @@ export default function SalaryUploadPage() {
     toast.success("Template downloaded successfully");
   };
 
-  // Excel parsing for preview
+  // Excel parsing for preview. Prefer the backend, which parses with
+  // PhpSpreadsheet's real formula engine — the same one that runs at actual
+  // import time — so formula cells (e.g. Leave = Working Days - Present
+  // Days) show their real computed value instead of blanking out because
+  // the browser-side parser (ExcelJS) has no calculation engine of its own.
   const parseExcelPreview = async (file) => {
     try {
-      const arrayBuffer = await file.arrayBuffer();
-      return await parseSheetToRows(arrayBuffer);
-    } catch {
-      throw new Error("Could not read file. Make sure it is a valid Excel file.");
+      const res = await salaryApi.previewSalarySlip(file, user?.accessToken, user?.tokenType);
+      return { sheetName: res.sheetName, headers: res.headers, rows: res.rows, totalRows: res.rows.length };
+    } catch (err) {
+      // Backend unreachable — fall back to the local, formula-blind parse
+      // rather than blocking the upload entirely.
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        return await parseSheetToRows(arrayBuffer);
+      } catch {
+        throw new Error(err.message || "Could not read file. Make sure it is a valid Excel file.");
+      }
     }
   };
 
@@ -169,7 +180,7 @@ export default function SalaryUploadPage() {
     });
   };
 
-  const handleValidationConfirm = async (finalRows) => {
+  const handleValidationConfirm = async (finalRows, pristine) => {
     if (!selectedCompanyId) {
       toast.error("Select a company first.");
       return;
@@ -177,7 +188,11 @@ export default function SalaryUploadPage() {
 
     setUploading(true);
     try {
-      const fileToUpload = await buildFileFromRows(uploadPreview.headers, finalRows);
+      // Untouched rows: upload the original file so the backend evaluates
+      // any formulas itself, instead of the rebuilt file's flattened values.
+      const fileToUpload = pristine
+        ? selectedFile
+        : await buildFileFromRows(uploadPreview.headers, finalRows);
       const res = await salaryApi.uploadSalarySlip(
         fileToUpload,
         user?.accessToken,

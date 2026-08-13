@@ -15,7 +15,20 @@ const getTodayDate = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
-const DEFAULT_DEPARTMENTS = ["4P DEPT", "Account", "BLOCKING DEPT", "cutting", "IT", "Polish-02 (MFG)"];
+const DEFAULT_DEPARTMENTS = [
+  "4P DEPT",
+  "Account",
+  "BLOCKING DEPT",
+  "cutting",
+  "IT",
+  "Polish-01 (MFG)",
+  "Polish-02 (MFG)",
+  "Polish-03 (MFG)",
+  "Polish-07 (MFG)",
+  "Polish-14 (MFG)",
+  "Polish-15 (MFG)",
+  "Pricing Dept.",
+];
 
 const EMPTY_FORM = {
   form_no: "",
@@ -196,7 +209,8 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess, isView
       try {
         const res = await salaryApi.getDepartments(
           user?.accessToken,
-          user?.tokenType
+          user?.tokenType,
+          writeCompanyCode
         );
         if (!cancelled && res?.data) {
           const list = res.data.map((dept) => (typeof dept === "string" ? dept : dept.name)).filter(Boolean);
@@ -210,7 +224,7 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess, isView
     return () => {
       cancelled = true;
     };
-  }, [user?.accessToken, user?.tokenType]);
+  }, [user?.accessToken, user?.tokenType, writeCompanyCode]);
 
   const fieldValidators = [
     {

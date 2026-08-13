@@ -18,8 +18,18 @@ function cellToPrimitive(value) {
       return value.richText.map((t) => t?.text ?? "").join("");
     }
     if (value.text !== undefined) return value.text;
+    // Formula cells: {formula, result} — the cached result is what Excel last
+    // computed. If the workbook was written/edited without recalculating
+    // (common when formulas are dragged down programmatically), `result` is
+    // absent. There's no formula engine here to compute it, so fall through
+    // to blank rather than stringify the object into the literal text
+    // "[object Object]" — which used to get baked into the rebuilt upload
+    // file and land in the database as-is.
     if (value.result !== undefined) return value.result;
-    return String(value);
+    if (value.error !== undefined) return value.error;
+    if (value.formula !== undefined || value.sharedFormula !== undefined) return "";
+    if (value.hyperlink !== undefined) return value.hyperlink;
+    return "";
   }
   return value;
 }

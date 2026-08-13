@@ -505,6 +505,18 @@ export const salaryApi = {
     });
   },
 
+  previewSalarySlip(file, accessToken, tokenType = "Bearer") {
+    const formData = new FormData();
+    formData.append("salary_slip", file);
+    return apiRequest("/admin/salary-slip/preview", {
+      method: "POST",
+      headers: accessToken
+        ? { Authorization: `${tokenType} ${accessToken}` }
+        : {},
+      body: formData,
+    });
+  },
+
   uploadSalarySlip(
     file,
     accessToken,

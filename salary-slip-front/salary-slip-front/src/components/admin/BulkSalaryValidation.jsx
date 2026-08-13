@@ -13,6 +13,12 @@ function normalize(v) {
   return String(v ?? "").trim().toLowerCase();
 }
 
+// A legitimate 0 (e.g. zero leave days for full attendance) is falsy in JS —
+// `value || fallback` would blank it out and show "—" for real data.
+function hasValue(v) {
+  return v !== null && v !== undefined && v !== "";
+}
+
 // Header-name matching so this works against whatever a user's own sheet
 // calls these columns, not just the app's own downloaded template.
 function findColumnIndex(headers, aliases) {
@@ -44,6 +50,7 @@ export default function BulkSalaryValidation({
   );
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [edited, setEdited] = useState(false);
   const editRef = useRef(null);
 
   const empCodeColIdx = useMemo(
@@ -104,6 +111,7 @@ export default function BulkSalaryValidation({
       values[colIdx] = val;
       return { ...r, values };
     }));
+    setEdited(true);
     setEditing(null);
   }
 
@@ -118,7 +126,15 @@ export default function BulkSalaryValidation({
       toast.error("No valid rows to upload");
       return;
     }
-    onConfirm(validData);
+    // If nothing was edited, deleted, or excluded as invalid, the values
+    // shown here are just a read-only preview of the original file — upload
+    // that file untouched instead of one rebuilt from the parsed preview
+    // values. Rebuilding loses anything ExcelJS can't read back out of a
+    // formula cell (it has no calculation engine, unlike the backend's
+    // PhpSpreadsheet), so an unmodified file with live formulas round-trips
+    // correctly only if we don't touch it.
+    const pristine = !edited && rows.every(r => !r.deleted) && validatedRows.invalid.length === 0;
+    onConfirm(validData, pristine);
   }
 
   const isEditing = (rowId, colIdx) =>
@@ -243,9 +259,9 @@ export default function BulkSalaryValidation({
                             <div onClick={() => openEdit(row.id, colIdx)} className="cursor-pointer">
                               <span
                                 className={`block truncate hover:text-brand-600 dark:hover:text-brand-400 ${fieldHasError ? "underline decoration-dotted decoration-red-400" : ""}`}
-                                title={errorReason || row.values[colIdx] || "Click to edit"}
+                                title={errorReason || (hasValue(row.values[colIdx]) ? row.values[colIdx] : "Click to edit")}
                               >
-                                {row.values[colIdx] || <span className="text-gray-300 dark:text-gray-600">—</span>}
+                                {hasValue(row.values[colIdx]) ? row.values[colIdx] : <span className="text-gray-300 dark:text-gray-600">—</span>}
                               </span>
                               {errorReason && (
                                 <span

@@ -577,6 +577,44 @@ class AdminController extends Controller
         ]);
     }
 
+    // Lets the frontend's upload preview show the same values that will
+    // actually be saved. The browser-side preview (ExcelJS) has no formula
+    // engine and can only show a formula cell's cached result — when a sheet
+    // has formulas that were never recalculated/saved in real Excel (common
+    // when dragged down programmatically), it has nothing to show. This
+    // reuses the exact same PhpSpreadsheet parse the real import (above)
+    // uses, which does calculate formulas, so the preview and the import
+    // agree. Read-only: no DB writes, no employee lookups.
+    public function salarySlipPreview(Request $request)
+    {
+        $request->validate(['salary_slip' => 'required|file']);
+
+        try {
+            $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($request->file('salary_slip')->getPathname());
+            $rows = $spreadsheet->getActiveSheet()->toArray();
+            $header = array_shift($rows) ?? [];
+
+            // Mirror salarySlipImport()'s blank-row skip so the preview's row
+            // count matches what the real import will actually consider.
+            $rows = array_values(array_filter(
+                $rows,
+                fn ($row) => array_filter($row, fn ($v) => $v !== null && $v !== '')
+            ));
+
+            return response()->json([
+                'status' => true,
+                'sheetName' => $spreadsheet->getActiveSheet()->getTitle(),
+                'headers' => array_map(fn ($h) => (string) ($h ?? ''), $header),
+                'rows' => array_map(
+                    fn ($row) => array_map(fn ($v) => $v === null ? '' : $v, $row),
+                    $rows
+                ),
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json(['status' => false, 'message' => 'Could not read file: ' . $e->getMessage()], 422);
+        }
+    }
+
     public function importColumns()
     {
         $columns = \Schema::getColumnListing('salary_slips');

@@ -222,6 +222,10 @@ export function buildPayslipData({ emp = {}, payslip = {}, companyId } = {}) {
     emp.bonus,
     emp.product_incentive,
   );
+  const productIncentive = readNumber(
+    payslip.product_incentive,
+    emp.product_incentive,
+  );
 
   // Use actual per-component values from API when present, otherwise ratio-split lump-sum
   let dailyAllowance,
@@ -230,27 +234,26 @@ export function buildPayslipData({ emp = {}, payslip = {}, companyId } = {}) {
     conveyanceAllowance,
     educationAllowance,
     medicalAllowance,
-    mobileAllowance;
+    mobileAllowance,
+    owa = 0,
+    ppa = 0,
+    pda = 0,
+    lta = 0,
+    ha = 0;
+
   const hasExplicitAllowanceBreakdown = [
-    payslip.da,
-    payslip.hra,
-    payslip.wa,
-    payslip.conveyance,
-    payslip.conv_a,
-    payslip.con_al,
-    payslip.education,
-    payslip.edu_a,
-    payslip.medical,
-    payslip.med_a,
-    payslip.mob_a,
-    payslip.bonus,
-    payslip.product_incentive,
+    payslip.da, payslip.hra, payslip.wa, payslip.w_a, payslip.conveyance,
+    payslip.conv_a, payslip.con_al, payslip.education, payslip.edu_a,
+    payslip.medical, payslip.med_a, payslip.mob_a, payslip.bonus,
+    payslip.product_incentive, payslip.owa, payslip.o_w_a, payslip.ppa,
+    payslip.p_p_a, payslip.pda, payslip.p_d_a, payslip.lta, payslip.l_t_a,
+    payslip.ha, payslip.h_a
   ].some((value) => value != null);
 
   if (hasExplicitAllowanceBreakdown) {
     dailyAllowance = readNumber(payslip.da);
     hra = readNumber(payslip.hra);
-    wa = readNumber(payslip.wa);
+    wa = readNumber(payslip.wa, payslip.w_a);
     conveyanceAllowance = readNumber(
       payslip.conveyance,
       payslip.conv_a,
@@ -259,6 +262,11 @@ export function buildPayslipData({ emp = {}, payslip = {}, companyId } = {}) {
     educationAllowance = readNumber(payslip.education, payslip.edu_a);
     medicalAllowance = readNumber(payslip.medical, payslip.med_a);
     mobileAllowance = readNumber(payslip.mobileAllowance, payslip.mob_a);
+    owa = readNumber(payslip.owa, payslip.o_w_a);
+    ppa = readNumber(payslip.ppa, payslip.p_p_a);
+    pda = readNumber(payslip.pda, payslip.p_d_a);
+    lta = readNumber(payslip.lta, payslip.l_t_a);
+    ha = readNumber(payslip.ha, payslip.h_a);
   } else {
     const allowances = Number(payslip.allowances ?? emp.allowances ?? 0);
     [
@@ -272,16 +280,18 @@ export function buildPayslipData({ emp = {}, payslip = {}, companyId } = {}) {
     mobileAllowance = 0;
   }
 
-  const computedGrossSalary =
-    basicSalary +
-    dailyAllowance +
-    hra +
-    wa +
-    conveyanceAllowance +
-    educationAllowance +
-    medicalAllowance +
-    mobileAllowance +
-    bonus;
+  let computedGrossSalary = 0;
+  if (resolvedCompanyId === "nidhi-impex") {
+    computedGrossSalary =
+      basicSalary + dailyAllowance + hra + wa + conveyanceAllowance +
+      educationAllowance + owa + ppa + pda + medicalAllowance + bonus +
+      lta + ha + mobileAllowance + productIncentive;
+  } else {
+    computedGrossSalary =
+      basicSalary + dailyAllowance + hra + wa + conveyanceAllowance +
+      educationAllowance + medicalAllowance + mobileAllowance + bonus;
+  }
+
   const grossSalary =
     readNumber(payslip.grossSalary, payslip.gross_salary) ||
     computedGrossSalary;
@@ -331,25 +341,55 @@ export function buildPayslipData({ emp = {}, payslip = {}, companyId } = {}) {
     advance = 0;
   }
 
-  const earningRows = [
-    { label: "BASIC", amount: basicSalary },
-    { label: "DAILY ALLOWANCE", amount: dailyAllowance },
-    { label: "HRA", amount: hra },
-    { label: "WA", amount: wa },
-    { label: "Conv.A", amount: conveyanceAllowance },
-    { label: "Edu.A", amount: educationAllowance },
-    { label: "Med.A", amount: medicalAllowance },
-    { label: "Prod. Ince.", amount: bonus },
-  ];
+  let earningRows = [];
+  let deductionRows = [];
 
-  const deductionRows = [
-    { label: "PROFESSIONAL TAX", amount: professionalTax },
-    { label: "PF", amount: providentFund },
-    { label: "ESI AMOUNT", amount: esiAmount },
-    { label: "TDS", amount: tds },
-    { label: "LWF", amount: lwf },
-    { label: "ADVANCE", amount: advance },
-  ];
+  if (resolvedCompanyId === "nidhi-impex") {
+    earningRows = [
+      { label: "BASIC", amount: basicSalary },
+      { label: "DA", amount: dailyAllowance },
+      { label: "HRA", amount: hra },
+      { label: "W.A", amount: wa },
+      { label: "Conv. A.", amount: conveyanceAllowance },
+      { label: "Edu. A.", amount: educationAllowance },
+      { label: "O.W.A.", amount: owa },
+      { label: "P.P.A", amount: ppa },
+      { label: "P.D.A", amount: pda },
+      { label: "Med. A.", amount: medicalAllowance },
+      { label: "Bonus", amount: bonus },
+      { label: "L.T.A", amount: lta },
+      { label: "H.A", amount: ha },
+      { label: "Mob. A.", amount: mobileAllowance },
+      { label: "Product Incentive", amount: productIncentive },
+    ];
+    deductionRows = [
+      { label: "PT", amount: professionalTax },
+      { label: "PF", amount: providentFund },
+      { label: "ESI", amount: esiAmount },
+      { label: "TDS", amount: tds },
+      { label: "LWF", amount: lwf },
+      { label: "Advance", amount: advance },
+    ];
+  } else {
+    earningRows = [
+      { label: "BASIC", amount: basicSalary },
+      { label: "DAILY ALLOWANCE", amount: dailyAllowance },
+      { label: "HRA", amount: hra },
+      { label: "WA", amount: wa },
+      { label: "Conv.A", amount: conveyanceAllowance },
+      { label: "Edu.A", amount: educationAllowance },
+      { label: "Med.A", amount: medicalAllowance },
+      { label: "Prod. Ince.", amount: bonus },
+    ];
+    deductionRows = [
+      { label: "PROFESSIONAL TAX", amount: professionalTax },
+      { label: "PF", amount: providentFund },
+      { label: "ESI AMOUNT", amount: esiAmount },
+      { label: "TDS", amount: tds },
+      { label: "LWF", amount: lwf },
+      { label: "ADVANCE", amount: advance },
+    ];
+  }
 
   const totalEarnings = grossSalary || earningRows.reduce((sum, row) => sum + row.amount, 0);
   const totalDeductions =

@@ -491,7 +491,7 @@ Route::middleware('jwt.auth')->group(function () {
     }
 
     // Allow any authenticated user (like Agent) to fetch departments
-    Route::get('/department/get', [AdminController::class, 'getDepartment'])->middleware(['throttle:60,1', 'permission:hr.department.read']);
+    Route::get('/department/get', [AdminController::class, 'getDepartment'])->middleware('throttle:60,1');
 
     /*
      * In-app notifications — the caller's own, whatever their role.
@@ -604,6 +604,7 @@ Route::middleware('jwt.auth')->group(function () {
         Route::get('admin-dashboard', [AdminController::class, 'dashboard'])->middleware('permission:hr.dashboard.read');
         Route::group(['prefix' => 'admin/salary-slip'], function () {
             Route::get('import-columns', [AdminController::class, 'importColumns'])->middleware('permission:payroll.payslip.create');
+            Route::post('preview', [AdminController::class, 'salarySlipPreview'])->middleware('permission:payroll.payslip.create');
             Route::post('store', [AdminController::class, 'salarySlipImport'])->middleware('permission:payroll.payslip.create');
             Route::get('delete', [AdminController::class, 'salaryDelete'])->middleware('permission:payroll.payslip.delete');
         });
