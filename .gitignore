@@ -43,3 +43,4 @@ coverage/
 
 temp_deploy/
 *.zip
+.phpunit.result.cache

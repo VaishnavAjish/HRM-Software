@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity } from 'react-native';
 import { Users, UserCheck, Wallet, FileText, AlertCircle, ChevronDown, ChevronUp, Activity, CheckCircle2 } from 'lucide-react-native';
 import Svg, { G, Circle } from 'react-native-svg';
@@ -93,12 +94,24 @@ export function AdminDashboardScreen() {
   const [expandedDept, setExpandedDept] = useState(null);
 
   const load = useCallback(async (isRefresh = false) => {
-    isRefresh ? setRefreshing(true) : setLoading(true);
+    if (isRefresh) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+      try {
+        const cached = await AsyncStorage.getItem('admin_dashboard_cache');
+        if (cached) {
+          setData(JSON.parse(cached));
+          setLoading(false);
+        }
+      } catch (e) {}
+    }
     setError(null);
     try {
       const res = await api.getAdminDashboard({});
       if (res?.status) {
         setData(res.data);
+        AsyncStorage.setItem('admin_dashboard_cache', JSON.stringify(res.data)).catch(() => {});
       } else {
         setError(res?.message || 'Could not load the dashboard.');
       }

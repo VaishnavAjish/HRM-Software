@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity } from 'react-native';
 import { Wallet, CalendarCheck, FileText, ChevronRight, Ticket, User, AlertCircle } from 'lucide-react-native';
 import { useTheme } from '../../context/ThemeContext';
@@ -21,12 +22,24 @@ export function HomeScreen({ onNavigateTab }) {
   const [error, setError] = useState(null);
 
   const load = useCallback(async (isRefresh = false) => {
-    isRefresh ? setRefreshing(true) : setLoading(true);
+    if (isRefresh) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+      try {
+        const cached = await AsyncStorage.getItem('emp_dashboard_cache');
+        if (cached) {
+          setDashboard(JSON.parse(cached));
+          setLoading(false);
+        }
+      } catch (e) {}
+    }
     setError(null);
     try {
       const res = await api.getDashboard();
       if (res?.status) {
         setDashboard(res.data);
+        AsyncStorage.setItem('emp_dashboard_cache', JSON.stringify(res.data)).catch(() => {});
       } else {
         setError(res?.message || 'Could not load your dashboard.');
       }

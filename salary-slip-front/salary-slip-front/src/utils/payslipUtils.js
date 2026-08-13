@@ -203,12 +203,11 @@ export function buildPayslipData({ emp = {}, payslip = {}, companyId } = {}) {
     emp.basicSalary,
     emp.basic,
   );
-  const bonus = readNumber(
-    payslip.bonus,
-    payslip.product_incentive,
-    emp.bonus,
-    emp.product_incentive,
-  );
+  // Bonus and Product Incentive are distinct line items (both appear as
+  // separate rows below) — falling back to product_incentive here used to
+  // duplicate its value into the Bonus row too, double-counting it in the
+  // gross total once product_incentive actually had real data.
+  const bonus = readNumber(payslip.bonus, emp.bonus);
   const productIncentive = readNumber(
     payslip.product_incentive,
     emp.product_incentive,

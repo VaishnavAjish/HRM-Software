@@ -34,19 +34,34 @@ export function AuthProvider({ children }) {
         const saved = await loadPersistedSession();
         if (saved?.token) {
           api.setToken(saved.token, saved.tokenType);
-          const res = await api.getProfile();
-          if (res?.status && res.user) {
-            setUser(res.user);
+          
+          if (saved.user) {
+            setUser(saved.user);
             setIsAuthenticated(true);
-            fetchPermissions();
-          } else {
-            await clearPersistedSession();
+            setBootstrapping(false);
           }
+
+          try {
+            const res = await api.getProfile();
+            if (res?.status && res.user) {
+              setUser(res.user);
+              if (!saved.user) setIsAuthenticated(true);
+              fetchPermissions();
+            } else {
+              await clearPersistedSession();
+              if (saved.user) setIsAuthenticated(false);
+            }
+          } catch (err) {
+            // network issue
+          } finally {
+            if (!saved.user) setBootstrapping(false);
+          }
+        } else {
+          setBootstrapping(false);
         }
       } catch (e) {
         api.clearToken();
         await clearPersistedSession();
-      } finally {
         setBootstrapping(false);
       }
     })();
@@ -56,7 +71,7 @@ export function AuthProvider({ children }) {
     const res = await api.login(identifier, password);
     if (res?.status && res.token) {
       api.setToken(res.token, res.token_type);
-      await persistSession({ token: res.token, tokenType: res.token_type || 'Bearer' });
+      await persistSession({ token: res.token, tokenType: res.token_type || 'Bearer', user: res.user });
       setUser(res.user);
       setIsAuthenticated(true);
       fetchPermissions();

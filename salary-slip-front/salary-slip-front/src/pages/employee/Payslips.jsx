@@ -54,7 +54,15 @@ function mapSlip(item) {
     education: Number(item.edu_a ?? 0),
     medical: Number(item.med_a ?? 0),
     mobileAllowance: Number(item.mob_a ?? 0),
-    bonus: Number(item.product_incentive ?? 0),
+    owa: Number(item.owa ?? 0),
+    ppa: Number(item.ppa ?? 0),
+    pda: Number(item.pda ?? 0),
+    lta: Number(item.lta ?? 0),
+    ha: Number(item.ha ?? 0),
+    // Bonus and Product Incentive are distinct line items — not the same
+    // figure under two names, see the matching fix in payslipUtils.js.
+    bonus: Number(item.bonus ?? 0),
+    product_incentive: Number(item.product_incentive ?? 0),
     aGross: Number(item.a_gross ?? 0),
     grossSalary: Number(item.gross_salary ?? 0),
     // deductions
