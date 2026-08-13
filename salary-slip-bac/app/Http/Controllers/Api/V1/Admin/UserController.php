@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Support\RoleHierarchy;
 use App\Support\RoleAudit;
 use App\Models\Role;
+use App\Models\Permission;
 use App\Services\Admin\UserAccountService;
 use App\Services\Admin\UserDirectory;
 use App\Services\Authorization\SchemaSupport;
@@ -418,6 +419,42 @@ class UserController extends Controller
 
         if ($guard = $this->guardTarget($actor, $user)) {
             return $guard;
+        }
+
+        // Grant ceiling. Role assignment already enforces RoleHierarchy, but
+        // direct permission grants did not: a tenant/unit admin could grant
+        // admin.authorization.* — the one surface that stays ENFORCED under
+        // shadow mode — to anyone, including themselves, and cross the boundary
+        // shadow leaves standing. Restrict the sensitive/administrative grant
+        // surfaces to super admins, and forbid changing one's own permissions.
+        if (! $actor->isSuperAdmin()) {
+            if ((int) $actor->id === (int) $user->id) {
+                return $this->error('PERMISSION_DENIED', 'You cannot change your own permissions.', 403);
+            }
+
+            $requestedIds = collect($data['permissions'])->pluck('permissionId')->all();
+            $protectedPrefixes = [
+                'admin.authorization.',
+                'admin.policy.',
+                'admin.role.',
+                'admin.company.',
+                'admin.unit.',
+                'admin.user.assign_permission',
+            ];
+
+            $grantsProtected = Permission::query()
+                ->whereIn('id', $requestedIds)
+                ->where(function ($q) use ($protectedPrefixes) {
+                    $q->where('is_sensitive', true);
+                    foreach ($protectedPrefixes as $prefix) {
+                        $q->orWhere('code', 'like', $prefix.'%');
+                    }
+                })
+                ->exists();
+
+            if ($grantsProtected) {
+                return $this->error('PERMISSION_DENIED', 'You are not allowed to grant one or more of these permissions.', 403);
+            }
         }
 
         return response()->json([
