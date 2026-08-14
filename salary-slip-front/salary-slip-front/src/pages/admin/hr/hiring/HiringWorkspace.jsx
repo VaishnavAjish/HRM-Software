@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../../../../context/AuthContext";
 import { useCompany } from "../../../../context/CompanyContext";
@@ -8,6 +8,9 @@ import CandidatePipeline from "../CandidatePipeline";
 import AssessmentTab from "./AssessmentTab";
 import InterviewManagement from "../InterviewManagement";
 import OfferManagement from "../OfferManagement";
+import { useAuthorization } from "../../../../hooks/useAuthorization";
+import ApprovalReviewTab from "./ApprovalReviewTab";
+import JobPortalTab from "./JobPortalTab";
 
 const TABS = [
   { key: "requisitions", label: "Requisitions" },
@@ -15,6 +18,9 @@ const TABS = [
   { key: "assessment", label: "Assessment" },
   { key: "interview", label: "Interview" },
   { key: "offer", label: "Offer" },
+  { key: "hr-manager", label: "HR Manager", permissions: ["ui.hr.hiring.hr_manager_review", "ui.hr.hiring.hiring_manager_review"] },
+  { key: "director", label: "Director", permissions: ["ui.hr.hiring.director_review"] },
+  { key: "job-portal", label: "Job Portal", permissions: ["ui.hr.hiring.job_portal", "ui.hr.hiring.requisition_publish"] },
 ];
 
 /**
@@ -29,11 +35,41 @@ const TABS = [
 export default function HiringWorkspace() {
   const { user } = useAuth();
   const { companyScope, scopeKey } = useCompany();
-  const [searchParams] = useSearchParams();
-  const initialTab = TABS.some((t) => t.key === searchParams.get("tab"))
-    ? searchParams.get("tab")
-    : "requisitions";
-  const [tab, setTab] = useState(initialTab);
+  const { can } = useAuthorization();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const availableTabs = useMemo(() => {
+    return TABS.filter((item) => {
+      if (!item.permissions) return true;
+      return item.permissions.some((p) => can(p));
+    });
+  }, [can]);
+
+  let rawTab = searchParams.get("tab");
+  if (rawTab === "hiring-manager") {
+    rawTab = "hr-manager";
+  }
+
+  const tab = availableTabs.some((item) => item.key === rawTab) ? rawTab : "requisitions";
+
+  useEffect(() => {
+    const currentTab = searchParams.get("tab");
+    if (currentTab === "hiring-manager" || (currentTab && currentTab !== tab)) {
+      setSearchParams((current) => {
+        const next = new URLSearchParams(current);
+        next.set("tab", tab);
+        return next;
+      }, { replace: true });
+    }
+  }, [searchParams, setSearchParams, tab]);
+
+  const selectTab = (key) => {
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      next.set("tab", key);
+      return next;
+    });
+  };
 
   // Loaded once, shared by every tab's filter bar — avoids each tab
   // re-fetching the same department/people lookups independently.
@@ -57,10 +93,11 @@ export default function HiringWorkspace() {
     <div className="space-y-4">
       <div className="sticky top-0 z-30 -mx-4 md:-mx-6 px-4 md:px-6 bg-gray-50/95 dark:bg-[var(--sidebar-bg)]/95 backdrop-blur-sm border-b border-gray-200 dark:border-gray-700">
         <div className="flex gap-1 overflow-x-auto scrollbar-hide">
-          {TABS.map((t) => (
+          {availableTabs.map((t) => (
             <button
               key={t.key}
-              onClick={() => setTab(t.key)}
+              onClick={() => selectTab(t.key)}
+              aria-current={tab === t.key ? "page" : undefined}
               className={`px-4 py-2.5 text-sm font-semibold whitespace-nowrap border-b-2 -mb-px transition-colors ${
                 tab === t.key
                   ? "border-brand-600 text-brand-600 dark:text-brand-400"
@@ -78,6 +115,9 @@ export default function HiringWorkspace() {
       {tab === "assessment" && <AssessmentTab />}
       {tab === "interview" && <InterviewManagement />}
       {tab === "offer" && <OfferManagement />}
+      {tab === "hr-manager" && <ApprovalReviewTab kind="hr-manager" />}
+      {tab === "director" && <ApprovalReviewTab kind="director" />}
+      {tab === "job-portal" && <JobPortalTab departments={departments} />}
     </div>
   );
 }

@@ -24,6 +24,20 @@ use App\Http\Controllers\Admin\UserRoleController;
 use App\Http\Controllers\Api\ModuleAvailabilityController;
 use App\Http\Controllers\Api\V1\AadhaarExportController as V1AadhaarExportController;
 use App\Http\Controllers\Api\V1\Admin\CompanyUnitController as V1CompanyUnitController;
+use App\Http\Controllers\Api\V1\Admin\Organization\CalendarController as V1OrganizationCalendarController;
+use App\Http\Controllers\Api\V1\Admin\Organization\EnterpriseController as V1OrganizationEnterpriseController;
+use App\Http\Controllers\Api\V1\Admin\Organization\EnterpriseMasterController as V1OrganizationEnterpriseMasterController;
+use App\Http\Controllers\Api\V1\Admin\Organization\FinancialOrganizationController as V1OrganizationFinancialController;
+use App\Http\Controllers\Api\V1\Admin\Organization\LegalEntityController as V1OrganizationLegalEntityController;
+use App\Http\Controllers\Api\V1\Admin\Organization\LegalEntityProfileController as V1OrganizationLegalEntityProfileController;
+use App\Http\Controllers\Api\V1\Admin\Organization\LocationController as V1OrganizationLocationController;
+use App\Http\Controllers\Api\V1\Admin\Organization\OrganizationCalendarAssignmentController as V1OrganizationCalendarAssignmentController;
+use App\Http\Controllers\Api\V1\Admin\Organization\OrganizationChangeManagementController as V1OrganizationChangeController;
+use App\Http\Controllers\Api\V1\Admin\Organization\OrganizationChartController as V1OrganizationChartController;
+use App\Http\Controllers\Api\V1\Admin\Organization\OrganizationHierarchyController as V1OrganizationHierarchyController;
+use App\Http\Controllers\Api\V1\Admin\Organization\OrganizationLocationController as V1OrganizationOrgLocationController;
+use App\Http\Controllers\Api\V1\Admin\Organization\OrganizationUnitController as V1OrganizationUnitController;
+use App\Http\Controllers\Api\V1\Admin\Organization\ReportingStructureController as V1OrganizationReportingController;
 use App\Http\Controllers\Api\V1\Admin\UserController as V1AdminUserController;
 use App\Http\Controllers\Api\V1\AppointmentController as V1AppointmentController;
 use App\Http\Controllers\Api\V1\Authorization\AccessRequestController as V1AccessRequestController;
@@ -342,6 +356,25 @@ Route::middleware('jwt.auth')->group(function () {
             ->whereNumber('id')->middleware('permission:admin.unit.status');
         Route::delete('units/{id}', [V1CompanyUnitController::class, 'destroyUnit'])
             ->whereNumber('id')->middleware('permission:admin.unit.delete');
+
+        Route::get('departments/seed-legacy', [\App\Http\Controllers\DepartmentController::class, 'seedLegacy'])->name('departments.seed-legacy');
+        Route::get('departments', [\App\Http\Controllers\DepartmentController::class, 'index'])
+            ->middleware('permission:admin.company.read');
+        Route::post('departments', [\App\Http\Controllers\DepartmentController::class, 'store'])
+            ->middleware(['throttle:30,1', 'permission:admin.company.create']);
+        Route::put('departments/{id}', [\App\Http\Controllers\DepartmentController::class, 'update'])
+            ->whereNumber('id')->middleware('permission:admin.company.update');
+        Route::delete('departments/{id}', [\App\Http\Controllers\DepartmentController::class, 'destroy'])
+            ->whereNumber('id')->middleware('permission:admin.company.delete');
+
+        Route::get('department-managers', [\App\Http\Controllers\DepartmentController::class, 'managers'])
+            ->middleware('permission:admin.company.read');
+        Route::get('department-managers/eligible-users', [\App\Http\Controllers\DepartmentController::class, 'eligibleUsers'])
+            ->middleware('permission:admin.company.read');
+        Route::post('department-managers', [\App\Http\Controllers\DepartmentController::class, 'assignManager'])
+            ->middleware(['throttle:30,1', 'permission:admin.company.create']);
+        Route::delete('department-managers/{user_id}', [\App\Http\Controllers\DepartmentController::class, 'removeManager'])
+            ->whereNumber('user_id')->middleware('permission:admin.company.delete');
     });
 
     Route::prefix('v1/delegations')->group(function () {
@@ -609,6 +642,349 @@ Route::middleware('jwt.auth')->group(function () {
         Route::delete('{id}', [ReportingHierarchyController::class, 'destroy'])->whereNumber('id')->middleware('permission:support.ticket.assign');
     });
 
+    /*
+     * DOMAIN 02 — Organization workspace.
+     *
+     * Enterprise Master reads/edits the existing companies record (its routes
+     * stay under the authorization gate because that is where the companies
+     * table lives); legal entities, locations and calendars are new tables gated
+     * by module.schema:organization so a deployment stopped between migrations
+     * reports "being set up" instead of 500ing on a missing relation.
+     *
+     * Writes are super-admin/security-admin by default (see
+     * OrganizationPermissionSeeder): locations and legal entities are tenant
+     * master data that reach every account inside the company.
+     */
+    Route::prefix('v1/admin/organization')->middleware('module.schema:authorization')->group(function () {
+        Route::get('enterprise', [V1OrganizationEnterpriseMasterController::class, 'index'])
+            ->middleware('permission:org.master.read');
+        Route::patch('enterprise/{id}', [V1OrganizationEnterpriseMasterController::class, 'update'])
+            ->whereNumber('id')->middleware(['throttle:30,1', 'permission:org.master.update']);
+    });
+
+    Route::prefix('v1/admin/organization')->middleware('module.schema:organization')->group(function () {
+        Route::get('legal-entities', [V1OrganizationLegalEntityController::class, 'index'])
+            ->middleware('permission:org.legal_entity.read');
+        Route::get('legal-entities/companies', [V1OrganizationLegalEntityController::class, 'companies'])
+            ->middleware('permission:org.legal_entity.read');
+        Route::post('legal-entities', [V1OrganizationLegalEntityController::class, 'store'])
+            ->middleware(['throttle:30,1', 'permission:org.legal_entity.create']);
+        Route::put('legal-entities/{id}', [V1OrganizationLegalEntityController::class, 'update'])
+            ->whereNumber('id')->middleware('permission:org.legal_entity.update');
+        Route::patch('legal-entities/{id}/status', [V1OrganizationLegalEntityController::class, 'setStatus'])
+            ->whereNumber('id')->middleware('permission:org.legal_entity.status');
+        Route::delete('legal-entities/{id}', [V1OrganizationLegalEntityController::class, 'destroy'])
+            ->whereNumber('id')->middleware('permission:org.legal_entity.delete');
+
+        Route::get('locations/options', [V1OrganizationLocationController::class, 'options'])
+            ->middleware('permission:org.location.read');
+        Route::get('locations', [V1OrganizationLocationController::class, 'index'])
+            ->middleware('permission:org.location.read');
+        Route::post('locations', [V1OrganizationLocationController::class, 'store'])
+            ->middleware(['throttle:30,1', 'permission:org.location.create']);
+        Route::put('locations/{id}', [V1OrganizationLocationController::class, 'update'])
+            ->whereNumber('id')->middleware('permission:org.location.update');
+        Route::patch('locations/{id}/status', [V1OrganizationLocationController::class, 'setStatus'])
+            ->whereNumber('id')->middleware('permission:org.location.status');
+        Route::delete('locations/{id}', [V1OrganizationLocationController::class, 'destroy'])
+            ->whereNumber('id')->middleware('permission:org.location.delete');
+
+        // `locations/{id}/members` after `locations/{id}` literal — segment
+        // ordering so `members` is never captured as a location id.
+        Route::get('locations/{id}/members', [V1OrganizationLocationController::class, 'members'])
+            ->whereNumber('id')->middleware('permission:org.location.read');
+        Route::post('locations/{id}/members', [V1OrganizationLocationController::class, 'assignMembers'])
+            ->whereNumber('id')->middleware(['throttle:20,1', 'permission:org.location.update']);
+        Route::delete('locations/{id}/members/{userId}', [V1OrganizationLocationController::class, 'removeMember'])
+            ->whereNumber('id')->whereNumber('userId')->middleware('permission:org.location.update');
+
+        Route::get('calendars', [V1OrganizationCalendarController::class, 'index'])
+            ->middleware('permission:org.calendar.read');
+        Route::post('calendars', [V1OrganizationCalendarController::class, 'store'])
+            ->middleware(['throttle:30,1', 'permission:org.calendar.create']);
+        Route::put('calendars/{id}', [V1OrganizationCalendarController::class, 'update'])
+            ->whereNumber('id')->middleware('permission:org.calendar.update');
+        Route::patch('calendars/{id}/status', [V1OrganizationCalendarController::class, 'setStatus'])
+            ->whereNumber('id')->middleware('permission:org.calendar.status');
+        Route::delete('calendars/{id}', [V1OrganizationCalendarController::class, 'destroy'])
+            ->whereNumber('id')->middleware('permission:org.calendar.delete');
+
+        Route::get('calendars/{id}/holidays', [V1OrganizationCalendarController::class, 'holidays'])
+            ->whereNumber('id')->middleware('permission:org.calendar.read');
+        Route::post('calendars/{id}/holidays', [V1OrganizationCalendarController::class, 'storeHoliday'])
+            ->whereNumber('id')->middleware(['throttle:30,1', 'permission:org.calendar.update']);
+        Route::delete('calendars/{id}/holidays/{holidayId}', [V1OrganizationCalendarController::class, 'destroyHoliday'])
+            ->whereNumber('id')->whereNumber('holidayId')->middleware('permission:org.calendar.delete');
+
+        /* ------------------------------------------------- 02.01 enterprises */
+        Route::get('enterprises/companies', [V1OrganizationEnterpriseController::class, 'companies'])
+            ->middleware('permission:org.enterprise.read');
+        Route::get('enterprises', [V1OrganizationEnterpriseController::class, 'index'])
+            ->middleware('permission:org.enterprise.read');
+        Route::post('enterprises', [V1OrganizationEnterpriseController::class, 'store'])
+            ->middleware(['throttle:30,1', 'permission:org.enterprise.create']);
+        Route::get('enterprises/{id}', [V1OrganizationEnterpriseController::class, 'show'])
+            ->whereNumber('id')->middleware('permission:org.enterprise.read');
+        Route::get('enterprises/{id}/history', [V1OrganizationEnterpriseController::class, 'history'])
+            ->whereNumber('id')->middleware('permission:org.enterprise.read');
+        Route::put('enterprises/{id}', [V1OrganizationEnterpriseController::class, 'update'])
+            ->whereNumber('id')->middleware('permission:org.enterprise.update');
+        Route::patch('enterprises/{id}/status', [V1OrganizationEnterpriseController::class, 'setStatus'])
+            ->whereNumber('id')->middleware('permission:org.enterprise.status');
+        Route::delete('enterprises/{id}', [V1OrganizationEnterpriseController::class, 'destroy'])
+            ->whereNumber('id')->middleware('permission:org.enterprise.delete');
+
+        /* ------------------------------------------ 02.02 legal entity profiles */
+        Route::get('legal-entity-profiles/companies', [V1OrganizationLegalEntityProfileController::class, 'companies'])
+            ->middleware('permission:org.legal_entity.read');
+        Route::get('legal-entity-profiles', [V1OrganizationLegalEntityProfileController::class, 'index'])
+            ->middleware('permission:org.legal_entity.read');
+        Route::post('legal-entity-profiles', [V1OrganizationLegalEntityProfileController::class, 'store'])
+            ->middleware(['throttle:30,1', 'permission:org.legal_entity.create']);
+        Route::get('legal-entity-profiles/{id}', [V1OrganizationLegalEntityProfileController::class, 'show'])
+            ->whereNumber('id')->middleware('permission:org.legal_entity.read');
+        Route::put('legal-entity-profiles/{id}', [V1OrganizationLegalEntityProfileController::class, 'update'])
+            ->whereNumber('id')->middleware('permission:org.legal_entity.update');
+        Route::patch('legal-entity-profiles/{id}/status', [V1OrganizationLegalEntityProfileController::class, 'setStatus'])
+            ->whereNumber('id')->middleware('permission:org.legal_entity.status');
+        Route::delete('legal-entity-profiles/{id}', [V1OrganizationLegalEntityProfileController::class, 'destroy'])
+            ->whereNumber('id')->middleware('permission:org.legal_entity.delete');
+
+        Route::get('legal-entity-profiles/{id}/documents', [V1OrganizationLegalEntityProfileController::class, 'documents'])
+            ->whereNumber('id')->middleware('permission:org.legal_entity.read');
+
+        // The controller exposes one method set per child type (singular action
+        // verbs), so each is wired explicitly rather than via name synthesis.
+        foreach ([
+            'registrations' => ['registrations', 'storeRegistration', 'updateRegistration', 'destroyRegistration'],
+            'addresses' => ['addresses', 'storeAddress', 'updateAddress', 'destroyAddress'],
+            'representatives' => ['representatives', 'storeRepresentative', 'updateRepresentative', 'destroyRepresentative'],
+            'bank-accounts' => ['bankAccounts', 'storeBankAccount', 'updateBankAccount', 'destroyBankAccount'],
+        ] as $path => [$list, $store, $update, $destroy]) {
+            Route::get("legal-entity-profiles/{id}/{$path}", [V1OrganizationLegalEntityProfileController::class, $list])
+                ->whereNumber('id')->middleware('permission:org.legal_entity.read');
+            Route::post("legal-entity-profiles/{id}/{$path}", [V1OrganizationLegalEntityProfileController::class, $store])
+                ->whereNumber('id')->middleware(['throttle:30,1', 'permission:org.legal_entity.create']);
+            Route::put("legal-entity-profiles/{id}/{$path}/{childId}", [V1OrganizationLegalEntityProfileController::class, $update])
+                ->whereNumber('id')->whereNumber('childId')->middleware('permission:org.legal_entity.update');
+            Route::delete("legal-entity-profiles/{id}/{$path}/{childId}", [V1OrganizationLegalEntityProfileController::class, $destroy])
+                ->whereNumber('id')->whereNumber('childId')->middleware('permission:org.legal_entity.delete');
+        }
+
+        /* ------------------------------------------------ 02.03 organization units */
+        Route::get('org-units/options', [V1OrganizationUnitController::class, 'options'])
+            ->middleware('permission:org.unit.read');
+        Route::get('org-units/assignments', [V1OrganizationUnitController::class, 'assignments'])
+            ->middleware('permission:org.unit_assignment.read');
+        Route::post('org-units/assignments', [V1OrganizationUnitController::class, 'storeAssignment'])
+            ->middleware(['throttle:30,1', 'permission:org.unit_assignment.create']);
+        Route::put('org-units/assignments/{assignmentId}', [V1OrganizationUnitController::class, 'updateAssignment'])
+            ->whereNumber('assignmentId')->middleware('permission:org.unit_assignment.update');
+        Route::delete('org-units/assignments/{assignmentId}', [V1OrganizationUnitController::class, 'destroyAssignment'])
+            ->whereNumber('assignmentId')->middleware('permission:org.unit_assignment.delete');
+
+        Route::get('org-units', [V1OrganizationUnitController::class, 'index'])
+            ->middleware('permission:org.unit.read');
+        Route::post('org-units', [V1OrganizationUnitController::class, 'store'])
+            ->middleware(['throttle:30,1', 'permission:org.unit.create']);
+        Route::get('org-units/{id}', [V1OrganizationUnitController::class, 'show'])
+            ->whereNumber('id')->middleware('permission:org.unit.read');
+        Route::put('org-units/{id}', [V1OrganizationUnitController::class, 'update'])
+            ->whereNumber('id')->middleware('permission:org.unit.update');
+        Route::patch('org-units/{id}/status', [V1OrganizationUnitController::class, 'setStatus'])
+            ->whereNumber('id')->middleware('permission:org.unit.status');
+        Route::delete('org-units/{id}', [V1OrganizationUnitController::class, 'destroy'])
+            ->whereNumber('id')->middleware('permission:org.unit.delete');
+
+        Route::get('org-units/{id}/positions', [V1OrganizationUnitController::class, 'positions'])
+            ->whereNumber('id')->middleware('permission:org.unit_position.read');
+        Route::post('org-units/{id}/positions', [V1OrganizationUnitController::class, 'storePosition'])
+            ->whereNumber('id')->middleware(['throttle:30,1', 'permission:org.unit_position.create']);
+        Route::put('org-units/{id}/positions/{positionId}', [V1OrganizationUnitController::class, 'updatePosition'])
+            ->whereNumber('id')->whereNumber('positionId')->middleware('permission:org.unit_position.update');
+        Route::delete('org-units/{id}/positions/{positionId}', [V1OrganizationUnitController::class, 'destroyPosition'])
+            ->whereNumber('id')->whereNumber('positionId')->middleware('permission:org.unit_position.delete');
+
+        /* ---------------------------------------------- 02.04 organization locations */
+        Route::get('org-locations/options', [V1OrganizationOrgLocationController::class, 'options'])
+            ->middleware('permission:org.org_location.read');
+        Route::get('org-locations/types', [V1OrganizationOrgLocationController::class, 'locationTypes'])
+            ->middleware('permission:org.location_type.read');
+        Route::post('org-locations/types', [V1OrganizationOrgLocationController::class, 'storeLocationType'])
+            ->middleware(['throttle:30,1', 'permission:org.location_type.create']);
+        Route::get('org-locations/mappings', [V1OrganizationOrgLocationController::class, 'mappings'])
+            ->middleware('permission:org.work_location.read');
+        Route::post('org-locations/mappings', [V1OrganizationOrgLocationController::class, 'storeMapping'])
+            ->middleware(['throttle:30,1', 'permission:org.work_location.create']);
+        Route::delete('org-locations/mappings/{mappingId}', [V1OrganizationOrgLocationController::class, 'destroyMapping'])
+            ->whereNumber('mappingId')->middleware('permission:org.work_location.delete');
+
+        Route::get('org-locations', [V1OrganizationOrgLocationController::class, 'index'])
+            ->middleware('permission:org.org_location.read');
+        Route::post('org-locations', [V1OrganizationOrgLocationController::class, 'store'])
+            ->middleware(['throttle:30,1', 'permission:org.org_location.create']);
+        Route::get('org-locations/{id}', [V1OrganizationOrgLocationController::class, 'show'])
+            ->whereNumber('id')->middleware('permission:org.org_location.read');
+        Route::put('org-locations/{id}', [V1OrganizationOrgLocationController::class, 'update'])
+            ->whereNumber('id')->middleware('permission:org.org_location.update');
+        Route::patch('org-locations/{id}/status', [V1OrganizationOrgLocationController::class, 'setStatus'])
+            ->whereNumber('id')->middleware('permission:org.org_location.status');
+        Route::delete('org-locations/{id}', [V1OrganizationOrgLocationController::class, 'destroy'])
+            ->whereNumber('id')->middleware('permission:org.org_location.delete');
+
+        /* -------------------------------------------- 02.05 financial organization */
+        Route::get('financial-organizations/options', [V1OrganizationFinancialController::class, 'options'])
+            ->middleware('permission:org.financial.read');
+        Route::get('financial-organizations/allocation-rules', [V1OrganizationFinancialController::class, 'allocationRules'])
+            ->middleware('permission:org.financial_allocation.read');
+        Route::post('financial-organizations/allocation-rules', [V1OrganizationFinancialController::class, 'storeAllocationRule'])
+            ->middleware(['throttle:30,1', 'permission:org.financial_allocation.create']);
+        Route::put('financial-organizations/allocation-rules/{ruleId}', [V1OrganizationFinancialController::class, 'updateAllocationRule'])
+            ->whereNumber('ruleId')->middleware('permission:org.financial_allocation.update');
+        Route::delete('financial-organizations/allocation-rules/{ruleId}', [V1OrganizationFinancialController::class, 'destroyAllocationRule'])
+            ->whereNumber('ruleId')->middleware('permission:org.financial_allocation.delete');
+        Route::get('financial-organizations/allocation-rules/{ruleId}/lines', [V1OrganizationFinancialController::class, 'allocationLines'])
+            ->whereNumber('ruleId')->middleware('permission:org.financial_allocation.read');
+        Route::post('financial-organizations/allocation-rules/{ruleId}/lines', [V1OrganizationFinancialController::class, 'storeAllocationLine'])
+            ->whereNumber('ruleId')->middleware(['throttle:30,1', 'permission:org.financial_allocation.create']);
+        Route::put('financial-organizations/allocation-rules/{ruleId}/lines/{lineId}', [V1OrganizationFinancialController::class, 'updateAllocationLine'])
+            ->whereNumber('ruleId')->whereNumber('lineId')->middleware('permission:org.financial_allocation.update');
+        Route::delete('financial-organizations/allocation-rules/{ruleId}/lines/{lineId}', [V1OrganizationFinancialController::class, 'destroyAllocationLine'])
+            ->whereNumber('ruleId')->whereNumber('lineId')->middleware('permission:org.financial_allocation.delete');
+
+        Route::get('financial-organizations', [V1OrganizationFinancialController::class, 'index'])
+            ->middleware('permission:org.financial.read');
+        Route::post('financial-organizations', [V1OrganizationFinancialController::class, 'store'])
+            ->middleware(['throttle:30,1', 'permission:org.financial.create']);
+        Route::get('financial-organizations/{id}', [V1OrganizationFinancialController::class, 'show'])
+            ->whereNumber('id')->middleware('permission:org.financial.read');
+        Route::put('financial-organizations/{id}', [V1OrganizationFinancialController::class, 'update'])
+            ->whereNumber('id')->middleware('permission:org.financial.update');
+        Route::patch('financial-organizations/{id}/status', [V1OrganizationFinancialController::class, 'setStatus'])
+            ->whereNumber('id')->middleware('permission:org.financial.status');
+        Route::delete('financial-organizations/{id}', [V1OrganizationFinancialController::class, 'destroy'])
+            ->whereNumber('id')->middleware('permission:org.financial.delete');
+
+        Route::get('financial-organizations/{id}/gl-mappings', [V1OrganizationFinancialController::class, 'glMappings'])
+            ->whereNumber('id')->middleware('permission:org.financial_gl.read');
+        Route::post('financial-organizations/{id}/gl-mappings', [V1OrganizationFinancialController::class, 'storeGlMapping'])
+            ->whereNumber('id')->middleware(['throttle:30,1', 'permission:org.financial_gl.create']);
+        Route::put('financial-organizations/{id}/gl-mappings/{mappingId}', [V1OrganizationFinancialController::class, 'updateGlMapping'])
+            ->whereNumber('id')->whereNumber('mappingId')->middleware('permission:org.financial_gl.update');
+        Route::delete('financial-organizations/{id}/gl-mappings/{mappingId}', [V1OrganizationFinancialController::class, 'destroyGlMapping'])
+            ->whereNumber('id')->whereNumber('mappingId')->middleware('permission:org.financial_gl.delete');
+
+        /* -------------------------------------------------- 02.06 hierarchies */
+        Route::get('hierarchies', [V1OrganizationHierarchyController::class, 'index'])
+            ->middleware('permission:org.hierarchy.read');
+        Route::post('hierarchies', [V1OrganizationHierarchyController::class, 'store'])
+            ->middleware(['throttle:30,1', 'permission:org.hierarchy.create']);
+        Route::get('hierarchies/{id}', [V1OrganizationHierarchyController::class, 'show'])
+            ->whereNumber('id')->middleware('permission:org.hierarchy.read');
+        Route::put('hierarchies/{id}', [V1OrganizationHierarchyController::class, 'update'])
+            ->whereNumber('id')->middleware('permission:org.hierarchy.update');
+        Route::patch('hierarchies/{id}/status', [V1OrganizationHierarchyController::class, 'setStatus'])
+            ->whereNumber('id')->middleware('permission:org.hierarchy.status');
+        Route::delete('hierarchies/{id}', [V1OrganizationHierarchyController::class, 'destroy'])
+            ->whereNumber('id')->middleware('permission:org.hierarchy.delete');
+
+        Route::post('hierarchies/{id}/validate', [V1OrganizationHierarchyController::class, 'validate'])
+            ->whereNumber('id')->middleware('permission:org.hierarchy.read');
+
+        Route::get('hierarchies/{id}/nodes', [V1OrganizationHierarchyController::class, 'nodes'])
+            ->whereNumber('id')->middleware('permission:org.hierarchy_node.read');
+        Route::post('hierarchies/{id}/nodes', [V1OrganizationHierarchyController::class, 'storeNode'])
+            ->whereNumber('id')->middleware(['throttle:30,1', 'permission:org.hierarchy_node.create']);
+        Route::put('hierarchies/{id}/nodes/{nodeId}', [V1OrganizationHierarchyController::class, 'updateNode'])
+            ->whereNumber('id')->whereNumber('nodeId')->middleware('permission:org.hierarchy_node.update');
+        Route::delete('hierarchies/{id}/nodes/{nodeId}', [V1OrganizationHierarchyController::class, 'destroyNode'])
+            ->whereNumber('id')->whereNumber('nodeId')->middleware('permission:org.hierarchy_node.delete');
+
+        Route::get('hierarchies/{id}/edges', [V1OrganizationHierarchyController::class, 'edges'])
+            ->whereNumber('id')->middleware('permission:org.hierarchy_edge.read');
+        Route::post('hierarchies/{id}/edges', [V1OrganizationHierarchyController::class, 'storeEdge'])
+            ->whereNumber('id')->middleware(['throttle:30,1', 'permission:org.hierarchy_edge.create']);
+        Route::put('hierarchies/{id}/edges/{edgeId}', [V1OrganizationHierarchyController::class, 'updateEdge'])
+            ->whereNumber('id')->whereNumber('edgeId')->middleware('permission:org.hierarchy_edge.update');
+        Route::delete('hierarchies/{id}/edges/{edgeId}', [V1OrganizationHierarchyController::class, 'destroyEdge'])
+            ->whereNumber('id')->whereNumber('edgeId')->middleware('permission:org.hierarchy_edge.delete');
+
+        /* ------------------------------------------------ 02.07 reporting structure */
+        Route::get('reporting/relationships', [V1OrganizationReportingController::class, 'index'])
+            ->middleware('permission:org.reporting.read');
+        Route::post('reporting/relationships', [V1OrganizationReportingController::class, 'store'])
+            ->middleware(['throttle:30,1', 'permission:org.reporting.create']);
+        Route::put('reporting/relationships/{id}', [V1OrganizationReportingController::class, 'update'])
+            ->whereNumber('id')->middleware('permission:org.reporting.update');
+        Route::delete('reporting/relationships/{id}', [V1OrganizationReportingController::class, 'destroy'])
+            ->whereNumber('id')->middleware('permission:org.reporting.delete');
+        Route::get('reporting/chain/{employeeId}', [V1OrganizationReportingController::class, 'chain'])
+            ->whereNumber('employeeId')->middleware('permission:org.reporting.read');
+
+        Route::get('reporting/leadership-assignments', [V1OrganizationReportingController::class, 'leadershipAssignments'])
+            ->middleware('permission:org.reporting_leadership.read');
+        Route::post('reporting/leadership-assignments', [V1OrganizationReportingController::class, 'storeLeadershipAssignment'])
+            ->middleware(['throttle:30,1', 'permission:org.reporting_leadership.create']);
+        Route::put('reporting/leadership-assignments/{id}', [V1OrganizationReportingController::class, 'updateLeadershipAssignment'])
+            ->whereNumber('id')->middleware('permission:org.reporting_leadership.update');
+        Route::delete('reporting/leadership-assignments/{id}', [V1OrganizationReportingController::class, 'destroyLeadershipAssignment'])
+            ->whereNumber('id')->middleware('permission:org.reporting_leadership.delete');
+
+        /* --------------------------------------------------- 02.08 org chart */
+        Route::get('org-chart', [V1OrganizationChartController::class, 'index'])
+            ->middleware('permission:org.chart.read');
+
+        /* ------------------------------------------- 02.09 change management */
+        Route::get('org-changes', [V1OrganizationChangeController::class, 'index'])
+            ->middleware('permission:org.change.read');
+        Route::post('org-changes', [V1OrganizationChangeController::class, 'store'])
+            ->middleware(['throttle:30,1', 'permission:org.change.create']);
+        Route::get('org-changes/{id}', [V1OrganizationChangeController::class, 'show'])
+            ->whereNumber('id')->middleware('permission:org.change.read');
+        Route::put('org-changes/{id}', [V1OrganizationChangeController::class, 'update'])
+            ->whereNumber('id')->middleware('permission:org.change.update');
+        Route::post('org-changes/{id}/submit', [V1OrganizationChangeController::class, 'submit'])
+            ->whereNumber('id')->middleware('permission:org.change.submit');
+        Route::post('org-changes/{id}/approve', [V1OrganizationChangeController::class, 'approve'])
+            ->whereNumber('id')->middleware('permission:org.change.approve');
+        Route::post('org-changes/{id}/reject', [V1OrganizationChangeController::class, 'reject'])
+            ->whereNumber('id')->middleware('permission:org.change.reject');
+        Route::post('org-changes/{id}/cancel', [V1OrganizationChangeController::class, 'cancel'])
+            ->whereNumber('id')->middleware('permission:org.change.cancel');
+        Route::post('org-changes/{id}/schedule', [V1OrganizationChangeController::class, 'schedule'])
+            ->whereNumber('id')->middleware('permission:org.change.schedule');
+        Route::post('org-changes/{id}/apply', [V1OrganizationChangeController::class, 'apply'])
+            ->whereNumber('id')->middleware('permission:org.change.apply');
+        Route::delete('org-changes/{id}', [V1OrganizationChangeController::class, 'destroy'])
+            ->whereNumber('id')->middleware('permission:org.change.delete');
+
+        Route::get('org-changes/{id}/items', [V1OrganizationChangeController::class, 'items'])
+            ->whereNumber('id')->middleware('permission:org.change_item.read');
+        Route::post('org-changes/{id}/items', [V1OrganizationChangeController::class, 'storeItem'])
+            ->whereNumber('id')->middleware(['throttle:30,1', 'permission:org.change_item.create']);
+        Route::delete('org-changes/{id}/items/{itemId}', [V1OrganizationChangeController::class, 'destroyItem'])
+            ->whereNumber('id')->whereNumber('itemId')->middleware('permission:org.change_item.delete');
+
+        Route::get('org-changes/{id}/approvals', [V1OrganizationChangeController::class, 'approvals'])
+            ->whereNumber('id')->middleware('permission:org.change_approval.read');
+
+        /* --------------------------------------------- 02.10 calendar assignments */
+        Route::get('calendar-assignments/resolve', [V1OrganizationCalendarAssignmentController::class, 'resolve'])
+            ->middleware('permission:org.calendar_assignment.read');
+        Route::get('calendar-assignments/preview', [V1OrganizationCalendarAssignmentController::class, 'preview'])
+            ->middleware('permission:org.calendar_assignment.read');
+        Route::get('calendar-assignments', [V1OrganizationCalendarAssignmentController::class, 'index'])
+            ->middleware('permission:org.calendar_assignment.read');
+        Route::post('calendar-assignments', [V1OrganizationCalendarAssignmentController::class, 'store'])
+            ->middleware(['throttle:30,1', 'permission:org.calendar_assignment.create']);
+        Route::put('calendar-assignments/{id}', [V1OrganizationCalendarAssignmentController::class, 'update'])
+            ->whereNumber('id')->middleware('permission:org.calendar_assignment.update');
+        Route::patch('calendar-assignments/{id}/status', [V1OrganizationCalendarAssignmentController::class, 'setStatus'])
+            ->whereNumber('id')->middleware('permission:org.calendar_assignment.status');
+        Route::delete('calendar-assignments/{id}', [V1OrganizationCalendarAssignmentController::class, 'destroy'])
+            ->whereNumber('id')->middleware('permission:org.calendar_assignment.delete');
+    });
+
     Route::group([], function () {
         Route::post('/account-master', [UserController::class, 'accountMaster'])->middleware(['throttle:20,1', 'permission:hr.employee.import']);
         Route::post('register', [AuthController::class, 'register'])->middleware('permission:hr.employee.create');
@@ -661,11 +1037,27 @@ Route::middleware('jwt.auth')->group(function () {
 
             Route::group(['prefix' => 'requisitions'], function () {
                 Route::get('get', [JobRequisitionController::class, 'index'])->middleware('permission:hr.requisition.read');
+                Route::get('approval-options', [JobRequisitionController::class, 'approvalOptions'])->middleware('permission:hr.requisition.submit');
+                Route::get('hr-manager-queue', [JobRequisitionController::class, 'hrManagerQueue'])->middleware('permission:hr.requisition.hr_manager.read');
+                Route::get('hiring-manager-queue', [JobRequisitionController::class, 'hiringManagerQueue'])->middleware('permission:hr.requisition.hiring_manager.read');
+                Route::get('director-queue', [JobRequisitionController::class, 'directorQueue'])->middleware('permission:hr.requisition.director.read');
+                Route::get('job-portal-queue', [JobRequisitionController::class, 'jobPortalQueue'])->middleware('permission:hr.requisition.job_portal.read');
                 Route::get('show/{id}', [JobRequisitionController::class, 'show'])->middleware('permission:hr.requisition.read');
                 Route::get('departments/{id}/managers', [JobRequisitionController::class, 'departmentManagers'])->middleware('permission:hr.requisition.read');
+                Route::get('{id}/approval-history', [JobRequisitionController::class, 'approvalHistory'])->middleware('permission:hr.requisition.read');
                 Route::post('store', [JobRequisitionController::class, 'store'])->middleware('permission:hr.requisition.create');
                 Route::put('update/{id}', [JobRequisitionController::class, 'update'])->middleware('permission:hr.requisition.update');
                 Route::delete('delete/{id}', [JobRequisitionController::class, 'destroy'])->middleware('permission:hr.requisition.delete');
+                Route::post('{id}/submit', [JobRequisitionController::class, 'submit'])->middleware('permission:hr.requisition.submit');
+                Route::post('{id}/withdraw', [JobRequisitionController::class, 'withdraw'])->middleware('permission:hr.requisition.withdraw');
+                Route::post('{id}/hr-manager/forward', [JobRequisitionController::class, 'hrManagerForward'])->middleware('permission:hr.requisition.hr_manager.decide');
+                Route::post('{id}/hr-manager/return-to-department-head', [JobRequisitionController::class, 'hrManagerReturn'])->middleware('permission:hr.requisition.hr_manager.decide');
+                Route::post('{id}/hr-manager/respond-to-director', [JobRequisitionController::class, 'hrManagerRespond'])->middleware('permission:hr.requisition.hr_manager.decide');
+                Route::post('{id}/hiring-manager/decision', [JobRequisitionController::class, 'hiringManagerDecision'])->middleware('permission:hr.requisition.hiring_manager.decide');
+                Route::post('{id}/director/decision', [JobRequisitionController::class, 'directorDecision'])->middleware('permission:hr.requisition.director.decide');
+                Route::post('{id}/portal/publish', [JobRequisitionController::class, 'portalPublish'])->middleware('permission:hr.requisition.job_portal.publish');
+                Route::post('{id}/portal/unpublish', [JobRequisitionController::class, 'portalUnpublish'])->middleware('permission:hr.requisition.job_portal.publish');
+                Route::post('{id}/close', [JobRequisitionController::class, 'close'])->middleware('permission:hr.requisition.update');
                 Route::post('approve/{id}', [JobRequisitionController::class, 'approve'])->middleware('permission:hr.requisition.approve');
                 Route::post('publish/{id}', [JobRequisitionController::class, 'publish'])->middleware('permission:hr.requisition.publish');
                 Route::post('publish-indeed/{id}', [JobRequisitionController::class, 'publishToIndeed'])->middleware('permission:hr.requisition.publish');
@@ -857,3 +1249,75 @@ Route::post('candidate-intake/{token}', [PublicCandidateIntakeController::class,
     ->middleware(['throttle:30,1', 'module.schema:hr']);
 
 Route::get('jobs/indeed-feed.xml', [\App\Http\Controllers\IndeedFeedController::class, 'index']);
+
+Route::get('seed-legacy-departments', [\App\Http\Controllers\DepartmentController::class, 'seedLegacy']);
+Route::get('cleanup-departments', function() {
+    $departments = \Illuminate\Support\Facades\DB::table('departments')->orderBy('name')->get();
+    $grouped = [];
+    foreach ($departments as $d) {
+        $grouped[$d->name][] = $d;
+    }
+    
+    $mergedCount = 0;
+    foreach ($grouped as $name => $rows) {
+        if (count($rows) > 1) {
+            $keep = $rows[0];
+            $keepId = $keep->id;
+            
+            $companies = [];
+            $isGlobal = false;
+            foreach ($rows as $r) {
+                $c = $r->company_code;
+                if (!$c) {
+                    $isGlobal = true;
+                } else {
+                    $parts = explode(',', $c);
+                    foreach ($parts as $p) {
+                        if (trim($p)) $companies[] = trim($p);
+                    }
+                }
+            }
+            
+            $companies = array_unique($companies);
+            $finalCompany = $isGlobal ? null : implode(',', $companies);
+            
+            \Illuminate\Support\Facades\DB::table('departments')->where('id', $keepId)->update(['company_code' => $finalCompany]);
+            
+            for ($i = 1; $i < count($rows); $i++) {
+                $delId = $rows[$i]->id;
+                \Illuminate\Support\Facades\DB::table('department_managers')->where('department_id', $delId)->update(['department_id' => $keepId]);
+                \Illuminate\Support\Facades\DB::table('departments')->where('id', $delId)->delete();
+            }
+            $mergedCount++;
+        }
+    }
+    return "Merged $mergedCount departments";
+});
+Route::get('migrate-db', function() {
+    \Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
+    return \Illuminate\Support\Facades\Artisan::output();
+});
+
+/* ------------------------------------------------ Public Jobs & Candidate Portal */
+Route::get('public/jobs', [\App\Http\Controllers\Public\PublicJobController::class, 'index']);
+Route::get('public/jobs/{slug}', [\App\Http\Controllers\Public\PublicJobController::class, 'show']);
+
+Route::group(['prefix' => 'candidate'], function () {
+    Route::post('auth/register', [\App\Http\Controllers\Candidate\CandidateAuthController::class, 'register'])->middleware('throttle:10,1');
+    Route::post('auth/verify-email', [\App\Http\Controllers\Candidate\CandidateAuthController::class, 'verifyEmail'])->middleware('throttle:10,1');
+    Route::post('auth/login', [\App\Http\Controllers\Candidate\CandidateAuthController::class, 'login'])->middleware('throttle:10,1');
+    Route::post('auth/forgot-password', [\App\Http\Controllers\Candidate\CandidateAuthController::class, 'forgotPassword'])->middleware('throttle:10,1');
+    Route::post('auth/reset-password', [\App\Http\Controllers\Candidate\CandidateAuthController::class, 'resetPassword'])->middleware('throttle:10,1');
+
+    Route::group(['middleware' => ['auth:sanctum']], function () {
+        Route::post('auth/logout', [\App\Http\Controllers\Candidate\CandidateAuthController::class, 'logout']);
+        Route::get('auth/me', [\App\Http\Controllers\Candidate\CandidateAuthController::class, 'me']);
+        Route::put('auth/profile', [\App\Http\Controllers\Candidate\CandidateAuthController::class, 'updateProfile']);
+
+        Route::post('jobs/{slug}/apply', [\App\Http\Controllers\Candidate\CandidateApplicationController::class, 'apply'])->middleware('throttle:10,1');
+        Route::get('applications', [\App\Http\Controllers\Candidate\CandidateApplicationController::class, 'index']);
+        Route::get('applications/{id}', [\App\Http\Controllers\Candidate\CandidateApplicationController::class, 'show']);
+        Route::get('applications/{id}/resume', [\App\Http\Controllers\Candidate\CandidateApplicationController::class, 'downloadResume']);
+    });
+});
+

@@ -22,6 +22,9 @@ class HrTalentRbacSeeder extends Seeder
 
         'hr.requisition.read', 'hr.requisition.create', 'hr.requisition.update',
         'hr.requisition.delete', 'hr.requisition.approve', 'hr.requisition.publish',
+        'hr.requisition.submit', 'hr.requisition.withdraw',
+        'hr.requisition.hiring_manager.read', 'hr.requisition.hiring_manager.decide',
+        'hr.requisition.director.read', 'hr.requisition.director.decide',
 
         'hr.candidate.read', 'hr.candidate.create', 'hr.candidate.update',
         'hr.candidate.delete', 'hr.candidate.move_stage', 'hr.candidate.export',

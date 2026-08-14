@@ -161,6 +161,7 @@ class RbacSeeder extends Seeder
         (new HrTalentRbacSeeder())->run();
         (new AdminUserManagementPermissionSeeder())->run();
         (new CompanyUnitPermissionSeeder())->run();
+        (new OrganizationPermissionSeeder())->run();
         (new AadhaarRevealPermissionSeeder())->run();
     }
 

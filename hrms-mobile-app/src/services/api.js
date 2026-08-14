@@ -1,6 +1,8 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { API_BASE_URL } from '../config/apiUrl';
+import { saveToken, loadToken, clearToken, clearUserScopedCaches } from './secureStore';
 
-const BASE_URL = 'http://192.168.1.53:8000/api'; // changed to local
+const BASE_URL = API_BASE_URL;
+export { BASE_URL };
 
 export class ApiError extends Error {
   constructor(message, status, payload) {
@@ -477,17 +479,18 @@ class ApiService {
 
 export const api = new ApiService();
 
-export const TOKEN_STORAGE_KEY = 'hrms_auth_session';
-
+// Only the JWT + token type are persisted, and only in the device keystore
+// (SecureStore). The user object is never persisted — it is re-fetched from the
+// protected profile endpoint on every cold start (see AuthContext).
 export async function persistSession(session) {
-  await AsyncStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify(session));
+  await saveToken(session.token, session.tokenType);
 }
 
 export async function loadPersistedSession() {
-  const raw = await AsyncStorage.getItem(TOKEN_STORAGE_KEY);
-  return raw ? JSON.parse(raw) : null;
+  return loadToken();
 }
 
 export async function clearPersistedSession() {
-  await AsyncStorage.removeItem(TOKEN_STORAGE_KEY);
+  await clearToken();
+  await clearUserScopedCaches();
 }

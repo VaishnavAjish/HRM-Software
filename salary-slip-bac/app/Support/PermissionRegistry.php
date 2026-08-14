@@ -564,6 +564,93 @@ class PermissionRegistry
             'description' => 'Approve a hiring requisition.',
             'implies' => ['hr.requisition.approve'],
         ],
+        'ui.hr.hiring.requisition_submit' => [
+            'type' => self::TYPE_ACTION, 'label' => 'Submit Requisition', 'order' => 32,
+            'parent' => 'ui.hr.hiring',
+            'description' => 'Submit a requisition into the two-stage approval workflow.',
+            'implies' => ['hr.requisition.submit'],
+            'api' => [
+                ['GET', '/api/hr/requisitions/approval-options'],
+                ['POST', '/api/hr/requisitions/{id}/submit'],
+            ],
+        ],
+        'ui.hr.hiring.requisition_withdraw' => [
+            'type' => self::TYPE_ACTION, 'label' => 'Withdraw Requisition', 'order' => 34,
+            'parent' => 'ui.hr.hiring',
+            'description' => 'Withdraw a pending requisition back to draft.',
+            'implies' => ['hr.requisition.withdraw'],
+            'api' => [['POST', '/api/hr/requisitions/{id}/withdraw']],
+        ],
+        'ui.hr.hiring.hr_manager_review' => [
+            'type' => self::TYPE_FEATURE, 'label' => 'HR Manager Review', 'order' => 36,
+            'parent' => 'ui.hr.hiring', 'sensitivity' => self::SENSITIVITY_SENSITIVE,
+            'description' => 'Open the HR Manager requisition review queue.',
+            'implies' => ['hr.requisition.hr_manager.read'],
+            'api' => [['GET', '/api/hr/requisitions/hr-manager-queue']],
+        ],
+        'ui.hr.hiring.hr_manager_review.decide' => [
+            'type' => self::TYPE_ACTION, 'label' => 'HR Manager Decision', 'order' => 10,
+            'parent' => 'ui.hr.hiring.hr_manager_review', 'sensitivity' => self::SENSITIVITY_SENSITIVE,
+            'description' => 'Forward to Director or Return to Department Head.',
+            'implies' => ['hr.requisition.hr_manager.decide'],
+            'api' => [
+                ['POST', '/api/hr/requisitions/{id}/hr-manager/forward'],
+                ['POST', '/api/hr/requisitions/{id}/hr-manager/return-to-department-head'],
+                ['POST', '/api/hr/requisitions/{id}/hr-manager/respond-to-director'],
+            ],
+        ],
+        'ui.hr.hiring.hiring_manager_review' => [
+            'type' => self::TYPE_FEATURE, 'label' => 'Hiring Manager Review', 'order' => 37,
+            'parent' => 'ui.hr.hiring', 'sensitivity' => self::SENSITIVITY_SENSITIVE,
+            'description' => 'Legacy alias for HR Manager requisition review queue.',
+            'implies' => ['hr.requisition.hiring_manager.read', 'hr.requisition.hr_manager.read'],
+            'api' => [['GET', '/api/hr/requisitions/hiring-manager-queue']],
+        ],
+        'ui.hr.hiring.hiring_manager_review.decide' => [
+            'type' => self::TYPE_ACTION, 'label' => 'Hiring Manager Decision', 'order' => 10,
+            'parent' => 'ui.hr.hiring.hiring_manager_review', 'sensitivity' => self::SENSITIVITY_SENSITIVE,
+            'description' => 'Legacy alias for HR Manager decision.',
+            'implies' => ['hr.requisition.hiring_manager.decide', 'hr.requisition.hr_manager.decide'],
+            'api' => [['POST', '/api/hr/requisitions/{id}/hiring-manager/decision']],
+        ],
+        'ui.hr.hiring.job_portal' => [
+            'type' => self::TYPE_FEATURE, 'label' => 'Job Portal Queue', 'order' => 39,
+            'parent' => 'ui.hr.hiring',
+            'description' => 'Open the Job Portal publishing queue.',
+            'implies' => ['hr.requisition.job_portal.read'],
+            'api' => [['GET', '/api/hr/requisitions/job-portal-queue']],
+        ],
+        'ui.hr.hiring.job_portal.publish' => [
+            'type' => self::TYPE_ACTION, 'label' => 'Job Portal Publish', 'order' => 10,
+            'parent' => 'ui.hr.hiring.job_portal', 'sensitivity' => self::SENSITIVITY_SENSITIVE,
+            'description' => 'Publish, unpublish, or close job requisitions on the public Job Portal.',
+            'implies' => ['hr.requisition.job_portal.publish'],
+            'api' => [
+                ['POST', '/api/hr/requisitions/{id}/portal/publish'],
+                ['POST', '/api/hr/requisitions/{id}/portal/unpublish'],
+                ['POST', '/api/hr/requisitions/{id}/close'],
+            ],
+        ],
+        'ui.hr.hiring.department_override' => [
+            'type' => self::TYPE_ACTION, 'label' => 'Department Override', 'order' => 11,
+            'parent' => 'ui.hr.hiring', 'sensitivity' => self::SENSITIVITY_SENSITIVE,
+            'description' => 'Create requisitions for another department.',
+            'implies' => ['hr.requisition.department.override'],
+        ],
+        'ui.hr.hiring.director_review' => [
+            'type' => self::TYPE_FEATURE, 'label' => 'Director Review', 'order' => 38,
+            'parent' => 'ui.hr.hiring', 'sensitivity' => self::SENSITIVITY_SENSITIVE,
+            'description' => 'Open the Director requisition review queue.',
+            'implies' => ['hr.requisition.director.read'],
+            'api' => [['GET', '/api/hr/requisitions/director-queue']],
+        ],
+        'ui.hr.hiring.director_review.decide' => [
+            'type' => self::TYPE_ACTION, 'label' => 'Director Decision', 'order' => 10,
+            'parent' => 'ui.hr.hiring.director_review', 'sensitivity' => self::SENSITIVITY_CRITICAL,
+            'description' => 'Give the final approval or rejection for an assigned requisition.',
+            'implies' => ['hr.requisition.director.decide'],
+            'api' => [['POST', '/api/hr/requisitions/{id}/director/decision']],
+        ],
         'ui.hr.hiring.candidates' => [
             'type' => self::TYPE_FEATURE, 'label' => 'Candidates', 'order' => 40,
             'parent' => 'ui.hr.hiring',
@@ -1205,6 +1292,154 @@ class PermissionRegistry
             'description' => 'Update own profile details.',
             'implies' => ['hr.profile.update'],
             'scopes' => [self::SCOPE_OWN],
+        ],
+
+        /* -------------------------------------------------------- organization */
+
+        /*
+         * DOMAIN 02 — Enterprise & Organization Management.
+         *
+         * The workspace's pages read the org.master/org.legal_entity/org.location/
+         * org.calendar codes, which the `permission:` middleware enforces and the
+         * permission routes carry. This family is the Permission Matrix surface
+         * over those codes. Writes are CRITICAL for the same reason a company edit
+         * is: locations and legal entities are tenant master data that reach every
+         * account inside the company.
+         */
+        'ui.organization' => [
+            'type' => self::TYPE_MODULE, 'label' => 'Organization', 'order' => 15,
+            'parent' => null, 'route' => '/admin/organization/master',
+            'description' => 'Enterprise and organization management workspace.',
+            'implies' => ['org.master.read'],
+        ],
+        'ui.organization.master' => [
+            'type' => self::TYPE_PAGE, 'label' => 'Enterprise Master', 'order' => 10,
+            'parent' => 'ui.organization', 'route' => '/admin/organization/master',
+            'description' => 'Read the enterprise attributes of each company.',
+            'implies' => ['org.master.read'],
+            'api' => [['GET', '/api/v1/admin/organization/enterprise']],
+        ],
+        'ui.organization.master.update' => [
+            'type' => self::TYPE_ACTION, 'label' => 'Update Enterprise Master', 'order' => 20,
+            'parent' => 'ui.organization.master', 'sensitivity' => self::SENSITIVITY_CRITICAL,
+            'description' => 'Edit the statutory details of a company.',
+            'implies' => ['org.master.update'],
+            'api' => [['PATCH', '/api/v1/admin/organization/enterprise/{id}']],
+        ],
+        'ui.organization.legal_entities' => [
+            'type' => self::TYPE_PAGE, 'label' => 'Legal Entities', 'order' => 20,
+            'parent' => 'ui.organization', 'route' => '/admin/organization/legal-entities',
+            'description' => 'Read the legal entities of a company.',
+            'implies' => ['org.legal_entity.read'],
+            'api' => [['GET', '/api/v1/admin/organization/legal-entities']],
+        ],
+        'ui.organization.legal_entities.create' => [
+            'type' => self::TYPE_ACTION, 'label' => 'Create Legal Entity', 'order' => 10,
+            'parent' => 'ui.organization.legal_entities', 'sensitivity' => self::SENSITIVITY_CRITICAL,
+            'description' => 'Create a legal entity under a company.',
+            'implies' => ['org.legal_entity.create'],
+            'api' => [['POST', '/api/v1/admin/organization/legal-entities']],
+        ],
+        'ui.organization.legal_entities.update' => [
+            'type' => self::TYPE_ACTION, 'label' => 'Update Legal Entity', 'order' => 20,
+            'parent' => 'ui.organization.legal_entities', 'sensitivity' => self::SENSITIVITY_CRITICAL,
+            'description' => 'Edit a legal entity. Its company is locked once set.',
+            'implies' => ['org.legal_entity.update'],
+            'api' => [['PUT', '/api/v1/admin/organization/legal-entities/{id}']],
+        ],
+        'ui.organization.legal_entities.status' => [
+            'type' => self::TYPE_ACTION, 'label' => 'Activate / Deactivate Legal Entity', 'order' => 30,
+            'parent' => 'ui.organization.legal_entities', 'sensitivity' => self::SENSITIVITY_PRIVILEGED,
+            'description' => 'Withdraw a legal entity from use, keeping its history.',
+            'implies' => ['org.legal_entity.status'],
+            'api' => [['PATCH', '/api/v1/admin/organization/legal-entities/{id}/status']],
+        ],
+        'ui.organization.legal_entities.delete' => [
+            'type' => self::TYPE_ACTION, 'label' => 'Delete Legal Entity', 'order' => 40,
+            'parent' => 'ui.organization.legal_entities', 'sensitivity' => self::SENSITIVITY_CRITICAL,
+            'description' => 'Delete a legal entity. Refused while it is primary.',
+            'implies' => ['org.legal_entity.delete'],
+            'api' => [['DELETE', '/api/v1/admin/organization/legal-entities/{id}']],
+        ],
+        'ui.organization.locations' => [
+            'type' => self::TYPE_PAGE, 'label' => 'Locations', 'order' => 30,
+            'parent' => 'ui.organization', 'route' => '/admin/organization/locations',
+            'description' => 'Read the business-structure locations of a company.',
+            'implies' => ['org.location.read'],
+            'api' => [['GET', '/api/v1/admin/organization/locations']],
+        ],
+        'ui.organization.locations.create' => [
+            'type' => self::TYPE_ACTION, 'label' => 'Create Location', 'order' => 10,
+            'parent' => 'ui.organization.locations', 'sensitivity' => self::SENSITIVITY_CRITICAL,
+            'description' => 'Create a location under a company.',
+            'implies' => ['org.location.create'],
+            'api' => [['POST', '/api/v1/admin/organization/locations']],
+        ],
+        'ui.organization.locations.update' => [
+            'type' => self::TYPE_ACTION, 'label' => 'Update Location', 'order' => 20,
+            'parent' => 'ui.organization.locations', 'sensitivity' => self::SENSITIVITY_CRITICAL,
+            'description' => 'Edit a location or reassign its members.',
+            'implies' => ['org.location.update'],
+            'api' => [
+                ['PUT', '/api/v1/admin/organization/locations/{id}'],
+                ['POST', '/api/v1/admin/organization/locations/{id}/members'],
+                ['DELETE', '/api/v1/admin/organization/locations/{id}/members/{userId}'],
+            ],
+        ],
+        'ui.organization.locations.status' => [
+            'type' => self::TYPE_ACTION, 'label' => 'Activate / Deactivate Location', 'order' => 30,
+            'parent' => 'ui.organization.locations', 'sensitivity' => self::SENSITIVITY_PRIVILEGED,
+            'description' => 'Withdraw a location from use, keeping its history.',
+            'implies' => ['org.location.status'],
+            'api' => [['PATCH', '/api/v1/admin/organization/locations/{id}/status']],
+        ],
+        'ui.organization.locations.delete' => [
+            'type' => self::TYPE_ACTION, 'label' => 'Delete Location', 'order' => 40,
+            'parent' => 'ui.organization.locations', 'sensitivity' => self::SENSITIVITY_CRITICAL,
+            'description' => 'Delete a location. Refused while it has children or members.',
+            'implies' => ['org.location.delete'],
+            'api' => [['DELETE', '/api/v1/admin/organization/locations/{id}']],
+        ],
+        'ui.organization.calendars' => [
+            'type' => self::TYPE_PAGE, 'label' => 'Calendars', 'order' => 40,
+            'parent' => 'ui.organization', 'route' => '/admin/organization/calendars',
+            'description' => 'Read company and unit calendars.',
+            'implies' => ['org.calendar.read'],
+            'api' => [['GET', '/api/v1/admin/organization/calendars']],
+        ],
+        'ui.organization.calendars.create' => [
+            'type' => self::TYPE_ACTION, 'label' => 'Create Calendar', 'order' => 10,
+            'parent' => 'ui.organization.calendars', 'sensitivity' => self::SENSITIVITY_CRITICAL,
+            'description' => 'Create a company or unit calendar.',
+            'implies' => ['org.calendar.create'],
+            'api' => [['POST', '/api/v1/admin/organization/calendars']],
+        ],
+        'ui.organization.calendars.update' => [
+            'type' => self::TYPE_ACTION, 'label' => 'Update Calendar', 'order' => 20,
+            'parent' => 'ui.organization.calendars', 'sensitivity' => self::SENSITIVITY_CRITICAL,
+            'description' => 'Edit a calendar or its dated holidays.',
+            'implies' => ['org.calendar.update'],
+            'api' => [
+                ['PUT', '/api/v1/admin/organization/calendars/{id}'],
+                ['POST', '/api/v1/admin/organization/calendars/{id}/holidays'],
+            ],
+        ],
+        'ui.organization.calendars.status' => [
+            'type' => self::TYPE_ACTION, 'label' => 'Activate / Deactivate Calendar', 'order' => 30,
+            'parent' => 'ui.organization.calendars', 'sensitivity' => self::SENSITIVITY_PRIVILEGED,
+            'description' => 'Withdraw a calendar from use, keeping its history.',
+            'implies' => ['org.calendar.status'],
+            'api' => [['PATCH', '/api/v1/admin/organization/calendars/{id}/status']],
+        ],
+        'ui.organization.calendars.delete' => [
+            'type' => self::TYPE_ACTION, 'label' => 'Delete Calendar', 'order' => 40,
+            'parent' => 'ui.organization.calendars', 'sensitivity' => self::SENSITIVITY_CRITICAL,
+            'description' => 'Delete a calendar. Refused while it has holidays.',
+            'implies' => ['org.calendar.delete'],
+            'api' => [
+                ['DELETE', '/api/v1/admin/organization/calendars/{id}'],
+                ['DELETE', '/api/v1/admin/organization/calendars/{id}/holidays/{holidayId}'],
+            ],
         ],
     ];
 

@@ -4,6 +4,7 @@ const DEFAULT_FILTERS = {
   search: "",
   departmentId: "",
   hiringManagerId: "",
+  directorId: "",
   recruiterId: "",
   requisitionId: "",
   employmentType: "",

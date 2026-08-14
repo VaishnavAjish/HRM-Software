@@ -15,6 +15,7 @@ import {
   Briefcase,
   ShieldCheck,
   Ticket,
+  Building2,
 } from "lucide-react";
 
 function getAdminNav(companyId, user, isAllCompanies, isModuleAvailable = () => true) {
@@ -161,6 +162,28 @@ function getAdminNav(companyId, user, isAllCompanies, isModuleAvailable = () => 
           ? [{ to: "/admin/access-control/delegations", label: "Delegations" }] : []),
         ...(hasAccess("admin.emergency_access.approve") || rawRole === 0
           ? [{ to: "/admin/access-control/emergency-access", label: "Emergency Access" }] : []),
+      ],
+    });
+  }
+
+  /*
+   * Organization — the workspace for enterprise attributes, legal entities,
+   * locations and calendars. Shown to anyone who can read any of them; the
+   * route guard decides the pages inside.
+   */
+  if (rawRole === 0
+    || hasAccess("org.master.read")
+    || hasAccess("org.legal_entity.read")
+    || hasAccess("org.location.read")
+    || hasAccess("org.calendar.read")) {
+    nav.push({
+      label: "Organization",
+      icon: Building2,
+      subItems: [
+        { to: "/admin/organization/master", label: "Enterprise Master" },
+        { to: "/admin/organization/legal-entities", label: "Legal Entities" },
+        { to: "/admin/organization/locations", label: "Locations" },
+        { to: "/admin/organization/calendars", label: "Calendars" },
       ],
     });
   }

@@ -44,6 +44,10 @@ const pageTitles = {
   "/admin/hr/onboarding/welcome": "Welcome Portal",
   "/admin/hr/onboarding/documents": "Onboarding Documents",
   "/admin/hr/onboarding/assets": "IT Assets",
+  "/admin/organization/master": "Enterprise Master",
+  "/admin/organization/legal-entities": "Legal Entities",
+  "/admin/organization/locations": "Locations",
+  "/admin/organization/calendars": "Calendars",
 };
 
 const SIDEBAR_WIDTH = 280;

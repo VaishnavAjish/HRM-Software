@@ -56,6 +56,13 @@ export default function HiringFilterBar({
           </select>
         )}
 
+        {has("director") && (
+          <select className={inputClass} value={filters.directorId} onChange={(e) => setFilter("directorId", e.target.value)}>
+            <option value="">All Directors</option>
+            {people.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        )}
+
         {has("recruiter") && (
           <select className={inputClass} value={filters.recruiterId} onChange={(e) => setFilter("recruiterId", e.target.value)}>
             <option value="">All Recruiters</option>

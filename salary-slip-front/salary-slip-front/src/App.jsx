@@ -52,6 +52,12 @@ const AccessRequests = lazy(() => import("./pages/admin/accessControl/AccessRequ
 const Delegations = lazy(() => import("./pages/admin/accessControl/Delegations"));
 const EmergencyAccess = lazy(() => import("./pages/admin/accessControl/EmergencyAccess"));
 
+// Organization workspace — enterprise master and business structure
+const EnterpriseMaster = lazy(() => import("./pages/admin/organization/EnterpriseMaster"));
+const LegalEntities = lazy(() => import("./pages/admin/organization/LegalEntities"));
+const Locations = lazy(() => import("./pages/admin/organization/Locations"));
+const Calendars = lazy(() => import("./pages/admin/organization/Calendars"));
+
 // Support tickets — staff queue, Super Admin control center, and employee screens.
 const AdminTickets = lazy(() => import("./pages/admin/Tickets"));
 const SuperAdminTicketControlCenter = lazy(() => import("./pages/admin/SuperAdminTicketControlCenter"));
@@ -82,6 +88,16 @@ const TrainingQuizPage = lazy(() => import("./pages/admin/hr/TrainingQuizPage"))
 const CandidateQuiz = lazy(() => import("./pages/public/CandidateQuiz"));
 const AboutNiss = lazy(() => import("./pages/public/AboutNiss"));
 import SeoManager from "./components/common/SeoManager";
+import { CandidateAuthProvider } from "./context/CandidateAuthContext";
+
+// Public Careers Portal
+const CareersLayout = lazy(() => import("./pages/careers/CareersLayout"));
+const CareersList = lazy(() => import("./pages/careers/CareersList"));
+const JobDetail = lazy(() => import("./pages/careers/JobDetail"));
+const CandidateRegister = lazy(() => import("./pages/careers/CandidateRegister"));
+const CandidateLogin = lazy(() => import("./pages/careers/CandidateLogin"));
+const CandidateVerifyEmail = lazy(() => import("./pages/careers/CandidateVerifyEmail"));
+const CandidateDashboard = lazy(() => import("./pages/careers/CandidateDashboard"));
 
 function RouteLoader() {
   return (
@@ -286,6 +302,23 @@ function AppRoutes() {
       <Route path="/quiz/:token" element={<CandidateQuiz />} />
       <Route path="/about-niss" element={<AboutNiss />} />
 
+      {/* Public Careers Portal */}
+      <Route
+        path="/careers"
+        element={
+          <CandidateAuthProvider>
+            <CareersLayout />
+          </CandidateAuthProvider>
+        }
+      >
+        <Route index element={<CareersList />} />
+        <Route path="jobs/:slug" element={<JobDetail />} />
+        <Route path="register" element={<CandidateRegister />} />
+        <Route path="login" element={<CandidateLogin />} />
+        <Route path="verify-email" element={<CandidateVerifyEmail />} />
+        <Route path="account/applications" element={<CandidateDashboard />} />
+      </Route>
+
       {/* Admin routes */}
       <Route
         path="/admin"
@@ -440,6 +473,40 @@ function AppRoutes() {
           element={
             <ProtectedRoute requiredPermission="admin.emergency_access.approve">
               <EmergencyAccess />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Organization */}
+        <Route
+          path="organization/master"
+          element={
+            <ProtectedRoute requiredPermission="org.master.read">
+              <EnterpriseMaster />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="organization/legal-entities"
+          element={
+            <ProtectedRoute requiredPermission="org.legal_entity.read">
+              <LegalEntities />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="organization/locations"
+          element={
+            <ProtectedRoute requiredPermission="org.location.read">
+              <Locations />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="organization/calendars"
+          element={
+            <ProtectedRoute requiredPermission="org.calendar.read">
+              <Calendars />
             </ProtectedRoute>
           }
         />

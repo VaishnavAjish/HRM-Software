@@ -26,41 +26,40 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
-  // Restore a saved session on cold start, then re-validate it against the
-  // server — a token could have expired or been revoked while the app was closed.
+  // Cold start: load the secure token, then confirm it against the protected
+  // profile endpoint BEFORE marking the session authenticated. The user object
+  // is never persisted, so there is no offline "already logged in" shortcut — an
+  // expired/revoked token or a denied account is caught here and its credentials
+  // and user-scoped caches are cleared.
   useEffect(() => {
     (async () => {
       try {
         const saved = await loadPersistedSession();
-        if (saved?.token) {
-          api.setToken(saved.token, saved.tokenType);
-          
-          if (saved.user) {
-            setUser(saved.user);
-            setIsAuthenticated(true);
-            setBootstrapping(false);
-          }
+        if (!saved?.token) {
+          setBootstrapping(false);
+          return;
+        }
 
-          try {
-            const res = await api.getProfile();
-            if (res?.status && res.user) {
-              setUser(res.user);
-              if (!saved.user) setIsAuthenticated(true);
-              fetchPermissions();
-            } else {
-              await clearPersistedSession();
-              if (saved.user) setIsAuthenticated(false);
-            }
-          } catch (err) {
-            if (err.status === 401 || err.status === 403) {
-              await clearPersistedSession();
-              if (saved.user) setIsAuthenticated(false);
-            }
-            console.log("Auth catch:", err.message);
-          } finally {
-            if (!saved.user) setBootstrapping(false);
+        api.setToken(saved.token, saved.tokenType);
+
+        try {
+          const res = await api.getProfile();
+          if (res?.status && res.user) {
+            setUser(res.user);
+            setIsAuthenticated(true);
+            fetchPermissions();
+          } else {
+            api.clearToken();
+            await clearPersistedSession();
           }
-        } else {
+        } catch (err) {
+          if (err.status === 401 || err.status === 403) {
+            api.clearToken();
+            await clearPersistedSession();
+          }
+          // Other errors (e.g. offline): stay unauthenticated rather than trust a
+          // cached identity. A later login/retry re-establishes the session.
+        } finally {
           setBootstrapping(false);
         }
       } catch (e) {
@@ -75,7 +74,8 @@ export function AuthProvider({ children }) {
     const res = await api.login(identifier, password);
     if (res?.status && res.token) {
       api.setToken(res.token, res.token_type);
-      await persistSession({ token: res.token, tokenType: res.token_type || 'Bearer', user: res.user });
+      // Persist only the credential — never the user object.
+      await persistSession({ token: res.token, tokenType: res.token_type || 'Bearer' });
       setUser(res.user);
       setIsAuthenticated(true);
       fetchPermissions();

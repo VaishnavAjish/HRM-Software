@@ -6,5 +6,16 @@ use Illuminate\Database\Eloquent\Model;
 
 class Department extends Model
 {
-    protected $fillable = ['name'];
+    protected $fillable = ["name", "company_code", "manager_id"];
+
+    public function managers()
+    {
+        return $this->belongsToMany(User::class, "department_managers", "department_id", "user_id")->withTimestamps();
+    }
+
+    public function manager()
+    {
+        return $this->belongsTo(User::class, "manager_id");
+    }
 }
+

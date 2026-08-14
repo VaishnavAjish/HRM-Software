@@ -288,15 +288,16 @@ class JobRequisitionDepartmentManagerTest extends TestCase
     }
 
     #[Test]
-    public function a_status_only_update_still_works_without_resending_the_pair(): void
+    public function approval_status_cannot_be_changed_through_the_normal_update_endpoint(): void
     {
         $requisition = $this->createRequisition();
 
         $this->actingAsUser($this->alphaAdmin)
             ->putJson("/api/hr/requisitions/update/{$requisition->id}", ['status' => 'pending_approval'])
-            ->assertOk();
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['status']);
 
-        $this->assertSame('pending_approval', $requisition->fresh()->status);
+        $this->assertSame('draft', $requisition->fresh()->status);
     }
 
     #[Test]

@@ -1941,6 +1941,52 @@ export const hrApi = {
   getDepartmentManagers(departmentId, accessToken, tokenType = "Bearer", filters = {}) {
     return apiRequest(`/hr/requisitions/departments/${departmentId}/managers${hrQuery(filters)}`, { headers: hrAuthHeaders(accessToken, tokenType) });
   },
+  getRequisitionApprovalOptions(requisitionId, accessToken, tokenType = "Bearer", filters = {}) {
+    return apiRequest(`/hr/requisitions/approval-options${hrQuery({ requisition_id: requisitionId, ...filters })}`, { headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+  getRequisitionApprovalQueue(kind, accessToken, tokenType = "Bearer", filters = {}) {
+    const endpoint = kind === "director" ? "director-queue" : "hr-manager-queue";
+    return apiRequest(`/hr/requisitions/${endpoint}${hrQuery(filters)}`, { headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+  getJobPortalQueue(accessToken, tokenType = "Bearer", filters = {}) {
+    return apiRequest(`/hr/requisitions/job-portal-queue${hrQuery(filters)}`, { headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+  getRequisitionApprovalHistory(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/requisitions/${id}/approval-history`, { headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+  submitRequisition(id, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/requisitions/${id}/submit`, { method: "POST", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(payload) });
+  },
+  withdrawRequisition(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/requisitions/${id}/withdraw`, { method: "POST", headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+  hrManagerForward(id, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/requisitions/${id}/hr-manager/forward`, { method: "POST", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(payload) });
+  },
+  hrManagerReturn(id, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/requisitions/${id}/hr-manager/return-to-department-head`, { method: "POST", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(payload) });
+  },
+  hrManagerRespond(id, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/requisitions/${id}/hr-manager/respond-to-director`, { method: "POST", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(payload) });
+  },
+  directorDecision(id, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/requisitions/${id}/director/decision`, { method: "POST", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(payload) });
+  },
+  decideRequisition(id, kind, payload, accessToken, tokenType = "Bearer") {
+    if (kind === "director") {
+      return this.directorDecision(id, payload, accessToken, tokenType);
+    }
+    return this.hrManagerForward(id, payload, accessToken, tokenType);
+  },
+  publishPortal(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/requisitions/${id}/portal/publish`, { method: "POST", headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+  unpublishPortal(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/requisitions/${id}/portal/unpublish`, { method: "POST", headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+  closeRequisition(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/requisitions/${id}/close`, { method: "POST", headers: hrAuthHeaders(accessToken, tokenType) });
+  },
 
   // Quizzes
   getQuizzes(accessToken, tokenType = "Bearer", filters = {}) {
@@ -2533,3 +2579,123 @@ export const notificationApi = {
     });
   },
 };
+
+export const departmentApi = {
+  departments(filters, accessToken, tokenType = "Bearer") {
+    const params = new URLSearchParams();
+    if (filters?.company_code) params.set("company_code", filters.company_code);
+    if (filters?.search) params.set("search", filters.search);
+    const query = params.toString();
+
+    return apiRequest(`/v1/admin/departments${query ? `?${query}` : ""}`, {
+      headers: authHeaders(accessToken, tokenType),
+    });
+  },
+
+  createDepartment(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest("/v1/admin/departments", {
+      method: "POST", headers: authHeaders(accessToken, tokenType),
+      body: JSON.stringify(payload),
+    });
+  },
+
+  updateDepartment(id, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/admin/departments/${id}`, {
+      method: "PUT", headers: authHeaders(accessToken, tokenType),
+      body: JSON.stringify(payload),
+    });
+  },
+
+  deleteDepartment(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/admin/departments/${id}`, {
+      method: "DELETE", headers: authHeaders(accessToken, tokenType),
+    });
+  },
+
+  departmentManagers(filters, accessToken, tokenType = "Bearer") {
+    const params = new URLSearchParams();
+    if (filters?.company_code) params.set("company_code", filters.company_code);
+    if (filters?.search) params.set("search", filters.search);
+    const query = params.toString();
+
+    return apiRequest(`/v1/admin/department-managers${query ? `?${query}` : ""}`, {
+      headers: authHeaders(accessToken, tokenType),
+    });
+  },
+
+  eligibleUsers(filters, accessToken, tokenType = "Bearer") {
+    const params = new URLSearchParams();
+    if (filters?.company_code) params.set("company_code", filters.company_code);
+    if (filters?.search) params.set("search", filters.search);
+    const query = params.toString();
+
+    return apiRequest(`/v1/admin/department-managers/eligible-users${query ? `?${query}` : ""}`, {
+      headers: authHeaders(accessToken, tokenType),
+    });
+  },
+
+  assignManager(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest("/v1/admin/department-managers", {
+      method: "POST", headers: authHeaders(accessToken, tokenType),
+      body: JSON.stringify(payload),
+    });
+  },
+
+  removeManager(userId, departmentId, accessToken, tokenType = "Bearer") {
+    const query = departmentId ? `?department_id=${departmentId}` : "";
+    return apiRequest(`/v1/admin/department-managers/${userId}${query}`, {
+      method: "DELETE", headers: authHeaders(accessToken, tokenType),
+    });
+  },
+};
+
+export const publicJobApi = {
+  getJobs(params = {}) {
+    const query = new URLSearchParams(params).toString();
+    return apiRequest(`/public/jobs${query ? `?${query}` : ""}`);
+  },
+  getJob(slug) {
+    return apiRequest(`/public/jobs/${slug}`);
+  },
+};
+
+export const candidateApi = {
+  register(payload) {
+    return apiRequest("/candidate/auth/register", { method: "POST", body: JSON.stringify(payload) });
+  },
+  verifyEmail(payload) {
+    return apiRequest("/candidate/auth/verify-email", { method: "POST", body: JSON.stringify(payload) });
+  },
+  login(payload) {
+    return apiRequest("/candidate/auth/login", { method: "POST", body: JSON.stringify(payload) });
+  },
+  forgotPassword(payload) {
+    return apiRequest("/candidate/auth/forgot-password", { method: "POST", body: JSON.stringify(payload) });
+  },
+  resetPassword(payload) {
+    return apiRequest("/candidate/auth/reset-password", { method: "POST", body: JSON.stringify(payload) });
+  },
+  logout(token) {
+    return apiRequest("/candidate/auth/logout", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+  },
+  me(token) {
+    return apiRequest("/candidate/auth/me", { headers: { Authorization: `Bearer ${token}` } });
+  },
+  updateProfile(payload, token) {
+    return apiRequest("/candidate/auth/profile", { method: "PUT", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify(payload) });
+  },
+  apply(slug, formData, token) {
+    return apiRequest(`/candidate/jobs/${slug}/apply`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData, // FormData containing file & fields
+    });
+  },
+  getApplications(token) {
+    return apiRequest("/candidate/applications", { headers: { Authorization: `Bearer ${token}` } });
+  },
+  getApplication(id, token) {
+    return apiRequest(`/candidate/applications/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+  },
+};
+

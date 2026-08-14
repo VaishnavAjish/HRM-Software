@@ -36,6 +36,10 @@ vi.mock("../../../../context/CompanyContext", () => ({
   useCompany: () => ({ companyScope: SCOPE, scopeKey: "alpha" }),
 }));
 
+vi.mock("../../../../hooks/useAuthorization", () => ({
+  useAuthorization: () => ({ can: () => true }),
+}));
+
 vi.mock("./useHrFilters", () => ({
   default: () => ({
     filters: {},

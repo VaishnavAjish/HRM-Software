@@ -5,9 +5,12 @@ import Drawer, { CollapsibleSection } from "../../../../components/ui/Drawer";
 import Badge from "../../../../components/ui/Badge";
 
 const STATUS_VARIANT = {
-  draft: "gray", pending_approval: "yellow", approved: "blue",
-  posted: "green", on_hold: "yellow", closed: "gray", cancelled: "red",
+  draft: "gray", pending_approval: "yellow", pending_hr_review: "yellow", pending_director_review: "yellow",
+  returned_to_hr: "yellow", revision_requested: "yellow", approved: "blue", published: "green",
+  rejected: "red", posted: "green", on_hold: "yellow", closed: "gray", cancelled: "red",
 };
+
+const personName = (...values) => values.find((value) => value && typeof value === "object")?.name || "—";
 
 /**
  * Everything here is either a field already on the requisition or computed
@@ -48,7 +51,7 @@ export default function RequisitionDrawer({ requisition, onClose, onEdit }) {
       subtitle={requisition?.department?.name}
       size="lg"
       headerExtra={
-        requisition && (
+        requisition && ["draft", "rejected", "revision_requested"].includes(requisition.status) && (
           <button
             onClick={() => onEdit(requisition)}
             title="Edit"
@@ -62,7 +65,7 @@ export default function RequisitionDrawer({ requisition, onClose, onEdit }) {
       {requisition && (
         <div className="space-y-3">
           <div className="flex flex-wrap gap-1.5">
-            <Badge variant={STATUS_VARIANT[requisition.status] || "gray"}>{requisition.status?.replace("_", " ")}</Badge>
+            <Badge variant={STATUS_VARIANT[requisition.status] || "gray"}>{requisition.status?.replaceAll("_", " ")}</Badge>
             <Badge variant="blue">{requisition.priority} priority</Badge>
             <Badge variant="gray">{requisition.openings} opening{requisition.openings === 1 ? "" : "s"}</Badge>
           </div>
@@ -73,8 +76,10 @@ export default function RequisitionDrawer({ requisition, onClose, onEdit }) {
               <Detail label="Employment Type" value={requisition.employment_type?.replace("_", " ")} />
               <Detail label="Department" value={requisition.department?.name} />
               <Detail label="Department Manager" value={requisition.department_manager?.name} />
-              <Detail label="Hiring Manager" value={requisition.requestedBy?.name} />
-              <Detail label="Approved By" value={requisition.approvedBy?.name} />
+              <Detail label="Requested By" value={personName(requisition.requested_by, requisition.requestedBy)} />
+              <Detail label="HR Manager" value={personName(requisition.hr_manager, requisition.hrManager, requisition.hiring_manager, requisition.hiringManager)} />
+              <Detail label="Director" value={personName(requisition.director)} />
+              <Detail label="Approved By" value={personName(requisition.approved_by, requisition.approvedBy)} />
               <Detail label="Experience" value={requisition.min_experience != null ? `${requisition.min_experience}–${requisition.max_experience ?? "?"} yrs` : "—"} />
               <Detail label="Salary Range" value={requisition.salary_min ? `₹${Number(requisition.salary_min).toLocaleString("en-IN")} – ₹${Number(requisition.salary_max || 0).toLocaleString("en-IN")}` : "—"} />
             </dl>
@@ -91,6 +96,23 @@ export default function RequisitionDrawer({ requisition, onClose, onEdit }) {
               </div>
             )}
           </CollapsibleSection>
+
+          {requisition.current_approval_cycle && (
+            <CollapsibleSection title={`Approval Cycle #${requisition.current_approval_cycle.cycle_number}`} icon={<CheckCircleIcon />}>
+              <div className="space-y-2">
+                {(requisition.current_approval_cycle.steps || []).map((step) => (
+                  <div key={step.id} className="rounded-lg border border-gray-100 px-3 py-2 text-sm dark:border-gray-700">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium text-gray-800 dark:text-gray-100">{step.step_type?.replace("_", " ")}</span>
+                      <Badge variant={step.status === "APPROVED" ? "green" : step.status === "REJECTED" ? "red" : "yellow"}>{step.status}</Badge>
+                    </div>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{personName(step.assigned_user)}{step.decided_at ? ` · ${new Date(step.decided_at).toLocaleString()}` : ""}</p>
+                    {step.comment && <p className="mt-1 text-xs text-gray-700 dark:text-gray-300">{step.comment}</p>}
+                  </div>
+                ))}
+              </div>
+            </CollapsibleSection>
+          )}
 
           <CollapsibleSection title="Hiring Timeline" icon={<Clock size={15} />}>
             {timeline.length === 0 ? (
@@ -180,4 +202,8 @@ function MiniStat({ label, value }) {
       <p className="text-lg font-bold text-gray-900 dark:text-white">{value}</p>
     </div>
   );
+}
+
+function CheckCircleIcon() {
+  return <span aria-hidden="true" className="text-brand-600">✓</span>;
 }

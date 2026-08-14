@@ -67,6 +67,44 @@ class RequireModuleSchema
         'hierarchy' => [
             'reporting_relationships',
         ],
+        // DOMAIN 02 — Organization workspace. All tables ship together in one
+        // release, so a deployment stopped between migrations must report
+        // "being set up" on the organization screens rather than 500 on a
+        // missing relation.
+        'organization' => [
+            'legal_entities',
+            'locations',
+            'user_locations',
+            'calendars',
+            'calendar_holidays',
+            'enterprises',
+            'enterprise_company_memberships',
+            'legal_entity_profiles',
+            'legal_entity_registrations',
+            'legal_entity_addresses',
+            'legal_entity_representatives',
+            'legal_entity_bank_accounts',
+            'organization_units',
+            'organization_positions',
+            'employee_organization_assignments',
+            'organization_location_types',
+            'organization_locations',
+            'organization_work_location_mappings',
+            'financial_organizations',
+            'financial_gl_mappings',
+            'financial_allocation_rules',
+            'financial_allocation_lines',
+            'organization_hierarchies',
+            'organization_hierarchy_nodes',
+            'organization_hierarchy_edges',
+            'organization_leadership_assignments',
+            'organization_change_requests',
+            'organization_change_items',
+            'organization_change_approvals',
+            'organization_calendar_assignments',
+            'organization_activity_logs',
+            'reporting_relationships',
+        ],
     ];
 
     public function handle(Request $request, Closure $next, string $module)

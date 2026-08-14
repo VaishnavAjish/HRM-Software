@@ -13,7 +13,8 @@ class JobRequisition extends Model
         'title', 'department_id', 'department_manager_id', 'designation', 'employment_type', 'openings',
         'priority', 'status', 'min_experience', 'max_experience', 'salary_min',
         'salary_max', 'description', 'requirements', 'company_code', 'unit',
-        'requested_by', 'approved_by', 'target_closing_date', 'approved_at',
+        'requested_by', 'approved_by', 'hr_manager_id', 'hiring_manager_id', 'director_id',
+        'current_approval_cycle_id', 'target_closing_date', 'approved_at',
         'posted_at', 'closed_at',
     ];
 
@@ -45,6 +46,31 @@ class JobRequisition extends Model
     public function approvedBy()
     {
         return $this->belongsTo(User::class, 'approved_by');
+    }
+
+    public function hrManager()
+    {
+        return $this->belongsTo(User::class, 'hr_manager_id');
+    }
+
+    public function hiringManager()
+    {
+        return $this->belongsTo(User::class, 'hr_manager_id');
+    }
+
+    public function director()
+    {
+        return $this->belongsTo(User::class, 'director_id');
+    }
+
+    public function approvalCycles()
+    {
+        return $this->hasMany(JobRequisitionApprovalCycle::class, 'job_requisition_id')->orderByDesc('cycle_number');
+    }
+
+    public function currentApprovalCycle()
+    {
+        return $this->belongsTo(JobRequisitionApprovalCycle::class, 'current_approval_cycle_id');
     }
 
     public function candidates()

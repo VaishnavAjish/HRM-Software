@@ -1,7 +1,8 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 import { useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import {
-  Plus, CheckCircle2, Send, Pencil, Trash2, Copy, Archive,
+  Plus, Send, Pencil, Trash2, Copy, Archive,
   Columns3, ChevronDown, ClipboardCopy, RotateCcw, Link2, Check,
 } from "lucide-react";
 import Button from "../../../../components/ui/Button";
@@ -19,12 +20,14 @@ import useHrFilters from "./useHrFilters";
 import HiringFilterBar from "./HiringFilterBar";
 import { runBulk } from "./bulkActions";
 import RequisitionDrawer from "./RequisitionDrawer";
+import { useAuthorization } from "../../../../hooks/useAuthorization";
 
 const inputClass = "w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500";
 
 const STATUS_OPTIONS = [
   { value: "draft", label: "Draft" },
   { value: "pending_approval", label: "Pending Approval" },
+  { value: "rejected", label: "Rejected" },
   { value: "approved", label: "Approved" },
   { value: "posted", label: "Posted" },
   { value: "on_hold", label: "On Hold" },
@@ -111,14 +114,16 @@ function buildJdTemplate(f, applyLink) {
 }
 const STATUS_VARIANT = {
   draft: "gray", pending_approval: "yellow", approved: "blue",
-  posted: "green", on_hold: "yellow", closed: "gray", cancelled: "red",
+  rejected: "red", posted: "green", on_hold: "yellow", closed: "gray", cancelled: "red",
 };
 const PRIORITY_VARIANT = { low: "gray", medium: "blue", high: "yellow", urgent: "red" };
 
 const ALL_COLUMNS = [
   { key: "department", label: "Department" },
   { key: "deptManager", label: "Dept. Manager" },
+  { key: "requestedBy", label: "Requested By" },
   { key: "hiringManager", label: "Hiring Manager" },
+  { key: "director", label: "Director" },
   { key: "openings", label: "Openings" },
   { key: "candidates", label: "Candidates" },
   { key: "priority", label: "Priority" },
@@ -127,7 +132,7 @@ const ALL_COLUMNS = [
   { key: "targetJoining", label: "Target Joining" },
   { key: "progress", label: "Progress" },
 ];
-const VISIBLE_COLS_KEY = "hr_req_visible_columns";
+const VISIBLE_COLS_KEY = "hr_req_visible_columns_v2";
 
 const EMPTY_FORM = {
   department_id: "", department_manager_id: "",
@@ -143,10 +148,21 @@ const STEP2_FIELDS = [
 ];
 const step2Snapshot = (f) => JSON.stringify(STEP2_FIELDS.map((k) => f[k] ?? ""));
 
+const personName = (...values) => values.find((value) => value && typeof value === "object")?.name || "—";
+
+function approvalProgress(requisition) {
+  const steps = requisition.current_approval_cycle?.steps || requisition.currentApprovalCycle?.steps || [];
+  const hiringManager = steps.find((item) => item.step_type === "HIRING_MANAGER");
+  const director = steps.find((item) => item.step_type === "DIRECTOR");
+  const shortStatus = (value) => value ? value.toLowerCase().replace("_", " ") : "waiting";
+  return `HM ${shortStatus(hiringManager?.status)} · Director ${shortStatus(director?.status)}`;
+}
+
 export default function RequisitionsTab({ departments = [], people = [] }) {
   const { user } = useAuth();
   const { companyScope, scopeKey } = useCompany();
   const hr = useHrFilters("requisitions");
+  const { can } = useAuthorization();
 
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState([]);
@@ -160,6 +176,10 @@ export default function RequisitionsTab({ departments = [], people = [] }) {
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [drawerTarget, setDrawerTarget] = useState(null);
+  const [submitTarget, setSubmitTarget] = useState(null);
+  const [approvalOptions, setApprovalOptions] = useState({ hrManagers: [] });
+  const [approversLoading, setApproversLoading] = useState(false);
+  const [submittingApproval, setSubmittingApproval] = useState(false);
 
   const [managers, setManagers] = useState([]);
   const [managersLoading, setManagersLoading] = useState(false);
@@ -242,7 +262,7 @@ export default function RequisitionsTab({ departments = [], people = [] }) {
         if (row?.value) { setApplyLink(row.value); setApplyLinkDraft(row.value); }
       })
       .catch(() => {}); // no admin.configuration.read permission, or module not migrated — JD just omits the link
-  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user]);
 
   const saveApplyLink = async () => {
     setApplyLinkSaving(true);
@@ -303,14 +323,15 @@ export default function RequisitionsTab({ departments = [], people = [] }) {
   // scale rather than a fabricated "it filters everything" claim.
   const visibleRows = useMemo(() => {
     let r = [...rows];
-    if (hr.filters.hiringManagerId) r = r.filter((x) => String(x.requested_by) === String(hr.filters.hiringManagerId));
+    if (hr.filters.hiringManagerId) r = r.filter((x) => String(x.hiring_manager_id) === String(hr.filters.hiringManagerId));
+    if (hr.filters.directorId) r = r.filter((x) => String(x.director_id) === String(hr.filters.directorId));
     if (hr.filters.priority) r = r.filter((x) => x.priority === hr.filters.priority);
     if (hr.filters.dateFrom) r = r.filter((x) => x.created_at && x.created_at >= hr.filters.dateFrom);
     if (hr.filters.dateTo) r = r.filter((x) => x.created_at && x.created_at <= hr.filters.dateTo);
     if (hr.filters.sort === "oldest") r.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
     else if (hr.filters.sort === "name") r.sort((a, b) => (a.title || "").localeCompare(b.title || ""));
     return r;
-  }, [rows, hr.filters.hiringManagerId, hr.filters.priority, hr.filters.dateFrom, hr.filters.dateTo, hr.filters.sort]);
+  }, [rows, hr.filters.hiringManagerId, hr.filters.directorId, hr.filters.priority, hr.filters.dateFrom, hr.filters.dateTo, hr.filters.sort]);
 
   const openCreate = () => {
     setEditing(null);
@@ -323,6 +344,10 @@ export default function RequisitionsTab({ departments = [], people = [] }) {
   };
 
   const openEdit = (r) => {
+    if (!["draft", "rejected"].includes(r.status)) {
+      toast.error("Pending and completed requisitions are read-only.");
+      return;
+    }
     setEditing(r);
     const f = {
       department_id: r.department_id ?? "", department_manager_id: r.department_manager_id ?? "",
@@ -378,18 +403,48 @@ export default function RequisitionsTab({ departments = [], people = [] }) {
     } catch (err) { toast.error(err.message || "Failed to delete"); }
   };
 
-  const approve = async (id) => {
+  const [hrManagerId, setHrManagerId] = useState("");
+
+  const openSubmitForApproval = async (r) => {
+    setSubmitTarget(r);
+    setHrManagerId("");
+    setApprovalOptions({ hrManagers: [], directors: [] });
+    setApproversLoading(true);
     try {
-      const res = await hrApi.approveRequisition(id, user?.accessToken, user?.tokenType);
-      if (res.status) { toast.success("Requisition approved"); load(); }
-    } catch (err) { toast.error(err.message || "Failed to approve"); }
+      const res = await hrApi.getRequisitionApprovalOptions(r.id, user?.accessToken, user?.tokenType, {
+        company_code: companyScope?.companyId,
+        unit: companyScope?.unit,
+        type: "hr-manager",
+      });
+      if (res.status) {
+        const list = res.data?.hrManagers || res.data?.approvers || res.data?.hiringManagers || [];
+        setApprovalOptions({ hrManagers: list });
+      }
+    } catch (err) {
+      toast.error(err.message || "Failed to load eligible HR Managers");
+    } finally {
+      setApproversLoading(false);
+    }
   };
 
-  const submitForApproval = async (r) => {
+  const submitForApproval = async () => {
+    if (!hrManagerId) { toast.error("Select an HR Manager reviewer"); return; }
+    setSubmittingApproval(true);
     try {
-      const res = await hrApi.updateRequisition(r.id, { status: "pending_approval" }, user?.accessToken, user?.tokenType);
-      if (res.status) { toast.success("Submitted for approval"); load(); }
+      const res = await hrApi.submitRequisition(submitTarget.id, {
+        hr_manager_id: Number(hrManagerId),
+      }, user?.accessToken, user?.tokenType);
+      if (res.status) { toast.success("Submitted for HR Manager review"); setSubmitTarget(null); load(); }
     } catch (err) { toast.error(err.message || "Failed to submit"); }
+    finally { setSubmittingApproval(false); }
+  };
+
+  const withdraw = async (id) => {
+    if (!window.confirm("Withdraw this requisition back to draft?")) return;
+    try {
+      const res = await hrApi.withdrawRequisition(id, user?.accessToken, user?.tokenType);
+      if (res.status) { toast.success("Requisition withdrawn"); load(); }
+    } catch (err) { toast.error(err.message || "Failed to withdraw"); }
   };
 
   const publish = async (id) => {
@@ -448,30 +503,24 @@ export default function RequisitionsTab({ departments = [], people = [] }) {
   const archive = async (id) => {
     if (!window.confirm("Close this requisition?")) return;
     try {
-      const res = await hrApi.updateRequisition(id, { status: "closed" }, user?.accessToken, user?.tokenType);
+      const res = await hrApi.closeRequisition(id, user?.accessToken, user?.tokenType);
       if (res.status) { toast.success("Requisition closed"); load(); }
     } catch (err) { toast.error(err.message || "Failed to close"); }
   };
 
   const bulkClose = () => runBulk(
     hr.selectedIds,
-    (id) => hrApi.updateRequisition(id, { status: "closed" }, user?.accessToken, user?.tokenType),
+    (id) => hrApi.closeRequisition(id, user?.accessToken, user?.tokenType),
     { successLabel: "closed", onDone: () => { hr.clearSelected(); load(); } },
   );
-
-  const bulkAssignManager = async (managerId) => {
-    if (!managerId) return;
-    await runBulk(
-      hr.selectedIds,
-      (id) => hrApi.updateRequisition(id, { requested_by: managerId }, user?.accessToken, user?.tokenType),
-      { successLabel: "assigned", onDone: () => { hr.clearSelected(); load(); } },
-    );
-  };
 
   const bulkExport = (format) => {
     const selected = visibleRows.filter((r) => hr.selectedIds.includes(r.id));
     const exportRows = selected.map((r) => ({
-      Title: r.title, Department: r.department?.name || "—", "Dept. Manager": r.department_manager?.name || "—", "Hiring Manager": r.requestedBy?.name || "—",
+      Title: r.title, Department: r.department?.name || "—", "Dept. Manager": r.department_manager?.name || "—",
+      "Requested By": personName(r.requested_by, r.requestedBy),
+      "Hiring Manager": personName(r.hiring_manager, r.hiringManager),
+      Director: personName(r.director),
       Openings: r.openings, Candidates: r.candidates_count ?? 0, Priority: r.priority, Status: r.status,
       Created: r.created_at, "Target Joining": r.target_closing_date || "—",
     }));
@@ -495,7 +544,7 @@ export default function RequisitionsTab({ departments = [], people = [] }) {
     <div className="space-y-4">
       <HiringFilterBar
         hr={hr}
-        fields={["search", "department", "hiringManager", "status", "priority", "date", "sort"]}
+        fields={["search", "department", "hiringManager", "director", "status", "priority", "date", "sort"]}
         departments={departments}
         people={people}
         statusOptions={STATUS_OPTIONS}
@@ -505,14 +554,6 @@ export default function RequisitionsTab({ departments = [], people = [] }) {
             <button onClick={bulkClose} className="text-xs font-semibold text-red-600 hover:underline">Close</button>
             <button onClick={() => bulkExport("excel")} className="text-xs font-semibold text-gray-600 dark:text-gray-300 hover:underline">Export Excel</button>
             <button onClick={() => bulkExport("csv")} className="text-xs font-semibold text-gray-600 dark:text-gray-300 hover:underline">Export CSV</button>
-            <select
-              className="text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1"
-              value=""
-              onChange={(e) => bulkAssignManager(e.target.value)}
-            >
-              <option value="">Assign Hiring Manager…</option>
-              {people.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
           </>
         }
       />
@@ -536,7 +577,7 @@ export default function RequisitionsTab({ departments = [], people = [] }) {
             </div>
           )}
         </div>
-        <Button icon={<Plus size={16} />} onClick={openCreate}>New Requisition</Button>
+        {can("ui.hr.hiring.requisition_create") && <Button icon={<Plus size={16} />} onClick={openCreate}>New Requisition</Button>}
       </div>
 
       <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
@@ -559,7 +600,9 @@ export default function RequisitionsTab({ departments = [], people = [] }) {
                   <th className="text-left px-4 py-3">Job Title</th>
                   {isVisible("department") && <th className="text-left px-4 py-3">Department</th>}
                   {isVisible("deptManager") && <th className="text-left px-4 py-3">Dept. Manager</th>}
+                  {isVisible("requestedBy") && <th className="text-left px-4 py-3">Requested By</th>}
                   {isVisible("hiringManager") && <th className="text-left px-4 py-3">Hiring Manager</th>}
+                  {isVisible("director") && <th className="text-left px-4 py-3">Director</th>}
                   {isVisible("openings") && <th className="text-left px-4 py-3">Openings</th>}
                   {isVisible("candidates") && <th className="text-left px-4 py-3">Candidates</th>}
                   {isVisible("priority") && <th className="text-left px-4 py-3">Priority</th>}
@@ -583,7 +626,9 @@ export default function RequisitionsTab({ departments = [], people = [] }) {
                     </td>
                     {isVisible("department") && <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{r.department?.name || "—"}</td>}
                     {isVisible("deptManager") && <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{r.department_manager?.name || "—"}</td>}
-                    {isVisible("hiringManager") && <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{r.requestedBy?.name || "—"}</td>}
+                    {isVisible("requestedBy") && <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{personName(r.requested_by, r.requestedBy)}</td>}
+                    {isVisible("hiringManager") && <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{personName(r.hiring_manager, r.hiringManager)}</td>}
+                    {isVisible("director") && <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{personName(r.director)}</td>}
                     {isVisible("openings") && <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{r.openings}</td>}
                     {isVisible("candidates") && (
                       <td className="px-4 py-3">
@@ -608,16 +653,19 @@ export default function RequisitionsTab({ departments = [], people = [] }) {
                     )}
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
-                        {r.status === "draft" && (
-                          <button title="Submit for approval" onClick={() => submitForApproval(r)} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"><Send size={14} /></button>
+                        {["draft", "rejected"].includes(r.status) && can("ui.hr.hiring.requisition_submit") && (
+                          <button title="Submit for approval" onClick={() => openSubmitForApproval(r)} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"><Send size={14} /></button>
                         )}
                         {r.status === "pending_approval" && (
-                          <button title="Approve" onClick={() => approve(r.id)} className="p-1.5 rounded-lg text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20"><CheckCircle2 size={14} /></button>
+                          <span className="max-w-44 rounded-md bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700 dark:bg-amber-900/20 dark:text-amber-300" title="Approval progress">{approvalProgress(r)}</span>
                         )}
-                        {r.status === "approved" && (
+                        {r.status === "pending_approval" && can("ui.hr.hiring.requisition_withdraw") && (
+                          <button title="Withdraw to draft" onClick={() => withdraw(r.id)} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"><RotateCcw size={14} /></button>
+                        )}
+                        {r.status === "approved" && can("ui.hr.hiring.requisition_publish") && (
                           <button title="Post" onClick={() => publish(r.id)} className="p-1.5 rounded-lg text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20"><Send size={14} /></button>
                         )}
-                        {["approved", "posted"].includes(r.status) && (
+                        {r.status === "approved" && can("ui.hr.hiring.requisition_publish") && (
                           <button
                             title={r.published_to_indeed ? "Published on Indeed" : "Publish to Indeed"}
                             onClick={() => publishToIndeed(r)}
@@ -632,12 +680,12 @@ export default function RequisitionsTab({ departments = [], people = [] }) {
                             {publishingIndeedId === r.id ? "..." : (r.published_to_indeed ? "✓" : "Post")}
                           </button>
                         )}
-                        <button title="Edit" onClick={() => openEdit(r)} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"><Pencil size={14} /></button>
+                        {["draft", "rejected"].includes(r.status) && <button title="Edit" onClick={() => openEdit(r)} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"><Pencil size={14} /></button>}
                         <button title="Duplicate" onClick={() => duplicate(r)} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"><Copy size={14} /></button>
-                        {!["closed", "cancelled"].includes(r.status) && (
+                        {!["closed", "cancelled", "pending_approval"].includes(r.status) && (
                           <button title="Archive / Close" onClick={() => archive(r.id)} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"><Archive size={14} /></button>
                         )}
-                        <button title="Delete" onClick={() => remove(r.id)} className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"><Trash2 size={14} /></button>
+                        {r.status === "draft" && <button title="Delete" onClick={() => remove(r.id)} className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"><Trash2 size={14} /></button>}
                       </div>
                     </td>
                   </tr>
@@ -842,6 +890,34 @@ export default function RequisitionsTab({ departments = [], people = [] }) {
         </div>
         </>
         )}
+      </Modal>
+
+      <Modal
+        isOpen={Boolean(submitTarget)}
+        onClose={() => !submittingApproval && setSubmitTarget(null)}
+        title={`Submit for Review — ${submitTarget?.title || "Requisition"}`}
+        size="md"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setSubmitTarget(null)} disabled={submittingApproval}>Cancel</Button>
+            <Button onClick={submitForApproval} disabled={approversLoading || submittingApproval || !hrManagerId}>
+              {submittingApproval ? "Submitting..." : "Submit for HR Review"}
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600 dark:text-gray-300">Select an HR Manager to review this hiring requisition. The HR Manager will review details and forward it to the Director for approval.</p>
+          <Field label="HR Manager Reviewer" required>
+            <select className={inputClass} value={hrManagerId} onChange={(e) => setHrManagerId(e.target.value)} disabled={approversLoading}>
+              <option value="">{approversLoading ? "Loading eligible HR Managers..." : "Select HR Manager"}</option>
+              {(approvalOptions.hrManagers || []).map((person) => <option key={person.id} value={person.id}>{person.name}{person.designation ? ` — ${person.designation}` : ""}</option>)}
+            </select>
+          </Field>
+          {!approversLoading && (approvalOptions.hrManagers || []).length === 0 && (
+            <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-900/20 dark:text-amber-300">No eligible HR Manager is available. Grant the HR Manager Review permission in the Permission Matrix.</p>
+          )}
+        </div>
       </Modal>
 
       <RequisitionDrawer

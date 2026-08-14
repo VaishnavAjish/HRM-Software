@@ -85,9 +85,7 @@ class EmployeeStoreRoleGuardTest extends TestCase
         ];
     }
 
-    /**
-     * @dataProvider forbiddenRoleProvider
-     */
+    #[DataProvider('forbiddenRoleProvider')]
     public function test_tenant_admin_cannot_mint_privileged_role(string $role): void
     {
         $actor = $this->creator(2);
@@ -100,9 +98,7 @@ class EmployeeStoreRoleGuardTest extends TestCase
         $this->assertDatabaseMissing('users', ['emp_code' => $empCode]);
     }
 
-    /**
-     * @dataProvider forbiddenRoleProvider
-     */
+    #[DataProvider('forbiddenRoleProvider')]
     public function test_custom_employee_creator_cannot_mint_privileged_role(string $role): void
     {
         $actor = $this->creator(3); // a non-admin holder of hr.employee.create

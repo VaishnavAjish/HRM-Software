@@ -1174,8 +1174,8 @@ export default function TrialForm() {
                   defaultColDef={defaultColDef}
                   getRowId={(params) => String(params.data.id)}
                   domLayout="autoHeight"
-                  rowHeight={58}
-                  headerHeight={48}
+                  rowHeight={44}
+                  headerHeight={40}
                   popupParent={document.body}
                   enableCellTextSelection
                   animateRows
@@ -1202,15 +1202,10 @@ export default function TrialForm() {
                     rowData={historyForms}
                     columnDefs={columnDefs}
                     defaultColDef={defaultColDef}
-                    getRowStyle={(params) => {
-                      if (params.data.status === "Approved") return { backgroundColor: dark ? 'rgba(34, 197, 94, 0.1)' : '#dcfce7' };
-                      if (params.data.status === "Rejected") return { backgroundColor: dark ? 'rgba(239, 68, 68, 0.1)' : '#fee2e2' };
-                      return null;
-                    }}
                     getRowId={(params) => String(params.data.id)}
                     domLayout="autoHeight"
-                    rowHeight={58}
-                    headerHeight={48}
+                    rowHeight={44}
+                    headerHeight={40}
                     popupParent={document.body}
                     enableCellTextSelection
                     animateRows
@@ -1442,23 +1437,23 @@ export default function TrialForm() {
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         {companyId === "all-companies" ? (
-          <div className="inline-flex rounded-lg border border-gray-200 bg-white p-1 dark:border-gray-700 dark:bg-gray-800 shadow-sm">
+          <div className="flex gap-2">
             <button
               onClick={() => setActiveTab("nidhi-impex")}
-              className={`px-4 py-2 text-sm font-semibold rounded-md transition-all ${
+              className={`px-4 py-2 text-sm font-semibold rounded-lg transition-all border ${
                 activeTab === "nidhi-impex"
-                  ? "bg-brand-50 text-brand-600 dark:bg-brand-900/20 dark:text-brand-400"
-                  : "text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                  ? "border-brand-600 bg-brand-50 text-brand-600 shadow-sm dark:border-brand-400 dark:bg-brand-900/20 dark:text-brand-400"
+                  : "border-gray-200 bg-white text-gray-500 hover:border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:bg-gray-700"
               }`}
             >
               Nidhi Impex
             </button>
             <button
               onClick={() => setActiveTab("silverstar")}
-              className={`px-4 py-2 text-sm font-semibold rounded-md transition-all ${
+              className={`px-4 py-2 text-sm font-semibold rounded-lg transition-all border ${
                 activeTab === "silverstar"
-                  ? "bg-brand-50 text-brand-600 dark:bg-brand-900/20 dark:text-brand-400"
-                  : "text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                  ? "border-brand-600 bg-brand-50 text-brand-600 shadow-sm dark:border-brand-400 dark:bg-brand-900/20 dark:text-brand-400"
+                  : "border-gray-200 bg-white text-gray-500 hover:border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:bg-gray-700"
               }`}
             >
               Silverstar

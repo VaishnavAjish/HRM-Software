@@ -3,9 +3,10 @@ import * as TaskManager from 'expo-task-manager';
 import * as BackgroundFetch from 'expo-background-fetch';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
-import { TOKEN_STORAGE_KEY } from './api';
+import { API_BASE_URL } from '../config/apiUrl';
+import { loadToken } from './secureStore';
 
-const BASE_URL = 'http://192.168.1.53:8000/api';
+const BASE_URL = API_BASE_URL;
 const TASK = 'hrms-notification-poll';
 const SURFACED_KEY = 'hrms_notif_surfaced';
 const CHANNEL = 'hrms-default';
@@ -48,13 +49,9 @@ async function saveSurfaced(set) {
  * persisted session is the only credential available here.
  */
 export async function syncNotificationsToTray() {
-  let session = null;
-  try {
-    const raw = await AsyncStorage.getItem(TOKEN_STORAGE_KEY);
-    session = raw ? JSON.parse(raw) : null;
-  } catch (e) {
-    return 0;
-  }
+  // The background task wakes in a fresh JS context with no in-memory token, so
+  // it reads the credential straight from the secure store.
+  const session = await loadToken();
   if (!session?.token) return 0;
 
   let rows = [];

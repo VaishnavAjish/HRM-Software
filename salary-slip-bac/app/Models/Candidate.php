@@ -10,7 +10,7 @@ class Candidate extends Model
     use SoftDeletes;
 
     protected $fillable = [
-        'requisition_id', 'name', 'email', 'phone', 'experience_years',
+        'requisition_id', 'candidate_account_id', 'name', 'email', 'phone', 'experience_years',
         'current_company', 'current_designation', 'skills', 'resume_path',
         'resume_original_name', 'source', 'recruiter_id', 'priority', 'stage',
         'rating', 'notes', 'rejection_reason', 'company_code', 'unit', 'created_by',
@@ -21,6 +21,11 @@ class Candidate extends Model
         return [
             'skills' => 'array',
         ];
+    }
+
+    public function candidateAccount()
+    {
+        return $this->belongsTo(CandidateAccount::class, 'candidate_account_id');
     }
 
     public function requisition()
