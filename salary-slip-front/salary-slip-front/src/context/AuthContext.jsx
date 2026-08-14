@@ -251,36 +251,36 @@ export function AuthProvider({ children }) {
   // showing generic error toasts forever instead of returning to /login.
   useEffect(() => {
     function handleUnauthorized(event) {
-      // Only logout on actual token expiration, not permission denied
       const detail = event?.detail;
       const errorData = detail?.data || detail?.error;
       const status = detail?.status;
-      const errorCode = errorData?.code || errorData?.error?.code || "";
+      const errorCode = String(errorData?.code || errorData?.error?.code || "").toUpperCase();
       const rawMessage = detail?.message || (typeof errorData === "string" ? errorData : (errorData?.message || errorData?.error?.message || ""));
       const errorMessage = String(rawMessage || "").toLowerCase();
 
-      // Explicit permission denied or forbidden status/code
-      const isPermissionDenied =
-        status === 403 ||
-        errorCode === "PERMISSION_DENIED" ||
-        errorCode === "AUTHORIZATION_REQUIRED" ||
-        errorMessage.includes("permission") ||
-        errorMessage.includes("forbidden") ||
-        errorMessage.includes("not permitted") ||
-        errorMessage.includes("access denied");
-
-      // Specific token expiration indicators
-      const isTokenExpired =
-        errorMessage.includes("expired") ||
-        errorMessage.includes("token invalid") ||
-        errorMessage.includes("token expired") ||
-        errorMessage.includes("unauthenticated") ||
+      // Only log out if the server explicitly indicates that the JWT token is invalid or expired.
+      // Permission errors, authorization checks, missing schemas, or generic 401/403 responses on business routes MUST NOT log out the user.
+      const isExplicitTokenExpired =
+        errorCode === "TOKEN_EXPIRED" ||
+        errorCode === "TOKEN_INVALID" ||
+        errorCode === "TOKEN_BLACKLISTED" ||
+        errorMessage.includes("token is expired") ||
+        errorMessage.includes("token is invalid") ||
+        errorMessage.includes("token has expired") ||
         errorMessage.includes("token not found") ||
-        errorMessage.includes("signature has expired");
+        errorMessage.includes("jwt expired") ||
+        errorMessage.includes("token_expired") ||
+        errorMessage.includes("token_invalid") ||
+        errorMessage.includes("signature has expired") ||
+        errorMessage.includes("unauthenticated.");
 
-      if (isPermissionDenied && !isTokenExpired) {
-        // Permission denied - show warning log, do not log out
-        console.warn("[AuthContext] Permission denied on API call, ignoring auto-logout:", rawMessage || errorCode, detail?.url);
+      if (!isExplicitTokenExpired) {
+        console.warn("[AuthContext] Ignored 401/403 auto-logout for non-token error:", {
+          status,
+          errorCode,
+          rawMessage,
+          url: detail?.url,
+        });
         return;
       }
 

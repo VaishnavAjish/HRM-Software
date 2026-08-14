@@ -1,7 +1,11 @@
 import { apiRequest } from "../../../utils/api";
 
 function headers(accessToken, tokenType = "Bearer") {
-  return accessToken ? { Authorization: `${tokenType} ${accessToken}` } : {};
+  if (!accessToken) return {};
+  const formattedType = tokenType
+    ? tokenType.charAt(0).toUpperCase() + tokenType.slice(1)
+    : "Bearer";
+  return { Authorization: `${formattedType} ${accessToken}` };
 }
 
 function query(params = {}) {
