@@ -231,7 +231,7 @@ class AuthController extends Controller
             return response()->json(['status' => false, 'message' => 'OTP login is not available right now.'], 503);
         }
 
-        $user = $this->findUserForOtpLogin($mobile);
+        $user = $this->findUserForOtpVerification($mobile, 'login');
 
         if (! $user) {
             return response()->json(['status' => false, 'message' => 'Invalid OTP'], 401);
@@ -299,14 +299,63 @@ class AuthController extends Controller
 
     private function findUserForOtpLogin(string $mobile): ?User
     {
-        $matches = User::where('is_deleted', 0)
+        $matches = $this->usersMatchingMobile($mobile);
+
+        if ($matches->count() > 1) {
+            Log::info('OTP flow: mobile number maps to multiple active accounts', [
+                'mobile_last4' => substr($mobile, -4),
+                'match_count' => $matches->count(),
+            ]);
+        }
+
+        return $matches->count() === 1 ? $matches->first() : null;
+    }
+
+    /**
+     * Verification-time lookup. Production data holds duplicate mobile
+     * numbers, and the strict exactly-one rule above made every shared-mobile
+     * user fail OTP verification with "Invalid or expired session" no matter
+     * what they typed. At verification time the ambiguity is resolvable
+     * safely: an OTP can only verify against the account it was issued to,
+     * so when exactly one of the candidates has a live OTP session, that
+     * account is the caller. The OTP hash, expiry and attempt caps still
+     * apply unchanged afterwards.
+     */
+    private function findUserForOtpVerification(string $mobile, string $channel): ?User
+    {
+        $matches = $this->usersMatchingMobile($mobile);
+
+        if ($matches->count() === 1) {
+            return $matches->first();
+        }
+
+        if ($matches->isEmpty()) {
+            return null;
+        }
+
+        if ($channel === 'reset') {
+            $pending = $matches->filter(fn (User $u) => filled($u->otp))->values();
+        } else {
+            $ids = DB::table('login_otps')
+                ->whereIn('user_id', $matches->pluck('id'))
+                ->whereNotNull('otp_hash')
+                ->where('expires_at', '>', now())
+                ->pluck('user_id')
+                ->all();
+            $pending = $matches->filter(fn (User $u) => in_array($u->id, $ids, true))->values();
+        }
+
+        return $pending->count() === 1 ? $pending->first() : null;
+    }
+
+    private function usersMatchingMobile(string $mobile)
+    {
+        return User::where('is_deleted', 0)
             ->whereNotNull('mobile_number')
             ->where('mobile_number', 'LIKE', '%' . substr($mobile, -4) . '%')
             ->get()
             ->filter(fn (User $u) => self::normaliseMobile((string) $u->mobile_number) === $mobile)
             ->values();
-
-        return $matches->count() === 1 ? $matches->first() : null;
     }
 
     /**
@@ -814,7 +863,7 @@ class AuthController extends Controller
         if (! $found && $request->filled('mobile')) {
             $mobile = self::normaliseMobile((string) $request->mobile);
             if (strlen($mobile) === 10) {
-                $found = $this->findUserForOtpLogin($mobile);
+                $found = $this->findUserForOtpVerification($mobile, 'reset');
             }
         }
 
@@ -887,7 +936,7 @@ class AuthController extends Controller
         if (! $emp && $request->filled('mobile')) {
             $mobile = self::normaliseMobile((string) $request->mobile);
             if (strlen($mobile) === 10) {
-                $emp = $this->findUserForOtpLogin($mobile);
+                $emp = $this->findUserForOtpVerification($mobile, 'reset');
             }
         }
 
