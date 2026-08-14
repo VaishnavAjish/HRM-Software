@@ -150,12 +150,23 @@ class AttendanceController extends Controller
         return response()->json(['status' => true, 'message' => 'Attendance updated', 'data' => $attendance]);
     }
 
+    /** Maximum attendance rows accepted in a single bulk import request. */
+    private const MAX_BULK_ROWS = 500;
+
     public function bulkImport(Request $request)
     {
+        // Bound the request and validate each row's shape BEFORE any write, so an
+        // oversized or malformed payload is rejected with 422 and never produces
+        // a partial import. The array is not backed by a file, so post_max_size
+        // is the only other ceiling; this makes the limit explicit.
         $request->validate([
             'month' => 'required|integer|min:1|max:12',
-            'year' => 'required|integer',
-            'rows' => 'required|array',
+            'year' => 'required|integer|min:2000|max:2100',
+            'rows' => 'required|array|max:' . self::MAX_BULK_ROWS,
+            'rows.*' => 'array',
+            'rows.*.days' => 'nullable|array',
+        ], [
+            'rows.max' => 'A bulk attendance import is limited to ' . self::MAX_BULK_ROWS . ' rows per request.',
         ]);
 
         [$companyCode, $unit] = $this->scopedCompany($request);

@@ -59,7 +59,9 @@ class ReverseRouteCoverageTest extends TestCase
         'hr.training.delete',
         'hr.training.read',
         'hr.training.update',
-        'recruitment.candidate.read',
+        // recruitment.candidate.read left this list when ui.portals.agent_dashboard
+        // gained it as an implied code (commit 318a020d), giving it a canonical
+        // owner the Permission Matrix can grant.
         // self.ticket.read and self.ticket.create left this list when
         // ui.portals.employee_tickets and its create action gave them canonical
         // owners. The employee shell had no registry nodes at all until then, so

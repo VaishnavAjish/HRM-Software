@@ -24,7 +24,18 @@ Route::get('/', function () {
  * response, which exposed every private file by direct URL to any origin.
  */
 Route::get('/storage/{path}', function (string $path) {
-    $decoded = rawurldecode($path);
+    // Fully decode before any check. A single rawurldecode leaves a double-
+    // encoded traversal (%252e%252e) intact, so decode until stable (bounded)
+    // and normalise back-slashes to forward-slashes, so the traversal and
+    // blocked-prefix checks below see the real target.
+    $decoded = $path;
+    for ($i = 0; $i < 3; $i++) {
+        $next = rawurldecode($decoded);
+        if ($next === $decoded) {
+            break;
+        }
+        $decoded = $next;
+    }
 
     // Reject NUL bytes, path traversal, absolute paths, drive letters and UNC.
     if (
@@ -37,11 +48,15 @@ Route::get('/storage/{path}', function (string $path) {
 
     $clean = ltrim(str_replace('\\', '/', $decoded), '/');
 
-    // Sensitive subtrees that must never be served without authentication,
-    // even though some physically live on the public disk today.
+    // Sensitive subtrees that must never be served without authentication, even
+    // though some physically live on the public disk today. Compared
+    // case-insensitively: NTFS on the LAN host is case-insensitive, so
+    // "CANDIDATE-DOCUMENTS/x" resolves to the same file the lowercase prefix
+    // guards — the prefix list must not.
+    $compare = strtolower($clean);
     $blockedPrefixes = ['candidate-documents/', 'documents/', 'private/', 'backups/', 'rbac-readiness/'];
     foreach ($blockedPrefixes as $blocked) {
-        if ($clean === rtrim($blocked, '/') || str_starts_with($clean, $blocked)) {
+        if ($compare === rtrim($blocked, '/') || str_starts_with($compare, $blocked)) {
             abort(404);
         }
     }

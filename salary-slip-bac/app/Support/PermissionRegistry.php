@@ -818,7 +818,10 @@ class PermissionRegistry
             'type' => self::TYPE_PAGE, 'label' => 'Agent Trial Forms', 'order' => 12,
             'parent' => 'ui.portals', 'route' => '/agent/trial-forms',
             'description' => 'Open the agent trial form workspace.',
-            'implies' => ['recruitment.trial_form.read'],
+            // The trial form's department picker calls GET /department/get, now
+            // gated on hr.department.read — imply it so the matrix can show the
+            // page as allowed only when its data actually answers.
+            'implies' => ['recruitment.trial_form.read', 'hr.department.read'],
             'scopes' => [self::SCOPE_COMPANY],
         ],
         'ui.portals.agent_trial_forms.create' => [
@@ -831,7 +834,9 @@ class PermissionRegistry
             'type' => self::TYPE_PAGE, 'label' => 'Agent Appointments', 'order' => 14,
             'parent' => 'ui.portals', 'route' => '/agent/appointments',
             'description' => 'Open the agent appointment form.',
-            'implies' => ['hr.appointment.read'],
+            // The appointment form's department picker calls GET /department/get,
+            // now gated on hr.department.read — imply it here too.
+            'implies' => ['hr.appointment.read', 'hr.department.read'],
             'scopes' => [self::SCOPE_COMPANY],
         ],
         'ui.portals.agent_appointments.create' => [

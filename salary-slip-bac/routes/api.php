@@ -193,8 +193,11 @@ Route::middleware('jwt.auth')->group(function () {
         // snapshot to learn which permissions the actor holds in the first
         // place. The outer jwt.auth group remains the security boundary.
         Route::get('me', [V1AuthorizationController::class, 'me'])->middleware('throttle:30,1');
-        Route::post('check', [V1AuthorizationController::class, 'check'])->middleware('throttle:120,1');
-        Route::post('check-batch', [V1AuthorizationController::class, 'checkBatch'])->middleware('throttle:60,1');
+        // Tightened: a single batch (max 25 codes) answers a whole screen, so
+        // these do not need high per-minute ceilings. Neither persists a
+        // decision-log row (audit=false in the controller).
+        Route::post('check', [V1AuthorizationController::class, 'check'])->middleware('throttle:60,1');
+        Route::post('check-batch', [V1AuthorizationController::class, 'checkBatch'])->middleware('throttle:20,1');
 
         /*
          * Administration surface for the Permission Matrix screen.
@@ -495,8 +498,11 @@ Route::middleware('jwt.auth')->group(function () {
         });
     }
 
-    // Allow any authenticated user (like Agent) to fetch departments
-    Route::get('/department/get', [AdminController::class, 'getDepartment'])->middleware('throttle:60,1');
+    // Department picker. Gated on hr.department.read and company-scoped in the
+    // controller. Agent form pages reach it through the hr.department.read their
+    // agent-portal nodes imply (see PermissionRegistry).
+    Route::get('/department/get', [AdminController::class, 'getDepartment'])
+        ->middleware(['throttle:60,1', 'permission:hr.department.read']);
 
     /*
      * In-app notifications — the caller's own, whatever their role.

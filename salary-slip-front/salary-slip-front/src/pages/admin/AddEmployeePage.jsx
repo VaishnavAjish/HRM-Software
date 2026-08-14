@@ -741,25 +741,14 @@ export default function AddEmployeePage() {
 
                     <div>
                       <Label>System Role</Label>
-                      <select value={form.loginRole || "employee"} onChange={update("loginRole")} className={fieldCls}>
+                      {/* This form onboards standard employees only. Privileged,
+                          manager, administrator and agent accounts are created in
+                          Access Control ▸ Users (/v1/admin/users), which enforces
+                          the assignable-role policy server-side. */}
+                      <select value="employee" disabled className={`${fieldCls} opacity-70 cursor-not-allowed`}>
                         <option value="employee">Employee</option>
-                        <option value="manager">Manager</option>
-                        <option value="master">Master</option>
-                        {user?.rawRole === 0 && <option value="superadmin">Super Admin</option>}
-                        <option value="agent">Agent</option>
                       </select>
                     </div>
-
-                    {form.loginRole === "agent" && user?.rawRole === 0 && (
-                      <div>
-                        <Label>Assign Company</Label>
-                        <select value={form.agentCompany || ""} onChange={update("agentCompany")} className={fieldCls}>
-                          <option value="">Both Companies (All)</option>
-                          <option value="nidhi-impex">Nidhi Impex</option>
-                          <option value="silverstar">Silver Star</option>
-                        </select>
-                      </div>
-                    )}
 
                     <div>
                       <Label>Active Status</Label>

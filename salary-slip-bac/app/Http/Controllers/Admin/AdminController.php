@@ -7,6 +7,7 @@ use App\Models\Department;
 use App\Models\SalarySlip;
 use App\Models\UploadBatch;
 use App\Models\User;
+use App\Support\CompanyMembership;
 use Illuminate\Http\Request;
 
 class AdminController extends Controller
@@ -698,42 +699,101 @@ class AdminController extends Controller
 
     public function getDepartment(Request $request)
     {
-        // Read-only. This endpoint previously created a Department row for every
-        // distinct department string found across users / salary_slips, so any
-        // GET silently wrote to the table (and after the permission was dropped,
-        // any authenticated caller could trigger those writes). Surface the same
-        // union of registered + in-use department names WITHOUT persisting;
-        // reconciling free-text names into the master is a separate write flow.
+        // Read-only, tenant-isolated. This endpoint previously created a
+        // Department row for every distinct department string found across
+        // users / salary_slips (so any GET wrote to the table), and it unioned
+        // in-use names across EVERY company — leaking which departments other
+        // tenants run. It now persists nothing and scopes the in-use names to
+        // the caller's permitted company set.
+        $userAuth = auth('api')->user();
+        $scope = $this->departmentCompanyScope($request, $userAuth);
+
+        // A company was requested that the caller may not see. Answer exactly as
+        // for a company that does not exist — never confirm or deny existence.
+        if ($scope === false) {
+            return response()->json(['status' => false, 'message' => 'Departments not found'], 404);
+        }
+
+        // The departments master has no tenant column: it is shared, curated
+        // reference vocabulary, returned to any permitted caller. Only the
+        // free-text in-use names carry a company and are scoped below.
         $departments = Department::orderBy('name')->get();
         $known = $departments->map(fn ($d) => trim(strtolower($d->name)))->all();
-
-        $usedNames = \App\Models\User::whereNotNull('department')
-            ->where('department', '!=', '')
-            ->distinct()
-            ->pluck('department')
-            ->merge(
-                \Illuminate\Support\Facades\DB::table('salary_slips')
-                    ->whereNotNull('department')
-                    ->where('department', '!=', '')
-                    ->distinct()
-                    ->pluck('department')
-            );
-
         $merged = $departments->map(fn ($d) => ['id' => $d->id, 'name' => $d->name])->all();
 
-        foreach ($usedNames as $name) {
-            $normalized = trim((string) $name);
-            if ($normalized === '' || in_array(strtolower($normalized), $known, true)) {
-                continue;
+        // $scope === null  -> global caller, no company filter (all in-use names)
+        // $scope === []    -> non-global caller with no company membership -> none
+        // $scope === [...] -> restrict in-use names to these company codes
+        if ($scope !== []) {
+            $userQuery = User::whereNotNull('department')->where('department', '!=', '');
+            $slipQuery = \Illuminate\Support\Facades\DB::table('salary_slips')
+                ->whereNotNull('department')->where('department', '!=', '');
+
+            if (is_array($scope)) {
+                $this->scopeCompanyCsv($userQuery, $scope);
+                $this->scopeCompanyCsv($slipQuery, $scope);
             }
-            $known[] = strtolower($normalized);
-            // id:null marks a name in use in data but not yet in the master table.
-            $merged[] = ['id' => null, 'name' => $normalized];
+
+            $usedNames = $userQuery->distinct()->pluck('department')
+                ->merge($slipQuery->distinct()->pluck('department'));
+
+            foreach ($usedNames as $name) {
+                $normalized = trim((string) $name);
+                if ($normalized === '' || in_array(strtolower($normalized), $known, true)) {
+                    continue;
+                }
+                $known[] = strtolower($normalized);
+                // id:null marks a name in use in data but not yet in the master.
+                $merged[] = ['id' => null, 'name' => $normalized];
+            }
         }
 
         usort($merged, fn ($a, $b) => strcasecmp($a['name'], $b['name']));
 
         return response()->json(['status' => true, 'data' => array_values($merged)]);
+    }
+
+    /**
+     * The company set to scope the department in-use names to.
+     *
+     * Returns null for a global caller with no company filter (see everything),
+     * an array of company codes to restrict to, [] for a non-global caller with
+     * no membership (see nothing), or false when the caller requested a company
+     * outside their permitted set (the caller answers 404 without revealing
+     * whether that company exists). CSV company_code values are parsed as sets,
+     * never treated as a single company.
+     *
+     * @return array<int,string>|null|false
+     */
+    private function departmentCompanyScope(Request $request, $userAuth)
+    {
+        $requested = CompanyMembership::parse($request->query('company_code'));
+        $tokens = array_map('trim', explode(',', (string) ($userAuth->company_code ?? '')));
+        $isGlobal = $userAuth
+            && (in_array((int) $userAuth->role, [0, 1], true)
+                || (bool) array_intersect(['all', 'all-companies'], $tokens));
+
+        if ($isGlobal) {
+            return $requested === [] ? null : $requested;
+        }
+
+        $authorized = CompanyMembership::parse($userAuth?->company_code);
+
+        if ($requested !== []) {
+            return array_diff($requested, $authorized) === [] ? $requested : false;
+        }
+
+        return $authorized;
+    }
+
+    /** CSV-aware company_code match: a stored "a,b" matches code "a" or "b". */
+    private function scopeCompanyCsv($query, array $codes): void
+    {
+        $query->where(function ($q) use ($codes) {
+            foreach ($codes as $code) {
+                $q->orWhereRaw("(',' || COALESCE(company_code, '') || ',') LIKE ?", ['%,' . $code . ',%']);
+            }
+        });
     }
 
     public function storeDepartment(Request $request)

@@ -69,6 +69,30 @@ class StagedEnforcementTest extends TestCase
         $this->assertFalse($this->policy()->isEnforced('hr.attendance.read'));
     }
 
+    /**
+     * The shipped config defaults (no AUTHZ_* env set, as in this test run) must
+     * fail safe: shadow mode and an empty enforced set, so no business namespace
+     * is enforced by accident of a missing or blank env line.
+     */
+    public function test_shipped_defaults_enforce_no_business_namespace(): void
+    {
+        $this->assertSame('shadow', config('authorization.enforcement.default_mode'));
+        $this->assertSame([], config('authorization.enforcement.enforced_prefixes'));
+        $this->assertSame([], config('authorization.enforcement.enforced_permissions'));
+
+        foreach (['hr.', 'payroll.', 'recruitment.', 'document.', 'workflow.', 'self.', 'ui.'] as $prefix) {
+            $this->assertSame(
+                PermissionEnforcementPolicy::SHADOW,
+                $this->policy()->modeFor($prefix . 'anything.read'),
+                "Default config must not enforce the {$prefix} namespace.",
+            );
+        }
+
+        // The two security-administration namespaces are the deliberate exception.
+        $this->assertTrue($this->policy()->isEnforced('admin.authorization.manage'));
+        $this->assertTrue($this->policy()->isEnforced('admin.policy.update'));
+    }
+
     public function test_shadow_mode_still_admits_an_admin_to_a_staged_permission(): void
     {
         $this->seed(RbacSeeder::class);

@@ -72,8 +72,14 @@ return [
     |
     */
 
-    'links' => [
-        public_path('storage') => storage_path('app/public'),
-    ],
+    /*
+     * Intentionally empty. The default public_path('storage') ->
+     * storage_path('app/public') symlink is NOT configured: with it in place,
+     * `php artisan storage:link` would let the web server statically serve
+     * storage/app/public (which has held candidate-documents/) directly,
+     * bypassing the authorization checks in the /storage route (routes/web.php).
+     * Public assets are served only through that guarded route.
+     */
+    'links' => [],
 
 ];

@@ -661,19 +661,29 @@ class UserController extends Controller
 
     public function store(Request $request)
     {
-        // Creating an Admin (1) or Super Admin (0) account is a privilege
-        // escalation — only an existing Super Admin may do it, and since
-        // these accounts log in with email + password directly (no emp_code
-        // self-claim flow), both must be supplied up front. Everyone else
-        // hitting this endpoint is onboarding a regular employee/agent, which
-        // stays unrestricted.
+        // This is the standard-employee onboarding endpoint ONLY. It always
+        // provisions a legacy tier-3 employee with a null account type. Any
+        // privileged, manager, administrator or agent account is created through
+        // /v1/admin/users, which applies the assignable-role policy, canonical
+        // role ids, admin.user.create and the guarded provisioning service.
+        //
+        // Reject — rather than silently downgrade — any attempt to mint a
+        // non-employee role or set an account type here, so an escalation attempt
+        // is visible instead of quietly ignored.
         $requestedRole = $request->input('role');
-        $isPrivileged = in_array((int) $requestedRole, [0, 1], true);
-        if ($isPrivileged) {
-            $actingUser = auth('api')->user();
-            if (! $actingUser || (int) $actingUser->role !== 0) {
-                return response()->json(['status' => false, 'message' => 'Only a Super Admin can create Admin/Super Admin accounts'], 403);
-            }
+        if ($requestedRole !== null && $requestedRole !== '' && (int) $requestedRole !== 3) {
+            return response()->json([
+                'status' => false,
+                'message' => 'This endpoint onboards standard employees only. Use admin user management to create privileged, manager, administrator or agent accounts.',
+            ], 403);
+        }
+
+        $requestedType = $request->input('type');
+        if ($requestedType !== null && $requestedType !== '') {
+            return response()->json([
+                'status' => false,
+                'message' => 'This endpoint onboards standard employees only and cannot set an account type.',
+            ], 403);
         }
 
         $actingUser = auth('api')->user();
@@ -695,11 +705,11 @@ class UserController extends Controller
 
         $validator = Validator::make($request->all(), [
             'name' => 'required',
-            'email' => $isPrivileged ? 'required|email|unique:users' : 'nullable|email|unique:users',
-            'password' => $isPrivileged ? 'required|min:8' : 'nullable|min:8',
+            'email' => 'nullable|email|unique:users',
+            'password' => 'nullable|min:8',
             'emp_code' => 'nullable|unique:users',
             'company_code' => 'required',
-            'unit' => in_array($request->input('role'), [0, 1, 4, '0', '1', '4'], true) ? 'nullable' : 'required',
+            'unit' => 'required',
         ]);
 
         if ($validator->fails()) {
@@ -715,6 +725,8 @@ class UserController extends Controller
         // Account/security flags are never client-settable at create time:
         // strip is_super_admin / stealth flags / is_deleted / added_by so a
         // mass-assigned create cannot mint a hidden or super-admin account.
+        // role and type are forced below to the standard-employee values, so any
+        // client-supplied values here are irrelevant.
         unset(
             $data['is_super_admin'],
             $data['is_hidden'],
@@ -726,7 +738,11 @@ class UserController extends Controller
         );
         // SECURITY FIX: Generate a cryptographically random default password instead of '12345678'.
         $data['password'] = $request->password ?? bin2hex(random_bytes(16));
-        $data['role'] = $request->role ?? 3;
+        // Standard-employee onboarding: legacy tier 3, normal employee type.
+        // Enforced here regardless of input; privileged creation is a different
+        // endpoint entirely.
+        $data['role'] = 3;
+        $data['type'] = null;
         $data['emp_code'] = $request->emp_code ?: strtoupper(Str::random(8));
         // Normalise to digits, and never store a partial number.
         $data = $this->withSafeAadhaar($data);
@@ -785,8 +801,17 @@ class UserController extends Controller
         // posts aadhar_card_no: null. Without this the first edit of any
         // employee erased their Aadhaar and detached them from their documents.
         $data = $this->withSafeAadhaar($data);
-        if (isset($data['password'])) {
-            $data['password'] = $data['password'];
+
+        // A blank or absent password means "leave it unchanged": never overwrite
+        // the stored hash with a hash of an empty string. When the password does
+        // change, stamp password_changed_at so JwtMiddleware invalidates every
+        // token issued before now — an admin/HR reset of a compromised account
+        // kills its live sessions. Set directly (it is not mass-assignable) so it
+        // rides the same UPDATE statement as the password in applyUpdate().
+        if (! (array_key_exists('password', $data) && filled($data['password']))) {
+            unset($data['password']);
+        } else {
+            $employee->password_changed_at = now();
         }
 
         if (isset($data['aadhar_card_no'])) {

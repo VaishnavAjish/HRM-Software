@@ -30,11 +30,15 @@ class AuthorizationController extends Controller
             'resource' => ['nullable', 'array'],
             'context' => ['nullable', 'array'],
         ]);
+        // Self-checks never persist a decision-log row: they are the caller
+        // asking about themselves, fire on every page render, and would flood
+        // authorization_decision_logs. audit=false is forced regardless of any
+        // client-supplied context.
         $decision = $this->authorization->decide(
             auth('api')->user(),
             $data['permissionCode'],
             $data['resource'] ?? [],
-            $data['context'] ?? []
+            array_merge($data['context'] ?? [], ['audit' => false])
         );
 
         return response()->json(['success' => true, 'data' => $decision->toArray()]);
@@ -43,7 +47,7 @@ class AuthorizationController extends Controller
     public function checkBatch(Request $request)
     {
         $data = $request->validate([
-            'checks' => ['required', 'array', 'min:1', 'max:100'],
+            'checks' => ['required', 'array', 'min:1', 'max:25'],
             'checks.*.permissionCode' => ['required', 'string', 'max:190'],
             'checks.*.resource' => ['nullable', 'array'],
             'checks.*.context' => ['nullable', 'array'],
@@ -54,11 +58,13 @@ class AuthorizationController extends Controller
             $results[] = [
                 'index' => $index,
                 'permissionCode' => $check['permissionCode'],
+                // audit=false forced — see check(); a batch would otherwise write
+                // up to 25 decision-log rows per render.
                 'decision' => $this->authorization->decide(
                     $actor,
                     $check['permissionCode'],
                     $check['resource'] ?? [],
-                    $check['context'] ?? []
+                    array_merge($check['context'] ?? [], ['audit' => false])
                 )->toArray(),
             ];
         }

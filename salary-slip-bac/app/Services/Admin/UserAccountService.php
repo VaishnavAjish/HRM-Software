@@ -197,8 +197,20 @@ class UserAccountService
     {
         $issued = $password ?: Str::password(14, true, true, false);
 
-        $user->password = $issued;
-        $user->save();
+        DB::transaction(function () use ($user, $issued) {
+            $user->password = $issued;
+
+            // Revoke every session issued before now: JwtMiddleware rejects any
+            // token whose iat predates password_changed_at, so an admin reset of
+            // a compromised account kills its live tokens instead of leaving them
+            // valid until natural expiry. Written in the same transaction as the
+            // password so the two never diverge.
+            if (SchemaSupport::hasColumn('users', 'password_changed_at')) {
+                $user->password_changed_at = now();
+            }
+
+            $user->save();
+        });
 
         $this->audit(
             $user,
