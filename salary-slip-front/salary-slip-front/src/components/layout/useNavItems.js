@@ -186,19 +186,41 @@ function getAdminNav(companyId, user, isAllCompanies, isModuleAvailable = () => 
       label: "Organization",
       icon: Building2,
       subItems: [
+        // Enterprise & Legal
         { to: "/admin/organization/master", label: "Enterprise Master" },
-        { to: "/admin/organization/legal-entities", label: "Legal Entities" },
-        { to: "/admin/organization/locations", label: "Locations" },
-        { to: "/admin/organization/calendars", label: "Calendars" },
         { to: "/admin/organization/enterprises", label: "Enterprises" },
+        { to: "/admin/organization/legal-entities", label: "Legal Entities" },
         { to: "/admin/organization/legal-entity-profiles", label: "Legal Entity Profiles" },
+
+        // Organization Structure
         { to: "/admin/organization/org-units", label: "Organization Units" },
+        { to: "/admin/organization/positions", label: "Positions" },
+        { to: "/admin/organization/assignments", label: "Assignments" },
+
+        // Locations
+        { to: "/admin/organization/locations", label: "Locations (Legacy)" },
         { to: "/admin/organization/org-locations", label: "Organization Locations" },
         { to: "/admin/organization/location-types", label: "Location Types" },
+        { to: "/admin/organization/work-location-mappings", label: "Work-Location Mappings" },
+
+        // Financial
         { to: "/admin/organization/financial-organizations", label: "Financial Organizations" },
+        { to: "/admin/organization/gl-mappings", label: "GL Mappings" },
+        { to: "/admin/organization/allocation-rules", label: "Allocation Rules" },
+
+        // Hierarchies
+        { to: "/admin/organization/hierarchies", label: "Hierarchies" },
+        { to: "/admin/organization/hierarchy-nodes", label: "Hierarchy Nodes" },
+        { to: "/admin/organization/hierarchy-edges", label: "Hierarchy Edges" },
+
+        // Reporting & Chart
+        { to: "/admin/organization/reporting-structure", label: "Reporting Structure" },
         { to: "/admin/organization/org-chart", label: "Org Chart" },
+
+        // Change & Calendar
         { to: "/admin/organization/change-management", label: "Change Management" },
         { to: "/admin/organization/calendar-assignments", label: "Calendar Assignments" },
+        { to: "/admin/organization/calendars", label: "Calendars" },
       ],
     });
   }

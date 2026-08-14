@@ -31,6 +31,13 @@ function booleanTransform(value) {
   return value === "true" || value === true;
 }
 
+function formatType(type) {
+  if (!type) return "";
+  return String(type)
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
 function renderType(i) {
   return formatType(i.type);
 }
@@ -672,7 +679,7 @@ export const resourceConfigs = {
       list: (params, token, tokenType) => organizationApi.financialOrgGlMappings(params.orgId, params, token, tokenType),
       create: (payload, token, tokenType) => organizationApi.createFinancialOrgGlMapping(payload.orgId, payload, token, tokenType),
       update: (id, payload, token, tokenType) => organizationApi.updateFinancialOrgGlMapping(payload.orgId, id, payload, token, tokenType),
-      remove: (id, token, tokenType) => organizationApi.deleteFinancialOrgGlMapping(payload.orgId, id, token, tokenType),
+      remove: (id, token, tokenType, item) => organizationApi.deleteFinancialOrgGlMapping(item?.financialOrganizationId || item?.orgId, id, token, tokenType),
       setStatus: null,
       fetchCompanies: null,
     },
@@ -766,7 +773,7 @@ export const resourceConfigs = {
       list: (params, token, tokenType) => organizationApi.financialAllocationLines(params.ruleId, params, token, tokenType),
       create: (payload, token, tokenType) => organizationApi.createFinancialAllocationLine(payload.ruleId, payload, token, tokenType),
       update: (id, payload, token, tokenType) => organizationApi.updateFinancialAllocationLine(payload.ruleId, id, payload, token, tokenType),
-      remove: (id, token, tokenType) => organizationApi.deleteFinancialAllocationLine(payload.ruleId, id, token, tokenType),
+      remove: (id, token, tokenType, item) => organizationApi.deleteFinancialAllocationLine(item?.financialAllocationRuleId || item?.ruleId, id, token, tokenType),
       setStatus: null,
       fetchCompanies: null,
     },
@@ -855,7 +862,7 @@ export const resourceConfigs = {
       list: (params, token, tokenType) => organizationApi.hierarchyNodes(params.hierarchyId, params, token, tokenType),
       create: (payload, token, tokenType) => organizationApi.createHierarchyNode(payload.hierarchyId, payload, token, tokenType),
       update: (id, payload, token, tokenType) => organizationApi.updateHierarchyNode(payload.hierarchyId, id, payload, token, tokenType),
-      remove: (id, token, tokenType) => organizationApi.deleteHierarchyNode(payload.hierarchyId, id, token, tokenType),
+      remove: (id, token, tokenType, item) => organizationApi.deleteHierarchyNode(item?.hierarchyId, id, token, tokenType),
       setStatus: null,
       fetchCompanies: null,
     },
@@ -896,7 +903,7 @@ export const resourceConfigs = {
       list: (params, token, tokenType) => organizationApi.hierarchyEdges(params.hierarchyId, params, token, tokenType),
       create: (payload, token, tokenType) => organizationApi.createHierarchyEdge(payload.hierarchyId, payload, token, tokenType),
       update: (id, payload, token, tokenType) => organizationApi.updateHierarchyEdge(payload.hierarchyId, id, payload, token, tokenType),
-      remove: (id, token, tokenType) => organizationApi.deleteHierarchyEdge(payload.hierarchyId, id, token, tokenType),
+      remove: (id, token, tokenType, item) => organizationApi.deleteHierarchyEdge(item?.hierarchyId, id, token, tokenType),
       setStatus: null,
       fetchCompanies: null,
     },

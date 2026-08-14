@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { BarChart2, Building2, Users, FileText, Award, Layers, Briefcase, ClipboardList, ListTodo, FolderKanban } from "lucide-react";
 import { createWorkforceListPage } from "./WorkforceListPage";
 import { jobGradeApi } from "../../../features/workforce/services/workforceApi";
@@ -105,7 +106,7 @@ function JobGradeCreateForm({ onSubmit }) {
       </label>
       <label className="block sm:col-span-2">
         <span className={labelClass}>Eligibility Rules (JSON)</span>
-        <textarea className={inputClass} value={form.eligibilityRules ? JSON.stringify(form.eligibilityRules, null, 2) : ""} onChange={(e) => { try { setForm(prev => ({ ...prev, eligibilityRules: JSON.parse(e.target.value) }); } catch { setForm(prev => ({ ...prev, eligibilityRules: null }); } }} rows={4} fontFamily="monospace" textXs />
+        <textarea className={`${inputClass} font-mono text-xs`} value={form.eligibilityRules ? JSON.stringify(form.eligibilityRules, null, 2) : ""} onChange={(e) => { try { setForm(prev => ({ ...prev, eligibilityRules: JSON.parse(e.target.value) })); } catch { setForm(prev => ({ ...prev, eligibilityRules: null })); } }} rows={4} />
       </label>
       <label className="block">
         <span className={labelClass}>Status</span>
@@ -196,7 +197,7 @@ function JobGradeEditForm({ item, onSubmit }) {
       </label>
       <label className="block sm:col-span-2">
         <span className={labelClass}>Eligibility Rules (JSON)</span>
-        <textarea className={inputClass} value={form.eligibilityRules ? JSON.stringify(form.eligibilityRules, null, 2) : ""} onChange={(e) => { try { setForm(prev => ({ ...prev, eligibilityRules: JSON.parse(e.target.value) }); } catch { setForm(prev => ({ ...prev, eligibilityRules: null }); } }} rows={4} fontFamily="monospace" textXs />
+        <textarea className={`${inputClass} font-mono text-xs`} value={form.eligibilityRules ? JSON.stringify(form.eligibilityRules, null, 2) : ""} onChange={(e) => { try { setForm(prev => ({ ...prev, eligibilityRules: JSON.parse(e.target.value) })); } catch { setForm(prev => ({ ...prev, eligibilityRules: null })); } }} rows={4} />
       </label>
       <label className="block">
         <span className={labelClass}>Status</span>

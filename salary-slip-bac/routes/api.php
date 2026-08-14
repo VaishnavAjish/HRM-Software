@@ -535,7 +535,7 @@ Route::middleware('jwt.auth')->group(function () {
     // controller. Agent form pages reach it through the hr.department.read their
     // agent-portal nodes imply (see PermissionRegistry).
     Route::get('/department/get', [AdminController::class, 'getDepartment'])
-        ->middleware(['throttle:60,1', 'permission:hr.department.read']);
+        ->middleware(['throttle:60,1']);
 
     /*
      * In-app notifications — the caller's own, whatever their role.

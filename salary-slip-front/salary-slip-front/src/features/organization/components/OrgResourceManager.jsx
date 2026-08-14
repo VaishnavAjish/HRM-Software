@@ -237,7 +237,7 @@ export function OrgResourceManager({
   );
 
   const handleDelete = (item) => run(
-    () => del(item.id, token, tokenType),
+    () => del(item.id, token, tokenType, item),
     `${title} deleted`,
     () => onDeleteSuccess?.(item),
   );

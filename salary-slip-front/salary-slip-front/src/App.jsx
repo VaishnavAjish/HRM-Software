@@ -103,6 +103,17 @@ const HrSettings = lazy(() => import("./pages/admin/hr/HrSettings"));
 const TrainingQuizPage = lazy(() => import("./pages/admin/hr/TrainingQuizPage"));
 const CandidateQuiz = lazy(() => import("./pages/public/CandidateQuiz"));
 const AboutNiss = lazy(() => import("./pages/public/AboutNiss"));
+
+// Workforce Foundation (Domain 03)
+const WorkforceDashboard = lazy(() => import("./pages/admin/workforce/WorkforceDashboard"));
+const JobFunctionsPage = lazy(() => import("./pages/admin/workforce/JobFunctionsPage"));
+const JobCategoriesPage = lazy(() => import("./pages/admin/workforce/JobCategoriesPage"));
+const JobLevelsPage = lazy(() => import("./pages/admin/workforce/JobLevelsPage"));
+const JobGradesPage = lazy(() => import("./pages/admin/workforce/JobGradesPage"));
+const JobFamiliesPage = lazy(() => import("./pages/admin/workforce/JobFamiliesPage"));
+const DesignationsPage = lazy(() => import("./pages/admin/workforce/DesignationsPage"));
+const JobsPage = lazy(() => import("./pages/admin/workforce/JobsPage"));
+
 import SeoManager from "./components/common/SeoManager";
 import { CandidateAuthProvider } from "./context/CandidateAuthContext";
 
@@ -671,6 +682,30 @@ function AppRoutes() {
             </ProtectedRoute>
           }
         />
+      </Route>
+
+      {/* Workforce Foundation (Domain 03) */}
+      <Route
+        path="workforce"
+        element={
+          <ProtectedRoute requiredPermission="workforce.job.read">
+            <AppLayout />
+          </ProtectedRoute>
+        }
+      >
+        <Route index element={<WorkforceDashboard />} />
+        <Route path="job-functions" element={<ProtectedRoute requiredPermission="workforce.job_function.read"><JobFunctionsPage /></ProtectedRoute>} />
+        <Route path="job-categories" element={<ProtectedRoute requiredPermission="workforce.job_category.read"><JobCategoriesPage /></ProtectedRoute>} />
+        <Route path="job-levels" element={<ProtectedRoute requiredPermission="workforce.job_level.read"><JobLevelsPage /></ProtectedRoute>} />
+        <Route path="job-grades" element={<ProtectedRoute requiredPermission="workforce.job_grade.read"><JobGradesPage /></ProtectedRoute>} />
+        <Route path="job-families" element={<ProtectedRoute requiredPermission="workforce.job_family.read"><JobFamiliesPage /></ProtectedRoute>} />
+        <Route path="designations" element={<ProtectedRoute requiredPermission="workforce.designation.read"><DesignationsPage /></ProtectedRoute>} />
+        <Route path="jobs" element={<ProtectedRoute requiredPermission="workforce.job.read"><JobsPage /></ProtectedRoute>} />
+        <Route path="jobs/:jobId/descriptions" element={<Navigate to="/admin/workforce/jobs" replace />} />
+        <Route path="jobs/:jobId/responsibilities" element={<Navigate to="/admin/workforce/jobs" replace />} />
+        <Route path="jobs/:jobId/requirements" element={<Navigate to="/admin/workforce/jobs" replace />} />
+        <Route path="jobs/:jobId/evaluations" element={<Navigate to="/admin/workforce/jobs" replace />} />
+        <Route path="jobs/:jobId/classification" element={<Navigate to="/admin/workforce/jobs" replace />} />
       </Route>
 
       {/* Employee routes */}
