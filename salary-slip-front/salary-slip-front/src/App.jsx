@@ -57,8 +57,24 @@ const EnterpriseMaster = lazy(() => import("./pages/admin/organization/Enterpris
 const LegalEntities = lazy(() => import("./pages/admin/organization/LegalEntities"));
 const Locations = lazy(() => import("./pages/admin/organization/Locations"));
 const Calendars = lazy(() => import("./pages/admin/organization/Calendars"));
-
-// Support tickets — staff queue, Super Admin control center, and employee screens.
+const Enterprises = lazy(() => import("./pages/admin/organization/Enterprises"));
+const LegalEntityProfiles = lazy(() => import("./pages/admin/organization/LegalEntityProfiles"));
+const OrgUnits = lazy(() => import("./pages/admin/organization/OrgUnits"));
+const Positions = lazy(() => import("./pages/admin/organization/Positions"));
+const Assignments = lazy(() => import("./pages/admin/organization/Assignments"));
+const OrgLocations = lazy(() => import("./pages/admin/organization/OrgLocations"));
+const LocationTypes = lazy(() => import("./pages/admin/organization/LocationTypes"));
+const WorkLocationMappings = lazy(() => import("./pages/admin/organization/WorkLocationMappings"));
+const FinancialOrganizations = lazy(() => import("./pages/admin/organization/FinancialOrganizations"));
+const GlMappings = lazy(() => import("./pages/admin/organization/GlMappings"));
+const AllocationRules = lazy(() => import("./pages/admin/organization/AllocationRules"));
+const Hierarchies = lazy(() => import("./pages/admin/organization/Hierarchies"));
+const HierarchyNodes = lazy(() => import("./pages/admin/organization/HierarchyNodes"));
+const HierarchyEdges = lazy(() => import("./pages/admin/organization/HierarchyEdges"));
+const ReportingStructure = lazy(() => import("./pages/admin/organization/ReportingStructure"));
+const OrgChart = lazy(() => import("./pages/admin/organization/OrgChart"));
+const ChangeManagement = lazy(() => import("./pages/admin/organization/ChangeManagement"));
+const CalendarAssignments = lazy(() => import("./pages/admin/organization/CalendarAssignments"));
 const AdminTickets = lazy(() => import("./pages/admin/Tickets"));
 const SuperAdminTicketControlCenter = lazy(() => import("./pages/admin/SuperAdminTicketControlCenter"));
 
@@ -507,6 +523,151 @@ function AppRoutes() {
           element={
             <ProtectedRoute requiredPermission="org.calendar.read">
               <Calendars />
+            </ProtectedRoute>
+          }
+        />
+        {/* V2 Enterprise Management */}
+        <Route
+          path="organization/enterprises"
+          element={
+            <ProtectedRoute requiredPermission="org.enterprise.read">
+              <Enterprises />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="organization/legal-entity-profiles"
+          element={
+            <ProtectedRoute requiredPermission="org.legal_entity.read">
+              <LegalEntityProfiles />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="organization/org-units"
+          element={
+            <ProtectedRoute requiredPermission="org.unit.read">
+              <OrgUnits />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="organization/positions/:unitId?"
+          element={
+            <ProtectedRoute requiredPermission="org.unit_position.read">
+              <Positions />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="organization/assignments"
+          element={
+            <ProtectedRoute requiredPermission="org.unit_assignment.read">
+              <Assignments />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="organization/org-locations"
+          element={
+            <ProtectedRoute requiredPermission="org.org_location.read">
+              <OrgLocations />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="organization/location-types"
+          element={
+            <ProtectedRoute requiredPermission="org.location_type.read">
+              <LocationTypes />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="organization/work-location-mappings"
+          element={
+            <ProtectedRoute requiredPermission="org.work_location.read">
+              <WorkLocationMappings />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="organization/financial-organizations"
+          element={
+            <ProtectedRoute requiredPermission="org.financial.read">
+              <FinancialOrganizations />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="organization/gl-mappings/:orgId?"
+          element={
+            <ProtectedRoute requiredPermission="org.financial_gl.read">
+              <GlMappings />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="organization/allocation-rules"
+          element={
+            <ProtectedRoute requiredPermission="org.financial_allocation.read">
+              <AllocationRules />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="organization/hierarchies"
+          element={
+            <ProtectedRoute requiredPermission="org.hierarchy.read">
+              <Hierarchies />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="organization/hierarchy-nodes/:hierarchyId?"
+          element={
+            <ProtectedRoute requiredPermission="org.hierarchy_node.read">
+              <HierarchyNodes />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="organization/hierarchy-edges/:hierarchyId?"
+          element={
+            <ProtectedRoute requiredPermission="org.hierarchy_edge.read">
+              <HierarchyEdges />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="organization/reporting-structure"
+          element={
+            <ProtectedRoute requiredPermission="org.reporting.read">
+              <ReportingStructure />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="organization/org-chart"
+          element={
+            <ProtectedRoute requiredPermission="org.chart.read">
+              <OrgChart />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="organization/change-management"
+          element={
+            <ProtectedRoute requiredPermission="org.change.read">
+              <ChangeManagement />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="organization/calendar-assignments"
+          element={
+            <ProtectedRoute requiredPermission="org.calendar_assignment.read">
+              <CalendarAssignments />
             </ProtectedRoute>
           }
         />

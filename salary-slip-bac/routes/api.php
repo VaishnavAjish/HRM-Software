@@ -985,6 +985,163 @@ Route::middleware('jwt.auth')->group(function () {
             ->whereNumber('id')->middleware('permission:org.calendar_assignment.delete');
     });
 
+    /* --------------------------------------------------- 03.01 Job Architecture */
+    Route::prefix('workforce')->middleware('module.schema:hr')->group(function () {
+        // Job Functions
+        Route::get('job-functions', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobFunctionController::class, 'index'])
+            ->middleware('permission:workforce.job_function.read');
+        Route::post('job-functions', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobFunctionController::class, 'store'])
+            ->middleware(['throttle:30,1', 'permission:workforce.job_function.create']);
+        Route::get('job-functions/{id}', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobFunctionController::class, 'show'])
+            ->whereNumber('id')->middleware('permission:workforce.job_function.read');
+        Route::put('job-functions/{id}', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobFunctionController::class, 'update'])
+            ->whereNumber('id')->middleware('permission:workforce.job_function.update');
+        Route::delete('job-functions/{id}', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobFunctionController::class, 'destroy'])
+            ->whereNumber('id')->middleware('permission:workforce.job_function.delete');
+
+        // Job Categories
+        Route::get('job-categories', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobCategoryController::class, 'index'])
+            ->middleware('permission:workforce.job_category.read');
+        Route::post('job-categories', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobCategoryController::class, 'store'])
+            ->middleware(['throttle:30,1', 'permission:workforce.job_category.create']);
+        Route::get('job-categories/{id}', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobCategoryController::class, 'show'])
+            ->whereNumber('id')->middleware('permission:workforce.job_category.read');
+        Route::put('job-categories/{id}', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobCategoryController::class, 'update'])
+            ->whereNumber('id')->middleware('permission:workforce.job_category.update');
+        Route::delete('job-categories/{id}', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobCategoryController::class, 'destroy'])
+            ->whereNumber('id')->middleware('permission:workforce.job_category.delete');
+
+        // Job Levels
+        Route::get('job-levels', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobLevelController::class, 'index'])
+            ->middleware('permission:workforce.job_level.read');
+        Route::post('job-levels', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobLevelController::class, 'store'])
+            ->middleware(['throttle:30,1', 'permission:workforce.job_level.create']);
+        Route::get('job-levels/{id}', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobLevelController::class, 'show'])
+            ->whereNumber('id')->middleware('permission:workforce.job_level.read');
+        Route::put('job-levels/{id}', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobLevelController::class, 'update'])
+            ->whereNumber('id')->middleware('permission:workforce.job_level.update');
+        Route::delete('job-levels/{id}', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobLevelController::class, 'destroy'])
+            ->whereNumber('id')->middleware('permission:workforce.job_level.delete');
+
+        // Job Grades
+        Route::get('job-grades', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobGradeController::class, 'index'])
+            ->middleware('permission:workforce.job_grade.read');
+        Route::post('job-grades', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobGradeController::class, 'store'])
+            ->middleware(['throttle:30,1', 'permission:workforce.job_grade.create']);
+        Route::get('job-grades/{id}', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobGradeController::class, 'show'])
+            ->whereNumber('id')->middleware('permission:workforce.job_grade.read');
+        Route::put('job-grades/{id}', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobGradeController::class, 'update'])
+            ->whereNumber('id')->middleware('permission:workforce.job_grade.update');
+        Route::delete('job-grades/{id}', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobGradeController::class, 'destroy'])
+            ->whereNumber('id')->middleware('permission:workforce.job_grade.delete');
+
+        // Job Families
+        Route::get('job-families', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobFamilyController::class, 'index'])
+            ->middleware('permission:workforce.job_family.read');
+        Route::post('job-families', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobFamilyController::class, 'store'])
+            ->middleware(['throttle:30,1', 'permission:workforce.job_family.create']);
+        Route::get('job-families/{id}', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobFamilyController::class, 'show'])
+            ->whereNumber('id')->middleware('permission:workforce.job_family.read');
+        Route::put('job-families/{id}', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobFamilyController::class, 'update'])
+            ->whereNumber('id')->middleware('permission:workforce.job_family.update');
+        Route::delete('job-families/{id}', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobFamilyController::class, 'destroy'])
+            ->whereNumber('id')->middleware('permission:workforce.job_family.delete');
+
+        // Designations
+        Route::get('designations', [\App\Http\Controllers\Api\V1\Admin\Workforce\DesignationController::class, 'index'])
+            ->middleware('permission:workforce.designation.read');
+        Route::post('designations', [\App\Http\Controllers\Api\V1\Admin\Workforce\DesignationController::class, 'store'])
+            ->middleware(['throttle:30,1', 'permission:workforce.designation.create']);
+        Route::get('designations/{id}', [\App\Http\Controllers\Api\V1\Admin\Workforce\DesignationController::class, 'show'])
+            ->whereNumber('id')->middleware('permission:workforce.designation.read');
+        Route::put('designations/{id}', [\App\Http\Controllers\Api\V1\Admin\Workforce\DesignationController::class, 'update'])
+            ->whereNumber('id')->middleware('permission:workforce.designation.update');
+        Route::delete('designations/{id}', [\App\Http\Controllers\Api\V1\Admin\Workforce\DesignationController::class, 'destroy'])
+            ->whereNumber('id')->middleware('permission:workforce.designation.delete');
+
+        // Jobs
+        Route::get('jobs', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobController::class, 'index'])
+            ->middleware('permission:workforce.job.read');
+        Route::post('jobs', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobController::class, 'store'])
+            ->middleware(['throttle:30,1', 'permission:workforce.job.create']);
+        Route::get('jobs/{id}', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobController::class, 'show'])
+            ->whereNumber('id')->middleware('permission:workforce.job.read');
+        Route::put('jobs/{id}', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobController::class, 'update'])
+            ->whereNumber('id')->middleware('permission:workforce.job.update');
+        Route::delete('jobs/{id}', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobController::class, 'destroy'])
+            ->whereNumber('id')->middleware('permission:workforce.job.delete');
+        Route::post('jobs/{id}/clone', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobController::class, 'clone'])
+            ->whereNumber('id')->middleware(['throttle:30,1', 'permission:workforce.job.create']);
+
+        // Job Descriptions
+        Route::get('jobs/{jobId}/descriptions', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobDescriptionController::class, 'index'])
+            ->whereNumber('jobId')->middleware('permission:workforce.job_description.read');
+        Route::post('jobs/{jobId}/descriptions', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobDescriptionController::class, 'store'])
+            ->whereNumber('jobId')->middleware(['throttle:30,1', 'permission:workforce.job_description.create']);
+        Route::get('jobs/{jobId}/descriptions/{id}', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobDescriptionController::class, 'show'])
+            ->whereNumber('jobId')->whereNumber('id')->middleware('permission:workforce.job_description.read');
+        Route::put('jobs/{jobId}/descriptions/{id}', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobDescriptionController::class, 'update'])
+            ->whereNumber('jobId')->whereNumber('id')->middleware('permission:workforce.job_description.update');
+        Route::post('jobs/{jobId}/descriptions/{id}/publish', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobDescriptionController::class, 'publish'])
+            ->whereNumber('jobId')->whereNumber('id')->middleware('permission:workforce.job_description.update');
+        Route::post('jobs/{jobId}/descriptions/{id}/archive', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobDescriptionController::class, 'archive'])
+            ->whereNumber('jobId')->whereNumber('id')->middleware('permission:workforce.job_description.update');
+        Route::delete('jobs/{jobId}/descriptions/{id}', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobDescriptionController::class, 'destroy'])
+            ->whereNumber('jobId')->whereNumber('id')->middleware('permission:workforce.job_description.delete');
+
+        // Job Responsibilities
+        Route::get('jobs/{jobId}/responsibilities', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobResponsibilityController::class, 'index'])
+            ->whereNumber('jobId')->middleware('permission:workforce.job_responsibility.read');
+        Route::post('jobs/{jobId}/responsibilities', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobResponsibilityController::class, 'store'])
+            ->whereNumber('jobId')->middleware(['throttle:30,1', 'permission:workforce.job_responsibility.create']);
+        Route::get('jobs/{jobId}/responsibilities/{id}', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobResponsibilityController::class, 'show'])
+            ->whereNumber('jobId')->whereNumber('id')->middleware('permission:workforce.job_responsibility.read');
+        Route::put('jobs/{jobId}/responsibilities/{id}', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobResponsibilityController::class, 'update'])
+            ->whereNumber('jobId')->whereNumber('id')->middleware('permission:workforce.job_responsibility.update');
+        Route::delete('jobs/{jobId}/responsibilities/{id}', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobResponsibilityController::class, 'destroy'])
+            ->whereNumber('jobId')->whereNumber('id')->middleware('permission:workforce.job_responsibility.delete');
+
+        // Job Requirements
+        Route::get('jobs/{jobId}/requirements', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobRequirementController::class, 'index'])
+            ->whereNumber('jobId')->middleware('permission:workforce.job_requirement.read');
+        Route::post('jobs/{jobId}/requirements', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobRequirementController::class, 'store'])
+            ->whereNumber('jobId')->middleware(['throttle:30,1', 'permission:workforce.job_requirement.create']);
+        Route::get('jobs/{jobId}/requirements/{id}', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobRequirementController::class, 'show'])
+            ->whereNumber('jobId')->whereNumber('id')->middleware('permission:workforce.job_requirement.read');
+        Route::put('jobs/{jobId}/requirements/{id}', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobRequirementController::class, 'update'])
+            ->whereNumber('jobId')->whereNumber('id')->middleware('permission:workforce.job_requirement.update');
+        Route::delete('jobs/{jobId}/requirements/{id}', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobRequirementController::class, 'destroy'])
+            ->whereNumber('jobId')->whereNumber('id')->middleware('permission:workforce.job_requirement.delete');
+
+        // Job Evaluations
+        Route::get('jobs/{jobId}/evaluations', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobEvaluationController::class, 'index'])
+            ->whereNumber('jobId')->middleware('permission:workforce.job_evaluation.read');
+        Route::post('jobs/{jobId}/evaluations', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobEvaluationController::class, 'store'])
+            ->whereNumber('jobId')->middleware(['throttle:30,1', 'permission:workforce.job_evaluation.create']);
+        Route::get('jobs/{jobId}/evaluations/{id}', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobEvaluationController::class, 'show'])
+            ->whereNumber('jobId')->whereNumber('id')->middleware('permission:workforce.job_evaluation.read');
+        Route::put('jobs/{jobId}/evaluations/{id}', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobEvaluationController::class, 'update'])
+            ->whereNumber('jobId')->whereNumber('id')->middleware('permission:workforce.job_evaluation.update');
+        Route::post('jobs/{jobId}/evaluations/{id}/submit', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobEvaluationController::class, 'submit'])
+            ->whereNumber('jobId')->whereNumber('id')->middleware('permission:workforce.job_evaluation.update');
+        Route::post('jobs/{jobId}/evaluations/{id}/approve', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobEvaluationController::class, 'approve'])
+            ->whereNumber('jobId')->whereNumber('id')->middleware('permission:workforce.job_evaluation.approve');
+        Route::post('jobs/{jobId}/evaluations/{id}/reject', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobEvaluationController::class, 'reject'])
+            ->whereNumber('jobId')->whereNumber('id')->middleware('permission:workforce.job_evaluation.approve');
+        Route::delete('jobs/{jobId}/evaluations/{id}', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobEvaluationController::class, 'destroy'])
+            ->whereNumber('jobId')->whereNumber('id')->middleware('permission:workforce.job_evaluation.delete');
+
+        // Job Classifications
+        Route::get('jobs/{jobId}/classification', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobClassificationController::class, 'show'])
+            ->whereNumber('jobId')->middleware('permission:workforce.job_classification.read');
+        Route::post('jobs/{jobId}/classification', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobClassificationController::class, 'store'])
+            ->whereNumber('jobId')->middleware(['throttle:30,1', 'permission:workforce.job_classification.create']);
+        Route::put('jobs/{jobId}/classification', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobClassificationController::class, 'update'])
+            ->whereNumber('jobId')->middleware('permission:workforce.job_classification.update');
+        Route::delete('jobs/{jobId}/classification', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobClassificationController::class, 'destroy'])
+            ->whereNumber('jobId')->middleware('permission:workforce.job_classification.delete');
+    });
+
     Route::group([], function () {
         Route::post('/account-master', [UserController::class, 'accountMaster'])->middleware(['throttle:20,1', 'permission:hr.employee.import']);
         Route::post('register', [AuthController::class, 'register'])->middleware('permission:hr.employee.create');

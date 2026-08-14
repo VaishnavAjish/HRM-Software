@@ -11,6 +11,7 @@ import toast from "react-hot-toast";
 import ModernDatePicker from "../../components/ModernDatePicker";
 import PrintableForm from "../../components/forms/PrintableForm";
 import { authApi, salaryApi, appointmentV1Api, resolveWriteCompanyId } from "../../utils/api";
+import { normalizeCompanyId } from "../../config/companyConfig";
 import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";
 import { useProvisioningOptions } from "../../hooks/useProvisioningOptions";
@@ -119,7 +120,7 @@ const AppointmentModal = ({
         const res = await salaryApi.getDepartments(
           accessToken,
           tokenType,
-          selectedCompanyId || companyId
+          normalizeCompanyId(selectedCompanyId || companyId)
         );
         if (cancelled) return;
         setDepartmentsList(res?.data?.map((dept) => dept.name) || []);

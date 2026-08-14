@@ -168,14 +168,20 @@ function getAdminNav(companyId, user, isAllCompanies, isModuleAvailable = () => 
 
   /*
    * Organization — the workspace for enterprise attributes, legal entities,
-   * locations and calendars. Shown to anyone who can read any of them; the
-   * route guard decides the pages inside.
+   * locations, calendars, and the full Domain 02 structure.
    */
   if (rawRole === 0
     || hasAccess("org.master.read")
     || hasAccess("org.legal_entity.read")
     || hasAccess("org.location.read")
-    || hasAccess("org.calendar.read")) {
+    || hasAccess("org.calendar.read")
+    || hasAccess("org.enterprise.read")
+    || hasAccess("org.unit.read")
+    || hasAccess("org.org_location.read")
+    || hasAccess("org.financial.read")
+    || hasAccess("org.chart.read")
+    || hasAccess("org.change.read")
+    || hasAccess("org.calendar_assignment.read")) {
     nav.push({
       label: "Organization",
       icon: Building2,
@@ -184,6 +190,15 @@ function getAdminNav(companyId, user, isAllCompanies, isModuleAvailable = () => 
         { to: "/admin/organization/legal-entities", label: "Legal Entities" },
         { to: "/admin/organization/locations", label: "Locations" },
         { to: "/admin/organization/calendars", label: "Calendars" },
+        { to: "/admin/organization/enterprises", label: "Enterprises" },
+        { to: "/admin/organization/legal-entity-profiles", label: "Legal Entity Profiles" },
+        { to: "/admin/organization/org-units", label: "Organization Units" },
+        { to: "/admin/organization/org-locations", label: "Organization Locations" },
+        { to: "/admin/organization/location-types", label: "Location Types" },
+        { to: "/admin/organization/financial-organizations", label: "Financial Organizations" },
+        { to: "/admin/organization/org-chart", label: "Org Chart" },
+        { to: "/admin/organization/change-management", label: "Change Management" },
+        { to: "/admin/organization/calendar-assignments", label: "Calendar Assignments" },
       ],
     });
   }
