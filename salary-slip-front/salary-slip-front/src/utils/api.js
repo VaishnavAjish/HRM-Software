@@ -124,7 +124,7 @@ export async function apiRequest(path, options = {}) {
         error.status = response.status;
         error.data = data;
         if (response.status === 401 && options.headers?.Authorization) {
-          window.dispatchEvent(new CustomEvent("auth:unauthorized"));
+          window.dispatchEvent(new CustomEvent("auth:unauthorized", { detail: { status: response.status, data, message, url } }));
         }
         throw error;
       }
@@ -198,7 +198,7 @@ export async function apiRequest(path, options = {}) {
     error.cause = parsed.parseError;
 
     if (response.status === 401 && headers.Authorization) {
-      window.dispatchEvent(new CustomEvent("auth:unauthorized"));
+      window.dispatchEvent(new CustomEvent("auth:unauthorized", { detail: { status: response.status, data, message, url } }));
     }
 
     throw error;
@@ -214,7 +214,7 @@ export async function apiRequest(path, options = {}) {
     // as a session expiring — a plain login attempt with a wrong password is
     // also a 401 but carries no Authorization header, so it's excluded here.
     if (response.status === 401 && headers.Authorization) {
-      window.dispatchEvent(new CustomEvent("auth:unauthorized"));
+      window.dispatchEvent(new CustomEvent("auth:unauthorized", { detail: { status: response.status, data, message, url } }));
     }
 
     throw error;

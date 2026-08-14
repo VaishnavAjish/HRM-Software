@@ -250,7 +250,40 @@ export function AuthProvider({ children }) {
   // Nothing else was clearing the stale session, so the app just kept
   // showing generic error toasts forever instead of returning to /login.
   useEffect(() => {
-    function handleUnauthorized() {
+    function handleUnauthorized(event) {
+      // Only logout on actual token expiration, not permission denied
+      const detail = event?.detail;
+      const errorData = detail?.data || detail?.error;
+      const status = detail?.status;
+      const errorCode = errorData?.code || errorData?.error?.code || "";
+      const rawMessage = detail?.message || (typeof errorData === "string" ? errorData : (errorData?.message || errorData?.error?.message || ""));
+      const errorMessage = String(rawMessage || "").toLowerCase();
+
+      // Explicit permission denied or forbidden status/code
+      const isPermissionDenied =
+        status === 403 ||
+        errorCode === "PERMISSION_DENIED" ||
+        errorCode === "AUTHORIZATION_REQUIRED" ||
+        errorMessage.includes("permission") ||
+        errorMessage.includes("forbidden") ||
+        errorMessage.includes("not permitted") ||
+        errorMessage.includes("access denied");
+
+      // Specific token expiration indicators
+      const isTokenExpired =
+        errorMessage.includes("expired") ||
+        errorMessage.includes("token invalid") ||
+        errorMessage.includes("token expired") ||
+        errorMessage.includes("unauthenticated") ||
+        errorMessage.includes("token not found") ||
+        errorMessage.includes("signature has expired");
+
+      if (isPermissionDenied && !isTokenExpired) {
+        // Permission denied - show warning log, do not log out
+        console.warn("[AuthContext] Permission denied on API call, ignoring auto-logout:", rawMessage || errorCode, detail?.url);
+        return;
+      }
+
       setUser((prev) => {
         if (!prev) return prev;
         toast.error("Your session has expired. Please log in again.");
