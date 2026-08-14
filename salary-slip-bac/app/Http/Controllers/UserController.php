@@ -2201,6 +2201,20 @@ class UserController extends Controller
      */
     public function postTrialForm(Request $request)
     {
+        $validator = Validator::make($request->all(), [
+            'form_no' => 'nullable|unique:users,form_no',
+        ], [
+            'form_no.unique' => 'This Form No is already used.',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => false,
+                'message' => $validator->errors()->first(),
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
         $userAuth = auth('api')->user();
 
         $data = array_intersect_key(
@@ -2396,6 +2410,20 @@ class UserController extends Controller
         $user = $this->findTrialFormFor(auth('api')->user(), $id);
         if (! $user) {
             return response()->json(['status' => false, 'message' => 'Not found'], 404);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'form_no' => 'nullable|unique:users,form_no,' . $user->id,
+        ], [
+            'form_no.unique' => 'This Form No is already used.',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => false,
+                'message' => $validator->errors()->first(),
+                'errors' => $validator->errors()
+            ], 422);
         }
 
         $data = Arr::except($request->all(), self::TRIAL_FORM_PROTECTED_FIELDS);

@@ -52,7 +52,11 @@ export function AuthProvider({ children }) {
               if (saved.user) setIsAuthenticated(false);
             }
           } catch (err) {
-            // network issue
+            if (err.status === 401 || err.status === 403) {
+              await clearPersistedSession();
+              if (saved.user) setIsAuthenticated(false);
+            }
+            console.log("Auth catch:", err.message);
           } finally {
             if (!saved.user) setBootstrapping(false);
           }

@@ -456,6 +456,8 @@ export default function Login() {
       await authApi.verifyMobileOtp(fMobileNum.trim(), entered, {
         emp_code: fEmpCode,
         verification_token: verificationToken,
+        company_code: fCompanyId,
+        unit: fUnit,
       });
 
       setOtpAnim("orbit");

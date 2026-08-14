@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const BASE_URL = 'https://niss.pro/api';
+const BASE_URL = 'http://192.168.1.53:8000/api'; // changed to local
 
 export class ApiError extends Error {
   constructor(message, status, payload) {

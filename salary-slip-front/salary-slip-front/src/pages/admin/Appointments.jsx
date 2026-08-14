@@ -925,7 +925,7 @@ export default function Appointments() {
   const { can } = useAuthorization();
   const { companyScope, scopeKey } = useCompany();
   const appointmentAccess = appointmentActionAccess(can);
-  const canCreateAppointment = appointmentAccess.create;
+  const canCreateAppointment = appointmentAccess.create || user?.role === "agent";
   const canUpdateAppointment = appointmentAccess.update;
   const canDeleteAppointment = appointmentAccess.deleteRecord;
   const canCreateEmployee = appointmentAccess.createEmployee;

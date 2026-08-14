@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
-import { ClipboardList, FileText, CheckCircle2, Clock, Printer, Eye, ArrowRightCircle, Loader2 } from "lucide-react";
+import { ClipboardList, FileText, CheckCircle2, Clock, Printer, Eye, ArrowRightCircle, Loader2, Plus } from "lucide-react";
 import AppointmentModal from "../auth/AppointmentModal";
 import TrialFormModal from "../auth/TrialFormModal";
 import { authApi } from "../../utils/api";
@@ -21,6 +21,7 @@ export default function AgentDashboard() {
   // and syncing it from an effect meant the URL and the modal could disagree
   // for a render, and a back-button that changed the URL without reopening.
   const formOpen = new URLSearchParams(location.search).get("modal") === "appointment";
+  const trialFormOpen = new URLSearchParams(location.search).get("modal") === "trial";
   const [viewCandidate, setViewCandidate] = useState(null);
   const [processCandidate, setProcessCandidate] = useState(null);
   const [candidates, setCandidates] = useState([]);
@@ -380,6 +381,24 @@ export default function AgentDashboard() {
             <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">Agent Portal</h1>
             <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-1">Manage and track candidate applications</p>
           </div>
+          <div className="flex flex-wrap items-center gap-3">
+            {(!user?.company_code || user?.company_code === 'all-companies' || user?.company_code?.includes('nidhi-impex')) && (
+              <button
+                onClick={() => navigate("?modal=trial")}
+                className="px-4 py-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-400 dark:hover:bg-indigo-900/50 rounded-xl font-semibold text-sm transition-colors flex items-center gap-2"
+              >
+                <FileText size={16} />
+                New Trial Form
+              </button>
+            )}
+            <button
+              onClick={() => navigate("?modal=appointment")}
+              className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-semibold text-sm shadow-sm shadow-brand-600/20 transition-all flex items-center gap-2"
+            >
+              <Plus size={16} />
+              New Appointment
+            </button>
+          </div>
         </div>
 
         {/* Stats Row */}
@@ -656,11 +675,21 @@ export default function AgentDashboard() {
       />
 
       <TrialFormModal
-        isOpen={!!viewCandidate && viewCandidate.type === 'trial'}
-        onClose={() => setViewCandidate(null)}
-        initialData={viewCandidate && viewCandidate.type === 'trial' ? { id: viewCandidate.id || viewCandidate._id, raw: viewCandidate, addedBy: viewCandidate.addedBy || user?.id } : null}
+        isOpen={trialFormOpen || (!!viewCandidate && viewCandidate.type === 'trial')}
+        onClose={() => {
+          if (viewCandidate) {
+            setViewCandidate(null);
+          } else {
+            handleModalClose(false);
+          }
+        }}
+        initialData={viewCandidate && viewCandidate.type === 'trial' ? { id: viewCandidate.id || viewCandidate._id, raw: viewCandidate, addedBy: viewCandidate.addedBy || user?.id } : { addedBy: user?.id }}
         onSuccess={() => {
-          setViewCandidate(null);
+          if (viewCandidate) {
+            setViewCandidate(null);
+          } else {
+            handleModalClose(true);
+          }
           refetchCandidates();
         }}
       />

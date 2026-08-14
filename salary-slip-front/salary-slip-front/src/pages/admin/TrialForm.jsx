@@ -350,7 +350,7 @@ export default function TrialForm() {
   const { can } = useAuthorization();
   const { companyId, companyScope, scopeKey } = useCompany();
   const trialAccess = trialActionAccess(can);
-  const canCreateTrial = trialAccess.create;
+  const canCreateTrial = trialAccess.create || user?.role === "agent";
   const canUpdateTrial = trialAccess.update;
   const canDeleteTrial = trialAccess.deleteRecord;
   const canCreateAppointment = trialAccess.processIntoAppointment;
