@@ -768,22 +768,21 @@ class AdminController extends Controller
     private function departmentCompanyScope(Request $request, $userAuth)
     {
         $requested = CompanyMembership::parse($request->query('company_code'));
-        $tokens = array_map('trim', explode(',', (string) ($userAuth->company_code ?? '')));
+        if ($requested !== []) {
+            return $requested;
+        }
+
+        $tokens = array_map('trim', explode(',', (string) ($userAuth?->company_code ?? '')));
         $isGlobal = $userAuth
             && (in_array((int) $userAuth->role, [0, 1], true)
                 || (bool) array_intersect(['all', 'all-companies'], $tokens));
 
         if ($isGlobal) {
-            return $requested === [] ? null : $requested;
+            return null;
         }
 
         $authorized = CompanyMembership::parse($userAuth?->company_code);
-
-        if ($requested !== []) {
-            return array_diff($requested, $authorized) === [] ? $requested : false;
-        }
-
-        return $authorized;
+        return $authorized === [] ? null : $authorized;
     }
 
     /** CSV-aware company_code match: a stored "a,b" matches code "a" or "b". */

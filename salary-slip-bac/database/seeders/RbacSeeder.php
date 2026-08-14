@@ -163,6 +163,7 @@ class RbacSeeder extends Seeder
         (new CompanyUnitPermissionSeeder())->run();
         (new OrganizationPermissionSeeder())->run();
         (new AadhaarRevealPermissionSeeder())->run();
+        (new JobArchitecturePermissionSeeder())->run();
     }
 
     private function role(

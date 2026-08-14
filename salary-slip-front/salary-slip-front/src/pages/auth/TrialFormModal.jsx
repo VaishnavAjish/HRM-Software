@@ -16,15 +16,14 @@ const getTodayDate = () => {
 };
 
 const DEFAULT_DEPARTMENTS = [
-  "4P DEPT",
-  "Account",
-  "BLOCKING DEPT",
-  "cutting",
   "IT",
+  "Office",
   "Polish-01 (MFG)",
   "Polish-02 (MFG)",
   "Polish-03 (MFG)",
+  "Polish-05 (MFG)",
   "Polish-07 (MFG)",
+  "Polish-11 (MFG)",
   "Polish-14 (MFG)",
   "Polish-15 (MFG)",
   "Pricing Dept.",

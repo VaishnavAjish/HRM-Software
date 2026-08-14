@@ -1,5 +1,3 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import toast from "react-hot-toast";
 import {
   FileText, Plus, RefreshCw, Search, Loader2, Pencil, Trash2, Power, PowerOff, Shield,
   Building2, MapPin, Users, CreditCard, FolderOpen,
@@ -8,7 +6,6 @@ import Badge from "../../../components/ui/Badge";
 import Button from "../../../components/ui/Button";
 import Card from "../../../components/ui/Card";
 import Modal from "../../../components/ui/Modal";
-import Tabs from "../../../components/ui/Tabs";
 import { SkeletonTable } from "../../../components/ui/Skeleton";
 import { useAuth } from "../../../context/AuthContext";
 import { useAuthorization } from "../../../hooks/useAuthorization";
@@ -407,7 +404,21 @@ export default function LegalEntityProfiles() {
           <Button variant="secondary" onClick={() => setSelectedProfile(null)}><Back size={16} /> Back to Profiles</Button>
           <h1 className="text-xl font-bold">{selectedProfile.legalName}</h1>
         </div>
-        <Tabs tabs={tabsToRender} />
+        <div className="flex gap-2 border-b border-gray-200 dark:border-gray-700 pb-2 mb-4">
+          {tabsToRender.map((tab) => (
+            <Button
+              key={tab.id}
+              variant={activeTab === tab.id ? "primary" : "secondary"}
+              className="text-sm"
+              onClick={() => setActiveTab(tab.id)}
+            >
+              {tab.icon && <tab.icon size={14} className="mr-1" />} {tab.label}
+            </Button>
+          ))}
+        </div>
+        <div className="space-y-4">
+          {tabsToRender.find((t) => t.id === activeTab)?.content}
+        </div>
         {dialog && renderChildModal()}
       </div>
     );

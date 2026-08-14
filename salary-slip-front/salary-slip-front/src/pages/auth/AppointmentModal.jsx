@@ -29,6 +29,20 @@ const DOC_FIELDS = [
   { key: "account_book", label: "Bank Passbook" },
 ];
 
+const DEFAULT_DEPARTMENTS = [
+  "IT",
+  "Office",
+  "Polish-01 (MFG)",
+  "Polish-02 (MFG)",
+  "Polish-03 (MFG)",
+  "Polish-05 (MFG)",
+  "Polish-07 (MFG)",
+  "Polish-11 (MFG)",
+  "Polish-14 (MFG)",
+  "Polish-15 (MFG)",
+  "Pricing Dept.",
+];
+
 const getBlankFormData = (companyCode = "") => ({
   photo: null,
   emp_code: "",
@@ -1123,25 +1137,15 @@ const AppointmentModal = ({
                     error={errors.joining_date}
                     type="date"
                   />
-                  {departmentsList.length > 0 ? (
-                    <RowField
-                      label="Department"
-                      name="department"
-                      value={formData.department}
-                      onChange={handleChange}
-                      error={errors.department}
-                      type="select"
-                      options={departmentsList}
-                    />
-                  ) : (
-                    <RowField
-                      label="Department"
-                      name="department"
-                      value={formData.department}
-                      onChange={handleChange}
-                      error={errors.department}
-                    />
-                  )}
+                  <RowField
+                    label="Department"
+                    name="department"
+                    value={formData.department}
+                    onChange={handleChange}
+                    error={errors.department}
+                    type="select"
+                    options={departmentsList.length > 0 ? departmentsList : DEFAULT_DEPARTMENTS}
+                  />
                   <RowField
                     label="Designation"
                     name="designation"
@@ -1846,21 +1850,23 @@ const RowField = ({
           className={`w-full sm:flex-grow focus:outline-none transition-colors border rounded-lg px-3 py-2 bg-gray-50 text-sm h-10 ${error ? "border-red-500 bg-red-50" : "border-gray-300 focus:border-brand-500"} sm:border-t-0 sm:border-l-0 sm:border-r-0 sm:border-b sm:rounded-none sm:px-1 sm:h-5 sm:text-[13px] ${disabled ? "bg-gray-100 cursor-not-allowed text-gray-500" : "sm:bg-transparent"} sm:border-black`}
         />
       ) : type === "select" ? (
-        <select
-          id={`appt-${name}`}
-          name={name}
-          value={value}
-          onChange={onChange}
-          disabled={disabled}
-          className={`w-full sm:flex-grow focus:outline-none transition-colors border rounded-lg px-3 py-2 bg-gray-50 text-sm h-10 ${error ? "border-red-500 bg-red-50" : "border-gray-300 focus:border-brand-500"} sm:border-t-0 sm:border-l-0 sm:border-r-0 sm:border-b sm:rounded-none sm:px-1 sm:h-7 sm:py-0 sm:text-[13px] ${disabled ? "bg-gray-100 cursor-not-allowed text-gray-500" : "sm:bg-transparent"} sm:border-black`}
-        >
-          <option value="">Select {label}</option>
-          {options.map((opt) => (
-            <option key={opt.value || opt} value={opt.value || opt}>
-              {opt.label || opt}
-            </option>
-          ))}
-        </select>
+        <div className="w-full sm:flex-grow relative">
+          <select
+            id={`appt-${name}`}
+            name={name}
+            value={value}
+            onChange={onChange}
+            disabled={disabled}
+            className={`w-full focus:outline-none transition-colors border rounded-lg px-3 py-2 bg-white text-sm h-10 ${error ? "border-red-500 bg-red-50" : "border-gray-300 focus:border-brand-500"} sm:border-t-0 sm:border-l-0 sm:border-r-0 sm:border-b sm:rounded-none sm:px-2 sm:h-7 sm:py-0 sm:text-[13px] ${disabled ? "bg-gray-100 cursor-not-allowed text-gray-500" : "sm:bg-white"} sm:border-black font-semibold text-black`}
+          >
+            <option value="">Select {label}</option>
+            {options.map((opt) => (
+              <option key={opt.value || opt} value={opt.value || opt}>
+                {opt.label || opt}
+              </option>
+            ))}
+          </select>
+        </div>
       ) : (
         <input
           id={`appt-${name}`}

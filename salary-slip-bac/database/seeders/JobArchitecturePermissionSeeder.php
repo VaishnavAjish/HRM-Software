@@ -215,7 +215,6 @@ class JobArchitecturePermissionSeeder extends Seeder
                 $payload = [
                     'role_id' => $role->id,
                     'permission_id' => $permission->id,
-                    'granted_by' => null,
                 ];
 
                 if ($hasEffect) {

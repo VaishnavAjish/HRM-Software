@@ -1,9 +1,8 @@
 import {
   Building2,
   Building,
-  Sitemap,
-  Coins,
   GitBranch,
+  Coins,
   FileText,
   Users,
   BarChart2,
@@ -30,10 +29,6 @@ function toUpperCase(value) {
 
 function booleanTransform(value) {
   return value === "true" || value === true;
-}
-
-function formatType(value) {
-  return (value || "").replace(/_/g, " ");
 }
 
 function renderType(i) {
@@ -369,7 +364,7 @@ export const resourceConfigs = {
   orgUnits: {
     title: "Organization Units",
     description: "Business units, divisions, functions, departments, teams, and projects.",
-    icon: Sitemap,
+    icon: GitBranch,
     api: {
       list: organizationApi.orgUnits,
       create: organizationApi.createOrgUnit,
@@ -382,11 +377,11 @@ export const resourceConfigs = {
     columns: [
       { key: "code", header: "Code", className: "font-mono text-xs" },
       { key: "name", header: "Name" },
-      { key: "type", header: "Type", render: (i) => <span className="capitalize">{i.type?.replace("_", " ")}</span> },
+      { key: "type", header: "Type", render: renderType },
       { key: "parentName", header: "Parent" },
       { key: "companyName", header: "Company" },
       { key: "managerName", header: "Manager" },
-      { key: "status", header: "Status", render: (i) => i.status },
+      { key: "status", header: "Status", render: renderStatus },
     ],
     formFields: [
       { name: "enterpriseId", label: "Enterprise", type: "select", options: "companies", transform: companyIdTransform },
@@ -446,14 +441,14 @@ export const resourceConfigs = {
     columns: [
       { key: "code", header: "Code", className: "font-mono text-xs" },
       { key: "name", header: "Name" },
-      { key: "kind", header: "Kind", render: (i) => <span className="capitalize">{i.kind}</span> },
+      { key: "kind", header: "Kind", render: renderKind },
       { key: "locationTypeName", header: "Type" },
       { key: "parentName", header: "Parent" },
       { key: "companyName", header: "Company" },
       { key: "city", header: "City" },
       { key: "state", header: "State" },
       { key: "countryCode", header: "Country" },
-      { key: "status", header: "Status", render: (i) => i.status },
+      { key: "status", header: "Status", render: renderStatus },
     ],
     formFields: [
       { name: "enterpriseId", label: "Enterprise", type: "select", options: "companies", transform: companyIdTransform },
@@ -577,10 +572,10 @@ export const resourceConfigs = {
       { key: "unitName", header: "Org Unit" },
       { key: "positionName", header: "Position" },
       { key: "userName", header: "Employee" },
-      { key: "mappingType", header: "Type", render: (i) => <span className="capitalize">{i.mappingType}</span> },
+      { key: "mappingType", header: "Type", render: renderMappingType },
       { key: "effectiveFrom", header: "Effective From" },
       { key: "effectiveTo", header: "Effective To" },
-      { key: "isActive", header: "Status", render: (i) => i.isActive ? "Active" : "Inactive" },
+      { key: "isActive", header: "Status", render: renderIsActive },
     ],
     formFields: [
       { name: "organizationLocationId", label: "Location *", required: true, type: "select", options: "companies", transform: companyIdTransform },
@@ -629,11 +624,11 @@ export const resourceConfigs = {
     columns: [
       { key: "code", header: "Code", className: "font-mono text-xs" },
       { key: "name", header: "Name" },
-      { key: "type", header: "Type", render: (i) => <span className="capitalize">{i.type?.replace("_", " ")}</span> },
+      { key: "type", header: "Type", render: renderType },
       { key: "parentName", header: "Parent" },
       { key: "companyName", header: "Company" },
       { key: "managerName", header: "Manager" },
-      { key: "status", header: "Status", render: (i) => i.status },
+      { key: "status", header: "Status", render: renderStatus },
     ],
     formFields: [
       { name: "enterpriseId", label: "Enterprise", type: "select", options: "companies", transform: companyIdTransform },
@@ -684,8 +679,8 @@ export const resourceConfigs = {
     columns: [
       { key: "glAccountCode", header: "GL Account Code", className: "font-mono text-xs" },
       { key: "glAccountName", header: "GL Account Name" },
-      { key: "mappingType", header: "Type", render: (i) => <span className="capitalize">{i.mappingType}</span> },
-      { key: "isActive", header: "Status", render: (i) => i.isActive ? "Active" : "Inactive" },
+      { key: "mappingType", header: "Type", render: renderMappingType },
+      { key: "isActive", header: "Status", render: renderIsActive },
       { key: "effectiveFrom", header: "Effective From" },
       { key: "effectiveTo", header: "Effective To" },
     ],
@@ -802,7 +797,7 @@ export const resourceConfigs = {
   hierarchies: {
     title: "Organization Hierarchies",
     description: "Hierarchy definitions with nodes and edges for org charts and reporting.",
-    icon: Sitemap,
+    icon: GitBranch,
     api: {
       list: organizationApi.hierarchies,
       create: organizationApi.createHierarchy,
@@ -814,13 +809,13 @@ export const resourceConfigs = {
     columns: [
       { key: "code", header: "Code", className: "font-mono text-xs" },
       { key: "name", header: "Name" },
-      { key: "type", header: "Type", render: (i) => <span className="capitalize">{i.type}</span> },
+      { key: "type", header: "Type", render: renderType },
       { key: "enterpriseName", header: "Enterprise" },
       { key: "companyName", header: "Company" },
       { key: "nodeCount", header: "Nodes", className: "text-right" },
       { key: "edgeCount", header: "Edges", className: "text-right" },
-      { key: "status", header: "Status", render: (i) => i.status },
-      { key: "isActive", header: "Active", render: (i) => i.isActive ? "Yes" : "No" },
+      { key: "status", header: "Status", render: renderStatus },
+      { key: "isActive", header: "Active", render: renderActiveYesNo },
     ],
     formFields: [
       { name: "enterpriseId", label: "Enterprise", type: "select", options: "companies", transform: companyIdTransform },
@@ -867,9 +862,9 @@ export const resourceConfigs = {
     columns: [
       { key: "code", header: "Code", className: "font-mono text-xs" },
       { key: "name", header: "Name" },
-      { key: "nodeType", header: "Node Type", render: (i) => <span className="capitalize">{i.nodeType?.replace("_", " ")}</span> },
+      { key: "nodeType", header: "Node Type", render: renderNodeType },
       { key: "nodeId", header: "Ref ID" },
-      { key: "isActive", header: "Active", render: (i) => i.isActive ? "Yes" : "No" },
+      { key: "isActive", header: "Active", render: renderActiveYesNo },
     ],
     formFields: [
       { name: "nodeType", label: "Node Type *", required: true, type: "select", options: NODE_TYPES },
@@ -908,8 +903,8 @@ export const resourceConfigs = {
     columns: [
       { key: "parentNodeId", header: "Parent Node ID" },
       { key: "childNodeId", header: "Child Node ID" },
-      { key: "edgeType", header: "Edge Type", render: (i) => <span className="capitalize">{i.edgeType?.replace("_", " ")}</span> },
-      { key: "isActive", header: "Active", render: (i) => i.isActive ? "Yes" : "No" },
+      { key: "edgeType", header: "Edge Type", render: renderEdgeType },
+      { key: "isActive", header: "Active", render: renderActiveYesNo },
       { key: "effectiveFrom", header: "Effective From" },
       { key: "effectiveTo", header: "Effective To" },
     ],

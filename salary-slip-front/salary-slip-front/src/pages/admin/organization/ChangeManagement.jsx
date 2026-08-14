@@ -2,11 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import {
   Plus, RefreshCw, Search, Loader2, Pencil, Trash2, Power, PowerOff, Shield,
-  Building2, Clock, Check, XMark, AlertCircle,
+  Building2, Clock, Check, X, AlertCircle, Eye, Calendar,
 } from "lucide-react";
 import Badge from "../../../components/ui/Badge";
 import Button from "../../../components/ui/Button";
 import Card from "../../../components/ui/Card";
+import Modal from "../../../components/ui/Modal";
 import { SkeletonTable } from "../../../components/ui/Skeleton";
 import { useAuth } from "../../../context/AuthContext";
 import { useAuthorization } from "../../../hooks/useAuthorization";
@@ -219,7 +220,7 @@ export default function ChangeManagementPage() {
                             size="sm" variant="ghost"
                             onClick={() => run(() => organizationApi.rejectOrgChange(change.id, "User rejected", token, tokenType), "Change rejected")}
                           >
-                            <XMark size={14} /> Reject
+                            <X size={14} /> Reject
                           </Button>
                         )}
                         {change.status === "draft" && (
