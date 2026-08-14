@@ -809,7 +809,10 @@ class PermissionRegistry
             'type' => self::TYPE_PAGE, 'label' => 'Agent Dashboard', 'order' => 10,
             'parent' => 'ui.portals', 'route' => '/agent',
             'description' => 'Open the agent portal dashboard.',
-            'implies' => ['ui.agent.dashboard.view'],
+            // The dashboard's primary data call is GET /agent/candidates, gated
+            // on recruitment.candidate.read — without it here the matrix can
+            // show the page as allowed while its data answers 403.
+            'implies' => ['ui.agent.dashboard.view', 'recruitment.candidate.read'],
         ],
         'ui.portals.agent_trial_forms' => [
             'type' => self::TYPE_PAGE, 'label' => 'Agent Trial Forms', 'order' => 12,
