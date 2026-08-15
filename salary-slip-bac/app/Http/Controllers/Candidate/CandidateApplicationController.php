@@ -82,8 +82,10 @@ class CandidateApplicationController extends Controller
 
         // Create initial stage history entry
         $candidate->stageHistory()->create([
-            'stage' => 'applied',
+            'from_stage' => null,
+            'to_stage' => 'applied',
             'notes' => 'Applied via Public Job Portal',
+            'created_at' => now(),
         ]);
 
         return response()->json([

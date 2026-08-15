@@ -13,7 +13,7 @@ class Candidate extends Model
         'requisition_id', 'candidate_account_id', 'name', 'email', 'phone', 'experience_years',
         'current_company', 'current_designation', 'skills', 'resume_path',
         'resume_original_name', 'source', 'recruiter_id', 'priority', 'stage',
-        'rating', 'notes', 'rejection_reason', 'company_code', 'unit', 'created_by',
+        'rating', 'notes', 'rejection_reason', 'ats_score', 'company_code', 'unit', 'created_by',
     ];
 
     protected function casts(): array
@@ -48,8 +48,37 @@ class Candidate extends Model
         return $this->hasMany(Interview::class, 'candidate_id');
     }
 
+    public function documents()
+    {
+        return $this->hasMany(CandidateDocument::class, 'candidate_id');
+    }
+
     public function offers()
     {
         return $this->hasMany(Offer::class, 'candidate_id');
+    }
+
+    /** Wave 4 — Candidate CRM relations. */
+    public function tags()
+    {
+        return $this->belongsToMany(CandidateTag::class, 'candidate_candidate_tag')
+            ->withTimestamps();
+    }
+
+    public function notes()
+    {
+        return $this->hasMany(CandidateNote::class, 'candidate_id')->orderByDesc('created_at');
+    }
+
+    public function talentPools()
+    {
+        return $this->belongsToMany(TalentPool::class, 'candidate_talent_pool')
+            ->withPivot('added_by')
+            ->withTimestamps();
+    }
+
+    public function communications()
+    {
+        return $this->hasMany(CandidateCommunication::class, 'candidate_id')->orderByDesc('created_at');
     }
 }

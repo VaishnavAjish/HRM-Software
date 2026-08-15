@@ -1,0 +1,54 @@
+[
+    {
+        "id": 1,
+        "approval_cycle_id": 1,
+        "step_order": 1,
+        "step_type": "HR_MANAGER",
+        "assigned_to": 2709,
+        "status": "PENDING",
+        "comment": null,
+        "decided_by": null,
+        "decided_at": null,
+        "created_at": "2026-08-15T09:49:38.000000Z",
+        "updated_at": "2026-08-15T09:49:38.000000Z"
+    },
+    {
+        "id": 2,
+        "approval_cycle_id": 1,
+        "step_order": 2,
+        "step_type": "DIRECTOR",
+        "assigned_to": null,
+        "status": "WAITING",
+        "comment": null,
+        "decided_by": null,
+        "decided_at": null,
+        "created_at": "2026-08-15T09:49:38.000000Z",
+        "updated_at": "2026-08-15T09:49:38.000000Z"
+    },
+    {
+        "id": 3,
+        "approval_cycle_id": 2,
+        "step_order": 1,
+        "step_type": "HR_MANAGER",
+        "assigned_to": 2709,
+        "status": "PENDING",
+        "comment": null,
+        "decided_by": null,
+        "decided_at": null,
+        "created_at": "2026-08-15T10:35:26.000000Z",
+        "updated_at": "2026-08-15T10:35:26.000000Z"
+    },
+    {
+        "id": 4,
+        "approval_cycle_id": 2,
+        "step_order": 2,
+        "step_type": "DIRECTOR",
+        "assigned_to": null,
+        "status": "WAITING",
+        "comment": null,
+        "decided_by": null,
+        "decided_at": null,
+        "created_at": "2026-08-15T10:35:26.000000Z",
+        "updated_at": "2026-08-15T10:35:26.000000Z"
+    }
+]

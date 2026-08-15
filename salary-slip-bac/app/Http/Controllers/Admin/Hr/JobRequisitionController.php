@@ -72,12 +72,13 @@ class JobRequisitionController extends Controller
         return response()->json(['status' => true, 'data' => $data->values()]);
     }
 
-    public function store(Request $request, DepartmentManagers $managers)
+    public function store(Request $request, DepartmentManagers $managers, JobRequisitionApprovalService $approvals)
     {
         $data = $request->validate([
             'title' => 'required|string|max:255',
             'department_id' => 'required|integer|exists:departments,id',
             'department_manager_id' => 'required|integer|exists:users,id',
+            'hr_manager_id' => 'nullable|integer|exists:users,id',
             'designation' => 'nullable|string|max:255',
             'employment_type' => 'nullable|in:full_time,part_time,contract,intern',
             'openings' => 'nullable|integer|min:1',
@@ -102,6 +103,15 @@ class JobRequisitionController extends Controller
             'requested_by' => auth('api')->id(),
         ]);
 
+        if ($request->has('hr_manager_id') || $request->boolean('auto_submit')) {
+            $requisition = $approvals->submit(
+                $requisition,
+                auth('api')->user(),
+                !empty($data['hr_manager_id']) ? (int) $data['hr_manager_id'] : null
+            );
+            return response()->json(['status' => true, 'message' => 'Requisition created and submitted to HR Manager Pool', 'data' => $requisition], 201);
+        }
+
         return response()->json(['status' => true, 'message' => 'Requisition created', 'data' => $requisition], 201);
     }
 
@@ -112,9 +122,9 @@ class JobRequisitionController extends Controller
             return response()->json(['status' => false, 'message' => 'Requisition not found'], 404);
         }
 
-        if (! in_array($requisition->status, ['draft', 'rejected'], true)) {
+        if (! in_array($requisition->status, ['draft', 'rejected', 'pending_approval', 'pending_hr_review'], true)) {
             throw ValidationException::withMessages([
-                'status' => 'Only draft or rejected requisitions can be edited.',
+                'status' => 'This requisition cannot be edited in its current state.',
             ]);
         }
         if ($request->exists('status')) {
@@ -172,13 +182,14 @@ class JobRequisitionController extends Controller
             return response()->json(['status' => false, 'message' => 'Requisition not found'], 404);
         }
 
-        if (! in_array($requisition->status, ['draft', 'rejected'], true)
-            || $requisition->approvalCycles()->exists()
-            || $requisition->candidates()->exists()) {
-            throw ValidationException::withMessages([
-                'status' => 'Only unused draft requisitions without approval history can be deleted.',
-            ]);
-        }
+        // Soft deletion is allowed for all stages per user request.
+        // if (! in_array($requisition->status, ['draft', 'rejected'], true)
+        //     || $requisition->approvalCycles()->exists()
+        //     || $requisition->candidates()->exists()) {
+        //     throw ValidationException::withMessages([
+        //         'status' => 'Cannot delete non-draft requisitions or those with history/candidates.',
+        //     ]);
+        // }
 
         $requisition->delete();
 
@@ -235,20 +246,9 @@ class JobRequisitionController extends Controller
         $query = JobRequisition::with([
             'department', 'departmentManager:id,name,designation', 'requestedBy:id,name,email',
             'approvedBy:id,name,email', 'hrManager:id,name,email,designation', 'director:id,name,email,designation',
-        ])->withCount('candidates');
+        ]);
 
         $this->applyCompanyScope($query, $request);
-
-        $filterStatus = $data['status'] ?? 'approved';
-        if ($filterStatus !== 'all') {
-            $query->where('status', match ($filterStatus) {
-                'published' => 'published',
-                'closed' => 'closed',
-                default => 'approved',
-            });
-        } else {
-            $query->whereIn('status', ['approved', 'published', 'closed']);
-        }
 
         if (! empty($data['department_id'])) {
             $query->where('department_id', $data['department_id']);
@@ -262,7 +262,21 @@ class JobRequisitionController extends Controller
             });
         }
 
-        $counts = (clone $query)->reorder()->selectRaw('status, count(*) as aggregate')->groupBy('status')->pluck('aggregate', 'status');
+        $counts = (clone $query)->whereIn('status', ['approved', 'published', 'closed'])->reorder()->select('status')->selectRaw('count(*) as aggregate')->groupBy('status')->pluck('aggregate', 'status');
+
+        $filterStatus = $data['status'] ?? 'approved';
+        if ($filterStatus !== 'all') {
+            $query->where('status', match ($filterStatus) {
+                'published' => 'published',
+                'closed' => 'closed',
+                default => 'approved',
+            });
+        } else {
+            $query->whereIn('status', ['approved', 'published', 'closed']);
+        }
+
+        $query->withCount('candidates');
+
         $requisitions = $query->orderByDesc('id')->paginate($data['per_page'] ?? 25);
 
         return response()->json([
@@ -297,10 +311,7 @@ class JobRequisitionController extends Controller
             'hiring_manager_id' => 'nullable|integer',
         ]);
 
-        $hrManagerId = (int) ($data['hr_manager_id'] ?? $data['hiring_manager_id'] ?? 0);
-        if (! $hrManagerId) {
-            throw ValidationException::withMessages(['hr_manager_id' => 'An HR Manager reviewer must be selected.']);
-        }
+        $hrManagerId = isset($data['hr_manager_id']) ? (int) $data['hr_manager_id'] : (isset($data['hiring_manager_id']) ? (int) $data['hiring_manager_id'] : null);
 
         $requisition = $this->scopedRequisition($request, $id);
         if (! $requisition) {
@@ -320,7 +331,7 @@ class JobRequisitionController extends Controller
     public function hrManagerForward(Request $request, $id, JobRequisitionApprovalService $approvals)
     {
         $data = $request->validate([
-            'director_id' => 'required|integer',
+            'director_id' => 'nullable|integer',
             'comment' => 'nullable|string|max:2000',
         ]);
 
@@ -439,17 +450,17 @@ class JobRequisitionController extends Controller
         return response()->json(['status' => true, 'message' => 'Requisition closed', 'data' => $updated]);
     }
 
-    public function approve(Request $request, $id, JobRequisitionApprovalService $approvals)
+    public function approve(Request $request, $id)
     {
         $requisition = $this->scopedRequisition($request, $id);
         if (!$requisition) {
             return response()->json(['status' => false, 'message' => 'Requisition not found'], 404);
         }
 
-        $updated = $approvals->decideLegacy($requisition, auth('api')->user(), $request->input('comment'));
-        AuditLogger::log($request, 'APPROVE', 'JobRequisitionApproval', $requisition->toArray(), $updated->toArray());
-
-        return response()->json(['status' => true, 'message' => 'Approval step completed', 'data' => $updated]);
+        return response()->json([
+            'status' => false,
+            'message' => 'Direct approval has been replaced by the review workflow. Use the HR Manager or Director decision endpoints.',
+        ], 410);
     }
 
     public function portalPublish(Request $request, $id, JobRequisitionApprovalService $approvals)
@@ -514,6 +525,71 @@ class JobRequisitionController extends Controller
         return response()->json(['status' => false, 'message' => 'Could not publish job to Indeed'], 500);
     }
 
+    public function publishToChannels(Request $request, $id, \App\Services\JobPostingService $postingService)
+    {
+        $requisition = $this->scopedRequisition($request, $id);
+        if (!$requisition) {
+            return response()->json(['status' => false, 'message' => 'Requisition not found'], 404);
+        }
+        if ($requisition->status !== 'approved') {
+            return response()->json(['status' => false, 'message' => 'Only approved requisitions can be posted'], 422);
+        }
+
+        $channels = $request->validate([
+            'channels' => 'required|array',
+            'channels.*' => 'in:indeed,linkedin,glassdoor,google,jazzhr,bamboohr',
+        ]);
+
+        $results = [];
+        foreach ($channels['channels'] as $channel) {
+            $result = match ($channel) {
+                'indeed' => $postingService->publishToIndeed($requisition, $request->all()),
+                'linkedin' => $postingService->publishToLinkedIn($requisition, $request->all()),
+                'glassdoor' => $postingService->publishToGlassdoor($requisition, $request->all()),
+                'google' => $postingService->publishToGoogle($requisition, $request->all()),
+                'jazzhr' => $postingService->publishToJazzHR($requisition, $request->all()),
+                'bamboohr' => $postingService->publishToBambooHR($requisition, $request->all()),
+                default => null,
+            };
+            if ($result) {
+                $results[$channel] = $result;
+            }
+        }
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Jobs published to selected channels',
+            'data' => $results,
+        ]);
+    }
+
+    public function getTemplates(Request $request)
+    {
+        $templates = JobRequisitionTemplate::withCompanyScope($request)
+            ->orderByDesc('name')
+            ->get();
+
+        return response()->json(['status' => true, 'data' => $templates]);
+    }
+
+    public function applyTemplate(Request $request, $id)
+    {
+        $requisition = JobRequisition::find($id);
+        if (!$requisition) {
+            return response()->json(['status' => false, 'message' => 'Requisition not found'], 404);
+        }
+
+        $template = JobRequisitionTemplate::find($request->template_id);
+        if (!$template) {
+            return response()->json(['status' => false, 'message' => 'Template not found'], 404);
+        }
+
+        $data = $template->template_data ?? [];
+        $requisition->update($data);
+
+        return response()->json(['status' => true, 'message' => 'Template applied', 'data' => $requisition]);
+    }
+
     private function scopedRequisition(Request $request, $id, array $with = []): ?JobRequisition
     {
         $query = JobRequisition::with($with)->where('id', $id);
@@ -531,7 +607,10 @@ class JobRequisitionController extends Controller
         ]);
         $status = $data['status'] ?? 'awaiting';
         $query = JobRequisitionApprovalStep::query()
-            ->where('assigned_to', auth('api')->id())
+            ->where(function ($q) {
+                $q->where('assigned_to', auth('api')->id())
+                  ->orWhereNull('assigned_to');
+            })
             ->where('step_type', $stepType)
             ->with([
                 'assignedUser:id,name,email,designation', 'decisionActor:id,name,email,designation',
@@ -553,7 +632,7 @@ class JobRequisitionController extends Controller
                 }
             });
 
-        $counts = (clone $query)->selectRaw('status, count(*) as aggregate')->groupBy('status')->pluck('aggregate', 'status');
+        $counts = (clone $query)->select('status')->selectRaw('count(*) as aggregate')->groupBy('status')->pluck('aggregate', 'status');
         if ($status !== 'all') {
             $query->where('status', match ($status) {
                 'approved' => JobRequisitionApprovalStep::STATUS_APPROVED,
@@ -572,33 +651,6 @@ class JobRequisitionController extends Controller
                 'approved' => (int) ($counts[JobRequisitionApprovalStep::STATUS_APPROVED] ?? 0),
                 'rejected' => (int) ($counts[JobRequisitionApprovalStep::STATUS_REJECTED] ?? 0),
             ],
-        ]);
-    }
-
-    private function approvalDecision(Request $request, $id, string $stepType, JobRequisitionApprovalService $approvals)
-    {
-        $data = $request->validate([
-            'decision' => 'required|in:approved,rejected',
-            'comment' => 'nullable|string|max:2000|required_if:decision,rejected|min:5',
-        ]);
-        $requisition = $this->scopedRequisition($request, $id);
-        if (! $requisition) {
-            return response()->json(['status' => false, 'message' => 'Requisition not found'], 404);
-        }
-
-        $updated = $approvals->decide(
-            $requisition,
-            auth('api')->user(),
-            $stepType,
-            $data['decision'],
-            $data['comment'] ?? null,
-        );
-        AuditLogger::log($request, strtoupper($data['decision']), 'JobRequisitionApproval', $requisition->toArray(), $updated->toArray());
-
-        return response()->json([
-            'status' => true,
-            'message' => $data['decision'] === 'approved' ? 'Requisition approval recorded' : 'Requisition rejected',
-            'data' => $updated,
         ]);
     }
 
@@ -628,3 +680,6 @@ class JobRequisitionController extends Controller
         }
     }
 }
+
+
+

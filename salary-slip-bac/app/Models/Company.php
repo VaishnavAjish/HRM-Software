@@ -58,8 +58,67 @@ class Company extends Model
         return $this->hasMany(Location::class);
     }
 
-    public function calendars()
+    public function subscriptions()
     {
-        return $this->hasMany(Calendar::class);
+        return $this->hasMany(CompanySubscription::class);
+    }
+
+    public function branding()
+    {
+        return $this->hasOne(CompanyBranding::class);
+    }
+
+    public function configuration()
+    {
+        return $this->hasOne(CompanyConfiguration::class);
+    }
+
+    public function isActive(): bool
+    {
+        return $this->is_active && !$this->is_suspended() && !$this->is_deactivated();
+    }
+
+    public function isSuspended(): bool
+    {
+        return $this->subscription_status === 'suspended';
+    }
+
+    public function isDeactivated(): bool
+    {
+        return $this->subscription_status === 'deactivated';
+    }
+
+    public function isExpired(): bool
+    {
+        return $this->subscription_end_date !== null &&
+               now()->gt($this->subscription_end_date);
+    }
+
+    public function canAddEmployee(): bool
+    {
+        if ($this->isExpired() || !$this->isActive()) {
+            return false;
+        }
+        $current = $this->employeeCount();
+        return $current < ($this->employee_limit ?? PHP_INT_MAX);
+    }
+
+    public function employeeCount(): int
+    {
+        return $this->employees()->where('is_active', true)->count();
+    }
+
+    public function canAddUser(): bool
+    {
+        if ($this->isExpired() || !$this->isActive()) {
+            return false;
+        }
+        $current = $this->userCount();
+        return $current < ($this->user_limit ?? PHP_INT_MAX);
+    }
+
+    public function userCount(): int
+    {
+        return $this->users()->where('is_active', true)->count();
     }
 }

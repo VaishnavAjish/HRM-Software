@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\Setting;
+use App\Models\Company;
+use App\Models\CompanyConfiguration;
 use App\Support\AuditLogger;
 use Illuminate\Http\Request;
 
@@ -34,6 +36,20 @@ class SettingsController extends Controller
         'hr.indeed_client_id' => '',
         'hr.indeed_client_secret' => '',
         'hr.indeed_employer_id' => '',
+
+        // Domain 00.2 Global Application Configuration defaults
+        'app.title' => 'NISS HRMS',
+        'app.url' => '',
+        'app.locale' => 'en',
+        'app.timezone' => 'UTC',
+        'app.currency' => 'USD',
+        'app.date_format' => 'm/d/Y',
+        'app.time_format' => 'h:i A',
+        'app.number_format' => '1,2,3.45',
+        'app.week_start_day' => '1',
+        'app.financial_year_start_month' => '1',
+        'maintenance_mode' => 'false',
+        'maintenance_message' => '',
     ];
 
     public function index(Request $request)
@@ -43,7 +59,7 @@ class SettingsController extends Controller
         $existing = Setting::where('group', $group)->pluck('value', 'key');
 
         $data = collect(self::DEFAULTS)
-            ->filter(fn($v, $key) => str_starts_with($key, $group . '.'))
+            ->filter(fn($v, $key) => str_starts_with($key, $group . '.') || str_starts_with($key, 'app.'))
             ->map(fn($default, $key) => $existing->get($key, $default))
             ->map(fn($value, $key) => ['key' => $key, 'value' => $value, 'group' => $group])
             ->values();
@@ -67,6 +83,24 @@ class SettingsController extends Controller
                 ['key' => $item['key']],
                 ['value' => $item['value'] ?? '', 'group' => $group]
             );
+        }
+
+        // Also update company-level configuration if group is 'app'
+        if ($group === 'app') {
+            $company = auth('api')->user()?->company;
+            if ($company) {
+                $config = $company->configuration;
+                if (!$config) {
+                    $config = $company->configuration()->create([]);
+                }
+
+                foreach ($request->settings as $item) {
+                    $config->updateOrCreate(
+                        ['key' => $item['key']],
+                        ['value' => $item['value'] ?? '', 'key' => $item['key']]
+                    );
+                }
+            }
         }
 
         AuditLogger::log(

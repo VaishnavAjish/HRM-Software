@@ -38,8 +38,8 @@ class HrDashboardController extends Controller
             'open_job_positions' => JobRequisition::whereIn('status', ['approved', 'posted'])->sum('openings'),
             'interviews_today' => Interview::whereDate('scheduled_at', $today)->where('status', 'scheduled')->count(),
             'assets_pending_allocation' => Asset::where('status', 'available')->count(),
-            'pending_approvals' => JobRequisition::where('status', 'pending_approval')->count()
-                + Offer::where('status', 'pending_approval')->count(),
+            'pending_approvals' => JobRequisition::whereIn('status', ['pending_hr_review', 'pending_director_review'])->count()
+                + Offer::where('status', 'draft')->count(),
             'upcoming_confirmations' => 0,
             'employees_on_leave' => 0,
         ];
@@ -122,8 +122,8 @@ class HrDashboardController extends Controller
             ->sortByDesc('at')->take(10)->values();
 
         $pendingTasks = collect()
-            ->concat(JobRequisition::where('status', 'pending_approval')->get()->map(fn ($r) => ['type' => 'requisition_approval', 'text' => "Approve requisition: {$r->title}", 'id' => $r->id]))
-            ->concat(Offer::where('status', 'pending_approval')->get()->map(fn ($o) => ['type' => 'offer_approval', 'text' => 'Approve offer #' . $o->id, 'id' => $o->id]))
+            ->concat(JobRequisition::whereIn('status', ['pending_hr_review', 'pending_director_review'])->get()->map(fn ($r) => ['type' => 'requisition_approval', 'text' => "Review requisition: {$r->title}", 'id' => $r->id]))
+            ->concat(Offer::where('status', 'draft')->get()->map(fn ($o) => ['type' => 'offer_approval', 'text' => 'Approve offer #' . $o->id, 'id' => $o->id]))
             ->concat(Interview::where('status', 'scheduled')->whereDoesntHave('feedback')->whereDate('scheduled_at', '<', $today)->get()->map(fn ($i) => ['type' => 'interview_feedback', 'text' => 'Feedback pending for interview #' . $i->id, 'id' => $i->id]))
             ->values();
 

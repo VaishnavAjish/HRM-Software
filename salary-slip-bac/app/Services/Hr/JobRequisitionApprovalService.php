@@ -82,7 +82,7 @@ class JobRequisitionApprovalService
         ];
     }
 
-    public function submit(JobRequisition $requisition, User $actor, int $hrManagerId): JobRequisition
+    public function submit(JobRequisition $requisition, User $actor, ?int $hrManagerId = null): JobRequisition
     {
         return DB::transaction(function () use ($requisition, $actor, $hrManagerId) {
             $locked = JobRequisition::query()->lockForUpdate()->findOrFail($requisition->id);
@@ -94,11 +94,11 @@ class JobRequisitionApprovalService
             // Verify Department Head ownership
             $this->assertDepartmentHeadOwnership($locked, $actor);
 
-            if ((int) $locked->requested_by === $hrManagerId || (int) $actor->id === $hrManagerId) {
+            if ($hrManagerId !== null && ((int) $locked->requested_by === $hrManagerId || (int) $actor->id === $hrManagerId)) {
                 throw ValidationException::withMessages(['hr_manager_id' => 'The requester cannot be their own HR Manager reviewer.']);
             }
 
-            $hrManager = $this->qualifiedApprover($locked, $hrManagerId, 'hr.requisition.hr_manager.decide', 'hr_manager_id');
+            $hrManager = $hrManagerId ? $this->qualifiedApprover($locked, $hrManagerId, 'hr.requisition.hr_manager.decide', 'hr_manager_id') : null;
             $cycleNumber = ((int) $locked->approvalCycles()->max('cycle_number')) + 1;
 
             $snapshot = $this->snapshot($locked, $hrManager);
@@ -114,7 +114,7 @@ class JobRequisitionApprovalService
                 [
                     'step_order' => 1,
                     'step_type' => JobRequisitionApprovalStep::TYPE_HR_MANAGER,
-                    'assigned_to' => $hrManager->id,
+                    'assigned_to' => $hrManager?->id,
                     'status' => JobRequisitionApprovalStep::STATUS_PENDING,
                 ],
                 [
@@ -127,20 +127,20 @@ class JobRequisitionApprovalService
 
             $locked->update([
                 'status' => 'pending_hr_review',
-                'hr_manager_id' => $hrManager->id,
-                'hiring_manager_id' => $hrManager->id,
+                'hr_manager_id' => $hrManager?->id,
+                'hiring_manager_id' => $hrManager?->id,
                 'current_approval_cycle_id' => $cycle->id,
                 'approved_by' => null,
                 'approved_at' => null,
             ]);
 
-            $this->notify($hrManager, 'Requisition awaiting your HR review', $locked, $actor);
+            if ($hrManager) $this->notify($hrManager, 'Requisition awaiting your HR review', $locked, $actor);
 
             return $this->freshWorkflow($locked);
         });
     }
 
-    public function forwardToDirector(JobRequisition $requisition, User $actor, int $directorId, ?string $comment = null): JobRequisition
+    public function forwardToDirector(JobRequisition $requisition, User $actor, ?int $directorId = null, ?string $comment = null): JobRequisition
     {
         return DB::transaction(function () use ($requisition, $actor, $directorId, $comment) {
             $locked = JobRequisition::query()->lockForUpdate()->findOrFail($requisition->id);
@@ -149,15 +149,20 @@ class JobRequisitionApprovalService
                 throw ValidationException::withMessages(['status' => 'This requisition is not awaiting HR Manager review.']);
             }
 
-            if ((int) $locked->hr_manager_id !== (int) $actor->id && ! $actor->isSuperAdmin()) {
+            if ($locked->hr_manager_id !== null && (int) $locked->hr_manager_id !== (int) $actor->id && ! $actor->isSuperAdmin()) {
                 throw ValidationException::withMessages(['reviewer' => 'Only the assigned HR Manager may forward this requisition.']);
             }
+            if ($locked->hr_manager_id === null && ! $actor->isSuperAdmin()) {
+                if (!$this->authorization->decide($actor, 'hr.requisition.hr_manager.decide', $locked, ['audit' => false])->allowed && !$this->authorization->decide($actor, 'hr.requisition.hiring_manager.decide', $locked, ['audit' => false])->allowed) {
+                    throw ValidationException::withMessages(['reviewer' => 'You do not have permission to review this requisition.']);
+                }
+            }
 
-            if ((int) $locked->requested_by === $directorId || (int) $actor->id === $directorId) {
+            if ($directorId !== null && ((int) $locked->requested_by === $directorId || (int) $actor->id === $directorId)) {
                 throw ValidationException::withMessages(['director_id' => 'The Director cannot be the requester or the HR Manager.']);
             }
 
-            $director = $this->qualifiedApprover($locked, $directorId, 'hr.requisition.director.decide', 'director_id');
+            $director = $directorId ? $this->qualifiedApprover($locked, $directorId, 'hr.requisition.director.decide', 'director_id') : null;
             $cycle = JobRequisitionApprovalCycle::query()->lockForUpdate()->findOrFail($locked->current_approval_cycle_id);
 
             $hrStep = $cycle->steps()
@@ -180,7 +185,7 @@ class JobRequisitionApprovalService
 
             if ($directorStep) {
                 $directorStep->update([
-                    'assigned_to' => $director->id,
+                    'assigned_to' => $director?->id,
                     'status' => JobRequisitionApprovalStep::STATUS_PENDING,
                 ]);
             } else {
@@ -188,17 +193,17 @@ class JobRequisitionApprovalService
                 $cycle->steps()->create([
                     'step_order' => $maxOrder + 1,
                     'step_type' => JobRequisitionApprovalStep::TYPE_DIRECTOR,
-                    'assigned_to' => $director->id,
+                    'assigned_to' => $director?->id,
                     'status' => JobRequisitionApprovalStep::STATUS_PENDING,
                 ]);
             }
 
             $locked->update([
                 'status' => 'pending_director_review',
-                'director_id' => $director->id,
+                'director_id' => $director?->id,
             ]);
 
-            $this->notify($director, 'Requisition forwarded for Director approval', $locked, $actor);
+            if ($director) $this->notify($director, 'Requisition forwarded for Director approval', $locked, $actor);
 
             return $this->freshWorkflow($locked);
         });
@@ -213,8 +218,13 @@ class JobRequisitionApprovalService
                 throw ValidationException::withMessages(['status' => 'This requisition cannot be returned to Department Head in its current state.']);
             }
 
-            if ((int) $locked->hr_manager_id !== (int) $actor->id && ! $actor->isSuperAdmin()) {
+            if ($locked->hr_manager_id !== null && (int) $locked->hr_manager_id !== (int) $actor->id && ! $actor->isSuperAdmin()) {
                 throw ValidationException::withMessages(['reviewer' => 'Only the assigned HR Manager may return this requisition.']);
+            }
+            if ($locked->hr_manager_id === null && ! $actor->isSuperAdmin()) {
+                if (!$this->authorization->decide($actor, 'hr.requisition.hr_manager.decide', $locked, ['audit' => false])->allowed && !$this->authorization->decide($actor, 'hr.requisition.hiring_manager.decide', $locked, ['audit' => false])->allowed) {
+                    throw ValidationException::withMessages(['reviewer' => 'You do not have permission to review this requisition.']);
+                }
             }
 
             if (mb_strlen(trim($comment)) < 5) {
@@ -260,8 +270,13 @@ class JobRequisitionApprovalService
                 throw ValidationException::withMessages(['status' => 'This requisition is not awaiting Director review.']);
             }
 
-            if ((int) $locked->director_id !== (int) $actor->id && ! $actor->isSuperAdmin()) {
+            if ($locked->director_id !== null && (int) $locked->director_id !== (int) $actor->id && ! $actor->isSuperAdmin()) {
                 throw ValidationException::withMessages(['reviewer' => 'Only the assigned Director may decide this requisition.']);
+            }
+            if ($locked->director_id === null && ! $actor->isSuperAdmin()) {
+                if (!$this->authorization->decide($actor, 'hr.requisition.director.decide', $locked, ['audit' => false])->allowed) {
+                    throw ValidationException::withMessages(['reviewer' => 'You do not have permission to approve this requisition.']);
+                }
             }
 
             if ($decision === 'returned' && mb_strlen(trim((string) $comment)) < 5) {
@@ -335,8 +350,13 @@ class JobRequisitionApprovalService
                 throw ValidationException::withMessages(['status' => 'This requisition is not in returned_to_hr state.']);
             }
 
-            if ((int) $locked->hr_manager_id !== (int) $actor->id && ! $actor->isSuperAdmin()) {
+            if ($locked->hr_manager_id !== null && (int) $locked->hr_manager_id !== (int) $actor->id && ! $actor->isSuperAdmin()) {
                 throw ValidationException::withMessages(['reviewer' => 'Only the assigned HR Manager may respond to the Director.']);
+            }
+            if ($locked->hr_manager_id === null && ! $actor->isSuperAdmin()) {
+                if (!$this->authorization->decide($actor, 'hr.requisition.hr_manager.decide', $locked, ['audit' => false])->allowed && !$this->authorization->decide($actor, 'hr.requisition.hiring_manager.decide', $locked, ['audit' => false])->allowed) {
+                    throw ValidationException::withMessages(['reviewer' => 'You do not have permission to review this requisition.']);
+                }
             }
 
             $cycle = JobRequisitionApprovalCycle::query()->lockForUpdate()->findOrFail($locked->current_approval_cycle_id);
@@ -504,7 +524,7 @@ class JobRequisitionApprovalService
         $department = Department::find($requisition->department_id);
         if ($department) {
             $departmentManagerService = app(\App\Services\Hr\DepartmentManagers::class);
-            if ($departmentManagerService->isManagerOf($actor->id, $department)) {
+            if ($departmentManagerService->isManagerOf($actor->id, $department, fn ($q) => $q)) {
                 return;
             }
         }
@@ -544,7 +564,7 @@ class JobRequisitionApprovalService
         return $user;
     }
 
-    private function snapshot(JobRequisition $requisition, User $hrManager): array
+    private function snapshot(JobRequisition $requisition, ?User $hrManager): array
     {
         $requisition->loadMissing(['department:id,name', 'departmentManager:id,name,designation', 'requestedBy:id,name,email']);
 
@@ -557,8 +577,8 @@ class JobRequisitionApprovalService
             'department' => $requisition->department?->only(['id', 'name']),
             'department_manager' => $requisition->departmentManager?->only(['id', 'name', 'designation']),
             'requested_by' => $requisition->requestedBy?->only(['id', 'name', 'email']),
-            'hr_manager' => $hrManager->only(['id', 'name', 'email', 'designation']),
-            'hiring_manager' => $hrManager->only(['id', 'name', 'email', 'designation']),
+            'hr_manager' => $hrManager?->only(['id', 'name', 'email', 'designation']),
+            'hiring_manager' => $hrManager?->only(['id', 'name', 'email', 'designation']),
         ];
     }
 

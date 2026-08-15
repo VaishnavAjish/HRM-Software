@@ -1,0 +1,120 @@
+[
+    {
+        "id": 1,
+        "job_requisition_id": 5,
+        "cycle_number": 1,
+        "status": "PENDING",
+        "snapshot": {
+            "requisition": {
+                "id": 5,
+                "title": "Software eng",
+                "department_id": 16,
+                "department_manager_id": 2677,
+                "designation": null,
+                "employment_type": "full_time",
+                "openings": 1,
+                "priority": "medium",
+                "min_experience": null,
+                "max_experience": null,
+                "salary_min": null,
+                "salary_max": null,
+                "description": null,
+                "requirements": null,
+                "company_code": "nidhi-impex,silver-star",
+                "unit": "Shreeji",
+                "requested_by": 413,
+                "target_closing_date": null
+            },
+            "department": {
+                "id": 16,
+                "name": "IT"
+            },
+            "department_manager": {
+                "id": 2677,
+                "name": "Abhishek Manubhai Variya",
+                "designation": "Worker"
+            },
+            "requested_by": {
+                "id": 413,
+                "name": "NISS Super Admin",
+                "email": "admin@niss.pro"
+            },
+            "hr_manager": {
+                "id": 2709,
+                "name": "HR",
+                "email": "hr@niss.in",
+                "designation": null
+            },
+            "hiring_manager": {
+                "id": 2709,
+                "name": "HR",
+                "email": "hr@niss.in",
+                "designation": null
+            }
+        },
+        "submitted_by": 413,
+        "submitted_at": "2026-08-15T09:49:38.000000Z",
+        "completed_at": null,
+        "created_at": "2026-08-15T09:49:38.000000Z",
+        "updated_at": "2026-08-15T09:49:38.000000Z"
+    },
+    {
+        "id": 2,
+        "job_requisition_id": 7,
+        "cycle_number": 1,
+        "status": "PENDING",
+        "snapshot": {
+            "requisition": {
+                "id": 7,
+                "title": "awsdfg,",
+                "department_id": 16,
+                "department_manager_id": 2677,
+                "designation": null,
+                "employment_type": "full_time",
+                "openings": 1,
+                "priority": "medium",
+                "min_experience": null,
+                "max_experience": null,
+                "salary_min": null,
+                "salary_max": null,
+                "description": null,
+                "requirements": null,
+                "company_code": "nidhi-impex,silver-star",
+                "unit": "Shreeji",
+                "requested_by": 413,
+                "target_closing_date": null
+            },
+            "department": {
+                "id": 16,
+                "name": "IT"
+            },
+            "department_manager": {
+                "id": 2677,
+                "name": "Abhishek Manubhai Variya",
+                "designation": "Worker"
+            },
+            "requested_by": {
+                "id": 413,
+                "name": "NISS Super Admin",
+                "email": "admin@niss.pro"
+            },
+            "hr_manager": {
+                "id": 2709,
+                "name": "HR",
+                "email": "hr@niss.in",
+                "designation": null
+            },
+            "hiring_manager": {
+                "id": 2709,
+                "name": "HR",
+                "email": "hr@niss.in",
+                "designation": null
+            }
+        },
+        "submitted_by": 413,
+        "submitted_at": "2026-08-15T10:35:26.000000Z",
+        "completed_at": null,
+        "created_at": "2026-08-15T10:35:26.000000Z",
+        "updated_at": "2026-08-15T10:35:26.000000Z"
+    }
+]

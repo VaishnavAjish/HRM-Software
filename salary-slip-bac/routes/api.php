@@ -4,9 +4,11 @@ use App\Http\Controllers\Admin\AdminController;
 use App\Http\Controllers\Admin\AttendanceController;
 use App\Http\Controllers\Admin\Hr\AssetController;
 use App\Http\Controllers\Admin\Hr\CandidateController;
+use App\Http\Controllers\Admin\Hr\CandidateCrmController;
 use App\Http\Controllers\Admin\Hr\CandidateDocumentController;
 use App\Http\Controllers\Admin\Hr\ExitManagementController;
 use App\Http\Controllers\Admin\Hr\HrDashboardController;
+use App\Http\Controllers\Admin\Hr\RecruitmentDashboardController;
 use App\Http\Controllers\Admin\Hr\HrReportController;
 use App\Http\Controllers\Admin\Hr\InterviewController;
 use App\Http\Controllers\Admin\Hr\JobRequisitionController;
@@ -416,6 +418,110 @@ Route::middleware('jwt.auth')->group(function () {
             ->whereNumber('id')->middleware('permission:admin.access_request.approve');
         Route::post('{id}/revoke', [V1AccessRequestController::class, 'revoke'])
             ->whereNumber('id')->middleware('permission:admin.access_request.revoke');
+    });
+
+    /*
+     * MFA Management (Domain 01.3)
+     */
+    Route::prefix('v1/authorization/mfa')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\V1\Authorization\MfaController::class, 'index'])
+            ->middleware('permission:self.profile.read');
+        Route::get('status', [\App\Http\Controllers\Api\V1\Authorization\MfaController::class, 'status'])
+            ->middleware('permission:self.profile.read');
+        Route::post('totp/initiate', [\App\Http\Controllers\Api\V1\Authorization\MfaController::class, 'initiateTotpEnrollment'])
+            ->middleware(['throttle:10,1', 'permission:self.profile.update']);
+        Route::post('totp/complete', [\App\Http\Controllers\Api\V1\Authorization\MfaController::class, 'completeTotpEnrollment'])
+            ->middleware(['throttle:10,1', 'permission:self.profile.update']);
+        Route::post('sms', [\App\Http\Controllers\Api\V1\Authorization\MfaController::class, 'enrollSms'])
+            ->middleware(['throttle:10,1', 'permission:self.profile.update']);
+        Route::post('email', [\App\Http\Controllers\Api\V1\Authorization\MfaController::class, 'enrollEmail'])
+            ->middleware(['throttle:10,1', 'permission:self.profile.update']);
+        Route::post('backup-codes', [\App\Http\Controllers\Api\V1\Authorization\MfaController::class, 'generateBackupCodes'])
+            ->middleware(['throttle:5,1', 'permission:self.profile.update']);
+        Route::post('backup-codes/regenerate', [\App\Http\Controllers\Api\V1\Authorization\MfaController::class, 'regenerateBackupCodes'])
+            ->middleware(['throttle:5,1', 'permission:self.profile.update']);
+        Route::post('verify', [\App\Http\Controllers\Api\V1\Authorization\MfaController::class, 'verify'])
+            ->middleware(['throttle:20,1', 'permission:self.profile.read']);
+        Route::delete('{id}', [\App\Http\Controllers\Api\V1\Authorization\MfaController::class, 'revoke'])
+            ->whereNumber('id')->middleware('permission:self.profile.update');
+        Route::post('{id}/primary', [\App\Http\Controllers\Api\V1\Authorization\MfaController::class, 'setPrimary'])
+            ->whereNumber('id')->middleware('permission:self.profile.update');
+    });
+
+    /*
+     * Session Management (Domain 01.10)
+     */
+    Route::prefix('v1/authorization/sessions')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\V1\Authorization\SessionController::class, 'index'])
+            ->middleware('permission:self.profile.read');
+        Route::get('current', [\App\Http\Controllers\Api\V1\Authorization\SessionController::class, 'current'])
+            ->middleware('permission:self.profile.read');
+        Route::get('stats', [\App\Http\Controllers\Api\V1\Authorization\SessionController::class, 'stats'])
+            ->middleware('permission:self.profile.read');
+        Route::delete('{id}', [\App\Http\Controllers\Api\V1\Authorization\SessionController::class, 'revoke'])
+            ->whereNumber('id')->middleware('permission:self.profile.update');
+        Route::post('revoke-all-others', [\App\Http\Controllers\Api\V1\Authorization\SessionController::class, 'revokeAllOthers'])
+            ->middleware('permission:self.profile.update');
+        Route::post('revoke-all', [\App\Http\Controllers\Api\V1\Authorization\SessionController::class, 'revokeAll'])
+            ->middleware('permission:self.profile.update');
+        Route::post('{id}/trust', [\App\Http\Controllers\Api\V1\Authorization\SessionController::class, 'trustDevice'])
+            ->whereNumber('id')->middleware('permission:self.profile.update');
+        Route::post('{id}/block-device', [\App\Http\Controllers\Api\V1\Authorization\SessionController::class, 'blockDevice'])
+            ->whereNumber('id')->middleware('permission:self.profile.update');
+    });
+
+    /*
+     * Device Management (Domain 01.11)
+     */
+    Route::prefix('v1/authorization/devices')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\V1\Authorization\DeviceController::class, 'index'])
+            ->middleware('permission:self.profile.read');
+        Route::get('trusted', [\App\Http\Controllers\Api\V1\Authorization\DeviceController::class, 'trusted'])
+            ->middleware('permission:self.profile.read');
+        Route::get('blocked', [\App\Http\Controllers\Api\V1\Authorization\DeviceController::class, 'blocked'])
+            ->middleware('permission:self.profile.read');
+        Route::get('stats', [\App\Http\Controllers\Api\V1\Authorization\DeviceController::class, 'stats'])
+            ->middleware('permission:self.profile.read');
+        Route::post('{deviceId}/trust', [\App\Http\Controllers\Api\V1\Authorization\DeviceController::class, 'trust'])
+            ->middleware('permission:self.profile.update');
+        Route::post('{deviceId}/block', [\App\Http\Controllers\Api\V1\Authorization\DeviceController::class, 'block'])
+            ->middleware('permission:self.profile.update');
+        Route::post('{deviceId}/unblock', [\App\Http\Controllers\Api\V1\Authorization\DeviceController::class, 'unblock'])
+            ->middleware('permission:self.profile.update');
+        Route::post('{deviceId}/rename', [\App\Http\Controllers\Api\V1\Authorization\DeviceController::class, 'rename'])
+            ->middleware('permission:self.profile.update');
+        Route::delete('{deviceId}', [\App\Http\Controllers\Api\V1\Authorization\DeviceController::class, 'remove'])
+            ->middleware('permission:self.profile.update');
+    });
+
+    /*
+     * Privileged Access (Domain 01.13)
+     */
+    Route::prefix('v1/authorization/privileged-access')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\V1\Authorization\PrivilegedAccessController::class, 'index'])
+            ->middleware('permission:admin.privileged_access.read');
+        Route::get('my-requests', [\App\Http\Controllers\Api\V1\Authorization\PrivilegedAccessController::class, 'myRequests'])
+            ->middleware('permission:self.profile.read');
+        Route::get('active', [\App\Http\Controllers\Api\V1\Authorization\PrivilegedAccessController::class, 'active'])
+            ->middleware('permission:self.profile.read');
+        Route::get('stats', [\App\Http\Controllers\Api\V1\Authorization\PrivilegedAccessController::class, 'stats'])
+            ->middleware('permission:admin.privileged_access.read');
+        Route::post('break-glass', [\App\Http\Controllers\Api\V1\Authorization\PrivilegedAccessController::class, 'requestBreakGlass'])
+            ->middleware(['throttle:5,1', 'permission:self.profile.read']);
+        Route::post('jit', [\App\Http\Controllers\Api\V1\Authorization\PrivilegedAccessController::class, 'requestJit'])
+            ->middleware(['throttle:10,1', 'permission:self.profile.read']);
+        Route::post('impersonation', [\App\Http\Controllers\Api\V1\Authorization\PrivilegedAccessController::class, 'requestImpersonation'])
+            ->middleware(['throttle:5,1', 'permission:self.profile.read']);
+        Route::post('{id}/approve', [\App\Http\Controllers\Api\V1\Authorization\PrivilegedAccessController::class, 'approve'])
+            ->whereNumber('id')->middleware('permission:admin.privileged_access.approve');
+        Route::post('{id}/reject', [\App\Http\Controllers\Api\V1\Authorization\PrivilegedAccessController::class, 'reject'])
+            ->whereNumber('id')->middleware('permission:admin.privileged_access.approve');
+        Route::post('{id}/activate', [\App\Http\Controllers\Api\V1\Authorization\PrivilegedAccessController::class, 'activate'])
+            ->whereNumber('id')->middleware('permission:self.profile.read');
+        Route::post('{id}/revoke', [\App\Http\Controllers\Api\V1\Authorization\PrivilegedAccessController::class, 'revoke'])
+            ->whereNumber('id')->middleware('permission:self.profile.read');
+        Route::get('impersonation-sessions/{targetUserId}', [\App\Http\Controllers\Api\V1\Authorization\PrivilegedAccessController::class, 'impersonationSessions'])
+            ->whereNumber('targetUserId')->middleware('permission:admin.privileged_access.read');
     });
 
     Route::prefix('v1/emergency-access')->group(function () {
@@ -1191,6 +1297,7 @@ Route::middleware('jwt.auth')->group(function () {
         // in production yet, and without this every route below is a 500.
         Route::group(['prefix' => 'hr', 'middleware' => 'module.schema:hr'], function () {
             Route::get('dashboard', [HrDashboardController::class, 'index'])->middleware('permission:hr.dashboard.read');
+            Route::get('recruitment-dashboard', [\App\Http\Controllers\Admin\Hr\RecruitmentDashboardController::class, 'index'])->middleware('permission:hr.requisition.read');
 
             Route::group(['prefix' => 'requisitions'], function () {
                 Route::get('get', [JobRequisitionController::class, 'index'])->middleware('permission:hr.requisition.read');
@@ -1217,9 +1324,12 @@ Route::middleware('jwt.auth')->group(function () {
                 Route::post('{id}/close', [JobRequisitionController::class, 'close'])->middleware('permission:hr.requisition.update');
                 Route::post('approve/{id}', [JobRequisitionController::class, 'approve'])->middleware('permission:hr.requisition.approve');
                 Route::post('publish/{id}', [JobRequisitionController::class, 'publish'])->middleware('permission:hr.requisition.publish');
-                Route::post('publish-indeed/{id}', [JobRequisitionController::class, 'publishToIndeed'])->middleware('permission:hr.requisition.publish');
+Route::post('publish-indeed/{id}', [JobRequisitionController::class, 'publishToIndeed'])->middleware('permission:hr.requisition.publish');
+            Route::post('publish-to-channels/{id}', [JobRequisitionController::class, 'publishToChannels'])->middleware('permission:hr.requisition.publish');
+            Route::get('templates', [JobRequisitionController::class, 'getTemplates'])->middleware('permission:hr.requisition.read');
+            Route::post('apply-template/{id}', [JobRequisitionController::class, 'applyTemplate'])->middleware('permission:hr.requisition.create');
             });
-
+            
             Route::group(['prefix' => 'quizzes'], function () {
                 Route::get('get', [TrainingQuizController::class, 'index'])->middleware('permission:hr.training.read');
                 Route::get('show/{id}', [TrainingQuizController::class, 'show'])->middleware('permission:hr.training.read');
@@ -1263,6 +1373,30 @@ Route::middleware('jwt.auth')->group(function () {
                 Route::post('documents/store/{id}', [CandidateDocumentController::class, 'store'])->middleware('permission:hr.candidate.update');
                 Route::post('documents/review/{id}/{decision}', [CandidateDocumentController::class, 'review'])->middleware('permission:hr.candidate.update');
                 Route::delete('documents/delete/{id}', [CandidateDocumentController::class, 'destroy'])->middleware('permission:hr.candidate.update');
+
+                // Wave 4 — Candidate CRM (tags, notes, talent pools, communication).
+                Route::get('tags', [CandidateCrmController::class, 'tags'])->middleware('permission:hr.candidate.read');
+                Route::get('tags/get/{id}', [CandidateCrmController::class, 'candidateTags'])->middleware('permission:hr.candidate.read');
+                Route::post('tags/store', [CandidateCrmController::class, 'storeTag'])->middleware('permission:hr.candidate.tag');
+                Route::put('tags/update/{id}', [CandidateCrmController::class, 'updateTag'])->middleware('permission:hr.candidate.tag');
+                Route::delete('tags/delete/{id}', [CandidateCrmController::class, 'destroyTag'])->middleware('permission:hr.candidate.tag');
+                Route::post('tags/sync/{id}', [CandidateCrmController::class, 'syncCandidateTags'])->middleware('permission:hr.candidate.tag');
+
+                Route::get('notes/get/{id}', [CandidateCrmController::class, 'notes'])->middleware('permission:hr.candidate.read');
+                Route::post('notes/store/{id}', [CandidateCrmController::class, 'storeNote'])->middleware('permission:hr.candidate.note');
+                Route::delete('notes/delete/{noteId}', [CandidateCrmController::class, 'destroyNote'])->middleware('permission:hr.candidate.note');
+
+                Route::get('pools', [CandidateCrmController::class, 'pools'])->middleware('permission:hr.candidate.read');
+                Route::get('pools/get/{poolId}', [CandidateCrmController::class, 'poolCandidates'])->middleware('permission:hr.candidate.read');
+                Route::post('pools/store', [CandidateCrmController::class, 'storePool'])->middleware('permission:hr.candidate.pool');
+                Route::put('pools/update/{id}', [CandidateCrmController::class, 'updatePool'])->middleware('permission:hr.candidate.pool');
+                Route::delete('pools/delete/{id}', [CandidateCrmController::class, 'destroyPool'])->middleware('permission:hr.candidate.pool');
+                Route::post('pools/sync/{id}', [CandidateCrmController::class, 'syncCandidatePools'])->middleware('permission:hr.candidate.pool');
+                Route::post('pools/add/{id}/{poolId}', [CandidateCrmController::class, 'addCandidateToPool'])->middleware('permission:hr.candidate.pool');
+                Route::delete('pools/remove/{id}/{poolId}', [CandidateCrmController::class, 'removeCandidateFromPool'])->middleware('permission:hr.candidate.pool');
+
+                Route::get('communications/get/{id}', [CandidateCrmController::class, 'communications'])->middleware('permission:hr.candidate.read');
+                Route::post('communications/store/{id}', [CandidateCrmController::class, 'storeCommunication'])->middleware('permission:hr.candidate.communication');
             });
 
             Route::group(['prefix' => 'interviews'], function () {
@@ -1477,4 +1611,5 @@ Route::group(['prefix' => 'candidate'], function () {
         Route::get('applications/{id}/resume', [\App\Http\Controllers\Candidate\CandidateApplicationController::class, 'downloadResume']);
     });
 });
+
 

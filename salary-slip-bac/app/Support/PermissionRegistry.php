@@ -657,6 +657,30 @@ class PermissionRegistry
             'description' => 'View the candidate pipeline.',
             'implies' => ['hr.candidate.read'],
         ],
+        'ui.hr.hiring.candidates.tags' => [
+            'type' => self::TYPE_FEATURE, 'label' => 'Candidate Tags', 'order' => 41,
+            'parent' => 'ui.hr.hiring.candidates',
+            'description' => 'Create and manage candidate tags, and tag candidates with them.',
+            'implies' => ['hr.candidate.tag'],
+        ],
+        'ui.hr.hiring.candidates.notes' => [
+            'type' => self::TYPE_FEATURE, 'label' => 'Candidate Notes', 'order' => 42,
+            'parent' => 'ui.hr.hiring.candidates',
+            'description' => 'Read and write the private recruiter note trail on a candidate.',
+            'implies' => ['hr.candidate.note'],
+        ],
+        'ui.hr.hiring.candidates.talent_pool' => [
+            'type' => self::TYPE_FEATURE, 'label' => 'Talent Pool', 'order' => 43,
+            'parent' => 'ui.hr.hiring.candidates',
+            'description' => 'Create and manage talent pools and their candidate membership.',
+            'implies' => ['hr.candidate.pool'],
+        ],
+        'ui.hr.hiring.candidates.communication' => [
+            'type' => self::TYPE_FEATURE, 'label' => 'Candidate Communication', 'order' => 44,
+            'parent' => 'ui.hr.hiring.candidates', 'sensitivity' => self::SENSITIVITY_SENSITIVE,
+            'description' => 'Compose and send candidate messages, and view the communication log.',
+            'implies' => ['hr.candidate.communication'],
+        ],
         'ui.hr.hiring.candidate_create' => [
             'type' => self::TYPE_ACTION, 'label' => 'Add Candidate', 'order' => 50,
             'parent' => 'ui.hr.hiring',
