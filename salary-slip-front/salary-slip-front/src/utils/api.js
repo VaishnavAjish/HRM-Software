@@ -1909,8 +1909,14 @@ export const modulesApi = {
 };
 
 export const hrApi = {
+  getApprovalEligibleApproversPreflight: (type, departmentId, accessToken, tokenType, filters) => {
+    return apiRequest(`/hr/requisitions/approvals/preflight-eligible/${type}?department_id=${departmentId}${hrQuery(filters)}`, { headers: hrAuthHeaders(accessToken, tokenType) });
+  },
   getDashboard(accessToken, tokenType = "Bearer", filters = {}) {
     return apiRequest(`/hr/dashboard${hrQuery(filters)}`, { headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+  getRecruitmentDashboard(accessToken, tokenType = "Bearer", filters = {}) {
+    return apiRequest(`/hr/recruitment-dashboard${hrQuery(filters)}`, { headers: hrAuthHeaders(accessToken, tokenType) });
   },
 
   // Requisitions
@@ -2698,4 +2704,5 @@ export const candidateApi = {
     return apiRequest(`/candidate/applications/${id}`, { headers: { Authorization: `Bearer ${token}` } });
   },
 };
+
 

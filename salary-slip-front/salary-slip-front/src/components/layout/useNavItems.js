@@ -16,6 +16,7 @@ import {
   ShieldCheck,
   Ticket,
   Building2,
+  Shield,
 } from "lucide-react";
 
 function getAdminNav(companyId, user, isAllCompanies, isModuleAvailable = () => true) {
@@ -236,6 +237,7 @@ const employeeNav = [
   { to: "/employee/form16", label: "Form 16", icon: Receipt },
   { to: "/employee/tickets", label: "My Tickets", icon: Ticket },
   { to: "/employee/profile", label: "Profile", icon: UserCircle },
+  { to: "/employee/security", label: "Security Center", icon: Shield },
   { to: "/employee/appointment", label: "Appointment Form", icon: ClipboardList },
 ];
 

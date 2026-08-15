@@ -299,7 +299,7 @@ export default function Profile() {
       const completionFields = [
         "name", "email", "phone", "dob", "address", "city", "district", "state", "pin",
         "aadhar_card_no", "pan_card_no", "bank_name", "bank_ifsc_code", "bank_account_no",
-        "gender", "department", "designation", "joining_date"
+        "gender"
       ];
       let filled = 0;
       const source = { ...form, phone: form.mobile_number || form.phone };
@@ -431,10 +431,11 @@ export default function Profile() {
         </div>
       </div>
     );  // Calculate Profile Completion Percentage
+  // Required employee profile fields (PF and ESI are explicitly OPTIONAL)
   const completionFields = [
     "name", "email", "phone", "dob", "address", "city", "district", "state", "pin",
     "aadhar_card_no", "pan_card_no", "bank_name", "bank_ifsc_code", "bank_account_no",
-    "gender", "department", "designation", "joining_date"
+    "gender"
   ];
 
   const calculateCompletion = () => {
@@ -452,11 +453,11 @@ export default function Profile() {
   return (
     <div className="space-y-4">
       {completionPercentage < 100 && (
-        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 px-4 py-3 rounded-xl flex items-center justify-between">
+        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 px-4 py-3 rounded-xl flex items-center justify-between shadow-sm">
           <div className="flex items-center gap-2">
-            <AlertCircle className="text-amber-500" size={18} />
-            <p className="text-sm font-medium">
-              Please complete your profile details and hit Save to keep your employee record up to date.
+            <AlertCircle className="text-amber-500 shrink-0" size={20} />
+            <p className="text-sm font-semibold">
+              Notice: Portal pages are locked until your full profile details are completed and saved. (PF and ESI numbers are optional).
             </p>
           </div>
         </div>

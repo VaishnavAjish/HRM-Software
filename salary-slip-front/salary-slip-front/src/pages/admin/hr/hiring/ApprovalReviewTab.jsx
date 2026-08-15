@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, Clock3, Eye, Search, Send, RotateCcw } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
+import { CheckCircle2, Clock3, Eye, Search, Send, RotateCcw, Edit2 } from "lucide-react";
 import toast from "react-hot-toast";
 import DOMPurify from "dompurify";
 import Badge from "../../../../components/ui/Badge";
@@ -10,6 +11,7 @@ import { SkeletonTable } from "../../../../components/ui/Skeleton";
 import { useAuth } from "../../../../context/AuthContext";
 import { useCompany } from "../../../../context/CompanyContext";
 import { useAuthorization } from "../../../../hooks/useAuthorization";
+import RequisitionFormModal from "./RequisitionFormModal";
 import { hrApi } from "../../../../utils/api";
 
 const inputClass = "w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500";
@@ -23,13 +25,14 @@ const date = (value) => value ? new Date(value).toLocaleString() : "—";
 const money = (value) => value == null || value === "" ? "—" : `₹${Number(value).toLocaleString("en-IN")}`;
 const person = (value) => value?.name || "—";
 
-export default function ApprovalReviewTab({ kind }) {
+export default function ApprovalReviewTab({ kind, departments = [], people = [], openRequisitionForm }) {
   const { user } = useAuth();
   const { companyScope, scopeKey } = useCompany();
   const { can } = useAuthorization();
   const isDirector = kind === "director";
   const label = isDirector ? "Director" : "HR Manager";
 
+    const [searchParams, setSearchParams] = useSearchParams();
   const decidePermission = isDirector
     ? "ui.hr.hiring.director_review.decide"
     : "ui.hr.hiring.hr_manager_review.decide";
@@ -129,13 +132,13 @@ export default function ApprovalReviewTab({ kind }) {
   };
 
   const handleForwardToDirector = async () => {
-    if (!directorId) { toast.error("Please select a Director."); return; }
+    
     const req = selected?.cycle?.requisition;
     if (!req) return;
     setSaving(true);
     try {
       const res = await hrApi.hrManagerForward(req.id, {
-        director_id: Number(directorId),
+        director_id: null,
         comment: comment.trim() || undefined,
       }, user.accessToken, user.tokenType);
       if (res.status) {
@@ -318,103 +321,155 @@ export default function ApprovalReviewTab({ kind }) {
         <div className="px-4"><Pagination current={page} total={total} pageSize={perPage} onChange={setPage} onPageSizeChange={(value) => { setPerPage(value); setPage(1); }} /></div>
       </div>
 
-      {/* Detail Review Modal */}
-      <Modal
-        isOpen={Boolean(selected)}
-        onClose={() => { setSelected(null); setComment(""); }}
-        title={`${label} Review — ${requisition?.title || requisitionData.title || "Requisition"}`}
-        size="xl"
-        footer={
-          isPending && can(decidePermission) ? (
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              {!isDirector ? (
-                <>
-                  {reqStatus === "returned_to_hr" ? (
-                    <Button onClick={handleRespondToDirector} disabled={saving}>
-                      <Send size={14} className="mr-1" /> Re-forward to Director
+      
+      {/* HR Manager gets the Editable Form */}
+      {!isDirector && (
+        <RequisitionFormModal
+          isOpen={Boolean(selected)}
+          targetId={selected?.cycle?.requisition?.id || selected?.requisition_id}
+          titleOverride={`${label} Review — ${selected?.cycle?.requisition?.title || "Requisition"}`}
+          onClose={() => { setSelected(null); setComment(""); }}
+          onSuccess={() => load()}
+          initialDepartments={departments}
+          extraFooter={
+            isPending && can(decidePermission) ? (
+              <>
+                {reqStatus === "returned_to_hr" ? (
+                  <Button onClick={handleRespondToDirector} disabled={saving}>
+                    <Send size={14} className="mr-1" /> Re-forward to Director
+                  </Button>
+                ) : (
+                  <>
+                    <Button variant="secondary" onClick={() => setReturnDeptHeadModalOpen(true)} disabled={saving}>
+                      <RotateCcw size={14} className="mr-1" /> Return to Dept Head
                     </Button>
-                  ) : (
-                    <>
-                      <Button variant="secondary" onClick={() => setReturnDeptHeadModalOpen(true)} disabled={saving}>
-                        <RotateCcw size={14} className="mr-1" /> Return to Dept Head
-                      </Button>
-                      <Button onClick={openForwardModal} disabled={saving}>
-                        <Send size={14} className="mr-1" /> Forward to Director
-                      </Button>
-                    </>
-                  )}
-                </>
-              ) : (
-                <>
-                  <Button variant="secondary" onClick={() => setReturnDirectorModalOpen(true)} disabled={saving}>
-                    <RotateCcw size={14} className="mr-1" /> Return to HR Manager
-                  </Button>
-                  <Button onClick={() => handleDirectorDecision("approved")} disabled={saving}>
-                    <CheckCircle2 size={14} className="mr-1" /> Approve Requisition
-                  </Button>
-                </>
-              )}
-            </div>
-          ) : null
-        }
-      >
-        <div className="space-y-5">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <Detail label="Requested By" value={person(snapshot.requested_by || requisition?.requested_by)} />
-            <Detail label="Department" value={snapshot.department?.name || requisition?.department?.name} />
-            <Detail label="Department Manager" value={person(snapshot.department_manager || requisition?.department_manager)} />
-            <Detail label="Openings" value={requisitionData.openings} />
-            <Detail label="Salary Range" value={`${money(requisitionData.salary_min)} – ${money(requisitionData.salary_max)}`} />
-            <Detail label="Priority" value={requisitionData.priority} />
-            <Detail label="Submitted" value={date(selected?.cycle?.submitted_at)} />
-            <Detail label="Cycle Status" value={<Badge variant={statusVariant[selected?.status] || "gray"}>{requisition?.status?.replaceAll("_", " ") || selected?.status}</Badge>} />
-          </div>
-
-          <section className="rounded-xl border border-gray-200 p-4 dark:border-gray-700">
-            <h3 className="font-semibold text-gray-900 dark:text-white">Submitted Details</h3>
-            <div className="mt-3 grid grid-cols-1 gap-4 lg:grid-cols-2">
-              <TextBlock label="Description" html={requisitionData.description} />
-              <TextBlock label="Requirements" html={requisitionData.requirements} />
-            </div>
-          </section>
-
-          {isPending && (
-            <div className="space-y-1">
-              <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300">
-                Review Comments / Notes
-              </label>
-              <textarea
-                className={`${inputClass} min-h-20`}
-                value={comment}
-                onChange={(e) => setComment(e.target.value)}
-                placeholder="Add review notes or comments..."
-              />
-            </div>
-          )}
-
-          <section>
-            <h3 className="font-semibold text-gray-900 dark:text-white">Approval History</h3>
-            <div className="mt-3 space-y-3">
-              {history.length === 0 ? <p className="text-sm text-gray-500">History loading...</p> : history.map((cycle) => (
-                <div key={cycle.id} className="rounded-xl border border-gray-200 p-4 dark:border-gray-700">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="font-medium text-gray-900 dark:text-white">Cycle #{cycle.cycle_number}</span>
-                    <Badge variant={statusVariant[cycle.status] || "gray"}>{cycle.status}</Badge>
-                  </div>
-                  <div className="mt-3 space-y-2">
-                    {(cycle.steps || []).map((step) => (
-                      <p key={step.id} className="text-sm text-gray-600 dark:text-gray-300">
-                        <span className="font-medium">{step.step_type?.replace("_", " ")}</span>: {step.status} · {person(step.decision_actor || step.assigned_user)}{step.decided_at ? ` · ${date(step.decided_at)}` : ""}
-                        {step.comment ? ` — "${step.comment}"` : ""}
-                      </p>
-                    ))}
-                  </div>
+                    <Button onClick={openForwardModal} disabled={saving}>
+                      <Send size={14} className="mr-1" /> Forward to Director
+                    </Button>
+                  </>
+                )}
+              </>
+            ) : null
+          }
+          extraContent={
+            <div className="space-y-5">
+              {isPending && (
+                <div className="space-y-1">
+                  <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300">
+                    Review Comments / Notes
+                  </label>
+                  <textarea
+                    className={`${inputClass} min-h-20`}
+                    value={comment}
+                    onChange={(e) => setComment(e.target.value)}
+                    placeholder="Add review notes or comments..."
+                  />
                 </div>
-              ))}
+              )}
+              <section>
+                <h3 className="font-semibold text-gray-900 dark:text-white">Approval History</h3>
+                <div className="mt-3 space-y-3">
+                  {history.length === 0 ? <p className="text-sm text-gray-500">History loading...</p> : history.map((cycle) => (
+                    <div key={cycle.id} className="rounded-xl border border-gray-200 p-4 dark:border-gray-700">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-medium text-gray-900 dark:text-white">Cycle #{cycle.cycle_number}</span>
+                        <Badge variant={statusVariant[cycle.status] || "gray"}>{cycle.status}</Badge>
+                      </div>
+                      <div className="mt-3 space-y-2">
+                        {(cycle.steps || []).map((step) => (
+                          <p key={step.id} className="text-sm text-gray-600 dark:text-gray-300">
+                            <span className="font-medium">{step.step_type?.replace("_", " ")}</span>: {step.status} · {person(step.decision_actor || step.assigned_user)}{step.decided_at ? ` · ${date(step.decided_at)}` : ""}
+                            {step.comment ? ` — "${step.comment}"` : ""}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
             </div>
-          </section>
-        </div>
-      </Modal>
+          }
+        />
+      )}
+
+      {/* Director gets the Static View Modal */}
+      {isDirector && selected?.cycle?.requisition && (
+        <Modal
+          isOpen={Boolean(selected)}
+          onClose={() => { setSelected(null); setComment(""); }}
+          title={`Director Review — ${selected.cycle.requisition.title}`}
+          size="xl"
+          footer={
+            isPending && can(decidePermission) ? (
+              <div className="flex justify-end gap-2">
+                <Button variant="secondary" onClick={() => setReturnDirectorModalOpen(true)} disabled={saving}>
+                  <RotateCcw size={14} className="mr-1" /> Return to HR Manager
+                </Button>
+                <Button onClick={() => handleDirectorDecision("approved")} disabled={saving}>
+                  <CheckCircle2 size={14} className="mr-1" /> Approve Requisition
+                </Button>
+              </div>
+            ) : null
+          }
+        >
+          <div className="space-y-6">
+            <section className="rounded-xl border border-gray-200 bg-gray-50/50 p-5 dark:border-gray-700 dark:bg-gray-800/50">
+              <h3 className="mb-4 text-base font-semibold text-gray-900 dark:text-white">Core Details</h3>
+              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-3">
+                <Detail label="Job Title" value={selected.cycle.requisition.title} />
+                <Detail label="Department" value={departments.find(d => d.id === selected.cycle.requisition.department_id)?.name || selected.cycle.requisition.department?.name} />
+                <Detail label="Openings" value={selected.cycle.requisition.total_openings} />
+                <Detail label="Employment Type" value={selected.cycle.requisition.employment_type} />
+                <Detail label="Priority" value={<Badge variant={selected.cycle.requisition.priority === "urgent" ? "red" : selected.cycle.requisition.priority === "high" ? "orange" : selected.cycle.requisition.priority === "medium" ? "blue" : "gray"}>{selected.cycle.requisition.priority}</Badge>} />
+                <Detail label="Target Joining" value={selected.cycle.requisition.target_joining_date ? date(selected.cycle.requisition.target_joining_date) : null} />
+                <Detail label="Experience" value={selected.cycle.requisition.min_experience_years ? `${selected.cycle.requisition.min_experience_years} - ${selected.cycle.requisition.max_experience_years} years` : null} />
+                <Detail label="Salary" value={selected.cycle.requisition.min_salary ? `${selected.cycle.requisition.min_salary} - ${selected.cycle.requisition.max_salary}` : null} />
+              </div>
+            </section>
+
+            <section className="space-y-6">
+              <TextBlock label="Job Description" html={selected.cycle.requisition.job_description} />
+              <TextBlock label="Requirements" html={selected.cycle.requisition.requirements} />
+            </section>
+
+            {isPending && (
+              <div className="space-y-1">
+                <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300">
+                  Review Comments / Notes
+                </label>
+                <textarea
+                  className={`${inputClass} min-h-20`}
+                  value={comment}
+                  onChange={(e) => setComment(e.target.value)}
+                  placeholder="Add review notes or comments..."
+                />
+              </div>
+            )}
+
+            <section>
+              <h3 className="font-semibold text-gray-900 dark:text-white">Approval History</h3>
+              <div className="mt-3 space-y-3">
+                {history.length === 0 ? <p className="text-sm text-gray-500">History loading...</p> : history.map((cycle) => (
+                  <div key={cycle.id} className="rounded-xl border border-gray-200 p-4 dark:border-gray-700">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="font-medium text-gray-900 dark:text-white">Cycle #{cycle.cycle_number}</span>
+                      <Badge variant={statusVariant[cycle.status] || "gray"}>{cycle.status}</Badge>
+                    </div>
+                    <div className="mt-3 space-y-2">
+                      {(cycle.steps || []).map((step) => (
+                        <p key={step.id} className="text-sm text-gray-600 dark:text-gray-300">
+                          <span className="font-medium">{step.step_type?.replace("_", " ")}</span>: {step.status} · {person(step.decision_actor || step.assigned_user)}{step.decided_at ? ` · ${date(step.decided_at)}` : ""}
+                          {step.comment ? ` — "${step.comment}"` : ""}
+                        </p>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </div>
+        </Modal>
+      )}
 
       {/* Forward to Director Modal */}
       <Modal
@@ -425,28 +480,15 @@ export default function ApprovalReviewTab({ kind }) {
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setForwardModalOpen(false)} disabled={saving}>Cancel</Button>
-            <Button onClick={handleForwardToDirector} disabled={saving || directorsLoading || !directorId}>
+            <Button onClick={handleForwardToDirector} disabled={saving}>
               {saving ? "Forwarding..." : "Forward to Director"}
             </Button>
           </div>
         }
       >
         <div className="space-y-4">
-          <p className="text-sm text-gray-600 dark:text-gray-300">Select the Director who will give final approval for this requisition.</p>
-          <div>
-            <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">Director Reviewer *</label>
-            <select className={inputClass} value={directorId} onChange={(e) => setDirectorId(e.target.value)} disabled={directorsLoading}>
-              <option value="">{directorsLoading ? "Loading Directors..." : "Select Director"}</option>
-              {eligibleDirectors.map((d) => (
-                <option key={d.id} value={d.id}>{d.name}{d.designation ? ` — ${d.designation}` : ""}</option>
-              ))}
-            </select>
+            <p className="text-sm text-gray-600 dark:text-gray-300">This requisition will be forwarded to the Director pool for final approval.</p>
           </div>
-          <div>
-            <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">HR Review Note (optional)</label>
-            <textarea className={`${inputClass} min-h-20`} value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Add note for Director..." />
-          </div>
-        </div>
       </Modal>
 
       {/* Return to Department Head Modal */}

@@ -28,6 +28,7 @@ const pageTitles = {
   "/employee/payslips": "Payslips",
   "/employee/form16": "Form 16",
   "/employee/profile": "Profile",
+  "/employee/security": "Security Center",
   "/employee/appointment": "Appointment Form",
   "/agent": "Dashboard",
   "/agent/trial-forms": "Trial Form",

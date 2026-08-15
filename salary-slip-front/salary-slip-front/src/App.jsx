@@ -10,6 +10,7 @@ import { Toaster } from "react-hot-toast";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { CompanyProvider } from "./context/CompanyContext";
 import { ThemeProvider } from "./context/ThemeContext";
+import { isEmployeeProfileComplete } from "./utils/profileCompletion";
 
 /*
  * Routes are split per page.
@@ -86,6 +87,7 @@ const Profile = lazy(() => import("./pages/employee/Profile"));
 const EmployeeAppointment = lazy(() => import("./pages/employee/EmployeeAppointment"));
 const RaiseTicket = lazy(() => import("./pages/employee/RaiseTicket"));
 const MyTickets = lazy(() => import("./pages/employee/MyTickets"));
+const SecurityCenter = lazy(() => import("./pages/employee/SecurityCenter"));
 
 // Agent pages
 const AgentDashboard = lazy(() => import("./pages/agent/AgentDashboard"));
@@ -93,6 +95,7 @@ import { useAuthorization } from "./hooks/useAuthorization";
 
 // HR module
 const HrDashboard = lazy(() => import("./pages/admin/hr/HrDashboard"));
+const RecruitmentDashboard = lazy(() => import("./pages/admin/recruitment/RecruitmentDashboard"));
 const HiringProcess = lazy(() => import("./pages/admin/hr/HiringProcess"));
 const OnboardingWorkspace = lazy(() => import("./pages/admin/hr/onboarding/OnboardingWorkspace"));
 const AssetAllocation = lazy(() => import("./pages/admin/hr/AssetAllocation"));
@@ -266,19 +269,15 @@ function ProtectedRoute({ children, requiredRole, requiredPermission }) {
   }
 
   /*
-   * An incomplete profile no longer confines an employee to /employee/profile.
-   *
-   * This redirect predates the Permission Matrix and outranked it: every page an
-   * administrator granted the Employee role was unreachable until all eighteen
-   * profile fields were filled, so a role configured with Salary, Attendance and
-   * the employee dashboard still arrived at a single-item menu. Three of those
-   * fields — department, designation, joining date — are set by HR and not
-   * editable here, so some accounts could not have satisfied it at all.
-   *
-   * Completion is still shown on the profile page, which is the honest form of
-   * the reminder: it tells someone what is missing without deciding what they
-   * are allowed to open. Access is the Permission Matrix's answer alone.
+   * Mandatory profile completion check for employees.
+   * If any required profile details are missing (PF and ESI are optional),
+   * block all other pages and redirect to /employee/profile until filled up.
    */
+  if (user?.role === "employee" || (!user?.role && user?.rawRole !== 0 && user?.rawRole !== 1 && user?.rawRole !== 3)) {
+    if (!isEmployeeProfileComplete(user) && location.pathname !== "/employee/profile") {
+      return <Navigate to="/employee/profile" replace />;
+    }
+  }
 
   return children;
 }
@@ -419,6 +418,7 @@ function AppRoutes() {
 
         {/* HR module */}
         <Route path="hr" element={<ProtectedRoute requiredPermission="hr.dashboard.read"><HrDashboard /></ProtectedRoute>} />
+        <Route path="hr/recruitment-dashboard" element={<ProtectedRoute requiredPermission="hr.requisition.read"><RecruitmentDashboard /></ProtectedRoute>} />
         <Route path="hr/hiring" element={<ProtectedRoute requiredPermission="hr.requisition.read"><HiringProcess /></ProtectedRoute>} />
         {/* Interviews now lives inside the Hiring workspace as a tab; keep the old
             link working by sending it straight to that tab. */}
@@ -721,6 +721,7 @@ function AppRoutes() {
         <Route path="payslips" element={<Payslips />} />
         <Route path="form16" element={<EmployeeForm16 />} />
         <Route path="profile" element={<Profile />} />
+        <Route path="security" element={<SecurityCenter />} />
         <Route path="appointment" element={<EmployeeAppointment />} />
         {/* "new" before the list so it is not swallowed as a ticket id. */}
         <Route path="tickets/new" element={<RaiseTicket />} />

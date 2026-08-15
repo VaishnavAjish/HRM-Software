@@ -7,6 +7,7 @@ import {
 import Drawer, { CollapsibleSection } from "../../../../components/ui/Drawer";
 import Badge from "../../../../components/ui/Badge";
 import Button from "../../../../components/ui/Button";
+import CandidateCrmSections from "./CandidateCrmSections";
 import { baseUrl } from "../../../../utils/url";
 import { useAuth } from "../../../../context/AuthContext";
 
@@ -354,6 +355,8 @@ export default function CandidateDrawer({
             </div>
           )}
         </CollapsibleSection>
+
+        <CandidateCrmSections candidate={candidate} loading={loadingDetail} />
 
         {candidate.notes && (
           <CollapsibleSection title="Notes" icon={<StickyNote size={15} />}>

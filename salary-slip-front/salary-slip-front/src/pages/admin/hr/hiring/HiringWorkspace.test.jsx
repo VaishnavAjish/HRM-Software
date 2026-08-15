@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+﻿import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -19,9 +19,14 @@ vi.mock("../../../../utils/api", () => ({
     getDepartments: vi.fn().mockResolvedValue({ status: true, data: [] }),
     getAllEmployees: vi.fn().mockResolvedValue({ status: true, data: [] }),
   },
+  hrApi: {
+    getRecruitmentDashboard: vi.fn().mockResolvedValue({ status: true, data: { kpis: {}, funnel: [], alerts: {}, analytics: {} } }),
+  },
 }));
 
 vi.mock("./RequisitionsTab", () => ({ default: () => <div>Requisitions Content</div> }));
+vi.mock("./RecruitmentDashboardTab", () => ({ default: () => <div>Dashboard Content</div> }));
+vi.mock("./TalentPoolTab", () => ({ default: () => <div>Talent Pool Content</div> }));
 vi.mock("../CandidatePipeline", () => ({ default: () => <div>Candidates Content</div> }));
 vi.mock("./AssessmentTab", () => ({ default: () => <div>Assessment Content</div> }));
 vi.mock("../InterviewManagement", () => ({ default: () => <div>Interview Content</div> }));
@@ -57,7 +62,7 @@ describe("HiringWorkspace approval tabs", () => {
     setup();
 
     expect(screen.getAllByRole("button").map((button) => button.textContent)).toEqual([
-      "Requisitions", "Candidates", "Assessment", "Interview", "Offer", "Hiring Manager", "Director",
+      "Dashboard", "Requisitions", "Candidates", "Assessment", "Interview", "Offer", "HR Manager", "Director",
     ]);
   });
 
@@ -65,7 +70,7 @@ describe("HiringWorkspace approval tabs", () => {
     state.allowed = new Set(["ui.hr.hiring.hiring_manager_review"]);
     setup();
 
-    expect(screen.getByRole("button", { name: "Hiring Manager" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "HR Manager" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Director" })).not.toBeInTheDocument();
   });
 
@@ -77,18 +82,31 @@ describe("HiringWorkspace approval tabs", () => {
     const router = setup("/admin/hr/hiring?tab=director");
 
     expect(screen.getByText("director Content")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Hiring Manager" }));
-    await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("?tab=hiring-manager"));
-    expect(screen.getByText("hiring-manager Content")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "HR Manager" }));
+    await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("?tab=hr-manager"));
+    expect(screen.getByText("hr-manager Content")).toBeInTheDocument();
 
     await router.navigate(-1);
     await waitFor(() => expect(screen.getByText("director Content")).toBeInTheDocument());
   });
 
+  it("shows the Talent Pool tab only with its matching permission", async () => {
+    setup();
+
+    expect(screen.queryByRole("button", { name: "Talent Pool" })).not.toBeInTheDocument();
+
+    state.allowed = new Set(["ui.hr.hiring.talent_pools"]);
+    const router = setup("/admin/hr/hiring?tab=talent-pool");
+
+    expect(screen.getByRole("button", { name: "Talent Pool" })).toBeInTheDocument();
+    expect(screen.getByText("Talent Pool Content")).toBeInTheDocument();
+    await waitFor(() => expect(router.state.location.search).toContain("tab=talent-pool"));
+  });
+
   it("falls back safely when a direct-linked review tab is not permitted", async () => {
     setup("/admin/hr/hiring?tab=director");
 
-    expect(screen.getByText("Requisitions Content")).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("?tab=requisitions"));
+    expect(screen.getByText("Dashboard Content")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("?tab=dashboard"));
   });
 });

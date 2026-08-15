@@ -6,19 +6,19 @@ export default function CareersLayout() {
   const { candidate, isAuthenticated, logout } = useCandidateAuth();
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-900 text-slate-100 font-sans">
+    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 font-sans selection:bg-brand-500/30">
       {/* Header Navbar */}
-      <header className="sticky top-0 z-40 bg-slate-900/90 backdrop-blur-md border-b border-slate-800">
+      <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-slate-200/80 shadow-sm transition-all duration-300">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <Link to="/careers" className="flex items-center gap-2 text-xl font-bold tracking-tight text-white hover:text-brand-400 transition-colors">
-            <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-600 flex items-center justify-center text-white shadow-md">
+          <Link to="/careers" className="flex items-center gap-2.5 text-xl font-bold tracking-tight text-slate-900 hover:text-brand-600 transition-colors group">
+            <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-brand-500/20 group-hover:scale-105 transition-transform">
               <Briefcase size={20} />
             </div>
             <span>Careers Portal</span>
           </Link>
 
           <nav className="flex items-center gap-4 text-sm font-medium">
-            <Link to="/careers" className="text-slate-300 hover:text-white transition-colors">
+            <Link to="/careers" className="text-slate-600 hover:text-slate-900 transition-colors">
               Explore Jobs
             </Link>
 
@@ -26,16 +26,17 @@ export default function CareersLayout() {
               <div className="flex items-center gap-3">
                 <Link
                   to="/careers/account/applications"
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-brand-300 hover:bg-slate-700 transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all shadow-sm"
                 >
-                  <FileText size={16} /> My Applications
+                  <FileText size={16} className="text-brand-600" /> 
+                  <span className="hidden sm:inline">My Applications</span>
                 </Link>
-                <span className="text-slate-400 hidden sm:inline">|</span>
-                <span className="text-slate-200 font-semibold hidden sm:inline">{candidate?.name}</span>
+                <span className="text-slate-300 hidden sm:inline">|</span>
+                <span className="text-slate-700 font-semibold hidden sm:inline">{candidate?.name}</span>
                 <button
                   onClick={logout}
                   title="Logout"
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-slate-800 transition-colors"
+                  className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-red-50 transition-colors"
                 >
                   <LogOut size={18} />
                 </button>
@@ -44,13 +45,13 @@ export default function CareersLayout() {
               <div className="flex items-center gap-2">
                 <Link
                   to="/careers/login"
-                  className="px-3.5 py-1.5 rounded-lg text-slate-300 hover:text-white transition-colors"
+                  className="px-3.5 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors"
                 >
                   Sign In
                 </Link>
                 <Link
                   to="/careers/register"
-                  className="px-4 py-1.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-semibold shadow-md transition-all"
+                  className="px-4 py-1.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-semibold shadow-md shadow-brand-500/20 transition-all hover:-translate-y-0.5"
                 >
                   Create Account
                 </Link>
@@ -66,7 +67,7 @@ export default function CareersLayout() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-slate-800 bg-slate-950 py-8 text-center text-xs text-slate-500">
+      <footer className="border-t border-slate-200 bg-white py-8 text-center text-xs text-slate-500 mt-auto">
         <div className="max-w-7xl mx-auto px-4">
           <p>© {new Date().getFullYear()} NISS HRMS Recruitment. All rights reserved.</p>
         </div>

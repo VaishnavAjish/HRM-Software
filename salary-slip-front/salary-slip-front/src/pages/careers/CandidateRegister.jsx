@@ -42,83 +42,83 @@ export default function CandidateRegister() {
 
   return (
     <div className="max-w-md mx-auto px-4 py-16">
-      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-8 shadow-2xl space-y-6">
-        <div className="text-center space-y-1">
-          <h1 className="text-2xl font-bold text-white">Create Candidate Account</h1>
-          <p className="text-xs text-slate-400">Join our talent network to apply for open positions.</p>
+      <div className="rounded-3xl border border-slate-100 bg-white p-8 sm:p-10 shadow-2xl shadow-slate-200/50 space-y-8">
+        <div className="text-center space-y-2">
+          <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">Create Candidate Account</h1>
+          <p className="text-sm font-medium text-slate-500">Join our talent network to apply for open positions.</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4 text-sm">
+        <form onSubmit={handleSubmit} className="space-y-5 text-sm">
           <div>
-            <label className="block text-xs font-medium text-slate-400 mb-1">Full Name *</label>
-            <div className="relative">
-              <User size={16} className="absolute left-3 top-3 text-slate-500" />
+            <label className="block text-xs font-bold text-slate-700 mb-1.5">Full Name *</label>
+            <div className="relative group">
+              <User size={18} className="absolute left-4 top-3 text-slate-400 group-focus-within:text-brand-500 transition-colors" />
               <input
                 type="text"
                 required
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
-                className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-white placeholder-slate-500 focus:border-brand-500 focus:outline-none"
+                className="w-full pl-11 pr-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 placeholder-slate-400 font-medium focus:bg-white focus:border-brand-500 focus:outline-none focus:ring-4 focus:ring-brand-500/10 transition-all"
                 placeholder="John Doe"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-slate-400 mb-1">Email Address *</label>
-            <div className="relative">
-              <Mail size={16} className="absolute left-3 top-3 text-slate-500" />
+            <label className="block text-xs font-bold text-slate-700 mb-1.5">Email Address *</label>
+            <div className="relative group">
+              <Mail size={18} className="absolute left-4 top-3 text-slate-400 group-focus-within:text-brand-500 transition-colors" />
               <input
                 type="email"
                 required
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
-                className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-white placeholder-slate-500 focus:border-brand-500 focus:outline-none"
+                className="w-full pl-11 pr-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 placeholder-slate-400 font-medium focus:bg-white focus:border-brand-500 focus:outline-none focus:ring-4 focus:ring-brand-500/10 transition-all"
                 placeholder="john@example.com"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-slate-400 mb-1">Phone Number</label>
-            <div className="relative">
-              <Phone size={16} className="absolute left-3 top-3 text-slate-500" />
+            <label className="block text-xs font-bold text-slate-700 mb-1.5">Phone Number</label>
+            <div className="relative group">
+              <Phone size={18} className="absolute left-4 top-3 text-slate-400 group-focus-within:text-brand-500 transition-colors" />
               <input
                 type="text"
                 value={form.phone}
                 onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-white placeholder-slate-500 focus:border-brand-500 focus:outline-none"
+                className="w-full pl-11 pr-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 placeholder-slate-400 font-medium focus:bg-white focus:border-brand-500 focus:outline-none focus:ring-4 focus:ring-brand-500/10 transition-all"
                 placeholder="+91 98765 43210"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-slate-400 mb-1">Password *</label>
-            <div className="relative">
-              <Lock size={16} className="absolute left-3 top-3 text-slate-500" />
+            <label className="block text-xs font-bold text-slate-700 mb-1.5">Password *</label>
+            <div className="relative group">
+              <Lock size={18} className="absolute left-4 top-3 text-slate-400 group-focus-within:text-brand-500 transition-colors" />
               <input
                 type="password"
                 required
                 minLength={8}
                 value={form.password}
                 onChange={(e) => setForm({ ...form, password: e.target.value })}
-                className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-white focus:border-brand-500 focus:outline-none"
+                className="w-full pl-11 pr-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 placeholder-slate-400 font-medium focus:bg-white focus:border-brand-500 focus:outline-none focus:ring-4 focus:ring-brand-500/10 transition-all"
                 placeholder="At least 8 characters"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-slate-400 mb-1">Confirm Password *</label>
-            <div className="relative">
-              <Lock size={16} className="absolute left-3 top-3 text-slate-500" />
+            <label className="block text-xs font-bold text-slate-700 mb-1.5">Confirm Password *</label>
+            <div className="relative group">
+              <Lock size={18} className="absolute left-4 top-3 text-slate-400 group-focus-within:text-brand-500 transition-colors" />
               <input
                 type="password"
                 required
                 value={form.password_confirmation}
                 onChange={(e) => setForm({ ...form, password_confirmation: e.target.value })}
-                className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-white focus:border-brand-500 focus:outline-none"
+                className="w-full pl-11 pr-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 placeholder-slate-400 font-medium focus:bg-white focus:border-brand-500 focus:outline-none focus:ring-4 focus:ring-brand-500/10 transition-all"
                 placeholder="Repeat password"
               />
             </div>
@@ -127,15 +127,15 @@ export default function CandidateRegister() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-bold text-sm transition-colors shadow-lg flex items-center justify-center gap-2"
+            className="w-full py-3.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-bold text-sm transition-all shadow-lg shadow-brand-500/20 hover:-translate-y-0.5 flex items-center justify-center gap-2 mt-2"
           >
-            {loading ? "Creating Account..." : "Create Account"} <ArrowRight size={16} />
+            {loading ? "Creating Account..." : "Create Account"} <ArrowRight size={18} />
           </button>
         </form>
 
-        <div className="text-center text-xs text-slate-400 pt-2 border-t border-slate-800">
+        <div className="text-center text-sm font-medium text-slate-500 pt-6 border-t border-slate-100">
           Already have an account?{" "}
-          <Link to={`/careers/login?redirect=${encodeURIComponent(redirect)}`} className="font-semibold text-brand-400 hover:underline">
+          <Link to={`/careers/login?redirect=${encodeURIComponent(redirect)}`} className="font-bold text-brand-600 hover:text-brand-500 transition-colors">
             Sign In
           </Link>
         </div>

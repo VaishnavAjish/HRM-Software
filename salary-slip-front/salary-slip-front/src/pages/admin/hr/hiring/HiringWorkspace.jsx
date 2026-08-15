@@ -4,17 +4,23 @@ import { useAuth } from "../../../../context/AuthContext";
 import { useCompany } from "../../../../context/CompanyContext";
 import { salaryApi } from "../../../../utils/api";
 import RequisitionsTab from "./RequisitionsTab";
+import RequisitionFormModal from "./RequisitionFormModal";
 import CandidatePipeline from "../CandidatePipeline";
+import HRManagerTab from "./HRManagerTab";
 import AssessmentTab from "./AssessmentTab";
 import InterviewManagement from "../InterviewManagement";
 import OfferManagement from "../OfferManagement";
 import { useAuthorization } from "../../../../hooks/useAuthorization";
 import ApprovalReviewTab from "./ApprovalReviewTab";
 import JobPortalTab from "./JobPortalTab";
+import RecruitmentDashboardTab from "./RecruitmentDashboardTab";
+import TalentPoolTab from "./TalentPoolTab";
 
 const TABS = [
+  { key: "dashboard", label: "Dashboard" },
   { key: "requisitions", label: "Requisitions" },
   { key: "candidates", label: "Candidates" },
+  { key: "talent-pool", label: "Talent Pool", permissions: ["ui.hr.hiring.talent_pools", "ui.hr.hiring.talent_pool"] },
   { key: "assessment", label: "Assessment" },
   { key: "interview", label: "Interview" },
   { key: "offer", label: "Offer" },
@@ -37,6 +43,11 @@ export default function HiringWorkspace() {
   const { companyScope, scopeKey } = useCompany();
   const { can } = useAuthorization();
   const [searchParams, setSearchParams] = useSearchParams();
+  const [editModalTargetId, setEditModalTargetId] = useState(null);
+
+  const openRequisitionForm = (id = null) => {
+    setEditModalTargetId(id || "new");
+  };
 
   const availableTabs = useMemo(() => {
     return TABS.filter((item) => {
@@ -50,7 +61,7 @@ export default function HiringWorkspace() {
     rawTab = "hr-manager";
   }
 
-  const tab = availableTabs.some((item) => item.key === rawTab) ? rawTab : "requisitions";
+  const tab = availableTabs.some((item) => item.key === rawTab) ? rawTab : "dashboard";
 
   useEffect(() => {
     const currentTab = searchParams.get("tab");
@@ -110,14 +121,24 @@ export default function HiringWorkspace() {
         </div>
       </div>
 
-      {tab === "requisitions" && <RequisitionsTab departments={departments} people={people} />}
+      {tab === "dashboard" && <RecruitmentDashboardTab onNavigate={selectTab} />}
+      {tab === "requisitions" && <RequisitionsTab departments={departments} people={people} openRequisitionForm={openRequisitionForm} />}
       {tab === "candidates" && <CandidatePipeline departments={departments} people={people} />}
+      {tab === "talent-pool" && <TalentPoolTab />}
       {tab === "assessment" && <AssessmentTab />}
       {tab === "interview" && <InterviewManagement />}
       {tab === "offer" && <OfferManagement />}
-      {tab === "hr-manager" && <ApprovalReviewTab kind="hr-manager" />}
-      {tab === "director" && <ApprovalReviewTab kind="director" />}
+      {tab === "hr-manager" && <HRManagerTab departments={departments} people={people} openRequisitionForm={openRequisitionForm} />}
+      {tab === "director" && <ApprovalReviewTab kind="director" departments={departments} people={people} openRequisitionForm={openRequisitionForm} />}
       {tab === "job-portal" && <JobPortalTab departments={departments} />}
+
+      <RequisitionFormModal
+        isOpen={Boolean(editModalTargetId)}
+        targetId={editModalTargetId}
+        onClose={() => setEditModalTargetId(null)}
+        onSuccess={() => { /* Tabs should poll or reload on focus, or we can add a global event */ }}
+        initialDepartments={departments}
+      />
     </div>
   );
 }

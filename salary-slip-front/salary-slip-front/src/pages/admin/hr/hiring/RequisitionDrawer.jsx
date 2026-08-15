@@ -51,7 +51,7 @@ export default function RequisitionDrawer({ requisition, onClose, onEdit }) {
       subtitle={requisition?.department?.name}
       size="lg"
       headerExtra={
-        requisition && ["draft", "rejected", "revision_requested"].includes(requisition.status) && (
+        requisition && ["draft", "rejected", "revision_requested", "pending_approval", "pending_hr_review"].includes(requisition.status) && (
           <button
             onClick={() => onEdit(requisition)}
             title="Edit"

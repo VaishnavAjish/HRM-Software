@@ -1,8 +1,9 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
-  Plus, Send, Pencil, Trash2, Copy, Archive,
+  Plus, Send, Pencil, Trash2, Copy, Archive, Eye,
   Columns3, ChevronDown, ClipboardCopy, RotateCcw, Link2, Check,
 } from "lucide-react";
 import Button from "../../../../components/ui/Button";
@@ -20,6 +21,7 @@ import useHrFilters from "./useHrFilters";
 import HiringFilterBar from "./HiringFilterBar";
 import { runBulk } from "./bulkActions";
 import RequisitionDrawer from "./RequisitionDrawer";
+
 import { useAuthorization } from "../../../../hooks/useAuthorization";
 
 const inputClass = "w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500";
@@ -158,7 +160,7 @@ function approvalProgress(requisition) {
   return `HM ${shortStatus(hiringManager?.status)} · Director ${shortStatus(director?.status)}`;
 }
 
-export default function RequisitionsTab({ departments = [], people = [] }) {
+export default function RequisitionsTab({ departments = [], people = [], openRequisitionForm, isHrManagerView = false }) {
   const { user } = useAuth();
   const { companyScope, scopeKey } = useCompany();
   const hr = useHrFilters("requisitions");
@@ -176,6 +178,7 @@ export default function RequisitionsTab({ departments = [], people = [] }) {
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [drawerTarget, setDrawerTarget] = useState(null);
+  const [reviewReq, setReviewReq] = useState(null);
   const [submitTarget, setSubmitTarget] = useState(null);
   const [approvalOptions, setApprovalOptions] = useState({ hrManagers: [] });
   const [approversLoading, setApproversLoading] = useState(false);
@@ -245,7 +248,9 @@ export default function RequisitionsTab({ departments = [], people = [] }) {
   // recruiter edits it directly, at which point their wording wins until
   // they explicitly ask to rebuild it.
   const [jdText, setJdText] = useState(() => buildJdTemplate(EMPTY_FORM, ""));
-  const [jdEdited, setJdEdited] = useState(false);
+    const [jdEdited, setJdEdited] = useState(false);
+
+
 
   // One shared "how to apply" link embedded into every generated JD — the
   // same Google Form every requisition's candidates apply through, per the
@@ -334,66 +339,17 @@ export default function RequisitionsTab({ departments = [], people = [] }) {
   }, [rows, hr.filters.hiringManagerId, hr.filters.directorId, hr.filters.priority, hr.filters.dateFrom, hr.filters.dateTo, hr.filters.sort]);
 
   const openCreate = () => {
-    setEditing(null);
-    setForm(EMPTY_FORM);
-    baselineRef.current = step2Snapshot(EMPTY_FORM);
-    setJdEdited(false);
-    resetManagers();
-    setStep(1);
-    setModalOpen(true);
+    if (openRequisitionForm) openRequisitionForm(null);
   };
 
   const openEdit = (r) => {
-    if (!["draft", "rejected"].includes(r.status)) {
-      toast.error("Pending and completed requisitions are read-only.");
-      return;
+    if (!["draft", "rejected", "pending_approval", "pending_hr_review"].includes(r.status)) {
+        toast.error("This requisition cannot be edited in its current state.");
+        return;
     }
-    setEditing(r);
-    const f = {
-      department_id: r.department_id ?? "", department_manager_id: r.department_manager_id ?? "",
-      title: r.title || "", designation: r.designation || "", employment_type: r.employment_type || "full_time",
-      openings: r.openings || 1, priority: r.priority || "medium", min_experience: r.min_experience ?? "",
-      max_experience: r.max_experience ?? "", salary_min: r.salary_min ?? "", salary_max: r.salary_max ?? "",
-      description: r.description || "", requirements: r.requirements || "", target_closing_date: r.target_closing_date || "",
-    };
-    setForm(f);
-    baselineRef.current = step2Snapshot(f);
-    setJdEdited(false);
-    resetManagers();
-    if (r.department_manager) {
-      setManagers([{ id: r.department_manager.id, name: r.department_manager.name, designation: r.department_manager.designation }]);
-    }
-    setStep(2);
-    setModalOpen(true);
+    if (openRequisitionForm) openRequisitionForm(r.id);
   };
 
-  const save = async () => {
-    if (!form.title.trim()) { toast.error("Title is required"); return; }
-    if (!editing && (!form.department_id || !form.department_manager_id)) {
-      setStep(1);
-      toast.error("Select a Department and Department Manager first");
-      return;
-    }
-    setSaving(true);
-    try {
-      const payload = { ...form };
-      if (form.department_id && form.department_manager_id) {
-        payload.department_id = Number(form.department_id);
-        payload.department_manager_id = Number(form.department_manager_id);
-      } else {
-        delete payload.department_id;
-        delete payload.department_manager_id;
-      }
-      const res = editing
-        ? await hrApi.updateRequisition(editing.id, payload, user?.accessToken, user?.tokenType)
-        : await hrApi.storeRequisition(payload, user?.accessToken, user?.tokenType);
-      if (res.status) { toast.success(res.message || "Saved"); setModalOpen(false); load(); }
-    } catch (err) {
-      toast.error(err.message || "Failed to save requisition");
-    } finally {
-      setSaving(false);
-    }
-  };
 
   const remove = async (id) => {
     if (!window.confirm("Delete this requisition?")) return;
@@ -428,13 +384,12 @@ export default function RequisitionsTab({ departments = [], people = [] }) {
   };
 
   const submitForApproval = async () => {
-    if (!hrManagerId) { toast.error("Select an HR Manager reviewer"); return; }
     setSubmittingApproval(true);
     try {
       const res = await hrApi.submitRequisition(submitTarget.id, {
-        hr_manager_id: Number(hrManagerId),
+        hr_manager_id: null,
       }, user?.accessToken, user?.tokenType);
-      if (res.status) { toast.success("Submitted for HR Manager review"); setSubmitTarget(null); load(); }
+      if (res.status) { toast.success("Submitted to HR Manager Pool"); setSubmitTarget(null); load(); }
     } catch (err) { toast.error(err.message || "Failed to submit"); }
     finally { setSubmittingApproval(false); }
   };
@@ -472,32 +427,27 @@ export default function RequisitionsTab({ departments = [], people = [] }) {
   };
 
   const duplicate = async (r) => {
-    if (!r.department_id || !r.department_manager_id) {
-      setEditing(null);
-      setForm({
-        ...EMPTY_FORM,
-        title: `${r.title} (Copy)`, designation: r.designation || "", employment_type: r.employment_type || "full_time",
-        openings: r.openings || 1, priority: r.priority || "medium", min_experience: r.min_experience ?? "",
-        max_experience: r.max_experience ?? "", salary_min: r.salary_min ?? "", salary_max: r.salary_max ?? "",
-        description: r.description || "", requirements: r.requirements || "",
-      });
-      baselineRef.current = step2Snapshot(EMPTY_FORM);
-      setJdEdited(false);
-      resetManagers();
-      setStep(1);
-      setModalOpen(true);
-      toast("Select the Department and Department Manager to finish duplicating");
-      return;
-    }
     try {
-      const res = await hrApi.storeRequisition({
-        title: `${r.title} (Copy)`, department_id: r.department_id, department_manager_id: r.department_manager_id,
-        designation: r.designation, employment_type: r.employment_type,
+      const payload = {
+        title: `${r.title} (Copy)`, designation: r.designation, employment_type: r.employment_type,
         openings: r.openings, priority: r.priority, min_experience: r.min_experience, max_experience: r.max_experience,
         salary_min: r.salary_min, salary_max: r.salary_max, description: r.description, requirements: r.requirements,
-      }, user?.accessToken, user?.tokenType);
-      if (res.status) { toast.success("Duplicated as a new draft"); load(); }
-    } catch (err) { toast.error(err.message || "Failed to duplicate"); }
+      };
+      if (r.department_id && r.department_manager_id) {
+        payload.department_id = r.department_id;
+        payload.department_manager_id = r.department_manager_id;
+      } else {
+        toast.error("Cannot duplicate: missing department or manager. Create a new one manually.");
+        return;
+      }
+      const res = await hrApi.storeRequisition(payload, user?.accessToken, user?.tokenType);
+      if (res.status) {
+        toast.success("Requisition duplicated");
+        load();
+      }
+    } catch (err) {
+      toast.error(err.message || "Failed to duplicate");
+    }
   };
 
   const archive = async (id) => {
@@ -539,6 +489,7 @@ export default function RequisitionsTab({ departments = [], people = [] }) {
   };
 
   const allOnPageSelected = visibleRows.length > 0 && visibleRows.every((r) => hr.selectedIds.includes(r.id));
+
 
   return (
     <div className="space-y-4">
@@ -662,12 +613,12 @@ export default function RequisitionsTab({ departments = [], people = [] }) {
                         {r.status === "pending_approval" && can("ui.hr.hiring.requisition_withdraw") && (
                           <button title="Withdraw to draft" onClick={() => withdraw(r.id)} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"><RotateCcw size={14} /></button>
                         )}
-                        {r.status === "approved" && can("ui.hr.hiring.requisition_publish") && (
-                          <button title="Post" onClick={() => publish(r.id)} className="p-1.5 rounded-lg text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20"><Send size={14} /></button>
-                        )}
-                        {r.status === "approved" && can("ui.hr.hiring.requisition_publish") && (
-                          <button
-                            title={r.published_to_indeed ? "Published on Indeed" : "Publish to Indeed"}
+                        {isHrManagerView && r.status === "approved" && can("ui.hr.hiring.requisition_publish") && (
+                            <button title="Post" onClick={() => publish(r.id)} className="p-1.5 rounded-lg text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20"><Send size={14} /></button>
+                          )}
+                        {isHrManagerView && r.status === "approved" && can("ui.hr.hiring.requisition_publish") && (
+                            <button
+                              title={r.published_to_indeed ? "Published on Indeed" : "Publish to Indeed"}
                             onClick={() => publishToIndeed(r)}
                             disabled={publishingIndeedId === r.id}
                             className={`px-2 py-1 rounded-md text-xs font-bold flex items-center gap-1 transition-colors ${
@@ -680,12 +631,17 @@ export default function RequisitionsTab({ departments = [], people = [] }) {
                             {publishingIndeedId === r.id ? "..." : (r.published_to_indeed ? "✓" : "Post")}
                           </button>
                         )}
-                        {["draft", "rejected"].includes(r.status) && <button title="Edit" onClick={() => openEdit(r)} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"><Pencil size={14} /></button>}
+                        {isHrManagerView && (r.status === "awaiting" || r.status === "returned_to_hr") && (
+                            <button title="Review" onClick={() => setReviewReq(r)} className="px-2 py-1 rounded-md text-xs font-bold flex items-center gap-1 bg-brand-600 text-white hover:bg-brand-700 shadow-xs">
+                              <Eye size={14} /> Review
+                            </button>
+                          )}
+                          {["draft", "rejected", "pending_approval", "pending_hr_review"].includes(r.status) && <button title="Edit" onClick={() => openEdit(r)} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"><Pencil size={14} /></button>}
                         <button title="Duplicate" onClick={() => duplicate(r)} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"><Copy size={14} /></button>
                         {!["closed", "cancelled", "pending_approval"].includes(r.status) && (
                           <button title="Archive / Close" onClick={() => archive(r.id)} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"><Archive size={14} /></button>
                         )}
-                        {r.status === "draft" && <button title="Delete" onClick={() => remove(r.id)} className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"><Trash2 size={14} /></button>}
+                        <button title="Delete" onClick={() => remove(r.id)} className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"><Trash2 size={14} /></button>
                       </div>
                     </td>
                   </tr>
@@ -699,198 +655,7 @@ export default function RequisitionsTab({ departments = [], people = [] }) {
         </div>
       </div>
 
-      <Modal isOpen={modalOpen} onClose={requestClose} title={editing ? "Edit Requisition" : "New Job Requisition"} size={step === 1 ? "md" : "xl"}
-        footer={step === 1 ? (
-          <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={requestClose}>Cancel</Button>
-            <Button onClick={() => canGoNext && setStep(2)} disabled={!canGoNext}>Next →</Button>
-          </div>
-        ) : (
-          <div className="flex items-center justify-between gap-2">
-            <Button variant="secondary" onClick={goToStep1}>← Back</Button>
-            <div className="flex gap-2">
-              <Button variant="secondary" onClick={requestClose}>Cancel</Button>
-              <Button onClick={save} disabled={saving}>{saving ? "Saving..." : "Save"}</Button>
-            </div>
-          </div>
-        )}>
-        {step === 1 && (
-          <FormSection title="Department & Approver">
-            <div className="space-y-4">
-              <Field label="Department" required>
-                <select
-                  className={inputClass}
-                  aria-label="Department"
-                  value={form.department_id}
-                  onChange={(e) => onDepartmentChange(e.target.value)}
-                  autoFocus
-                >
-                  <option value="">{deptOptions.length === 0 ? "Loading departments..." : "Select Department"}</option>
-                  {deptOptions.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-                </select>
-              </Field>
-              <Field label="Department Manager" required>
-                <select
-                  className={inputClass}
-                  aria-label="Department Manager"
-                  value={form.department_manager_id}
-                  disabled={!form.department_id || managersLoading || managersError || managers.length === 0}
-                  onChange={(e) => setForm({ ...form, department_manager_id: e.target.value })}
-                >
-                  <option value="">
-                    {!form.department_id ? "Select Department first"
-                      : managersLoading ? "Loading managers..."
-                      : "Select Department Manager"}
-                  </option>
-                  {managers.map((m) => (
-                    <option key={m.id} value={m.id}>{m.name}{m.designation ? ` — ${m.designation}` : ""}</option>
-                  ))}
-                </select>
-                {managersError && (
-                  <p className="mt-1.5 text-xs text-red-600 dark:text-red-400">
-                    Unable to load Department Managers.{" "}
-                    <button type="button" onClick={() => loadManagers(form.department_id, form.department_manager_id)} className="font-semibold underline">
-                      Retry
-                    </button>
-                  </p>
-                )}
-                {!managersError && !managersLoading && form.department_id && managers.length === 0 && (
-                  <p className="mt-1.5 text-xs text-amber-600 dark:text-amber-400">
-                    No Department Manager is assigned to this department.
-                  </p>
-                )}
-              </Field>
-            </div>
-          </FormSection>
-        )}
-        {step === 2 && (
-        <>
-        <div className="mb-4 flex flex-wrap items-center gap-x-5 gap-y-1 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 px-4 py-2.5 text-sm">
-          <span className="text-gray-500 dark:text-gray-400">
-            Department: <span className="font-semibold text-gray-900 dark:text-white">{selectedDeptName}</span>
-          </span>
-          <span className="text-gray-500 dark:text-gray-400">
-            Manager: <span className="font-semibold text-gray-900 dark:text-white">{selectedManagerName}</span>
-          </span>
-          <button type="button" onClick={goToStep1} className="ml-auto text-xs font-semibold text-brand-600 dark:text-brand-400 hover:underline">
-            Change
-          </button>
-        </div>
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
-          <div className="lg:col-span-3 space-y-5 content-start">
-            <FormSection title="Role Basics">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Field label="Title" required><input className={inputClass} aria-label="Title" autoFocus value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></Field>
-                <Field label="Designation"><input className={inputClass} value={form.designation} onChange={(e) => setForm({ ...form, designation: e.target.value })} /></Field>
-                <Field label="Employment Type">
-                  <select className={inputClass} value={form.employment_type} onChange={(e) => setForm({ ...form, employment_type: e.target.value })}>
-                    <option value="full_time">Full Time</option>
-                    <option value="part_time">Part Time</option>
-                    <option value="contract">Contract</option>
-                    <option value="intern">Intern</option>
-                  </select>
-                </Field>
-                <Field label="Openings"><input type="number" min="1" className={inputClass} value={form.openings} onChange={(e) => setForm({ ...form, openings: e.target.value })} /></Field>
-                <Field label="Priority">
-                  <select className={inputClass} value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>
-                    <option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="urgent">Urgent</option>
-                  </select>
-                </Field>
-                <Field label="Target Closing Date"><DatePicker value={form.target_closing_date || ""} onChange={(v) => setForm({ ...form, target_closing_date: v })} /></Field>
-              </div>
-            </FormSection>
-
-            <FormSection title="Experience & Compensation">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Field label="Min Experience (yrs)"><input type="number" step="0.5" className={inputClass} value={form.min_experience} onChange={(e) => setForm({ ...form, min_experience: e.target.value })} /></Field>
-                <Field label="Max Experience (yrs)"><input type="number" step="0.5" className={inputClass} value={form.max_experience} onChange={(e) => setForm({ ...form, max_experience: e.target.value })} /></Field>
-                <Field label="Salary Min"><input type="number" className={inputClass} value={form.salary_min} onChange={(e) => setForm({ ...form, salary_min: e.target.value })} /></Field>
-                <Field label="Salary Max"><input type="number" className={inputClass} value={form.salary_max} onChange={(e) => setForm({ ...form, salary_max: e.target.value })} /></Field>
-              </div>
-            </FormSection>
-
-            <FormSection title="Description & Requirements">
-              <div className="space-y-4">
-                <Field label="Description" full>
-                  <RichTextEditor
-                    value={form.description}
-                    onChange={(html) => setForm({ ...form, description: html })}
-                    placeholder="What this role does day-to-day…"
-                    minHeight={110}
-                  />
-                </Field>
-                <Field label="Requirements" full>
-                  <RichTextEditor
-                    value={form.requirements}
-                    onChange={(html) => setForm({ ...form, requirements: html })}
-                    placeholder="Skills, experience, must-haves…"
-                    minHeight={110}
-                  />
-                </Field>
-              </div>
-            </FormSection>
-          </div>
-
-          <div className="lg:col-span-2">
-            <div className="flex h-full flex-col rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-3">
-              <div className="mb-2 flex items-center justify-between">
-                <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">Job Description Preview</span>
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    title="Rebuild from the details on the left"
-                    onClick={() => { setJdEdited(false); setJdText(buildJdTemplate(form, applyLink)); }}
-                    className="flex items-center gap-1 text-[11px] font-semibold text-brand-600 hover:underline dark:text-brand-400"
-                  >
-                    <RotateCcw size={12} /> Regenerate
-                  </button>
-                  <button
-                    type="button"
-                    title="Copy as plain text"
-                    onClick={() => {
-                      navigator.clipboard.writeText(htmlToPlainText(jdText));
-                      toast.success("JD copied to clipboard");
-                    }}
-                    className="flex items-center gap-1 text-[11px] font-semibold text-gray-500 hover:underline dark:text-gray-400"
-                  >
-                    <ClipboardCopy size={12} /> Copy
-                  </button>
-                </div>
-              </div>
-
-              <div className="mb-2 flex items-center gap-1.5">
-                <Link2 size={13} className="flex-shrink-0 text-gray-400" />
-                <input
-                  className="flex-1 min-w-0 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1 text-[11px] text-gray-700 dark:text-gray-200 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-                  placeholder="Careers application form link (shared across every JD)…"
-                  value={applyLinkDraft}
-                  onChange={(e) => setApplyLinkDraft(e.target.value)}
-                />
-                {applyLinkDraft !== applyLink && (
-                  <button
-                    type="button" title="Save application link" onClick={saveApplyLink} disabled={applyLinkSaving}
-                    className="flex-shrink-0 p-1.5 rounded-lg bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50"
-                  >
-                    <Check size={13} />
-                  </button>
-                )}
-              </div>
-
-              <RichTextEditor
-                value={jdText}
-                onChange={(html) => { setJdText(html); setJdEdited(true); }}
-                minHeight={340}
-                className="flex-1 [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mb-1 [&_h2]:text-sm [&_h2]:font-bold [&_h2]:uppercase [&_h2]:tracking-wide [&_h2]:text-brand-600 dark:[&_h2]:text-brand-400 [&_h2]:mt-3 [&_h2]:mb-1 [&_.jd-meta]:text-gray-500 dark:[&_.jd-meta]:text-gray-400 [&_.jd-meta]:text-xs [&_.jd-meta]:mb-2 [&_a]:text-brand-600 dark:[&_a]:text-brand-400 [&_a]:underline"
-              />
-              <p className="mt-1.5 text-[10.5px] text-gray-400 dark:text-gray-500">
-                Auto-generated from the details on the left — edit freely (bold/bullets included), or hit Regenerate to rebuild it from the current values.
-              </p>
-            </div>
-          </div>
-        </div>
-        </>
-        )}
-      </Modal>
+      
 
       <Modal
         isOpen={Boolean(submitTarget)}
@@ -900,23 +665,14 @@ export default function RequisitionsTab({ departments = [], people = [] }) {
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setSubmitTarget(null)} disabled={submittingApproval}>Cancel</Button>
-            <Button onClick={submitForApproval} disabled={approversLoading || submittingApproval || !hrManagerId}>
+            <Button onClick={submitForApproval} disabled={submittingApproval}>
               {submittingApproval ? "Submitting..." : "Submit for HR Review"}
             </Button>
           </div>
         }
       >
         <div className="space-y-4">
-          <p className="text-sm text-gray-600 dark:text-gray-300">Select an HR Manager to review this hiring requisition. The HR Manager will review details and forward it to the Director for approval.</p>
-          <Field label="HR Manager Reviewer" required>
-            <select className={inputClass} value={hrManagerId} onChange={(e) => setHrManagerId(e.target.value)} disabled={approversLoading}>
-              <option value="">{approversLoading ? "Loading eligible HR Managers..." : "Select HR Manager"}</option>
-              {(approvalOptions.hrManagers || []).map((person) => <option key={person.id} value={person.id}>{person.name}{person.designation ? ` — ${person.designation}` : ""}</option>)}
-            </select>
-          </Field>
-          {!approversLoading && (approvalOptions.hrManagers || []).length === 0 && (
-            <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-900/20 dark:text-amber-300">No eligible HR Manager is available. Grant the HR Manager Review permission in the Permission Matrix.</p>
-          )}
+          <p className="text-sm text-gray-600 dark:text-gray-300">This requisition will be submitted to the HR Manager pool. Any eligible HR Manager can pick it up, review it, and forward it to the Directors.</p>
         </div>
       </Modal>
 
@@ -950,3 +706,4 @@ function FormSection({ title, children }) {
     </div>
   );
 }
+
