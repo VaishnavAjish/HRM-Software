@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import {
-  Building2, Plus, RefreshCw, Search, Loader2, Pencil, Trash2,
+  Plus, RefreshCw, Search, Loader2, Pencil, Trash2,
   Power, PowerOff, Link2, AlertTriangle, Users, UserCheck, Check,
 } from "lucide-react";
 import Badge from "../../../components/ui/Badge";
@@ -248,7 +248,9 @@ function DepartmentModal({ department, companies, busy, onSave, onClose }) {
   );
 }
 
-function AssignManagerModal({ managerData, allDepartments, eligibleUsers, busy, onSave, onClose }) {
+const USER_SEARCH_MIN_CHARS = 2;
+
+function AssignManagerModal({ managerData, allDepartments, eligibleUsers, token, tokenType, busy, onSave, onClose }) {
   const isEdit = Boolean(managerData?.id);
   const [selectedUserId, setSelectedUserId] = useState(managerData?.id ? String(managerData.id) : "");
   const [selectedDeptIds, setSelectedDeptIds] = useState(
@@ -256,6 +258,8 @@ function AssignManagerModal({ managerData, allDepartments, eligibleUsers, busy, 
   );
   const [deptSearch, setDeptSearch] = useState("");
   const [userSearch, setUserSearch] = useState("");
+  const [searchedUsers, setSearchedUsers] = useState(null);
+  const [searchingUsers, setSearchingUsers] = useState(false);
 
   const toggleDept = (id) => {
     setSelectedDeptIds((prev) =>
@@ -271,16 +275,39 @@ function AssignManagerModal({ managerData, allDepartments, eligibleUsers, busy, 
     );
   }, [allDepartments, deptSearch]);
 
-  const filteredUsers = useMemo(() => {
-    if (!userSearch.trim()) return eligibleUsers;
-    const term = userSearch.toLowerCase();
-    return eligibleUsers.filter(
-      (u) =>
-        u.name?.toLowerCase().includes(term) ||
-        u.emp_code?.toLowerCase().includes(term) ||
-        u.email?.toLowerCase().includes(term)
-    );
-  }, [eligibleUsers, userSearch]);
+  // eligibleUsers as loaded on modal-open is capped server-side (currently
+  // 100 rows, alphabetical) — fine for "browse without typing", but filtering
+  // that fixed snapshot client-side means anyone outside the first 100 could
+  // never be found no matter what was typed. Once the admin types enough to
+  // search, re-query the server instead so the full employee list is
+  // actually searched.
+  useEffect(() => {
+    const term = userSearch.trim();
+    if (term.length < USER_SEARCH_MIN_CHARS) return undefined;
+
+    let active = true;
+    const timer = setTimeout(() => {
+      departmentApi.eligibleUsers({ search: term }, token, tokenType)
+        .then((res) => { if (active) setSearchedUsers(res?.data ?? []); })
+        .catch(() => { if (active) setSearchedUsers([]); })
+        .finally(() => { if (active) setSearchingUsers(false); });
+    }, 300);
+
+    return () => { active = false; clearTimeout(timer); };
+  }, [userSearch, token, tokenType]);
+
+  const changeUserSearch = (event) => {
+    const value = event.target.value;
+    setUserSearch(value);
+    if (value.trim().length < USER_SEARCH_MIN_CHARS) {
+      setSearchedUsers(null);
+      setSearchingUsers(false);
+    } else {
+      setSearchingUsers(true);
+    }
+  };
+
+  const filteredUsers = searchedUsers ?? eligibleUsers;
 
   const selectAll = () => {
     const allFilteredIds = filteredDepts.map((d) => d.id);
@@ -340,9 +367,18 @@ function AssignManagerModal({ managerData, allDepartments, eligibleUsers, busy, 
                     className={`${inputClass} pl-8 text-xs`}
                     placeholder="Search user by name, employee code, or email..."
                     value={userSearch}
-                    onChange={(e) => setUserSearch(e.target.value)}
+                    onChange={changeUserSearch}
                   />
                 </div>
+                {searchingUsers && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Searching…</p>
+                )}
+                {!searchingUsers && searchedUsers !== null && searchedUsers.length === 0 && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400">No employees match &quot;{userSearch.trim()}&quot;.</p>
+                )}
+                {!searchingUsers && userSearch.trim().length > 0 && userSearch.trim().length < USER_SEARCH_MIN_CHARS && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Keep typing to search all employees…</p>
+                )}
                 <select
                   className={inputClass}
                   value={selectedUserId}
@@ -1104,6 +1140,8 @@ export default function CompanyUnits() {
           managerData={managerDialog.id ? managerDialog : null}
           allDepartments={departments}
           eligibleUsers={eligibleUsers}
+          token={token}
+          tokenType={tokenType}
           busy={busy}
           onSave={saveManagerAssignment}
           onClose={() => setManagerDialog(null)}
