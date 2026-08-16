@@ -427,15 +427,6 @@ class CandidateCrmController extends Controller
 
     protected function candidateWithinActorScope(Candidate $candidate): bool
     {
-        $actor = auth('api')->user();
-
-        if ($this->hasGlobalCompanyScope($actor)) {
-            return true;
-        }
-
-        $authorized = \App\Support\CompanyMembership::parse($actor?->company_code);
-        $owning = \App\Support\CompanyMembership::parse($candidate->company_code);
-
-        return $owning !== [] && array_intersect($owning, $authorized) !== [];
+        return $this->companyCodeWithinActorScope($candidate->company_code);
     }
 }

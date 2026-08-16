@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin\Hr;
 
+use App\Http\Controllers\Admin\Hr\Concerns\ScopesCompany;
 use App\Http\Controllers\Controller;
 use App\Models\PerformanceCycle;
 use App\Models\PerformanceGoal;
@@ -11,11 +12,20 @@ use Illuminate\Http\Request;
 
 class PerformanceController extends Controller
 {
+    use ScopesCompany;
+
+    protected function cycleWithinActorScope(?PerformanceCycle $cycle): bool
+    {
+        return $cycle !== null && $this->companyCodeWithinActorScope($cycle->company_code);
+    }
+
     // ── Cycles ──────────────────────────────────────────────────────────
 
     public function cycles(Request $request)
     {
-        $cycles = PerformanceCycle::orderByDesc('period_start')->get();
+        $query = PerformanceCycle::query();
+        $this->applyCompanyScope($query, $request);
+        $cycles = $query->orderByDesc('period_start')->get();
 
         return response()->json(['status' => true, 'data' => $cycles]);
     }
@@ -29,7 +39,10 @@ class PerformanceController extends Controller
             'type' => 'nullable|in:annual,half_yearly,quarterly',
         ]);
 
-        $cycle = PerformanceCycle::create($data + ['status' => 'draft']);
+        $cycle = PerformanceCycle::create($data + [
+            'status' => 'draft',
+            'company_code' => $this->defaultCompanyContext($request)['company_code'],
+        ]);
 
         return response()->json(['status' => true, 'message' => 'Performance cycle created', 'data' => $cycle], 201);
     }
@@ -37,7 +50,7 @@ class PerformanceController extends Controller
     public function updateCycle(Request $request, $id)
     {
         $cycle = PerformanceCycle::find($id);
-        if (!$cycle) {
+        if (!$this->cycleWithinActorScope($cycle)) {
             return response()->json(['status' => false, 'message' => 'Cycle not found'], 404);
         }
 
@@ -57,7 +70,7 @@ class PerformanceController extends Controller
     public function destroyCycle($id)
     {
         $cycle = PerformanceCycle::find($id);
-        if (!$cycle) {
+        if (!$this->cycleWithinActorScope($cycle)) {
             return response()->json(['status' => false, 'message' => 'Cycle not found'], 404);
         }
 
@@ -71,6 +84,8 @@ class PerformanceController extends Controller
     public function goals(Request $request)
     {
         $query = PerformanceGoal::with(['user', 'cycle']);
+        $query->whereHas('cycle', fn ($q) => $this->applyCompanyScope($q, $request));
+
         if ($request->cycle_id) {
             $query->where('cycle_id', $request->cycle_id);
         }
@@ -93,6 +108,10 @@ class PerformanceController extends Controller
             'target_value' => 'nullable|string|max:255',
         ]);
 
+        if (!$this->cycleWithinActorScope(PerformanceCycle::find($data['cycle_id']))) {
+            return response()->json(['status' => false, 'message' => 'Cycle not found'], 404);
+        }
+
         $goal = PerformanceGoal::create($data + ['status' => 'not_started', 'created_by' => auth('api')->id()]);
 
         return response()->json(['status' => true, 'message' => 'Goal created', 'data' => $goal], 201);
@@ -100,8 +119,8 @@ class PerformanceController extends Controller
 
     public function updateGoal(Request $request, $id)
     {
-        $goal = PerformanceGoal::find($id);
-        if (!$goal) {
+        $goal = PerformanceGoal::with('cycle')->find($id);
+        if (!$goal || !$this->cycleWithinActorScope($goal->cycle)) {
             return response()->json(['status' => false, 'message' => 'Goal not found'], 404);
         }
 
@@ -121,8 +140,8 @@ class PerformanceController extends Controller
 
     public function destroyGoal($id)
     {
-        $goal = PerformanceGoal::find($id);
-        if (!$goal) {
+        $goal = PerformanceGoal::with('cycle')->find($id);
+        if (!$goal || !$this->cycleWithinActorScope($goal->cycle)) {
             return response()->json(['status' => false, 'message' => 'Goal not found'], 404);
         }
 
@@ -136,6 +155,8 @@ class PerformanceController extends Controller
     public function reviews(Request $request)
     {
         $query = PerformanceReview::with(['user', 'reviewer', 'cycle']);
+        $query->whereHas('cycle', fn ($q) => $this->applyCompanyScope($q, $request));
+
         if ($request->cycle_id) {
             $query->where('cycle_id', $request->cycle_id);
         }
@@ -163,6 +184,10 @@ class PerformanceController extends Controller
             'status' => 'nullable|in:draft,submitted,acknowledged',
         ]);
 
+        if (!$this->cycleWithinActorScope(PerformanceCycle::find($data['cycle_id']))) {
+            return response()->json(['status' => false, 'message' => 'Cycle not found'], 404);
+        }
+
         $review = PerformanceReview::updateOrCreate(
             [
                 'cycle_id' => $data['cycle_id'],
@@ -182,8 +207,8 @@ class PerformanceController extends Controller
 
     public function updateReview(Request $request, $id)
     {
-        $review = PerformanceReview::find($id);
-        if (!$review) {
+        $review = PerformanceReview::with('cycle')->find($id);
+        if (!$review || !$this->cycleWithinActorScope($review->cycle)) {
             return response()->json(['status' => false, 'message' => 'Review not found'], 404);
         }
 
@@ -209,7 +234,27 @@ class PerformanceController extends Controller
 
     public function dashboard(Request $request)
     {
-        $cycleId = $request->cycle_id ?? PerformanceCycle::orderByDesc('period_start')->value('id');
+        $scopedCycles = PerformanceCycle::query();
+        $this->applyCompanyScope($scopedCycles, $request);
+
+        if ($request->cycle_id) {
+            $cycleId = $this->cycleWithinActorScope(PerformanceCycle::find($request->cycle_id))
+                ? $request->cycle_id
+                : null;
+        } else {
+            $cycleId = (clone $scopedCycles)->orderByDesc('period_start')->value('id');
+        }
+
+        if ($cycleId === null) {
+            return response()->json(['status' => true, 'data' => [
+                'cycle_id' => null,
+                'cards' => [
+                    'top_performers' => 0, 'low_performers' => 0, 'average_rating' => 0,
+                    'promotion_eligible' => 0, 'training_required' => 0, 'goal_completion_pct' => 0,
+                ],
+                'bell_curve' => [], 'nine_box' => [], 'skill_matrix' => [],
+            ]]);
+        }
 
         $reviews = PerformanceReview::where('cycle_id', $cycleId)
             ->where('review_type', 'manager')

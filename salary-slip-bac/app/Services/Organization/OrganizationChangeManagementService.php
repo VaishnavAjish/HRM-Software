@@ -13,6 +13,7 @@ use App\Models\EmployeeOrganizationAssignment;
 use App\Models\OrganizationLeadershipAssignment;
 use App\Models\Calendar;
 use App\Models\OrganizationHierarchy;
+use App\Models\OrganizationHierarchyNode;
 use App\Models\User;
 use App\Models\Enterprise;
 use App\Models\Company;
@@ -56,6 +57,7 @@ class OrganizationChangeManagementService
         'manager_reassignment',
         'mass_movement',
         'effective_dated_change',
+        'promotion_transfer',
     ];
 
     public const ITEM_TYPES = [
@@ -76,6 +78,7 @@ class OrganizationChangeManagementService
         'update_leadership',
         'update_calendar',
         'update_hierarchy',
+        'update_assignment',
     ];
 
     public function requests(array $filters, ?User $actor): array
@@ -230,6 +233,95 @@ class OrganizationChangeManagementService
         return $request;
     }
 
+    /**
+     * DOMAIN 08 — Promotion/Transfer convenience entry point: creates a
+     * `promotion_transfer` change request together with its single
+     * `update_assignment` item in one call, so the caller doesn't have to
+     * orchestrate create() + addItem() itself. The change still goes through
+     * the normal draft -> submit -> approve -> apply lifecycle.
+     */
+    public function createPromotionTransfer(array $data, User $actor): OrganizationChangeRequest
+    {
+        $employee = User::query()->findOrFail((int) $data['employeeId']);
+        $unit = OrganizationUnit::query()->findOrFail((int) $data['organizationUnitId']);
+
+        if ($unit->company_id) {
+            $company = Company::query()->findOrFail($unit->company_id);
+            $this->assertCompanyVisible($company, $actor);
+        }
+
+        $current = null;
+
+        if (!empty($data['currentAssignmentId'])) {
+            $current = EmployeeOrganizationAssignment::query()->findOrFail((int) $data['currentAssignmentId']);
+
+            if ((int) $current->user_id !== $employee->id) {
+                throw new OrganizationException(
+                    'ASSIGNMENT_EMPLOYEE_MISMATCH',
+                    'The selected current assignment does not belong to this employee.',
+                    422
+                );
+            }
+        } else {
+            $current = EmployeeOrganizationAssignment::query()
+                ->where('user_id', $employee->id)
+                ->where('is_primary', true)
+                ->where('is_active', true)
+                ->latest('effective_from')
+                ->first();
+        }
+
+        $name = trim((string) ($data['name'] ?? ''));
+        if ($name === '') {
+            $name = sprintf('Promotion/Transfer - %s - %s', $employee->name, $data['effectiveFrom']);
+        }
+
+        $request = $this->create([
+            'companyId' => $unit->company_id,
+            'name' => $name,
+            'description' => $data['reason'] ?? null,
+            'changeType' => 'promotion_transfer',
+            'organizationOwnerApproverId' => $data['organizationOwnerApproverId'] ?? null,
+            'hrApproverId' => $data['hrApproverId'] ?? null,
+        ], $actor);
+
+        $afterValues = [
+            'userId' => $employee->id,
+            'organizationUnitId' => $unit->id,
+            'positionId' => $data['positionId'] ?? null,
+            'designationId' => $data['designationId'] ?? null,
+            'managerUserId' => $data['managerUserId'] ?? null,
+            'locationId' => $data['locationId'] ?? null,
+            'costCenterId' => $data['costCenterId'] ?? null,
+            'effectiveFrom' => $data['effectiveFrom'],
+            'effectiveTo' => $data['effectiveTo'] ?? null,
+            'reason' => $data['reason'] ?? null,
+            'notes' => $data['notes'] ?? null,
+            'changeReason' => $data['reason'] ?? null,
+        ];
+
+        $beforeValues = $current ? [
+            'assignmentId' => $current->id,
+            'organizationUnitId' => $current->organization_unit_id,
+            'positionId' => $current->position_id,
+            'designationId' => $current->designation_id,
+            'managerUserId' => $current->manager_user_id,
+            'locationId' => $current->location_id,
+            'costCenterId' => $current->cost_center_id,
+            'effectiveFrom' => $current->effective_from?->toDateString(),
+        ] : null;
+
+        $this->addItem($request->id, [
+            'itemType' => 'update_assignment',
+            'targetType' => 'employee_organization_assignment',
+            'targetId' => $current?->id,
+            'beforeValues' => $beforeValues,
+            'afterValues' => $afterValues,
+        ], $actor);
+
+        return $request->fresh(['items']);
+    }
+
     public function submit(OrganizationChangeRequest $request, User $actor): OrganizationChangeRequest
     {
         $this->assertRequestVisible($request, $actor);
@@ -268,6 +360,7 @@ class OrganizationChangeManagementService
             'location_closure',
             'manager_reassignment',
             'mass_movement',
+            'promotion_transfer',
         ]);
 
         if ($requiresHrApproval && !$request->hr_approver_id) {
@@ -600,6 +693,123 @@ class OrganizationChangeManagementService
         $this->audit($actor, 'CHANGE_REQUEST_ITEM_DELETED', $snapshot, null);
     }
 
+    public function impact(int $requestId, ?User $actor): array
+    {
+        $request = OrganizationChangeRequest::query()->findOrFail($requestId);
+        $this->assertRequestVisible($request, $actor);
+
+        $items = $request->items()->orderBy('sequence')->get();
+
+        $itemImpacts = $items->map(fn (OrganizationChangeItem $item) => [
+            'itemId' => (int) $item->id,
+            'itemType' => $item->item_type,
+            'targetType' => $item->target_type,
+            'targetId' => $item->target_id === null ? null : (int) $item->target_id,
+            'affected' => $this->itemImpact($item),
+        ])->all();
+
+        $totals = [
+            'employees' => 0,
+            'positions' => 0,
+            'childUnits' => 0,
+            'reportingRelationships' => 0,
+        ];
+
+        foreach ($itemImpacts as $entry) {
+            $totals['employees'] += $entry['affected']['employeeCount'] ?? 0;
+            $totals['positions'] += $entry['affected']['positionCount'] ?? 0;
+            $totals['childUnits'] += $entry['affected']['childUnitCount'] ?? 0;
+            $totals['reportingRelationships'] += $entry['affected']['reportingRelationshipCount'] ?? 0;
+        }
+
+        return [
+            'changeRequestId' => (int) $request->id,
+            'status' => $request->status,
+            'totals' => $totals,
+            'items' => $itemImpacts,
+        ];
+    }
+
+    private function itemImpact(OrganizationChangeItem $item): array
+    {
+        $targetId = $item->target_id;
+
+        switch ($item->item_type) {
+            case 'delete_unit':
+            case 'update_unit':
+                if (!$targetId) {
+                    return ['employeeCount' => 0, 'positionCount' => 0, 'childUnitCount' => 0];
+                }
+                return [
+                    'employeeCount' => EmployeeOrganizationAssignment::query()
+                        ->where('organization_unit_id', $targetId)->where('is_active', true)->count(),
+                    'positionCount' => OrganizationPosition::query()
+                        ->where('organization_unit_id', $targetId)->count(),
+                    'childUnitCount' => OrganizationUnit::query()
+                        ->where('parent_id', $targetId)->count(),
+                ];
+
+            case 'delete_position':
+            case 'update_position':
+                if (!$targetId) {
+                    return ['employeeCount' => 0];
+                }
+                return [
+                    'employeeCount' => EmployeeOrganizationAssignment::query()
+                        ->where('position_id', $targetId)->where('is_active', true)->count(),
+                ];
+
+            case 'delete_location':
+            case 'update_location':
+                if (!$targetId) {
+                    return ['employeeCount' => 0];
+                }
+                return [
+                    'employeeCount' => EmployeeOrganizationAssignment::query()
+                        ->where('location_id', $targetId)->where('is_active', true)->count(),
+                ];
+
+            case 'delete_financial_org':
+            case 'update_financial_org':
+                if (!$targetId) {
+                    return ['employeeCount' => 0, 'positionCount' => 0];
+                }
+                return [
+                    'employeeCount' => EmployeeOrganizationAssignment::query()
+                        ->where('cost_center_id', $targetId)->where('is_active', true)->count(),
+                ];
+
+            case 'reassign_manager':
+                $data = $item->after_values ?? [];
+                $count = 0;
+                if (!empty($data['managerUserId'])) {
+                    $count = EmployeeOrganizationAssignment::query()
+                        ->where('manager_user_id', $data['managerUserId'])->where('is_active', true)->count();
+                }
+                return ['employeeCount' => $count, 'reportingRelationshipCount' => $count > 0 ? $count : 0];
+
+            case 'update_hierarchy':
+                if (!$targetId) {
+                    return [];
+                }
+                return [
+                    'reportingRelationshipCount' => OrganizationHierarchyNode::query()
+                        ->where('organization_hierarchy_id', $targetId)->count(),
+                ];
+
+            case 'update_assignment':
+                $data = $item->after_values ?? [];
+                return [
+                    'employeeCount' => 1,
+                    'positionCount' => !empty($data['positionId']) ? 1 : 0,
+                    'reportingRelationshipCount' => !empty($data['managerUserId']) ? 1 : 0,
+                ];
+
+            default:
+                return [];
+        }
+    }
+
     public function approvals(int $requestId, ?User $actor): array
     {
         $request = OrganizationChangeRequest::query()->findOrFail($requestId);
@@ -665,6 +875,9 @@ class OrganizationChangeManagementService
                 break;
             case 'assign_employee':
                 $this->applyAssignEmployee($item, $actor);
+                break;
+            case 'update_assignment':
+                $this->applyUpdateAssignment($item, $actor);
                 break;
             case 'reassign_manager':
                 $this->applyReassignManager($item, $actor);
@@ -776,6 +989,12 @@ class OrganizationChangeManagementService
         $data = $item->after_values;
         $unitService = app(OrganizationUnitService::class);
         $unitService->createAssignment($data, $actor);
+    }
+
+    private function applyUpdateAssignment(OrganizationChangeItem $item, User $actor): void
+    {
+        $unitService = app(OrganizationUnitService::class);
+        $unitService->applyPromotionTransfer($item->target_id, $item->after_values ?? [], $actor);
     }
 
     private function applyReassignManager(OrganizationChangeItem $item, User $actor): void

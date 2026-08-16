@@ -757,10 +757,29 @@ export const accessLifecycleApi = {
     });
   },
 
+  myDelegations(accessToken, tokenType = "Bearer", params = {}) {
+    const query = new URLSearchParams(params).toString();
+    return apiRequest(`/v1/delegations/mine${query ? `?${query}` : ""}`, {
+      headers: authHeaders(accessToken, tokenType),
+    });
+  },
+
   createDelegation(payload, accessToken, tokenType = "Bearer") {
     return apiRequest("/v1/delegations", {
       method: "POST", headers: authHeaders(accessToken, tokenType),
       body: JSON.stringify(payload),
+    });
+  },
+
+  acceptDelegation(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/delegations/${id}/accept`, {
+      method: "POST", headers: authHeaders(accessToken, tokenType),
+    });
+  },
+
+  declineDelegation(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/delegations/${id}/decline`, {
+      method: "POST", headers: authHeaders(accessToken, tokenType),
     });
   },
 
@@ -2052,6 +2071,9 @@ export const hrApi = {
   moveCandidateStage(id, payload, accessToken, tokenType = "Bearer") {
     return apiRequest(`/hr/candidates/move-stage/${id}`, { method: "POST", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(payload) });
   },
+  rescoreCandidate(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/candidates/rescore/${id}`, { method: "POST", headers: hrAuthHeaders(accessToken, tokenType) });
+  },
 
   // Interviews
   getInterviews(accessToken, tokenType = "Bearer", filters = {}) {
@@ -2204,6 +2226,32 @@ export const hrApi = {
   },
   reviewCandidateDocument(id, decision, remarks, accessToken, tokenType = "Bearer") {
     return apiRequest(`/hr/candidates/documents/review/${id}/${decision}`, { method: "POST", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify({ remarks }) });
+  },
+
+  // Talent pools (Wave-4 CRM add-on) — CandidateCrmController's pools/* routes.
+  getTalentPools(accessToken, tokenType = "Bearer", filters = {}) {
+    return apiRequest(`/hr/candidates/pools${hrQuery(filters)}`, { headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+  getPoolCandidates(poolId, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/candidates/pools/get/${poolId}`, { headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+  storeTalentPool(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest("/hr/candidates/pools/store", { method: "POST", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(payload) });
+  },
+  updateTalentPool(id, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/candidates/pools/update/${id}`, { method: "PUT", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(payload) });
+  },
+  deleteTalentPool(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/candidates/pools/delete/${id}`, { method: "DELETE", headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+  addCandidateToPool(candidateId, poolId, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/candidates/pools/add/${candidateId}/${poolId}`, { method: "POST", headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+  removeCandidateFromPool(candidateId, poolId, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/candidates/pools/remove/${candidateId}/${poolId}`, { method: "DELETE", headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+  syncCandidatePools(candidateId, poolIds, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/candidates/pools/sync/${candidateId}`, { method: "POST", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify({ pool_ids: poolIds }) });
   },
 };
 

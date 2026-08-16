@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
-import { Plus, RefreshCw, Search, Loader2, Pencil, Trash2, Shield, Building2 } from "lucide-react";
+import { Plus, RefreshCw, Search, Loader2, Pencil, Trash2, Shield, Building2, Snowflake, PlayCircle } from "lucide-react";
 import Badge from "../../../components/ui/Badge";
 import Button from "../../../components/ui/Button";
 import Card from "../../../components/ui/Card";
@@ -47,14 +47,16 @@ export default function PositionsPage() {
 
   const [unitId, setUnitId] = useState("");
   const [positions, setPositions] = useState([]);
-  const [companies, setCompanies] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [orgUnits, setOrgUnits] = useState([]);
+  const [unitsLoading, setUnitsLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("ALL");
   const [dialog, setDialog] = useState(null);
+  const [summary, setSummary] = useState(null);
 
   const reload = useCallback(() => {
     setLoading(true);
@@ -62,16 +64,34 @@ export default function PositionsPage() {
   }, []);
 
   useEffect(() => {
-    if (!token || !unitId) return;
+    if (!token) return undefined;
     let active = true;
-    Promise.all([
-      organizationApi.orgUnitPositions(unitId, { search, status }, token, tokenType),
-      organizationApi.legalEntityProfileCompanies(token, tokenType).catch(() => ({ data: [] })),
-    ]).then(([positionsRes, companiesRes]) => {
-      if (!active) return;
-      setPositions(positionsRes?.data ?? []);
-      setCompanies(companiesRes?.data ?? []);
-    }).catch((err) => toast.error(err.message || "Could not load positions")).finally(() => { if (active) setLoading(false); });
+    organizationApi.headcountSummary({}, token, tokenType)
+      .then((res) => { if (active) setSummary(res?.data?.totals ?? null); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [token, tokenType, refreshKey]);
+
+  // Org units populate the unit picker itself, so they load independently
+  // of whether a unit is already selected — the old code fetched companies
+  // only after a unit was picked, which meant the picker could never be
+  // populated in the first place.
+  useEffect(() => {
+    if (!token) return undefined;
+    let active = true;
+    organizationApi.orgUnits({}, token, tokenType)
+      .then((res) => { if (active) setOrgUnits(res?.data ?? []); })
+      .finally(() => { if (active) setUnitsLoading(false); });
+    return () => { active = false; };
+  }, [token, tokenType]);
+
+  useEffect(() => {
+    if (!token || !unitId) return undefined;
+    let active = true;
+    organizationApi.orgUnitPositions(unitId, { search, status }, token, tokenType)
+      .then((res) => { if (active) setPositions(res?.data ?? []); })
+      .catch((err) => toast.error(err.message || "Could not load positions"))
+      .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [token, tokenType, unitId, search, status, refreshKey]);
 
@@ -89,8 +109,35 @@ export default function PositionsPage() {
     dialog?.id ? "Position updated" : "Position created",
   );
 
-  const companyOptions = useMemo(() => companies.map((c) => ({ id: c.id, name: c.name })), [companies]);
+  const freeze = (pos) => {
+    const reason = window.prompt("Why is this position being frozen?");
+    if (!reason) return;
+    run(() => organizationApi.freezeOrgUnitPosition(unitId, pos.id, reason, token, tokenType), "Position frozen");
+  };
+
+  const release = (pos) => run(
+    () => organizationApi.releaseOrgUnitPosition(unitId, pos.id, token, tokenType),
+    "Position released",
+  );
+
   const canManage = can("org.unit_position.create") || can("org.unit_position.update");
+
+  const unitGroups = useMemo(() => {
+    const byCompany = new Map();
+    const other = [];
+    orgUnits.forEach((unit) => {
+      if (unit.companyId != null) {
+        const key = unit.companyName || `Company ${unit.companyId}`;
+        if (!byCompany.has(key)) byCompany.set(key, []);
+        byCompany.get(key).push(unit);
+      } else {
+        other.push(unit);
+      }
+    });
+    const groups = Array.from(byCompany.entries()).map(([label, units]) => ({ label, units }));
+    if (other.length > 0) groups.push({ label: "Other", units: other });
+    return groups;
+  }, [orgUnits]);
 
   return (
     <div className="min-w-0 max-w-full space-y-5">
@@ -102,6 +149,24 @@ export default function PositionsPage() {
           Roles and positions within the selected organization unit, with headcount and reporting.
         </p>
       </div>
+
+      {summary && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          {[
+            { label: "Positions", value: summary.positionCount },
+            { label: "Approved", value: summary.approvedHeadcount },
+            { label: "Budgeted", value: summary.budgetedHeadcount },
+            { label: "Filled", value: summary.filledHeadcount },
+            { label: "Vacant", value: summary.vacantHeadcount },
+            { label: "Frozen", value: summary.frozenCount },
+          ].map((tile) => (
+            <Card key={tile.label} padding={false} className="p-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">{tile.label}</p>
+              <p className="mt-1 text-2xl font-bold text-gray-900 dark:text-white">{tile.value ?? 0}</p>
+            </Card>
+          ))}
+        </div>
+      )}
 
       <Card>
         <div className="flex flex-wrap items-center gap-2">
@@ -121,13 +186,14 @@ export default function PositionsPage() {
             className={`${inputClass} w-48`}
             value={unitId || ""}
             onChange={(e) => { setUnitId(e.target.value); reload(); }}
+            disabled={unitsLoading}
           >
-            <option value="">Select organization unit</option>
-            {companies.map((company) => (
-              <optgroup label={company.name}>
-                {organizationApi.orgUnits(
-                  { enterpriseId: company.id }, token, tokenType
-                ).then((res) => res?.data?.map((u) => ({ id: u.id, label: u.name })))}
+            <option value="">{unitsLoading ? "Loading units…" : "Select organization unit"}</option>
+            {unitGroups.map((group) => (
+              <optgroup key={group.label} label={group.label}>
+                {group.units.map((unit) => (
+                  <option key={unit.id} value={unit.id}>{unit.name}</option>
+                ))}
               </optgroup>
             ))}
           </select>
@@ -163,14 +229,17 @@ export default function PositionsPage() {
                   <Th>Code</Th>
                   <Th>Type</Th>
                   <Th>Reports To</Th>
-                  <Th>Headcount</Th>
+                  <Th>Approved</Th>
+                  <Th>Budgeted</Th>
+                  <Th>Filled</Th>
+                  <Th>Vacant</Th>
                   <Th>Status</Th>
                   <Th className="text-right">Actions</Th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700/60">
                 {positions.length === 0 && (
-                  <tr><td colSpan={7} className="p-10 text-center text-gray-500 dark:text-gray-400">
+                  <tr><td colSpan={10} className="p-10 text-center text-gray-500 dark:text-gray-400">
                     No positions match these filters.
                   </td></tr>
                 )}
@@ -181,14 +250,34 @@ export default function PositionsPage() {
                     <td className="px-4 py-3 font-mono text-gray-500 dark:text-gray-300">{pos.code || "—"}</td>
                     <td className="px-4 py-3 text-gray-600 dark:text-gray-300"><span className="capitalize">{pos.type || "—"}</span></td>
                     <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{pos.reportsToPositionName || "—"}</td>
-                    <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{pos.approvedHeadcount || 0}</td>
+                    <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{pos.approvedHeadcount ?? 0}</td>
+                    <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{pos.budgetedHeadcount ?? pos.approvedHeadcount ?? 0}</td>
+                    <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{pos.filledHeadcount ?? 0}</td>
                     <td className="px-4 py-3">
-                      <Badge variant={pos.isActive ? "green" : pos.isActive === false ? "red" : "yellow"}>
-                        {pos.isActive === undefined ? "—" : pos.isActive ? "Active" : "Inactive"}
+                      <span className={pos.vacantHeadcount > 0 ? "font-semibold text-amber-600 dark:text-amber-400" : "text-gray-600 dark:text-gray-300"}>
+                        {pos.vacantHeadcount ?? 0}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge variant={pos.status === "frozen" ? "yellow" : pos.status === "closed" || pos.status === "cancelled" ? "red" : "green"}>
+                        <span className="capitalize">{pos.status || "—"}</span>
                       </Badge>
+                      {pos.status === "frozen" && pos.freezeReason && (
+                        <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{pos.freezeReason}</p>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex justify-end gap-1">
+                        {can("org.unit_position.update") && pos.status !== "frozen" && (
+                          <Button size="sm" variant="ghost" title="Freeze position" onClick={() => freeze(pos)}>
+                            <Snowflake size={14} />
+                          </Button>
+                        )}
+                        {can("org.unit_position.update") && pos.status === "frozen" && (
+                          <Button size="sm" variant="ghost" title="Release position" onClick={() => release(pos)}>
+                            <PlayCircle size={14} className="text-green-600 dark:text-green-400" />
+                          </Button>
+                        )}
                         {can("org.unit_position.update") && (
                           <Button size="sm" variant="ghost" onClick={() => setDialog(pos)}><Pencil size={14} /></Button>
                         )}
@@ -228,7 +317,8 @@ export default function PositionsPage() {
                   {POSITION_TYPES.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                 </select>
               </label>
-              <label className="block"><span className={labelClass}>Headcount</span><input type="number" className={inputClass} value={dialog?.approvedHeadcount ?? 0} onChange={(e) => setDialog({...dialog, approvedHeadcount: Number(e.target.value)})} /></label>
+              <label className="block"><span className={labelClass}>Approved Headcount</span><input type="number" min="0" className={inputClass} value={dialog?.approvedHeadcount ?? 0} onChange={(e) => setDialog({...dialog, approvedHeadcount: Number(e.target.value)})} /></label>
+              <label className="block"><span className={labelClass}>Budgeted Headcount</span><input type="number" min="0" className={inputClass} value={dialog?.budgetedHeadcount ?? dialog?.approvedHeadcount ?? 0} onChange={(e) => setDialog({...dialog, budgetedHeadcount: Number(e.target.value)})} /></label>
               <label className="block"><span className={labelClass}>Reports To</span><input className={inputClass} value={dialog?.reportsToPositionName || ""} readOnly /></label>
             </div>
             <div>
@@ -241,7 +331,7 @@ export default function PositionsPage() {
           </div>
           <footer className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setDialog(null)}>Cancel</Button>
-            <Button disabled={busy} onClick={() => save({ title: dialog?.title, code: dialog?.code, type: dialog?.type, approvedHeadcount: dialog?.approvedHeadcount, isActive: dialog?.isActive })}>
+            <Button disabled={busy} onClick={() => save({ title: dialog?.title, code: dialog?.code, type: dialog?.type, approvedHeadcount: dialog?.approvedHeadcount, budgetedHeadcount: dialog?.budgetedHeadcount, isActive: dialog?.isActive })}>
               {busy && <Loader2 size={16} className="animate-spin" />}
               Save
             </Button>

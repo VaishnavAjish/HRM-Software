@@ -316,5 +316,5 @@ export default function JobEvaluationsPage() {
     },
   });
 
-  return <ListPage />;
+  return ListPage;
 }

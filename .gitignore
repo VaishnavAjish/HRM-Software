@@ -10,6 +10,10 @@
 # (possibly stale) system CA store.
 !salary-slip-bac/storage/certs/cacert.pem
 
+# Google service account key (Meet/Calendar integration) — see
+# docs/google-meet-setup.md. Never commit this file.
+salary-slip-bac/storage/app/google/
+
 # Dependencies
 node_modules/
 vendor/

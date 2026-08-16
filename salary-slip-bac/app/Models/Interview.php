@@ -9,12 +9,14 @@ class Interview extends Model
     protected $fillable = [
         'candidate_id', 'requisition_id', 'round_name', 'scheduled_at',
         'duration_minutes', 'mode', 'meeting_link', 'status', 'notes', 'created_by',
+        'google_event_id', 'meeting_status', 'meeting_error', 'meeting_created_at',
     ];
 
     protected function casts(): array
     {
         return [
             'scheduled_at' => 'datetime',
+            'meeting_created_at' => 'datetime',
         ];
     }
 

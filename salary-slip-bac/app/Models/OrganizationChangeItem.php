@@ -14,6 +14,7 @@ class OrganizationChangeItem extends Model
         'delete_location', 'create_financial_org', 'update_financial_org', 'delete_financial_org',
         'create_position', 'update_position', 'delete_position', 'assign_employee',
         'reassign_manager', 'update_leadership', 'update_calendar', 'update_hierarchy',
+        'update_assignment',
     ];
 
     public const ITEM_STATUSES = ['pending', 'applied', 'failed', 'skipped'];

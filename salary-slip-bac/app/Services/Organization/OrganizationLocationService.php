@@ -4,6 +4,7 @@ namespace App\Services\Organization;
 
 use App\Models\OrganizationLocation;
 use App\Models\OrganizationLocationType;
+use App\Models\OrganizationPosition;
 use App\Models\OrganizationUnit;
 use App\Models\OrganizationWorkLocationMapping;
 use App\Models\Enterprise;

@@ -33,6 +33,7 @@ class OrganizationPosition extends Model
         'title',
         'description',
         'approved_headcount',
+        'budgeted_headcount',
         'current_headcount',
         'fte_capacity',
         'filled_headcount',
@@ -46,6 +47,9 @@ class OrganizationPosition extends Model
         'approved_at',
         'approved_by',
         'budget_id',
+        'frozen_at',
+        'frozen_by',
+        'freeze_reason',
         'effective_from',
         'effective_to',
     ];
@@ -54,6 +58,7 @@ class OrganizationPosition extends Model
     {
         return [
             'approved_headcount' => 'integer',
+            'budgeted_headcount' => 'integer',
             'current_headcount' => 'integer',
             'fte_capacity' => 'decimal:2',
             'filled_headcount' => 'integer',
@@ -61,6 +66,7 @@ class OrganizationPosition extends Model
             'reserved_headcount' => 'integer',
             'approval_status' => 'string',
             'approved_at' => 'datetime',
+            'frozen_at' => 'datetime',
             'effective_from' => 'date',
             'effective_to' => 'date',
         ];
@@ -94,6 +100,11 @@ class OrganizationPosition extends Model
     public function approver()
     {
         return $this->belongsTo(User::class, 'approved_by');
+    }
+
+    public function frozenBy()
+    {
+        return $this->belongsTo(User::class, 'frozen_by');
     }
 
     public function history()

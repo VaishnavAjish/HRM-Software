@@ -6,7 +6,9 @@ use App\Http\Controllers\Admin\Hr\Concerns\ScopesCompany;
 use App\Http\Controllers\Controller;
 use App\Models\Candidate;
 use App\Models\CandidateStageHistory;
+use App\Services\Recruitment\AtsScoringService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class CandidateController extends Controller
 {
@@ -16,6 +18,25 @@ class CandidateController extends Controller
         'applied', 'screening', 'shortlisted', 'assessment', 'interview',
         'selected', 'offer_sent', 'offer_accepted', 'rejected', 'on_hold',
     ];
+
+    public function __construct(
+        private readonly AtsScoringService $atsScoring,
+    ) {
+    }
+
+    /**
+     * Best-effort: a scoring failure (bad resume file, unparseable format)
+     * must never block creating/updating the candidate record itself, the
+     * same pattern this controller's siblings use for mail delivery.
+     */
+    private function scoreCandidateBestEffort(Candidate $candidate): void
+    {
+        try {
+            $this->atsScoring->score($candidate->fresh());
+        } catch (\Throwable $e) {
+            Log::warning('ats_scoring_failed', ['candidate_id' => $candidate->id, 'error' => $e->getMessage()]);
+        }
+    }
 
     public function index(Request $request)
     {
@@ -92,6 +113,7 @@ class CandidateController extends Controller
             'company_code' => $context['company_code'],
             'unit' => $context['unit'],
             'created_by' => auth('api')->id(),
+            'ats_score_source' => array_key_exists('ats_score', $data) ? 'manual' : null,
         ]);
 
         CandidateStageHistory::create([
@@ -102,7 +124,14 @@ class CandidateController extends Controller
             'created_at' => now(),
         ]);
 
-        return response()->json(['status' => true, 'message' => 'Candidate added', 'data' => $candidate], 201);
+        // An explicit manual score is an intentional HR override — don't
+        // silently replace it with a computed one. Otherwise, score now so
+        // the candidate shows a real match the moment they appear in the list.
+        if (!array_key_exists('ats_score', $data)) {
+            $this->scoreCandidateBestEffort($candidate);
+        }
+
+        return response()->json(['status' => true, 'message' => 'Candidate added', 'data' => $candidate->fresh()], 201);
     }
 
     public function update(Request $request, $id)
@@ -129,9 +158,46 @@ class CandidateController extends Controller
             'notes' => 'nullable|string',
         ]);
 
+        if (array_key_exists('ats_score', $data)) {
+            $data['ats_score_source'] = 'manual';
+        }
+
         $candidate->update($data);
 
-        return response()->json(['status' => true, 'message' => 'Candidate updated', 'data' => $candidate]);
+        // Requisition or skills/experience changed — the existing score, if
+        // any, may now be stale. Only auto-rescore when nobody just supplied
+        // a manual override in this same request.
+        if (!array_key_exists('ats_score', $data) && array_intersect(
+            array_keys($data), ['requisition_id', 'skills', 'experience_years']
+        )) {
+            $this->scoreCandidateBestEffort($candidate);
+        }
+
+        return response()->json(['status' => true, 'message' => 'Candidate updated', 'data' => $candidate->fresh()]);
+    }
+
+    /**
+     * Recompute the ATS score on demand — e.g. after HR edits the linked
+     * requisition's requirements, or after fixing a resume upload that
+     * failed to parse the first time.
+     */
+    public function rescore($id)
+    {
+        $candidate = Candidate::find($id);
+        if (!$candidate || !$this->candidateWithinActorScope($candidate)) {
+            return response()->json(['status' => false, 'message' => 'Candidate not found'], 404);
+        }
+
+        if (!$candidate->requisition_id) {
+            return response()->json([
+                'status' => false,
+                'message' => 'This candidate is not linked to a requisition, so there is nothing to score against.',
+            ], 422);
+        }
+
+        $breakdown = $this->atsScoring->score($candidate);
+
+        return response()->json(['status' => true, 'message' => 'ATS score recomputed', 'data' => $candidate->fresh(), 'breakdown' => $breakdown]);
     }
 
     public function destroy($id)
@@ -185,16 +251,7 @@ class CandidateController extends Controller
      */
     protected function candidateWithinActorScope(Candidate $candidate): bool
     {
-        $actor = auth('api')->user();
-
-        if ($this->hasGlobalCompanyScope($actor)) {
-            return true;
-        }
-
-        $authorized = \App\Support\CompanyMembership::parse($actor?->company_code);
-        $owning = \App\Support\CompanyMembership::parse($candidate->company_code);
-
-        return $owning !== [] && array_intersect($owning, $authorized) !== [];
+        return $this->companyCodeWithinActorScope($candidate->company_code);
     }
 
     public function resume($id)

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import {
   CalendarClock, Video, MapPin, Phone, XCircle, PauseCircle, MessageSquareText,
-  RotateCcw, CalendarPlus, ThumbsUp, ThumbsDown,
+  RotateCcw, CalendarPlus, ThumbsUp, ThumbsDown, Link2, AlertTriangle,
 } from "lucide-react";
 import Badge from "../../../components/ui/Badge";
 import Button from "../../../components/ui/Button";
@@ -224,7 +224,12 @@ export default function InterviewManagement() {
               <option value="video">Video</option><option value="onsite">Onsite</option><option value="phone">Phone</option>
             </select>
           </Field>
-          <Field label="Meeting Link / Location"><input className={inputClass} value={scheduleForm.meeting_link} onChange={(e) => setScheduleForm({ ...scheduleForm, meeting_link: e.target.value })} /></Field>
+          <Field label="Meeting Link / Location">
+            <input className={inputClass} value={scheduleForm.meeting_link} onChange={(e) => setScheduleForm({ ...scheduleForm, meeting_link: e.target.value })} />
+            {scheduleForm.mode === "video" && !scheduleForm.meeting_link && (
+              <p className="mt-1 text-xs text-gray-400">Leave blank to auto-create a Google Meet, if configured. Paste a link (Zoom, etc.) to use that instead.</p>
+            )}
+          </Field>
           <Field label="Notes" full><textarea rows={2} className={inputClass} value={scheduleForm.notes} onChange={(e) => setScheduleForm({ ...scheduleForm, notes: e.target.value })} /></Field>
         </div>
       </Modal>
@@ -318,10 +323,29 @@ function RosterRow({ candidate, interview, onOpenSchedule, onOpenProceed, onFeed
       </td>
       <td className="px-4 py-3">
         {interview ? (
-          <div className="flex items-center gap-1.5 text-gray-600 dark:text-gray-300">
-            <CalendarClock size={14} className="flex-shrink-0" />
-            {interview.scheduled_at ? new Date(interview.scheduled_at).toLocaleString() : "—"}
-            {ModeIcon && <ModeIcon size={14} className="flex-shrink-0 ml-1" />}
+          <div>
+            <div className="flex items-center gap-1.5 text-gray-600 dark:text-gray-300">
+              <CalendarClock size={14} className="flex-shrink-0" />
+              {interview.scheduled_at ? new Date(interview.scheduled_at).toLocaleString() : "—"}
+              {ModeIcon && <ModeIcon size={14} className="flex-shrink-0 ml-1" />}
+            </div>
+            {interview.mode === "video" && (
+              <div className="mt-1 flex items-center gap-1 text-xs">
+                {interview.meeting_status === "failed" ? (
+                  <span className="flex items-center gap-1 text-red-500" title={interview.meeting_error || "Google Meet creation failed"}>
+                    <AlertTriangle size={12} /> Meet link failed
+                  </span>
+                ) : interview.meeting_status === "not_configured" ? (
+                  <span className="text-gray-400" title="Google Meet integration isn't set up — see docs/google-meet-setup.md">
+                    Meet not configured
+                  </span>
+                ) : interview.meeting_link ? (
+                  <a href={interview.meeting_link} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-brand-600 hover:underline dark:text-brand-400">
+                    <Link2 size={12} /> {interview.meeting_status === "created" ? "Google Meet" : "Meeting link"}
+                  </a>
+                ) : null}
+              </div>
+            )}
           </div>
         ) : (
           <button

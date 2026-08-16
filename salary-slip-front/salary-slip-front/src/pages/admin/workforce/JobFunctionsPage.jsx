@@ -209,5 +209,5 @@ export default function JobFunctionsPage() {
     },
   });
 
-  return <ListPage />;
+  return ListPage;
 }

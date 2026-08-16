@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers\Admin\Hr;
 
+use App\Http\Controllers\Admin\Hr\Concerns\ScopesCompany;
 use App\Http\Controllers\Controller;
 use App\Mail\OfferMail;
+use App\Models\Candidate;
 use App\Models\Offer;
 use App\Models\OfferRevision;
 use Illuminate\Http\Request;
@@ -12,9 +14,12 @@ use Illuminate\Support\Facades\Mail;
 
 class OfferController extends Controller
 {
+    use ScopesCompany;
+
     public function index(Request $request)
     {
         $query = Offer::with(['candidate', 'requisition']);
+        $query->whereHas('candidate', fn ($q) => $this->applyCompanyScope($q, $request));
 
         if ($request->candidate_id) {
             $query->where('candidate_id', $request->candidate_id);
@@ -31,11 +36,16 @@ class OfferController extends Controller
     public function show($id)
     {
         $offer = Offer::with(['candidate', 'requisition', 'revisions'])->find($id);
-        if (!$offer) {
+        if (!$offer || !$this->offerWithinActorScope($offer)) {
             return response()->json(['status' => false, 'message' => 'Offer not found'], 404);
         }
 
         return response()->json(['status' => true, 'data' => $offer]);
+    }
+
+    protected function offerWithinActorScope(Offer $offer): bool
+    {
+        return $this->companyCodeWithinActorScope($offer->candidate?->company_code);
     }
 
     public function store(Request $request)
@@ -50,6 +60,11 @@ class OfferController extends Controller
             'expiry_date' => 'nullable|date',
             'notes' => 'nullable|string',
         ]);
+
+        $candidate = Candidate::find($data['candidate_id']);
+        if (!$candidate || !$this->companyCodeWithinActorScope($candidate->company_code)) {
+            return response()->json(['status' => false, 'message' => 'Candidate not found'], 404);
+        }
 
         $offer = Offer::create($data + [
             'status' => 'draft',
@@ -73,8 +88,8 @@ class OfferController extends Controller
 
     public function update(Request $request, $id)
     {
-        $offer = Offer::find($id);
-        if (!$offer) {
+        $offer = Offer::with('candidate')->find($id);
+        if (!$offer || !$this->offerWithinActorScope($offer)) {
             return response()->json(['status' => false, 'message' => 'Offer not found'], 404);
         }
 
@@ -107,8 +122,8 @@ class OfferController extends Controller
 
     public function approve($id)
     {
-        $offer = Offer::find($id);
-        if (!$offer) {
+        $offer = Offer::with('candidate')->find($id);
+        if (!$offer || !$this->offerWithinActorScope($offer)) {
             return response()->json(['status' => false, 'message' => 'Offer not found'], 404);
         }
 
@@ -119,8 +134,8 @@ class OfferController extends Controller
 
     public function release($id)
     {
-        $offer = Offer::find($id);
-        if (!$offer) {
+        $offer = Offer::with('candidate')->find($id);
+        if (!$offer || !$this->offerWithinActorScope($offer)) {
             return response()->json(['status' => false, 'message' => 'Offer not found'], 404);
         }
         if ($offer->status !== 'approved') {
@@ -157,8 +172,8 @@ class OfferController extends Controller
 
     public function respond(Request $request, $id)
     {
-        $offer = Offer::find($id);
-        if (!$offer) {
+        $offer = Offer::with('candidate')->find($id);
+        if (!$offer || !$this->offerWithinActorScope($offer)) {
             return response()->json(['status' => false, 'message' => 'Offer not found'], 404);
         }
 
@@ -171,8 +186,8 @@ class OfferController extends Controller
 
     public function destroy($id)
     {
-        $offer = Offer::find($id);
-        if (!$offer) {
+        $offer = Offer::with('candidate')->find($id);
+        if (!$offer || !$this->offerWithinActorScope($offer)) {
             return response()->json(['status' => false, 'message' => 'Offer not found'], 404);
         }
 

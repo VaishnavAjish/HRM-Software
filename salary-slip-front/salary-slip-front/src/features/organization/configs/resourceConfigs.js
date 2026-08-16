@@ -297,7 +297,13 @@ export const resourceConfigs = {
       update: organizationApi.updateEnterpriseRecord,
       remove: organizationApi.deleteEnterprise,
       setStatus: organizationApi.setEnterpriseStatus,
-      fetchCompanies: organizationApi.enterpriseCompanies,
+      // enterpriseCompanies takes (accessToken, tokenType) — no filters
+      // param — but OrgResourceManager always calls fetchCompanies as
+      // (filters, accessToken, tokenType). Without this adapter the real
+      // token lands in the tokenType slot and gets mangled into the
+      // Authorization header, which the backend correctly rejects as
+      // unauthenticated (and the app then reads as a session expiry).
+      fetchCompanies: (_filters, accessToken, tokenType) => organizationApi.enterpriseCompanies(accessToken, tokenType),
     },
     columns: [
       { key: "code", header: "Code", className: "font-mono text-xs" },
@@ -378,7 +384,9 @@ export const resourceConfigs = {
       update: organizationApi.updateOrgUnit,
       remove: organizationApi.deleteOrgUnit,
       setStatus: organizationApi.setOrgUnitStatus,
-      fetchCompanies: organizationApi.legalEntityProfileCompanies,
+      // Same adapter as above — legalEntityProfileCompanies also takes
+      // (accessToken, tokenType) with no leading filters param.
+      fetchCompanies: (_filters, accessToken, tokenType) => organizationApi.legalEntityProfileCompanies(accessToken, tokenType),
       fetchOptions: organizationApi.orgUnitOptions,
     },
     columns: [
@@ -442,7 +450,9 @@ export const resourceConfigs = {
       update: organizationApi.updateOrgLocation,
       remove: organizationApi.deleteOrgLocation,
       setStatus: organizationApi.setOrgLocationStatus,
-      fetchCompanies: organizationApi.legalEntityProfileCompanies,
+      // Same adapter as above — legalEntityProfileCompanies also takes
+      // (accessToken, tokenType) with no leading filters param.
+      fetchCompanies: (_filters, accessToken, tokenType) => organizationApi.legalEntityProfileCompanies(accessToken, tokenType),
       fetchOptions: organizationApi.orgLocationOptions,
     },
     columns: [
@@ -572,7 +582,9 @@ export const resourceConfigs = {
       update: null,
       remove: organizationApi.deleteOrgLocationMapping,
       setStatus: null,
-      fetchCompanies: organizationApi.legalEntityProfileCompanies,
+      // Same adapter as above — legalEntityProfileCompanies also takes
+      // (accessToken, tokenType) with no leading filters param.
+      fetchCompanies: (_filters, accessToken, tokenType) => organizationApi.legalEntityProfileCompanies(accessToken, tokenType),
     },
     columns: [
       { key: "locationName", header: "Location" },
@@ -625,7 +637,9 @@ export const resourceConfigs = {
       update: organizationApi.updateFinancialOrganization,
       remove: organizationApi.deleteFinancialOrganization,
       setStatus: organizationApi.setFinancialOrganizationStatus,
-      fetchCompanies: organizationApi.legalEntityProfileCompanies,
+      // Same adapter as above — legalEntityProfileCompanies also takes
+      // (accessToken, tokenType) with no leading filters param.
+      fetchCompanies: (_filters, accessToken, tokenType) => organizationApi.legalEntityProfileCompanies(accessToken, tokenType),
       fetchOptions: organizationApi.financialOrgOptions,
     },
     columns: [
@@ -723,7 +737,9 @@ export const resourceConfigs = {
       update: organizationApi.updateFinancialAllocationRule,
       remove: organizationApi.deleteFinancialAllocationRule,
       setStatus: null,
-      fetchCompanies: organizationApi.legalEntityProfileCompanies,
+      // Same adapter as above — legalEntityProfileCompanies also takes
+      // (accessToken, tokenType) with no leading filters param.
+      fetchCompanies: (_filters, accessToken, tokenType) => organizationApi.legalEntityProfileCompanies(accessToken, tokenType),
     },
     columns: [
       { key: "code", header: "Code", className: "font-mono text-xs" },
@@ -811,7 +827,9 @@ export const resourceConfigs = {
       update: organizationApi.updateHierarchy,
       remove: organizationApi.deleteHierarchy,
       setStatus: organizationApi.setHierarchyStatus,
-      fetchCompanies: organizationApi.legalEntityProfileCompanies,
+      // Same adapter as above — legalEntityProfileCompanies also takes
+      // (accessToken, tokenType) with no leading filters param.
+      fetchCompanies: (_filters, accessToken, tokenType) => organizationApi.legalEntityProfileCompanies(accessToken, tokenType),
     },
     columns: [
       { key: "code", header: "Code", className: "font-mono text-xs" },

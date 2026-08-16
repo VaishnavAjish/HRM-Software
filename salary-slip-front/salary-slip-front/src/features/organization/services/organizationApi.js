@@ -472,6 +472,25 @@ export const organizationApi = {
     });
   },
 
+  freezeOrgUnitPosition(unitId, positionId, reason, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/admin/organization/org-units/${unitId}/positions/${positionId}/freeze`, {
+      method: "POST",
+      headers: headers(accessToken, tokenType),
+      body: JSON.stringify({ reason }),
+    });
+  },
+
+  releaseOrgUnitPosition(unitId, positionId, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/admin/organization/org-units/${unitId}/positions/${positionId}/release`, {
+      method: "POST",
+      headers: headers(accessToken, tokenType),
+    });
+  },
+
+  headcountSummary(filters = {}, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/admin/organization/org-units/headcount-summary${query(filters)}`, { headers: headers(accessToken, tokenType) });
+  },
+
   deleteOrgUnitPosition(unitId, positionId, accessToken, tokenType = "Bearer") {
     return apiRequest(`/v1/admin/organization/org-units/${unitId}/positions/${positionId}`, {
       method: "DELETE",
@@ -910,6 +929,14 @@ export const organizationApi = {
     });
   },
 
+  createPromotionTransfer(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest("/v1/admin/organization/org-changes/promotion-transfer", {
+      method: "POST",
+      headers: headers(accessToken, tokenType),
+      body: JSON.stringify(payload),
+    });
+  },
+
   getOrgChange(id, accessToken, tokenType = "Bearer") {
     return apiRequest(`/v1/admin/organization/org-changes/${id}`, { headers: headers(accessToken, tokenType) });
   },
@@ -999,6 +1026,10 @@ export const organizationApi = {
 
   orgChangeApprovals(changeId, accessToken, tokenType = "Bearer") {
     return apiRequest(`/v1/admin/organization/org-changes/${changeId}/approvals`, { headers: headers(accessToken, tokenType) });
+  },
+
+  orgChangeImpact(changeId, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/admin/organization/org-changes/${changeId}/impact`, { headers: headers(accessToken, tokenType) });
   },
 
   /* ------------------------------------------------------- calendar assignments */

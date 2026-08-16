@@ -8,6 +8,7 @@ import Button from "../../../components/ui/Button";
 import Card from "../../../components/ui/Card";
 import Modal from "../../../components/ui/Modal";
 import { SkeletonTable } from "../../../components/ui/Skeleton";
+import UserPicker from "../../../components/authorization/UserPicker";
 import { useAuth } from "../../../context/AuthContext";
 import { useAuthorization } from "../../../hooks/useAuthorization";
 import { organizationApi } from "../../../features/organization/services/organizationApi";
@@ -34,8 +35,9 @@ export default function AssignmentsPage() {
 
   const [unitId, setUnitId] = useState("");
   const [assignments, setAssignments] = useState([]);
-  const [companies, setCompanies] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [orgUnits, setOrgUnits] = useState([]);
+  const [unitsLoading, setUnitsLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -48,21 +50,60 @@ export default function AssignmentsPage() {
     setRefreshKey((v) => v + 1);
   }, []);
 
+  // Org units populate the unit picker itself, so they load independently
+  // of whether a unit is already selected.
   useEffect(() => {
-    if (!token || !unitId) return;
+    if (!token) return undefined;
     let active = true;
-    Promise.all([
-      organizationApi.orgUnitAssignments({ enterpriseId: unitId, status }, token, tokenType),
-      organizationApi.legalEntityProfileCompanies(token, tokenType).catch(() => ({ data: [] })),
-    ]).then(([assignmentsRes, companiesRes]) => {
-      if (!active) return;
-      setAssignments(assignmentsRes?.data ?? []);
-      setCompanies(companiesRes?.data ?? []);
-    }).catch((err) => toast.error(err.message || "Could not load assignments")).finally(() => { if (active) setLoading(false); });
+    organizationApi.orgUnits({}, token, tokenType)
+      .then((res) => { if (active) setOrgUnits(res?.data ?? []); })
+      .finally(() => { if (active) setUnitsLoading(false); });
+    return () => { active = false; };
+  }, [token, tokenType]);
+
+  useEffect(() => {
+    if (!token || !unitId) return undefined;
+    let active = true;
+    // The backend has no direct "inactive only" filter — it's active-only
+    // by default, or includeInactive to get everything. "Inactive" is
+    // approximated client-side below.
+    organizationApi.orgUnitAssignments(
+      { organizationUnitId: unitId, includeInactive: status !== "true" },
+      token, tokenType,
+    )
+      .then((res) => { if (active) setAssignments(res?.data ?? []); })
+      .catch((err) => toast.error(err.message || "Could not load assignments"))
+      .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [token, tokenType, unitId, status, refreshKey]);
 
   const changeFilter = (setter) => (value) => { setLoading(true); setter(value); };
+
+  const unitGroups = useMemo(() => {
+    const byCompany = new Map();
+    const other = [];
+    orgUnits.forEach((unit) => {
+      if (unit.companyId != null) {
+        const key = unit.companyName || `Company ${unit.companyId}`;
+        if (!byCompany.has(key)) byCompany.set(key, []);
+        byCompany.get(key).push(unit);
+      } else {
+        other.push(unit);
+      }
+    });
+    const groups = Array.from(byCompany.entries()).map(([label, units]) => ({ label, units }));
+    if (other.length > 0) groups.push({ label: "Other", units: other });
+    return groups;
+  }, [orgUnits]);
+
+  const visibleAssignments = useMemo(() => {
+    const bySearch = !search.trim()
+      ? assignments
+      : assignments.filter((a) => (a.userName || "").toLowerCase().includes(search.toLowerCase())
+          || (a.userEmpCode || "").toLowerCase().includes(search.toLowerCase()));
+    if (status === "false") return bySearch.filter((a) => !a.isActive);
+    return bySearch;
+  }, [assignments, search, status]);
 
   const run = async (work, message, after = () => {}) => {
     setBusy(true);
@@ -76,7 +117,6 @@ export default function AssignmentsPage() {
     dialog?.id ? "Assignment updated" : "Assignment created",
   );
 
-  const companyOptions = useMemo(() => companies.map((c) => ({ id: c.id, name: c.name })), [companies]);
   const canManage = can("org.unit_assignment.create") || can("org.unit_assignment.update");
 
   return (
@@ -108,13 +148,14 @@ export default function AssignmentsPage() {
             className={`${inputClass} w-48`}
             value={unitId || ""}
             onChange={(e) => { setUnitId(e.target.value); reload(); }}
+            disabled={unitsLoading}
           >
-            <option value="">Select organization unit</option>
-            {companies.map((company) => (
-              <optgroup label={company.name}>
-                {organizationApi.orgUnits(
-                  { enterpriseId: company.id }, token, tokenType
-                ).then((res) => res?.data?.map((u) => ({ id: u.id, label: u.name })))}
+            <option value="">{unitsLoading ? "Loading units…" : "Select organization unit"}</option>
+            {unitGroups.map((group) => (
+              <optgroup key={group.label} label={group.label}>
+                {group.units.map((unit) => (
+                  <option key={unit.id} value={unit.id}>{unit.name}</option>
+                ))}
               </optgroup>
             ))}
           </select>
@@ -157,13 +198,13 @@ export default function AssignmentsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700/60">
-                {assignments.length === 0 && (
+                {visibleAssignments.length === 0 && (
                   <tr><td colSpan={8} className="p-10 text-center text-gray-500 dark:text-gray-400">
                     No assignments match these filters.
                   </td></tr>
                 )}
 
-                {assignments.map((assign) => (
+                {visibleAssignments.map((assign) => (
                   <tr key={assign.id} className="hover:bg-gray-50/70 dark:hover:bg-gray-700/40">
                     <td className="px-4 py-3 font-semibold text-gray-900 dark:text-white">{assign.userName}</td>
                     <td className="px-4 py-3 font-mono text-gray-500 dark:text-gray-300">{assign.userEmpCode || "—"}</td>
@@ -182,7 +223,7 @@ export default function AssignmentsPage() {
                         {can("org.unit_assignment.delete") && (
                           <Button
                             size="sm" variant="ghost"
-                            onClick={() => run(() => organizationApi.deleteOrgUnitAssignment(unitId, assign.id, token, tokenType), "Assignment deleted")}
+                            onClick={() => run(() => organizationApi.deleteOrgUnitAssignment(assign.id, token, tokenType), "Assignment deleted")}
                           >
                             <Trash2 size={14} className="text-red-600 dark:text-red-400" />
                           </Button>
@@ -208,44 +249,47 @@ export default function AssignmentsPage() {
         <Modal isOpen onClose={() => setDialog(null)} title={dialog?.id ? "Edit Assignment" : "Add Assignment"} size="lg">
           <div className="space-y-4">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <label className="block"><span className={labelClass}>Employee *</span>
-                <select className={inputClass} onChange={(e) => setDialog({...dialog, userId: e.target.value})}>
-                  <option value="">Select employee</option>
-                  {companies.map((c) => (
-                    <optgroup label={c.name}>
-                      {organizationApi.orgUnits({ enterpriseId: c.id }, token, tokenType).then((res) => res?.data?.map((u) => (
-                        <option key={u.id} value={u.id}>{u.name}</option>
-                      )))}
+              <UserPicker
+                label="Employee"
+                required
+                value={dialog?.userId || ""}
+                onChange={(id) => setDialog({ ...dialog, userId: id })}
+                token={token}
+                tokenType={tokenType}
+              />
+              <label className="block"><span className={labelClass}>Org Unit *</span>
+                <select className={inputClass} value={dialog?.organizationUnitId || ""} onChange={(e) => setDialog({...dialog, organizationUnitId: e.target.value})}>
+                  <option value="">Select unit</option>
+                  {unitGroups.map((group) => (
+                    <optgroup key={group.label} label={group.label}>
+                      {group.units.map((unit) => (
+                        <option key={unit.id} value={unit.id}>{unit.name}</option>
+                      ))}
                     </optgroup>
                   ))}
                 </select>
               </label>
-              <label className="block"><span className={labelClass}>Org Unit *</span>
-                <select className={inputClass} onChange={(e) => setDialog({...dialog, organizationUnitId: e.target.value})}>
-                  <option value="">Select unit</option>
-                  {companies.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
-              </label>
               <label className="block"><span className={labelClass}>Assignment Type</span>
-                <select className={inputClass} onChange={(e) => setDialog({...dialog, assignmentType: e.target.value})}>
+                <select className={inputClass} value={dialog?.assignmentType || ""} onChange={(e) => setDialog({...dialog, assignmentType: e.target.value})}>
                   <option value="">Select type</option>
-                  <option value="employee">Employee</option>
-                  <option value="contractor">Contractor</option>
+                  <option value="primary">Primary</option>
+                  <option value="secondary">Secondary</option>
+                  <option value="functional">Functional</option>
+                  <option value="project">Project</option>
+                  <option value="matrix">Matrix</option>
                 </select>
               </label>
               <label className="block"><span className={labelClass}>Is Primary</span>
-                <select className={inputClass} onChange={(e) => setDialog({...dialog, isPrimary: e.target.value === "true"})}>
+                <select className={inputClass} value={dialog?.isPrimary === false ? "false" : "true"} onChange={(e) => setDialog({...dialog, isPrimary: e.target.value === "true"})}>
                   <option value="true">Yes</option>
                   <option value="false">No</option>
                 </select>
               </label>
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <label className="block"><span className={labelClass}>Effective From *</span><input type="date" className={inputClass} onChange={(e) => setDialog({...dialog, effectiveFrom: e.target.value})} /></label>
-              <label className="block"><span className={labelClass}>Effective To</span><input type="date" className={inputClass} onChange={(e) => setDialog({...dialog, effectiveTo: e.target.value})} /></label>
-              <label className="block"><span className={labelClass}>Notes</span><textarea className={inputClass} rows={2} onChange={(e) => setDialog({...dialog, notes: e.target.value})} /></label>
+              <label className="block"><span className={labelClass}>Effective From *</span><input type="date" className={inputClass} value={dialog?.effectiveFrom || ""} onChange={(e) => setDialog({...dialog, effectiveFrom: e.target.value})} /></label>
+              <label className="block"><span className={labelClass}>Effective To</span><input type="date" className={inputClass} value={dialog?.effectiveTo || ""} onChange={(e) => setDialog({...dialog, effectiveTo: e.target.value})} /></label>
+              <label className="block"><span className={labelClass}>Notes</span><textarea className={inputClass} rows={2} value={dialog?.notes || ""} onChange={(e) => setDialog({...dialog, notes: e.target.value})} /></label>
             </div>
           </div>
           <footer className="flex justify-end gap-2">

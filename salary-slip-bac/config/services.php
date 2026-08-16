@@ -46,6 +46,17 @@ return [
         'route' => env('FAST2SMS_ROUTE', 'otp'),
     ],
 
+    // Google Calendar/Meet integration for interview scheduling
+    // (GoogleMeetService). Uses a service account with domain-wide
+    // delegation — see docs/google-meet-setup.md for how to provision one.
+    // `impersonate` is the Workspace mailbox the service account acts as;
+    // events are created on that calendar with real participants invited as
+    // guests, since a bare service account has no Calendar of its own.
+    'google' => [
+        'service_account_path' => env('GOOGLE_SERVICE_ACCOUNT_PATH'),
+        'impersonate' => env('GOOGLE_CALENDAR_IMPERSONATE_EMAIL'),
+    ],
+
     // Base URL of the React frontend, used to build candidate-facing links
     // in hiring emails (e.g. the public quiz link). APP_URL above is this
     // Laravel API's own address, not the SPA's — they're different origins.

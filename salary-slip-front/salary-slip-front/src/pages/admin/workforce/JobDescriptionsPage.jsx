@@ -349,5 +349,5 @@ export default function JobDescriptionsPage() {
     },
   });
 
-  return <ListPage />;
+  return ListPage;
 }

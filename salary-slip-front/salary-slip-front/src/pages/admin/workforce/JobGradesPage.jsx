@@ -269,5 +269,5 @@ export default function JobGradesPage() {
     },
   });
 
-  return <ListPage />;
+  return ListPage;
 }

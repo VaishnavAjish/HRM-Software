@@ -211,6 +211,7 @@ class ReportingStructureService
 
     public function update(ReportingRelationship $rel, array $data, User $actor): ReportingRelationship
     {
+        $this->assertRelationshipVisible($rel, $actor);
         $before = $this->snapshot($rel);
 
         if (array_key_exists('managerId', $data)) {
@@ -310,6 +311,7 @@ class ReportingStructureService
 
     public function delete(ReportingRelationship $rel, User $actor): void
     {
+        $this->assertRelationshipVisible($rel, $actor);
         $snapshot = $this->snapshot($rel);
         DB::transaction(fn () => $rel->delete());
         $this->audit($actor, 'REPORTING_RELATIONSHIP_DELETED', $snapshot, null);
@@ -490,6 +492,7 @@ class ReportingStructureService
 
     public function updateLeadershipAssignment(OrganizationLeadershipAssignment $assignment, array $data, User $actor): OrganizationLeadershipAssignment
     {
+        $this->assertLeadershipVisible($assignment, $actor);
         $before = $this->snapshotLeadership($assignment);
 
         if (array_key_exists('leadershipType', $data)) {
@@ -532,6 +535,7 @@ class ReportingStructureService
 
     public function deleteLeadershipAssignment(OrganizationLeadershipAssignment $assignment, User $actor): void
     {
+        $this->assertLeadershipVisible($assignment, $actor);
         $snapshot = $this->snapshotLeadership($assignment);
         DB::transaction(fn () => $assignment->delete());
         $this->audit($actor, 'LEADERSHIP_ASSIGNMENT_DELETED', $snapshot, null);
@@ -579,6 +583,36 @@ class ReportingStructureService
                 "The referenced record does not belong to the assignment's company.",
                 422
             );
+        }
+    }
+
+    private function assertRelationshipVisible(ReportingRelationship $rel, ?User $actor): void
+    {
+        if (!$rel->company_id) {
+            return;
+        }
+
+        $company = Company::query()->find($rel->company_id);
+
+        if ($company) {
+            $this->assertCompanyVisible($company, $actor);
+        }
+    }
+
+    private function assertLeadershipVisible(OrganizationLeadershipAssignment $assignment, ?User $actor): void
+    {
+        if ($assignment->enterprise_id) {
+            $enterprise = Enterprise::query()->find($assignment->enterprise_id);
+            if ($enterprise) {
+                $this->assertEnterpriseVisible($enterprise, $actor);
+            }
+        }
+
+        if ($assignment->company_id) {
+            $company = Company::query()->find($assignment->company_id);
+            if ($company) {
+                $this->assertCompanyVisible($company, $actor);
+            }
         }
     }
 

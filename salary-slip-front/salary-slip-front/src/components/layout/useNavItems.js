@@ -15,7 +15,6 @@ import {
   Briefcase,
   ShieldCheck,
   Ticket,
-  Building2,
   Shield,
 } from "lucide-react";
 
@@ -100,7 +99,7 @@ function getAdminNav(companyId, user, isAllCompanies, isModuleAvailable = () => 
         { to: "/admin/hr", label: "HR Dashboard", end: true },
         { to: "/admin/hr/hiring", label: "Hiring" },
         { to: "/admin/hr/onboarding", label: "Onboarding" },
-
+        { to: "/admin/hr/organization", label: "Organization" },
         { to: "/admin/hr/assets", label: "Asset Allocation" },
         { to: "/admin/hr/performance", label: "Performance Matrix" },
         { to: "/admin/hr/exit", label: "Exit Management" },
@@ -135,6 +134,10 @@ function getAdminNav(companyId, user, isAllCompanies, isModuleAvailable = () => 
    * gains its endpoints, rather than shipped now as menu items that lead
    * nowhere.
    */
+  if (isModuleAvailable("authorization")) {
+    nav.push({ to: "/admin/my-delegations", label: "My Delegations", icon: ShieldCheck });
+  }
+
   if ((rawRole === 0 || hasAccess("admin.role.read") || hasAccess("admin.user.read")) && isModuleAvailable("authorization")) {
     nav.push({
       label: "Access Control",
@@ -163,65 +166,6 @@ function getAdminNav(companyId, user, isAllCompanies, isModuleAvailable = () => 
           ? [{ to: "/admin/access-control/delegations", label: "Delegations" }] : []),
         ...(hasAccess("admin.emergency_access.approve") || rawRole === 0
           ? [{ to: "/admin/access-control/emergency-access", label: "Emergency Access" }] : []),
-      ],
-    });
-  }
-
-  /*
-   * Organization — the workspace for enterprise attributes, legal entities,
-   * locations, calendars, and the full Domain 02 structure.
-   */
-  if (rawRole === 0
-    || hasAccess("org.master.read")
-    || hasAccess("org.legal_entity.read")
-    || hasAccess("org.location.read")
-    || hasAccess("org.calendar.read")
-    || hasAccess("org.enterprise.read")
-    || hasAccess("org.unit.read")
-    || hasAccess("org.org_location.read")
-    || hasAccess("org.financial.read")
-    || hasAccess("org.chart.read")
-    || hasAccess("org.change.read")
-    || hasAccess("org.calendar_assignment.read")) {
-    nav.push({
-      label: "Organization",
-      icon: Building2,
-      subItems: [
-        // Enterprise & Legal
-        { to: "/admin/organization/master", label: "Enterprise Master" },
-        { to: "/admin/organization/enterprises", label: "Enterprises" },
-        { to: "/admin/organization/legal-entities", label: "Legal Entities" },
-        { to: "/admin/organization/legal-entity-profiles", label: "Legal Entity Profiles" },
-
-        // Organization Structure
-        { to: "/admin/organization/org-units", label: "Organization Units" },
-        { to: "/admin/organization/positions", label: "Positions" },
-        { to: "/admin/organization/assignments", label: "Assignments" },
-
-        // Locations
-        { to: "/admin/organization/locations", label: "Locations (Legacy)" },
-        { to: "/admin/organization/org-locations", label: "Organization Locations" },
-        { to: "/admin/organization/location-types", label: "Location Types" },
-        { to: "/admin/organization/work-location-mappings", label: "Work-Location Mappings" },
-
-        // Financial
-        { to: "/admin/organization/financial-organizations", label: "Financial Organizations" },
-        { to: "/admin/organization/gl-mappings", label: "GL Mappings" },
-        { to: "/admin/organization/allocation-rules", label: "Allocation Rules" },
-
-        // Hierarchies
-        { to: "/admin/organization/hierarchies", label: "Hierarchies" },
-        { to: "/admin/organization/hierarchy-nodes", label: "Hierarchy Nodes" },
-        { to: "/admin/organization/hierarchy-edges", label: "Hierarchy Edges" },
-
-        // Reporting & Chart
-        { to: "/admin/organization/reporting-structure", label: "Reporting Structure" },
-        { to: "/admin/organization/org-chart", label: "Org Chart" },
-
-        // Change & Calendar
-        { to: "/admin/organization/change-management", label: "Change Management" },
-        { to: "/admin/organization/calendar-assignments", label: "Calendar Assignments" },
-        { to: "/admin/organization/calendars", label: "Calendars" },
       ],
     });
   }

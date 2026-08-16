@@ -341,6 +341,7 @@ export default function RequisitionFormModal({ targetId, isOpen, onClose, onSucc
                 <option value="">
                   {!form.department_id ? "Select Department first"
                     : managersLoading ? "Loading managers..."
+                    : managers.length === 0 && !managersError ? "No manager assigned to this department"
                     : "Select Department Manager"}
                 </option>
                 {managers.map((m) => (
@@ -353,6 +354,20 @@ export default function RequisitionFormModal({ targetId, isOpen, onClose, onSucc
                   <button type="button" onClick={() => loadManagers(form.department_id, form.department_manager_id)} className="font-semibold underline">
                     Retry
                   </button>
+                </p>
+              )}
+              {!managersLoading && !managersError && form.department_id && managers.length === 0 && (
+                <p className="mt-1.5 text-xs text-amber-600 dark:text-amber-400">
+                  This department has no manager assigned yet, so it can't be selected here.{" "}
+                  <a
+                    href="/admin/access-control/company-units"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-semibold underline"
+                  >
+                    Assign one in Access Control → Company &amp; Unit → Department Managers
+                  </a>
+                  , then reopen this form.
                 </p>
               )}
             </Field>

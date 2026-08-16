@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import {
   Plus, RefreshCw, Search, Loader2, Pencil, Trash2, Power, PowerOff, Shield,
-  Building2, Clock, Check, X, AlertCircle, Eye, Calendar,
+  Building2, Clock, Check, X, AlertCircle, Eye, Calendar, Users,
 } from "lucide-react";
 import Badge from "../../../components/ui/Badge";
 import Button from "../../../components/ui/Button";
@@ -67,6 +67,9 @@ export default function ChangeManagementPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [impactChange, setImpactChange] = useState(null);
+  const [impact, setImpact] = useState(null);
+  const [impactLoading, setImpactLoading] = useState(false);
 
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("ALL");
@@ -114,6 +117,21 @@ export default function ChangeManagementPage() {
 
   const canApprove = can("org.change.approve");
   const canReject = can("org.change.reject");
+
+  const viewImpact = async (change) => {
+    setImpactChange(change);
+    setImpact(null);
+    setImpactLoading(true);
+    try {
+      const res = await organizationApi.orgChangeImpact(change.id, token, tokenType);
+      setImpact(res?.data ?? null);
+    } catch (err) {
+      toast.error(err.message || "Could not load impact analysis");
+      setImpactChange(null);
+    } finally {
+      setImpactLoading(false);
+    }
+  };
 
   return (
     <div className="min-w-0 max-w-full space-y-5">
@@ -206,6 +224,11 @@ export default function ChangeManagementPage() {
                       <div className="flex justify-end gap-1">
                         {can("org.change.read") && (
                           <Button size="sm" variant="ghost" onClick={() => setActiveChange(change)}><Eye size={14} /></Button>
+                        )}
+                        {can("org.change.read") && change.itemCount > 0 && (
+                          <Button size="sm" variant="ghost" onClick={() => viewImpact(change)} title="Impact analysis">
+                            <Users size={14} /> Impact
+                          </Button>
                         )}
                         {canApprove && change.status !== "approved" && change.status !== "rejected" && (
                           <Button
@@ -344,6 +367,81 @@ export default function ChangeManagementPage() {
                 )}
               </p>
             </div>
+          </div>
+        </Modal>
+      )}
+
+      {impactChange && (
+        <Modal
+          isOpen
+          onClose={() => { setImpactChange(null); setImpact(null); }}
+          title={`Impact Analysis: ${impactChange.code || impactChange.name || "—"}`}
+          size="lg"
+        >
+          <div className="p-4 space-y-4">
+            {impactLoading && (
+              <div className="flex items-center justify-center py-10 text-gray-500 dark:text-gray-400">
+                <Loader2 size={18} className="mr-2 animate-spin" /> Calculating impact…
+              </div>
+            )}
+            {!impactLoading && impact && (
+              <>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <div className="rounded-lg border border-gray-200 p-3 text-center dark:border-gray-700">
+                    <p className="text-2xl font-bold text-gray-900 dark:text-white">{impact.totals?.employees ?? 0}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Employees</p>
+                  </div>
+                  <div className="rounded-lg border border-gray-200 p-3 text-center dark:border-gray-700">
+                    <p className="text-2xl font-bold text-gray-900 dark:text-white">{impact.totals?.positions ?? 0}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Positions</p>
+                  </div>
+                  <div className="rounded-lg border border-gray-200 p-3 text-center dark:border-gray-700">
+                    <p className="text-2xl font-bold text-gray-900 dark:text-white">{impact.totals?.childUnits ?? 0}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Child Units</p>
+                  </div>
+                  <div className="rounded-lg border border-gray-200 p-3 text-center dark:border-gray-700">
+                    <p className="text-2xl font-bold text-gray-900 dark:text-white">{impact.totals?.reportingRelationships ?? 0}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Reporting Links</p>
+                  </div>
+                </div>
+
+                {(impact.totals?.employees ?? 0) > 0 && (
+                  <p className="flex items-start gap-1.5 rounded-lg bg-amber-50 p-3 text-xs text-amber-700 dark:bg-amber-900/20 dark:text-amber-300">
+                    <AlertCircle size={14} className="mt-0.5 shrink-0" />
+                    Applying this request will directly affect {impact.totals.employees} employee record(s). Review each item below before approving.
+                  </p>
+                )}
+
+                <div>
+                  <h4 className="mb-2 font-semibold text-gray-600 dark:text-gray-300">Per-Item Breakdown</h4>
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr>
+                        <Th>Item Type</Th>
+                        <Th>Target</Th>
+                        <Th>Employees</Th>
+                        <Th>Positions</Th>
+                        <Th>Child Units</Th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(impact.items ?? []).map((entry) => (
+                        <tr key={entry.itemId} className="border-b border-gray-200 dark:border-gray-700/40">
+                          <td className="px-4 py-2 capitalize text-gray-500 dark:text-gray-300">{entry.itemType?.replace(/_/g, " ")}</td>
+                          <td className="px-4 py-2 text-gray-600 dark:text-gray-300">{entry.targetType} #{entry.targetId ?? "—"}</td>
+                          <td className="px-4 py-2 text-gray-900 dark:text-white">{entry.affected?.employeeCount ?? 0}</td>
+                          <td className="px-4 py-2 text-gray-900 dark:text-white">{entry.affected?.positionCount ?? 0}</td>
+                          <td className="px-4 py-2 text-gray-900 dark:text-white">{entry.affected?.childUnitCount ?? 0}</td>
+                        </tr>
+                      ))}
+                      {(impact.items ?? []).length === 0 && (
+                        <tr><td colSpan={5} className="p-4 text-center text-gray-400">No items on this request.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
           </div>
         </Modal>
       )}

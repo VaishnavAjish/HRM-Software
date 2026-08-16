@@ -207,5 +207,5 @@ export default function JobCategoriesPage() {
     },
   });
 
-  return <ListPage />;
+  return ListPage;
 }

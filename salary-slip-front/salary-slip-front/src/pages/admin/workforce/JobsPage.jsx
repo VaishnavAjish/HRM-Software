@@ -453,5 +453,5 @@ export default function JobsPage() {
     },
   });
 
-  return <ListPage />;
+  return ListPage;
 }

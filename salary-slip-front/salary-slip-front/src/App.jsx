@@ -51,31 +51,9 @@ const CompanyUnits = lazy(() => import("./pages/admin/accessControl/CompanyUnits
 const Policies = lazy(() => import("./pages/admin/accessControl/Policies"));
 const AccessRequests = lazy(() => import("./pages/admin/accessControl/AccessRequests"));
 const Delegations = lazy(() => import("./pages/admin/accessControl/Delegations"));
+const MyDelegations = lazy(() => import("./pages/admin/accessControl/MyDelegations"));
 const EmergencyAccess = lazy(() => import("./pages/admin/accessControl/EmergencyAccess"));
 
-// Organization workspace — enterprise master and business structure
-const EnterpriseMaster = lazy(() => import("./pages/admin/organization/EnterpriseMaster"));
-const LegalEntities = lazy(() => import("./pages/admin/organization/LegalEntities"));
-const Locations = lazy(() => import("./pages/admin/organization/Locations"));
-const Calendars = lazy(() => import("./pages/admin/organization/Calendars"));
-const Enterprises = lazy(() => import("./pages/admin/organization/Enterprises"));
-const LegalEntityProfiles = lazy(() => import("./pages/admin/organization/LegalEntityProfiles"));
-const OrgUnits = lazy(() => import("./pages/admin/organization/OrgUnits"));
-const Positions = lazy(() => import("./pages/admin/organization/Positions"));
-const Assignments = lazy(() => import("./pages/admin/organization/Assignments"));
-const OrgLocations = lazy(() => import("./pages/admin/organization/OrgLocations"));
-const LocationTypes = lazy(() => import("./pages/admin/organization/LocationTypes"));
-const WorkLocationMappings = lazy(() => import("./pages/admin/organization/WorkLocationMappings"));
-const FinancialOrganizations = lazy(() => import("./pages/admin/organization/FinancialOrganizations"));
-const GlMappings = lazy(() => import("./pages/admin/organization/GlMappings"));
-const AllocationRules = lazy(() => import("./pages/admin/organization/AllocationRules"));
-const Hierarchies = lazy(() => import("./pages/admin/organization/Hierarchies"));
-const HierarchyNodes = lazy(() => import("./pages/admin/organization/HierarchyNodes"));
-const HierarchyEdges = lazy(() => import("./pages/admin/organization/HierarchyEdges"));
-const ReportingStructure = lazy(() => import("./pages/admin/organization/ReportingStructure"));
-const OrgChart = lazy(() => import("./pages/admin/organization/OrgChart"));
-const ChangeManagement = lazy(() => import("./pages/admin/organization/ChangeManagement"));
-const CalendarAssignments = lazy(() => import("./pages/admin/organization/CalendarAssignments"));
 const AdminTickets = lazy(() => import("./pages/admin/Tickets"));
 const SuperAdminTicketControlCenter = lazy(() => import("./pages/admin/SuperAdminTicketControlCenter"));
 
@@ -95,6 +73,7 @@ import { useAuthorization } from "./hooks/useAuthorization";
 
 // HR module
 const HrDashboard = lazy(() => import("./pages/admin/hr/HrDashboard"));
+const HrOrganization = lazy(() => import("./pages/admin/hr/Organization"));
 const RecruitmentDashboard = lazy(() => import("./pages/admin/recruitment/RecruitmentDashboard"));
 const HiringProcess = lazy(() => import("./pages/admin/hr/HiringProcess"));
 const OnboardingWorkspace = lazy(() => import("./pages/admin/hr/onboarding/OnboardingWorkspace"));
@@ -355,6 +334,7 @@ function AppRoutes() {
         }
       >
         <Route index element={<AdminDashboard />} />
+        <Route path="my-delegations" element={<MyDelegations />} />
         <Route path="employees" element={<EmployeeManagement />} />
         <Route path="employees/add" element={<AddEmployeePage />} />
         <Route path="salary" element={<SalaryManagement />} />
@@ -418,6 +398,7 @@ function AppRoutes() {
 
         {/* HR module */}
         <Route path="hr" element={<ProtectedRoute requiredPermission="hr.dashboard.read"><HrDashboard /></ProtectedRoute>} />
+        <Route path="hr/organization" element={<ProtectedRoute requiredPermission="hr.dashboard.read"><HrOrganization /></ProtectedRoute>} />
         <Route path="hr/recruitment-dashboard" element={<ProtectedRoute requiredPermission="hr.requisition.read"><RecruitmentDashboard /></ProtectedRoute>} />
         <Route path="hr/hiring" element={<ProtectedRoute requiredPermission="hr.requisition.read"><HiringProcess /></ProtectedRoute>} />
         {/* Interviews now lives inside the Hiring workspace as a tab; keep the old
@@ -504,184 +485,13 @@ function AppRoutes() {
           }
         />
 
-        {/* Organization */}
-        <Route
-          path="organization/master"
-          element={
-            <ProtectedRoute requiredPermission="org.master.read">
-              <EnterpriseMaster />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="organization/legal-entities"
-          element={
-            <ProtectedRoute requiredPermission="org.legal_entity.read">
-              <LegalEntities />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="organization/locations"
-          element={
-            <ProtectedRoute requiredPermission="org.location.read">
-              <Locations />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="organization/calendars"
-          element={
-            <ProtectedRoute requiredPermission="org.calendar.read">
-              <Calendars />
-            </ProtectedRoute>
-          }
-        />
-        {/* V2 Enterprise Management */}
-        <Route
-          path="organization/enterprises"
-          element={
-            <ProtectedRoute requiredPermission="org.enterprise.read">
-              <Enterprises />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="organization/legal-entity-profiles"
-          element={
-            <ProtectedRoute requiredPermission="org.legal_entity.read">
-              <LegalEntityProfiles />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="organization/org-units"
-          element={
-            <ProtectedRoute requiredPermission="org.unit.read">
-              <OrgUnits />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="organization/positions/:unitId?"
-          element={
-            <ProtectedRoute requiredPermission="org.unit_position.read">
-              <Positions />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="organization/assignments"
-          element={
-            <ProtectedRoute requiredPermission="org.unit_assignment.read">
-              <Assignments />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="organization/org-locations"
-          element={
-            <ProtectedRoute requiredPermission="org.org_location.read">
-              <OrgLocations />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="organization/location-types"
-          element={
-            <ProtectedRoute requiredPermission="org.location_type.read">
-              <LocationTypes />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="organization/work-location-mappings"
-          element={
-            <ProtectedRoute requiredPermission="org.work_location.read">
-              <WorkLocationMappings />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="organization/financial-organizations"
-          element={
-            <ProtectedRoute requiredPermission="org.financial.read">
-              <FinancialOrganizations />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="organization/gl-mappings/:orgId?"
-          element={
-            <ProtectedRoute requiredPermission="org.financial_gl.read">
-              <GlMappings />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="organization/allocation-rules"
-          element={
-            <ProtectedRoute requiredPermission="org.financial_allocation.read">
-              <AllocationRules />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="organization/hierarchies"
-          element={
-            <ProtectedRoute requiredPermission="org.hierarchy.read">
-              <Hierarchies />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="organization/hierarchy-nodes/:hierarchyId?"
-          element={
-            <ProtectedRoute requiredPermission="org.hierarchy_node.read">
-              <HierarchyNodes />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="organization/hierarchy-edges/:hierarchyId?"
-          element={
-            <ProtectedRoute requiredPermission="org.hierarchy_edge.read">
-              <HierarchyEdges />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="organization/reporting-structure"
-          element={
-            <ProtectedRoute requiredPermission="org.reporting.read">
-              <ReportingStructure />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="organization/org-chart"
-          element={
-            <ProtectedRoute requiredPermission="org.chart.read">
-              <OrgChart />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="organization/change-management"
-          element={
-            <ProtectedRoute requiredPermission="org.change.read">
-              <ChangeManagement />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="organization/calendar-assignments"
-          element={
-            <ProtectedRoute requiredPermission="org.calendar_assignment.read">
-              <CalendarAssignments />
-            </ProtectedRoute>
-          }
-        />
+        {/* The standalone Organization module (Structure, Org Chart,
+            Entities, Positions, Teams, Job Architecture, Analytics,
+            Governance) was retired from the top-level sidebar — the same
+            underlying data is managed from the HR module's Organization
+            workspace instead. Old bookmarked/deep-linked URLs redirect
+            there rather than 404ing or rendering a removed page. */}
+        <Route path="organization/*" element={<Navigate to="/admin/hr/organization" replace />} />
       </Route>
 
       {/* Workforce Foundation (Domain 03) */}

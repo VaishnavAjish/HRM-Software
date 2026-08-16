@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
+import toast from "react-hot-toast";
 import {
   Mail, Phone as PhoneIcon, MapPin, Clock, Trash2, ArrowRight, ChevronRight,
   CheckCircle2, Circle, XCircle, PauseCircle, User2, CalendarClock, FileText, StickyNote, Lock,
-  Download, ExternalLink, AlertTriangle,
+  Download, ExternalLink, AlertTriangle, Target, RefreshCw, Loader2,
 } from "lucide-react";
 import Drawer, { CollapsibleSection } from "../../../../components/ui/Drawer";
 import Badge from "../../../../components/ui/Badge";
@@ -10,6 +11,103 @@ import Button from "../../../../components/ui/Button";
 import CandidateCrmSections from "./CandidateCrmSections";
 import { baseUrl } from "../../../../utils/url";
 import { useAuth } from "../../../../context/AuthContext";
+import { hrApi } from "../../../../utils/api";
+
+const CATEGORY_LABELS = { skills: "Skills", experience: "Experience", keywords: "Resume keywords" };
+
+function ScoreBar({ label, score, weight }) {
+  const pct = Math.max(0, Math.min(100, score ?? 0));
+  const tone = pct >= 70 ? "bg-green-500" : pct >= 40 ? "bg-amber-500" : "bg-red-500";
+  return (
+    <div>
+      <div className="flex items-center justify-between text-xs text-gray-600 dark:text-gray-300">
+        <span>{label} <span className="text-gray-400">({weight}%)</span></span>
+        <span className="font-medium">{pct}%</span>
+      </div>
+      <div className="mt-1 h-1.5 w-full rounded-full bg-gray-100 dark:bg-gray-700">
+        <div className={`h-1.5 rounded-full ${tone}`} style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function AtsBreakdown({ candidate, onRescore, rescoring }) {
+  const breakdown = candidate.ats_score_breakdown;
+  const hasRequisition = !!candidate.requisition_id;
+
+  return (
+    <CollapsibleSection title="ATS Match" icon={<Target size={15} />}>
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            {candidate.ats_score != null ? (
+              <span className="text-2xl font-bold text-gray-900 dark:text-white">{candidate.ats_score}%</span>
+            ) : (
+              <span className="text-sm text-gray-400">Not scored yet</span>
+            )}
+            {candidate.ats_score_source === "manual" && (
+              <span className="ml-2 text-xs text-gray-400">(manually entered)</span>
+            )}
+            {candidate.ats_scored_at && candidate.ats_score_source !== "manual" && (
+              <span className="ml-2 text-xs text-gray-400">
+                computed {new Date(candidate.ats_scored_at).toLocaleDateString()}
+              </span>
+            )}
+          </div>
+          {hasRequisition && (
+            <Button size="sm" variant="outline" onClick={onRescore} disabled={rescoring}>
+              {rescoring ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+              Recompute
+            </Button>
+          )}
+        </div>
+
+        {!hasRequisition && (
+          <p className="text-xs text-gray-400">
+            Not linked to a requisition, so there is nothing to score a match against.
+          </p>
+        )}
+
+        {breakdown?.categories && (
+          <>
+            <div className="space-y-2.5">
+              {Object.entries(breakdown.categories).map(([key, cat]) => (
+                <ScoreBar key={key} label={CATEGORY_LABELS[key] || key} score={cat.score} weight={cat.weight} />
+              ))}
+            </div>
+
+            {breakdown.categories.skills?.matched?.length > 0 && (
+              <div>
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Matched skills</p>
+                <div className="flex flex-wrap gap-1">
+                  {breakdown.categories.skills.matched.map((s) => (
+                    <span key={s} className="text-xs px-2 py-0.5 rounded-full bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400">✓ {s}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {breakdown.categories.skills?.missing?.length > 0 && (
+              <div>
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Not matched against this requisition</p>
+                <div className="flex flex-wrap gap-1">
+                  {breakdown.categories.skills.missing.map((s) => (
+                    <span key={s} className="text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400">{s}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {Object.values(breakdown.categories).filter((c) => c.note).map((c, i) => (
+              <p key={i} className="text-xs text-amber-600 dark:text-amber-400 flex items-start gap-1">
+                <AlertTriangle size={12} className="mt-0.5 flex-shrink-0" /> {c.note}
+              </p>
+            ))}
+          </>
+        )}
+      </div>
+    </CollapsibleSection>
+  );
+}
 
 const PRIORITY_VARIANT = { high: "red", medium: "yellow", low: "gray" };
 
@@ -105,7 +203,32 @@ export default function CandidateDrawer({
   mainStages, terminalStages, stageIndex, ownedStages,
 }) {
   const { user } = useAuth();
+  const token = user?.accessToken;
+  const tokenType = user?.tokenType || "Bearer";
   const resumeUrl = useResumeObjectUrl(candidate, user);
+
+  // Recompute overlays onto whatever candidate the parent handed us, keyed
+  // to that candidate's id so switching to a different candidate doesn't
+  // carry a stale score forward — no effect needed to "reset" it.
+  const [rescoreResult, setRescoreResult] = useState(null);
+  const [rescoring, setRescoring] = useState(false);
+  const scored = rescoreResult && candidate && rescoreResult.candidateId === candidate.id
+    ? { ...candidate, ...rescoreResult.data }
+    : candidate;
+
+  const handleRescore = async () => {
+    if (!candidate) return;
+    setRescoring(true);
+    try {
+      const res = await hrApi.rescoreCandidate(candidate.id, token, tokenType);
+      setRescoreResult({ candidateId: candidate.id, data: res.data });
+      toast.success("ATS score recomputed");
+    } catch (err) {
+      toast.error(err.message || "Could not recompute the ATS score");
+    } finally {
+      setRescoring(false);
+    }
+  };
 
   if (!candidate) return <Drawer isOpen={false} onClose={onClose} />;
 
@@ -177,10 +300,12 @@ export default function CandidateDrawer({
               <Badge variant={PRIORITY_VARIANT[candidate.priority] || "gray"}>{candidate.priority} priority</Badge>
               {candidate.source && <Badge variant="gray">{candidate.source.replace("_", " ")}</Badge>}
               {candidate.rating != null && <Badge variant="blue">Score {candidate.rating}/5</Badge>}
-              {candidate.ats_score != null && <Badge variant="green">ATS {candidate.ats_score}%</Badge>}
+              {scored.ats_score != null && <Badge variant="green">ATS {scored.ats_score}%</Badge>}
             </div>
           </div>
         </div>
+
+        <AtsBreakdown candidate={scored} onRescore={handleRescore} rescoring={rescoring} />
 
         <CollapsibleSection title="Profile" icon={<User2 size={15} />}>
           {Array.isArray(candidate.skills) && candidate.skills.length > 0 && (

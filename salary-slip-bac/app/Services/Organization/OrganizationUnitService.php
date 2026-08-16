@@ -10,6 +10,10 @@ use App\Models\Company;
 use App\Models\User;
 use App\Models\Department;
 use App\Models\Unit;
+use App\Models\Location;
+use App\Models\FinancialOrganization;
+use App\Models\PositionHistory;
+use App\Models\ReportingRelationship;
 use App\Services\Organization\Concerns\VerifiesCompanyAccess;
 use App\Support\AuditLogger;
 use Illuminate\Support\Facades\DB;
@@ -354,6 +358,10 @@ class OrganizationUnitService
 
     public function presentPosition(OrganizationPosition $pos): array
     {
+        $approved = (int) $pos->approved_headcount;
+        $budgeted = $pos->budgeted_headcount === null ? $approved : (int) $pos->budgeted_headcount;
+        $filled = (int) $pos->filled_headcount;
+
         return [
             'id' => (int) $pos->id,
             'organizationUnitId' => (int) $pos->organization_unit_id,
@@ -361,10 +369,19 @@ class OrganizationUnitService
             'code' => $pos->code,
             'title' => $pos->title,
             'description' => $pos->description,
-            'approvedHeadcount' => (int) $pos->approved_headcount,
+            'approvedHeadcount' => $approved,
+            'budgetedHeadcount' => $budgeted,
             'currentHeadcount' => (int) $pos->current_headcount,
-            'vacancy' => max(0, (int) $pos->approved_headcount - (int) $pos->current_headcount),
+            'filledHeadcount' => $filled,
+            'vacantHeadcount' => max(0, $approved - $filled),
+            'reservedHeadcount' => (int) $pos->reserved_headcount,
+            'headcountVariance' => $filled - $budgeted,
+            'vacancy' => max(0, $approved - $filled),
             'status' => $pos->status,
+            'isFrozen' => $pos->status === 'frozen',
+            'frozenAt' => $pos->frozen_at?->toIso8601String(),
+            'frozenByName' => $pos->frozenBy?->name,
+            'freezeReason' => $pos->freeze_reason,
             'reportsToPositionId' => $pos->reports_to_position_id === null ? null : (int) $pos->reports_to_position_id,
             'reportsToPositionTitle' => $pos->reportsTo?->title,
             'effectiveFrom' => $pos->effective_from?->toDateString(),
@@ -394,13 +411,20 @@ class OrganizationUnitService
         $this->assertPositionCodeFree($unitId, trim((string) ($data['code'] ?: $data['title'])), null);
 
         $pos = DB::transaction(function () use ($unitId, $data, $reportsToId) {
+            $approvedHeadcount = (int) ($data['approvedHeadcount'] ?? 1);
+
             return OrganizationPosition::query()->create([
                 'organization_unit_id' => $unitId,
                 'code' => trim((string) ($data['code'] ?: $data['title'])),
                 'title' => trim((string) $data['title']),
                 'description' => $this->blankToNull($data['description'] ?? null),
-                'approved_headcount' => (int) ($data['approvedHeadcount'] ?? 1),
+                'approved_headcount' => $approvedHeadcount,
+                'budgeted_headcount' => isset($data['budgetedHeadcount']) && $data['budgetedHeadcount'] !== ''
+                    ? (int) $data['budgetedHeadcount']
+                    : $approvedHeadcount,
                 'current_headcount' => 0,
+                'filled_headcount' => 0,
+                'vacant_headcount' => $approvedHeadcount,
                 'status' => $data['status'] ?? 'active',
                 'reports_to_position_id' => $reportsToId,
                 'effective_from' => $this->blankToNull($data['effectiveFrom'] ?? null),
@@ -434,6 +458,13 @@ class OrganizationUnitService
 
         if (array_key_exists('approvedHeadcount', $data)) {
             $pos->approved_headcount = (int) $data['approvedHeadcount'];
+            $pos->vacant_headcount = max(0, $pos->approved_headcount - (int) $pos->filled_headcount);
+        }
+
+        if (array_key_exists('budgetedHeadcount', $data)) {
+            $pos->budgeted_headcount = $data['budgetedHeadcount'] === '' || $data['budgetedHeadcount'] === null
+                ? $pos->approved_headcount
+                : (int) $data['budgetedHeadcount'];
         }
 
         if (array_key_exists('status', $data)) {
@@ -489,6 +520,130 @@ class OrganizationUnitService
         $this->audit($actor, 'ORGANIZATION_POSITION_DELETED', $snapshot, null);
     }
 
+    public function freezePosition(OrganizationPosition $pos, string $reason, User $actor): OrganizationPosition
+    {
+        $this->assertUnitVisible($pos->organizationUnit, $actor);
+
+        if ($pos->status === 'frozen') {
+            throw new OrganizationException('POSITION_ALREADY_FROZEN', 'This position is already frozen.', 409);
+        }
+
+        $before = $this->snapshotPosition($pos);
+
+        $pos->status = 'frozen';
+        $pos->frozen_at = now();
+        $pos->frozen_by = $actor->id;
+        $pos->freeze_reason = $reason;
+
+        DB::transaction(fn () => $pos->save());
+
+        $this->audit($actor, 'ORGANIZATION_POSITION_FROZEN', $before, $this->snapshotPosition($pos));
+
+        return $pos;
+    }
+
+    public function releasePosition(OrganizationPosition $pos, User $actor): OrganizationPosition
+    {
+        $this->assertUnitVisible($pos->organizationUnit, $actor);
+
+        if ($pos->status !== 'frozen') {
+            throw new OrganizationException('POSITION_NOT_FROZEN', 'This position is not frozen.', 409);
+        }
+
+        $before = $this->snapshotPosition($pos);
+
+        $pos->status = (int) $pos->filled_headcount >= (int) $pos->approved_headcount && (int) $pos->approved_headcount > 0
+            ? 'filled'
+            : 'open';
+        $pos->frozen_at = null;
+        $pos->frozen_by = null;
+        $pos->freeze_reason = null;
+
+        DB::transaction(fn () => $pos->save());
+
+        $this->audit($actor, 'ORGANIZATION_POSITION_RELEASED', $before, $this->snapshotPosition($pos));
+
+        return $pos;
+    }
+
+    /**
+     * DOMAIN 03.5 — Headcount Control summary: approved vs budgeted vs actual vs
+     * vacant, grouped by organization unit, scoped to the actor's visible companies.
+     */
+    public function headcountSummary(array $filters, ?User $actor): array
+    {
+        $query = OrganizationPosition::query()->with(['organizationUnit']);
+
+        if (!empty($filters['organizationUnitId'])) {
+            $query->where('organization_unit_id', (int) $filters['organizationUnitId']);
+        }
+
+        if (!empty($filters['companyIds'])) {
+            $companyIds = array_map('intval', (array) $filters['companyIds']);
+            $query->whereHas('organizationUnit', fn ($q) => $q->whereIn('company_id', $companyIds));
+        } elseif (!$this->hasGlobalCompanyScope($actor)) {
+            $codes = $this->authorizedCompanyCodes($actor);
+            $companyIds = Company::query()->whereIn('code', $codes)->pluck('id')->all();
+            $query->whereHas('organizationUnit', fn ($q) => $q->whereIn('company_id', $companyIds));
+        }
+
+        $positions = $query->get();
+
+        $totals = [
+            'positionCount' => $positions->count(),
+            'approvedHeadcount' => (int) $positions->sum('approved_headcount'),
+            'budgetedHeadcount' => (int) $positions->sum(fn ($p) => $p->budgeted_headcount ?? $p->approved_headcount),
+            'filledHeadcount' => (int) $positions->sum('filled_headcount'),
+            'vacantHeadcount' => (int) $positions->sum(fn ($p) => max(0, (int) $p->approved_headcount - (int) $p->filled_headcount)),
+            'frozenCount' => $positions->where('status', 'frozen')->count(),
+            'openCount' => $positions->where('status', 'open')->count(),
+        ];
+        $totals['headcountVariance'] = $totals['filledHeadcount'] - $totals['budgetedHeadcount'];
+
+        $byUnit = $positions->groupBy('organization_unit_id')->map(function ($group) {
+            $approved = (int) $group->sum('approved_headcount');
+            $budgeted = (int) $group->sum(fn ($p) => $p->budgeted_headcount ?? $p->approved_headcount);
+            $filled = (int) $group->sum('filled_headcount');
+
+            return [
+                'organizationUnitId' => (int) $group->first()->organization_unit_id,
+                'organizationUnitName' => $group->first()->organizationUnit?->name,
+                'positionCount' => $group->count(),
+                'approvedHeadcount' => $approved,
+                'budgetedHeadcount' => $budgeted,
+                'filledHeadcount' => $filled,
+                'vacantHeadcount' => max(0, $approved - $filled),
+                'headcountVariance' => $filled - $budgeted,
+                'frozenCount' => $group->where('status', 'frozen')->count(),
+            ];
+        })->values()->all();
+
+        return ['totals' => $totals, 'byUnit' => $byUnit];
+    }
+
+    private function recalculatePositionHeadcount(?int $positionId): void
+    {
+        if ($positionId === null) {
+            return;
+        }
+
+        $position = OrganizationPosition::query()->find($positionId);
+
+        if (!$position) {
+            return;
+        }
+
+        $filled = EmployeeOrganizationAssignment::query()
+            ->where('position_id', $positionId)
+            ->where('is_active', true)
+            ->count();
+
+        $position->filled_headcount = $filled;
+        $position->current_headcount = $filled;
+        $position->vacant_headcount = max(0, (int) $position->approved_headcount - $filled);
+        $position->save();
+    }
+
     // Employee Assignments
     public function assignments(array $filters, ?User $actor): array
     {
@@ -538,12 +693,23 @@ class OrganizationUnitService
             'organizationUnitName' => $assignment->organizationUnit?->name,
             'positionId' => $assignment->position_id === null ? null : (int) $assignment->position_id,
             'positionTitle' => $assignment->position?->title,
+            'designationId' => $assignment->designation_id === null ? null : (int) $assignment->designation_id,
+            'designationTitle' => $assignment->designation?->title,
+            'locationId' => $assignment->location_id === null ? null : (int) $assignment->location_id,
+            'locationName' => $assignment->location?->name,
+            'costCenterId' => $assignment->cost_center_id === null ? null : (int) $assignment->cost_center_id,
+            'costCenterName' => $assignment->costCenter?->name,
+            'managerUserId' => $assignment->manager_user_id === null ? null : (int) $assignment->manager_user_id,
+            'managerName' => $assignment->manager?->name,
             'assignmentType' => $assignment->assignment_type,
             'isPrimary' => (bool) $assignment->is_primary,
+            'assignmentPercentage' => (float) $assignment->assignment_percentage,
+            'fte' => $assignment->fte === null ? null : (float) $assignment->fte,
             'effectiveFrom' => $assignment->effective_from->toDateString(),
             'effectiveTo' => $assignment->effective_to?->toDateString(),
             'isActive' => (bool) $assignment->is_active,
             'notes' => $assignment->notes,
+            'changeReason' => $assignment->change_reason,
             'createdAt' => $assignment->created_at,
         ];
     }
@@ -555,6 +721,8 @@ class OrganizationUnitService
         $this->assertUnitVisible($unit, $actor);
 
         $positionId = isset($data['positionId']) && $data['positionId'] !== '' ? (int) $data['positionId'] : null;
+        $isActive = (bool) ($data['isActive'] ?? true);
+
         if ($positionId) {
             $position = OrganizationPosition::query()->findOrFail($positionId);
             if ($position->organization_unit_id !== $unit->id) {
@@ -564,10 +732,21 @@ class OrganizationUnitService
                     422
                 );
             }
+
+            if ($isActive) {
+                $this->assertPositionAcceptsAssignment($position);
+            }
         }
 
         $isPrimary = (bool) ($data['isPrimary'] ?? true);
         $assignmentType = $data['assignmentType'] ?? 'primary';
+        $designationId = isset($data['designationId']) && $data['designationId'] !== '' ? (int) $data['designationId'] : null;
+
+        $locationId = $this->resolveAssignmentLocation($data);
+        $costCenterId = $this->resolveAssignmentCostCenter($data);
+        $managerUserId = isset($data['managerUserId']) && $data['managerUserId'] !== ''
+            ? (int) $data['managerUserId']
+            : null;
 
         if ($isPrimary) {
             // Clear other primary assignments for this user
@@ -578,22 +757,34 @@ class OrganizationUnitService
                 ->update(['is_primary' => false]);
         }
 
-        $assignment = DB::transaction(function () use ($user, $unit, $positionId, $isPrimary, $assignmentType, $data) {
+        $assignment = DB::transaction(function () use (
+            $user, $unit, $positionId, $designationId, $isPrimary, $assignmentType, $data, $locationId, $costCenterId, $managerUserId
+        ) {
             return EmployeeOrganizationAssignment::query()->create([
                 'user_id' => $user->id,
                 'organization_unit_id' => $unit->id,
                 'position_id' => $positionId,
+                'designation_id' => $designationId,
+                'location_id' => $locationId,
+                'cost_center_id' => $costCenterId,
+                'manager_user_id' => $managerUserId,
                 'assignment_type' => $assignmentType,
                 'is_primary' => $isPrimary,
+                'assignment_percentage' => isset($data['assignmentPercentage']) && $data['assignmentPercentage'] !== ''
+                    ? (float) $data['assignmentPercentage']
+                    : 100,
+                'fte' => isset($data['fte']) && $data['fte'] !== '' ? (float) $data['fte'] : null,
                 'effective_from' => $data['effectiveFrom'],
                 'effective_to' => $this->blankToNull($data['effectiveTo'] ?? null),
                 'is_active' => (bool) ($data['isActive'] ?? true),
                 'notes' => $this->blankToNull($data['notes'] ?? null),
+                'change_reason' => $this->blankToNull($data['changeReason'] ?? null),
             ]);
         });
 
         // Update legacy compatibility fields
         $this->updateLegacyFields($user, $unit, $positionId);
+        $this->recalculatePositionHeadcount($positionId);
 
         $this->audit($actor, 'EMPLOYEE_ORGANIZATION_ASSIGNMENT_CREATED', null, $this->snapshotAssignment($assignment));
 
@@ -604,6 +795,9 @@ class OrganizationUnitService
     {
         $this->assertUnitVisible($assignment->organizationUnit, $actor);
         $before = $this->snapshotAssignment($assignment);
+        $originalPositionId = $assignment->position_id;
+
+        $willBeActive = array_key_exists('isActive', $data) ? (bool) $data['isActive'] : (bool) $assignment->is_active;
 
         if (array_key_exists('positionId', $data)) {
             $positionId = $data['positionId'] === '' || $data['positionId'] === null ? null : (int) $data['positionId'];
@@ -616,8 +810,50 @@ class OrganizationUnitService
                         422
                     );
                 }
+                if ($willBeActive && $positionId !== $originalPositionId) {
+                    $this->assertPositionAcceptsAssignment($position);
+                }
             }
             $assignment->position_id = $positionId;
+        } elseif ($willBeActive && !$assignment->is_active && $assignment->position_id) {
+            // Reactivating an assignment onto the same position — re-validate capacity.
+            $this->assertPositionAcceptsAssignment(
+                OrganizationPosition::query()->findOrFail($assignment->position_id)
+            );
+        }
+
+        if (array_key_exists('designationId', $data)) {
+            $assignment->designation_id = $data['designationId'] === '' || $data['designationId'] === null
+                ? null
+                : (int) $data['designationId'];
+        }
+
+        if (array_key_exists('locationId', $data)) {
+            $assignment->location_id = $this->resolveAssignmentLocation($data);
+        }
+
+        if (array_key_exists('costCenterId', $data)) {
+            $assignment->cost_center_id = $this->resolveAssignmentCostCenter($data);
+        }
+
+        if (array_key_exists('managerUserId', $data)) {
+            $assignment->manager_user_id = $data['managerUserId'] === '' || $data['managerUserId'] === null
+                ? null
+                : (int) $data['managerUserId'];
+        }
+
+        if (array_key_exists('assignmentPercentage', $data)) {
+            $assignment->assignment_percentage = $data['assignmentPercentage'] === '' || $data['assignmentPercentage'] === null
+                ? 100
+                : (float) $data['assignmentPercentage'];
+        }
+
+        if (array_key_exists('fte', $data)) {
+            $assignment->fte = $data['fte'] === '' || $data['fte'] === null ? null : (float) $data['fte'];
+        }
+
+        if (array_key_exists('changeReason', $data)) {
+            $assignment->change_reason = $this->blankToNull($data['changeReason']);
         }
 
         if (array_key_exists('assignmentType', $data)) {
@@ -657,6 +893,10 @@ class OrganizationUnitService
 
         // Update legacy compatibility fields
         $this->updateLegacyFields($assignment->user, $assignment->organizationUnit, $assignment->position_id);
+        $this->recalculatePositionHeadcount($originalPositionId);
+        if ($assignment->position_id !== $originalPositionId) {
+            $this->recalculatePositionHeadcount($assignment->position_id);
+        }
 
         $this->audit($actor, 'EMPLOYEE_ORGANIZATION_ASSIGNMENT_UPDATED', $before, $this->snapshotAssignment($assignment));
 
@@ -667,8 +907,211 @@ class OrganizationUnitService
     {
         $this->assertUnitVisible($assignment->organizationUnit, $actor);
         $snapshot = $this->snapshotAssignment($assignment);
+        $positionId = $assignment->position_id;
         DB::transaction(fn () => $assignment->delete());
+        $this->recalculatePositionHeadcount($positionId);
         $this->audit($actor, 'EMPLOYEE_ORGANIZATION_ASSIGNMENT_DELETED', $snapshot, null);
+    }
+
+    /**
+     * DOMAIN 08 — Promotion/Transfer: apply an effective-dated assignment
+     * change for an employee. Closes the previous active primary assignment
+     * (effective_to = new effectiveFrom, is_active/is_primary = false),
+     * creates the new primary assignment (reusing createAssignment(), so the
+     * same position freeze/headcount guard and legacy-field sync apply),
+     * records position history, and — when the target manager differs from
+     * the current one — closes/opens the matching reporting relationship.
+     */
+    public function applyPromotionTransfer(?int $currentAssignmentId, array $data, User $actor): array
+    {
+        $user = User::query()->findOrFail((int) $data['userId']);
+        $unit = OrganizationUnit::query()->findOrFail((int) $data['organizationUnitId']);
+        $this->assertUnitVisible($unit, $actor);
+
+        $current = $currentAssignmentId
+            ? EmployeeOrganizationAssignment::query()->find($currentAssignmentId)
+            : EmployeeOrganizationAssignment::query()
+                ->where('user_id', $user->id)
+                ->where('is_primary', true)
+                ->where('is_active', true)
+                ->latest('effective_from')
+                ->first();
+
+        if ($current && (int) $current->user_id !== $user->id) {
+            throw new OrganizationException(
+                'ASSIGNMENT_EMPLOYEE_MISMATCH',
+                'The current assignment does not belong to the selected employee.',
+                422
+            );
+        }
+
+        $reason = $this->blankToNull($data['reason'] ?? $data['changeReason'] ?? null);
+
+        $result = DB::transaction(function () use ($user, $unit, $current, $data, $actor, $reason) {
+            $previousSnapshot = $current ? $this->snapshotAssignment($current) : null;
+            $oldPositionId = $current?->position_id;
+
+            if ($current) {
+                $current->effective_to = $data['effectiveFrom'];
+                $current->is_active = false;
+                $current->is_primary = false;
+                $current->change_reason = $reason;
+                $current->save();
+                $this->recalculatePositionHeadcount($oldPositionId);
+            }
+
+            $createPayload = $data;
+            $createPayload['isPrimary'] = true;
+            $createPayload['isActive'] = true;
+            $createPayload['assignmentType'] = $data['assignmentType'] ?? 'primary';
+            $createPayload['changeReason'] = $reason;
+
+            $new = $this->createAssignment($createPayload, $actor);
+
+            $this->recordPromotionTransferHistory($oldPositionId, $current, $new, $actor, $reason);
+
+            $managerChanged = !empty($data['managerUserId'])
+                && (int) $data['managerUserId'] !== (int) ($current?->manager_user_id ?? 0);
+
+            if ($managerChanged) {
+                $this->syncReportingManager($user, (int) $data['managerUserId'], $unit, $data, $actor);
+            }
+
+            return ['previous' => $previousSnapshot, 'current' => $this->presentAssignment($new->fresh())];
+        });
+
+        $this->audit($actor, 'EMPLOYEE_PROMOTION_TRANSFER_APPLIED', $result['previous'], $result['current']);
+
+        return $result;
+    }
+
+    private function recordPromotionTransferHistory(
+        ?int $oldPositionId,
+        ?EmployeeOrganizationAssignment $old,
+        EmployeeOrganizationAssignment $new,
+        User $actor,
+        ?string $reason
+    ): void {
+        $newPositionId = $new->position_id;
+
+        if ($oldPositionId && $oldPositionId !== $newPositionId) {
+            PositionHistory::query()->create([
+                'position_id' => $oldPositionId,
+                'event_type' => 'transferred',
+                'old_values' => ['assignmentId' => $old?->id, 'userId' => $new->user_id],
+                'new_values' => ['transferredToPositionId' => $newPositionId, 'newAssignmentId' => $new->id],
+                'changed_by' => $actor->id,
+                'reason' => $reason,
+            ]);
+        }
+
+        if ($newPositionId) {
+            PositionHistory::query()->create([
+                'position_id' => $newPositionId,
+                'event_type' => $oldPositionId ? 'transferred' : 'assigned',
+                'old_values' => $old ? ['assignmentId' => $old->id, 'positionId' => $oldPositionId] : null,
+                'new_values' => ['assignmentId' => $new->id, 'userId' => $new->user_id],
+                'changed_by' => $actor->id,
+                'reason' => $reason,
+            ]);
+        }
+    }
+
+    private function syncReportingManager(User $employee, int $managerUserId, OrganizationUnit $unit, array $data, User $actor): void
+    {
+        $reportingService = app(ReportingStructureService::class);
+
+        $current = ReportingRelationship::query()
+            ->where('employee_id', $employee->id)
+            ->where('relationship_type', 'primary')
+            ->where('is_active', true)
+            ->first();
+
+        if ($current) {
+            $reportingService->update($current, [
+                'effectiveTo' => $data['effectiveFrom'],
+                'isActive' => false,
+            ], $actor);
+        }
+
+        $reportingService->create([
+            'employeeId' => $employee->id,
+            'managerId' => $managerUserId,
+            'companyId' => $unit->company_id,
+            'relationshipType' => 'primary',
+            'effectiveFrom' => $data['effectiveFrom'],
+            'notes' => $data['notes'] ?? null,
+        ], $actor);
+    }
+
+    private function assertPositionAcceptsAssignment(OrganizationPosition $position): void
+    {
+        if ($position->status === 'frozen') {
+            throw new OrganizationException(
+                'POSITION_FROZEN',
+                'This position is frozen and cannot accept new assignments.',
+                422
+            );
+        }
+
+        if (in_array($position->status, ['closed', 'cancelled', 'expired'], true)) {
+            throw new OrganizationException(
+                'POSITION_NOT_OPEN',
+                'This position is closed and cannot accept new assignments.',
+                422
+            );
+        }
+
+        $filled = EmployeeOrganizationAssignment::query()
+            ->where('position_id', $position->id)
+            ->where('is_active', true)
+            ->count();
+
+        if ($filled >= (int) $position->approved_headcount) {
+            throw new OrganizationException(
+                'HEADCOUNT_EXCEEDED',
+                'This position has already reached its approved headcount.',
+                422
+            );
+        }
+    }
+
+    private function resolveAssignmentLocation(array $data): ?int
+    {
+        if (!isset($data['locationId']) || $data['locationId'] === '' || $data['locationId'] === null) {
+            return null;
+        }
+
+        $location = Location::query()->find((int) $data['locationId']);
+
+        if (!$location) {
+            throw new OrganizationException(
+                'ASSIGNMENT_LOCATION_NOT_FOUND',
+                'The selected location does not exist.',
+                422
+            );
+        }
+
+        return (int) $location->id;
+    }
+
+    private function resolveAssignmentCostCenter(array $data): ?int
+    {
+        if (!isset($data['costCenterId']) || $data['costCenterId'] === '' || $data['costCenterId'] === null) {
+            return null;
+        }
+
+        $costCenter = FinancialOrganization::query()->find((int) $data['costCenterId']);
+
+        if (!$costCenter) {
+            throw new OrganizationException(
+                'ASSIGNMENT_COST_CENTER_NOT_FOUND',
+                'The selected cost center does not exist.',
+                422
+            );
+        }
+
+        return (int) $costCenter->id;
     }
 
     private function updateLegacyFields(User $user, OrganizationUnit $unit, ?int $positionId): void
@@ -873,6 +1316,10 @@ class OrganizationUnitService
             'userId' => (int) $assignment->user_id,
             'organizationUnitId' => (int) $assignment->organization_unit_id,
             'positionId' => $assignment->position_id === null ? null : (int) $assignment->position_id,
+            'designationId' => $assignment->designation_id === null ? null : (int) $assignment->designation_id,
+            'locationId' => $assignment->location_id === null ? null : (int) $assignment->location_id,
+            'costCenterId' => $assignment->cost_center_id === null ? null : (int) $assignment->cost_center_id,
+            'managerUserId' => $assignment->manager_user_id === null ? null : (int) $assignment->manager_user_id,
             'isPrimary' => (bool) $assignment->is_primary,
             'effectiveFrom' => $assignment->effective_from->toDateString(),
         ];

@@ -13,13 +13,16 @@ class Candidate extends Model
         'requisition_id', 'candidate_account_id', 'name', 'email', 'phone', 'experience_years',
         'current_company', 'current_designation', 'skills', 'resume_path',
         'resume_original_name', 'source', 'recruiter_id', 'priority', 'stage',
-        'rating', 'notes', 'rejection_reason', 'ats_score', 'company_code', 'unit', 'created_by',
+        'rating', 'notes', 'rejection_reason', 'ats_score', 'ats_score_breakdown', 'ats_scored_at',
+        'ats_score_source', 'company_code', 'unit', 'created_by',
     ];
 
     protected function casts(): array
     {
         return [
             'skills' => 'array',
+            'ats_score_breakdown' => 'array',
+            'ats_scored_at' => 'datetime',
         ];
     }
 

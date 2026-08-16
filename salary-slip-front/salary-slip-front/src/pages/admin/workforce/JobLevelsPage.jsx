@@ -235,5 +235,5 @@ export default function JobLevelsPage() {
     },
   });
 
-  return <ListPage />;
+  return ListPage;
 }

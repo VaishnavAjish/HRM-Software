@@ -34,8 +34,9 @@ class DelegationController extends Controller
             ->orderByDesc('d.created_at')
             ->limit(min((int) $request->input('limit', 25), 100))
             ->get([
-                'd.id', 'd.permission_codes', 'd.scope_type', 'd.scope_id', 'd.valid_from',
-                'd.valid_until', 'd.reason', 'd.status', 'd.created_at',
+                'd.id', 'd.delegator_id', 'd.delegate_id', 'd.permission_codes', 'd.scope_type', 'd.scope_id',
+                'd.valid_from', 'd.valid_until', 'd.reason', 'd.status', 'd.accepted_at', 'd.declined_at',
+                'd.created_at',
                 'delegator.name as delegator_name', 'delegate.name as delegate_name',
             ]);
 
@@ -43,7 +44,9 @@ class DelegationController extends Controller
             'success' => true,
             'data' => $rows->map(fn ($row) => [
                 'id' => $row->id,
+                'delegatorId' => (int) $row->delegator_id,
                 'delegatorName' => $row->delegator_name,
+                'delegateId' => (int) $row->delegate_id,
                 'delegateName' => $row->delegate_name,
                 'permissionCodes' => json_decode($row->permission_codes, true) ?: [],
                 'scopeType' => $row->scope_type,
@@ -52,7 +55,53 @@ class DelegationController extends Controller
                 'validUntil' => $row->valid_until,
                 'reason' => $row->reason,
                 'status' => $this->effectiveStatus($row),
+                'acceptedAt' => $row->accepted_at ?? null,
+                'declinedAt' => $row->declined_at ?? null,
                 'createdAt' => $row->created_at,
+            ]),
+        ]);
+    }
+
+    public function mine(Request $request)
+    {
+        $actor = auth('api')->user();
+
+        $rows = DB::table('authorization_delegations as d')
+            ->leftJoin('users as delegator', 'delegator.id', '=', 'd.delegator_id')
+            ->leftJoin('users as delegate', 'delegate.id', '=', 'd.delegate_id')
+            ->where(function ($q) use ($actor) {
+                $q->where('d.delegate_id', $actor->id)->orWhere('d.delegator_id', $actor->id);
+            })
+            ->when($request->filled('status'), fn ($q) => $q->where('d.status', $request->string('status')))
+            ->orderByDesc('d.created_at')
+            ->limit(min((int) $request->input('limit', 25), 100))
+            ->get([
+                'd.id', 'd.delegator_id', 'd.delegate_id', 'd.permission_codes', 'd.scope_type', 'd.scope_id',
+                'd.valid_from', 'd.valid_until', 'd.reason', 'd.status', 'd.accepted_at', 'd.declined_at',
+                'd.created_at',
+                'delegator.name as delegator_name', 'delegate.name as delegate_name',
+            ]);
+
+        return response()->json([
+            'success' => true,
+            'data' => $rows->map(fn ($row) => [
+                'id' => $row->id,
+                'delegatorId' => (int) $row->delegator_id,
+                'delegatorName' => $row->delegator_name,
+                'delegateId' => (int) $row->delegate_id,
+                'delegateName' => $row->delegate_name,
+                'permissionCodes' => json_decode($row->permission_codes, true) ?: [],
+                'scopeType' => $row->scope_type,
+                'scopeId' => $row->scope_id,
+                'validFrom' => $row->valid_from,
+                'validUntil' => $row->valid_until,
+                'reason' => $row->reason,
+                'status' => $this->effectiveStatus($row),
+                'acceptedAt' => $row->accepted_at ?? null,
+                'declinedAt' => $row->declined_at ?? null,
+                'createdAt' => $row->created_at,
+                'isDelegate' => (int) $row->delegate_id === (int) $actor->id,
+                'isDelegator' => (int) $row->delegator_id === (int) $actor->id,
             ]),
         ]);
     }
@@ -117,7 +166,7 @@ class DelegationController extends Controller
             'valid_from' => $data['validFrom'],
             'valid_until' => $data['validUntil'],
             'reason' => $data['reason'],
-            'status' => 'ACTIVE',
+            'status' => 'PENDING',
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -126,6 +175,69 @@ class DelegationController extends Controller
         $this->cache->invalidate($delegator->company_code ?: null);
 
         return response()->json(['success' => true, 'data' => ['id' => $id]], 201);
+    }
+
+    public function accept(int $id)
+    {
+        $delegation = DB::table('authorization_delegations')->where('id', $id)->first();
+
+        if (!$delegation) {
+            return $this->error('NOT_FOUND', 'Delegation not found.', 404);
+        }
+
+        $actor = auth('api')->user();
+
+        if ((int) $delegation->delegate_id !== (int) $actor->id) {
+            return $this->error('PERMISSION_DENIED', 'Only the delegate may accept this delegation.', 403);
+        }
+
+        if ($delegation->status !== 'PENDING') {
+            return $this->error('VALIDATION_FAILED', 'This delegation is not pending acceptance.', 409);
+        }
+
+        if (now()->greaterThan($delegation->valid_until)) {
+            return $this->error('VALIDATION_FAILED', 'This delegation has already expired.', 409);
+        }
+
+        DB::table('authorization_delegations')->where('id', $id)->update([
+            'status' => 'ACTIVE',
+            'accepted_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->audit($id, 'ACCEPT', []);
+        $this->cache->invalidate($delegation->tenant_id);
+
+        return response()->json(['success' => true, 'data' => ['id' => $id]]);
+    }
+
+    public function decline(int $id)
+    {
+        $delegation = DB::table('authorization_delegations')->where('id', $id)->first();
+
+        if (!$delegation) {
+            return $this->error('NOT_FOUND', 'Delegation not found.', 404);
+        }
+
+        $actor = auth('api')->user();
+
+        if ((int) $delegation->delegate_id !== (int) $actor->id) {
+            return $this->error('PERMISSION_DENIED', 'Only the delegate may decline this delegation.', 403);
+        }
+
+        if ($delegation->status !== 'PENDING') {
+            return $this->error('VALIDATION_FAILED', 'This delegation is not pending acceptance.', 409);
+        }
+
+        DB::table('authorization_delegations')->where('id', $id)->update([
+            'status' => 'DECLINED',
+            'declined_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->audit($id, 'DECLINE', []);
+
+        return response()->json(['success' => true, 'data' => ['id' => $id]]);
     }
 
     public function revoke(Request $request, int $id)
@@ -140,7 +252,7 @@ class DelegationController extends Controller
             return $this->error('NOT_FOUND', 'Delegation not found.', 404);
         }
 
-        if ($delegation->status !== 'ACTIVE') {
+        if (!in_array($delegation->status, ['ACTIVE', 'PENDING'], true)) {
             return $this->error('VALIDATION_FAILED', 'This delegation is not active.', 409);
         }
 
@@ -152,6 +264,7 @@ class DelegationController extends Controller
 
         DB::table('authorization_delegations')->where('id', $id)->update([
             'status' => 'REVOKED',
+            'revoked_reason' => $data['reason'],
             'updated_at' => now(),
         ]);
 
@@ -163,7 +276,7 @@ class DelegationController extends Controller
 
     private function effectiveStatus(\stdClass $row): string
     {
-        if ($row->status === 'ACTIVE' && now()->greaterThan($row->valid_until)) {
+        if (in_array($row->status, ['ACTIVE', 'PENDING'], true) && now()->greaterThan($row->valid_until)) {
             return 'EXPIRED';
         }
 

@@ -5,11 +5,18 @@ namespace App\Http\Controllers\Candidate;
 use App\Http\Controllers\Controller;
 use App\Models\Candidate;
 use App\Models\JobRequisition;
+use App\Services\Recruitment\AtsScoringService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
 class CandidateApplicationController extends Controller
 {
+    public function __construct(
+        private readonly AtsScoringService $atsScoring,
+    ) {
+    }
+
     public function apply(Request $request, $slug)
     {
         $account = $request->user();
@@ -87,6 +94,12 @@ class CandidateApplicationController extends Controller
             'notes' => 'Applied via Public Job Portal',
             'created_at' => now(),
         ]);
+
+        try {
+            $this->atsScoring->score($candidate);
+        } catch (\Throwable $e) {
+            Log::warning('ats_scoring_failed', ['candidate_id' => $candidate->id, 'error' => $e->getMessage()]);
+        }
 
         return response()->json([
             'status' => true,

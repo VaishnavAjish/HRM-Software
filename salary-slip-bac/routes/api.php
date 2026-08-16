@@ -382,8 +382,13 @@ Route::middleware('jwt.auth')->group(function () {
     Route::prefix('v1/delegations')->group(function () {
         Route::get('/', [V1DelegationController::class, 'index'])
             ->middleware('permission:admin.delegation.manage');
+        Route::get('mine', [V1DelegationController::class, 'mine']);
         Route::post('/', [V1DelegationController::class, 'store'])
             ->middleware(['throttle:20,1', 'permission:admin.delegation.manage']);
+        Route::post('{id}/accept', [V1DelegationController::class, 'accept'])
+            ->whereNumber('id')->middleware('throttle:30,1');
+        Route::post('{id}/decline', [V1DelegationController::class, 'decline'])
+            ->whereNumber('id')->middleware('throttle:30,1');
         Route::post('{id}/revoke', [V1DelegationController::class, 'revoke'])
             ->whereNumber('id')->middleware('permission:admin.delegation.manage');
     });
@@ -889,6 +894,9 @@ Route::middleware('jwt.auth')->group(function () {
         Route::delete('org-units/assignments/{assignmentId}', [V1OrganizationUnitController::class, 'destroyAssignment'])
             ->whereNumber('assignmentId')->middleware('permission:org.unit_assignment.delete');
 
+        Route::get('org-units/headcount-summary', [V1OrganizationUnitController::class, 'headcountSummary'])
+            ->middleware('permission:org.unit_position.read');
+
         Route::get('org-units', [V1OrganizationUnitController::class, 'index'])
             ->middleware('permission:org.unit.read');
         Route::post('org-units', [V1OrganizationUnitController::class, 'store'])
@@ -910,6 +918,10 @@ Route::middleware('jwt.auth')->group(function () {
             ->whereNumber('id')->whereNumber('positionId')->middleware('permission:org.unit_position.update');
         Route::delete('org-units/{id}/positions/{positionId}', [V1OrganizationUnitController::class, 'destroyPosition'])
             ->whereNumber('id')->whereNumber('positionId')->middleware('permission:org.unit_position.delete');
+        Route::post('org-units/{id}/positions/{positionId}/freeze', [V1OrganizationUnitController::class, 'freezePosition'])
+            ->whereNumber('id')->whereNumber('positionId')->middleware(['throttle:30,1', 'permission:org.unit_position.update']);
+        Route::post('org-units/{id}/positions/{positionId}/release', [V1OrganizationUnitController::class, 'releasePosition'])
+            ->whereNumber('id')->whereNumber('positionId')->middleware(['throttle:30,1', 'permission:org.unit_position.update']);
 
         /* ---------------------------------------------- 02.04 organization locations */
         Route::get('org-locations/options', [V1OrganizationOrgLocationController::class, 'options'])
@@ -1045,6 +1057,8 @@ Route::middleware('jwt.auth')->group(function () {
             ->middleware('permission:org.change.read');
         Route::post('org-changes', [V1OrganizationChangeController::class, 'store'])
             ->middleware(['throttle:30,1', 'permission:org.change.create']);
+        Route::post('org-changes/promotion-transfer', [V1OrganizationChangeController::class, 'storePromotionTransfer'])
+            ->middleware(['throttle:30,1', 'permission:org.change.create']);
         Route::get('org-changes/{id}', [V1OrganizationChangeController::class, 'show'])
             ->whereNumber('id')->middleware('permission:org.change.read');
         Route::put('org-changes/{id}', [V1OrganizationChangeController::class, 'update'])
@@ -1073,6 +1087,9 @@ Route::middleware('jwt.auth')->group(function () {
 
         Route::get('org-changes/{id}/approvals', [V1OrganizationChangeController::class, 'approvals'])
             ->whereNumber('id')->middleware('permission:org.change_approval.read');
+
+        Route::get('org-changes/{id}/impact', [V1OrganizationChangeController::class, 'impact'])
+            ->whereNumber('id')->middleware('permission:org.change.read');
 
         /* --------------------------------------------- 02.10 calendar assignments */
         Route::get('calendar-assignments/resolve', [V1OrganizationCalendarAssignmentController::class, 'resolve'])
@@ -1365,6 +1382,7 @@ Route::post('publish-indeed/{id}', [JobRequisitionController::class, 'publishToI
                 Route::put('update/{id}', [CandidateController::class, 'update'])->middleware('permission:hr.candidate.update');
                 Route::delete('delete/{id}', [CandidateController::class, 'destroy'])->middleware('permission:hr.candidate.delete');
                 Route::post('move-stage/{id}', [CandidateController::class, 'moveStage'])->middleware('permission:hr.candidate.move_stage');
+                Route::post('rescore/{id}', [CandidateController::class, 'rescore'])->middleware(['throttle:20,1', 'permission:hr.candidate.update']);
 
                 // Lightweight document storage for a candidate — a real
                 // upload endpoint, unlike the stubbed/fabricated documents

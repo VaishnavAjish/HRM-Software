@@ -61,6 +61,34 @@ class OrganizationChangeManagementController extends Controller
         ], 201));
     }
 
+    public function storePromotionTransfer(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'employeeId' => ['required', 'integer', 'exists:users,id'],
+            'currentAssignmentId' => ['sometimes', 'nullable', 'integer', 'exists:employee_organization_assignments,id'],
+            'organizationUnitId' => ['required', 'integer', 'exists:organization_units,id'],
+            'positionId' => ['required', 'integer', 'exists:organization_positions,id'],
+            'designationId' => ['required', 'integer', 'exists:designations,id'],
+            'managerUserId' => ['required', 'integer', 'exists:users,id'],
+            'locationId' => ['sometimes', 'nullable', 'integer', 'exists:locations,id'],
+            'costCenterId' => ['sometimes', 'nullable', 'integer', 'exists:financial_organizations,id'],
+            'effectiveFrom' => ['required', 'date'],
+            'effectiveTo' => ['sometimes', 'nullable', 'date', 'after_or_equal:effectiveFrom'],
+            'reason' => ['required', 'string', 'max:500'],
+            'notes' => ['sometimes', 'nullable', 'string', 'max:2000'],
+            'name' => ['sometimes', 'nullable', 'string', 'max:190'],
+            'organizationOwnerApproverId' => ['sometimes', 'nullable', 'integer', 'exists:users,id'],
+            'hrApproverId' => ['sometimes', 'nullable', 'integer', 'exists:users,id'],
+        ]);
+
+        return $this->guarded(fn () => response()->json([
+            'success' => true,
+            'data' => $this->service->present(
+                $this->service->createPromotionTransfer($data, auth('api')->user())
+            ),
+        ], 201));
+    }
+
     public function show(int $id): JsonResponse
     {
         $request = OrganizationChangeRequest::query()->find($id);
@@ -270,6 +298,22 @@ class OrganizationChangeManagementController extends Controller
         return $this->guarded(fn () => response()->json([
             'success' => true,
             'data' => $this->service->approvals($change->id, auth('api')->user()),
+        ]));
+    }
+
+    /* --------------------------------------------------------------- impact */
+
+    public function impact(int $id): JsonResponse
+    {
+        $change = OrganizationChangeRequest::query()->find($id);
+
+        if (! $change) {
+            return $this->missing('Change request not found.');
+        }
+
+        return $this->guarded(fn () => response()->json([
+            'success' => true,
+            'data' => $this->service->impact($change->id, auth('api')->user()),
         ]));
     }
 

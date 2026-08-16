@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { Ban, Plus, Loader2, UserCheck } from "lucide-react";
+import { Ban, Check, Plus, Loader2, UserCheck, X } from "lucide-react";
 import Button from "../../../components/ui/Button";
 import Card from "../../../components/ui/Card";
 import { SkeletonTable } from "../../../components/ui/Skeleton";
@@ -83,6 +83,28 @@ export default function Delegations() {
       load();
     } catch (err) {
       toast.error(err.message || "Could not revoke the delegation");
+    }
+  };
+
+  const accept = async (id) => {
+    try {
+      await accessLifecycleApi.acceptDelegation(id, token, tokenType);
+      toast.success("Delegation accepted");
+      setLoading(true);
+      load();
+    } catch (err) {
+      toast.error(err.message || "Could not accept the delegation");
+    }
+  };
+
+  const decline = async (id) => {
+    try {
+      await accessLifecycleApi.declineDelegation(id, token, tokenType);
+      toast.success("Delegation declined");
+      setLoading(true);
+      load();
+    } catch (err) {
+      toast.error(err.message || "Could not decline the delegation");
     }
   };
 
@@ -193,11 +215,23 @@ export default function Delegations() {
                     </td>
                     <td className="px-4 py-3"><StatusBadge status={row.status} /></td>
                     <td className="px-4 py-3 text-right">
-                      {row.status === "ACTIVE" && (
-                        <Button size="sm" variant="outline" onClick={() => revoke(row.id)}>
-                          <Ban size={14} /> Revoke
-                        </Button>
-                      )}
+                      <div className="flex justify-end gap-2">
+                        {row.status === "PENDING" && String(row.delegateId) === String(user?.id) && (
+                          <>
+                            <Button size="sm" variant="outline" onClick={() => accept(row.id)}>
+                              <Check size={14} /> Accept
+                            </Button>
+                            <Button size="sm" variant="outline" onClick={() => decline(row.id)}>
+                              <X size={14} /> Decline
+                            </Button>
+                          </>
+                        )}
+                        {(row.status === "ACTIVE" || row.status === "PENDING") && (
+                          <Button size="sm" variant="outline" onClick={() => revoke(row.id)}>
+                            <Ban size={14} /> Revoke
+                          </Button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

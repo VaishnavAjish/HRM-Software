@@ -19,6 +19,21 @@ const DEFAULT_STATUS_FILTERS = [
   { value: "INACTIVE", label: "Inactive" },
 ];
 
+// Stable identity for the default transformListItem/canManageChecker so a
+// caller that doesn't override them doesn't hand the load effect a brand
+// new function reference on every render. A default parameter expression
+// (`transformListItem = (item) => item`) re-evaluates on every call where
+// the prop is undefined, which is every render for every page that never
+// passes it — that new reference sat in the load effect's dependency array
+// below, so the effect re-ran every render, which set state, which
+// triggered the next render, forever. No resourceConfigs entry sets
+// transformListItem, so every OrgResourceManager-backed page (Enterprises,
+// Org Units, Locations, Financial Organizations, Hierarchies, ...) was
+// hammering its list/company endpoints in an unthrottled loop until the
+// backend's rate limiter started returning 429 "Too Many Attempts".
+const identity = (item) => item;
+const denyAll = () => false;
+
 function slugify(value) {
   return String(value)
     .toLowerCase()
@@ -113,8 +128,8 @@ export function OrgResourceManager({
   statusFilterKey = "status",
   searchFilterKey = "search",
   extraFilterKeys = {},
-  transformListItem = (item) => item,
-  canManageChecker = () => false,
+  transformListItem = identity,
+  canManageChecker = denyAll,
   customModal,
   modalSize = "lg",
   customModalProps = {},

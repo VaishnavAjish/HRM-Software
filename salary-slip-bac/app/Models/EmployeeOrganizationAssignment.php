@@ -19,18 +19,27 @@ class EmployeeOrganizationAssignment extends Model
         'user_id',
         'organization_unit_id',
         'position_id',
+        'designation_id',
+        'location_id',
+        'cost_center_id',
+        'manager_user_id',
         'assignment_type',
         'is_primary',
+        'assignment_percentage',
+        'fte',
         'effective_from',
         'effective_to',
         'is_active',
         'notes',
+        'change_reason',
     ];
 
     protected function casts(): array
     {
         return [
             'is_primary' => 'boolean',
+            'assignment_percentage' => 'decimal:2',
+            'fte' => 'decimal:2',
             'effective_from' => 'date',
             'effective_to' => 'date',
             'is_active' => 'boolean',
@@ -50,5 +59,25 @@ class EmployeeOrganizationAssignment extends Model
     public function position()
     {
         return $this->belongsTo(OrganizationPosition::class);
+    }
+
+    public function designation()
+    {
+        return $this->belongsTo(Designation::class);
+    }
+
+    public function location()
+    {
+        return $this->belongsTo(Location::class);
+    }
+
+    public function costCenter()
+    {
+        return $this->belongsTo(FinancialOrganization::class, 'cost_center_id');
+    }
+
+    public function manager()
+    {
+        return $this->belongsTo(User::class, 'manager_user_id');
     }
 }

@@ -80,7 +80,7 @@ class RecruitmentDashboardController extends Controller
             ->pluck('total', 'stage');
 
         // Source Effectiveness
-        $sourceEffectiveness = Candidate::selectRaw('source, COUNT(*) as total, COUNT(CASE WHEN stage IN ("selected", "offer_sent", "offer_accepted") THEN 1 END) as conversions')
+        $sourceEffectiveness = Candidate::selectRaw("source, COUNT(*) as total, COUNT(CASE WHEN stage IN ('selected', 'offer_sent', 'offer_accepted') THEN 1 END) as conversions")
             ->groupBy('source')
             ->get()
             ->map(function ($item) {
@@ -163,9 +163,9 @@ class RecruitmentDashboardController extends Controller
 
         // Recruiter Performance
         $recruiterPerformance = Candidate::whereNotNull('recruiter_id')
-            ->selectRaw('recruiter_id, COUNT(*) as total_candidates,
-                COUNT(CASE WHEN stage IN ("selected", "offer_sent", "offer_accepted") THEN 1 END) as conversions,
-                AVG(CASE WHEN stage = "offer_accepted" THEN DATEDIFF(updated_at, created_at) END) as avg_time_to_hire')
+            ->selectRaw("recruiter_id, COUNT(*) as total_candidates,
+                COUNT(CASE WHEN stage IN ('selected', 'offer_sent', 'offer_accepted') THEN 1 END) as conversions,
+                AVG(CASE WHEN stage = 'offer_accepted' THEN EXTRACT(EPOCH FROM (updated_at - created_at)) / 86400 END) as avg_time_to_hire")
             ->groupBy('recruiter_id')
             ->with('recruiter:id,name,email')
             ->get()
@@ -411,7 +411,10 @@ class RecruitmentDashboardController extends Controller
     private function calculateJoiningRate($query)
     {
         $accepted = (clone $query)->where('status', 'accepted')->count();
-        $joined = (clone $query)->where('status', 'accepted')->whereNotNull('joined_at')->count();
+        $joined = (clone $query)->where('status', 'accepted')
+            ->whereNotNull('joining_date')
+            ->where('joining_date', '<=', now()->toDateString())
+            ->count();
         return $accepted > 0 ? round(($joined / $accepted) * 100, 1) : 0;
     }
 

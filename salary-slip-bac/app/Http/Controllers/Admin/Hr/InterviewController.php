@@ -2,20 +2,62 @@
 
 namespace App\Http\Controllers\Admin\Hr;
 
+use App\Http\Controllers\Admin\Hr\Concerns\ScopesCompany;
 use App\Http\Controllers\Controller;
 use App\Mail\InterviewScheduledMail;
+use App\Models\Candidate;
 use App\Models\Interview;
 use App\Models\InterviewFeedback;
 use App\Models\InterviewPanelist;
+use App\Services\Recruitment\GoogleMeetService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Str;
 
 class InterviewController extends Controller
 {
+    use ScopesCompany;
+
+    public function __construct(
+        private readonly GoogleMeetService $googleMeet,
+    ) {
+    }
+
+    /**
+     * Best-effort: a Google API failure must never block scheduling the
+     * interview itself. Records an honest status either way — "not
+     * configured" and "failed" are shown distinctly in the UI rather than
+     * both collapsing into a missing meeting_link.
+     */
+    private function syncGoogleMeetBestEffort(Interview $interview, bool $isReschedule): void
+    {
+        if ($interview->mode !== 'video') {
+            return;
+        }
+
+        if (!$this->googleMeet->isConfigured()) {
+            $interview->forceFill(['meeting_status' => 'not_configured'])->saveQuietly();
+            return;
+        }
+
+        try {
+            $isReschedule
+                ? $this->googleMeet->updateMeetingTime($interview)
+                : $this->googleMeet->createMeeting($interview);
+        } catch (\Throwable $e) {
+            Log::warning('google_meet_sync_failed', ['interview_id' => $interview->id, 'error' => $e->getMessage()]);
+            $interview->forceFill([
+                'meeting_status' => 'failed',
+                'meeting_error' => Str::limit($e->getMessage(), 490),
+            ])->saveQuietly();
+        }
+    }
+
     public function index(Request $request)
     {
         $query = Interview::with(['candidate', 'requisition', 'panelists.user', 'feedback']);
+        $query->whereHas('candidate', fn ($q) => $this->applyCompanyScope($q, $request));
 
         if ($request->candidate_id) {
             $query->where('candidate_id', $request->candidate_id);
@@ -35,11 +77,16 @@ class InterviewController extends Controller
     public function show($id)
     {
         $interview = Interview::with(['candidate', 'requisition', 'panelists.user', 'feedback.panelist'])->find($id);
-        if (!$interview) {
+        if (!$interview || !$this->interviewWithinActorScope($interview)) {
             return response()->json(['status' => false, 'message' => 'Interview not found'], 404);
         }
 
         return response()->json(['status' => true, 'data' => $interview]);
+    }
+
+    protected function interviewWithinActorScope(Interview $interview): bool
+    {
+        return $this->companyCodeWithinActorScope($interview->candidate?->company_code);
     }
 
     public function store(Request $request)
@@ -58,6 +105,13 @@ class InterviewController extends Controller
             'lead_panelist_id' => 'nullable|exists:users,id',
         ]);
 
+        $candidate = Candidate::find($data['candidate_id']);
+        if (!$candidate || !$this->companyCodeWithinActorScope($candidate->company_code)) {
+            return response()->json(['status' => false, 'message' => 'Candidate not found'], 404);
+        }
+
+        $hasManualLink = !empty($data['meeting_link']);
+
         $interview = Interview::create([
             'candidate_id' => $data['candidate_id'],
             'requisition_id' => $data['requisition_id'] ?? null,
@@ -66,6 +120,7 @@ class InterviewController extends Controller
             'duration_minutes' => $data['duration_minutes'] ?? 30,
             'mode' => $data['mode'] ?? 'video',
             'meeting_link' => $data['meeting_link'] ?? null,
+            'meeting_status' => $hasManualLink ? 'manual' : null,
             'status' => 'scheduled',
             'notes' => $data['notes'] ?? null,
             'created_by' => auth('api')->id(),
@@ -80,15 +135,22 @@ class InterviewController extends Controller
         }
 
         $interview->load(['panelists.user', 'candidate.requisition', 'requisition']);
-        $this->sendScheduleMail($interview, isReschedule: false);
 
-        return response()->json(['status' => true, 'message' => 'Interview scheduled', 'data' => $interview], 201);
+        // A manually-supplied link (e.g. Zoom) is respected as-is — only
+        // create a real Google Meet when nobody already gave us a link.
+        if (!$hasManualLink) {
+            $this->syncGoogleMeetBestEffort($interview, isReschedule: false);
+        }
+
+        $this->sendScheduleMail($interview->fresh(['panelists.user', 'candidate.requisition', 'requisition']), isReschedule: false);
+
+        return response()->json(['status' => true, 'message' => 'Interview scheduled', 'data' => $interview->fresh(['panelists.user', 'candidate.requisition', 'requisition'])], 201);
     }
 
     public function update(Request $request, $id)
     {
-        $interview = Interview::find($id);
-        if (!$interview) {
+        $interview = Interview::with('candidate')->find($id);
+        if (!$interview || !$this->interviewWithinActorScope($interview)) {
             return response()->json(['status' => false, 'message' => 'Interview not found'], 404);
         }
 
@@ -109,15 +171,24 @@ class InterviewController extends Controller
 
     public function reschedule(Request $request, $id)
     {
-        $interview = Interview::find($id);
-        if (!$interview) {
+        $interview = Interview::with('candidate')->find($id);
+        if (!$interview || !$this->interviewWithinActorScope($interview)) {
             return response()->json(['status' => false, 'message' => 'Interview not found'], 404);
         }
 
         $data = $request->validate(['scheduled_at' => 'required|date']);
         $interview->update(['scheduled_at' => $data['scheduled_at'], 'status' => 'rescheduled']);
 
-        $interview->load(['candidate.requisition', 'requisition']);
+        $interview->load(['candidate.requisition', 'requisition', 'panelists.user']);
+
+        // Only touch Google when we're the ones who created the meeting, or
+        // this interview has no manual link at all — never overwrite a
+        // manually-supplied link (e.g. Zoom) with a Meet one on reschedule.
+        if ($interview->google_event_id || $interview->meeting_status !== 'manual') {
+            $this->syncGoogleMeetBestEffort($interview, isReschedule: true);
+        }
+
+        $interview = $interview->fresh(['candidate.requisition', 'requisition', 'panelists.user']);
         $this->sendScheduleMail($interview, isReschedule: true);
 
         return response()->json(['status' => true, 'message' => 'Interview rescheduled', 'data' => $interview]);
@@ -149,20 +220,29 @@ class InterviewController extends Controller
 
     public function destroy($id)
     {
-        $interview = Interview::find($id);
-        if (!$interview) {
+        $interview = Interview::with('candidate')->find($id);
+        if (!$interview || !$this->interviewWithinActorScope($interview)) {
             return response()->json(['status' => false, 'message' => 'Interview not found'], 404);
         }
 
         $interview->update(['status' => 'cancelled']);
+
+        if ($interview->google_event_id) {
+            try {
+                $this->googleMeet->deleteMeeting($interview);
+            } catch (\Throwable $e) {
+                Log::warning('google_meet_delete_failed', ['interview_id' => $interview->id, 'error' => $e->getMessage()]);
+                $interview->forceFill(['meeting_status' => 'delete_failed'])->saveQuietly();
+            }
+        }
 
         return response()->json(['status' => true, 'message' => 'Interview cancelled']);
     }
 
     public function feedback(Request $request, $id)
     {
-        $interview = Interview::find($id);
-        if (!$interview) {
+        $interview = Interview::with('candidate')->find($id);
+        if (!$interview || !$this->interviewWithinActorScope($interview)) {
             return response()->json(['status' => false, 'message' => 'Interview not found'], 404);
         }
 

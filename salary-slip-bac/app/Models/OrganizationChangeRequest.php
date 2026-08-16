@@ -16,6 +16,7 @@ class OrganizationChangeRequest extends Model
         'restructure', 'department_create', 'department_merge', 'department_split',
         'department_closure', 'branch_closure', 'location_closure', 'cost_center_change',
         'manager_reassignment', 'mass_movement', 'effective_dated_change',
+        'promotion_transfer',
     ];
 
     public const STATUSES = [

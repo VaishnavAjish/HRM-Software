@@ -40,6 +40,27 @@ trait ScopesCompany
         return $query;
     }
 
+    /**
+     * Whether the acting user may see a record that belongs to the given
+     * company code. For records that don't carry `company_code`/`unit`
+     * columns themselves (e.g. an Interview or Offer scoped through its
+     * Candidate), pass the owning record's company code through here rather
+     * than re-deriving this check per controller.
+     */
+    protected function companyCodeWithinActorScope(?string $companyCode): bool
+    {
+        $actor = auth('api')->user();
+
+        if ($this->hasGlobalCompanyScope($actor)) {
+            return true;
+        }
+
+        $authorized = CompanyMembership::parse($actor?->company_code);
+        $owning = CompanyMembership::parse($companyCode);
+
+        return $owning !== [] && array_intersect($owning, $authorized) !== [];
+    }
+
     protected function hasGlobalCompanyScope($userAuth): bool
     {
         if (! $userAuth) {

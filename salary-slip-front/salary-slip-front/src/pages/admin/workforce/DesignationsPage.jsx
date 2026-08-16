@@ -1,12 +1,6 @@
-import { useState } from "react";
-import { Briefcase, Building2, Users, FileText, Award, BarChart2, Layers, ClipboardList, ListTodo, FolderKanban } from "lucide-react";
+import { useEffect, useState } from "react";
 import { createWorkforceListPage } from "./WorkforceListPage";
 import { designationApi } from "../../../features/workforce/services/workforceApi";
-import { useAuth } from "../../../context/AuthContext";
-import { useAuthorization } from "../../../hooks/useAuthorization";
-import Card from "../../../components/ui/Card";
-import Button from "../../../components/ui/Button";
-import Modal from "../../../components/ui/Modal";
 import Badge from "../../../components/ui/Badge";
 
 const inputClass =
@@ -34,7 +28,7 @@ function DesignationColumns() {
   ];
 }
 
-function DesignationCreateForm({ onSubmit }) {
+function DesignationCreateForm({ onChange }) {
   const [form, setForm] = useState({
     enterpriseId: "",
     companyId: "",
@@ -50,11 +44,17 @@ function DesignationCreateForm({ onSubmit }) {
     effectiveTo: "",
   });
 
+  // Save happens from the modal's own footer button (WorkforceListPage), not
+  // from a submit button inside this form, so the current values are pushed
+  // up to the page-level state on every change rather than read via a submit
+  // event.
+  useEffect(() => { onChange(form); }, [form, onChange]);
+
   const handleChange = (field) => (e) => setForm(prev => ({ ...prev, [field]: e.target.value }));
   const handleSelectChange = (field) => (e) => setForm(prev => ({ ...prev, [field]: e.target.value }));
 
   return (
-    <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2">
+    <form onSubmit={(e) => e.preventDefault()} className="grid gap-4 sm:grid-cols-2">
       <label className="block">
         <span className={labelClass}>Enterprise</span>
         <select className={selectClass} value={form.enterpriseId} onChange={handleSelectChange("enterpriseId")}>
@@ -121,7 +121,7 @@ function DesignationCreateForm({ onSubmit }) {
   );
 }
 
-function DesignationEditForm({ item, onSubmit }) {
+function DesignationEditForm({ item, onChange }) {
   const [form, setForm] = useState({
     enterpriseId: item.enterpriseId ?? "",
     companyId: item.companyId ?? "",
@@ -137,11 +137,13 @@ function DesignationEditForm({ item, onSubmit }) {
     effectiveTo: item.effectiveTo ?? "",
   });
 
+  useEffect(() => { onChange(form); }, [form, onChange]);
+
   const handleChange = (field) => (e) => setForm(prev => ({ ...prev, [field]: e.target.value }));
   const handleSelectChange = (field) => (e) => setForm(prev => ({ ...prev, [field]: e.target.value }));
 
   return (
-    <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2">
+    <form onSubmit={(e) => e.preventDefault()} className="grid gap-4 sm:grid-cols-2">
       <label className="block">
         <span className={labelClass}>Enterprise</span>
         <select className={selectClass} value={form.enterpriseId} onChange={handleSelectChange("enterpriseId")}>
@@ -231,9 +233,30 @@ function DesignationViewContent({ item }) {
   );
 }
 
+function toDesignationPayload(form) {
+  return {
+    enterpriseId: Number(form.enterpriseId) || null,
+    companyId: Number(form.companyId) || null,
+    jobFamilyId: Number(form.jobFamilyId) || null,
+    jobFunctionId: Number(form.jobFunctionId) || null,
+    jobLevelId: Number(form.jobLevelId) || null,
+    jobGradeId: Number(form.jobGradeId) || null,
+    code: form.code || undefined,
+    title: form.title,
+    description: form.description || null,
+    status: form.status,
+    effectiveFrom: form.effectiveFrom || null,
+    effectiveTo: form.effectiveTo || null,
+  };
+}
+
 export default function DesignationsPage() {
-  const { can } = useAuthorization();
-  const navigate = useNavigate();
+  // The create/edit forms own their own field state (for responsive typing)
+  // and mirror it up here on every change, since the modal's Save button
+  // lives in WorkforceListPage and calls onSubmit(handler) / onSubmit(item,
+  // handler) directly rather than triggering this form's submit event.
+  const [createForm, setCreateForm] = useState(null);
+  const [editForm, setEditForm] = useState(null);
 
   const ListPage = createWorkforceListPage({
     entityName: "Designation",
@@ -247,17 +270,17 @@ export default function DesignationsPage() {
       delete: "workforce.designation.delete",
     },
     createModal: {
-      form: <DesignationCreateForm />,
-      onSubmit: (handler) => handler({ enterpriseId: Number(form.enterpriseId) || null, companyId: Number(form.companyId), jobFamilyId: Number(form.jobFamilyId) || null, jobFunctionId: Number(form.jobFunctionId) || null, jobLevelId: Number(form.jobLevelId) || null, jobGradeId: Number(form.jobGradeId) || null, code: form.code || undefined, title: form.title, description: form.description || null, status: form.status, effectiveFrom: form.effectiveFrom || null, effectiveTo: form.effectiveTo || null }),
+      form: <DesignationCreateForm onChange={setCreateForm} />,
+      onSubmit: (handler) => createForm && handler(toDesignationPayload(createForm)),
     },
     editModal: {
-      form: DesignationEditForm,
-      onSubmit: (item, handler) => handler({ enterpriseId: Number(form.enterpriseId) || null, companyId: Number(form.companyId), jobFamilyId: Number(form.jobFamilyId) || null, jobFunctionId: Number(form.jobFunctionId) || null, jobLevelId: Number(form.jobLevelId) || null, jobGradeId: Number(form.jobGradeId) || null, code: form.code || undefined, title: form.title, description: form.description || null, status: form.status, effectiveFrom: form.effectiveFrom || null, effectiveTo: form.effectiveTo || null }),
+      form: (item) => <DesignationEditForm item={item} onChange={setEditForm} />,
+      onSubmit: (item, handler) => handler(toDesignationPayload(editForm || item)),
     },
     viewModal: {
       content: DesignationViewContent,
     },
   });
 
-  return <ListPage />;
+  return ListPage;
 }

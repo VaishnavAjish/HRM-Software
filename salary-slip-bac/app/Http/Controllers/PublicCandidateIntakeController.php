@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Candidate;
 use App\Models\CandidateStageHistory;
 use App\Models\JobRequisition;
+use App\Services\Recruitment\AtsScoringService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -25,6 +26,11 @@ class PublicCandidateIntakeController extends Controller
 {
     private const MAX_RESUME_BYTES = 10 * 1024 * 1024; // 10 MB, matches the Form's file-upload limit
     private const ALLOWED_RESUME_EXTENSIONS = ['pdf', 'doc', 'docx'];
+
+    public function __construct(
+        private readonly AtsScoringService $atsScoring,
+    ) {
+    }
 
     public function store(Request $request, string $token)
     {
@@ -120,6 +126,14 @@ class PublicCandidateIntakeController extends Controller
             'notes' => 'Submitted via Google Form',
             'created_at' => now(),
         ]);
+
+        if ($requisition) {
+            try {
+                $this->atsScoring->score($candidate);
+            } catch (\Throwable $e) {
+                Log::warning('ats_scoring_failed', ['candidate_id' => $candidate->id, 'error' => $e->getMessage()]);
+            }
+        }
 
         return response()->json(['status' => true, 'message' => 'Candidate created', 'data' => ['id' => $candidate->id]], 201);
     }

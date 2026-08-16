@@ -157,6 +157,7 @@ class OrganizationUnitController extends Controller
             'title' => ['required', 'string', 'max:190'],
             'description' => ['sometimes', 'nullable', 'string', 'max:2000'],
             'approvedHeadcount' => ['sometimes', 'integer', 'min:0'],
+            'budgetedHeadcount' => ['sometimes', 'nullable', 'integer', 'min:0'],
             'status' => ['sometimes', 'string', Rule::in(OrganizationPosition::STATUSES)],
             'effectiveFrom' => ['sometimes', 'nullable', 'date'],
             'effectiveTo' => ['sometimes', 'nullable', 'date', 'after_or_equal:effectiveFrom'],
@@ -184,6 +185,7 @@ class OrganizationUnitController extends Controller
             'title' => ['sometimes', 'string', 'max:190'],
             'description' => ['sometimes', 'nullable', 'string', 'max:2000'],
             'approvedHeadcount' => ['sometimes', 'integer', 'min:0'],
+            'budgetedHeadcount' => ['sometimes', 'nullable', 'integer', 'min:0'],
             'status' => ['sometimes', 'string', Rule::in(OrganizationPosition::STATUSES)],
             'effectiveFrom' => ['sometimes', 'nullable', 'date'],
             'effectiveTo' => ['sometimes', 'nullable', 'date'],
@@ -212,6 +214,53 @@ class OrganizationUnitController extends Controller
         });
     }
 
+    public function freezePosition(Request $request, int $unitId, int $id): JsonResponse
+    {
+        $position = OrganizationPosition::query()->find($id);
+
+        if (! $position) {
+            return $this->missing('Position not found.');
+        }
+
+        $data = $request->validate([
+            'reason' => ['required', 'string', 'min:3', 'max:500'],
+        ]);
+
+        return $this->guarded(fn () => response()->json([
+            'success' => true,
+            'data' => $this->service->presentPosition(
+                $this->service->freezePosition($position, $data['reason'], auth('api')->user())
+            ),
+        ]));
+    }
+
+    public function releasePosition(int $unitId, int $id): JsonResponse
+    {
+        $position = OrganizationPosition::query()->find($id);
+
+        if (! $position) {
+            return $this->missing('Position not found.');
+        }
+
+        return $this->guarded(fn () => response()->json([
+            'success' => true,
+            'data' => $this->service->presentPosition(
+                $this->service->releasePosition($position, auth('api')->user())
+            ),
+        ]));
+    }
+
+    public function headcountSummary(Request $request): JsonResponse
+    {
+        return $this->guarded(fn () => response()->json([
+            'success' => true,
+            'data' => $this->service->headcountSummary([
+                'organizationUnitId' => $request->query('unit_id', $request->query('organizationUnitId')),
+                'companyIds' => $request->query('company_ids', $request->query('companyIds')),
+            ], auth('api')->user()),
+        ]));
+    }
+
     /* ---------------------------------------------------------- assignments */
 
     public function assignments(Request $request): JsonResponse
@@ -234,12 +283,18 @@ class OrganizationUnitController extends Controller
             'userId' => ['required', 'integer', 'exists:users,id'],
             'organizationUnitId' => ['required', 'integer', 'exists:organization_units,id'],
             'positionId' => ['sometimes', 'nullable', 'integer', 'exists:organization_positions,id'],
+            'locationId' => ['sometimes', 'nullable', 'integer', 'exists:locations,id'],
+            'costCenterId' => ['sometimes', 'nullable', 'integer', 'exists:financial_organizations,id'],
+            'managerUserId' => ['sometimes', 'nullable', 'integer', 'exists:users,id'],
             'assignmentType' => ['sometimes', 'string', Rule::in(EmployeeOrganizationAssignment::ASSIGNMENT_TYPES)],
             'isPrimary' => ['sometimes', 'boolean'],
+            'assignmentPercentage' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:100'],
+            'fte' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:1'],
             'effectiveFrom' => ['required', 'date'],
             'effectiveTo' => ['sometimes', 'nullable', 'date', 'after_or_equal:effectiveFrom'],
             'isActive' => ['sometimes', 'boolean'],
             'notes' => ['sometimes', 'nullable', 'string', 'max:2000'],
+            'changeReason' => ['sometimes', 'nullable', 'string', 'max:255'],
         ]);
 
         return $this->guarded(fn () => response()->json([
@@ -260,12 +315,18 @@ class OrganizationUnitController extends Controller
 
         $data = $request->validate([
             'positionId' => ['sometimes', 'nullable', 'integer', 'exists:organization_positions,id'],
+            'locationId' => ['sometimes', 'nullable', 'integer', 'exists:locations,id'],
+            'costCenterId' => ['sometimes', 'nullable', 'integer', 'exists:financial_organizations,id'],
+            'managerUserId' => ['sometimes', 'nullable', 'integer', 'exists:users,id'],
             'assignmentType' => ['sometimes', 'string', Rule::in(EmployeeOrganizationAssignment::ASSIGNMENT_TYPES)],
             'isPrimary' => ['sometimes', 'boolean'],
+            'assignmentPercentage' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:100'],
+            'fte' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:1'],
             'effectiveFrom' => ['sometimes', 'date'],
             'effectiveTo' => ['sometimes', 'nullable', 'date'],
             'isActive' => ['sometimes', 'boolean'],
             'notes' => ['sometimes', 'nullable', 'string', 'max:2000'],
+            'changeReason' => ['sometimes', 'nullable', 'string', 'max:255'],
         ]);
 
         return $this->guarded(fn () => response()->json([

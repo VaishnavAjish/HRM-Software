@@ -6,7 +6,6 @@ import { salaryApi } from "../../../../utils/api";
 import RequisitionsTab from "./RequisitionsTab";
 import RequisitionFormModal from "./RequisitionFormModal";
 import CandidatePipeline from "../CandidatePipeline";
-import HRManagerTab from "./HRManagerTab";
 import AssessmentTab from "./AssessmentTab";
 import InterviewManagement from "../InterviewManagement";
 import OfferManagement from "../OfferManagement";
@@ -128,7 +127,7 @@ export default function HiringWorkspace() {
       {tab === "assessment" && <AssessmentTab />}
       {tab === "interview" && <InterviewManagement />}
       {tab === "offer" && <OfferManagement />}
-      {tab === "hr-manager" && <HRManagerTab departments={departments} people={people} openRequisitionForm={openRequisitionForm} />}
+      {tab === "hr-manager" && <ApprovalReviewTab kind="hr-manager" departments={departments} people={people} openRequisitionForm={openRequisitionForm} />}
       {tab === "director" && <ApprovalReviewTab kind="director" departments={departments} people={people} openRequisitionForm={openRequisitionForm} />}
       {tab === "job-portal" && <JobPortalTab departments={departments} />}
 

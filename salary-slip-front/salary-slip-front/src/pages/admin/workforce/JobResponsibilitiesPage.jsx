@@ -183,5 +183,5 @@ export default function JobResponsibilitiesPage() {
     },
   });
 
-  return <ListPage />;
+  return ListPage;
 }

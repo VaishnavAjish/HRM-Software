@@ -194,5 +194,5 @@ export default function JobClassificationPage() {
     },
   });
 
-  return <ListPage />;
+  return ListPage;
 }

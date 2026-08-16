@@ -212,5 +212,5 @@ export default function JobFamiliesPage() {
     },
   });
 
-  return <ListPage />;
+  return ListPage;
 }
