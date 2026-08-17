@@ -57,7 +57,7 @@ export default function CareersLayout() {
   return (
     <div className="flex min-h-screen flex-col bg-nx-paper font-sans text-nx-ink selection:bg-brand-200/60">
       <header
-        className={`sticky top-0 z-40 border-b bg-nx-paper/90 backdrop-blur-md transition-shadow duration-300 ${
+        className={`sticky top-0 z-40 border-b bg-white/95 backdrop-blur-md transition-shadow duration-300 ${
           scrolled ? "border-nx-line shadow-[0_1px_0_0_rgba(33,29,23,0.04)]" : "border-transparent"
         }`}
       >
@@ -127,7 +127,7 @@ export default function CareersLayout() {
                 </Link>
                 <Link
                   to="/careers/register"
-                  className="rounded-md bg-nx-ink px-4 py-1.5 text-white shadow-sm transition-colors hover:bg-brand-700"
+                  className="rounded-md bg-brand-600 px-4 py-1.5 text-white shadow-sm transition-colors hover:bg-brand-700"
                 >
                   Create Account
                 </Link>
@@ -172,7 +172,7 @@ export default function CareersLayout() {
                   </Link>
                   <Link
                     to="/careers/register"
-                    className="mt-1 rounded-md bg-nx-ink px-3 py-2.5 text-center text-white"
+                    className="mt-1 rounded-md bg-brand-600 px-3 py-2.5 text-center text-white"
                   >
                     Create Account
                   </Link>

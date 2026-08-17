@@ -120,29 +120,29 @@ export default function CareersList() {
   return (
     <div className="min-h-[calc(100vh-4rem)] bg-nx-paper pb-20">
       <section
-        className="relative border-b border-nx-line px-4 pb-14 pt-16 sm:px-6 sm:pt-20 lg:px-8"
-        style={{
-          backgroundImage:
-            "radial-gradient(rgb(33 29 23 / 0.05) 1px, transparent 1px)",
-          backgroundSize: "18px 18px",
-        }}
+        className="relative overflow-hidden px-4 pb-16 pt-16 sm:px-6 sm:pt-20 lg:px-8"
+        style={{ background: "linear-gradient(135deg, rgb(var(--brand-900)) 0%, rgb(var(--brand-700)) 55%, rgb(var(--brand-600)) 100%)" }}
       >
-        <div className="mx-auto max-w-3xl text-center">
-          <p className="text-xs font-bold uppercase tracking-[0.22em] text-brand-700">
+        <div
+          className="pointer-events-none absolute inset-0 opacity-[0.06]"
+          style={{ backgroundImage: "radial-gradient(#fff 1px, transparent 1px)", backgroundSize: "18px 18px" }}
+        />
+        <div className="relative mx-auto max-w-3xl text-center">
+          <p className="text-xs font-bold uppercase tracking-[0.22em] text-white/70">
             Nidhi Impex Silver Star
           </p>
-          <h1 className="mt-4 text-4xl font-black leading-[1.05] tracking-[-0.02em] text-nx-ink sm:text-5xl">
+          <h1 className="mt-4 text-4xl font-black leading-[1.05] tracking-[-0.02em] text-white sm:text-5xl">
             Build your future <br className="hidden sm:block" />
             in Surat's manufacturing floor
           </h1>
-          <p className="mx-auto mt-5 max-w-xl text-base leading-relaxed text-nx-body">
+          <p className="mx-auto mt-5 max-w-xl text-base leading-relaxed text-white/80">
             Open roles across textile manufacturing and diamond processing —
             find where your skills fit.
           </p>
 
           <form
             onSubmit={handleSearchSubmit}
-            className="mx-auto mt-9 flex max-w-2xl flex-col gap-2.5 sm:flex-row"
+            className="mx-auto mt-9 flex max-w-2xl flex-col gap-2.5 rounded-xl bg-white/10 p-2 backdrop-blur-sm sm:flex-row"
           >
             <div className="relative flex-1">
               <Search size={17} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-nx-faint" />
@@ -151,12 +151,12 @@ export default function CareersList() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Job title, skills, keywords…"
-                className="w-full rounded-md border border-nx-line bg-nx-surface py-3 pl-11 pr-4 text-sm text-nx-ink placeholder-nx-faint outline-none transition-colors focus:border-brand-500"
+                className="w-full rounded-lg border-none bg-white py-3 pl-11 pr-4 text-sm text-nx-ink placeholder-nx-faint outline-none"
               />
             </div>
             <button
               type="submit"
-              className="rounded-md bg-nx-ink px-6 py-3 text-sm font-bold text-white transition-colors hover:bg-brand-700"
+              className="rounded-lg bg-nx-ink px-6 py-3 text-sm font-bold text-white transition-colors hover:bg-black"
             >
               Search Jobs
             </button>
