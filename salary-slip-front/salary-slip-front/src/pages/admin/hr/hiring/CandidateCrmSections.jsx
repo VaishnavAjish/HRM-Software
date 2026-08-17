@@ -62,6 +62,19 @@ export default function CandidateCrmSections({ candidate, loading }) {
   const [commDraft, setCommDraft] = useState({ type: "email", subject: "", body: "" });
   const [commBusy, setCommBusy] = useState(false);
 
+  const [mailTemplates, setMailTemplates] = useState([]);
+
+  useEffect(() => {
+    if (!user?.accessToken) return;
+    rbacApi.getSettings(user.accessToken, user.tokenType, "hr")
+      .then((res) => {
+        const data = res.data || [];
+        const tplStr = data.find((s) => s.key === "hr.mail_templates")?.value;
+        if (tplStr) setMailTemplates(JSON.parse(tplStr));
+      })
+      .catch(() => {});
+  }, [user?.accessToken, user?.tokenType]);
+
   useEffect(() => {
     if (commDraft.type === "email" && !commDraft.body && mailTemplates.length > 0) {
       const msgTpl = mailTemplates.find(t => t.id === "message");

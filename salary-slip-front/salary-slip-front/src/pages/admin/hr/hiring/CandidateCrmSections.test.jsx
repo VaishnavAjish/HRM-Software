@@ -44,6 +44,9 @@ vi.mock("../../../../utils/api", () => ({
     deleteCandidateDocument: vi.fn(),
     reviewCandidateDocument: vi.fn(),
   },
+  rbacApi: {
+    getSettings: vi.fn(() => Promise.resolve({ status: true, data: [] })),
+  },
 }));
 
 import CandidateCrmSections from "./CandidateCrmSections";

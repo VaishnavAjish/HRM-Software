@@ -227,12 +227,21 @@ cp -r ~/HRM-Software/salary-slip-bac/app ~/salary-slip-bac/
 cp -r ~/HRM-Software/salary-slip-bac/routes ~/salary-slip-bac/
 cp -r ~/HRM-Software/salary-slip-bac/database ~/salary-slip-bac/
 
-# 3. Clear Laravel caches & run migrations
+# 3. Clear Laravel caches, run migrations, then rebuild the caches.
+#    Clearing without rebuilding leaves the app running uncached in
+#    production — every request re-parses every config file and
+#    re-resolves the full route table from scratch instead of reading
+#    the compiled cache, which is a significant, silent slowdown on
+#    every single request until the next deploy clears it again.
 cd ~/salary-slip-bac
 php artisan config:clear
 php artisan route:clear
 php artisan cache:clear
+php artisan view:clear
 php artisan migrate --force
+php artisan config:cache
+php artisan route:cache
+php artisan view:cache
 
 # 4. Restart backend processes
 pm2 restart laravel-backend || pm2 start "php artisan serve --host=127.0.0.1 --port=8000" --name laravel-backend

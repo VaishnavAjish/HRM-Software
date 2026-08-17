@@ -156,6 +156,7 @@ export default defineConfig(({ mode }) => {
             "**/assets/exceljs*.js",
             "**/assets/jspdf*.js",
             "**/assets/html2canvas*.js",
+            "**/assets/recharts-*.js",
             "**/assets/CartesianChart-*.js",
             "**/assets/AddEmployeePage-*.js",
             "**/assets/HiringProcess-*.js",
@@ -215,6 +216,24 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       outDir: path.resolve(projectRoot, gitBranch),
+      modulePreload: {
+        // Vite's default preload-dependency resolver treats every chunk
+        // reachable from ANY dynamic import as an entry dependency, so the
+        // manualChunks below — shared across dozens of lazy-loaded pages —
+        // were being emitted as <link rel="modulepreload"> in index.html
+        // itself, forcing ag-grid/exceljs/jspdf/html2canvas/recharts
+        // (600KB+ gzipped combined) onto every single page load, including
+        // the public login and Career Portal pages that never touch a
+        // chart, spreadsheet, or PDF. Only filter the HTML entry's own
+        // preload list — a lazy page's *own* dynamic import() still needs
+        // its runtime preload hint so its manualChunk fetches in parallel
+        // rather than being discovered only after that page's JS parses.
+        resolveDependencies: (_filename, deps, { hostType }) => {
+          if (hostType !== "html") return deps;
+          const heavyVendorChunk = /\/(ag-grid|exceljs|jspdf|html2canvas|recharts)/;
+          return deps.filter((dep) => !heavyVendorChunk.test(dep));
+        },
+      },
       rollupOptions: {
         // Explicitly pin the HTML entry to the same drive letter as
         // process.cwd() (F:). Without this, Vite resolves index.html

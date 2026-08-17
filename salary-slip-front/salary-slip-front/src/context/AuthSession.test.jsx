@@ -22,6 +22,12 @@ vi.mock("../utils/api", () => ({
     logout: vi.fn(),
   },
   rbacApi: { getMyPermissions: vi.fn() },
+  // The enterprise snapshot is consulted first (session hydration runs it
+  // in parallel with getProfile, and loadPermissionsForUser tries it before
+  // falling back to rbacApi) — resolving `success: false` here exercises
+  // exactly that fallback path, which is what every permissions assertion
+  // in this file is written against.
+  authorizationApi: { me: vi.fn(() => Promise.resolve({ success: false })) },
 }));
 
 vi.mock("react-hot-toast", () => ({

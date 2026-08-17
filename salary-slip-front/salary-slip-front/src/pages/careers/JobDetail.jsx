@@ -8,6 +8,7 @@ import { useCandidateAuth } from "../../context/CandidateAuthContext";
 import { resolveJobBranding, formatEmploymentType, formatExperience } from "../../config/careersTheme";
 import SaveJobButton from "../../components/careers/SaveJobButton";
 import ResendVerificationButton from "../../components/careers/ResendVerificationButton";
+import { profileCompletion } from "../../utils/candidateProfile";
 
 function isJobClosed(job) {
   if (!job?.target_closing_date) return false;
@@ -125,6 +126,17 @@ export default function JobDetail() {
   const branding = resolveJobBranding(job);
   const closed = isJobClosed(job);
 
+  // Only meaningful once signed in and verified — an incomplete/unauthenticated
+  // candidate still opens the modal to see the sign-in/verify gate as before.
+  const profileIncomplete = isAuthenticated && candidate?.email_verified_at && profileCompletion(candidate) < 100;
+
+  const handleApplyClick = () => {
+    if (profileIncomplete) {
+      toast.error("Please complete your profile before applying.");
+    }
+    setApplyModalOpen(true);
+  };
+
   return (
     <div data-theme={branding.theme} className="min-h-[calc(100vh-4rem)] bg-nx-paper pb-28 sm:pb-16">
       <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
@@ -222,11 +234,18 @@ export default function JobDetail() {
                 </button>
               ) : (
                 <button
-                  onClick={() => setApplyModalOpen(true)}
-                  className="mt-5 w-full rounded-md bg-brand-600 py-3 text-sm font-bold text-white shadow-sm transition-colors hover:bg-brand-700"
+                  onClick={handleApplyClick}
+                  className={`mt-5 w-full rounded-md py-3 text-sm font-bold shadow-sm transition-colors ${
+                    profileIncomplete
+                      ? "border border-nx-line2 bg-nx-paper text-nx-muted hover:border-amber-300 hover:text-amber-700"
+                      : "bg-brand-600 text-white hover:bg-brand-700"
+                  }`}
                 >
                   Apply Now
                 </button>
+              )}
+              {profileIncomplete && (
+                <p className="mt-2 text-center text-[11px] font-semibold text-amber-700">Complete your profile to apply</p>
               )}
               <SaveJobButton jobId={job.id} initialSaved={initiallySaved} variant="text" className="mt-2.5 w-full justify-center" />
             </div>
@@ -243,8 +262,10 @@ export default function JobDetail() {
         ) : (
           <>
             <button
-              onClick={() => setApplyModalOpen(true)}
-              className="flex-1 rounded-md bg-brand-600 py-3 text-sm font-bold text-white shadow-sm"
+              onClick={handleApplyClick}
+              className={`flex-1 rounded-md py-3 text-sm font-bold shadow-sm ${
+                profileIncomplete ? "border border-nx-line2 bg-nx-paper text-nx-muted" : "bg-brand-600 text-white"
+              }`}
             >
               Apply Now
             </button>
@@ -304,6 +325,21 @@ export default function JobDetail() {
                   We sent a verification link to <strong>{candidate?.email}</strong>. Confirm it, then come back to apply.
                 </p>
                 <ResendVerificationButton email={candidate?.email} className="pt-1" />
+              </div>
+            ) : profileIncomplete ? (
+              <div className="mt-6 space-y-1.5 rounded-md border border-amber-200 bg-amber-50 p-5">
+                <div className="flex items-center gap-2 text-sm font-bold text-amber-900">
+                  <AlertCircle size={17} className="text-amber-600" /> Complete your profile to apply
+                </div>
+                <p className="text-xs font-medium text-amber-800">
+                  Add your experience and skills so recruiters have what they need to review your application.
+                </p>
+                <Link
+                  to="/careers/account/profile"
+                  className="mt-2 inline-flex rounded-md bg-amber-600 px-4 py-2 text-xs font-bold text-white hover:bg-amber-700"
+                >
+                  Complete Profile
+                </Link>
               </div>
             ) : (
               <form onSubmit={handleApplySubmit} className="mt-6 space-y-5 text-sm">

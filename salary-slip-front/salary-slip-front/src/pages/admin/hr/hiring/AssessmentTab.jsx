@@ -2,16 +2,17 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import {
   Plus, Trash2, Link2, Eye, ShieldAlert, Clock, CheckCircle2, XCircle,
-  FileQuestion, Copy, RefreshCw, ArrowRight, SkipForward, PauseCircle,
+  FileQuestion, Copy, RefreshCw, ArrowRight, SkipForward, PauseCircle, ChevronDown,
 } from "lucide-react";
 import Button from "../../../../components/ui/Button";
+import CandidateDrawer from "./CandidateDrawer";
 import Badge from "../../../../components/ui/Badge";
 import Modal from "../../../../components/ui/Modal";
 import { SkeletonTable } from "../../../../components/ui/Skeleton";
 import DatePicker from "../../../../components/ui/DatePicker";
 import { useAuth } from "../../../../context/AuthContext";
 import { hrApi } from "../../../../utils/api";
-import { TAB_STAGE_KEYS, promptRejectionReason } from "./stageMeta";
+import { TAB_STAGE_KEYS, promptRejectionReason, MAIN_STAGES, TERMINAL_STAGES, STAGE_INDEX } from "./stageMeta";
 
 const inputClass =
   "w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500";
@@ -51,6 +52,31 @@ export default function AssessmentTab() {
   const [attempts, setAttempts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [actingId, setActingId] = useState(null);
+
+  const [drawerCandidate, setDrawerCandidate] = useState(null);
+  const [expandedReqs, setExpandedReqs] = useState({});
+  const toggleReq = (id) => setExpandedReqs(p => ({ ...p, [id]: !p[id] }));
+
+  const rosterByReq = useMemo(() => {
+    const map = {};
+    roster.forEach((c) => {
+      const rid = c.requisition_id || "unassigned";
+      if (!map[rid]) {
+        map[rid] = {
+          req: c.requisition || { id: "unassigned", title: "Unassigned / General" },
+          candidates: [],
+        };
+      }
+      map[rid].candidates.push(c);
+    });
+    return Object.values(map);
+  }, [roster]);
+
+  useEffect(() => {
+    const init = {};
+    rosterByReq.forEach((r) => { init[r.req.id] = true; });
+    setExpandedReqs(init);
+  }, [rosterByReq.length]);
 
   const [assignTarget, setAssignTarget] = useState(null); // candidate being assigned a quiz
   const [assignQuizId, setAssignQuizId] = useState("");
@@ -298,104 +324,138 @@ export default function AssessmentTab() {
         ))}
       </div>
 
-      {view === "candidates" && (
-        <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
+            {view === "candidates" && (
+        <div className="space-y-4">
           {rosterLoading ? (
-            <div className="p-6"><SkeletonTable rows={6} /></div>
+            <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6"><SkeletonTable rows={6} /></div>
           ) : roster.length === 0 ? (
-            <p className="text-center py-16 text-sm text-gray-500 dark:text-gray-400">
-              No one's awaiting an assessment decision — candidates show up here once shortlisted from the Candidates tab.
-            </p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 dark:bg-gray-700/50 text-xs uppercase text-gray-500 dark:text-gray-400">
-                  <tr>
-                    <th className="text-left px-4 py-3">Candidate</th>
-                    <th className="text-left px-4 py-3">Assessment</th>
-                    <th className="text-left px-4 py-3">Result</th>
-                    <th className="text-right px-4 py-3">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                  {roster.map((c) => {
-                    const attempt = latestAttempt(c.id, attempts);
-                    const busy = actingId === c.id;
-                    const finished = attempt && ["submitted", "terminated", "expired"].includes(attempt.status);
-                    return (
-                      <tr key={c.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
-                        <td className="px-4 py-3">
-                          <p className="font-medium text-gray-900 dark:text-white">{c.name}</p>
-                          {c.requisition?.title && <p className="text-xs text-gray-400">{c.requisition.title}</p>}
-                        </td>
-                        <td className="px-4 py-3">
-                          {!attempt ? (
-                            <span className="text-gray-400 text-xs">No quiz assigned</span>
-                          ) : (
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <Badge variant={ATTEMPT_VARIANT[attempt.status] || "gray"}>{ATTEMPT_LABEL[attempt.status] || attempt.status}</Badge>
-                                <span className="text-xs text-gray-400">{attempt.quiz?.title}</span>
-                              </div>
-                              {attempt.status === "pending" && attempt.scheduled_start_at && new Date(attempt.scheduled_start_at) > new Date() && (
-                                <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">Opens {new Date(attempt.scheduled_start_at).toLocaleString()}</p>
-                              )}
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-4 py-3">
-                          {attempt && ["submitted", "terminated"].includes(attempt.status) ? (
-                            <span className={`font-semibold ${attempt.passed ? "text-green-600" : "text-red-600"}`}>
-                              {attempt.score}% {attempt.passed ? "Pass" : "Fail"}
-                            </span>
-                          ) : <span className="text-gray-400 text-xs">—</span>}
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center justify-end gap-1.5">
-                            {!attempt && (
-                              <>
-                                <button disabled={busy} onClick={() => openAssign(c)}
-                                  className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20 border border-brand-100 dark:border-brand-900/40 disabled:opacity-50">
-                                  <Link2 size={13} /> Assign Quiz
-                                </button>
-                                <button disabled={busy} onClick={() => skipAssessment(c)}
-                                  className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 disabled:opacity-50">
-                                  <SkipForward size={13} /> Process without Assessment
-                                </button>
-                              </>
-                            )}
-                            {attempt && ["pending", "in_progress"].includes(attempt.status) && (
-                              <>
-                                <button title="Copy candidate link" onClick={() => copy(quizLink(attempt.access_token))} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"><Copy size={14} /></button>
-                                <button title="Revoke" onClick={() => revoke(attempt.id)} className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"><Trash2 size={14} /></button>
-                              </>
-                            )}
-                            {finished && (
-                              <>
-                                <button title="View report" onClick={() => openReport(attempt)} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"><Eye size={14} /></button>
-                                <button disabled={busy} title="Proceed to Interview" onClick={() => proceedToInterview(c)} className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 hover:bg-green-100 dark:hover:bg-green-900/30 disabled:opacity-50">
-                                  <ArrowRight size={13} /> Interview
-                                </button>
-                                <button disabled={busy} title="Reject" onClick={() => rejectCandidate(c)} className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50"><XCircle size={14} /></button>
-                              </>
-                            )}
-                            <button disabled={busy} title="Put on hold" onClick={async () => {
-                              setActingId(c.id);
-                              try {
-                                const res = await hrApi.moveCandidateStage(c.id, { to_stage: "on_hold" }, token, tokenType);
-                                if (!res.status) throw new Error(res.message);
-                                toast.success("Marked On Hold"); reload();
-                              } catch (err) { toast.error(err.message || "Failed to update stage"); }
-                              finally { setActingId(null); }
-                            }} className="p-1.5 rounded-lg text-yellow-600 hover:bg-yellow-50 dark:hover:bg-yellow-900/20 disabled:opacity-50"><PauseCircle size={14} /></button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700">
+              <p className="text-center py-16 text-sm text-gray-500 dark:text-gray-400">
+                No one's awaiting an assessment decision — candidates show up here once shortlisted from the Candidates tab.
+              </p>
             </div>
+          ) : (
+            rosterByReq.map(({ req, candidates }) => (
+              <div key={req.id} className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
+                <div
+                  className="flex cursor-pointer items-center justify-between bg-gray-50 dark:bg-gray-700/50 px-4 py-3 hover:bg-gray-100 dark:hover:bg-gray-700"
+                  onClick={() => toggleReq(req.id)}
+                >
+                  <div className="flex items-center gap-2">
+                    <ChevronDown size={18} className={`text-gray-400 transition-transform ${expandedReqs[req.id] ? "rotate-180" : ""}`} />
+                    <h3 className="text-sm font-semibold text-gray-900 dark:text-white">{req.title}</h3>
+                    <Badge variant="gray">{candidates.length}</Badge>
+                  </div>
+                </div>
+
+                {expandedReqs[req.id] && (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-white dark:bg-gray-800 text-xs uppercase text-gray-500 dark:text-gray-400 border-t border-b border-gray-100 dark:border-gray-700">
+                        <tr>
+                          <th className="text-left px-4 py-3">Candidate</th>
+                          <th className="text-left px-4 py-3">Assessment</th>
+                          <th className="text-left px-4 py-3">Result</th>
+                          <th className="text-right px-4 py-3">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                        {candidates.map((c) => {
+                          const attempt = latestAttempt(c.id, attempts);
+                          const busy = actingId === c.id;
+                          const finished = attempt && ["submitted", "terminated", "expired"].includes(attempt.status);
+                          return (
+                            <tr key={c.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30 cursor-pointer" onClick={() => setDrawerCandidate(c)}>
+                              <td className="px-4 py-3">
+                                <p className="font-medium text-gray-900 dark:text-white">{c.name}</p>
+                                {c.requisition?.title && <p className="text-xs text-gray-400">{c.requisition.title}</p>}
+                              </td>
+                              <td className="px-4 py-3">
+                                {!attempt ? (
+                                  <span className="text-gray-400 text-xs">No quiz assigned</span>
+                                ) : (
+                                  <div>
+                                    <div className="flex items-center gap-2">
+                                      <Badge variant={ATTEMPT_VARIANT[attempt.status] || "gray"}>{ATTEMPT_LABEL[attempt.status] || attempt.status}</Badge>
+                                      <span className="text-xs text-gray-400">{attempt.quiz?.title}</span>
+                                    </div>
+                                    {attempt.status === "pending" && attempt.scheduled_start_at && new Date(attempt.scheduled_start_at) > new Date() && (
+                                      <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">Opens {new Date(attempt.scheduled_start_at).toLocaleString()}</p>
+                                    )}
+                                  </div>
+                                )}
+                              </td>
+                              <td className="px-4 py-3">
+                                {attempt && ["submitted", "terminated"].includes(attempt.status) ? (
+                                  <div className="space-y-1">
+                                    <span className={`font-semibold ${attempt.passed ? "text-green-600" : "text-red-600"}`}>
+                                      {attempt.score}% {attempt.passed ? "Pass" : "Fail"}
+                                    </span>
+                                    <div className="text-[11px] text-gray-400">
+                                      {attempt.correct_count} / {attempt.total_questions} correct
+                                    </div>
+                                    {attempt.started_at && attempt.submitted_at && (
+                                      <div className="text-[11px] text-gray-400">
+                                        {Math.round((new Date(attempt.submitted_at) - new Date(attempt.started_at)) / 60000)} min taken
+                                      </div>
+                                    )}
+                                    {(attempt.violation_count || 0) > 0 && (
+                                      <div className="text-[11px] font-semibold text-red-500">
+                                        {attempt.violation_count} Violations
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : <span className="text-gray-400 text-xs">—</span>}
+                              </td>
+                              <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                                <div className="flex items-center justify-end gap-1.5">
+                                  {!attempt && (
+                                    <>
+                                      <button disabled={busy} onClick={() => openAssign(c)}
+                                        className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20 border border-brand-100 dark:border-brand-900/40 disabled:opacity-50">
+                                        <Link2 size={13} /> Assign Quiz
+                                      </button>
+                                      <button disabled={busy} onClick={() => skipAssessment(c)}
+                                        className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 disabled:opacity-50">
+                                        <SkipForward size={13} /> Process without Assessment
+                                      </button>
+                                    </>
+                                  )}
+                                  {attempt && ["pending", "in_progress"].includes(attempt.status) && (
+                                    <>
+                                      <button title="Copy candidate link" onClick={() => copy(quizLink(attempt.access_token))} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"><Copy size={14} /></button>
+                                      <button title="Revoke" onClick={() => revoke(attempt.id)} className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"><Trash2 size={14} /></button>
+                                    </>
+                                  )}
+                                  {finished && (
+                                    <>
+                                      <button title="View report" onClick={() => openReport(attempt)} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"><Eye size={14} /></button>
+                                      <button disabled={busy} title="Proceed to Interview" onClick={() => proceedToInterview(c)} className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 hover:bg-green-100 dark:hover:bg-green-900/30 disabled:opacity-50">
+                                        <ArrowRight size={13} /> Interview
+                                      </button>
+                                      <button disabled={busy} title="Reject" onClick={() => rejectCandidate(c)} className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50"><XCircle size={14} /></button>
+                                    </>
+                                  )}
+                                  <button disabled={busy} title="Put on hold" onClick={async () => {
+                                    setActingId(c.id);
+                                    try {
+                                      const res = await hrApi.moveCandidateStage(c.id, { to_stage: "on_hold" }, token, tokenType);
+                                      if (!res.status) throw new Error(res.message);
+                                      toast.success("Marked On Hold"); reload();
+                                    } catch (err) { toast.error(err.message || "Failed to update stage"); }
+                                    finally { setActingId(null); }
+                                  }} className="p-1.5 rounded-lg text-yellow-600 hover:bg-yellow-50 dark:hover:bg-yellow-900/20 disabled:opacity-50"><PauseCircle size={14} /></button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            ))
           )}
         </div>
       )}
@@ -580,6 +640,19 @@ export default function AssessmentTab() {
           </div>
         )}
       </Modal>
+      {drawerCandidate && (
+        <CandidateDrawer
+          candidate={drawerCandidate}
+          onClose={() => setDrawerCandidate(null)}
+          onUpdated={(updated) => {
+            reload();
+          }}
+          mainStages={MAIN_STAGES}
+          terminalStages={TERMINAL_STAGES}
+          stageIndex={STAGE_INDEX}
+          ownedStages={TAB_STAGE_KEYS.assessment}
+        />
+      )}
     </div>
   );
 }
@@ -617,7 +690,6 @@ function Field({ label, required, full, children }) {
   return (
     <div className={full ? "sm:col-span-2" : ""}>
       <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">{label}{required && <span className="text-red-500"> *</span>}</label>
-      {children}
     </div>
   );
 }
