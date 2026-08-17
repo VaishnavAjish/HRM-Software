@@ -11,14 +11,14 @@ This document provides step-by-step instructions for deploying, configuring, sec
 +-------------------------------------------------------------------------+
 |                              AWS EC2                                    |
 |                                                                         |
-|  [ User Browser ] ---> Port 443 (HTTPS) ---> [ Nginx Reverse Proxy ]    |
-|                             |                          |                |
-|                    Static React Build          Proxy /api/ & /socket.io/|
-|                     (/var/www/hrflow)                  v                |
-|                                             [ Laravel Backend ]         |
-|                                              (127.0.0.1:8000)           |
-|                                                        |                |
-|                                                 [ MySQL Database ]      |
+|  [ User Browser ] ---> Port 443 (HTTPS) ---> [ Nginx ]                 |
+|                             |                    |                      |
+|                    Static React Build   fastcgi_pass /api/*.php         |
+|                     (/var/www/hrflow)             v                     |
+|                                       [ PHP-FPM Worker Pool ]           |
+|                                       (unix:/run/php/php8.3-fpm.sock)   |
+|                                                    |                    |
+|                                          [ SQLite (database.sqlite) ]   |
 +-------------------------------------------------------------------------+
 ```
 
@@ -26,7 +26,9 @@ This document provides step-by-step instructions for deploying, configuring, sec
 - **EC2 Instance**: `ubuntu@ip-172-31-36-37`
 - **Web Server Root**: `/var/www/hrflow/`
 - **Backend Directory**: `/home/ubuntu/salary-slip-bac/`
-- **Database**: Local MySQL / AWS RDS
+- **Database**: SQLite (`database/database.sqlite`) — single file, single-writer; see §7 for concurrency notes
+- **App server**: PHP-FPM (migrated 2026-08-17 off `php artisan serve`, a single-threaded dev
+  server that crash-looped under a 10K-concurrent-login spike — see pool config in §3.5)
 
 ---
 
@@ -86,12 +88,19 @@ APP_ENV=production
 APP_DEBUG=false
 APP_URL=https://niss.pro
 
-DB_CONNECTION=mysql
-DB_HOST=127.0.0.1
-DB_PORT=3306
-DB_DATABASE=salary_slip_db
-DB_USERNAME=salary_user
-DB_PASSWORD=YourSecurePassword
+DB_CONNECTION=sqlite
+# The live database is a single SQLite file (database/database.sqlite) —
+# it allows only one writer at a time. Under real concurrency this showed
+# up as "SQLSTATE[HY000]: database is locked" (found 2026-08-17), because
+# CACHE_STORE below was silently defaulting to the `database` cache store,
+# which writes to SQLite on every single request via the rate limiter.
+
+CACHE_STORE=file
+# Laravel 11+ renamed CACHE_DRIVER to CACHE_STORE; config/cache.php falls
+# back to 'database' if this key is missing. Must be set explicitly, or
+# every request's rate-limiter hit becomes a SQLite write and concurrent
+# requests start throwing "database is locked" 500s.
+SESSION_DRIVER=file
 
 MAIL_MAILER=smtp
 MAIL_HOST=smtp.titan.email
@@ -111,11 +120,39 @@ php artisan route:cache
 php artisan view:cache
 php artisan migrate --force
 
-# 5. Start Backend Service on Port 8000 via PM2
-pm2 start "php artisan serve --host=127.0.0.1 --port=8000" --name laravel-backend
-pm2 save
-pm2 startup
+# 5. Production PHP-FPM & Nginx Setup
+# DO NOT run `php artisan serve` in production — single-threaded serve creates concurrency bottlenecks.
+# FastCGI PHP-FPM handles high-concurrency worker pools:
+sudo systemctl enable php8.3-fpm
+sudo systemctl start php8.3-fpm
 ```
+
+### 3.5. PHP-FPM Pool Configuration (`/etc/php/8.3/fpm/pool.d/www.conf`)
+
+Sized for this instance's ~900MB RAM (SQLite has no separate DB process to budget around).
+Re-apply these if the pool config is ever regenerated (fresh instance, package reinstall):
+
+```bash
+sudo sed -i \
+  -e 's/^user = .*/user = ubuntu/' \
+  -e 's/^group = .*/group = ubuntu/' \
+  -e 's/^listen.owner = .*/listen.owner = ubuntu/' \
+  -e 's/^listen.group = .*/listen.group = ubuntu/' \
+  -e 's/^pm.max_children = .*/pm.max_children = 6/' \
+  -e 's/^pm.start_servers = .*/pm.start_servers = 2/' \
+  -e 's/^pm.min_spare_servers = .*/pm.min_spare_servers = 1/' \
+  -e 's/^pm.max_spare_servers = .*/pm.max_spare_servers = 3/' \
+  /etc/php/8.3/fpm/pool.d/www.conf
+grep -q "^pm.max_requests" /etc/php/8.3/fpm/pool.d/www.conf || echo "pm.max_requests = 500" | sudo tee -a /etc/php/8.3/fpm/pool.d/www.conf
+sudo systemctl restart php8.3-fpm
+```
+
+**`listen.owner`/`listen.group` must match whichever user nginx's worker processes actually run
+as** (`ps -ef | grep "nginx: worker"` — confirmed `ubuntu` on this box, not the apt default
+`www-data`), or nginx gets `(13: Permission denied)` connecting to the FPM socket despite the
+socket having correct file permissions. `user`/`group` (the FPM worker processes themselves) are
+set to `ubuntu` to match the existing app file ownership from §3 step 1, avoiding a broader
+permissions rework.
 
 ---
 
@@ -247,9 +284,11 @@ php artisan config:cache
 php artisan route:cache
 php artisan view:cache
 
-# 4. Restart backend processes
-pm2 restart laravel-backend || pm2 start "php artisan serve --host=127.0.0.1 --port=8000" --name laravel-backend
-php artisan queue:restart || true
+# 4. Restart PHP-FPM so opcache picks up the new code (reload alone respawns
+#    workers gracefully but can leave stale opcode cache; restart is safe here
+#    since it only briefly drops in-flight requests, not all connections at once
+#    the way `php artisan serve` did every deploy).
+sudo systemctl restart php8.3-fpm
 
 # 5. Deploy prebuilt frontend assets
 sudo rm -rf /var/www/hrflow/*
@@ -275,11 +314,26 @@ echo "🎉 PRODUCTION DEPLOYMENT COMPLETED SUCCESSFULLY!"
 
 ## 🛠️ 7. Useful Operational Commands
 
-### Check PM2 Status:
+### Check PHP-FPM Status:
 ```bash
-pm2 status
-pm2 logs laravel-backend
+sudo systemctl status php8.3-fpm --no-pager
+ps aux | grep "php-fpm: pool"
+sudo journalctl -u php8.3-fpm --since "10 minutes ago" --no-pager
 ```
+
+### Check backend errors:
+```bash
+sudo tail -50 /var/log/nginx/error.log
+sudo -u ubuntu tail -50 /home/ubuntu/salary-slip-bac/storage/logs/laravel.log
+```
+
+### SQLite concurrency note:
+The database is a single SQLite file — only one writer at a time. If `storage/logs/laravel.log`
+shows `SQLSTATE[HY000]: General error: 5 database is locked` under real load, first confirm
+`CACHE_STORE=file` and `SESSION_DRIVER=file` are actually set in `.env` (Laravel silently falls
+back to the `database` cache store if `CACHE_STORE` is missing — this caused exactly this error
+on 2026-08-17). If genuine app-data writes (not cache/session) start contending under load, the
+next lever is enabling SQLite's WAL journal mode and a `busy_timeout`, not re-adding a queue.
 
 ### Check Nginx Status & Error Logs:
 ```bash
