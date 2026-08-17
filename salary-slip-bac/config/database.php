@@ -78,6 +78,23 @@ return [
             ]) : [],
         ],
 
+        'sqlite' => [
+            'driver' => 'sqlite',
+            'url' => env('DB_URL'),
+            'database' => env('DB_DATABASE', database_path('database.sqlite')),
+            'prefix' => '',
+            'foreign_key_constraints' => env('DB_FOREIGN_KEYS', true),
+            // PHP's pdo_sqlite default busy_timeout is 60000ms — a request-path
+            // writer contending for the lock (e.g. AuthorizationEngine::finish()'s
+            // audit-log insert, which runs on every permission-checked request)
+            // could silently block for up to 60 real seconds, far past the
+            // frontend's 15s abort, with no error ever reaching the logs. Found
+            // 2026-08-17 diagnosing Employee Master timeouts. journal_mode=WAL
+            // (set once on the file itself, not here) reduces how often this
+            // contention happens; this caps how long any single wait can run.
+            'busy_timeout' => 5000,
+        ],
+
         'pgsql' => [
             'driver' => 'pgsql',
             'url' => env('DB_URL'),
