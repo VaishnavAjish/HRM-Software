@@ -18,6 +18,7 @@ import {
   PauseCircle,
   Eye,
   Lock,
+  ChevronDown,
 } from "lucide-react";
 import Button from "../../../components/ui/Button";
 import Badge from "../../../components/ui/Badge";
@@ -518,129 +519,210 @@ export function CandidateListView({
   onOpenDetail, onAdvance, selectedIds = [], onToggleSelected, onSelectAll,
 }) {
   const allSelected = candidates.length > 0 && candidates.every((c) => selectedIds.includes(c.id));
+  const [collapsedGroups, setCollapsedGroups] = useState({});
+
+  const groupedCandidates = useMemo(() => {
+    const groups = {};
+    candidates.forEach((c) => {
+      const reqId = c.requisition?.id || "unassigned";
+      if (!groups[reqId]) {
+        groups[reqId] = {
+          id: reqId,
+          title: c.requisition?.title || "General / Unassigned",
+          candidates: [],
+        };
+      }
+      groups[reqId].candidates.push(c);
+    });
+    return Object.values(groups).sort((a, b) => a.title.localeCompare(b.title));
+  }, [candidates]);
+
+  const toggleGroup = (id) => setCollapsedGroups(prev => ({ ...prev, [id]: !prev[id] }));
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
+    <div className="space-y-4">
       {loading ? (
-        <div className="p-6"><SkeletonTable rows={8} /></div>
+        <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden p-6">
+          <SkeletonTable rows={8} />
+        </div>
       ) : candidates.length === 0 ? (
-        <p className="text-center py-16 text-sm text-gray-500 dark:text-gray-400">No candidates match these filters</p>
-      ) : compact ? (
-        <div className="divide-y divide-gray-100 dark:divide-gray-700">
-          {candidates.map((c) => {
-            const isTerminal = ["rejected", "on_hold"].includes(c.stage);
-            const next = !isTerminal && canAct(c.stage) ? nextMainStage(c.stage) : null;
+        <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden p-6">
+          <p className="text-center py-16 text-sm text-gray-500 dark:text-gray-400">No candidates match these filters</p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {groupedCandidates.map((group) => {
+            const isCollapsed = collapsedGroups[group.id];
+            
             return (
-              <div key={c.id} className="flex items-center gap-3 px-4 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/30 cursor-pointer" onClick={() => onOpenDetail(c)}>
-                <input type="checkbox" checked={selectedIds.includes(c.id)} onChange={(e) => { e.stopPropagation(); onToggleSelected(c.id); }} onClick={(e) => e.stopPropagation()} />
-                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${PRIORITY_DOT[c.priority] || "bg-gray-400"}`} />
-                <div className="w-7 h-7 rounded-full bg-gradient-to-br from-brand-500 to-indigo-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                  {c.name?.[0]?.toUpperCase() ?? "?"}
+              <div key={group.id} className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm hover:shadow-md transition-shadow duration-200 overflow-hidden">
+                {/* Accordion Header */}
+                <div 
+                  className="px-5 py-4 flex items-center justify-between cursor-pointer bg-gradient-to-r from-gray-50 to-white dark:from-gray-800/80 dark:to-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors border-b border-gray-100 dark:border-gray-700"
+                  onClick={() => toggleGroup(group.id)}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-900/30 border border-brand-100 dark:border-brand-800 flex items-center justify-center text-brand-600 dark:text-brand-400 shadow-sm">
+                      <Briefcase size={16} strokeWidth={2.5} />
+                    </div>
+                    <div>
+                      <h3 className="text-[15px] font-bold text-gray-900 dark:text-white leading-tight">{group.title}</h3>
+                      <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mt-0.5">{group.candidates.length} Candidate{group.candidates.length !== 1 ? 's' : ''}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <div className="hidden sm:flex -space-x-2">
+                      {group.candidates.slice(0, 5).map((c, i) => (
+                        <div key={c.id} className="w-7 h-7 rounded-full border-2 border-white dark:border-gray-800 bg-gradient-to-br from-brand-400 to-indigo-500 flex items-center justify-center text-[10px] font-bold text-white shadow-sm" style={{ zIndex: 10 - i }}>
+                          {c.name?.[0]?.toUpperCase() ?? "?"}
+                        </div>
+                      ))}
+                      {group.candidates.length > 5 && (
+                        <div className="w-7 h-7 rounded-full border-2 border-white dark:border-gray-800 bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-[10px] font-bold text-gray-600 dark:text-gray-300 z-0">
+                          +{group.candidates.length - 5}
+                        </div>
+                      )}
+                    </div>
+                    <button className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
+                      <ChevronDown size={18} className={`transition-transform duration-300 ${isCollapsed ? '-rotate-90' : ''}`} />
+                    </button>
+                  </div>
                 </div>
-                <p className="font-medium text-gray-900 dark:text-white truncate flex-1 min-w-0">{c.name}</p>
-                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0" style={{ backgroundColor: `${stageColor(c.stage)}1a`, color: stageColor(c.stage) }}>
-                  {stageLabel(c.stage)}
-                </span>
-                {c.ats_score != null && (
-                  <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0 bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400">
-                    ATS: {c.ats_score}%
-                  </span>
-                )}
-                {next ? (
-                  <button title={`Move to ${next.label}`} onClick={(e) => { e.stopPropagation(); onAdvance(c.id, next.key); }} className="p-1 rounded-lg text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20 flex-shrink-0">
-                    <ArrowRight size={14} />
-                  </button>
-                ) : !canAct(c.stage) && (
-                  <span title="Managed in another tab now" className="p-1 flex-shrink-0 text-gray-300 dark:text-gray-600"><Lock size={13} /></span>
-                )}
+
+                {/* Accordion Body */}
+                <div className={`transition-all duration-300 ease-in-out origin-top ${isCollapsed ? 'max-h-0 opacity-0 hidden' : 'max-h-[3000px] opacity-100 block'}`}>
+                  {compact ? (
+                    <div className="divide-y divide-gray-50 dark:divide-gray-700/50 bg-white dark:bg-gray-800">
+                      {group.candidates.map((c) => {
+                        const isTerminal = ["rejected", "on_hold"].includes(c.stage);
+                        const next = !isTerminal && canAct(c.stage) ? nextMainStage(c.stage) : null;
+                        return (
+                          <div key={c.id} className="flex items-center gap-3 px-5 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/30 cursor-pointer transition-colors" onClick={() => onOpenDetail(c)}>
+                            <input type="checkbox" checked={selectedIds.includes(c.id)} onChange={(e) => { e.stopPropagation(); onToggleSelected(c.id); }} onClick={(e) => e.stopPropagation()} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />
+                            <span className={`w-2 h-2 rounded-full flex-shrink-0 shadow-sm ${PRIORITY_DOT[c.priority] || "bg-gray-400"}`} />
+                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-brand-500 to-indigo-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0 shadow-sm">
+                              {c.name?.[0]?.toUpperCase() ?? "?"}
+                            </div>
+                            <p className="font-medium text-gray-900 dark:text-white truncate flex-1 min-w-0">{c.name}</p>
+                            <span className="text-[11px] font-bold tracking-wide uppercase px-2.5 py-1 rounded-full flex-shrink-0 shadow-sm" style={{ backgroundColor: `${stageColor(c.stage)}15`, color: stageColor(c.stage) }}>
+                              {stageLabel(c.stage)}
+                            </span>
+                            {c.ats_score != null && (
+                              <span className="text-[11px] font-bold px-2.5 py-1 rounded-full flex-shrink-0 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-800">
+                                ATS: {c.ats_score}%
+                              </span>
+                            )}
+                            {next ? (
+                              <button title={`Move to ${next.label}`} onClick={(e) => { e.stopPropagation(); onAdvance(c.id, next.key); }} className="p-1.5 rounded-lg text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20 flex-shrink-0 transition-colors">
+                                <ArrowRight size={15} />
+                              </button>
+                            ) : !canAct(c.stage) && (
+                              <span title="Managed in another tab now" className="p-1 flex-shrink-0 text-gray-300 dark:text-gray-600"><Lock size={14} /></span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto bg-white dark:bg-gray-800">
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-50/50 dark:bg-gray-800/50 text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-gray-700">
+                          <tr>
+                            <th className="px-5 py-3 w-8">
+                              <input type="checkbox" checked={allSelected} onChange={() => onSelectAll(allSelected ? [] : candidates.map((c) => c.id))} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />
+                            </th>
+                            <th className="text-left px-5 py-3">Candidate</th>
+                            <th className="text-left px-5 py-3">Stage</th>
+                            <th className="text-left px-5 py-3">Experience</th>
+                            <th className="text-left px-5 py-3">Priority</th>
+                            <th className="text-left px-5 py-3">ATS Score</th>
+                            <th className="text-left px-5 py-3">Recruiter</th>
+                            <th className="text-right px-5 py-3">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
+                          {group.candidates.map((c) => {
+                            const isTerminal = ["rejected", "on_hold"].includes(c.stage);
+                            const next = !isTerminal && canAct(c.stage) ? nextMainStage(c.stage) : null;
+                            return (
+                              <tr key={c.id} className="hover:bg-brand-50/30 dark:hover:bg-brand-900/10 cursor-pointer transition-colors" onClick={() => onOpenDetail(c)}>
+                                <td className="px-5 py-3.5" onClick={(e) => e.stopPropagation()}>
+                                  <input type="checkbox" checked={selectedIds.includes(c.id)} onChange={() => onToggleSelected(c.id)} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />
+                                </td>
+                                <td className="px-5 py-3.5">
+                                  <div className="flex items-center gap-3 min-w-0">
+                                    <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 shadow-sm ${PRIORITY_DOT[c.priority] || "bg-gray-400"}`} />
+                                    <div className="min-w-0">
+                                      <p className="font-semibold text-gray-900 dark:text-white truncate">{c.name}</p>
+                                      {c.email && <p className="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5">{c.email}</p>}
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="px-5 py-3.5">
+                                  <span
+                                    className="inline-flex text-[11px] font-bold uppercase tracking-wide px-2.5 py-1 rounded-full shadow-sm"
+                                    style={{ backgroundColor: `${stageColor(c.stage)}15`, color: stageColor(c.stage) }}
+                                  >
+                                    {stageLabel(c.stage)}
+                                  </span>
+                                </td>
+                                <td className="px-5 py-3.5 text-gray-600 dark:text-gray-300 font-medium">{c.experience_years ?? 0} yrs</td>
+                                <td className="px-5 py-3.5"><Badge variant={PRIORITY_VARIANT[c.priority] || "gray"} className="shadow-sm">{c.priority}</Badge></td>
+                                <td className="px-5 py-3.5">
+                                  {c.ats_score != null ? (
+                                    <span className="inline-flex text-[11px] font-bold px-2 py-0.5 rounded border border-emerald-100 dark:border-emerald-800 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 shadow-sm">
+                                      {c.ats_score}%
+                                    </span>
+                                  ) : (
+                                    <span className="text-xs text-gray-400">—</span>
+                                  )}
+                                </td>
+                                <td className="px-5 py-3.5 text-gray-600 dark:text-gray-300">
+                                  {c.recruiter?.name ? (
+                                    <div className="flex items-center gap-1.5">
+                                      <div className="w-5 h-5 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-[8px] font-bold text-gray-600 dark:text-gray-300">{c.recruiter.name[0]}</div>
+                                      <span className="text-xs font-medium truncate">{c.recruiter.name}</span>
+                                    </div>
+                                  ) : "—"}
+                                </td>
+                                <td className="px-5 py-3.5">
+                                  <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+                                    {next && (
+                                      <button
+                                        title={`Move to ${next.label}`}
+                                        onClick={() => onAdvance(c.id, next.key)}
+                                        className="p-1.5 rounded-lg text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-colors"
+                                      >
+                                        <ArrowRight size={16} />
+                                      </button>
+                                    )}
+                                    <button title="View details" onClick={() => onOpenDetail(c)} className="p-1.5 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700 dark:hover:text-gray-300 transition-colors">
+                                      <Eye size={16} />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
               </div>
             );
           })}
         </div>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-700/50 text-xs uppercase text-gray-500 dark:text-gray-400">
-              <tr>
-                <th className="px-4 py-3 w-8">
-                  <input type="checkbox" checked={allSelected} onChange={() => onSelectAll(allSelected ? [] : candidates.map((c) => c.id))} />
-                </th>
-                <th className="text-left px-4 py-3">Candidate</th>
-                <th className="text-left px-4 py-3">Requisition</th>
-                <th className="text-left px-4 py-3">Stage</th>
-                <th className="text-left px-4 py-3">Experience</th>
-                <th className="text-left px-4 py-3">Priority</th>
-                <th className="text-left px-4 py-3">ATS Score</th>
-                <th className="text-left px-4 py-3">Recruiter</th>
-                <th className="text-right px-4 py-3">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-              {candidates.map((c) => {
-                const isTerminal = ["rejected", "on_hold"].includes(c.stage);
-                const next = !isTerminal && canAct(c.stage) ? nextMainStage(c.stage) : null;
-                return (
-                  <tr key={c.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30 cursor-pointer" onClick={() => onOpenDetail(c)}>
-                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                      <input type="checkbox" checked={selectedIds.includes(c.id)} onChange={() => onToggleSelected(c.id)} />
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${PRIORITY_DOT[c.priority] || "bg-gray-400"}`} />
-                        <div className="min-w-0">
-                          <p className="font-medium text-gray-900 dark:text-white truncate">{c.name}</p>
-                          {c.email && <p className="text-xs text-gray-400 truncate">{c.email}</p>}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{c.requisition?.title || "—"}</td>
-                    <td className="px-4 py-3">
-                      <span
-                        className="inline-flex text-[11px] font-semibold px-2 py-0.5 rounded-full"
-                        style={{ backgroundColor: `${stageColor(c.stage)}1a`, color: stageColor(c.stage) }}
-                      >
-                        {stageLabel(c.stage)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{c.experience_years ?? 0} yrs</td>
-                    <td className="px-4 py-3"><Badge variant={PRIORITY_VARIANT[c.priority] || "gray"}>{c.priority}</Badge></td>
-                    <td className="px-4 py-3">
-                      {c.ats_score != null ? (
-                        <span className="text-xs font-medium text-green-600 dark:text-green-400">{c.ats_score}%</span>
-                      ) : (
-                        <span className="text-xs text-gray-400">—</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{c.recruiter?.name || "—"}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
-                        {next && (
-                          <button
-                            title={`Move to ${next.label}`}
-                            onClick={() => onAdvance(c.id, next.key)}
-                            className="p-1.5 rounded-lg text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20"
-                          >
-                            <ArrowRight size={15} />
-                          </button>
-                        )}
-                        <button title="View details" onClick={() => onOpenDetail(c)} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700">
-                          <Eye size={15} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
       )}
-      <div className="px-4">
+      
+      {/* Footer Pagination Bar */}
+      <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm p-4 flex items-center justify-between">
         <Pagination current={page} total={total} pageSize={perPage} onChange={onPageChange} onPageSizeChange={onPageSizeChange} />
       </div>
     </div>
   );
 }
+
 
 /* ─────────────────── Kanban Column ─────────────────── */
 

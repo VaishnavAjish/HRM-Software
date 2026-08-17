@@ -70,35 +70,35 @@ const DEFAULT_DOC_TYPES = [
 const DEFAULT_TEMPLATES = [
   {
     id: "offer",
-    name: "Standard Offer Letter",
+    name: "Offer Letter",
     category: "Hiring",
-    updated: "Aug 02, 2026",
-    vars: "{candidate_name}, {role}, {ctc}, {joining_date}",
-    body: "Dear {candidate_name},\n\nWe are pleased to offer you the position of {role} with an annual CTC of {ctc}. Your tentative joining date will be {joining_date}.\n\nWelcome aboard!\nHR Department"
+    updated: "Aug 17, 2026",
+    vars: "{candidate_name}, {designation}, {ctc}, {joining_date}, {expiry_date}",
+    body: "Dear {candidate_name},\n\nWe're delighted to offer you the position of {designation}. Welcome to the team — here's a summary of your offer:\n\nPlease reply to this email to accept or discuss the offer — our HR team will follow up with the full offer letter and onboarding steps."
   },
   {
-    id: "appointment",
-    name: "Appointment Letter",
-    category: "Onboarding",
-    updated: "Jul 28, 2026",
-    vars: "{employee_name}, {dept}, {designation}",
-    body: "Dear {employee_name},\n\nThis is your formal appointment letter as {designation} in the {dept} department.\n\nRegards,\nManagement"
+    id: "interview",
+    name: "Interview Scheduled",
+    category: "Hiring",
+    updated: "Aug 17, 2026",
+    vars: "{candidate_name}, {interview_title}, {interview_date}, {interview_time}, {interview_link}, {interview_notes}",
+    body: "Hello {candidate_name},\n\nYour interview for {interview_title} has been scheduled.\n\nPlease find the details below. Ensure you are ready at least 5 minutes before the scheduled time."
   },
   {
-    id: "experience",
-    name: "Experience Certificate",
-    category: "Exit",
-    updated: "Jun 14, 2026",
-    vars: "{employee_name}, {tenure}, {designation}",
-    body: "To Whom It May Concern,\n\nThis is to certify that {employee_name} served as {designation} for a tenure of {tenure}.\n\nHR Team"
+    id: "assessment",
+    name: "Assessment Invite",
+    category: "Hiring",
+    updated: "Aug 17, 2026",
+    vars: "{candidate_name}, {quiz_title}, {duration}, {deadline}",
+    body: "Hello {candidate_name},\n\nWe are pleased to invite you to take an assessment for your application. This assessment helps us understand your skills better.\n\nPlease complete it before the deadline."
   },
   {
-    id: "promotion",
-    name: "Promotion & Band Revision",
-    category: "Performance",
-    updated: "May 10, 2026",
-    vars: "{employee_name}, {new_role}, {revised_ctc}",
-    body: "Dear {employee_name},\n\nCongratulations! You have been promoted to {new_role} with a revised annual CTC of {revised_ctc}.\n\nLeadership Team"
+    id: "message",
+    name: "Candidate Message",
+    category: "Hiring",
+    updated: "Aug 17, 2026",
+    vars: "{candidate_name}, {message}",
+    body: "Hello {candidate_name},\n\n{message}"
   }
 ];
 
@@ -107,11 +107,17 @@ const AVAILABLE_TOKENS = [
   "{employee_name}",
   "{role}",
   "{designation}",
-  "{dept}",
   "{ctc}",
-  "{revised_ctc}",
   "{joining_date}",
-  "{tenure}"
+  "{expiry_date}",
+  "{interview_title}",
+  "{interview_date}",
+  "{interview_time}",
+  "{interview_link}",
+  "{quiz_title}",
+  "{duration}",
+  "{deadline}",
+  "{message}"
 ];
 
 export default function HrSettings() {
@@ -133,6 +139,8 @@ export default function HrSettings() {
   const [indeedEmployerId, setIndeedEmployerId] = useState("");
   const [savingIntegrations, setSavingIntegrations] = useState(false);
 
+  const [isSaving, setIsSaving] = useState(false);
+
   useEffect(() => {
     if (!user?.accessToken) return;
     rbacApi.getSettings(user.accessToken, user.tokenType, "hr")
@@ -141,6 +149,14 @@ export default function HrSettings() {
         setIndeedClientId(data.find((s) => s.key === "hr.indeed_client_id")?.value || "");
         setIndeedClientSecret(data.find((s) => s.key === "hr.indeed_client_secret")?.value || "");
         setIndeedEmployerId(data.find((s) => s.key === "hr.indeed_employer_id")?.value || "");
+        
+        try {
+          const docsStr = data.find((s) => s.key === "hr.doc_types")?.value;
+          if (docsStr) setDocTypes(JSON.parse(docsStr));
+          
+          const tplStr = data.find((s) => s.key === "hr.mail_templates")?.value;
+          if (tplStr) setLetterTemplates(JSON.parse(tplStr));
+        } catch(e) { console.error("Error parsing HR settings JSON", e); }
       })
       .catch(() => {});
   }, [user]);
@@ -195,36 +211,28 @@ export default function HrSettings() {
     tenure: "2.5 Years"
   });
 
-  // Load state from localStorage on mount
-  useEffect(() => {
+
+
+  // Save all settings to backend
+  const handleSaveAll = async () => {
+    if (isSaving) return;
+    setIsSaving(true);
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed.notifications) setNotifications(parsed.notifications);
-        if (parsed.generalConfig) setGeneralConfig(parsed.generalConfig);
-        if (parsed.docTypes) setDocTypes(parsed.docTypes);
-        if (parsed.letterTemplates) setLetterTemplates(parsed.letterTemplates);
+      const res = await rbacApi.updateSettings([
+        { key: "hr.doc_types", value: JSON.stringify(docTypes) },
+        { key: "hr.mail_templates", value: JSON.stringify(letterTemplates) }
+      ], user?.accessToken, user?.tokenType, "hr");
+      
+      if (res.status) {
+        setHasUnsavedChanges(false);
+        toast.success("All HR Settings successfully saved!");
+      } else {
+        throw new Error(res.message);
       }
     } catch (err) {
-      console.error("Failed to load settings:", err);
-    }
-  }, []);
-
-  // Save all settings to localStorage
-  const handleSaveAll = () => {
-    try {
-      const payload = {
-        notifications,
-        generalConfig,
-        docTypes,
-        letterTemplates
-      };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-      setHasUnsavedChanges(false);
-      toast.success("All HR Settings successfully saved!");
-    } catch (err) {
-      toast.error("Failed to save configuration");
+      toast.error(err.message || "Failed to save configuration");
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -468,7 +476,7 @@ export default function HrSettings() {
           >
             <RotateCcw size={15} />
           </button>
-          <Button variant="primary" icon={<Save size={15} />} onClick={handleSaveAll}>
+          <Button variant="primary" icon={<Save size={15} />} onClick={handleSaveAll} disabled={isSaving}>
             Save Changes
           </Button>
         </div>

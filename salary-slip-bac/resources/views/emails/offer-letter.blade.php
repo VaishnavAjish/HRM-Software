@@ -23,11 +23,17 @@
                     {{-- Body --}}
                     <tr>
                         <td style="padding:40px 40px 32px;">
+                            @if(isset($customBody))
+                            <div style="white-space: pre-wrap; font-size: 15px; color: #4b5563; line-height: 1.7; margin-bottom: 24px;">
+                                {!! nl2br(e($customBody)) !!}
+                            </div>
+@else
                             <p style="margin:0 0 8px;color:#6b7280;font-size:14px;font-weight:500;text-transform:uppercase;letter-spacing:1px;">Dear,</p>
                             <h2 style="margin:0 0 16px;color:#111827;font-size:22px;font-weight:700;">{{ $candidateName }}</h2>
                             <p style="margin:0 0 24px;color:#4b5563;font-size:15px;line-height:1.7;">
                                 We're delighted to offer you the position of <strong>{{ $designation }}</strong>. Welcome to the team — here's a summary of your offer:
                             </p>
+@endif
 
                             {{-- Details card --}}
                             <table width="100%" cellpadding="0" cellspacing="0" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;margin-bottom:28px;">

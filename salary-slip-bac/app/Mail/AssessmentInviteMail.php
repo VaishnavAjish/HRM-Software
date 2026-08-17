@@ -7,6 +7,7 @@ use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
+use App\Models\Setting;
 
 /**
  * Sent when HR assigns a quiz to a candidate from the Assessment tab. Carries
@@ -39,6 +40,33 @@ class AssessmentInviteMail extends Mailable
 
     public function content(): Content
     {
+        
+        $customBody = null;
+        try {
+            $templatesJson = Setting::where('key', 'hr.mail_templates')->value('value');
+            if ($templatesJson) {
+                $templates = json_decode($templatesJson, true);
+                if (is_array($templates)) {
+                    foreach ($templates as $tpl) {
+                        if (isset($tpl['id']) && $tpl['id'] === 'assessment') {
+                            $customBody = $tpl['body'] ?? null;
+                            break;
+                        }
+                    }
+                }
+            }
+        } catch (\Exception $e) {
+            // Ignore
+        }
+
+        if ($customBody) {
+            $customBody = str_replace(
+                ['{candidate_name}', '{quiz_title}', '{duration}', '{deadline}'],
+                [$this->candidateName, $this->quizTitle, $this->durationMinutes . ' minutes', $this->deadlineFormatted ?? 'N/A'],
+                $customBody
+            );
+        }
+
         return new Content(
             htmlString: view('emails.assessment-invite', [
                 'candidateName' => $this->candidateName,
@@ -49,6 +77,8 @@ class AssessmentInviteMail extends Mailable
                 'quizUrl' => $this->quizUrl,
                 'startsAt' => $this->startsAt,
                 'expiresAt' => $this->expiresAt,
+            
+                'customBody' => $customBody,
             ])->render(),
         );
     }

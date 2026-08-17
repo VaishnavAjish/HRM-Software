@@ -12,13 +12,8 @@ import {
   SectionCard,
   StatusPill,
 } from "../../../../components/onboarding/primitives";
-import { hrApi } from "../../../../utils/api";
+import { hrApi, rbacApi } from "../../../../utils/api";
 import { useAuth } from "../../../../context/AuthContext";
-
-const DOCUMENT_TYPES = [
-  "Aadhaar Card", "PAN Card", "Passport", "Driving License", "Passport Photo",
-  "Education Certificate", "Experience Letter", "Bank Details", "Address Proof", "Other",
-];
 
 const STATUS_TONE = { VERIFIED: "ok", PENDING: "warn", REJECTED: "bad" };
 const STATUS_LABEL = { VERIFIED: "Verified", PENDING: "Awaiting review", REJECTED: "Rejected" };
@@ -61,6 +56,26 @@ export default function DocumentsTab() {
   const [employeesLoading, setEmployeesLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState(null);
+
+    const [docRules, setDocRules] = useState([]);
+  const [docTypes, setDocTypes] = useState(["Aadhaar Card", "PAN Card"]); // Fallback
+
+  useEffect(() => {
+    if (!user?.accessToken) return;
+    rbacApi.getSettings(user.accessToken, user.tokenType, "hr")
+      .then((res) => {
+        const data = res.data || [];
+        try {
+          const docsStr = data.find((s) => s.key === "hr.doc_types")?.value;
+          if (docsStr) {
+            const parsed = JSON.parse(docsStr);
+            setDocRules(parsed);
+            setDocTypes(parsed.map(d => d.name));
+          }
+        } catch(e) { console.error("Error parsing document rules JSON", e); }
+      })
+      .catch(() => {});
+  }, [user]);
 
   const [docs, setDocs] = useState([]);
   const [docsLoading, setDocsLoading] = useState(false);
@@ -156,8 +171,8 @@ export default function DocumentsTab() {
     }
   };
 
-  const missingTypes = DOCUMENT_TYPES.filter((t) => !docsByType[t]?.length);
-  const presentTypes = DOCUMENT_TYPES.filter((t) => docsByType[t]?.length);
+  const missingTypes = docTypes.filter((t) => !docsByType[t]?.length);
+  const presentTypes = docTypes.filter((t) => docsByType[t]?.length);
 
   return (
     <div className="grid grid-cols-12 gap-4">
@@ -210,7 +225,7 @@ export default function DocumentsTab() {
               <p className="text-[12.5px] text-gray-400">Loading…</p>
             ) : (
               <div className="grid gap-3 sm:grid-cols-2">
-                {DOCUMENT_TYPES.map((type) => {
+                {docTypes.map((type) => {
                   const list = docsByType[type] || [];
                   const primary = list[0];
                   return (

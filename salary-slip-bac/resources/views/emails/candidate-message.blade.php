@@ -23,12 +23,18 @@
                     {{-- Body --}}
                     <tr>
                         <td style="padding:40px 40px 32px;">
+                            @if(isset($customBody))
+                            <div style="white-space: pre-wrap; font-size: 15px; color: #4b5563; line-height: 1.7; margin-bottom: 24px;">
+                                {!! nl2br(e($customBody)) !!}
+                            </div>
+@else
                             <p style="margin:0 0 8px;color:#6b7280;font-size:14px;font-weight:500;text-transform:uppercase;letter-spacing:1px;">Hello,</p>
                             <h2 style="margin:0 0 16px;color:#111827;font-size:22px;font-weight:700;">{{ $candidateName }}</h2>
                             <div style="margin:0 0 24px;color:#4b5563;font-size:15px;line-height:1.7;white-space:pre-line;">{{ $body }}</div>
                             <p style="margin:16px 0 0;color:#9ca3af;font-size:13px;line-height:1.6;">
                                 If you have any questions, reply to this email and our hiring team will help you.
                             </p>
+@endif
                         </td>
                     </tr>
 
