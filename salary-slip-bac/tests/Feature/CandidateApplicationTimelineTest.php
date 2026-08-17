@@ -50,11 +50,16 @@ class CandidateApplicationTimelineTest extends TestCase
             'stage' => 'interview', 'company_code' => 'nidhi-impex',
         ]);
 
+        $recruiter = \App\Models\User::create([
+            'name' => 'Recruiter Admin', 'email' => 'recruiter@niss.pro', 'password' => 'x',
+            'role' => 1, 'company_code' => 'nidhi-impex', 'unit' => 'Shreeji', 'status' => 0, 'is_deleted' => 0,
+        ]);
+
         // applied -> screening -> shortlisted (both "Under Review") -> interview
         CandidateStageHistory::create(['candidate_id' => $candidate->id, 'from_stage' => null, 'to_stage' => 'applied', 'notes' => 'Applied via Public Job Portal', 'created_at' => now()->subDays(3)]);
-        CandidateStageHistory::create(['candidate_id' => $candidate->id, 'from_stage' => 'applied', 'to_stage' => 'screening', 'notes' => 'Recruiter picked up', 'changed_by' => 1, 'created_at' => now()->subDays(2)]);
-        CandidateStageHistory::create(['candidate_id' => $candidate->id, 'from_stage' => 'screening', 'to_stage' => 'shortlisted', 'notes' => 'Ranked #2 by ATS', 'changed_by' => 1, 'created_at' => now()->subDays(1)]);
-        CandidateStageHistory::create(['candidate_id' => $candidate->id, 'from_stage' => 'shortlisted', 'to_stage' => 'interview', 'notes' => 'Scheduled with panel', 'changed_by' => 1, 'created_at' => now()]);
+        CandidateStageHistory::create(['candidate_id' => $candidate->id, 'from_stage' => 'applied', 'to_stage' => 'screening', 'notes' => 'Recruiter picked up', 'changed_by' => $recruiter->id, 'created_at' => now()->subDays(2)]);
+        CandidateStageHistory::create(['candidate_id' => $candidate->id, 'from_stage' => 'screening', 'to_stage' => 'shortlisted', 'notes' => 'Ranked #2 by ATS', 'changed_by' => $recruiter->id, 'created_at' => now()->subDays(1)]);
+        CandidateStageHistory::create(['candidate_id' => $candidate->id, 'from_stage' => 'shortlisted', 'to_stage' => 'interview', 'notes' => 'Scheduled with panel', 'changed_by' => $recruiter->id, 'created_at' => now()]);
 
         $token = $account->createToken('candidate_auth')->plainTextToken;
 

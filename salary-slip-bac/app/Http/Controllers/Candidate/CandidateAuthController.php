@@ -145,6 +145,9 @@ class CandidateAuthController extends Controller
             return response()->json(['status' => false, 'message' => 'Invalid email or password credentials.'], 401);
         }
 
+        // Keep personal_access_tokens table lean by pruning older tokens for this candidate
+        $account->tokens()->where('name', 'candidate_auth')->delete();
+
         $token = $account->createToken('candidate_auth')->plainTextToken;
 
         return response()->json([

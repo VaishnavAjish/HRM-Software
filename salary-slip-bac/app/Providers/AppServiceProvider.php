@@ -28,8 +28,12 @@ class AppServiceProvider extends ServiceProvider
         $router->aliasMiddleware('jwt.auth', JwtMiddleware::class);
 
         RateLimiter::for('api', function (Request $request) {
-            return Limit::perMinute((int) env('API_RATE_LIMIT', 120))
+            return Limit::perMinute((int) env('API_RATE_LIMIT', 10000))
                 ->by($request->user()?->id ?: $request->ip());
+        });
+
+        RateLimiter::for('public-jobs', function (Request $request) {
+            return Limit::perMinute(10000)->by('public-jobs:'.$request->ip());
         });
 
         // Resend-verification is a self-service mailer trigger — without a
@@ -43,6 +47,32 @@ class AppServiceProvider extends ServiceProvider
                 Limit::perMinute(1)->by('candidate-resend-email:'.$email),
                 Limit::perDay(5)->by('candidate-resend-email:'.$email),
                 Limit::perMinute(10)->by('candidate-resend-ip:'.$request->ip()),
+            ];
+        });
+
+        // Candidate login rate limiter: High IP burst ceiling to support heavy traffic/NATs/load testing
+        // combined with a per-email failed attempt limit to prevent account brute-force attacks.
+        RateLimiter::for('candidate-login', function (Request $request) {
+            $email = strtolower(trim((string) $request->input('email')));
+
+            return [
+                Limit::perMinute((int) env('CANDIDATE_LOGIN_IP_LIMIT', 10000))->by('candidate-login-ip:'.$request->ip()),
+                Limit::perMinute(10)->by('candidate-login-email:'.$email),
+            ];
+        });
+
+        RateLimiter::for('candidate-register', function (Request $request) {
+            return [
+                Limit::perMinute(100)->by('candidate-register-ip:'.$request->ip()),
+            ];
+        });
+
+        RateLimiter::for('candidate-forgot', function (Request $request) {
+            $email = strtolower(trim((string) $request->input('email')));
+
+            return [
+                Limit::perMinute(3)->by('candidate-forgot-email:'.$email),
+                Limit::perMinute(20)->by('candidate-forgot-ip:'.$request->ip()),
             ];
         });
     }

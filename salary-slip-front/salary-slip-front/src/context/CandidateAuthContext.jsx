@@ -8,7 +8,7 @@ const TOKEN_KEY = "candidate_token";
 export function CandidateAuthProvider({ children }) {
   const [candidate, setCandidate] = useState(null);
   const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY) || null);
-  const [initializing, setInitializing] = useState(true);
+  const [initializing, setInitializing] = useState(() => Boolean(localStorage.getItem(TOKEN_KEY)));
 
   const saveToken = (newToken) => {
     setToken(newToken);
@@ -28,22 +28,33 @@ export function CandidateAuthProvider({ children }) {
   };
 
   useEffect(() => {
-    if (!token) {
-      setCandidate(null);
-      setInitializing(false);
+    if (!token || candidate) {
       return;
     }
+    let isMounted = true;
     candidateApi.me(token)
       .then((res) => {
+        if (!isMounted) return;
         if (res.status) {
           setCandidate(res.candidate);
         } else {
-          logout();
+          saveToken(null);
+          setCandidate(null);
         }
       })
-      .catch(() => logout())
-      .finally(() => setInitializing(false));
-  }, [token]);
+      .catch(() => {
+        if (!isMounted) return;
+        saveToken(null);
+        setCandidate(null);
+      })
+      .finally(() => {
+        if (isMounted) setInitializing(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [token, candidate]);
 
   const login = async (email, password) => {
     const res = await candidateApi.login({ email, password });

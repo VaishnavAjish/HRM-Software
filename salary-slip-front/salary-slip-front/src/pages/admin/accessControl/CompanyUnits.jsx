@@ -538,13 +538,13 @@ function LegacyUnitsPanel({ rows, companies, busy, onAdopt }) {
   );
 }
 
-export default function CompanyUnits() {
+export default function CompanyUnits({ initialTab = "companies", hideTabs = false }) {
   const { user } = useAuth();
   const { can } = useAuthorization();
   const token = user?.accessToken;
   const tokenType = user?.tokenType || "Bearer";
 
-  const [tab, setTab] = useState("companies");
+  const [tab, setTab] = useState(initialTab);
   const [companies, setCompanies] = useState([]);
   const [units, setUnits] = useState([]);
   const [legacy, setLegacy] = useState([]);
@@ -662,27 +662,29 @@ export default function CompanyUnits() {
 
   return (
     <div className="min-w-0 max-w-full space-y-5">
-      <div className="flex gap-1 border-b border-gray-200 dark:border-gray-700">
-        {[
-          ["companies", "Companies"],
-          ["units", "Units"],
-          ["departments", "Departments"],
-          ["department_managers", "Department Managers"],
-        ].map(([key, label]) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => { setTab(key); setSearch(""); }}
-            className={`-mb-px border-b-2 px-4 py-2 text-sm font-semibold transition-colors ${
-              tab === key
-                ? "border-brand-600 text-brand-600 dark:text-brand-400"
-                : "border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      {!hideTabs && (
+        <div className="flex gap-1 border-b border-gray-200 dark:border-gray-700">
+          {[
+            ["companies", "Companies"],
+            ["units", "Units"],
+            ["departments", "Departments"],
+            ["department_managers", "Department Managers"],
+          ].map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => { setTab(key); setSearch(""); }}
+              className={`-mb-px border-b-2 px-4 py-2 text-sm font-semibold transition-colors ${
+                tab === key
+                  ? "border-brand-600 text-brand-600 dark:text-brand-400"
+                  : "border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
 
       <Card>
         <div className="flex flex-wrap items-center gap-2">

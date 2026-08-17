@@ -11,6 +11,7 @@ use App\Models\EmployeeOrganizationAssignment;
 use App\Models\User;
 use App\Models\Enterprise;
 use App\Models\Company;
+use App\Models\AuditLog;
 use App\Services\Organization\Concerns\VerifiesCompanyAccess;
 use App\Support\AuditLogger;
 use Illuminate\Support\Facades\DB;
@@ -383,7 +384,9 @@ class OrganizationChartService
                 'spanOfControl' => 0,
                 'isActive' => $pos->status === 'active',
                 'metadata' => [
+                    'organizationUnitId' => (int) $pos->organization_unit_id,
                     'organizationUnitName' => $pos->organizationUnit?->name,
+                    'reportsToPositionId' => $pos->reports_to_position_id === null ? null : (int) $pos->reports_to_position_id,
                     'reportsToTitle' => $pos->reportsTo?->title,
                 ],
             ];
@@ -497,6 +500,87 @@ class OrganizationChartService
                     ->orWhere('company_code', 'LIKE', '%,'.$code.',%');
             })
             ->count();
+    }
+
+    /**
+     * Recent organization structure changes for the chart's Insights panel.
+     *
+     * Reads from the shared `audit_logs` table (written by OrganizationUnitService
+     * and ReportingStructureService, not this service) rather than
+     * `organization_activity_logs`, which only the enterprise service writes to.
+     * `audit_logs` has no company_id column, so this is not company-scoped — it
+     * relies on the caller already holding org.unit.read.
+     */
+    public function recentActivity(array $filters): array
+    {
+        $modules = ['organization-units', 'organization-reporting'];
+        $perPage = max(1, min(50, (int) ($filters['perPage'] ?? 20)));
+        $page = max(1, (int) ($filters['page'] ?? 1));
+
+        $query = AuditLog::query()->whereIn('module', $modules)->orderByDesc('created_at');
+        $total = $query->count();
+        $rows = $query->with('user:id,name')->forPage($page, $perPage)->get();
+
+        $userIds = [];
+        foreach ($rows as $row) {
+            foreach ([$row->old_value, $row->new_value] as $payload) {
+                if (is_array($payload)) {
+                    foreach (['employeeId', 'managerId'] as $key) {
+                        if (!empty($payload[$key])) {
+                            $userIds[] = (int) $payload[$key];
+                        }
+                    }
+                }
+            }
+        }
+        $userNames = User::query()->whereIn('id', array_unique($userIds))->pluck('name', 'id');
+
+        $items = $rows->map(fn (AuditLog $row) => [
+            'id' => (int) $row->id,
+            'changeType' => $row->action,
+            'module' => $row->module,
+            'description' => $this->describeActivity($row->action, $row->old_value, $row->new_value, $userNames),
+            'actorName' => $row->user?->name,
+            'createdAt' => $row->created_at?->toIso8601String(),
+        ])->all();
+
+        return [
+            'items' => $items,
+            'meta' => ['page' => $page, 'perPage' => $perPage, 'total' => $total],
+        ];
+    }
+
+    private function describeActivity(string $changeType, ?array $old, ?array $new, $userNames): string
+    {
+        $current = $new ?? $old ?? [];
+
+        return match ($changeType) {
+            'ORGANIZATION_UNIT_CREATED' => sprintf('%s %s created', $current['name'] ?? 'Unit', $this->humanType($current['type'] ?? null)),
+            'ORGANIZATION_UNIT_UPDATED' => sprintf('%s updated', $current['name'] ?? 'Unit'),
+            'ORGANIZATION_UNIT_STATUS_CHANGED' => sprintf('%s status changed to %s', $current['name'] ?? 'Unit', $current['status'] ?? ''),
+            'ORGANIZATION_UNIT_DELETED' => sprintf('%s deleted', $old['name'] ?? 'Unit'),
+            'ORGANIZATION_POSITION_CREATED' => sprintf('Position "%s" created', $current['title'] ?? ''),
+            'ORGANIZATION_POSITION_UPDATED' => sprintf('Position "%s" updated', $current['title'] ?? ''),
+            'ORGANIZATION_POSITION_DELETED' => sprintf('Position "%s" deleted', $old['title'] ?? ''),
+            'ORGANIZATION_POSITION_FROZEN' => sprintf('Position "%s" frozen', $current['title'] ?? ''),
+            'ORGANIZATION_POSITION_RELEASED' => sprintf('Position "%s" unfrozen', $current['title'] ?? ''),
+            'EMPLOYEE_ORGANIZATION_ASSIGNMENT_CREATED' => 'Employee assigned to organization unit',
+            'EMPLOYEE_ORGANIZATION_ASSIGNMENT_UPDATED' => 'Employee organization assignment updated',
+            'EMPLOYEE_ORGANIZATION_ASSIGNMENT_DELETED' => 'Employee organization assignment removed',
+            'EMPLOYEE_PROMOTION_TRANSFER_APPLIED' => 'Employee promotion/transfer applied',
+            'REPORTING_RELATIONSHIP_CREATED' => sprintf('%s now reports to %s', $userNames[$current['employeeId'] ?? 0] ?? 'Employee', $userNames[$current['managerId'] ?? 0] ?? 'manager'),
+            'REPORTING_RELATIONSHIP_UPDATED' => sprintf('Reporting relationship updated for %s', $userNames[$current['employeeId'] ?? 0] ?? 'employee'),
+            'REPORTING_RELATIONSHIP_DELETED' => sprintf('%s no longer reports to %s', $userNames[$old['employeeId'] ?? 0] ?? 'Employee', $userNames[$old['managerId'] ?? 0] ?? 'manager'),
+            'LEADERSHIP_ASSIGNMENT_CREATED' => 'Leadership assignment created',
+            'LEADERSHIP_ASSIGNMENT_UPDATED' => 'Leadership assignment updated',
+            'LEADERSHIP_ASSIGNMENT_DELETED' => 'Leadership assignment removed',
+            default => ucfirst(strtolower(str_replace('_', ' ', $changeType))),
+        };
+    }
+
+    private function humanType(?string $type): string
+    {
+        return $type ? ucfirst(str_replace('_', ' ', $type)) : 'unit';
     }
 
     private function audit(User $actor, string $changeType, ?array $old, ?array $new): void

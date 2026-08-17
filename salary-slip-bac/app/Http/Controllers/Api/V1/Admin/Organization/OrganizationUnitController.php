@@ -128,6 +128,14 @@ class OrganizationUnitController extends Controller
         });
     }
 
+    public function syncLegacyDepartments(): JsonResponse
+    {
+        return $this->guarded(fn () => response()->json([
+            'success' => true,
+            'data' => $this->service->syncFromLegacyDepartments(auth('api')->user()),
+        ]));
+    }
+
     /* ------------------------------------------------------------- positions */
 
     public function positions(Request $request, int $unitId): JsonResponse

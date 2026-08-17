@@ -147,15 +147,9 @@ function getAdminNav(companyId, user, isAllCompanies, isModuleAvailable = () => 
           ? [{ to: "/admin/access-control/users", label: "Users" }] : []),
         ...(hasAccess("admin.role.read") || rawRole === 0
           ? [{ to: "/admin/access-control/roles", label: "Roles" }] : []),
-        /*
-         * Company & Unit is gated on its own read code rather than on
-         * admin.role.read, because it is deliberately narrower: the seeder
-         * grants it to the super administrator only. A company code is the
-         * tenant key, so someone who may edit roles is not thereby someone who
-         * may rename a tenant.
-         */
-        ...(hasAccess("admin.company.read") || rawRole === 0
-          ? [{ to: "/admin/access-control/company-units", label: "Company & Unit" }] : []),
+        // Company & Unit moved to HR > Organization's "Company & Unit" tab
+        // (still gated on the same admin.company.read code) — see App.jsx's
+        // redirect for the old path and Organization.jsx for the new tab.
         ...(hasAccess("admin.role.read") || rawRole === 0
           ? [{ to: "/admin/access-control/permission-matrix", label: "Permission Matrix" }] : []),
         ...(hasAccess("admin.policy.read") || rawRole === 0

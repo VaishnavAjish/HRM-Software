@@ -13,8 +13,9 @@ vi.mock("../../../hooks/useAuthorization", () => ({
 
 vi.mock("./organization/OverviewTab", () => ({ default: () => <div>Overview Content</div> }));
 vi.mock("./organization/PromotionTransferTab", () => ({ default: () => <div>Promotions Content</div> }));
-vi.mock("./organization/GovernanceTab", () => ({ default: () => <div>Governance Content</div> }));
-vi.mock("../organization/OrgUnits", () => ({ default: () => <div>Departments Content</div> }));
+vi.mock("../accessControl/CompanyUnits", () => ({
+  default: ({ initialTab }) => <div>Company Unit Content: {initialTab}</div>,
+}));
 vi.mock("../organization/OrgChart", () => ({ default: () => <div>Org Chart Content</div> }));
 vi.mock("../organization/Positions", () => ({ default: () => <div>Positions Content</div> }));
 vi.mock("../organization/Assignments", () => ({ default: () => <div>Assignments Content</div> }));
@@ -39,6 +40,7 @@ describe("HrOrganization workspace", () => {
   it("shows every tab when the actor holds every underlying permission", () => {
     state.allowed = new Set([
       "org.unit.read",
+      "admin.company.read",
       "org.chart.read",
       "org.unit_position.read",
       "workforce.designation.read",
@@ -48,8 +50,8 @@ describe("HrOrganization workspace", () => {
     setup();
 
     for (const name of [
-      "Overview", "Departments", "Org Chart", "Positions", "Designations",
-      "Assignments", "Promotions & Transfers", "Governance",
+      "Overview", "Companies", "Units", "Departments", "Department Managers",
+      "Org Chart", "Positions", "Designations", "Assignments", "Promotions & Transfers",
     ]) {
       expect(screen.getByRole("button", { name })).toBeInTheDocument();
     }
@@ -61,9 +63,10 @@ describe("HrOrganization workspace", () => {
     setup();
 
     expect(screen.queryByRole("button", { name: "Overview" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Companies" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Departments" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Assignments" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Governance" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Promotions & Transfers" })).toBeInTheDocument();
     // First visible tab (Assignments) is selected by default.
     expect(screen.getByText("Assignments Content")).toBeInTheDocument();
   });
@@ -77,11 +80,11 @@ describe("HrOrganization workspace", () => {
     expect(screen.getByText(/you do not have access to any section/i)).toBeInTheDocument();
   });
 
-  it("selects a tab directly via the ?tab= query param", () => {
-    state.allowed = new Set(["org.unit.read", "org.change.read"]);
-    setup("/admin/hr/organization?tab=governance");
+  it("selects a tab directly via the ?tab= query param, pinning Company & Unit's internal tab", () => {
+    state.allowed = new Set(["org.unit.read", "admin.company.read"]);
+    setup("/admin/hr/organization?tab=department-managers");
 
-    expect(screen.getByText("Governance Content")).toBeInTheDocument();
+    expect(screen.getByText("Company Unit Content: department_managers")).toBeInTheDocument();
     expect(screen.queryByText("Overview Content")).not.toBeInTheDocument();
   });
 });

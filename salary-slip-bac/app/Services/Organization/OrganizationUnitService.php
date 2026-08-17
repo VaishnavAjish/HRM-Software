@@ -341,6 +341,144 @@ class OrganizationUnitService
         $this->audit($actor, 'ORGANIZATION_UNIT_DELETED', $snapshot, null);
     }
 
+    /**
+     * `organization_units` ships with `legacy_department_id` etc. as bridge
+     * columns, but nothing ever populated it from the pre-existing
+     * Access Control > Company & Unit data (`departments` /
+     * `department_managers`) — that legacy system is what actually holds
+     * real department + manager data today. This is the one-time (repeatable,
+     * idempotent) sync the bridge columns were built for: one org unit per
+     * legacy department, matched by legacy_department_id so re-running only
+     * updates rather than duplicates.
+     */
+    public function syncFromLegacyDepartments(User $actor): array
+    {
+        $created = 0;
+        $updated = 0;
+        $skipped = [];
+        $unitIdByDepartmentId = [];
+
+        $departments = \App\Models\Department::query()->with('managers')->get();
+        $companiesByCode = Company::query()->get()->keyBy('code');
+
+        foreach ($departments as $department) {
+            $company = $department->company_code ? $companiesByCode->get($department->company_code) : null;
+
+            if (!$company) {
+                $skipped[] = ['legacyDepartmentId' => $department->id, 'reason' => 'No matching company for code '.($department->company_code ?? '(none)')];
+                continue;
+            }
+
+            $managerUserId = $department->manager_id ?? $department->managers->first()?->id;
+            $name = trim((string) $department->name) !== '' ? trim((string) $department->name) : "Department {$department->id}";
+
+            $payload = [
+                'name' => $name,
+                'code' => $name,
+                'type' => 'department',
+                'companyId' => $company->id,
+                'managerUserId' => $managerUserId,
+                'status' => 'active',
+                'legacyDepartmentId' => $department->id,
+            ];
+
+            $existing = OrganizationUnit::query()->where('legacy_department_id', $department->id)->first();
+
+            try {
+                $unit = $existing
+                    ? $this->update($existing, $payload, $actor)
+                    : $this->create($payload, $actor);
+                $unitIdByDepartmentId[$department->id] = $unit->id;
+                $existing ? $updated++ : $created++;
+            } catch (OrganizationException $e) {
+                // Most commonly a duplicate department name within the same
+                // company — a known issue in the legacy table (see the
+                // cleanup-departments endpoint). Skip and keep going rather
+                // than aborting the whole sync over one bad row.
+                $skipped[] = ['legacyDepartmentId' => $department->id, 'reason' => $e->getMessage()];
+            }
+        }
+
+        $assignments = $this->syncAssignmentsFromLegacyDepartments($departments, $unitIdByDepartmentId, $actor);
+
+        return [
+            'total' => $departments->count(),
+            'created' => $created,
+            'updated' => $updated,
+            'skipped' => $skipped,
+            'assignmentsCreated' => $assignments['created'],
+            'assignmentsSkipped' => $assignments['skipped'],
+        ];
+    }
+
+    /**
+     * Departments have no direct FK to their employees — the only link is
+     * the same free-text (users.department, users.company_code) pair
+     * DepartmentController::seedLegacy() grouped on to create the
+     * departments in the first place. Reusing that exact key here (rather
+     * than inventing a fuzzier match) means every user who produced a given
+     * department row is guaranteed to match back to it.
+     */
+    private function syncAssignmentsFromLegacyDepartments($departments, array $unitIdByDepartmentId, User $actor): array
+    {
+        $unitIdByKey = [];
+        foreach ($departments as $department) {
+            if (!isset($unitIdByDepartmentId[$department->id])) {
+                continue;
+            }
+            $key = $this->legacyDepartmentKey($department->name, $department->company_code);
+            $unitIdByKey[$key] = $unitIdByDepartmentId[$department->id];
+        }
+
+        $created = 0;
+        $skipped = 0;
+
+        $users = User::query()
+            ->where('is_deleted', '0')
+            ->whereNotNull('department')
+            ->where('department', '!=', '')
+            ->get(['id', 'department', 'company_code']);
+
+        foreach ($users as $legacyUser) {
+            $unitId = $unitIdByKey[$this->legacyDepartmentKey($legacyUser->department, $legacyUser->company_code)] ?? null;
+
+            if (!$unitId) {
+                $skipped++;
+                continue;
+            }
+
+            $alreadyAssigned = EmployeeOrganizationAssignment::query()
+                ->where('user_id', $legacyUser->id)
+                ->where('organization_unit_id', $unitId)
+                ->where('is_active', true)
+                ->exists();
+
+            if ($alreadyAssigned) {
+                continue;
+            }
+
+            try {
+                $this->createAssignment([
+                    'userId' => $legacyUser->id,
+                    'organizationUnitId' => $unitId,
+                    'assignmentType' => 'primary',
+                    'isPrimary' => true,
+                    'effectiveFrom' => now()->toDateString(),
+                ], $actor);
+                $created++;
+            } catch (OrganizationException $e) {
+                $skipped++;
+            }
+        }
+
+        return ['created' => $created, 'skipped' => $skipped];
+    }
+
+    private function legacyDepartmentKey(?string $name, ?string $companyCode): string
+    {
+        return strtolower(trim((string) $name)).'|||'.strtolower(trim((string) $companyCode));
+    }
+
     // Positions
     public function positions(int $unitId, array $filters, ?User $actor): array
     {
@@ -409,6 +547,8 @@ class OrganizationUnitService
         }
 
         $this->assertPositionCodeFree($unitId, trim((string) ($data['code'] ?: $data['title'])), null);
+        // Note: a new position has no id yet, so ignoreId is null — cycles can
+        // only occur once the position exists and gets re-pointed via update().
 
         $pos = DB::transaction(function () use ($unitId, $data, $reportsToId) {
             $approvedHeadcount = (int) ($data['approvedHeadcount'] ?? 1);
@@ -482,6 +622,7 @@ class OrganizationUnitService
                         422
                     );
                 }
+                $this->assertPositionReportsToAcyclic($reportsToId, (int) $pos->id);
             }
             $pos->reports_to_position_id = $reportsToId;
         }
@@ -1193,6 +1334,23 @@ class OrganizationUnitService
             }
             $parent = OrganizationUnit::query()->find($cursor);
             $cursor = $parent?->parent_id;
+        }
+    }
+
+    private function assertPositionReportsToAcyclic(int $reportsToId, ?int $ignoreId): void
+    {
+        // Check for cycles in the reports-to chain
+        $cursor = $reportsToId;
+        for ($i = 0; $i < 100 && $cursor !== null; $i++) {
+            if ($cursor === $ignoreId) {
+                throw new OrganizationException(
+                    'ORGANIZATION_POSITION_CYCLE_DETECTED',
+                    'This would create a cycle in the position reporting hierarchy.',
+                    422
+                );
+            }
+            $position = OrganizationPosition::query()->find($cursor);
+            $cursor = $position?->reports_to_position_id;
         }
     }
 

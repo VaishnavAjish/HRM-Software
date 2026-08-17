@@ -104,6 +104,8 @@ class CandidateSavedJobsApiTest extends TestCase
 
         $this->withToken($ownerToken)->postJson("/api/candidate/jobs/{$job->id}/save")->assertCreated();
 
+        $this->app['auth']->forgetGuards();
+
         $response = $this->withToken($intruderToken)->getJson('/api/candidate/saved-jobs');
         $response->assertOk()->assertJsonCount(0, 'data');
 

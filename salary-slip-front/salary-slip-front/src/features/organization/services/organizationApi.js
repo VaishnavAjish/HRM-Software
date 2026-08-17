@@ -15,6 +15,11 @@ function query(params = {}) {
     if (value !== undefined && value !== null && value !== "" && value !== "ALL") {
       if (Array.isArray(value)) {
         value.forEach((item) => search.append(key, item));
+      } else if (typeof value === "boolean") {
+        // Laravel's `boolean` validation rule strictly accepts
+        // true|false|0|1|'0'|'1' — NOT the strings "true"/"false" that
+        // String(value) would produce, which fail validation with a 422.
+        search.set(key, value ? "1" : "0");
       } else {
         search.set(key, String(value));
       }
@@ -913,6 +918,10 @@ export const organizationApi = {
 
   orgChart(filters = {}, accessToken, tokenType = "Bearer") {
     return apiRequest(`/v1/admin/organization/org-chart${query(filters)}`, { headers: headers(accessToken, tokenType) });
+  },
+
+  recentActivity(filters = {}, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/admin/organization/activity${query(filters)}`, { headers: headers(accessToken, tokenType) });
   },
 
   /* ---------------------------------------------------------- org changes (change management) */

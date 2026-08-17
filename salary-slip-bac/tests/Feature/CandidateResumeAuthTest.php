@@ -52,7 +52,7 @@ class CandidateResumeAuthTest extends TestCase
         $method = new ReflectionMethod(CandidateController::class, 'candidateWithinActorScope');
         $method->setAccessible(true);
 
-        return $method->invoke(new CandidateController(), $candidate);
+        return $method->invoke(app(CandidateController::class), $candidate);
     }
 
     public function test_resume_route_is_not_reachable_anonymously(): void

@@ -91,9 +91,11 @@ class CandidateSavedJobController extends Controller
         $query = JobRequisition::query()->where('status', 'published');
 
         if (is_numeric($slug)) {
-            return $query->where('id', $slug)->first();
+            return $query->where('id', (int) $slug)->first();
         }
 
-        return $query->where('id', $slug)->orWhere('title', str_replace('-', ' ', $slug))->first();
+        return $query->where(function ($q) use ($slug) {
+            $q->where('id', $slug)->orWhere('title', str_replace('-', ' ', $slug));
+        })->first();
     }
 }

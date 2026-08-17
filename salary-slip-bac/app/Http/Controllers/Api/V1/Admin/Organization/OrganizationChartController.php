@@ -54,6 +54,19 @@ class OrganizationChartController extends Controller
         ]));
     }
 
+    public function activity(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'page' => ['sometimes', 'integer', 'min:1'],
+            'perPage' => ['sometimes', 'integer', 'min:1', 'max:50'],
+        ]);
+
+        return $this->guarded(fn () => response()->json([
+            'success' => true,
+            'data' => $this->service->recentActivity($data),
+        ]));
+    }
+
     private function guarded(callable $run): JsonResponse
     {
         try {

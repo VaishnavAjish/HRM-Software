@@ -24,6 +24,21 @@ use App\Http\Controllers\Admin\ShiftController;
 use App\Http\Controllers\Admin\UploadBatchController;
 use App\Http\Controllers\Admin\UserRoleController;
 use App\Http\Controllers\Api\ModuleAvailabilityController;
+
+// Lightweight Unauthenticated System Liveness Probe
+Route::get('health', function () {
+    return response()->json(['status' => 'ok', 'timestamp' => now()->toIso8601String()]);
+});
+
+// System Readiness Probe (Verifies DB connection status)
+Route::get('ready', function () {
+    try {
+        \Illuminate\Support\Facades\DB::connection()->getPdo();
+        return response()->json(['status' => 'ready', 'database' => 'connected', 'timestamp' => now()->toIso8601String()]);
+    } catch (\Throwable $e) {
+        return response()->json(['status' => 'unready', 'database' => 'disconnected'], 503);
+    }
+});
 use App\Http\Controllers\Api\V1\AadhaarExportController as V1AadhaarExportController;
 use App\Http\Controllers\Api\V1\Admin\CompanyUnitController as V1CompanyUnitController;
 use App\Http\Controllers\Api\V1\Admin\Organization\CalendarController as V1OrganizationCalendarController;
@@ -1051,6 +1066,8 @@ Route::middleware('jwt.auth')->group(function () {
         /* --------------------------------------------------- 02.08 org chart */
         Route::get('org-chart', [V1OrganizationChartController::class, 'index'])
             ->middleware('permission:org.chart.read');
+        Route::get('activity', [V1OrganizationChartController::class, 'activity'])
+            ->middleware('permission:org.unit.read');
 
         /* ------------------------------------------- 02.09 change management */
         Route::get('org-changes', [V1OrganizationChangeController::class, 'index'])
@@ -1599,16 +1616,16 @@ Route::get('migrate-db', function() {
 });
 
 /* ------------------------------------------------ Public Jobs & Candidate Portal */
-Route::get('public/jobs', [\App\Http\Controllers\Public\PublicJobController::class, 'index']);
-Route::get('public/jobs/{slug}', [\App\Http\Controllers\Public\PublicJobController::class, 'show']);
+Route::get('public/jobs', [\App\Http\Controllers\Public\PublicJobController::class, 'index'])->middleware('throttle:public-jobs');
+Route::get('public/jobs/{slug}', [\App\Http\Controllers\Public\PublicJobController::class, 'show'])->middleware('throttle:public-jobs');
 
 Route::group(['prefix' => 'candidate'], function () {
-    Route::post('auth/register', [\App\Http\Controllers\Candidate\CandidateAuthController::class, 'register'])->middleware('throttle:10,1');
-    Route::post('auth/verify-email', [\App\Http\Controllers\Candidate\CandidateAuthController::class, 'verifyEmail'])->middleware('throttle:10,1');
+    Route::post('auth/register', [\App\Http\Controllers\Candidate\CandidateAuthController::class, 'register'])->middleware('throttle:candidate-register');
+    Route::post('auth/verify-email', [\App\Http\Controllers\Candidate\CandidateAuthController::class, 'verifyEmail'])->middleware('throttle:30,1');
     Route::post('auth/resend-verification', [\App\Http\Controllers\Candidate\CandidateAuthController::class, 'resendVerification'])->middleware(['throttle:candidate-resend', 'frontend.url']);
-    Route::post('auth/login', [\App\Http\Controllers\Candidate\CandidateAuthController::class, 'login'])->middleware('throttle:10,1');
-    Route::post('auth/forgot-password', [\App\Http\Controllers\Candidate\CandidateAuthController::class, 'forgotPassword'])->middleware('throttle:10,1');
-    Route::post('auth/reset-password', [\App\Http\Controllers\Candidate\CandidateAuthController::class, 'resetPassword'])->middleware('throttle:10,1');
+    Route::post('auth/login', [\App\Http\Controllers\Candidate\CandidateAuthController::class, 'login'])->middleware('throttle:candidate-login');
+    Route::post('auth/forgot-password', [\App\Http\Controllers\Candidate\CandidateAuthController::class, 'forgotPassword'])->middleware('throttle:candidate-forgot');
+    Route::post('auth/reset-password', [\App\Http\Controllers\Candidate\CandidateAuthController::class, 'resetPassword'])->middleware('throttle:30,1');
 
     Route::group(['middleware' => ['auth:sanctum']], function () {
         Route::post('auth/logout', [\App\Http\Controllers\Candidate\CandidateAuthController::class, 'logout']);

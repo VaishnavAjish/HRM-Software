@@ -23,3 +23,12 @@ Schedule::command('tickets:escalate-overdue')
     ->everyFifteenMinutes()
     ->withoutOverlapping()
     ->runInBackground();
+
+/*
+ * Daily Sanctum Expired Token Cleanup
+ * Prunes expired personal_access_tokens (older than SANCTUM_EXPIRATION / 720 hours)
+ */
+Schedule::command('sanctum:prune-expired --hours=720')
+    ->daily()
+    ->withoutOverlapping()
+    ->runInBackground();
