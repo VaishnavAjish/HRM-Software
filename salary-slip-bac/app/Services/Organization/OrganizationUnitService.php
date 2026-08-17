@@ -362,10 +362,17 @@ class OrganizationUnitService
         $companiesByCode = Company::query()->get()->keyBy('code');
 
         foreach ($departments as $department) {
+            // A department's company_code is nullable by design — Company &
+            // Unit's own UI shows those as "All Companies (Global)" — so only
+            // skip when a company_code IS set but doesn't resolve to a real
+            // company (an actual data problem), not when it's legitimately
+            // absent. A prior version of this sync skipped every global
+            // department, which is why departments like "AI"/"Office"/the
+            // "Polish-*" ones never showed up on the chart.
             $company = $department->company_code ? $companiesByCode->get($department->company_code) : null;
 
-            if (!$company) {
-                $skipped[] = ['legacyDepartmentId' => $department->id, 'reason' => 'No matching company for code '.($department->company_code ?? '(none)')];
+            if ($department->company_code && !$company) {
+                $skipped[] = ['legacyDepartmentId' => $department->id, 'reason' => 'No matching company for code '.$department->company_code];
                 continue;
             }
 
@@ -376,7 +383,7 @@ class OrganizationUnitService
                 'name' => $name,
                 'code' => $name,
                 'type' => 'department',
-                'companyId' => $company->id,
+                'companyId' => $company?->id,
                 'managerUserId' => $managerUserId,
                 'status' => 'active',
                 'legacyDepartmentId' => $department->id,

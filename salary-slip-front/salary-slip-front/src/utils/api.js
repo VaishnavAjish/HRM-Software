@@ -152,7 +152,7 @@ export async function apiRequest(path, options = {}) {
     console.log(`[API] Request: ${options.method || "GET"} ${url}`);
   }
 
-  const timeoutMs = options.timeout ?? 15000;
+  const timeoutMs = options.timeout ?? 30000;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 

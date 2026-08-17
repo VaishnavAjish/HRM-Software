@@ -912,6 +912,9 @@ Route::middleware('jwt.auth')->group(function () {
         Route::get('org-units/headcount-summary', [V1OrganizationUnitController::class, 'headcountSummary'])
             ->middleware('permission:org.unit_position.read');
 
+        Route::post('org-units/sync-legacy-departments', [V1OrganizationUnitController::class, 'syncLegacyDepartments'])
+            ->middleware(['throttle:10,1', 'permission:org.unit.create']);
+
         Route::get('org-units', [V1OrganizationUnitController::class, 'index'])
             ->middleware('permission:org.unit.read');
         Route::post('org-units', [V1OrganizationUnitController::class, 'store'])

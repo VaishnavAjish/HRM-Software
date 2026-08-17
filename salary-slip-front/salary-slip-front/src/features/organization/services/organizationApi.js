@@ -420,6 +420,13 @@ export const organizationApi = {
     return apiRequest(`/v1/admin/organization/org-units/options${query(filters)}`, { headers: headers(accessToken, tokenType) });
   },
 
+  syncLegacyDepartments(accessToken, tokenType = "Bearer") {
+    return apiRequest("/v1/admin/organization/org-units/sync-legacy-departments", {
+      method: "POST",
+      headers: headers(accessToken, tokenType),
+    });
+  },
+
   createOrgUnit(payload, accessToken, tokenType = "Bearer") {
     return apiRequest("/v1/admin/organization/org-units", {
       method: "POST",

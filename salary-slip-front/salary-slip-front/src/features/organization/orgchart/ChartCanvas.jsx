@@ -183,6 +183,7 @@ function ChartCanvasInner({
   const [rfEdges, setRfEdges] = useState([]);
   const [zoomPct, setZoomPct] = useState(100);
   const wrapperRef = useRef(null);
+  const hasSeededCollapseRef = useRef(false);
   const { getIntersectingNodes, getViewport, fitView } = useReactFlow();
 
   const toggleCollapse = useCallback((id) => {
@@ -192,6 +193,28 @@ function ChartCanvasInner({
       return next;
     });
   }, []);
+
+  // Employee nodes (one per person, via their department assignment) can
+  // easily outnumber every other node combined on a real org. Rather than
+  // dumping all of them on screen at once, a department with more than a
+  // handful of children starts collapsed — same expand affordance either
+  // way, just a sane first paint. Runs once per fresh chart load, so it
+  // doesn't fight a user who deliberately re-expanded something.
+  useEffect(() => {
+    if (hasSeededCollapseRef.current || !chart?.nodes?.length) return undefined;
+    let active = true;
+    Promise.resolve().then(() => {
+      if (!active) return;
+      hasSeededCollapseRef.current = true;
+      const childCounts = new Map();
+      (chart.edges || []).forEach((e) => childCounts.set(e.source, (childCounts.get(e.source) || 0) + 1));
+      const defaults = new Set(
+        chart.nodes.filter((n) => n.type === "department" && (childCounts.get(n.id) || 0) > 6).map((n) => n.id),
+      );
+      if (defaults.size > 0) setCollapsedIds(defaults);
+    });
+    return () => { active = false; };
+  }, [chart]);
 
   const laidOut = useMemo(
     () => toFlowElements(chart, orgUnits, { collapsedIds, onQuickAdd, onToggleCollapse: toggleCollapse }),

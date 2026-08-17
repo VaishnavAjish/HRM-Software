@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { organizationApi } from "../services/organizationApi";
 
 const EMPTY_CHART = { nodes: [], edges: [], meta: {} };
@@ -25,6 +25,51 @@ function mergeCharts(a, b) {
   return { nodes, edges, meta: { ...(a?.meta || {}), ...(b?.meta || {}) } };
 }
 
+const SYNC_POLL_MS = 60000;
+
+/**
+ * The department/position chart types carry headcount, but not the actual
+ * employee list — there's no unit -> employee edge anywhere in
+ * OrganizationChartService. Assignments (EmployeeOrganizationAssignment)
+ * are the real link, so this turns each employee's *primary, active*
+ * assignment into one employee node plus one unit -> employee edge, giving
+ * a real tree instead of a bare headcount number. Non-primary/inactive
+ * assignments are skipped so every employee has exactly one parent (a tree,
+ * not a DAG) and a duplicate primary row can't produce two parents.
+ */
+function assignmentsToEmployeeTree(assignments) {
+  const nodes = [];
+  const edges = [];
+  const seenUsers = new Set();
+
+  assignments.forEach((a) => {
+    if (!a.isPrimary || !a.isActive || seenUsers.has(a.userId)) return;
+    seenUsers.add(a.userId);
+
+    nodes.push({
+      id: `user_${a.userId}`,
+      type: "employee",
+      code: a.userEmpCode,
+      name: a.userName,
+      title: a.designationTitle || a.positionTitle || "Employee",
+      employeeCount: 1,
+      approvedHeadcount: 0,
+      vacancy: 0,
+      isActive: true,
+      metadata: { department: a.organizationUnitName },
+    });
+
+    edges.push({
+      id: `edge_assignment_${a.id}`,
+      source: `org_unit_${a.organizationUnitId}`,
+      target: `user_${a.userId}`,
+      type: "primary",
+    });
+  });
+
+  return { nodes, edges };
+}
+
 /**
  * Fetch orchestration for the Org Chart workspace: chart nodes/edges (via
  * the existing OrganizationChartService), the org-unit tree for the left
@@ -41,6 +86,18 @@ export function useOrgChartData({ token, tokenType, view, filters }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  // organization_units is a synced copy of the real Company & Unit data
+  // (departments/department_managers/users.department), not read live — so
+  // the chart auto-syncs once per mount before its first fetch, rather than
+  // requiring someone to remember to click "Import from Company & Unit"
+  // every time a department or assignment changes over there. Best-effort:
+  // a viewer without org.unit.create (e.g. read-only chart access) just
+  // sees whatever was last synced, same as before this existed.
+  const [readyToFetch, setReadyToFetch] = useState(false);
+  // Only the very first load shows the full canvas spinner — the 60s
+  // background poll (below) refreshes data in place without one, so it
+  // doesn't flash the whole chart blank every minute.
+  const hasLoadedOnceRef = useRef(false);
 
   const refetch = useCallback(() => setRefreshKey((v) => v + 1), []);
   const companyIdsKey = JSON.stringify(filters.companyIds || []);
@@ -57,6 +114,29 @@ export function useOrgChartData({ token, tokenType, view, filters }) {
   useEffect(() => {
     if (!token) return undefined;
     let active = true;
+    organizationApi.syncLegacyDepartments(token, tokenType)
+      .catch(() => {})
+      .finally(() => { if (active) setReadyToFetch(true); });
+    return () => { active = false; };
+  }, [token, tokenType]);
+
+  // "All time sync": re-run the legacy sync and refetch in the background
+  // for as long as the chart stays mounted, so a department/manager/user
+  // added over in Company & Unit shows up here without anyone navigating
+  // away and back. Best-effort — the same silent-catch as the initial sync.
+  useEffect(() => {
+    if (!token) return undefined;
+    const id = setInterval(() => {
+      organizationApi.syncLegacyDepartments(token, tokenType)
+        .catch(() => {})
+        .finally(() => refetch());
+    }, SYNC_POLL_MS);
+    return () => clearInterval(id);
+  }, [token, tokenType, refetch]);
+
+  useEffect(() => {
+    if (!token || !readyToFetch) return undefined;
+    let active = true;
 
     // Setting loading/error happens inside this async runner rather than
     // synchronously at the top of the effect, matching the rest of this
@@ -65,7 +145,7 @@ export function useOrgChartData({ token, tokenType, view, filters }) {
     // effect-execution time, not ones inside an async continuation.
     const run = async () => {
       if (!active) return;
-      setLoading(true);
+      if (!hasLoadedOnceRef.current) setLoading(true);
       setError(null);
 
       const companyIds = filters.companyIds?.length ? filters.companyIds : undefined;
@@ -86,7 +166,14 @@ export function useOrgChartData({ token, tokenType, view, filters }) {
           organizationApi.orgChart({ ...baseFilters, chartType: "department" }, token, tokenType),
           organizationApi.orgChart({ ...baseFilters, chartType: "team" }, token, tokenType),
           organizationApi.orgChart({ ...baseFilters, chartType: "position" }, token, tokenType),
-        ]).then(([deptRes, teamRes, posRes]) => mergeCharts(mergeCharts(deptRes?.data, teamRes?.data), posRes?.data));
+          // No unit filter — the assignments endpoint returns everyone when
+          // called bare, one request instead of one per department.
+          organizationApi.orgUnitAssignments({}, token, tokenType).catch(() => ({ data: [] })),
+        ]).then(([deptRes, teamRes, posRes, assignmentsRes]) => {
+          const structural = mergeCharts(mergeCharts(deptRes?.data, teamRes?.data), posRes?.data);
+          const employeeTree = assignmentsToEmployeeTree(assignmentsRes?.data || []);
+          return mergeCharts(structural, employeeTree);
+        });
 
       try {
         const [chartData, unitsRes, summaryRes, activityRes] = await Promise.all([
@@ -100,6 +187,7 @@ export function useOrgChartData({ token, tokenType, view, filters }) {
         setOrgUnits(unitsRes?.data ?? []);
         setSummary(summaryRes?.data?.totals ?? null);
         setActivity(activityRes?.data?.items ?? []);
+        hasLoadedOnceRef.current = true;
       } catch (err) {
         if (active) setError(err);
       } finally {
@@ -112,7 +200,7 @@ export function useOrgChartData({ token, tokenType, view, filters }) {
     return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    token, tokenType, view, refreshKey,
+    token, tokenType, view, refreshKey, readyToFetch,
     filters.asOf, filters.rootId, filters.maxDepth, filters.includeInactive,
     filters.includeVacant, filters.search, companyIdsKey,
   ]);
