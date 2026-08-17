@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { CandidateListView } from "./CandidatePipeline";
 
@@ -7,6 +8,10 @@ import { CandidateListView } from "./CandidatePipeline";
 // candidate already advanced to interview/offer/etc — the normal state for
 // most of a real roster), but `Lock` was never imported from lucide-react.
 // That threw `ReferenceError: Lock is not defined` on every such render.
+//
+// The list groups candidates into per-requisition folders (a candidate with
+// no `requisition` lands in "General / Unassigned") — each test opens that
+// folder before asserting on the row itself.
 
 function candidate(overrides = {}) {
   return {
@@ -19,8 +24,13 @@ function candidate(overrides = {}) {
   };
 }
 
+async function openUnassignedFolder(user) {
+  await user.click(await screen.findByText("General / Unassigned"));
+}
+
 describe("CandidateListView compact mode", () => {
-  it("renders a lock indicator (not a crash) for a candidate outside this tab's owned stages", () => {
+  it("renders a lock indicator (not a crash) for a candidate outside this tab's owned stages", async () => {
+    const user = userEvent.setup();
     render(
       <CandidateListView
         compact
@@ -37,6 +47,7 @@ describe("CandidateListView compact mode", () => {
         onSelectAll={vi.fn()}
       />,
     );
+    await openUnassignedFolder(user);
 
     expect(screen.getByText("Vansh Chauhan")).toBeInTheDocument();
     expect(screen.getByTitle("Managed in another tab now")).toBeInTheDocument();
@@ -44,7 +55,8 @@ describe("CandidateListView compact mode", () => {
     expect(screen.queryByTitle(/Move to/)).not.toBeInTheDocument();
   });
 
-  it("renders an advance arrow instead of the lock for a candidate this tab owns", () => {
+  it("renders an advance arrow instead of the lock for a candidate this tab owns", async () => {
+    const user = userEvent.setup();
     render(
       <CandidateListView
         compact
@@ -61,12 +73,14 @@ describe("CandidateListView compact mode", () => {
         onSelectAll={vi.fn()}
       />,
     );
+    await openUnassignedFolder(user);
 
     expect(screen.getByText("Priya Nair")).toBeInTheDocument();
     expect(screen.queryByTitle("Managed in another tab now")).not.toBeInTheDocument();
   });
 
-  it("does not lock a terminal-stage candidate that is still within owned stages", () => {
+  it("does not lock a terminal-stage candidate that is still within owned stages", async () => {
+    const user = userEvent.setup();
     render(
       <CandidateListView
         compact
@@ -83,6 +97,7 @@ describe("CandidateListView compact mode", () => {
         onSelectAll={vi.fn()}
       />,
     );
+    await openUnassignedFolder(user);
 
     // Terminal (rejected/on_hold) candidates get neither the arrow nor the
     // lock — canAct() is irrelevant once isTerminal short-circuits `next`.

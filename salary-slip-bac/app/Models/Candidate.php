@@ -73,13 +73,6 @@ class Candidate extends Model
         return $this->hasMany(CandidateNote::class, 'candidate_id')->orderByDesc('created_at');
     }
 
-    public function talentPools()
-    {
-        return $this->belongsToMany(TalentPool::class, 'candidate_talent_pool')
-            ->withPivot('added_by')
-            ->withTimestamps();
-    }
-
     public function communications()
     {
         return $this->hasMany(CandidateCommunication::class, 'candidate_id')->orderByDesc('created_at');

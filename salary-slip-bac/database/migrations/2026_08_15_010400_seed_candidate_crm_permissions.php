@@ -7,8 +7,8 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Wave 4 — Candidate CRM fine-grained write codes (tags, notes, talent pools,
- * communication) plus the matching Permission Matrix nodes. Roles that already
+ * Wave 4 — Candidate CRM fine-grained write codes (tags, notes, communication)
+ * plus the matching Permission Matrix nodes. Roles that already
  * hold candidate update (business) or the candidates page (UI) inherit the new
  * codes, so nothing regresses at release time while the Matrix gains control.
  */
@@ -17,14 +17,12 @@ return new class extends Migration
     private const CODES = [
         'hr.candidate.tag' => ['tag', 'WRITE', false],
         'hr.candidate.note' => ['note', 'WRITE', false],
-        'hr.candidate.pool' => ['pool', 'WRITE', false],
         'hr.candidate.communication' => ['communication', 'WRITE', true],
     ];
 
     private const NODES = [
         'ui.hr.hiring.candidates.tags' => ['Tags', 41],
         'ui.hr.hiring.candidates.notes' => ['Notes', 42],
-        'ui.hr.hiring.candidates.talent_pool' => ['Talent Pool', 43],
         'ui.hr.hiring.candidates.communication' => ['Communication', 44],
     ];
 

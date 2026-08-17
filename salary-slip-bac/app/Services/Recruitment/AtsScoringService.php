@@ -70,6 +70,11 @@ class AtsScoringService
             $overall += $cat['score'] * (($weights[$key] ?? 0) / $totalWeight);
         }
 
+        // If no resume is available, cap the overall ATS score to prevent false confidence
+        if ($resumeText === null && $overall > 60.0) {
+            $overall = 60.0;
+        }
+
         return [
             'overall' => round($overall, 2),
             'weights' => $weights,
@@ -102,12 +107,16 @@ class AtsScoringService
         $matched = $skills->filter(fn ($skill) => $skill !== '' && str_contains($haystack, mb_strtolower($skill)));
         $missing = $skills->diff($matched);
 
+        // Score based on matching a baseline of 3 skills instead of punishing extra skills
+        $targetSkillMatches = 3;
+        $score = min(100.0, ($matched->count() / $targetSkillMatches) * 100);
+
         return [
-            'score' => round(($matched->count() / $skills->count()) * 100, 2),
+            'score' => round($score, 2),
             'weight' => config('ats.weights.skills'),
             'matched' => $matched->values()->all(),
             'missing' => $missing->values()->all(),
-            'note' => null,
+            'note' => $matched->isEmpty() ? 'No skills matched the job description.' : null,
         ];
     }
 
@@ -135,7 +144,14 @@ class AtsScoringService
         if ($min !== null && $years < $min) {
             $score = $min > 0 ? max(0, ($years / $min) * 100) : 0.0;
 
-            return $base + ['score' => round($score, 2), 'note' => null];
+            return $base + ['score' => round($score, 2), 'note' => 'Candidate does not meet the minimum required experience.'];
+        }
+
+        if ($max !== null && $years > $max) {
+            // Penalize overqualification slightly (up to 30% drop)
+            $excess = $years - $max;
+            $penalty = min(30, ($excess / $max) * 30);
+            return $base + ['score' => round(100.0 - $penalty, 2), 'note' => 'Candidate exceeds the maximum requested experience.'];
         }
 
         return $base + ['score' => 100.0, 'note' => null];

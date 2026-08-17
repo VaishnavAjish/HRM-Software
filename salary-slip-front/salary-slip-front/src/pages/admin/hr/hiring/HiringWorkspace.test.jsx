@@ -26,7 +26,6 @@ vi.mock("../../../../utils/api", () => ({
 
 vi.mock("./RequisitionsTab", () => ({ default: () => <div>Requisitions Content</div> }));
 vi.mock("./RecruitmentDashboardTab", () => ({ default: () => <div>Dashboard Content</div> }));
-vi.mock("./TalentPoolTab", () => ({ default: () => <div>Talent Pool Content</div> }));
 vi.mock("../CandidatePipeline", () => ({ default: () => <div>Candidates Content</div> }));
 vi.mock("./AssessmentTab", () => ({ default: () => <div>Assessment Content</div> }));
 vi.mock("../InterviewManagement", () => ({ default: () => <div>Interview Content</div> }));
@@ -88,19 +87,6 @@ describe("HiringWorkspace approval tabs", () => {
 
     await router.navigate(-1);
     await waitFor(() => expect(screen.getByText("director Content")).toBeInTheDocument());
-  });
-
-  it("shows the Talent Pool tab only with its matching permission", async () => {
-    setup();
-
-    expect(screen.queryByRole("button", { name: "Talent Pool" })).not.toBeInTheDocument();
-
-    state.allowed = new Set(["ui.hr.hiring.talent_pools"]);
-    const router = setup("/admin/hr/hiring?tab=talent-pool");
-
-    expect(screen.getByRole("button", { name: "Talent Pool" })).toBeInTheDocument();
-    expect(screen.getByText("Talent Pool Content")).toBeInTheDocument();
-    await waitFor(() => expect(router.state.location.search).toContain("tab=talent-pool"));
   });
 
   it("falls back safely when a direct-linked review tab is not permitted", async () => {

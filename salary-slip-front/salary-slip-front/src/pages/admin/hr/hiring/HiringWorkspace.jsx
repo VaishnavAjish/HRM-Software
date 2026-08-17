@@ -13,14 +13,12 @@ import { useAuthorization } from "../../../../hooks/useAuthorization";
 import ApprovalReviewTab from "./ApprovalReviewTab";
 import JobPortalTab from "./JobPortalTab";
 import RecruitmentDashboardTab from "./RecruitmentDashboardTab";
-import TalentPoolTab from "./TalentPoolTab";
 import HRManagerTab from "./HRManagerTab";
 
 const TABS = [
   { key: "dashboard", label: "Dashboard" },
   { key: "requisitions", label: "Requisitions" },
   { key: "candidates", label: "Candidates" },
-  { key: "talent-pool", label: "Talent Pool", permissions: ["ui.hr.hiring.talent_pools", "ui.hr.hiring.talent_pool"] },
   { key: "assessment", label: "Assessment" },
   { key: "interview", label: "Interview" },
   { key: "offer", label: "Offer" },
@@ -132,7 +130,6 @@ export default function HiringWorkspace() {
       {tab === "dashboard" && <RecruitmentDashboardTab onNavigate={selectTab} />}
       {tab === "requisitions" && <RequisitionsTab departments={departments} people={people} openRequisitionForm={openRequisitionForm} />}
       {tab === "candidates" && <CandidatePipeline departments={departments} people={people} />}
-      {tab === "talent-pool" && <TalentPoolTab />}
       {tab === "assessment" && <AssessmentTab />}
       {tab === "interview" && <InterviewManagement />}
       {tab === "offer" && <OfferManagement />}

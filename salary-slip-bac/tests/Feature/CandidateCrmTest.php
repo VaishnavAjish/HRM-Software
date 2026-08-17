@@ -7,7 +7,6 @@ use App\Models\Candidate;
 use App\Models\CandidateCommunication;
 use App\Models\CandidateNote;
 use App\Models\CandidateTag;
-use App\Models\TalentPool;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
@@ -63,7 +62,6 @@ class CandidateCrmTest extends TestCase
 
         $this->getJson('/api/hr/candidates/tags')->assertStatus(401);
         $this->getJson("/api/hr/candidates/notes/get/{$candidate->id}")->assertStatus(401);
-        $this->getJson('/api/hr/candidates/pools')->assertStatus(401);
         $this->getJson("/api/hr/candidates/communications/get/{$candidate->id}")->assertStatus(401);
     }
 
@@ -106,42 +104,6 @@ class CandidateCrmTest extends TestCase
 
         $controller->destroyNote($note->id);
         $this->assertCount(0, $controller->notes($candidate->id)->getData()->data);
-    }
-
-    public function test_talent_pool_membership(): void
-    {
-        $controller = new CandidateCrmController();
-        $this->login();
-        $candidate = $this->candidate('alpha');
-
-        $created = $controller->storePool(Request::create('/x', 'POST', ['name' => 'Engineering 2026', 'description' => 'Backend engineers']));
-        $this->assertTrue($created->getData()->status);
-        $pool = TalentPool::where('name', 'Engineering 2026')->first();
-        $this->assertNotNull($pool);
-
-        $controller->syncCandidatePools(Request::create('/x', 'POST', ['pool_ids' => [$pool->id]]), $candidate->id);
-        $this->assertCount(1, $candidate->fresh()->talentPools);
-        $this->assertCount(1, $controller->poolCandidates(Request::create('/x'), $pool->id)->getData()->data);
-
-        $controller->removeCandidateFromPool(Request::create('/x', 'DELETE'), $candidate->id, $pool->id);
-        $this->assertCount(0, $candidate->fresh()->talentPools);
-    }
-
-    public function test_add_candidate_to_pool_does_not_detach_other_pools(): void
-    {
-        $controller = new CandidateCrmController();
-        $actor = $this->login();
-        $candidate = $this->candidate('alpha');
-
-        $first = TalentPool::create(['name' => 'First', 'company_code' => 'alpha', 'created_by' => $actor->id]);
-        $second = TalentPool::create(['name' => 'Second', 'company_code' => 'alpha', 'created_by' => $actor->id]);
-
-        $controller->syncCandidatePools(Request::create('/x', 'POST', ['pool_ids' => [$first->id]]), $candidate->id);
-        $controller->addCandidateToPool(Request::create('/x', 'POST'), $candidate->id, $second->id);
-
-        $poolIds = $candidate->fresh()->talentPools->pluck('id')->all();
-        $this->assertContains($first->id, $poolIds);
-        $this->assertContains($second->id, $poolIds);
     }
 
     public function test_communication_is_logged_and_marked_sent(): void

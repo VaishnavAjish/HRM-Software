@@ -9,14 +9,13 @@ use App\Models\Candidate;
 use App\Models\CandidateCommunication;
 use App\Models\CandidateNote;
 use App\Models\CandidateTag;
-use App\Models\TalentPool;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 
 /**
  * Wave 4 — Candidate CRM: managed tags, the private recruiter note trail,
- * named talent pools, and an outbound communication log.
+ * and an outbound communication log.
  *
  * All reads and writes are admin endpoints gated on `permission:hr.candidate.*`
  * middleware, so candidate-facing tokens can never reach them — recruiter notes
@@ -174,141 +173,6 @@ class CandidateCrmController extends Controller
         return response()->json(['status' => true, 'message' => 'Note deleted']);
     }
 
-    /* ---------------------------------------------------------- talent pools */
-
-    public function pools(Request $request)
-    {
-        $query = TalentPool::withCount('candidates');
-        $this->applyCompanyScope($query, $request);
-        if ($request->search) {
-            $query->where('name', 'like', '%' . $request->search . '%');
-        }
-
-        return response()->json(['status' => true, 'data' => $query->orderBy('name')->get()]);
-    }
-
-    public function storePool(Request $request)
-    {
-        $data = $request->validate([
-            'name' => 'required|string|max:150',
-            'description' => 'nullable|string|max:2000',
-            'color' => 'nullable|string|max:20',
-        ]);
-
-        $context = $this->defaultCompanyContext($request);
-        $pool = TalentPool::create([
-            'name' => $data['name'],
-            'description' => $data['description'] ?? null,
-            'color' => $data['color'] ?? '#0ea5e9',
-            'company_code' => $context['company_code'],
-            'unit' => $context['unit'],
-            'created_by' => auth('api')->id(),
-        ]);
-
-        return response()->json(['status' => true, 'message' => 'Talent pool created', 'data' => $pool], 201);
-    }
-
-    public function updatePool(Request $request, $id)
-    {
-        $pool = TalentPool::find($id);
-        if (!$pool || !$this->companyCodeWithinActorScope($pool->company_code)) {
-            return response()->json(['status' => false, 'message' => 'Talent pool not found'], 404);
-        }
-
-        $data = $request->validate([
-            'name' => 'sometimes|required|string|max:150',
-            'description' => 'nullable|string|max:2000',
-            'color' => 'nullable|string|max:20',
-        ]);
-
-        $pool->update($data);
-
-        return response()->json(['status' => true, 'message' => 'Talent pool updated', 'data' => $pool]);
-    }
-
-    public function destroyPool($id)
-    {
-        $pool = TalentPool::find($id);
-        if (!$pool || !$this->companyCodeWithinActorScope($pool->company_code)) {
-            return response()->json(['status' => false, 'message' => 'Talent pool not found'], 404);
-        }
-
-        $pool->delete();
-
-        return response()->json(['status' => true, 'message' => 'Talent pool deleted']);
-    }
-
-    public function poolCandidates(Request $request, $poolId)
-    {
-        $pool = TalentPool::with('candidates')->find($poolId);
-        if (!$pool || !$this->companyCodeWithinActorScope($pool->company_code)) {
-            return response()->json(['status' => false, 'message' => 'Talent pool not found'], 404);
-        }
-
-        $candidates = $pool->candidates()
-            ->with(['requisition', 'recruiter'])
-            ->orderByDesc('pivot_created_at')
-            ->get();
-
-        return response()->json(['status' => true, 'data' => $candidates]);
-    }
-
-    public function syncCandidatePools(Request $request, $candidateId)
-    {
-        $candidate = $this->loadScopedCandidate($candidateId);
-        if (!$candidate) {
-            return response()->json(['status' => false, 'message' => 'Candidate not found'], 404);
-        }
-
-        $data = $request->validate([
-            'pool_ids' => 'nullable|array',
-            'pool_ids.*' => 'integer',
-        ]);
-
-        $allowed = $this->scopedPoolIds($request);
-        $poolIds = collect($data['pool_ids'] ?? [])
-            ->map(fn ($id) => (int) $id)
-            ->intersect($allowed)
-            ->values();
-
-        $candidate->talentPools()->sync($poolIds);
-
-        return response()->json([
-            'status' => true,
-            'message' => 'Talent pool membership updated',
-            'data' => $candidate->talentPools()->get(),
-        ]);
-    }
-
-    public function addCandidateToPool(Request $request, $candidateId, $poolId)
-    {
-        $candidate = $this->loadScopedCandidate($candidateId);
-        if (!$candidate) {
-            return response()->json(['status' => false, 'message' => 'Candidate not found'], 404);
-        }
-
-        $poolIds = $this->scopedPoolIds($request);
-        if (!in_array((int) $poolId, $poolIds, true)) {
-            return response()->json(['status' => false, 'message' => 'Talent pool not found'], 404);
-        }
-
-        $candidate->talentPools()->syncWithoutDetaching([(int) $poolId]);
-
-        return response()->json(['status' => true, 'message' => 'Candidate added to pool']);
-    }
-
-    public function removeCandidateFromPool(Request $request, $candidateId, $poolId)
-    {
-        $candidate = $this->loadScopedCandidate($candidateId);
-        if (!$candidate) {
-            return response()->json(['status' => false, 'message' => 'Candidate not found'], 404);
-        }
-
-        $candidate->talentPools()->detach((int) $poolId);
-
-        return response()->json(['status' => true, 'message' => 'Candidate removed from pool']);
-    }
-
     /* ------------------------------------------------------ communications */
 
     public function communications($candidateId)
@@ -412,14 +276,6 @@ class CandidateCrmController extends Controller
     private function scopedTagIds(Request $request): array
     {
         $query = CandidateTag::query();
-        $this->applyCompanyScope($query, $request);
-
-        return $query->pluck('id')->map(fn ($id) => (int) $id)->all();
-    }
-
-    private function scopedPoolIds(Request $request): array
-    {
-        $query = TalentPool::query();
         $this->applyCompanyScope($query, $request);
 
         return $query->pluck('id')->map(fn ($id) => (int) $id)->all();

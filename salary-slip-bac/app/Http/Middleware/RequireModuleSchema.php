@@ -52,8 +52,6 @@ class RequireModuleSchema
             'candidate_tags',
             'candidate_candidate_tag',
             'candidate_notes',
-            'talent_pools',
-            'candidate_talent_pool',
             'candidate_communications',
             'training_quizzes',
             'quiz_attempts',

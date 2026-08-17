@@ -1392,7 +1392,7 @@ Route::post('publish-indeed/{id}', [JobRequisitionController::class, 'publishToI
                 Route::post('documents/review/{id}/{decision}', [CandidateDocumentController::class, 'review'])->middleware('permission:hr.candidate.update');
                 Route::delete('documents/delete/{id}', [CandidateDocumentController::class, 'destroy'])->middleware('permission:hr.candidate.update');
 
-                // Wave 4 — Candidate CRM (tags, notes, talent pools, communication).
+                // Wave 4 — Candidate CRM (tags, notes, communication).
                 Route::get('tags', [CandidateCrmController::class, 'tags'])->middleware('permission:hr.candidate.read');
                 Route::get('tags/get/{id}', [CandidateCrmController::class, 'candidateTags'])->middleware('permission:hr.candidate.read');
                 Route::post('tags/store', [CandidateCrmController::class, 'storeTag'])->middleware('permission:hr.candidate.tag');
@@ -1403,15 +1403,6 @@ Route::post('publish-indeed/{id}', [JobRequisitionController::class, 'publishToI
                 Route::get('notes/get/{id}', [CandidateCrmController::class, 'notes'])->middleware('permission:hr.candidate.read');
                 Route::post('notes/store/{id}', [CandidateCrmController::class, 'storeNote'])->middleware('permission:hr.candidate.note');
                 Route::delete('notes/delete/{noteId}', [CandidateCrmController::class, 'destroyNote'])->middleware('permission:hr.candidate.note');
-
-                Route::get('pools', [CandidateCrmController::class, 'pools'])->middleware('permission:hr.candidate.read');
-                Route::get('pools/get/{poolId}', [CandidateCrmController::class, 'poolCandidates'])->middleware('permission:hr.candidate.read');
-                Route::post('pools/store', [CandidateCrmController::class, 'storePool'])->middleware('permission:hr.candidate.pool');
-                Route::put('pools/update/{id}', [CandidateCrmController::class, 'updatePool'])->middleware('permission:hr.candidate.pool');
-                Route::delete('pools/delete/{id}', [CandidateCrmController::class, 'destroyPool'])->middleware('permission:hr.candidate.pool');
-                Route::post('pools/sync/{id}', [CandidateCrmController::class, 'syncCandidatePools'])->middleware('permission:hr.candidate.pool');
-                Route::post('pools/add/{id}/{poolId}', [CandidateCrmController::class, 'addCandidateToPool'])->middleware('permission:hr.candidate.pool');
-                Route::delete('pools/remove/{id}/{poolId}', [CandidateCrmController::class, 'removeCandidateFromPool'])->middleware('permission:hr.candidate.pool');
 
                 Route::get('communications/get/{id}', [CandidateCrmController::class, 'communications'])->middleware('permission:hr.candidate.read');
                 Route::post('communications/store/{id}', [CandidateCrmController::class, 'storeCommunication'])->middleware('permission:hr.candidate.communication');

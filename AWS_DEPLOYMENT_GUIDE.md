@@ -213,19 +213,23 @@ To update your live production site with new code changes from GitHub, copy and 
 
 ```bash
 #!/bin/bash
-set -e
+set -euo pipefail
 
 echo "🚀 Starting 1-Click Production Update..."
 
-# 1. Clone fresh codebase
-sudo rm -rf ~/HRM-Software
-cd ~ && git clone --depth 1 https://github.com/VaishnavAjish/HRM-Software.git
+# 1. Clone into a timestamped build dir, never a fixed name — a fixed
+#    ~/HRM-Software directory means a concurrent/failed run's rm -rf can
+#    delete a clone that's still in progress.
+BUILD_DIR="$HOME/HRM-Software-build-$(date +'%s')"
+git clone --depth 1 https://github.com/VaishnavAjish/HRM-Software.git "$BUILD_DIR"
 
-# 2. Sync backend application files
+# 2. Sync backend application files (app/routes/database/config — not
+#    vendor, dependencies aren't part of this update path)
 sudo chown -R ubuntu:ubuntu ~/salary-slip-bac/
-cp -r ~/HRM-Software/salary-slip-bac/app ~/salary-slip-bac/
-cp -r ~/HRM-Software/salary-slip-bac/routes ~/salary-slip-bac/
-cp -r ~/HRM-Software/salary-slip-bac/database ~/salary-slip-bac/
+cp -r "$BUILD_DIR/salary-slip-bac/app" ~/salary-slip-bac/
+cp -r "$BUILD_DIR/salary-slip-bac/routes" ~/salary-slip-bac/
+cp -r "$BUILD_DIR/salary-slip-bac/database" ~/salary-slip-bac/
+cp -r "$BUILD_DIR/salary-slip-bac/config" ~/salary-slip-bac/
 
 # 3. Clear Laravel caches, run migrations, then rebuild the caches.
 #    Clearing without rebuilding leaves the app running uncached in
@@ -236,8 +240,8 @@ cp -r ~/HRM-Software/salary-slip-bac/database ~/salary-slip-bac/
 cd ~/salary-slip-bac
 php artisan config:clear
 php artisan route:clear
-php artisan cache:clear
 php artisan view:clear
+php artisan cache:clear
 php artisan migrate --force
 php artisan config:cache
 php artisan route:cache
@@ -249,11 +253,20 @@ php artisan queue:restart || true
 
 # 5. Deploy prebuilt frontend assets
 sudo rm -rf /var/www/hrflow/*
-sudo cp -r ~/HRM-Software/salary-slip-front/salary-slip-front/main/* /var/www/hrflow/
+sudo cp -r "$BUILD_DIR/salary-slip-front/salary-slip-front/main/"* /var/www/hrflow/
+sudo chown -R www-data:www-data /var/www/hrflow
+sudo chmod -R 755 /var/www/hrflow
 
-# 6. Reload web server & cleanup
-rm -rf ~/HRM-Software
-sudo systemctl reload nginx
+# 6. Redeploy the nginx config. This box loads /etc/nginx/sites-enabled/default
+#    (confirmed 2026-08-17 via `nginx -T`) — write only there. A duplicate
+#    copy also existed at /etc/nginx/conf.d/hrflow.conf; that was removed as
+#    a one-time cleanup and must NOT be recreated, or nginx will again log
+#    "conflicting server name" and silently ignore one of the two copies.
+sudo cp "$BUILD_DIR/hrflow-nginx-ssl.conf" /etc/nginx/sites-available/default
+
+# 7. Cleanup & reload
+rm -rf "$BUILD_DIR"
+sudo nginx -t && sudo systemctl reload nginx
 
 echo "🎉 PRODUCTION DEPLOYMENT COMPLETED SUCCESSFULLY!"
 ```

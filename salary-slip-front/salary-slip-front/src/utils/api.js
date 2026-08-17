@@ -2266,31 +2266,6 @@ export const hrApi = {
     return apiRequest(`/hr/candidates/communications/store/${candidateId}`, { method: "POST", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(payload) });
   },
 
-  // Talent pools (Wave-4 CRM add-on) — CandidateCrmController's pools/* routes.
-  getTalentPools(accessToken, tokenType = "Bearer", filters = {}) {
-    return apiRequest(`/hr/candidates/pools${hrQuery(filters)}`, { headers: hrAuthHeaders(accessToken, tokenType) });
-  },
-  getPoolCandidates(poolId, accessToken, tokenType = "Bearer") {
-    return apiRequest(`/hr/candidates/pools/get/${poolId}`, { headers: hrAuthHeaders(accessToken, tokenType) });
-  },
-  storeTalentPool(payload, accessToken, tokenType = "Bearer") {
-    return apiRequest("/hr/candidates/pools/store", { method: "POST", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(payload) });
-  },
-  updateTalentPool(id, payload, accessToken, tokenType = "Bearer") {
-    return apiRequest(`/hr/candidates/pools/update/${id}`, { method: "PUT", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(payload) });
-  },
-  deleteTalentPool(id, accessToken, tokenType = "Bearer") {
-    return apiRequest(`/hr/candidates/pools/delete/${id}`, { method: "DELETE", headers: hrAuthHeaders(accessToken, tokenType) });
-  },
-  addCandidateToPool(candidateId, poolId, accessToken, tokenType = "Bearer") {
-    return apiRequest(`/hr/candidates/pools/add/${candidateId}/${poolId}`, { method: "POST", headers: hrAuthHeaders(accessToken, tokenType) });
-  },
-  removeCandidateFromPool(candidateId, poolId, accessToken, tokenType = "Bearer") {
-    return apiRequest(`/hr/candidates/pools/remove/${candidateId}/${poolId}`, { method: "DELETE", headers: hrAuthHeaders(accessToken, tokenType) });
-  },
-  syncCandidatePools(candidateId, poolIds, accessToken, tokenType = "Bearer") {
-    return apiRequest(`/hr/candidates/pools/sync/${candidateId}`, { method: "POST", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify({ pool_ids: poolIds }) });
-  },
 };
 
 /*

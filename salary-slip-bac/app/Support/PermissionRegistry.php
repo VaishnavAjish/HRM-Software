@@ -669,12 +669,6 @@ class PermissionRegistry
             'description' => 'Read and write the private recruiter note trail on a candidate.',
             'implies' => ['hr.candidate.note'],
         ],
-        'ui.hr.hiring.candidates.talent_pool' => [
-            'type' => self::TYPE_FEATURE, 'label' => 'Talent Pool', 'order' => 43,
-            'parent' => 'ui.hr.hiring.candidates',
-            'description' => 'Create and manage talent pools and their candidate membership.',
-            'implies' => ['hr.candidate.pool'],
-        ],
         'ui.hr.hiring.candidates.communication' => [
             'type' => self::TYPE_FEATURE, 'label' => 'Candidate Communication', 'order' => 44,
             'parent' => 'ui.hr.hiring.candidates', 'sensitivity' => self::SENSITIVITY_SENSITIVE,

@@ -10,7 +10,6 @@ import {
   useSensors,
 } from "@dnd-kit/core";
 import {
-  Plus,
   Briefcase,
   GraduationCap,
   ArrowRight,
@@ -18,11 +17,11 @@ import {
   PauseCircle,
   Eye,
   Lock,
-  ChevronDown,
+  Folder,
+  ArrowLeft,
 } from "lucide-react";
 import Button from "../../../components/ui/Button";
 import Badge from "../../../components/ui/Badge";
-import Modal from "../../../components/ui/Modal";
 import Pagination from "../../../components/ui/Pagination";
 import { SkeletonTable } from "../../../components/ui/Skeleton";
 import { useAuth } from "../../../context/AuthContext";
@@ -37,9 +36,6 @@ import {
   MAIN_STAGES, TERMINAL_STAGES, ALL_COLUMNS, STAGE_INDEX, STAGE_GROUPS,
   TAB_STAGE_KEYS, stageLabel, stageColor, nextMainStage, promptRejectionReason,
 } from "./hiring/stageMeta";
-
-const inputClass =
-  "w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500";
 
 /**
  * The Candidates tab is the master roster — it lists everyone, at any
@@ -56,12 +52,6 @@ const canAct = (stage) => CANDIDATES_TAB_STAGES.includes(stage);
 const PRIORITY_VARIANT  = { high: "red", medium: "yellow", low: "gray" };
 const PRIORITY_DOT      = { high: "bg-red-500", medium: "bg-yellow-400", low: "bg-gray-400" };
 
-const EMPTY_FORM = {
-  requisition_id: "", name: "", email: "", phone: "", experience_years: "",
-  current_company: "", current_designation: "", skills: "", source: "other",
-  priority: "medium", notes: "",
-};
-
 /* ─────────────────── Root component ─────────────────── */
 
 export default function CandidatePipeline({ people = [] }) {
@@ -71,14 +61,11 @@ export default function CandidatePipeline({ people = [] }) {
   /** "list" is the default — scales to hundreds of candidates without loading
    *  every stage's full contents up front; "board" is the visual Kanban and
    *  "compact" is a denser single-line list, both opt-in. */
-  const [view,            setView]            = useState("list");
+  const [view]                                = useState("list");
 
   const [columns,        setColumns]        = useState({});
   const [loading,        setLoading]         = useState(true);
   const [requisitions,   setRequisitions]    = useState([]);
-  const [addOpen,        setAddOpen]         = useState(false);
-  const [form,           setForm]            = useState(EMPTY_FORM);
-  const [saving,         setSaving]          = useState(false);
   const [activeCard,     setActiveCard]      = useState(null); // dragging ghost
   const [detailCandidate, setDetailCandidate] = useState(null); // drawer target
   const [detailLoading,  setDetailLoading]   = useState(false);
@@ -149,7 +136,7 @@ export default function CandidatePipeline({ people = [] }) {
     if (view === "list") loadList();
   }, [view, loadList]);
 
-  /* ── requisitions (needed by both views' filters + the Add Candidate form) ── */
+  /* ── requisitions (needed by both views' filters) ── */
   useEffect(() => {
     if (!user?.accessToken) return;
     hrApi
@@ -259,31 +246,6 @@ export default function CandidatePipeline({ people = [] }) {
     }
   };
 
-  /* ── add candidate ── */
-  const saveCandidate = async () => {
-    if (!form.name.trim()) { toast.error("Candidate name is required"); return; }
-    setSaving(true);
-    try {
-      const payload = {
-        ...form,
-        requisition_id:   form.requisition_id || null,
-        experience_years: form.experience_years || null,
-        skills: form.skills ? form.skills.split(",").map((s) => s.trim()).filter(Boolean) : [],
-      };
-      const res = await hrApi.storeCandidate(payload, user?.accessToken, user?.tokenType);
-      if (res.status) {
-        toast.success("Candidate added");
-        setAddOpen(false);
-        setForm(EMPTY_FORM);
-        reload();
-      }
-    } catch (err) {
-      toast.error(err.message || "Failed to add candidate");
-    } finally {
-      setSaving(false);
-    }
-  };
-
   /* ── delete candidate ── */
   const deleteCandidate = async (id) => {
     if (!window.confirm("Delete this candidate?")) return;
@@ -359,7 +321,6 @@ export default function CandidatePipeline({ people = [] }) {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Candidates</h2>
-        <Button icon={<Plus size={16} />} onClick={() => setAddOpen(true)}>Add Candidate</Button>
       </div>
 
       <HiringFilterBar
@@ -450,51 +411,6 @@ export default function CandidatePipeline({ people = [] }) {
         </DndContext>
       )}
 
-      {/* ── Add Candidate Modal ── */}
-      <Modal
-        isOpen={addOpen}
-        onClose={() => setAddOpen(false)}
-        title="Add Candidate"
-        size="lg"
-        footer={
-          <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setAddOpen(false)}>Cancel</Button>
-            <Button onClick={saveCandidate} disabled={saving}>{saving ? "Saving..." : "Add Candidate"}</Button>
-          </div>
-        }
-      >
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Field label="Name" required><input className={inputClass} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
-          <Field label="Requisition">
-            <select className={inputClass} value={form.requisition_id} onChange={(e) => setForm({ ...form, requisition_id: e.target.value })}>
-              <option value="">— None —</option>
-              {requisitions.map((r) => <option key={r.id} value={r.id}>{r.title}</option>)}
-            </select>
-          </Field>
-          <Field label="Email"><input type="email" className={inputClass} value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></Field>
-          <Field label="Phone"><input className={inputClass} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></Field>
-          <Field label="Experience (yrs)"><input type="number" step="0.5" className={inputClass} value={form.experience_years} onChange={(e) => setForm({ ...form, experience_years: e.target.value })} /></Field>
-          <Field label="Priority">
-            <select className={inputClass} value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>
-              <option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option>
-            </select>
-          </Field>
-          <Field label="Current Company"><input className={inputClass} value={form.current_company} onChange={(e) => setForm({ ...form, current_company: e.target.value })} /></Field>
-          <Field label="Current Designation"><input className={inputClass} value={form.current_designation} onChange={(e) => setForm({ ...form, current_designation: e.target.value })} /></Field>
-          <Field label="Source">
-            <select className={inputClass} value={form.source} onChange={(e) => setForm({ ...form, source: e.target.value })}>
-              <option value="referral">Referral</option>
-              <option value="job_portal">Job Portal</option>
-              <option value="linkedin">LinkedIn</option>
-              <option value="walk_in">Walk-in</option>
-              <option value="other">Other</option>
-            </select>
-          </Field>
-          <Field label="Skills (comma separated)"><input className={inputClass} value={form.skills} onChange={(e) => setForm({ ...form, skills: e.target.value })} /></Field>
-          <Field label="Notes" full><textarea rows={2} className={inputClass} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></Field>
-        </div>
-      </Modal>
-
       {/* ── Candidate profile drawer ── */}
       <CandidateDrawer
         candidate={detailCandidate}
@@ -519,7 +435,7 @@ export function CandidateListView({
   onOpenDetail, onAdvance, selectedIds = [], onToggleSelected, onSelectAll,
 }) {
   const allSelected = candidates.length > 0 && candidates.every((c) => selectedIds.includes(c.id));
-  const [collapsedGroups, setCollapsedGroups] = useState({});
+  const [selectedFolder, setSelectedFolder] = useState(null);
 
   const groupedCandidates = useMemo(() => {
     const groups = {};
@@ -537,8 +453,6 @@ export function CandidateListView({
     return Object.values(groups).sort((a, b) => a.title.localeCompare(b.title));
   }, [candidates]);
 
-  const toggleGroup = (id) => setCollapsedGroups(prev => ({ ...prev, [id]: !prev[id] }));
-
   return (
     <div className="space-y-4">
       {loading ? (
@@ -551,47 +465,43 @@ export function CandidateListView({
         </div>
       ) : (
         <div className="space-y-4">
-          {groupedCandidates.map((group) => {
-            const isCollapsed = collapsedGroups[group.id];
-            
-            return (
-              <div key={group.id} className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm hover:shadow-md transition-shadow duration-200 overflow-hidden">
-                {/* Accordion Header */}
+          {!selectedFolder ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {groupedCandidates.map((group) => (
                 <div 
-                  className="px-5 py-4 flex items-center justify-between cursor-pointer bg-gradient-to-r from-gray-50 to-white dark:from-gray-800/80 dark:to-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors border-b border-gray-100 dark:border-gray-700"
-                  onClick={() => toggleGroup(group.id)}
+                  key={group.id} 
+                  className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm hover:shadow-md hover:border-brand-300 dark:hover:border-brand-700 p-6 cursor-pointer flex flex-col items-center justify-center gap-3 transition-all hover:-translate-y-1"
+                  onClick={() => setSelectedFolder(group.id)}
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-900/30 border border-brand-100 dark:border-brand-800 flex items-center justify-center text-brand-600 dark:text-brand-400 shadow-sm">
-                      <Briefcase size={16} strokeWidth={2.5} />
-                    </div>
-                    <div>
-                      <h3 className="text-[15px] font-bold text-gray-900 dark:text-white leading-tight">{group.title}</h3>
-                      <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mt-0.5">{group.candidates.length} Candidate{group.candidates.length !== 1 ? 's' : ''}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <div className="hidden sm:flex -space-x-2">
-                      {group.candidates.slice(0, 5).map((c, i) => (
-                        <div key={c.id} className="w-7 h-7 rounded-full border-2 border-white dark:border-gray-800 bg-gradient-to-br from-brand-400 to-indigo-500 flex items-center justify-center text-[10px] font-bold text-white shadow-sm" style={{ zIndex: 10 - i }}>
-                          {c.name?.[0]?.toUpperCase() ?? "?"}
-                        </div>
-                      ))}
-                      {group.candidates.length > 5 && (
-                        <div className="w-7 h-7 rounded-full border-2 border-white dark:border-gray-800 bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-[10px] font-bold text-gray-600 dark:text-gray-300 z-0">
-                          +{group.candidates.length - 5}
-                        </div>
-                      )}
-                    </div>
-                    <button className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
-                      <ChevronDown size={18} className={`transition-transform duration-300 ${isCollapsed ? '-rotate-90' : ''}`} />
-                    </button>
+                  <Folder size={48} className="text-brand-500 fill-brand-50 dark:fill-brand-900/20" strokeWidth={1} />
+                  <div className="text-center">
+                    <h3 className="font-bold text-gray-900 dark:text-white leading-tight">{group.title}</h3>
+                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mt-1">{group.candidates.length} Candidate{group.candidates.length !== 1 ? 's' : ''}</p>
                   </div>
                 </div>
-
-                {/* Accordion Body */}
-                <div className={`transition-all duration-300 ease-in-out origin-top ${isCollapsed ? 'max-h-0 opacity-0 hidden' : 'max-h-[3000px] opacity-100 block'}`}>
-                  {compact ? (
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {(() => {
+                const group = groupedCandidates.find(g => g.id === selectedFolder);
+                if (!group) {
+                  setSelectedFolder(null);
+                  return null;
+                }
+                return (
+                  <>
+                    <div className="flex items-center gap-3 mb-2">
+                      <Button variant="secondary" onClick={() => setSelectedFolder(null)}>
+                        <ArrowLeft size={16} className="mr-1.5" /> Back
+                      </Button>
+                      <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                        <Folder size={20} className="text-brand-500 fill-brand-50 dark:fill-brand-900/20" />
+                        {group.title}
+                      </h2>
+                    </div>
+                    <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
+                      {compact ? (
                     <div className="divide-y divide-gray-50 dark:divide-gray-700/50 bg-white dark:bg-gray-800">
                       {group.candidates.map((c) => {
                         const isTerminal = ["rejected", "on_hold"].includes(c.stage);
@@ -706,12 +616,14 @@ export function CandidateListView({
                           })}
                         </tbody>
                       </table>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+                  </>
+                );
+              })()}
+            </div>
+          )}
         </div>
       )}
       
@@ -934,15 +846,3 @@ function MiniStepper({ currentIdx, total }) {
   );
 }
 
-/* ─────────────────── Tiny helpers ─────────────────── */
-
-function Field({ label, required, full, children }) {
-  return (
-    <div className={full ? "sm:col-span-2" : ""}>
-      <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">
-        {label}{required && <span className="text-red-500"> *</span>}
-      </label>
-      {children}
-    </div>
-  );
-}
