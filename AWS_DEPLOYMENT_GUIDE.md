@@ -129,8 +129,13 @@ sudo systemctl start php8.3-fpm
 
 ### 3.5. PHP-FPM Pool Configuration (`/etc/php/8.3/fpm/pool.d/www.conf`)
 
-Sized for this instance's ~900MB RAM (SQLite has no separate DB process to budget around).
-Re-apply these if the pool config is ever regenerated (fresh instance, package reinstall):
+Sized for this instance's ~900MB RAM (SQLite has no separate DB process to budget around; each
+idle worker runs ~40-55MB RSS). Started at `pm.max_children = 6`, raised to `12` on 2026-08-17
+after the Employee Master page (which fires 4 parallel `limit=1000` requests per load) timed out
+under worker exhaustion — the underlying queries were fast (<35ms), the pool just had too few
+workers to serve normal concurrent staff usage. Verified safe with a 24-concurrent-request burst
+(peak FPM memory 74MB, ~400MB RAM stayed available). Re-apply these if the pool config is ever
+regenerated (fresh instance, package reinstall):
 
 ```bash
 sudo sed -i \
@@ -138,14 +143,20 @@ sudo sed -i \
   -e 's/^group = .*/group = ubuntu/' \
   -e 's/^listen.owner = .*/listen.owner = ubuntu/' \
   -e 's/^listen.group = .*/listen.group = ubuntu/' \
-  -e 's/^pm.max_children = .*/pm.max_children = 6/' \
-  -e 's/^pm.start_servers = .*/pm.start_servers = 2/' \
-  -e 's/^pm.min_spare_servers = .*/pm.min_spare_servers = 1/' \
-  -e 's/^pm.max_spare_servers = .*/pm.max_spare_servers = 3/' \
+  -e 's/^pm.max_children = .*/pm.max_children = 12/' \
+  -e 's/^pm.start_servers = .*/pm.start_servers = 4/' \
+  -e 's/^pm.min_spare_servers = .*/pm.min_spare_servers = 2/' \
+  -e 's/^pm.max_spare_servers = .*/pm.max_spare_servers = 6/' \
   /etc/php/8.3/fpm/pool.d/www.conf
 grep -q "^pm.max_requests" /etc/php/8.3/fpm/pool.d/www.conf || echo "pm.max_requests = 500" | sudo tee -a /etc/php/8.3/fpm/pool.d/www.conf
 sudo systemctl restart php8.3-fpm
 ```
+
+**Follow-up worth doing, not done tonight**: `EmployeeMasterTable.jsx` fires 4 separate
+`limit=1000` requests (trial/appointment/pending/employee status filters) in parallel on every
+page load via `Promise.all`. Combining these into one backend endpoint that returns all four
+groups from a single query would cut this page's worker consumption from 4 to 1 and reduce load
+on the rest of the site.
 
 **`listen.owner`/`listen.group` must match whichever user nginx's worker processes actually run
 as** (`ps -ef | grep "nginx: worker"` — confirmed `ubuntu` on this box, not the apt default
