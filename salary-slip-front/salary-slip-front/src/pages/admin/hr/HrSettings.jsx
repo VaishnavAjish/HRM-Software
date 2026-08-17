@@ -355,7 +355,7 @@ export default function HrSettings() {
           ? { ...t, name: tplName.trim(), category: tplCategory, vars: tplVars, body: tplBody, updated: "Just now" }
           : t
       )));
-      toast.success("Letter template updated!");
+      toast.success("Mail template updated!");
     } else {
       const newTpl = {
         id: Date.now().toString(),
@@ -366,7 +366,7 @@ export default function HrSettings() {
         body: tplBody
       };
       setLetterTemplates([...letterTemplates, newTpl]);
-      toast.success("Letter template created!");
+      toast.success("Mail template created!");
     }
 
     setTplModalOpen(false);
@@ -494,7 +494,7 @@ export default function HrSettings() {
       <div className="flex items-center gap-1 overflow-x-auto border-b border-gray-200 dark:border-gray-800 pb-px">
         {[
           { id: "documents", label: `Document Verification (${docTypes.length})`, icon: FileCheck },
-          { id: "templates", label: `Letter Templates (${letterTemplates.length})`, icon: FileText },
+          { id: "templates", label: `Mail Templates (${letterTemplates.length})`, icon: FileText },
           { id: "integrations", label: "Job Boards (Indeed)", icon: Globe }
         ].map((t) => {
           const IconComponent = t.icon;
@@ -566,7 +566,7 @@ export default function HrSettings() {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-base font-bold text-gray-900 dark:text-white">Official Letter Templates</h3>
+                <h3 className="text-base font-bold text-gray-900 dark:text-white">Official Mail Templates</h3>
                 <p className="text-xs text-gray-400">Manage dynamic variables and document templates for hiring, onboarding, and exit</p>
               </div>
               <Button size="sm" icon={<Plus size={14} />} onClick={openCreateTplModal}>Create Template</Button>
@@ -756,7 +756,7 @@ export default function HrSettings() {
       <Modal
         isOpen={tplModalOpen}
         onClose={() => setTplModalOpen(false)}
-        title={editingTplId ? "Edit Letter Template" : "Create Official Letter Template"}
+        title={editingTplId ? "Edit Letter Template" : "Create Official Mail Template"}
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setTplModalOpen(false)}>Cancel</Button>
@@ -800,7 +800,7 @@ export default function HrSettings() {
             </div>
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">Letter Body Content</label>
+            <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">Mail Body Content</label>
             <textarea
               rows={6}
               placeholder="Enter letter template text with dynamic placeholders..."

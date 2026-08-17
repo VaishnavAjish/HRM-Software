@@ -7,7 +7,7 @@ import toast from "react-hot-toast";
 import { CollapsibleSection } from "../../../../components/ui/Drawer";
 import Badge from "../../../../components/ui/Badge";
 import Button from "../../../../components/ui/Button";
-import { hrApi } from "../../../../utils/api";
+import { hrApi, rbacApi } from "../../../../utils/api";
 import { baseUrl } from "../../../../utils/url";
 import { useAuth } from "../../../../context/AuthContext";
 import { useAuthorization } from "../../../../hooks/useAuthorization";
@@ -61,6 +61,17 @@ export default function CandidateCrmSections({ candidate, loading }) {
   const [comms, setComms] = useState([]);
   const [commDraft, setCommDraft] = useState({ type: "email", subject: "", body: "" });
   const [commBusy, setCommBusy] = useState(false);
+
+  useEffect(() => {
+    if (commDraft.type === "email" && !commDraft.body && mailTemplates.length > 0) {
+      const msgTpl = mailTemplates.find(t => t.id === "message");
+      if (msgTpl) {
+        let text = msgTpl.body;
+        text = text.replace(/{candidate_name}/g, candidate?.name || "");
+        setCommDraft(d => ({ ...d, body: text, subject: msgTpl.name || "Update regarding your application" }));
+      }
+    }
+  }, [commDraft.type, mailTemplates, candidate]);
 
   const canDocs = can("hr.candidate.update");
   const [docs, setDocs] = useState([]);

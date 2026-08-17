@@ -215,14 +215,39 @@ export function AuthProvider({ children }) {
       }
 
       try {
-        const data = await authApi.getProfile(
-          storedUser.accessToken,
-          storedUser.tokenType || "bearer",
-        );
+        const [profileResult, enterpriseResult] = await Promise.allSettled([
+          authApi.getProfile(
+            storedUser.accessToken,
+            storedUser.tokenType || "bearer",
+          ),
+          authorizationApi.me(
+            storedUser.accessToken,
+            storedUser.tokenType || "bearer",
+          ),
+        ]);
+
+        const data = profileResult.status === "fulfilled" ? profileResult.value : null;
+        if (!data) throw new Error("Profile load failed");
+
         const apiUser =
           data?.data || data?.user || data?.employee || data?.profile || data;
         let restoredUser = buildAuthUser(apiUser, storedUser);
-        restoredUser = await loadPermissionsForUser(restoredUser);
+
+        if (enterpriseResult.status === "fulfilled" && enterpriseResult.value?.success) {
+          const enterprise = enterpriseResult.value;
+          const decisions = enterprise.data?.permissions || {};
+          restoredUser = {
+            ...restoredUser,
+            role: portalRoleFor(restoredUser, enterprise.data),
+            authorizationStatus: "loaded",
+            authorization: enterprise.data,
+            permissions: Object.fromEntries(
+              Object.entries(decisions).map(([code, decision]) => [code, decision.allowed ? "read_write" : "no_access"])
+            ),
+          };
+        } else {
+          restoredUser = await loadPermissionsForUser(restoredUser);
+        }
 
         if (!ignore) {
           setUser(restoredUser);
