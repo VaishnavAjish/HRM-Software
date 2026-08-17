@@ -2228,6 +2228,44 @@ export const hrApi = {
     return apiRequest(`/hr/candidates/documents/review/${id}/${decision}`, { method: "POST", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify({ remarks }) });
   },
 
+  // Candidate tags, notes, and communications (Wave-4 CRM) —
+  // CandidateCrmController's tags/*, notes/*, communications/* routes.
+  getCandidateTags(accessToken, tokenType = "Bearer", filters = {}) {
+    return apiRequest(`/hr/candidates/tags${hrQuery(filters)}`, { headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+  getCandidateTagsOf(candidateId, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/candidates/tags/get/${candidateId}`, { headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+  storeCandidateTag(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest("/hr/candidates/tags/store", { method: "POST", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(payload) });
+  },
+  updateCandidateTag(id, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/candidates/tags/update/${id}`, { method: "PUT", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(payload) });
+  },
+  deleteCandidateTag(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/candidates/tags/delete/${id}`, { method: "DELETE", headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+  syncCandidateTags(candidateId, tagIds, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/candidates/tags/sync/${candidateId}`, { method: "POST", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify({ tag_ids: tagIds }) });
+  },
+
+  getCandidateNotes(candidateId, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/candidates/notes/get/${candidateId}`, { headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+  storeCandidateNote(candidateId, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/candidates/notes/store/${candidateId}`, { method: "POST", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(payload) });
+  },
+  deleteCandidateNote(noteId, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/candidates/notes/delete/${noteId}`, { method: "DELETE", headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+
+  getCandidateCommunications(candidateId, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/candidates/communications/get/${candidateId}`, { headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+  storeCandidateCommunication(candidateId, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/candidates/communications/store/${candidateId}`, { method: "POST", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(payload) });
+  },
+
   // Talent pools (Wave-4 CRM add-on) — CandidateCrmController's pools/* routes.
   getTalentPools(accessToken, tokenType = "Bearer", filters = {}) {
     return apiRequest(`/hr/candidates/pools${hrQuery(filters)}`, { headers: hrAuthHeaders(accessToken, tokenType) });
@@ -2705,7 +2743,15 @@ export const departmentApi = {
 
 export const publicJobApi = {
   getJobs(params = {}) {
-    const query = new URLSearchParams(params).toString();
+    // `new URLSearchParams({ x: undefined })` stringifies to `x=undefined`,
+    // not an omitted key — every caller here builds its params with
+    // `value || undefined` for "no filter", so an untouched filter was
+    // silently serialized as the literal string "undefined" and matched
+    // against it server-side, filtering out every real job.
+    const cleaned = Object.fromEntries(
+      Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== "")
+    );
+    const query = new URLSearchParams(cleaned).toString();
     return apiRequest(`/public/jobs${query ? `?${query}` : ""}`);
   },
   getJob(slug) {
@@ -2719,6 +2765,9 @@ export const candidateApi = {
   },
   verifyEmail(payload) {
     return apiRequest("/candidate/auth/verify-email", { method: "POST", body: JSON.stringify(payload) });
+  },
+  resendVerification(payload) {
+    return apiRequest("/candidate/auth/resend-verification", { method: "POST", body: JSON.stringify(payload) });
   },
   login(payload) {
     return apiRequest("/candidate/auth/login", { method: "POST", body: JSON.stringify(payload) });
@@ -2750,6 +2799,49 @@ export const candidateApi = {
   },
   getApplication(id, token) {
     return apiRequest(`/candidate/applications/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+  },
+
+  getSavedJobs(token) {
+    return apiRequest("/candidate/saved-jobs", { headers: { Authorization: `Bearer ${token}` } });
+  },
+  saveJob(slug, token) {
+    return apiRequest(`/candidate/jobs/${slug}/save`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+  },
+  unsaveJob(slug, token) {
+    return apiRequest(`/candidate/jobs/${slug}/save`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+  },
+
+  getInterviews(token) {
+    return apiRequest("/candidate/interviews", { headers: { Authorization: `Bearer ${token}` } });
+  },
+  getInterview(id, token) {
+    return apiRequest(`/candidate/interviews/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+  },
+
+  getExperiences(token) {
+    return apiRequest("/candidate/experiences", { headers: { Authorization: `Bearer ${token}` } });
+  },
+  createExperience(payload, token) {
+    return apiRequest("/candidate/experiences", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify(payload) });
+  },
+  updateExperience(id, payload, token) {
+    return apiRequest(`/candidate/experiences/${id}`, { method: "PUT", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify(payload) });
+  },
+  deleteExperience(id, token) {
+    return apiRequest(`/candidate/experiences/${id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+  },
+
+  getEducations(token) {
+    return apiRequest("/candidate/educations", { headers: { Authorization: `Bearer ${token}` } });
+  },
+  createEducation(payload, token) {
+    return apiRequest("/candidate/educations", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify(payload) });
+  },
+  updateEducation(id, payload, token) {
+    return apiRequest(`/candidate/educations/${id}`, { method: "PUT", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify(payload) });
+  },
+  deleteEducation(id, token) {
+    return apiRequest(`/candidate/educations/${id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
   },
 };
 

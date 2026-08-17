@@ -125,14 +125,17 @@ class CandidateApplicationController extends Controller
         $account = $request->user();
         $candidate = Candidate::where('candidate_account_id', $account->id)
             ->where('id', $id)
-            ->with(['requisition:id,title,company_code,unit,department_id', 'requisition.department:id,name'])
+            ->with(['requisition:id,title,company_code,unit,department_id', 'requisition.department:id,name', 'stageHistory'])
             ->first();
 
         if (! $candidate) {
             return response()->json(['status' => false, 'message' => 'Application not found'], 404);
         }
 
-        return response()->json(['status' => true, 'data' => $this->candidateSafeApplication($candidate)]);
+        return response()->json(['status' => true, 'data' => [
+            ...$this->candidateSafeApplication($candidate),
+            'timeline' => $this->candidateSafeTimeline($candidate),
+        ]]);
     }
 
     public function downloadResume(Request $request, $id)
@@ -149,33 +152,65 @@ class CandidateApplicationController extends Controller
         return Storage::disk('local')->download($candidate->resume_path, $candidate->resume_original_name ?? 'resume.pdf');
     }
 
+    private const STAGE_LABELS = [
+        'applied' => 'Submitted',
+        'screening' => 'Under Review',
+        'shortlisted' => 'Under Review',
+        'on_hold' => 'Under Review',
+        'assessment' => 'Assessment',
+        'interview' => 'Interview',
+        'selected' => 'Offer',
+        'offer_sent' => 'Offer',
+        'offer_accepted' => 'Hired',
+        'rejected' => 'Closed',
+    ];
+
     private function candidateSafeApplication(Candidate $candidate): array
     {
-        $stageMap = [
-            'applied' => 'Submitted',
-            'screening' => 'Under Review',
-            'shortlisted' => 'Under Review',
-            'on_hold' => 'Under Review',
-            'assessment' => 'Assessment',
-            'interview' => 'Interview',
-            'selected' => 'Offer',
-            'offer_sent' => 'Offer',
-            'offer_accepted' => 'Hired',
-            'rejected' => 'Closed',
-        ];
-
         return [
             'id' => $candidate->id,
             'requisition_id' => $candidate->requisition_id,
             'job_title' => $candidate->requisition?->title ?? 'Position',
             'department_name' => $candidate->requisition?->department?->name ?? null,
             'company_code' => $candidate->company_code,
-            'status_label' => $stageMap[$candidate->stage] ?? 'Under Review',
+            'status_label' => self::STAGE_LABELS[$candidate->stage] ?? 'Under Review',
             'applied_at' => $candidate->created_at->toIso8601String(),
             'resume_name' => $candidate->resume_original_name,
             'experience_years' => $candidate->experience_years,
             'current_company' => $candidate->current_company,
             'current_designation' => $candidate->current_designation,
         ];
+    }
+
+    /**
+     * Candidate-safe progress timeline — real transitions from
+     * `candidate_stage_history`, collapsed to the same public-facing labels
+     * `candidateSafeApplication()` uses so a "screening -> shortlisted" move
+     * (an internal distinction) doesn't appear as two identical "Under
+     * Review" timeline entries. `notes`/`changed_by` are never exposed —
+     * those carry recruiter commentary and internal ranking context.
+     */
+    private function candidateSafeTimeline(Candidate $candidate): array
+    {
+        $timeline = [];
+
+        foreach ($candidate->stageHistory as $entry) {
+            $label = self::STAGE_LABELS[$entry->to_stage] ?? null;
+            if (! $label) {
+                continue;
+            }
+
+            $last = end($timeline);
+            if ($last && $last['status_label'] === $label) {
+                continue;
+            }
+
+            $timeline[] = [
+                'status_label' => $label,
+                'occurred_at' => $entry->created_at->toIso8601String(),
+            ];
+        }
+
+        return $timeline;
     }
 }

@@ -51,4 +51,19 @@ class CandidateAccount extends Authenticatable
     {
         return $this->hasMany(Candidate::class, 'candidate_account_id');
     }
+
+    public function savedJobs()
+    {
+        return $this->hasMany(CandidateSavedJob::class, 'candidate_account_id');
+    }
+
+    public function experiences()
+    {
+        return $this->hasMany(CandidateExperience::class, 'candidate_account_id')->orderByDesc('start_date');
+    }
+
+    public function educations()
+    {
+        return $this->hasMany(CandidateEducation::class, 'candidate_account_id')->orderByDesc('start_year');
+    }
 }

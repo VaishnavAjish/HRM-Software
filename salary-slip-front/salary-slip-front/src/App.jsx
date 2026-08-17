@@ -106,6 +106,13 @@ const JobDetail = lazy(() => import("./pages/careers/JobDetail"));
 const CandidateRegister = lazy(() => import("./pages/careers/CandidateRegister"));
 const CandidateLogin = lazy(() => import("./pages/careers/CandidateLogin"));
 const CandidateVerifyEmail = lazy(() => import("./pages/careers/CandidateVerifyEmail"));
+const CandidateForgotPassword = lazy(() => import("./pages/careers/CandidateForgotPassword"));
+const CandidateResetPassword = lazy(() => import("./pages/careers/CandidateResetPassword"));
+const CandidateProfile = lazy(() => import("./pages/careers/CandidateProfile"));
+const CandidateApplicationDetail = lazy(() => import("./pages/careers/CandidateApplicationDetail"));
+const CandidateSavedJobs = lazy(() => import("./pages/careers/CandidateSavedJobs"));
+const CandidateInterviews = lazy(() => import("./pages/careers/CandidateInterviews"));
+const CandidateInterviewDetail = lazy(() => import("./pages/careers/CandidateInterviewDetail"));
 const CandidateDashboard = lazy(() => import("./pages/careers/CandidateDashboard"));
 
 function RouteLoader() {
@@ -321,7 +328,14 @@ function AppRoutes() {
         <Route path="register" element={<CandidateRegister />} />
         <Route path="login" element={<CandidateLogin />} />
         <Route path="verify-email" element={<CandidateVerifyEmail />} />
+        <Route path="forgot-password" element={<CandidateForgotPassword />} />
+        <Route path="reset-password" element={<CandidateResetPassword />} />
         <Route path="account/applications" element={<CandidateDashboard />} />
+        <Route path="account/applications/:id" element={<CandidateApplicationDetail />} />
+        <Route path="account/profile" element={<CandidateProfile />} />
+        <Route path="account/saved-jobs" element={<CandidateSavedJobs />} />
+        <Route path="account/interviews" element={<CandidateInterviews />} />
+        <Route path="account/interviews/:id" element={<CandidateInterviewDetail />} />
       </Route>
 
       {/* Admin routes */}

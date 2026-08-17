@@ -11,6 +11,7 @@ export default function Modal({
   size = "md",
   noPadding = false,
   noHeader = false,
+  zIndex = 1000,
 }) {
   useEffect(() => {
     if (isOpen) document.body.style.overflow = "hidden";
@@ -27,11 +28,14 @@ export default function Modal({
     md: "max-w-lg",
     lg: "max-w-2xl",
     xl: "max-w-4xl",
+    "2xl": "max-w-5xl",
+    "3xl": "max-w-6xl",
+    "4xl": "max-w-7xl",
     full: "max-w-[calc(100vw_-_2.5rem)]",
   };
 
   return createPortal(
-    <div className="modal-overlay fixed bottom-0 left-0 right-0 top-0 z-[1000] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+    <div className="modal-overlay fixed bottom-0 left-0 right-0 top-0 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" style={{ zIndex }}>
       <div
         className="absolute bottom-0 left-0 right-0 top-0"
         onClick={onClose}

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\EnsureFrontendUrlConfigured;
 use App\Http\Middleware\JwtMiddleware;
 use App\Http\Middleware\RequireModuleSchema;
 use App\Http\Middleware\RequirePermission;
@@ -31,6 +32,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'module.schema' => RequireModuleSchema::class,
             'super.admin' => RequireSuperAdmin::class,
             'role.manager' => RequireRoleManager::class,
+            'frontend.url' => EnsureFrontendUrlConfigured::class,
         ]);
 
         // Global security headers on every response

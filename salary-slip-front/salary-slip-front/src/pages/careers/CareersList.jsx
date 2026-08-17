@@ -1,30 +1,98 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import { Search, Briefcase, Calendar, ChevronRight, Sparkles } from "lucide-react";
-import { publicJobApi } from "../../utils/api";
+import { useEffect, useMemo, useState } from "react";
+import { Search, Briefcase, ChevronDown, AlertCircle } from "lucide-react";
+import { publicJobApi, candidateApi } from "../../utils/api";
+import { COMPANY_OPTIONS } from "../../config/companyConfig";
+import JobCard from "../../components/careers/JobCard";
+import { useCandidateAuth } from "../../context/CandidateAuthContext";
+
+const EMPLOYMENT_TYPES = [
+  { value: "", label: "All types" },
+  { value: "full_time", label: "Full Time" },
+  { value: "part_time", label: "Part Time" },
+  { value: "contract", label: "Contract" },
+  { value: "intern", label: "Internship" },
+];
+
+function SelectField({ value, onChange, options, label }) {
+  return (
+    <label className="relative flex w-full items-center sm:w-auto">
+      <span className="sr-only">{label}</span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full cursor-pointer appearance-none rounded-md border border-nx-line bg-nx-surface py-3 pl-4 pr-9 text-sm font-medium text-nx-body outline-none transition-colors focus:border-brand-500 sm:w-auto"
+      >
+        {options.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            {opt.label}
+          </option>
+        ))}
+      </select>
+      <ChevronDown size={15} className="pointer-events-none absolute right-3 text-nx-faint" />
+    </label>
+  );
+}
 
 export default function CareersList() {
+  const { isAuthenticated, token } = useCandidateAuth();
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [search, setSearch] = useState("");
   const [employmentType, setEmploymentType] = useState("");
+  const [companyCode, setCompanyCode] = useState("");
+  const [departmentId, setDepartmentId] = useState("");
+  const [savedJobIds, setSavedJobIds] = useState(() => new Set());
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    candidateApi.getSavedJobs(token)
+      .then((res) => {
+        if (res.status) setSavedJobIds(new Set((res.data || []).map((row) => row.job.id)));
+      })
+      .catch(() => {});
+  }, [isAuthenticated, token]);
 
   const loadJobs = () => {
     setLoading(true);
-    publicJobApi.getJobs({
-      search: search.trim() || undefined,
-      employment_type: employmentType || undefined,
-    })
+    setLoadError(false);
+    publicJobApi
+      .getJobs({
+        search: search.trim() || undefined,
+        employment_type: employmentType || undefined,
+        company_code: companyCode || undefined,
+      })
       .then((res) => {
         if (res.status) {
           setJobs(res.data?.data || res.data || []);
+        } else {
+          setLoadError(true);
         }
       })
-      .catch(() => {})
+      .catch(() => setLoadError(true))
       .finally(() => setLoading(false));
   };
 
-  useEffect(loadJobs, [employmentType]);
+  useEffect(loadJobs, [employmentType, companyCode]);
+
+  const departmentOptions = useMemo(() => {
+    const seen = new Map();
+    jobs.forEach((job) => {
+      if (job.department?.id && !seen.has(job.department.id)) {
+        seen.set(job.department.id, job.department.name);
+      }
+    });
+    return [
+      { value: "", label: "All departments" },
+      ...Array.from(seen, ([value, label]) => ({ value: String(value), label })),
+    ];
+  }, [jobs]);
+
+  const visibleJobs = departmentId
+    ? jobs.filter((job) => String(job.department?.id) === departmentId)
+    : jobs;
+
+  const hasActiveFilters = Boolean(search.trim() || employmentType || companyCode || departmentId);
 
   const handleSearchSubmit = (e) => {
     e.preventDefault();
@@ -32,51 +100,45 @@ export default function CareersList() {
   };
 
   return (
-    <div className="space-y-12 pb-16 bg-slate-50 min-h-[calc(100vh-4rem)]">
-      {/* Hero Section */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-brand-50 via-white to-indigo-50 border-b border-slate-200/60 py-20 px-4 text-center shadow-[inset_0_-1px_0_0_rgba(0,0,0,0.03)]">
-        {/* Decorative ambient blobs */}
-        <div className="absolute top-0 left-1/4 w-96 h-96 bg-brand-200/40 rounded-full mix-blend-multiply filter blur-3xl opacity-60 animate-blob"></div>
-        <div className="absolute top-0 right-1/4 w-96 h-96 bg-indigo-200/40 rounded-full mix-blend-multiply filter blur-3xl opacity-60 animate-blob animation-delay-2000"></div>
-        <div className="absolute -bottom-32 left-1/2 w-96 h-96 bg-pink-100/40 rounded-full mix-blend-multiply filter blur-3xl opacity-60 animate-blob animation-delay-4000"></div>
-
-        <div className="relative max-w-4xl mx-auto space-y-6 z-10">
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white border border-brand-100 shadow-sm text-brand-600 text-xs font-bold uppercase tracking-wider">
-            <Sparkles size={14} className="text-brand-500" /> Join Our Team
-          </div>
-          <h1 className="text-5xl sm:text-6xl font-extrabold text-slate-900 tracking-tight leading-tight">
-            Build the Future <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand-600 to-indigo-600">With Us</span>
+    <div className="min-h-[calc(100vh-4rem)] bg-nx-paper pb-20">
+      <section
+        className="relative border-b border-nx-line px-4 pb-14 pt-16 sm:px-6 sm:pt-20 lg:px-8"
+        style={{
+          backgroundImage:
+            "radial-gradient(rgb(33 29 23 / 0.05) 1px, transparent 1px)",
+          backgroundSize: "18px 18px",
+        }}
+      >
+        <div className="mx-auto max-w-3xl text-center">
+          <p className="text-xs font-bold uppercase tracking-[0.22em] text-brand-700">
+            Nidhi Impex Silver Star
+          </p>
+          <h1 className="mt-4 text-4xl font-black leading-[1.05] tracking-[-0.02em] text-nx-ink sm:text-5xl">
+            Build your future <br className="hidden sm:block" />
+            in Surat's manufacturing floor
           </h1>
-          <p className="text-lg sm:text-xl text-slate-600 max-w-2xl mx-auto font-medium">
-            Discover exciting career opportunities across technology, operations, and management.
+          <p className="mx-auto mt-5 max-w-xl text-base leading-relaxed text-nx-body">
+            Open roles across textile manufacturing and diamond processing —
+            find where your skills fit.
           </p>
 
-          {/* Search Filter Bar */}
-          <form onSubmit={handleSearchSubmit} className="max-w-2xl mx-auto flex flex-col sm:flex-row gap-3 pt-6">
-            <div className="relative flex-1 group">
-              <Search size={18} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-brand-500 transition-colors" />
+          <form
+            onSubmit={handleSearchSubmit}
+            className="mx-auto mt-9 flex max-w-2xl flex-col gap-2.5 sm:flex-row"
+          >
+            <div className="relative flex-1">
+              <Search size={17} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-nx-faint" />
               <input
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search job title, skills, keywords..."
-                className="w-full pl-11 pr-4 py-3 rounded-xl bg-white border border-slate-200 text-slate-900 placeholder-slate-400 text-sm focus:border-brand-500 focus:outline-none focus:ring-4 focus:ring-brand-500/10 shadow-sm transition-all"
+                placeholder="Job title, skills, keywords…"
+                className="w-full rounded-md border border-nx-line bg-nx-surface py-3 pl-11 pr-4 text-sm text-nx-ink placeholder-nx-faint outline-none transition-colors focus:border-brand-500"
               />
             </div>
-            <select
-              value={employmentType}
-              onChange={(e) => setEmploymentType(e.target.value)}
-              className="px-4 py-3 rounded-xl bg-white border border-slate-200 text-slate-700 text-sm focus:border-brand-500 focus:outline-none focus:ring-4 focus:ring-brand-500/10 shadow-sm transition-all cursor-pointer"
-            >
-              <option value="">All Employment Types</option>
-              <option value="full_time">Full Time</option>
-              <option value="part_time">Part Time</option>
-              <option value="contract">Contract</option>
-              <option value="intern">Intern</option>
-            </select>
             <button
               type="submit"
-              className="px-6 py-3 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-semibold text-sm transition-all shadow-md shadow-brand-500/20 hover:-translate-y-0.5"
+              className="rounded-md bg-nx-ink px-6 py-3 text-sm font-bold text-white transition-colors hover:bg-brand-700"
             >
               Search Jobs
             </button>
@@ -84,75 +146,69 @@ export default function CareersList() {
         </div>
       </section>
 
-      {/* Jobs Listing Grid */}
-      <section className="max-w-6xl mx-auto px-4 sm:px-6">
-        <div className="flex items-center justify-between mb-8">
-          <h2 className="text-2xl font-extrabold text-slate-900">Open Positions <span className="text-brand-600 font-bold bg-brand-50 px-2.5 py-0.5 rounded-full text-sm ml-2">{jobs.length}</span></h2>
+      <section className="mx-auto max-w-6xl px-4 pt-10 sm:px-6 lg:px-8">
+        <div className="flex flex-col gap-4 border-b border-nx-line pb-6 sm:flex-row sm:items-center sm:justify-between">
+          <h2 className="text-lg font-bold text-nx-ink">
+            {loading
+              ? "Loading open positions…"
+              : loadError
+              ? "Couldn't load positions"
+              : `${visibleJobs.length} open position${visibleJobs.length === 1 ? "" : "s"}`}
+          </h2>
+          <div className="flex flex-wrap gap-2.5">
+            <SelectField
+              label="Company"
+              value={companyCode}
+              onChange={setCompanyCode}
+              options={[
+                { value: "", label: "All companies" },
+                ...COMPANY_OPTIONS.map((c) => ({ value: c.id, label: c.label })),
+              ]}
+            />
+            <SelectField label="Department" value={departmentId} onChange={setDepartmentId} options={departmentOptions} />
+            <SelectField label="Employment type" value={employmentType} onChange={setEmploymentType} options={EMPLOYMENT_TYPES} />
+          </div>
         </div>
 
-        {loading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="h-44 rounded-2xl bg-white shadow-sm border border-slate-100 animate-pulse" />
-            ))}
-          </div>
-        ) : jobs.length === 0 ? (
-          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-16 text-center">
-            <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Briefcase size={32} className="text-slate-400" />
+        <div className="mt-8">
+          {loading ? (
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="h-40 animate-pulse rounded-lg border border-nx-line bg-nx-surface" />
+              ))}
             </div>
-            <h3 className="text-xl font-bold text-slate-900">No Open Job Listings</h3>
-            <p className="text-slate-500 mt-2 max-w-sm mx-auto">Check back later or adjust your search filters to find the perfect role.</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {jobs.map((job) => (
-              <Link
-                key={job.id}
-                to={`/careers/jobs/${job.id}`}
-                className="group rounded-2xl border border-slate-200 bg-white p-6 transition-all duration-300 hover:border-brand-200 hover:shadow-xl hover:shadow-brand-500/5 hover:-translate-y-1 flex flex-col justify-between"
+          ) : loadError ? (
+            <div className="rounded-lg border border-dashed border-red-200 bg-red-50 px-6 py-20 text-center">
+              <AlertCircle size={30} className="mx-auto text-red-400" />
+              <h3 className="mt-4 text-base font-bold text-nx-ink">Unable to load open positions</h3>
+              <p className="mx-auto mt-2 max-w-sm text-sm text-nx-muted">Something went wrong on our end. Please try again.</p>
+              <button
+                onClick={loadJobs}
+                className="mt-5 inline-flex rounded-md bg-brand-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-brand-700"
               >
-                <div>
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <span className="inline-block text-xs font-bold text-brand-600 bg-brand-50 px-2 py-1 rounded-md uppercase tracking-wider mb-2">
-                        {job.department?.name || "General"}
-                      </span>
-                      <h3 className="text-xl font-bold text-slate-900 group-hover:text-brand-600 transition-colors">
-                        {job.title}
-                      </h3>
-                    </div>
-                    <span className="px-3 py-1 rounded-full bg-slate-50 text-slate-600 text-xs font-semibold border border-slate-200 capitalize whitespace-nowrap">
-                      {job.employment_type?.replace("_", " ")}
-                    </span>
-                  </div>
-
-                  <p className="text-sm text-slate-500 mt-3 line-clamp-2 font-medium">
-                    {job.designation ? `Designation: ${job.designation}` : "Explore this opportunity."}
-                  </p>
-                </div>
-
-                <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 font-medium">
-                  <div className="flex items-center gap-4">
-                    <span className="flex items-center gap-1.5">
-                      <Briefcase size={14} className="text-slate-400" />
-                      {job.min_experience ? `${job.min_experience}+ yrs exp` : "Freshers welcome"}
-                    </span>
-                    {job.target_closing_date && (
-                      <span className="flex items-center gap-1.5">
-                        <Calendar size={14} className="text-slate-400" />
-                        Closes {new Date(job.target_closing_date).toLocaleDateString()}
-                      </span>
-                    )}
-                  </div>
-                  <span className="flex items-center gap-1 font-bold text-brand-600 group-hover:translate-x-1 transition-transform">
-                    Apply <ChevronRight size={14} strokeWidth={3} />
-                  </span>
-                </div>
-              </Link>
-            ))}
-          </div>
-        )}
+                Try Again
+              </button>
+            </div>
+          ) : visibleJobs.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-nx-line2 bg-nx-surface px-6 py-20 text-center">
+              <Briefcase size={30} className="mx-auto text-nx-faint" />
+              <h3 className="mt-4 text-base font-bold text-nx-ink">
+                {hasActiveFilters ? "No open positions match your search" : "No open positions are currently available"}
+              </h3>
+              <p className="mx-auto mt-2 max-w-sm text-sm text-nx-muted">
+                {hasActiveFilters
+                  ? "Try clearing a filter, or check back soon — new roles are posted regularly."
+                  : "Check back soon — new roles are posted regularly."}
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+              {visibleJobs.map((job) => (
+                <JobCard key={job.id} job={job} initiallySaved={savedJobIds.has(job.id)} />
+              ))}
+            </div>
+          )}
+        </div>
       </section>
     </div>
   );

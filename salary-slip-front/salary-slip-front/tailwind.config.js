@@ -33,6 +33,19 @@ export default {
           800: 'rgb(var(--brand-800) / <alpha-value>)',
           900: 'rgb(var(--brand-900) / <alpha-value>)',
         },
+        /* Warm paper/ledger neutrals for the public Career Portal — deliberately
+           distinct from the cool `slate` used by the internal HRMS shell, so the
+           portal reads as its own site rather than an admin screen. */
+        nx: {
+          paper: '#FBF9F4',
+          surface: '#FFFFFF',
+          ink: '#211D17',
+          body: '#4A4438',
+          muted: '#8C8474',
+          faint: '#B3AB9B',
+          line: '#E9E2D3',
+          line2: '#DCD2BB',
+        },
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],

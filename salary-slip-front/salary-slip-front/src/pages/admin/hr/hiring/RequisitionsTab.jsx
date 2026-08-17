@@ -343,7 +343,7 @@ export default function RequisitionsTab({ departments = [], people = [], openReq
   };
 
   const openEdit = (r) => {
-    if (!["draft", "rejected", "pending_approval", "pending_hr_review"].includes(r.status)) {
+    if (!["draft", "rejected", "pending_approval", "pending_hr_review", "approved", "posted"].includes(r.status)) {
         toast.error("This requisition cannot be edited in its current state.");
         return;
     }
@@ -636,7 +636,7 @@ export default function RequisitionsTab({ departments = [], people = [], openReq
                               <Eye size={14} /> Review
                             </button>
                           )}
-                          {["draft", "rejected", "pending_approval", "pending_hr_review"].includes(r.status) && <button title="Edit" onClick={() => openEdit(r)} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"><Pencil size={14} /></button>}
+                          {["draft", "rejected", "pending_approval", "pending_hr_review", "approved", "posted"].includes(r.status) && <button title="Edit" onClick={() => openEdit(r)} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"><Pencil size={14} /></button>}
                         <button title="Duplicate" onClick={() => duplicate(r)} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"><Copy size={14} /></button>
                         {!["closed", "cancelled", "pending_approval"].includes(r.status) && (
                           <button title="Archive / Close" onClick={() => archive(r.id)} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"><Archive size={14} /></button>

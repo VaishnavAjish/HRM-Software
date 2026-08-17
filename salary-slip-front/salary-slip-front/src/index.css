@@ -924,3 +924,108 @@ main {
 .login-aurora-glow {
   animation: loginAuroraGlow 14s ease-in-out infinite;
 }
+
+/* JD Preview Styling for Requisition Form Modal */
+.jd-preview-content {
+  font-family: 'Inter', system-ui, sans-serif;
+  line-height: 1.6;
+  color: #374151; /* gray-700 */
+}
+
+.dark .jd-preview-content {
+  color: #d1d5db; /* gray-300 */
+}
+
+.jd-preview-content h1 {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: #111827; /* gray-900 */
+  margin-bottom: 0.25rem;
+  line-height: 1.2;
+}
+
+.dark .jd-preview-content h1 {
+  color: #f9fafb; /* gray-50 */
+}
+
+.jd-preview-content .jd-meta {
+  font-size: 0.875rem;
+  color: #6b7280; /* gray-500 */
+  margin-bottom: 1.5rem;
+  font-weight: 500;
+}
+
+.dark .jd-preview-content .jd-meta {
+  color: #9ca3af; /* gray-400 */
+}
+
+.jd-preview-content h2 {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: #1f2937; /* gray-800 */
+  margin-top: 1.5rem;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid #e5e7eb; /* gray-200 */
+}
+
+.dark .jd-preview-content h2 {
+  color: #f3f4f6; /* gray-100 */
+  border-bottom-color: #374151; /* gray-700 */
+}
+
+.jd-preview-content p {
+  margin-bottom: 1rem;
+}
+
+.jd-preview-content ul {
+  list-style-type: disc;
+  padding-left: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.jd-preview-content li {
+  margin-bottom: 0.25rem;
+}
+
+.jd-preview-content strong {
+  font-weight: 600;
+  color: #111827;
+}
+
+.dark .jd-preview-content strong {
+  color: #f9fafb;
+}
+
+.jd-preview-content a {
+  color: #2563eb; /* blue-600 */
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.jd-preview-content a:hover {
+  text-decoration: underline;
+}
+
+.dark .jd-preview-content a {
+  color: #60a5fa; /* blue-400 */
+}
+
+/* Styles for the RichTextEditor */
+.rich-text-editable ul {
+  list-style-type: disc;
+  padding-left: 1.5rem;
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.rich-text-editable ol {
+  list-style-type: decimal;
+  padding-left: 1.5rem;
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.rich-text-editable li {
+  margin-bottom: 0.25rem;
+}

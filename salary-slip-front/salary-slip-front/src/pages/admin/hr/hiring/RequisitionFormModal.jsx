@@ -79,11 +79,11 @@ function buildJdTemplate(f, applyLink) {
 
     <h2>Compensation &amp; Logistics</h2>
     <ul>
-      <li><strong>Salary:</strong> ${salaryLine}</li>
-      <li><strong>Employment Type:</strong> ${escapeHtml(EMPLOYMENT_TYPE_LABEL[f.employment_type] || "—")}</li>
-      ${f.target_closing_date ? `<li><strong>Target Closing Date:</strong> ${escapeHtml(f.target_closing_date)}</li>` : ""}
-      <li><strong>Priority:</strong> ${escapeHtml(PRIORITY_LABEL[f.priority] || "—")}</li>
-    </ul>
+        <li><strong>Salary:</strong> ${salaryLine}</li>
+        <li><strong>Employment Type:</strong> ${escapeHtml(EMPLOYMENT_TYPE_LABEL[f.employment_type] || "—")}</li>
+        ${f.target_closing_date ? `<li><strong>Target Closing Date:</strong> ${escapeHtml(new Date(f.target_closing_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }))}</li>` : ""}
+        <li><strong>Priority:</strong> ${escapeHtml(PRIORITY_LABEL[f.priority] || "—")}</li>
+      </ul>
 
     ${applyLink ? `
     <h2>How to Apply</h2>
@@ -235,6 +235,27 @@ export default function RequisitionFormModal({ targetId, isOpen, onClose, onSucc
     return buildJdTemplate(form, "https://careers.yourcompany.com/apply");
   }, [form]);
 
+  // Inject styles directly to bypass aggressive browser caching for JD Preview & Rich Text Editor
+  const injectedStyles = `
+    .jd-preview-content { font-family: 'Inter', system-ui, sans-serif; line-height: 1.6; color: #374151; }
+    .dark .jd-preview-content { color: #d1d5db; }
+    .jd-preview-content h1 { font-size: 1.5rem; font-weight: 800; color: #111827; margin-bottom: 0.25rem; line-height: 1.2; }
+    .dark .jd-preview-content h1 { color: #f9fafb; }
+    .jd-preview-content .jd-meta { font-size: 0.875rem; color: #6b7280; margin-bottom: 1.5rem; font-weight: 500; }
+    .dark .jd-preview-content .jd-meta { color: #9ca3af; }
+    .jd-preview-content h2 { font-size: 1.125rem; font-weight: 700; color: #1f2937; margin-top: 1.5rem; margin-bottom: 0.75rem; padding-bottom: 0.25rem; border-bottom: 1px solid #e5e7eb; }
+    .dark .jd-preview-content h2 { color: #f3f4f6; border-bottom-color: #374151; }
+    .jd-preview-content p { margin-bottom: 1rem; }
+    .jd-preview-content ul, .rich-text-editable ul { list-style-type: disc; padding-left: 1.5rem; margin-bottom: 1rem; }
+    .jd-preview-content ol, .rich-text-editable ol { list-style-type: decimal; padding-left: 1.5rem; margin-bottom: 1rem; }
+    .jd-preview-content li, .rich-text-editable li { margin-bottom: 0.25rem; }
+    .jd-preview-content strong { font-weight: 600; color: #111827; }
+    .dark .jd-preview-content strong { color: #f9fafb; }
+    .jd-preview-content a { color: #2563eb; text-decoration: none; font-weight: 500; }
+    .jd-preview-content a:hover { text-decoration: underline; }
+    .dark .jd-preview-content a { color: #60a5fa; }
+  `;
+
   useEffect(() => {
     if (step === 2 && !fetching) {
       if (step2Snapshot(form) !== baselineRef.current) setJdEdited(true);
@@ -299,7 +320,7 @@ export default function RequisitionFormModal({ targetId, isOpen, onClose, onSucc
   }
 
   return (
-    <Modal isOpen={isOpen} onClose={requestClose} title={titleOverride || (editing ? "Edit Requisition" : "New Job Requisition")} size={step === 1 ? "md" : "xl"}
+    <Modal isOpen={isOpen} onClose={requestClose} title={titleOverride || (editing ? "Edit Requisition" : "New Job Requisition")} size={step === 1 ? "md" : "3xl"}
       footer={step === 1 ? (
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={requestClose}>Cancel</Button>
@@ -465,6 +486,8 @@ export default function RequisitionFormModal({ targetId, isOpen, onClose, onSucc
                   {jdEdited ? "Unsaved Changes" : "Up to date"}
                 </span>
               </div>
+
+              <style>{injectedStyles}</style>
 
               <div className="prose prose-sm dark:prose-invert max-w-none rounded-xl border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 p-6 shadow-inner max-h-[600px] overflow-y-auto jd-preview-content" dangerouslySetInnerHTML={{ __html: jdText }} />
             </div>

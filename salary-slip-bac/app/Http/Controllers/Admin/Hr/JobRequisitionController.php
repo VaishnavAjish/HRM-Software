@@ -122,7 +122,7 @@ class JobRequisitionController extends Controller
             return response()->json(['status' => false, 'message' => 'Requisition not found'], 404);
         }
 
-        if (! in_array($requisition->status, ['draft', 'rejected', 'pending_approval', 'pending_hr_review'], true)) {
+        if (! in_array($requisition->status, ['draft', 'rejected', 'pending_approval', 'pending_hr_review', 'approved', 'posted'], true)) {
             throw ValidationException::withMessages([
                 'status' => 'This requisition cannot be edited in its current state.',
             ]);

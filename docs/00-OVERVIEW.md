@@ -11,26 +11,26 @@ rest are standalone drops that have not been developed since they were added.
 
 ## Project Summary Table
 
-| # | Project | Directory | Tech Stack | Port | Database | Status |
-|---|---------|-----------|------------|------|----------|--------|
-| 1 | Salary Slip Frontend | `salary-slip-front/salary-slip-front/` | React 19, Vite 7, Capacitor 8, PWA | 5175 | - | **Active** |
-| 2 | Salary Slip Backend | `salary-slip-bac/` | Laravel 11, PHP 8.2 | 8000 | PostgreSQL | **Active** |
-| 3 | Salary Slip Node API | `salary-slip-node/` | Fastify 5, Prisma 6, TypeScript | 8001 | PostgreSQL | **Active (in migration)** |
-| 4 | HRFlow Pro Frontend | `client/` | React 18, TypeScript, Vite 5 | 5173 | - | Dormant |
-| 5 | HRFlow Pro Backend | `server/` | Express 4, TypeScript, Mongoose 8 | 5000 | MongoDB | Dormant |
-| 6 | Enterprise RBAC Backend | `enterprise-rbac/backend/` | Express 5, TypeScript, Prisma 7 | 5000 | PostgreSQL | Dormant |
-| 7 | Enterprise RBAC Frontend | `enterprise-rbac/frontend/` | React 19, TypeScript, Vite 8 | - | - | Dormant |
+| # | Project                  | Directory                                | Tech Stack                         | Port | Database   | Status                          |
+| - | ------------------------ | ---------------------------------------- | ---------------------------------- | ---- | ---------- | ------------------------------- |
+| 1 | Salary Slip Frontend     | `salary-slip-front/salary-slip-front/` | React 19, Vite 7, Capacitor 8, PWA | 5175 | -          | **Active**                |
+| 2 | Salary Slip Backend      | `salary-slip-bac/`                     | Laravel 11, PHP 8.2                | 8000 | PostgreSQL | **Active**                |
+| 3 | Salary Slip Node API     | `salary-slip-node/`                    | Fastify 5, Prisma 6, TypeScript    | 8001 | PostgreSQL | **Active (in migration)** |
+| 4 | HRFlow Pro Frontend      | `client/`                              | React 18, TypeScript, Vite 5       | 5173 | -          | Dormant                         |
+| 5 | HRFlow Pro Backend       | `server/`                              | Express 4, TypeScript, Mongoose 8  | 5000 | MongoDB    | Dormant                         |
+| 6 | Enterprise RBAC Backend  | `enterprise-rbac/backend/`             | Express 5, TypeScript, Prisma 7    | 5000 | PostgreSQL | Dormant                         |
+| 7 | Enterprise RBAC Frontend | `enterprise-rbac/frontend/`            | React 19, TypeScript, Vite 8       | -    | -          | Dormant                         |
 
 ### Activity
 
-| Directory | Commits | Last commit |
-|-----------|---------|-------------|
-| `salary-slip-front/` | 55 | 2026-08-03 |
-| `salary-slip-bac/` | 53 | 2026-08-03 |
-| `salary-slip-node/` | 8 | 2026-08-03 |
-| `enterprise-rbac/` | 1 | 2026-07-29 |
-| `client/` | 2 | 2026-07-27 |
-| `server/` | 2 | 2026-07-27 |
+| Directory              | Commits | Last commit |
+| ---------------------- | ------- | ----------- |
+| `salary-slip-front/` | 55      | 2026-08-03  |
+| `salary-slip-bac/`   | 53      | 2026-08-03  |
+| `salary-slip-node/`  | 8       | 2026-08-03  |
+| `enterprise-rbac/`   | 1       | 2026-07-29  |
+| `client/`            | 2       | 2026-07-27  |
+| `server/`            | 2       | 2026-07-27  |
 
 The root `README.md` describes HRFlow Pro (`client/` + `server/`), which is not
 the product. The root `package.json` describes the product: its `dev` script
@@ -49,6 +49,7 @@ the nested directory.
 ## Project 1: Salary Slip Frontend
 
 ### Technology Stack
+
 - **Core**: React 19.2, Vite 7, Tailwind CSS 3.4
 - **Routing**: React Router 7.14 (all pages lazy-loaded except Login + AppLayout)
 - **Data Grid**: AG Grid Community 35.2
@@ -64,27 +65,28 @@ the nested directory.
 
 ### Modules (148 source files)
 
-| Module | Pages |
-|--------|-------|
-| Auth | Login, AppointmentModal, AppointmentDocumentsStep, TrialFormModal, WelcomePopup |
-| Admin core | Dashboard, EmployeeManagement, AddEmployeePage, SalaryManagement, SalaryUploadPage, Appointments, TrialForm, Reports, AdminProfile, Settings |
-| Attendance | AttendanceView, AttendanceUpload, DailyAttendance, ShiftManagement |
-| TDS | TdsCalculation, Form16 |
-| HR | HrDashboard, HiringProcess, InterviewManagement, OfferManagement, CandidatePipeline, AssetAllocation, PerformanceMatrix, EmployeeOnboarding, ExitManagement, HrReports, HrSettings |
-| ~~Access Control~~ | Removed — the whole menu group, its ten routes and all six page components are gone. Permissions are still enforced; only the screens for editing them were withdrawn |
-| Documents | EmployeeDocuments, DocumentUploadForm, DocumentViewerModal |
-| Employee | Dashboard, Payslips, Form16, Profile, EmployeeAppointment |
-| Agent | AgentDashboard |
+| Module              | Pages                                                                                                                                                                              |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Auth                | Login, AppointmentModal, AppointmentDocumentsStep, TrialFormModal, WelcomePopup                                                                                                    |
+| Admin core          | Dashboard, EmployeeManagement, AddEmployeePage, SalaryManagement, SalaryUploadPage, Appointments, TrialForm, Reports, AdminProfile, Settings                                       |
+| Attendance          | AttendanceView, AttendanceUpload, DailyAttendance, ShiftManagement                                                                                                                 |
+| TDS                 | TdsCalculation, Form16                                                                                                                                                             |
+| HR                  | HrDashboard, HiringProcess, InterviewManagement, OfferManagement, CandidatePipeline, AssetAllocation, PerformanceMatrix, EmployeeOnboarding, ExitManagement, HrReports, HrSettings |
+| ~~Access Control~~ | Removed — the whole menu group, its ten routes and all six page components are gone. Permissions are still enforced; only the screens for editing them were withdrawn             |
+| Documents           | EmployeeDocuments, DocumentUploadForm, DocumentViewerModal                                                                                                                         |
+| Employee            | Dashboard, Payslips, Form16, Profile, EmployeeAppointment                                                                                                                          |
+| Agent               | AgentDashboard                                                                                                                                                                     |
 
 ### Multi-Company Architecture
+
 `vite.config.js` reads the active Git branch at build time and injects
 `__COMPANY_MODE__`, `__APP_LABEL__`, `__APP_COLOR__`, `__PROD_API_URL__`:
 
-| Branch | Company | Theme | Output dir |
-|--------|---------|-------|------------|
-| `nidhi-impex` | Nidhi Impex (units: Shreeji, Ichapur) | amber | `nidhi-impex/` |
-| `silver-star` | Silver Star Diam (units: Daduk, Ichapur) | sky | `silver-star/` |
-| `master` / other | NISS HRMS (both companies) | indigo | `master/` |
+| Branch             | Company                                  | Theme  | Output dir       |
+| ------------------ | ---------------------------------------- | ------ | ---------------- |
+| `nidhi-impex`    | Nidhi Impex (units: Shreeji, Ichapur)    | amber  | `nidhi-impex/` |
+| `silver-star`    | Silver Star Diam (units: Daduk, Ichapur) | sky    | `silver-star/` |
+| `master` / other | NISS HRMS (both companies)               | indigo | `master/`      |
 
 At runtime, `company_code` and `unit` are appended to nearly every request.
 
@@ -93,6 +95,7 @@ At runtime, `company_code` and `unit` are appended to nearly every request.
 ## Project 2: Salary Slip Backend
 
 ### Technology Stack
+
 - **Framework**: Laravel 11+ (PHP 8.2)
 - **Database**: PostgreSQL (only supported engine — see "SQLite removal" below)
 - **Auth**: JWT (tymon/jwt-auth) + Laravel Sanctum
@@ -101,6 +104,7 @@ At runtime, `company_code` and `unit` are appended to nearly every request.
 - **Testing**: PHPUnit 11
 
 ### Feature Areas
+
 - **Salary slips**: Excel bulk import with auto-column detection, month/year
   parsing, component-summed gross/net calculation
 - **Employees**: CRUD, Excel import, bank account master import
@@ -122,6 +126,7 @@ At runtime, `company_code` and `unit` are appended to nearly every request.
   schemas exist so the client can omit unbuilt navigation
 
 ### Counts
+
 - 26 controllers, 37 models, 4 middleware, 19 service classes
 - 56 migrations, 4 seeders
 - `routes/api.php`: 413 lines
@@ -182,11 +187,11 @@ consumed from here. See `03-ENTERPRISE-RBAC.md`.
 
 ### Deployments
 
-| | Serves | Database |
-|---|---|---|
-| `F:\HRMS oldd` | dev / git repo | PostgreSQL `niss_hrms` |
-| `E:\HRMS Nidhi` | LAN `192.168.1.53:8000` | PostgreSQL `niss_hrms` (shared) |
-| AWS `niss.pro` | public site | PostgreSQL — **cutover pending**, see below |
+|                   | Serves                    | Database                                          |
+| ----------------- | ------------------------- | ------------------------------------------------- |
+| `F:\HRMS oldd`  | dev / git repo            | PostgreSQL `niss_hrms`                          |
+| `E:\HRMS Nidhi` | LAN `192.168.1.53:8000` | PostgreSQL `niss_hrms` (shared)                 |
+| AWS `niss.pro`  | public site               | PostgreSQL —**cutover pending**, see below |
 
 ### SQLite removal
 
@@ -224,6 +229,7 @@ database.
 ## Running the Projects
 
 ### Salary Slip (product)
+
 ```bash
 # From repo root
 npm run dev:client   # Frontend on port 5175
@@ -237,12 +243,14 @@ cd salary-slip-node && npm run dev
 Frontend commands must run from `salary-slip-front/salary-slip-front`.
 
 ### HRFlow Pro
+
 ```bash
 cd client && npm run dev    # port 5173
 cd server && npm run dev    # port 5000
 ```
 
 ### Enterprise RBAC
+
 ```bash
 cd enterprise-rbac/backend && npm run dev
 cd enterprise-rbac/frontend && npm run dev
@@ -252,23 +260,23 @@ cd enterprise-rbac/frontend && npm run dev
 
 ## Document Index
 
-| File | Covers |
-|------|--------|
-| `00-OVERVIEW.md` | This file |
-| `01-HRFLOW-PRO-FRONTEND.md` | `client/` (dormant) |
-| `02-HRFLOW-PRO-BACKEND.md` | `server/` (dormant) |
-| `03-ENTERPRISE-RBAC.md` | `enterprise-rbac/` (dormant) |
-| `04-SALARY-SLIP-FRONTEND.md` | React app: routes, authorization, design system, PWA |
-| `05-SALARY-SLIP-BACKEND.md` | Laravel API: endpoints, middleware, schema, security |
-| `06-PAGE-CONNECTIONS-AND-ROUTES.md` | Route maps, navigation, data flows, data model |
-| `07-ANDROID-NATIVE-CLONE-SPEC.md` | Native Android rebuild specification |
-| `08-SALARY-SLIP-NODE.md` | Fastify API: modules, schema ownership, scripts |
-| `AUDIT-2026-08-03.md` | Security and correctness audit |
-| `STABILIZATION-2026-08-03.md` | Stabilization work log |
-| `INCIDENT-2026-08-03-authz-rollback.md` | Authorization rollback incident |
-| `REMEDIATION-authz-rollback.md`, `RECOVERY-authz-hardening.md` | Follow-up |
-| `MIGRATION-REPORT.md` | Migration state |
-| `repair/*.sql` | Repair scripts |
+| File                                                               | Covers                                               |
+| ------------------------------------------------------------------ | ---------------------------------------------------- |
+| `00-OVERVIEW.md`                                                 | This file                                            |
+| `01-HRFLOW-PRO-FRONTEND.md`                                      | `client/` (dormant)                                |
+| `02-HRFLOW-PRO-BACKEND.md`                                       | `server/` (dormant)                                |
+| `03-ENTERPRISE-RBAC.md`                                          | `enterprise-rbac/` (dormant)                       |
+| `04-SALARY-SLIP-FRONTEND.md`                                     | React app: routes, authorization, design system, PWA |
+| `05-SALARY-SLIP-BACKEND.md`                                      | Laravel API: endpoints, middleware, schema, security |
+| `06-PAGE-CONNECTIONS-AND-ROUTES.md`                              | Route maps, navigation, data flows, data model       |
+| `07-ANDROID-NATIVE-CLONE-SPEC.md`                                | Native Android rebuild specification                 |
+| `08-SALARY-SLIP-NODE.md`                                         | Fastify API: modules, schema ownership, scripts      |
+| `AUDIT-2026-08-03.md`                                            | Security and correctness audit                       |
+| `STABILIZATION-2026-08-03.md`                                    | Stabilization work log                               |
+| `INCIDENT-2026-08-03-authz-rollback.md`                          | Authorization rollback incident                      |
+| `REMEDIATION-authz-rollback.md`, `RECOVERY-authz-hardening.md` | Follow-up                                            |
+| `MIGRATION-REPORT.md`                                            | Migration state                                      |
+| `repair/*.sql`                                                   | Repair scripts                                       |
 
 ---
 

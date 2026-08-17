@@ -14,6 +14,7 @@ import ApprovalReviewTab from "./ApprovalReviewTab";
 import JobPortalTab from "./JobPortalTab";
 import RecruitmentDashboardTab from "./RecruitmentDashboardTab";
 import TalentPoolTab from "./TalentPoolTab";
+import HRManagerTab from "./HRManagerTab";
 
 const TABS = [
   { key: "dashboard", label: "Dashboard" },
@@ -43,9 +44,17 @@ export default function HiringWorkspace() {
   const { can } = useAuthorization();
   const [searchParams, setSearchParams] = useSearchParams();
   const [editModalTargetId, setEditModalTargetId] = useState(null);
+  const [modalTitleOverride, setModalTitleOverride] = useState(null);
+  const [modalExtraFooter, setModalExtraFooter] = useState(null);
 
-  const openRequisitionForm = (id = null) => {
-    setEditModalTargetId(id || "new");
+  const openRequisitionForm = (id = null, title = null, footer = null) => {
+    if (id === false) {
+      setEditModalTargetId(null);
+    } else {
+      setEditModalTargetId(id || "new");
+    }
+    setModalTitleOverride(title);
+    setModalExtraFooter(footer);
   };
 
   const availableTabs = useMemo(() => {
@@ -127,14 +136,20 @@ export default function HiringWorkspace() {
       {tab === "assessment" && <AssessmentTab />}
       {tab === "interview" && <InterviewManagement />}
       {tab === "offer" && <OfferManagement />}
-      {tab === "hr-manager" && <ApprovalReviewTab kind="hr-manager" departments={departments} people={people} openRequisitionForm={openRequisitionForm} />}
+      {tab === "hr-manager" && <HRManagerTab departments={departments} people={people} openRequisitionForm={openRequisitionForm} isHrManagerView={true} />}
       {tab === "director" && <ApprovalReviewTab kind="director" departments={departments} people={people} openRequisitionForm={openRequisitionForm} />}
-      {tab === "job-portal" && <JobPortalTab departments={departments} />}
+      {tab === "job-portal" && <JobPortalTab departments={departments} openRequisitionForm={openRequisitionForm} />}
 
       <RequisitionFormModal
         isOpen={Boolean(editModalTargetId)}
-        targetId={editModalTargetId}
-        onClose={() => setEditModalTargetId(null)}
+        targetId={editModalTargetId === "new" ? null : editModalTargetId}
+        titleOverride={modalTitleOverride}
+        extraFooter={modalExtraFooter}
+        onClose={() => {
+          setEditModalTargetId(null);
+          setModalTitleOverride(null);
+          setModalExtraFooter(null);
+        }}
         onSuccess={() => { /* Tabs should poll or reload on focus, or we can add a global event */ }}
         initialDepartments={departments}
       />

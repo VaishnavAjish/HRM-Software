@@ -1,10 +1,21 @@
 import { useEffect, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { ArrowLeft, CheckCircle2, Upload, AlertCircle, Lock } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Upload, AlertCircle, Lock, MapPin, Briefcase, Users, Calendar } from "lucide-react";
 import toast from "react-hot-toast";
 import DOMPurify from "dompurify";
 import { publicJobApi, candidateApi } from "../../utils/api";
 import { useCandidateAuth } from "../../context/CandidateAuthContext";
+import { resolveJobBranding, formatEmploymentType, formatExperience } from "../../config/careersTheme";
+import SaveJobButton from "../../components/careers/SaveJobButton";
+import ResendVerificationButton from "../../components/careers/ResendVerificationButton";
+
+function isJobClosed(job) {
+  if (!job?.target_closing_date) return false;
+  const closing = new Date(job.target_closing_date);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return closing < today;
+}
 
 export default function JobDetail() {
   const { slug } = useParams();
@@ -13,9 +24,9 @@ export default function JobDetail() {
 
   const [job, setJob] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
   const [applyModalOpen, setApplyModalOpen] = useState(false);
 
-  // Application form state
   const [resumeFile, setResumeFile] = useState(null);
   const [phone, setPhone] = useState("");
   const [experienceYears, setExperienceYears] = useState("");
@@ -23,18 +34,29 @@ export default function JobDetail() {
   const [currentDesignation, setCurrentDesignation] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [appliedSuccess, setAppliedSuccess] = useState(false);
+  const [initiallySaved, setInitiallySaved] = useState(false);
 
   useEffect(() => {
     setLoading(true);
-    publicJobApi.getJob(slug)
+    setNotFound(false);
+    publicJobApi
+      .getJob(slug)
       .then((res) => {
-        if (res.status) {
-          setJob(res.data);
-        }
+        if (res.status) setJob(res.data);
+        else setNotFound(true);
       })
-      .catch(() => {})
+      .catch(() => setNotFound(true))
       .finally(() => setLoading(false));
   }, [slug]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !job) return;
+    candidateApi.getSavedJobs(token)
+      .then((res) => {
+        if (res.status) setInitiallySaved((res.data || []).some((row) => row.job.id === job.id));
+      })
+      .catch(() => {});
+  }, [isAuthenticated, token, job]);
 
   useEffect(() => {
     if (candidate) {
@@ -76,212 +98,285 @@ export default function JobDetail() {
 
   if (loading) {
     return (
-      <div className="max-w-4xl mx-auto px-4 py-16">
-        <div className="h-64 rounded-2xl bg-white shadow-sm border border-slate-100 animate-pulse" />
+      <div className="mx-auto max-w-5xl px-4 py-16 sm:px-6">
+        <div className="h-72 animate-pulse rounded-lg border border-nx-line bg-nx-surface" />
       </div>
     );
   }
 
-  if (!job) {
+  if (notFound || !job) {
     return (
-      <div className="max-w-4xl mx-auto px-4 py-16 text-center">
-        <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
-           <AlertCircle size={32} className="text-slate-400" />
+      <div className="mx-auto max-w-lg px-4 py-24 text-center sm:px-6">
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-nx-surface">
+          <AlertCircle size={26} className="text-nx-faint" />
         </div>
-        <h2 className="text-2xl font-bold text-slate-900 mb-2">Job Listing Not Found</h2>
-        <p className="text-slate-500 mb-6">This job posting may have expired or been closed.</p>
-        <Link to="/careers" className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-white font-semibold shadow-md hover:bg-slate-800 transition-colors">
-          <ArrowLeft size={16} /> Back to Openings
+        <h2 className="mt-5 text-xl font-bold text-nx-ink">Job listing not found</h2>
+        <p className="mt-2 text-sm text-nx-muted">This posting may have closed or been removed.</p>
+        <Link
+          to="/careers"
+          className="mt-6 inline-flex items-center gap-2 rounded-md bg-nx-ink px-5 py-2.5 text-sm font-bold text-white hover:bg-brand-700"
+        >
+          <ArrowLeft size={15} /> Back to open positions
         </Link>
       </div>
     );
   }
 
+  const branding = resolveJobBranding(job);
+  const closed = isJobClosed(job);
+
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 py-12 space-y-8 bg-slate-50 min-h-[calc(100vh-4rem)]">
-      <Link to="/careers" className="inline-flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-brand-600 transition-colors group">
-        <ArrowLeft size={16} className="group-hover:-translate-x-1 transition-transform" /> Back to Open Positions
-      </Link>
+    <div data-theme={branding.theme} className="min-h-[calc(100vh-4rem)] bg-nx-paper pb-28 sm:pb-16">
+      <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
+        <Link
+          to="/careers"
+          className="inline-flex items-center gap-2 text-sm font-semibold text-nx-muted transition-colors hover:text-nx-ink"
+        >
+          <ArrowLeft size={15} /> Back to open positions
+        </Link>
 
-      {/* Main Job Banner */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-8 sm:p-10 shadow-lg shadow-slate-200/50">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
-          <div>
-            <span className="text-xs font-bold uppercase tracking-wider text-brand-600 bg-brand-50 px-2.5 py-1 rounded-md">
-              {job.department?.name || "General"}
-            </span>
-            <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-4 tracking-tight">{job.title}</h1>
-            <p className="text-sm font-medium text-slate-500 mt-2 flex items-center gap-2">
-              {job.designation ? <span>Designation: {job.designation}</span> : null} 
-              {job.designation && <span className="text-slate-300">•</span>}
-              <span className="capitalize">{job.employment_type?.replace("_", " ")}</span>
-            </p>
-          </div>
+        <div className="mt-6 grid grid-cols-1 gap-8 lg:grid-cols-[1fr_320px]">
+          {/* Main content */}
+          <div className="min-w-0 space-y-6">
+            <div className="rounded-lg border border-nx-line border-l-[3px] border-l-brand-500 bg-nx-surface p-7 sm:p-9">
+              <p className="text-xs font-bold uppercase tracking-[0.1em] text-brand-700">
+                {job.department?.name || "General"} · {branding.shortName}
+              </p>
+              <h1 className="mt-3 text-2xl font-black leading-tight tracking-[-0.01em] text-nx-ink sm:text-[32px]">
+                {job.title}
+              </h1>
+              {job.designation && (
+                <p className="mt-2 text-sm font-medium text-nx-muted">{job.designation}</p>
+              )}
 
-          <button
-            onClick={() => setApplyModalOpen(true)}
-            className="px-8 py-3.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-bold shadow-xl shadow-brand-500/30 hover:-translate-y-0.5 transition-all text-center whitespace-nowrap"
-          >
-            Apply for this Position
-          </button>
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 mt-10 pt-8 border-t border-slate-100 text-sm">
-          <div>
-            <span className="text-slate-500 block font-medium mb-1">Experience</span>
-            <span className="font-bold text-slate-900 block">{job.min_experience ? `${job.min_experience}+ years` : "Freshers welcome"}</span>
-          </div>
-          <div>
-            <span className="text-slate-500 block font-medium mb-1">Openings</span>
-            <span className="font-bold text-slate-900 block">{job.openings || 1}</span>
-          </div>
-          <div>
-            <span className="text-slate-500 block font-medium mb-1">Salary Range</span>
-            <span className="font-bold text-slate-900 block">
-              {job.salary_min ? `₹${Number(job.salary_min).toLocaleString("en-IN")} - ₹${Number(job.salary_max || 0).toLocaleString("en-IN")}` : "As per industry"}
-            </span>
-          </div>
-          <div>
-            <span className="text-slate-500 block font-medium mb-1">Closing Date</span>
-            <span className="font-bold text-slate-900 block">
-              {job.target_closing_date ? new Date(job.target_closing_date).toLocaleDateString() : "Open until filled"}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {appliedSuccess && (
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 text-emerald-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm">
-          <div className="flex items-start sm:items-center gap-4">
-            <CheckCircle2 size={28} className="text-emerald-500 flex-shrink-0" />
-            <div>
-              <p className="font-bold text-emerald-900 text-lg">Application Submitted!</p>
-              <p className="text-sm text-emerald-700 mt-0.5">You can track your application status under your Candidate Account dashboard.</p>
+              <div className="mt-6 flex flex-wrap gap-x-6 gap-y-3 border-t border-nx-line pt-6 text-sm text-nx-body">
+                <span className="inline-flex items-center gap-1.5">
+                  <MapPin size={15} className="text-nx-faint" />
+                  {branding.city}{job.unit ? ` · ${job.unit}` : ""}
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <Briefcase size={15} className="text-nx-faint" />
+                  {formatEmploymentType(job.employment_type)}
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <Users size={15} className="text-nx-faint" />
+                  {formatExperience(job)}
+                </span>
+                {job.target_closing_date && (
+                  <span className="inline-flex items-center gap-1.5">
+                    <Calendar size={15} className="text-nx-faint" />
+                    {closed ? "Closed" : "Closes"} {new Date(job.target_closing_date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                  </span>
+                )}
+              </div>
             </div>
+
+            {appliedSuccess && (
+              <div className="flex flex-col items-start gap-4 rounded-lg border border-emerald-200 bg-emerald-50 p-6 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-start gap-3">
+                  <CheckCircle2 size={22} className="mt-0.5 flex-shrink-0 text-emerald-600" />
+                  <div>
+                    <p className="font-bold text-emerald-900">Application submitted</p>
+                    <p className="mt-0.5 text-sm text-emerald-700">Track its progress from your candidate account.</p>
+                  </div>
+                </div>
+                <Link
+                  to="/careers/account/applications"
+                  className="whitespace-nowrap rounded-md bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700"
+                >
+                  View applications
+                </Link>
+              </div>
+            )}
+
+            {job.description && (
+              <div className="rounded-lg border border-nx-line bg-nx-surface p-7 sm:p-9">
+                <h2 className="text-base font-bold text-nx-ink">About the role</h2>
+                <div
+                  className="prose prose-sm mt-4 max-w-none text-nx-body prose-headings:text-nx-ink prose-a:text-brand-700 prose-strong:text-nx-ink marker:text-brand-500"
+                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(job.description) }}
+                />
+              </div>
+            )}
+
+            {job.requirements && (
+              <div className="rounded-lg border border-nx-line bg-nx-surface p-7 sm:p-9">
+                <h2 className="text-base font-bold text-nx-ink">What you'll bring</h2>
+                <div
+                  className="prose prose-sm mt-4 max-w-none text-nx-body prose-headings:text-nx-ink prose-a:text-brand-700 prose-strong:text-nx-ink marker:text-brand-500"
+                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(job.requirements) }}
+                />
+              </div>
+            )}
           </div>
-          <Link to="/careers/account/applications" className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold shadow-md transition-colors whitespace-nowrap">
-            View Applications
-          </Link>
+
+          {/* Sticky apply card — desktop only, mobile gets a fixed bottom bar */}
+          <aside className="hidden lg:block">
+            <div className="sticky top-24 rounded-lg border border-nx-line bg-nx-surface p-6 shadow-[0_12px_28px_-18px_rgba(33,29,23,0.3)]">
+              <p className="text-xs font-bold uppercase tracking-[0.08em] text-nx-muted">{branding.shortName}</p>
+              <p className="mt-1 text-sm font-bold text-nx-ink">{job.title}</p>
+              <p className="mt-1 text-xs text-nx-muted">{branding.city}{job.unit ? ` · ${job.unit}` : ""}</p>
+              {closed ? (
+                <button disabled className="mt-5 w-full cursor-not-allowed rounded-md bg-nx-line py-3 text-sm font-bold text-nx-muted">
+                  Position Closed
+                </button>
+              ) : (
+                <button
+                  onClick={() => setApplyModalOpen(true)}
+                  className="mt-5 w-full rounded-md bg-brand-600 py-3 text-sm font-bold text-white shadow-sm transition-colors hover:bg-brand-700"
+                >
+                  Apply Now
+                </button>
+              )}
+              <SaveJobButton jobId={job.id} initialSaved={initiallySaved} variant="text" className="mt-2.5 w-full justify-center" />
+            </div>
+          </aside>
         </div>
-      )}
+      </div>
 
-      {/* Description & Requirements */}
-      <div className="space-y-10 rounded-2xl border border-slate-200 bg-white p-8 sm:p-10 shadow-sm">
-        {job.description && (
-          <div>
-            <h2 className="text-xl font-extrabold text-slate-900 mb-4 flex items-center gap-2">
-              <span className="w-1.5 h-6 bg-brand-500 rounded-full inline-block"></span> About the Role
-            </h2>
-            <div
-              className="prose prose-slate max-w-none text-slate-600 prose-p:leading-relaxed prose-headings:text-slate-900 prose-a:text-brand-600 hover:prose-a:text-brand-500 marker:text-brand-500 prose-li:my-1"
-              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(job.description) }}
+      {/* Mobile sticky apply bar */}
+      <div className="fixed inset-x-0 bottom-0 z-30 flex items-center gap-2 border-t border-nx-line bg-nx-surface/95 p-4 backdrop-blur-md lg:hidden">
+        {closed ? (
+          <button disabled className="w-full cursor-not-allowed rounded-md bg-nx-line py-3 text-sm font-bold text-nx-muted">
+            Position Closed
+          </button>
+        ) : (
+          <>
+            <button
+              onClick={() => setApplyModalOpen(true)}
+              className="flex-1 rounded-md bg-brand-600 py-3 text-sm font-bold text-white shadow-sm"
+            >
+              Apply Now
+            </button>
+            <SaveJobButton
+              jobId={job.id}
+              initialSaved={initiallySaved}
+              className="h-[46px] w-[46px] flex-shrink-0 rounded-md border border-nx-line"
             />
-          </div>
-        )}
-
-        {job.requirements && (
-          <div>
-            <h2 className="text-xl font-extrabold text-slate-900 mb-4 flex items-center gap-2">
-               <span className="w-1.5 h-6 bg-brand-500 rounded-full inline-block"></span> Requirements & Skills
-            </h2>
-            <div
-              className="prose prose-slate max-w-none text-slate-600 prose-p:leading-relaxed prose-headings:text-slate-900 prose-a:text-brand-600 hover:prose-a:text-brand-500 marker:text-brand-500 prose-li:my-1"
-              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(job.requirements) }}
-            />
-          </div>
+          </>
         )}
       </div>
 
-      {/* Application Modal */}
       {applyModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-lg rounded-3xl border border-slate-100 bg-white p-8 shadow-2xl space-y-6">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-              <h3 className="text-xl font-extrabold text-slate-900 tracking-tight">Apply for {job.title}</h3>
-              <button onClick={() => setApplyModalOpen(false)} className="text-slate-400 hover:text-slate-600 bg-slate-50 hover:bg-slate-100 p-1.5 rounded-full transition-colors">✕</button>
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-nx-ink/40 p-0 backdrop-blur-sm sm:items-center sm:p-4">
+          <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-2xl border border-nx-line bg-nx-surface p-7 shadow-2xl sm:rounded-lg sm:p-8">
+            <div className="flex items-center justify-between border-b border-nx-line pb-4">
+              <h3 className="text-lg font-bold text-nx-ink">Apply for {job.title}</h3>
+              <button
+                onClick={() => setApplyModalOpen(false)}
+                aria-label="Close"
+                className="rounded-full p-1.5 text-nx-muted transition-colors hover:bg-nx-paper hover:text-nx-ink"
+              >
+                ✕
+              </button>
             </div>
 
             {!isAuthenticated ? (
-              <div className="text-center py-8 space-y-4">
-                <div className="w-16 h-16 bg-brand-50 rounded-full flex items-center justify-center mx-auto mb-2">
-                  <Lock size={28} className="text-brand-500" />
+              <div className="space-y-4 py-8 text-center">
+                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-brand-50">
+                  <Lock size={24} className="text-brand-600" />
                 </div>
-                <h4 className="text-lg font-bold text-slate-900">Candidate Account Required</h4>
-                <p className="text-sm text-slate-500 max-w-xs mx-auto">Please sign in or create a candidate account to apply and upload your resume.</p>
-                <div className="flex justify-center gap-3 pt-4">
+                <h4 className="text-base font-bold text-nx-ink">Sign in to apply</h4>
+                <p className="mx-auto max-w-xs text-sm text-nx-muted">
+                  Create a candidate account or sign in to apply and upload your resume.
+                </p>
+                <div className="flex justify-center gap-3 pt-2">
                   <button
                     onClick={() => navigate(`/careers/login?redirect=/careers/jobs/${job.id}`)}
-                    className="px-6 py-2.5 rounded-xl bg-white text-slate-700 text-sm font-bold border border-slate-200 hover:bg-slate-50 hover:text-slate-900 transition-colors shadow-sm"
+                    className="rounded-md border border-nx-line px-5 py-2.5 text-sm font-bold text-nx-body hover:border-nx-line2"
                   >
                     Sign In
                   </button>
                   <button
                     onClick={() => navigate(`/careers/register?redirect=/careers/jobs/${job.id}`)}
-                    className="px-6 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-sm font-bold shadow-md shadow-brand-500/20 transition-all hover:-translate-y-0.5"
+                    className="rounded-md bg-brand-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-brand-700"
                   >
                     Create Account
                   </button>
                 </div>
               </div>
             ) : !candidate?.email_verified_at ? (
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-amber-800 space-y-2">
-                <div className="flex items-center gap-2 font-bold text-sm">
-                  <AlertCircle size={18} className="text-amber-500" /> Email Verification Pending
+              <div className="mt-6 space-y-1.5 rounded-md border border-amber-200 bg-amber-50 p-5">
+                <div className="flex items-center gap-2 text-sm font-bold text-amber-900">
+                  <AlertCircle size={17} className="text-amber-600" /> Verify your email to apply
                 </div>
-                <p className="text-xs text-amber-700 mt-1 font-medium">
-                  Please verify your email address (sent to <strong>{candidate?.email}</strong>) before submitting job applications.
+                <p className="text-xs font-medium text-amber-800">
+                  We sent a verification link to <strong>{candidate?.email}</strong>. Confirm it, then come back to apply.
                 </p>
+                <ResendVerificationButton email={candidate?.email} className="pt-1" />
               </div>
             ) : (
-              <form onSubmit={handleApplySubmit} className="space-y-5 text-sm">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5">Applicant Name</label>
-                  <input type="text" disabled value={candidate.name} className="w-full rounded-xl bg-slate-50 border border-slate-200 px-4 py-2.5 text-slate-500 text-sm font-medium" />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5">Applicant Email</label>
-                  <input type="text" disabled value={candidate.email} className="w-full rounded-xl bg-slate-50 border border-slate-200 px-4 py-2.5 text-slate-500 text-sm font-medium" />
+              <form onSubmit={handleApplySubmit} className="mt-6 space-y-5 text-sm">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="mb-1.5 block text-xs font-bold text-nx-body">Name</label>
+                    <input disabled value={candidate.name} className="w-full rounded-md border border-nx-line bg-nx-paper px-3.5 py-2.5 text-nx-muted" />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-bold text-nx-body">Email</label>
+                    <input disabled value={candidate.email} className="w-full rounded-md border border-nx-line bg-nx-paper px-3.5 py-2.5 text-nx-muted" />
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1.5">Phone Number</label>
-                    <input type="text" value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full rounded-xl bg-white border border-slate-200 px-4 py-2.5 text-slate-900 text-sm focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 outline-none transition-all" placeholder="+91..." />
+                    <label className="mb-1.5 block text-xs font-bold text-nx-body">Phone number</label>
+                    <input
+                      type="text"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      placeholder="+91…"
+                      className="w-full rounded-md border border-nx-line px-3.5 py-2.5 text-nx-ink outline-none transition-colors focus:border-brand-500"
+                    />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1.5">Experience (Years)</label>
-                    <input type="number" step="0.5" value={experienceYears} onChange={(e) => setExperienceYears(e.target.value)} className="w-full rounded-xl bg-white border border-slate-200 px-4 py-2.5 text-slate-900 text-sm focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 outline-none transition-all" placeholder="e.g. 3.5" />
+                    <label className="mb-1.5 block text-xs font-bold text-nx-body">Experience (years)</label>
+                    <input
+                      type="number"
+                      step="0.5"
+                      value={experienceYears}
+                      onChange={(e) => setExperienceYears(e.target.value)}
+                      placeholder="e.g. 3.5"
+                      className="w-full rounded-md border border-nx-line px-3.5 py-2.5 text-nx-ink outline-none transition-colors focus:border-brand-500"
+                    />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5">Upload Resume (PDF, DOC, DOCX up to 10MB) *</label>
-                  <div className="relative border-2 border-dashed border-slate-200 hover:border-brand-500 hover:bg-brand-50/50 rounded-2xl p-6 text-center cursor-pointer transition-colors">
-                    <input
-                      type="file"
-                      accept=".pdf,.doc,.docx"
-                      onChange={(e) => setResumeFile(e.target.files[0])}
-                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                    />
-                    <div className="flex flex-col items-center justify-center space-y-2 pointer-events-none">
-                      <div className="w-10 h-10 bg-slate-50 rounded-full flex items-center justify-center text-slate-400">
-                        <Upload size={20} />
+                  <label className="mb-1.5 block text-xs font-bold text-nx-body">Resume — PDF, DOC or DOCX, up to 10MB</label>
+                  {resumeFile ? (
+                    <div className="flex items-center justify-between rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3">
+                      <div className="flex min-w-0 items-center gap-2.5">
+                        <CheckCircle2 size={17} className="flex-shrink-0 text-emerald-600" />
+                        <span className="truncate text-sm font-semibold text-emerald-900">{resumeFile.name}</span>
                       </div>
-                      <span className="text-sm font-semibold text-brand-600">
-                        {resumeFile ? resumeFile.name : "Click or drag file to upload"}
-                      </span>
+                      <label className="flex-shrink-0 cursor-pointer text-xs font-bold text-brand-700 hover:underline">
+                        Replace
+                        <input type="file" accept=".pdf,.doc,.docx" onChange={(e) => setResumeFile(e.target.files[0])} className="hidden" />
+                      </label>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="relative rounded-md border-2 border-dashed border-nx-line2 px-6 py-7 text-center transition-colors hover:border-brand-400 hover:bg-brand-50/40">
+                      <input
+                        type="file"
+                        accept=".pdf,.doc,.docx"
+                        onChange={(e) => setResumeFile(e.target.files[0])}
+                        className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                      />
+                      <div className="pointer-events-none flex flex-col items-center gap-2">
+                        <Upload size={19} className="text-nx-faint" />
+                        <span className="text-sm font-semibold text-brand-700">Choose a file or drag it here</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
-                <div className="pt-2">
-                  <button
-                    type="submit"
-                    disabled={submitting}
-                    className="w-full rounded-xl bg-brand-600 hover:bg-brand-500 disabled:bg-brand-400 text-white py-3 font-bold text-sm shadow-lg shadow-brand-500/20 transition-all hover:-translate-y-0.5"
-                  >
-                    {submitting ? "Submitting Application..." : "Submit Application"}
-                  </button>
-                </div>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="w-full rounded-md bg-brand-600 py-3 text-sm font-bold text-white shadow-sm transition-colors hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-brand-300"
+                >
+                  {submitting ? "Submitting…" : "Submit Application"}
+                </button>
               </form>
             )}
           </div>

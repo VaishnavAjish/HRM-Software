@@ -62,7 +62,7 @@ class CandidateCrmController extends Controller
     public function updateTag(Request $request, $id)
     {
         $tag = CandidateTag::find($id);
-        if (!$tag) {
+        if (!$tag || !$this->companyCodeWithinActorScope($tag->company_code)) {
             return response()->json(['status' => false, 'message' => 'Tag not found'], 404);
         }
 
@@ -79,7 +79,7 @@ class CandidateCrmController extends Controller
     public function destroyTag($id)
     {
         $tag = CandidateTag::find($id);
-        if (!$tag) {
+        if (!$tag || !$this->companyCodeWithinActorScope($tag->company_code)) {
             return response()->json(['status' => false, 'message' => 'Tag not found'], 404);
         }
 
@@ -211,7 +211,7 @@ class CandidateCrmController extends Controller
     public function updatePool(Request $request, $id)
     {
         $pool = TalentPool::find($id);
-        if (!$pool) {
+        if (!$pool || !$this->companyCodeWithinActorScope($pool->company_code)) {
             return response()->json(['status' => false, 'message' => 'Talent pool not found'], 404);
         }
 
@@ -229,7 +229,7 @@ class CandidateCrmController extends Controller
     public function destroyPool($id)
     {
         $pool = TalentPool::find($id);
-        if (!$pool) {
+        if (!$pool || !$this->companyCodeWithinActorScope($pool->company_code)) {
             return response()->json(['status' => false, 'message' => 'Talent pool not found'], 404);
         }
 
@@ -241,7 +241,7 @@ class CandidateCrmController extends Controller
     public function poolCandidates(Request $request, $poolId)
     {
         $pool = TalentPool::with('candidates')->find($poolId);
-        if (!$pool) {
+        if (!$pool || !$this->companyCodeWithinActorScope($pool->company_code)) {
             return response()->json(['status' => false, 'message' => 'Talent pool not found'], 404);
         }
 

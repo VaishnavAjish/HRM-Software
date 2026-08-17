@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Globe, ExternalLink, Copy, Search, Lock } from "lucide-react";
+import { Globe, ExternalLink, Copy, Search, Lock, Pencil } from "lucide-react";
 import toast from "react-hot-toast";
 import Badge from "../../../../components/ui/Badge";
 import Button from "../../../../components/ui/Button";
@@ -19,7 +19,7 @@ const STATUS_TABS = [
   { key: "all", label: "All Requisitions" },
 ];
 
-export default function JobPortalTab({ departments = [] }) {
+export default function JobPortalTab({ departments = [], openRequisitionForm }) {
   const { user } = useAuth();
   const { companyScope, scopeKey } = useCompany();
   const { can } = useAuthorization();
@@ -242,9 +242,17 @@ export default function JobPortalTab({ departments = [] }) {
                       </Badge>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-1.5">
-                        {req.status === "approved" && (
-                          <Button
+                        <div className="flex justify-end gap-2">
+                          <button
+                            type="button"
+                            title="Edit Requisition"
+                            onClick={() => openRequisitionForm && openRequisitionForm(req.id)}
+                            className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+                          >
+                            <Pencil size={14} />
+                          </button>
+                          {req.status === "approved" && (
+                            <Button
                             size="sm"
                             onClick={() => handlePublish(req.id)}
                             disabled={actionLoading === req.id || !canPublish}

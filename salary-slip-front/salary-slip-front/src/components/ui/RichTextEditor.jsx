@@ -25,11 +25,15 @@ const TOOLBAR_BUTTONS = [
 export default function RichTextEditor({ value, onChange, placeholder, minHeight = 96, className = "" }) {
   const ref = useRef(null);
   const lastEmitted = useRef(value);
+  const isFirstMount = useRef(true);
 
   useEffect(() => {
-    if (ref.current && value !== lastEmitted.current) {
-      ref.current.innerHTML = value || "";
-      lastEmitted.current = value;
+    if (ref.current) {
+      if (isFirstMount.current || value !== lastEmitted.current) {
+        ref.current.innerHTML = value || "";
+        lastEmitted.current = value;
+        isFirstMount.current = false;
+      }
     }
   }, [value]);
 

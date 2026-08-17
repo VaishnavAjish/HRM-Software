@@ -73,16 +73,24 @@ export default function CandidateCrmSections({ candidate, loading }) {
     let alive = true;
     const { accessToken, tokenType } = user;
 
+    // Each section loads independently — one failing (e.g. no permission for
+    // notes) must not stop the others from rendering, but the failure still
+    // has to be visible rather than silently leaving that section empty.
     hrApi.getCandidateTags(accessToken, tokenType)
-      .then((res) => alive && res.status && setAllTags(res.data || []));
+      .then((res) => alive && res.status && setAllTags(res.data || []))
+      .catch((err) => alive && toast.error(err.message || "Failed to load tags"));
     hrApi.getCandidateTagsOf(candidateId, accessToken, tokenType)
-      .then((res) => alive && res.status && setCandidateTags(res.data || []));
+      .then((res) => alive && res.status && setCandidateTags(res.data || []))
+      .catch((err) => alive && toast.error(err.message || "Failed to load candidate tags"));
     hrApi.getCandidateNotes(candidateId, accessToken, tokenType)
-      .then((res) => alive && res.status && setNotes(res.data || []));
+      .then((res) => alive && res.status && setNotes(res.data || []))
+      .catch((err) => alive && toast.error(err.message || "Failed to load notes"));
     hrApi.getCandidateCommunications(candidateId, accessToken, tokenType)
-      .then((res) => alive && res.status && setComms(res.data || []));
+      .then((res) => alive && res.status && setComms(res.data || []))
+      .catch((err) => alive && toast.error(err.message || "Failed to load communications"));
     hrApi.getCandidateDocuments(candidateId, accessToken, tokenType)
-      .then((res) => alive && res.status && setDocs(res.data || []));
+      .then((res) => alive && res.status && setDocs(res.data || []))
+      .catch((err) => alive && toast.error(err.message || "Failed to load documents"));
 
     return () => { alive = false; };
   }, [candidateId, user?.accessToken]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -96,6 +104,8 @@ export default function CandidateCrmSections({ candidate, loading }) {
         : [...candidateTags, allTags.find((t) => String(t.id) === String(tagId))];
       const res = await hrApi.syncCandidateTags(candidateId, next.map((t) => t.id), user.accessToken, user.tokenType);
       if (res.status) setCandidateTags(res.data || []);
+    } catch (err) {
+      toast.error(err.message || "Failed to update tags");
     } finally {
       setTagBusy(false);
     }
@@ -112,6 +122,8 @@ export default function CandidateCrmSections({ candidate, loading }) {
         setCandidateTags((prev) => [...prev, res.data]);
         setTagDraft({ name: "", color: "#6366f1", open: false });
       }
+    } catch (err) {
+      toast.error(err.message || "Failed to create tag");
     } finally {
       setTagBusy(false);
     }
@@ -128,6 +140,8 @@ export default function CandidateCrmSections({ candidate, loading }) {
         setNotes((prev) => [res.data, ...prev]);
         setNoteDraft("");
       }
+    } catch (err) {
+      toast.error(err.message || "Failed to add note");
     } finally {
       setNoteBusy(false);
     }
@@ -138,6 +152,8 @@ export default function CandidateCrmSections({ candidate, loading }) {
     try {
       const res = await hrApi.deleteCandidateNote(noteId, user.accessToken, user.tokenType);
       if (res.status) setNotes((prev) => prev.filter((n) => String(n.id) !== String(noteId)));
+    } catch (err) {
+      toast.error(err.message || "Failed to delete note");
     } finally {
       setNoteBusy(false);
     }
@@ -153,6 +169,8 @@ export default function CandidateCrmSections({ candidate, loading }) {
         setComms((prev) => [res.data, ...prev]);
         setCommDraft({ type: "email", subject: "", body: "" });
       }
+    } catch (err) {
+      toast.error(err.message || "Failed to send communication");
     } finally {
       setCommBusy(false);
     }

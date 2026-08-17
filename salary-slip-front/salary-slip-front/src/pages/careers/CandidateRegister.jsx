@@ -17,6 +17,7 @@ export default function CandidateRegister() {
     password_confirmation: "",
     phone: "",
   });
+  const [agreed, setAgreed] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e) => {
@@ -25,12 +26,16 @@ export default function CandidateRegister() {
       toast.error("Passwords do not match.");
       return;
     }
+    if (!agreed) {
+      toast.error("Please agree to the Terms & Privacy Policy to continue.");
+      return;
+    }
 
     setLoading(true);
     try {
       const res = await register(form);
       if (res.status) {
-        toast.success("Account created successfully! Please verify your email.");
+        toast.success("Account created! Please check your inbox to verify your email.");
         navigate(redirect);
       }
     } catch (err) {
@@ -41,101 +46,116 @@ export default function CandidateRegister() {
   };
 
   return (
-    <div className="max-w-md mx-auto px-4 py-16">
-      <div className="rounded-3xl border border-slate-100 bg-white p-8 sm:p-10 shadow-2xl shadow-slate-200/50 space-y-8">
-        <div className="text-center space-y-2">
-          <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">Create Candidate Account</h1>
-          <p className="text-sm font-medium text-slate-500">Join our talent network to apply for open positions.</p>
+    <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center bg-nx-paper px-4 py-16 sm:px-6">
+      <div className="w-full max-w-md rounded-lg border border-nx-line bg-nx-surface p-8 shadow-[0_12px_28px_-18px_rgba(33,29,23,0.3)] sm:p-10">
+        <div className="text-center">
+          <h1 className="text-2xl font-black tracking-[-0.01em] text-nx-ink">Create Your Career Profile</h1>
+          <p className="mt-2 text-sm text-nx-muted">Start your journey with us.</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-5 text-sm">
-          <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1.5">Full Name *</label>
-            <div className="relative group">
-              <User size={18} className="absolute left-4 top-3 text-slate-400 group-focus-within:text-brand-500 transition-colors" />
-              <input
-                type="text"
-                required
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                className="w-full pl-11 pr-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 placeholder-slate-400 font-medium focus:bg-white focus:border-brand-500 focus:outline-none focus:ring-4 focus:ring-brand-500/10 transition-all"
-                placeholder="John Doe"
-              />
+        <form onSubmit={handleSubmit} className="mt-8 space-y-5 text-sm">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <label className="mb-1.5 block text-xs font-bold text-nx-body">First Name *</label>
+              <div className="relative">
+                <User size={17} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-nx-faint" />
+                <input
+                  type="text"
+                  required
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  className="w-full rounded-md border border-nx-line bg-nx-paper py-3 pl-10 pr-4 text-nx-ink placeholder-nx-faint outline-none transition-colors focus:border-brand-500 focus:bg-white"
+                  placeholder="Jane Doe"
+                  autoFocus
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-xs font-bold text-nx-body">Phone</label>
+              <div className="relative">
+                <Phone size={17} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-nx-faint" />
+                <input
+                  type="text"
+                  value={form.phone}
+                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                  className="w-full rounded-md border border-nx-line bg-nx-paper py-3 pl-10 pr-4 text-nx-ink placeholder-nx-faint outline-none transition-colors focus:border-brand-500 focus:bg-white"
+                  placeholder="+91 98765 43210"
+                />
+              </div>
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1.5">Email Address *</label>
-            <div className="relative group">
-              <Mail size={18} className="absolute left-4 top-3 text-slate-400 group-focus-within:text-brand-500 transition-colors" />
+            <label className="mb-1.5 block text-xs font-bold text-nx-body">Email Address *</label>
+            <div className="relative">
+              <Mail size={17} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-nx-faint" />
               <input
                 type="email"
                 required
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
-                className="w-full pl-11 pr-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 placeholder-slate-400 font-medium focus:bg-white focus:border-brand-500 focus:outline-none focus:ring-4 focus:ring-brand-500/10 transition-all"
-                placeholder="john@example.com"
+                className="w-full rounded-md border border-nx-line bg-nx-paper py-3 pl-10 pr-4 text-nx-ink placeholder-nx-faint outline-none transition-colors focus:border-brand-500 focus:bg-white"
+                placeholder="jane@example.com"
               />
             </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1.5">Phone Number</label>
-            <div className="relative group">
-              <Phone size={18} className="absolute left-4 top-3 text-slate-400 group-focus-within:text-brand-500 transition-colors" />
-              <input
-                type="text"
-                value={form.phone}
-                onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                className="w-full pl-11 pr-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 placeholder-slate-400 font-medium focus:bg-white focus:border-brand-500 focus:outline-none focus:ring-4 focus:ring-brand-500/10 transition-all"
-                placeholder="+91 98765 43210"
-              />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <label className="mb-1.5 block text-xs font-bold text-nx-body">Password *</label>
+              <div className="relative">
+                <Lock size={17} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-nx-faint" />
+                <input
+                  type="password"
+                  required
+                  minLength={8}
+                  value={form.password}
+                  onChange={(e) => setForm({ ...form, password: e.target.value })}
+                  className="w-full rounded-md border border-nx-line bg-nx-paper py-3 pl-10 pr-4 text-nx-ink placeholder-nx-faint outline-none transition-colors focus:border-brand-500 focus:bg-white"
+                  placeholder="At least 8 characters"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-xs font-bold text-nx-body">Confirm Password *</label>
+              <div className="relative">
+                <Lock size={17} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-nx-faint" />
+                <input
+                  type="password"
+                  required
+                  value={form.password_confirmation}
+                  onChange={(e) => setForm({ ...form, password_confirmation: e.target.value })}
+                  className="w-full rounded-md border border-nx-line bg-nx-paper py-3 pl-10 pr-4 text-nx-ink placeholder-nx-faint outline-none transition-colors focus:border-brand-500 focus:bg-white"
+                  placeholder="Repeat password"
+                />
+              </div>
             </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1.5">Password *</label>
-            <div className="relative group">
-              <Lock size={18} className="absolute left-4 top-3 text-slate-400 group-focus-within:text-brand-500 transition-colors" />
-              <input
-                type="password"
-                required
-                minLength={8}
-                value={form.password}
-                onChange={(e) => setForm({ ...form, password: e.target.value })}
-                className="w-full pl-11 pr-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 placeholder-slate-400 font-medium focus:bg-white focus:border-brand-500 focus:outline-none focus:ring-4 focus:ring-brand-500/10 transition-all"
-                placeholder="At least 8 characters"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1.5">Confirm Password *</label>
-            <div className="relative group">
-              <Lock size={18} className="absolute left-4 top-3 text-slate-400 group-focus-within:text-brand-500 transition-colors" />
-              <input
-                type="password"
-                required
-                value={form.password_confirmation}
-                onChange={(e) => setForm({ ...form, password_confirmation: e.target.value })}
-                className="w-full pl-11 pr-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 placeholder-slate-400 font-medium focus:bg-white focus:border-brand-500 focus:outline-none focus:ring-4 focus:ring-brand-500/10 transition-all"
-                placeholder="Repeat password"
-              />
-            </div>
-          </div>
+          <label className="flex cursor-pointer items-start gap-2.5 text-xs text-nx-muted">
+            <input
+              type="checkbox"
+              checked={agreed}
+              onChange={(e) => setAgreed(e.target.checked)}
+              className="mt-0.5 h-3.5 w-3.5 rounded border-nx-line2 text-brand-600 focus:ring-brand-500"
+            />
+            I agree to the Terms of Service and Privacy Policy.
+          </label>
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-bold text-sm transition-all shadow-lg shadow-brand-500/20 hover:-translate-y-0.5 flex items-center justify-center gap-2 mt-2"
+            className="flex w-full items-center justify-center gap-2 rounded-md bg-brand-600 py-3 text-sm font-bold text-white shadow-sm transition-colors hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-brand-300"
           >
-            {loading ? "Creating Account..." : "Create Account"} <ArrowRight size={18} />
+            {loading ? "Creating Account…" : "Create Account"} <ArrowRight size={17} />
           </button>
         </form>
 
-        <div className="text-center text-sm font-medium text-slate-500 pt-6 border-t border-slate-100">
+        <div className="mt-8 border-t border-nx-line pt-6 text-center text-sm text-nx-muted">
           Already have an account?{" "}
-          <Link to={`/careers/login?redirect=${encodeURIComponent(redirect)}`} className="font-bold text-brand-600 hover:text-brand-500 transition-colors">
+          <Link to={`/careers/login?redirect=${encodeURIComponent(redirect)}`} className="font-bold text-brand-700 transition-colors hover:text-brand-800">
             Sign In
           </Link>
         </div>

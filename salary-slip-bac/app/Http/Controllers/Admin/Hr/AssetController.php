@@ -66,6 +66,9 @@ class AssetController extends Controller
         if (!$asset) {
             return response()->json(['status' => false, 'message' => 'Asset not found'], 404);
         }
+        if ($denied = $this->denyUnlessRecordInScope($asset)) {
+            return $denied;
+        }
 
         return response()->json(['status' => true, 'data' => $asset]);
     }
@@ -103,6 +106,9 @@ class AssetController extends Controller
         if (!$asset) {
             return response()->json(['status' => false, 'message' => 'Asset not found'], 404);
         }
+        if ($denied = $this->denyUnlessRecordInScope($asset)) {
+            return $denied;
+        }
 
         $data = $request->validate([
             'category' => 'sometimes|required|string|max:100',
@@ -128,6 +134,9 @@ class AssetController extends Controller
         $asset = Asset::find($id);
         if (!$asset) {
             return response()->json(['status' => false, 'message' => 'Asset not found'], 404);
+        }
+        if ($denied = $this->denyUnlessRecordInScope($asset)) {
+            return $denied;
         }
 
         $asset->delete();

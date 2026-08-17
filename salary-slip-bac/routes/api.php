@@ -1614,6 +1614,7 @@ Route::get('public/jobs/{slug}', [\App\Http\Controllers\Public\PublicJobControll
 Route::group(['prefix' => 'candidate'], function () {
     Route::post('auth/register', [\App\Http\Controllers\Candidate\CandidateAuthController::class, 'register'])->middleware('throttle:10,1');
     Route::post('auth/verify-email', [\App\Http\Controllers\Candidate\CandidateAuthController::class, 'verifyEmail'])->middleware('throttle:10,1');
+    Route::post('auth/resend-verification', [\App\Http\Controllers\Candidate\CandidateAuthController::class, 'resendVerification'])->middleware(['throttle:candidate-resend', 'frontend.url']);
     Route::post('auth/login', [\App\Http\Controllers\Candidate\CandidateAuthController::class, 'login'])->middleware('throttle:10,1');
     Route::post('auth/forgot-password', [\App\Http\Controllers\Candidate\CandidateAuthController::class, 'forgotPassword'])->middleware('throttle:10,1');
     Route::post('auth/reset-password', [\App\Http\Controllers\Candidate\CandidateAuthController::class, 'resetPassword'])->middleware('throttle:10,1');
@@ -1627,6 +1628,23 @@ Route::group(['prefix' => 'candidate'], function () {
         Route::get('applications', [\App\Http\Controllers\Candidate\CandidateApplicationController::class, 'index']);
         Route::get('applications/{id}', [\App\Http\Controllers\Candidate\CandidateApplicationController::class, 'show']);
         Route::get('applications/{id}/resume', [\App\Http\Controllers\Candidate\CandidateApplicationController::class, 'downloadResume']);
+
+        Route::get('saved-jobs', [\App\Http\Controllers\Candidate\CandidateSavedJobController::class, 'index']);
+        Route::post('jobs/{slug}/save', [\App\Http\Controllers\Candidate\CandidateSavedJobController::class, 'store']);
+        Route::delete('jobs/{slug}/save', [\App\Http\Controllers\Candidate\CandidateSavedJobController::class, 'destroy']);
+
+        Route::get('interviews', [\App\Http\Controllers\Candidate\CandidateInterviewController::class, 'index']);
+        Route::get('interviews/{id}', [\App\Http\Controllers\Candidate\CandidateInterviewController::class, 'show']);
+
+        Route::get('experiences', [\App\Http\Controllers\Candidate\CandidateExperienceController::class, 'index']);
+        Route::post('experiences', [\App\Http\Controllers\Candidate\CandidateExperienceController::class, 'store']);
+        Route::put('experiences/{id}', [\App\Http\Controllers\Candidate\CandidateExperienceController::class, 'update']);
+        Route::delete('experiences/{id}', [\App\Http\Controllers\Candidate\CandidateExperienceController::class, 'destroy']);
+
+        Route::get('educations', [\App\Http\Controllers\Candidate\CandidateEducationController::class, 'index']);
+        Route::post('educations', [\App\Http\Controllers\Candidate\CandidateEducationController::class, 'store']);
+        Route::put('educations/{id}', [\App\Http\Controllers\Candidate\CandidateEducationController::class, 'update']);
+        Route::delete('educations/{id}', [\App\Http\Controllers\Candidate\CandidateEducationController::class, 'destroy']);
     });
 });
 

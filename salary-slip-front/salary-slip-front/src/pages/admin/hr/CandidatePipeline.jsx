@@ -17,6 +17,7 @@ import {
   XCircle,
   PauseCircle,
   Eye,
+  Lock,
 } from "lucide-react";
 import Button from "../../../components/ui/Button";
 import Badge from "../../../components/ui/Badge";
@@ -512,7 +513,7 @@ export default function CandidatePipeline({ people = [] }) {
 
 /* ─────────────────── List View (default — scales to many candidates) ─────────────────── */
 
-function CandidateListView({
+export function CandidateListView({
   compact, loading, candidates, total, page, perPage, onPageChange, onPageSizeChange,
   onOpenDetail, onAdvance, selectedIds = [], onToggleSelected, onSelectAll,
 }) {

@@ -162,21 +162,38 @@ class RecruitmentDashboardController extends Controller
             })->values();
 
         // Recruiter Performance
+        // avg_time_to_hire is computed in PHP (Carbon::diffInDays), not raw SQL
+        // — EXTRACT(EPOCH FROM ...) is PostgreSQL-only and throws on SQLite,
+        // which the production deployment runs on. Every other trend/average
+        // in this controller already avoids raw date-arithmetic SQL for the
+        // same reason.
+        $hiredByRecruiter = Candidate::whereNotNull('recruiter_id')
+            ->where('stage', 'offer_accepted')
+            ->get(['recruiter_id', 'created_at', 'updated_at'])
+            ->groupBy('recruiter_id');
+
         $recruiterPerformance = Candidate::whereNotNull('recruiter_id')
             ->selectRaw("recruiter_id, COUNT(*) as total_candidates,
-                COUNT(CASE WHEN stage IN ('selected', 'offer_sent', 'offer_accepted') THEN 1 END) as conversions,
-                AVG(CASE WHEN stage = 'offer_accepted' THEN EXTRACT(EPOCH FROM (updated_at - created_at)) / 86400 END) as avg_time_to_hire")
+                COUNT(CASE WHEN stage IN ('selected', 'offer_sent', 'offer_accepted') THEN 1 END) as conversions")
             ->groupBy('recruiter_id')
             ->with('recruiter:id,name,email')
             ->get()
-            ->map(function ($r) {
+            ->map(function ($r) use ($hiredByRecruiter) {
+                $hired = $hiredByRecruiter->get($r->recruiter_id, collect());
+                $avgTimeToHire = null;
+                if ($hired->count() > 0) {
+                    $totalDays = $hired->sum(function ($c) {
+                        return Carbon::parse($c->created_at)->diffInDays(Carbon::parse($c->updated_at));
+                    });
+                    $avgTimeToHire = round($totalDays / $hired->count(), 1);
+                }
                 return [
                     'recruiter_id' => $r->recruiter_id,
                     'recruiter_name' => $r->recruiter?->name ?? 'Unknown',
                     'total_candidates' => (int) $r->total_candidates,
                     'conversions' => (int) $r->conversions,
                     'conversion_rate' => $r->total_candidates > 0 ? round(($r->conversions / $r->total_candidates) * 100, 1) : 0,
-                    'avg_time_to_hire' => $r->avg_time_to_hire ? round($r->avg_time_to_hire, 1) : null,
+                    'avg_time_to_hire' => $avgTimeToHire,
                 ];
             });
 

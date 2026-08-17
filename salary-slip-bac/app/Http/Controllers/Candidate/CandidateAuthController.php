@@ -3,9 +3,13 @@
 namespace App\Http\Controllers\Candidate;
 
 use App\Http\Controllers\Controller;
+use App\Mail\CandidateResetPasswordMail;
+use App\Mail\CandidateVerifyEmailMail;
 use App\Models\CandidateAccount;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 
 class CandidateAuthController extends Controller
@@ -32,13 +36,43 @@ class CandidateAuthController extends Controller
 
         $token = $account->createToken('candidate_auth')->plainTextToken;
 
+        $this->sendVerificationEmail($account, $verificationToken);
+
         return response()->json([
             'status' => true,
             'message' => 'Registration successful. Please verify your email.',
             'token' => $token,
-            'verification_token' => $verificationToken, // Returned for dev/testing ease
             'candidate' => $account,
         ], 201);
+    }
+
+    /**
+     * Best-effort — a mail-server hiccup shouldn't fail registration itself,
+     * since the account already exists regardless of whether the email made
+     * it out (the candidate can still request a fresh link later).
+     */
+    private function sendVerificationEmail(CandidateAccount $account, string $rawToken): void
+    {
+        if (!$account->email) {
+            return;
+        }
+
+        $frontendUrl = rtrim((string) config('services.frontend_url'), '/');
+        if (!$frontendUrl) {
+            Log::critical('candidate_verify_email_skipped_no_frontend_url', ['candidate_account_id' => $account->id]);
+            return;
+        }
+
+        $verifyUrl = $frontendUrl . '/careers/verify-email?email=' . urlencode($account->email) . '&token=' . urlencode($rawToken);
+
+        try {
+            Mail::to($account->email)->send(new CandidateVerifyEmailMail(
+                candidateName: $account->name,
+                verifyUrl: $verifyUrl,
+            ));
+        } catch (\Throwable $e) {
+            Log::error('candidate_verify_email_mail_failed', ['candidate_account_id' => $account->id, 'error' => $e->getMessage()]);
+        }
     }
 
     public function verifyEmail(Request $request)
@@ -68,6 +102,34 @@ class CandidateAuthController extends Controller
         ]);
 
         return response()->json(['status' => true, 'message' => 'Email verified successfully.', 'candidate' => $account->fresh()]);
+    }
+
+    /**
+     * Same generic response whether the email is unknown, already verified,
+     * or genuinely unverified — this endpoint must not be usable to test
+     * which candidate emails are registered or already confirmed. Issuing a
+     * fresh token overwrites the single verification_token column, so any
+     * link from a previous email stops working the moment this one is sent.
+     */
+    public function resendVerification(Request $request)
+    {
+        $data = $request->validate(['email' => 'required|email']);
+        $account = CandidateAccount::where('email', strtolower(trim($data['email'])))->first();
+
+        if ($account && ! $account->email_verified_at) {
+            $rawToken = Str::random(60);
+            $account->update([
+                'verification_token' => hash('sha256', $rawToken),
+                'verification_token_expires_at' => now()->addHours(24),
+            ]);
+
+            $this->sendVerificationEmail($account, $rawToken);
+        }
+
+        return response()->json([
+            'status' => true,
+            'message' => 'If the account exists and requires verification, a verification email has been sent.',
+        ]);
     }
 
     public function login(Request $request)
@@ -137,14 +199,36 @@ class CandidateAuthController extends Controller
                 'reset_password_token_expires_at' => now()->addHours(2),
             ]);
 
-            return response()->json([
-                'status' => true,
-                'message' => 'If your email is registered, password reset instructions have been sent.',
-                'reset_token' => $rawToken,
-            ]);
+            $this->sendResetPasswordEmail($account, $rawToken);
         }
 
+        // Identical response whether or not the account exists, so this
+        // endpoint cannot be used to enumerate registered candidate emails.
         return response()->json(['status' => true, 'message' => 'If your email is registered, password reset instructions have been sent.']);
+    }
+
+    private function sendResetPasswordEmail(CandidateAccount $account, string $rawToken): void
+    {
+        if (!$account->email) {
+            return;
+        }
+
+        $frontendUrl = rtrim((string) config('services.frontend_url'), '/');
+        if (!$frontendUrl) {
+            Log::critical('candidate_reset_password_skipped_no_frontend_url', ['candidate_account_id' => $account->id]);
+            return;
+        }
+
+        $resetUrl = $frontendUrl . '/careers/reset-password?email=' . urlencode($account->email) . '&token=' . urlencode($rawToken);
+
+        try {
+            Mail::to($account->email)->send(new CandidateResetPasswordMail(
+                candidateName: $account->name,
+                resetUrl: $resetUrl,
+            ));
+        } catch (\Throwable $e) {
+            Log::error('candidate_reset_password_mail_failed', ['candidate_account_id' => $account->id, 'error' => $e->getMessage()]);
+        }
     }
 
     public function resetPassword(Request $request)

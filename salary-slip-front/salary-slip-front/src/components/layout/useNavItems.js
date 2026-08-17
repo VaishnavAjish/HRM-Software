@@ -97,7 +97,7 @@ function getAdminNav(companyId, user, isAllCompanies, isModuleAvailable = () => 
       icon: Briefcase,
       subItems: [
         { to: "/admin/hr", label: "HR Dashboard", end: true },
-        { to: "/admin/hr/hiring", label: "Hiring" },
+        { to: "/admin/hr/hiring", label: "Recruitment" },
         { to: "/admin/hr/onboarding", label: "Onboarding" },
         { to: "/admin/hr/organization", label: "Organization" },
         { to: "/admin/hr/assets", label: "Asset Allocation" },

@@ -31,5 +31,19 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute((int) env('API_RATE_LIMIT', 120))
                 ->by($request->user()?->id ?: $request->ip());
         });
+
+        // Resend-verification is a self-service mailer trigger — without a
+        // per-email cap a caller could email-bomb any candidate's inbox by
+        // posting the same address repeatedly from rotating IPs, so the
+        // email-keyed limits apply regardless of source IP.
+        RateLimiter::for('candidate-resend', function (Request $request) {
+            $email = strtolower(trim((string) $request->input('email')));
+
+            return [
+                Limit::perMinute(1)->by('candidate-resend-email:'.$email),
+                Limit::perDay(5)->by('candidate-resend-email:'.$email),
+                Limit::perMinute(10)->by('candidate-resend-ip:'.$request->ip()),
+            ];
+        });
     }
 }
