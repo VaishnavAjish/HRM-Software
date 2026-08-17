@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Search, Briefcase, ChevronDown, AlertCircle } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Search, Briefcase, ChevronDown, AlertCircle, FileText, Send, CalendarClock, Bookmark, ShieldCheck } from "lucide-react";
 import { publicJobApi, candidateApi } from "../../utils/api";
 import { COMPANY_OPTIONS } from "../../config/companyConfig";
 import JobCard from "../../components/careers/JobCard";
@@ -34,7 +35,7 @@ function SelectField({ value, onChange, options, label }) {
 }
 
 export default function CareersList() {
-  const { isAuthenticated, token } = useCandidateAuth();
+  const { isAuthenticated, token, candidate } = useCandidateAuth();
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -43,6 +44,7 @@ export default function CareersList() {
   const [companyCode, setCompanyCode] = useState("");
   const [departmentId, setDepartmentId] = useState("");
   const [savedJobIds, setSavedJobIds] = useState(() => new Set());
+  const [myStats, setMyStats] = useState(null);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -51,6 +53,22 @@ export default function CareersList() {
         if (res.status) setSavedJobIds(new Set((res.data || []).map((row) => row.job.id)));
       })
       .catch(() => {});
+  }, [isAuthenticated, token]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    Promise.all([
+      candidateApi.getApplications(token).catch(() => null),
+      candidateApi.getInterviews(token).catch(() => null),
+    ]).then(([applicationsRes, interviewsRes]) => {
+      const applications = applicationsRes?.status ? applicationsRes.data || [] : [];
+      const interviews = interviewsRes?.status ? interviewsRes.data || [] : [];
+      setMyStats({
+        applications: applications.length,
+        inProgress: applications.filter((a) => !["Closed", "Hired"].includes(a.status_label)).length,
+        interviews: interviews.filter((i) => ["scheduled", "rescheduled"].includes(i.status)).length,
+      });
+    });
   }, [isAuthenticated, token]);
 
   const loadJobs = () => {
@@ -146,6 +164,23 @@ export default function CareersList() {
         </div>
       </section>
 
+      {isAuthenticated && (
+        <section className="mx-auto -mt-6 max-w-6xl px-4 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-2 gap-3 rounded-lg border border-nx-line bg-nx-surface p-4 shadow-[0_12px_28px_-18px_rgba(33,29,23,0.25)] sm:grid-cols-5">
+            <MyStatTile as={Link} to="/careers/account/applications" icon={<FileText size={15} />} label="Applications" value={myStats?.applications} />
+            <MyStatTile as={Link} to="/careers/account/applications" icon={<Send size={15} />} label="In Progress" value={myStats?.inProgress} />
+            <MyStatTile as={Link} to="/careers/account/interviews" icon={<CalendarClock size={15} />} label="Interviews" value={myStats?.interviews} />
+            <MyStatTile as={Link} to="/careers/account/saved-jobs" icon={<Bookmark size={15} />} label="Saved Jobs" value={savedJobIds.size} />
+            <MyStatTile
+              icon={<ShieldCheck size={15} />}
+              label="Account"
+              value={candidate?.email_verified_at ? "Verified" : "Pending"}
+              tone={candidate?.email_verified_at ? "good" : "warn"}
+            />
+          </div>
+        </section>
+      )}
+
       <section className="mx-auto max-w-6xl px-4 pt-10 sm:px-6 lg:px-8">
         <div className="flex flex-col gap-4 border-b border-nx-line pb-6 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="text-lg font-bold text-nx-ink">
@@ -211,5 +246,22 @@ export default function CareersList() {
         </div>
       </section>
     </div>
+  );
+}
+
+function MyStatTile({ icon, label, value, tone, as: Component = "div", ...linkProps }) {
+  const toneClass = tone === "good" ? "text-emerald-700" : tone === "warn" ? "text-amber-700" : "text-nx-ink";
+  const interactive = Component !== "div";
+  return (
+    <Component
+      {...linkProps}
+      className={`rounded-md px-3 py-2.5 text-center sm:text-left ${interactive ? "transition-colors hover:bg-nx-paper" : ""}`}
+    >
+      <div className="flex items-center justify-center gap-1.5 text-nx-muted sm:justify-start">
+        {icon}
+        <span className="text-[11px] font-bold uppercase tracking-[0.06em]">{label}</span>
+      </div>
+      <p className={`mt-1 text-xl font-black ${toneClass}`}>{value ?? "—"}</p>
+    </Component>
   );
 }

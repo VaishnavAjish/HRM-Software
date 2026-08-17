@@ -10,8 +10,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // must never collapse "the request failed" into the same UI as "there are
 // genuinely no jobs".
 
+const authState = vi.hoisted(() => ({ isAuthenticated: false, token: null, candidate: null }));
+
 vi.mock("../../context/CandidateAuthContext", () => ({
-  useCandidateAuth: () => ({ isAuthenticated: false, token: null }),
+  useCandidateAuth: () => authState,
 }));
 
 const apiState = vi.hoisted(() => ({
@@ -25,11 +27,13 @@ vi.mock("../../utils/api", () => ({
   },
   candidateApi: {
     getSavedJobs: vi.fn(() => Promise.resolve({ status: true, data: [] })),
+    getApplications: vi.fn(() => Promise.resolve({ status: true, data: [] })),
+    getInterviews: vi.fn(() => Promise.resolve({ status: true, data: [] })),
   },
 }));
 
 import CareersList from "./CareersList";
-import { publicJobApi } from "../../utils/api";
+import { publicJobApi, candidateApi } from "../../utils/api";
 
 const JOB = {
   id: 52, title: "Senior Software Engineer", designation: "SSE",
@@ -50,6 +54,9 @@ describe("CareersList", () => {
   beforeEach(() => {
     apiState.response = { status: true, data: { data: [] } };
     apiState.shouldReject = false;
+    authState.isAuthenticated = false;
+    authState.token = null;
+    authState.candidate = null;
     vi.clearAllMocks();
   });
 
@@ -115,5 +122,52 @@ describe("CareersList", () => {
       employment_type: undefined,
       company_code: undefined,
     }));
+  });
+
+  it("hides the signed-in stat row for anonymous visitors", async () => {
+    renderPage();
+    await screen.findByText("No open positions are currently available");
+    expect(screen.queryByText("Applications")).not.toBeInTheDocument();
+  });
+
+  it("shows real signed-in candidate stats pulled from the account APIs", async () => {
+    authState.isAuthenticated = true;
+    authState.token = "candidate-token";
+    authState.candidate = { email_verified_at: "2026-08-01T00:00:00Z" };
+    candidateApi.getApplications.mockResolvedValue({
+      status: true,
+      data: [
+        { id: 1, status_label: "Interviewing" },
+        { id: 2, status_label: "Closed" },
+      ],
+    });
+    candidateApi.getInterviews.mockResolvedValue({
+      status: true,
+      data: [{ id: 1, status: "scheduled" }, { id: 2, status: "completed" }],
+    });
+    candidateApi.getSavedJobs.mockResolvedValue({
+      status: true,
+      data: [{ job: { id: 52 } }],
+    });
+
+    renderPage();
+    await screen.findByText("Applications");
+
+    const statValue = (label) => screen.getByText(label).parentElement.nextElementSibling.textContent;
+    await waitFor(() => expect(statValue("Applications")).toBe("2"));
+    expect(statValue("In Progress")).toBe("1");
+    expect(statValue("Interviews")).toBe("1");
+    expect(statValue("Saved Jobs")).toBe("1");
+    expect(statValue("Account")).toBe("Verified");
+  });
+
+  it("marks the account as pending when the candidate has not verified their email", async () => {
+    authState.isAuthenticated = true;
+    authState.token = "candidate-token";
+    authState.candidate = { email_verified_at: null };
+
+    renderPage();
+
+    expect(await screen.findByText("Pending")).toBeInTheDocument();
   });
 });
