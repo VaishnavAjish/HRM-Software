@@ -245,7 +245,7 @@ export default function JobDetail() {
                 </button>
               )}
               {profileIncomplete && (
-                <p className="mt-2 text-center text-[11px] font-semibold text-amber-700">Complete your profile to apply</p>
+                <p className="mt-2 text-center text-[11px] font-semibold text-amber-700">Your profile is incomplete</p>
               )}
               <SaveJobButton jobId={job.id} initialSaved={initiallySaved} variant="text" className="mt-2.5 w-full justify-center" />
             </div>
