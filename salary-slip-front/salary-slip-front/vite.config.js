@@ -147,6 +147,8 @@ export default defineConfig(({ mode }) => {
 
         // Workbox service-worker config
         workbox: {
+          skipWaiting: true,
+          clientsClaim: true,
           // precache essential app shell assets
           globPatterns: ["**/*.{js,css,html,ico,png,svg,woff,woff2,ttf,eot}"],
           globIgnores: [
