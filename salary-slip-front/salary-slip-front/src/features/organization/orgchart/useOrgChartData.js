@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { organizationApi } from "../services/organizationApi";
+import { companyUnitApi } from "../../../utils/api";
 
 const EMPTY_CHART = { nodes: [], edges: [], meta: {} };
 
@@ -116,6 +117,7 @@ export function useOrgChartData({ token, tokenType, view, filters }) {
   const [chart, setChart] = useState(EMPTY_CHART);
   const [orgUnits, setOrgUnits] = useState([]);
   const [companies, setCompanies] = useState([]);
+  const [units, setUnits] = useState([]);
   const [summary, setSummary] = useState(null);
   const [activity, setActivity] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -142,6 +144,19 @@ export function useOrgChartData({ token, tokenType, view, filters }) {
     let active = true;
     organizationApi.legalEntityProfileCompanies(token, tokenType)
       .then((res) => { if (active) setCompanies(res?.data ?? []); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [token, tokenType]);
+
+  // Branch layer of the chart (Organization -> Company -> Branch ->
+  // Department) — Units is the existing, real, company-scoped "named site"
+  // entity (see Company & Unit), reused here rather than building a
+  // separate branch table from scratch.
+  useEffect(() => {
+    if (!token) return undefined;
+    let active = true;
+    companyUnitApi.units({}, token, tokenType)
+      .then((res) => { if (active) setUnits(res?.data ?? []); })
       .catch(() => {});
     return () => { active = false; };
   }, [token, tokenType]);
@@ -240,5 +255,5 @@ export function useOrgChartData({ token, tokenType, view, filters }) {
     filters.includeVacant, filters.search, companyIdsKey,
   ]);
 
-  return { chart, orgUnits, companies, summary, activity, loading, error, refetch };
+  return { chart, orgUnits, companies, units, summary, activity, loading, error, refetch };
 }

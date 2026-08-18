@@ -295,7 +295,7 @@ export default function EmployeeManagement() {
     return () => {
       active = false;
     };
-  }, [currentUser?.accessToken, currentUser?.tokenType, companyScope]);
+  }, [currentUser?.accessToken, currentUser?.tokenType, scopeKey]);
 
   useEffect(() => {
     setAllDepartments((prev) => {
@@ -337,6 +337,8 @@ export default function EmployeeManagement() {
     }
     return filters;
   }, [apiFilter, searchQuery, selectedStatus, selectedDepartment, selectedCompany, selectedUnit]);
+
+  const mergedFiltersKey = useMemo(() => JSON.stringify(mergedFilters), [mergedFilters]);
 
   const [exportLoading, setExportLoading] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -434,12 +436,11 @@ export default function EmployeeManagement() {
   }, [
     apiPage,
     perPage,
-    mergedFilters,
+    mergedFiltersKey,
     refreshKey,
-    companyScope,
+    scopeKey,
     currentUser?.accessToken,
     currentUser?.tokenType,
-    scopeKey,
   ]);
 
   const isFirstScopeRender = useRef(true);

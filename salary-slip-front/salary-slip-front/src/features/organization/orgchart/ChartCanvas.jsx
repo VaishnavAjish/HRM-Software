@@ -29,7 +29,9 @@ const SPACINGS = [
 
 const ROOT_NODE_ID = "__root__";
 
-function toFlowElements(chart, orgUnits, companies, { collapsedIds, onQuickAdd, onSetManager, onToggleCollapse, onFocus, loadingIds, includeRoot }) {
+const UNASSIGNED_NODE_ID = "__unassigned__";
+
+function toFlowElements(chart, orgUnits, companies, units, { collapsedIds, onQuickAdd, onSetManager, onToggleCollapse, onFocus, loadingIds, includeRoot }) {
   const unitsById = new Map(orgUnits.map((u) => [u.id, u]));
   const reportCounts = new Map();
   (chart.edges || []).forEach((e) => reportCounts.set(e.source, (reportCounts.get(e.source) || 0) + 1));
@@ -102,17 +104,19 @@ function toFlowElements(chart, orgUnits, companies, { collapsedIds, onQuickAdd, 
 
   // Every department was rendering as its own disconnected island — nothing
   // tied them together into one tree. Root-level departments (no parent
-  // edge of their own) attach to their real company, and companies attach
-  // to a single organization root, so the whole chart reads as one
-  // structure. Display-only, like the position synthesis above; skipped
-  // entirely in focus/sub-chart mode; the department's own real company_id
-  // (from OrganizationChartService) decides which company it hangs from —
-  // one still hangs off the root directly if it has none.
+  // edge of their own) attach to their real company (via an intermediate
+  // Branch node — see below), and companies attach to a single organization
+  // root, so the whole chart reads as one structure: Organization -> Company
+  // -> Branch -> Department. Display-only, like the position synthesis
+  // above; skipped entirely in focus/sub-chart mode. A department with no
+  // company at all goes under a single, clearly-labeled "Unassigned"
+  // bucket instead of floating as if it were a company itself.
   if (includeRoot) {
     const rootLevelDepartments = nodes.filter((n) => n.data.type === "department" && !hasIncoming.has(n.id));
 
     if (rootLevelDepartments.length > 0) {
       const sumField = (deps, field) => deps.reduce((sum, n) => sum + (n.data[field] || 0), 0);
+      const unitsById = new Map((units || []).map((u) => [u.id, u]));
 
       nodes.push({
         id: ROOT_NODE_ID,
@@ -130,6 +134,7 @@ function toFlowElements(chart, orgUnits, companies, { collapsedIds, onQuickAdd, 
       const companyIdsInUse = new Set(
         rootLevelDepartments.map((n) => n.data.metadata?.companyId).filter(Boolean),
       );
+      const unassignedDepartments = rootLevelDepartments.filter((n) => !n.data.metadata?.companyId);
 
       (companies || []).forEach((c) => {
         if (!companyIdsInUse.has(c.id)) return;
@@ -151,16 +156,100 @@ function toFlowElements(chart, orgUnits, companies, { collapsedIds, onQuickAdd, 
           id: `edge_root_${companyNodeId}`, source: ROOT_NODE_ID, target: companyNodeId,
           type: "smoothstep", style: { stroke: "#9ca3af", strokeWidth: 1.5 },
         });
-      });
 
-      rootLevelDepartments.forEach((n) => {
-        const companyId = n.data.metadata?.companyId;
-        const parentId = companyId ? `company_${companyId}` : ROOT_NODE_ID;
-        edges.push({
-          id: `edge_synthetic_root_${parentId}_${n.id}`, source: parentId, target: n.id,
-          type: "smoothstep", style: { stroke: "#9ca3af", strokeWidth: 1.5 },
+        // Branch layer — Units is the existing, real, company-scoped named
+        // site/branch entity (Company & Unit's "Units" tab). A department
+        // assigned a real unit nests under that branch; one with no branch
+        // assigned falls under a per-company "General" branch, so every
+        // department under a company follows the same Company -> Branch ->
+        // Department shape rather than only some of them.
+        const branchIdsInUse = new Set(
+          deptsUnderCompany.map((n) => n.data.metadata?.unitId).filter((id) => id && unitsById.has(id)),
+        );
+        let hasGeneralBranch = false;
+
+        branchIdsInUse.forEach((unitId) => {
+          const unit = unitsById.get(unitId);
+          const branchNodeId = `unit_${unitId}`;
+          const deptsUnderBranch = deptsUnderCompany.filter((n) => n.data.metadata?.unitId === unitId);
+          nodes.push({
+            id: branchNodeId,
+            type: "department",
+            position: { x: 0, y: 0 },
+            data: {
+              id: branchNodeId, type: "branch", name: unit.name, title: "Branch",
+              employeeCount: sumField(deptsUnderBranch, "employeeCount"),
+              approvedHeadcount: sumField(deptsUnderBranch, "approvedHeadcount"),
+              vacancy: sumField(deptsUnderBranch, "vacancy"),
+              isActive: true, metadata: {}, hasChildren: false, isCollapsed: false,
+            },
+          });
+          edges.push({
+            id: `edge_company_${companyNodeId}_${branchNodeId}`, source: companyNodeId, target: branchNodeId,
+            type: "smoothstep", style: { stroke: "#9ca3af", strokeWidth: 1.5 },
+          });
+        });
+
+        deptsUnderCompany.forEach((n) => {
+          const unitId = n.data.metadata?.unitId;
+          const hasRealBranch = unitId && unitsById.has(unitId);
+          const branchNodeId = hasRealBranch ? `unit_${unitId}` : `unit_general_${c.id}`;
+
+          if (!hasRealBranch && !hasGeneralBranch) {
+            hasGeneralBranch = true;
+            const deptsUnderGeneral = deptsUnderCompany.filter((d) => {
+              const dUnitId = d.data.metadata?.unitId;
+              return !(dUnitId && unitsById.has(dUnitId));
+            });
+            nodes.push({
+              id: branchNodeId,
+              type: "department",
+              position: { x: 0, y: 0 },
+              data: {
+                id: branchNodeId, type: "branch", name: "General", title: "Branch",
+                employeeCount: sumField(deptsUnderGeneral, "employeeCount"),
+                approvedHeadcount: sumField(deptsUnderGeneral, "approvedHeadcount"),
+                vacancy: sumField(deptsUnderGeneral, "vacancy"),
+                isActive: true, metadata: {}, hasChildren: false, isCollapsed: false,
+              },
+            });
+            edges.push({
+              id: `edge_company_${companyNodeId}_${branchNodeId}`, source: companyNodeId, target: branchNodeId,
+              type: "smoothstep", style: { stroke: "#9ca3af", strokeWidth: 1.5 },
+            });
+          }
+
+          edges.push({
+            id: `edge_synthetic_root_${branchNodeId}_${n.id}`, source: branchNodeId, target: n.id,
+            type: "smoothstep", style: { stroke: "#9ca3af", strokeWidth: 1.5 },
+          });
         });
       });
+
+      if (unassignedDepartments.length > 0) {
+        nodes.push({
+          id: UNASSIGNED_NODE_ID,
+          type: "department",
+          position: { x: 0, y: 0 },
+          data: {
+            id: UNASSIGNED_NODE_ID, type: "unassigned", name: "Unassigned Departments", title: "No company assigned",
+            employeeCount: sumField(unassignedDepartments, "employeeCount"),
+            approvedHeadcount: sumField(unassignedDepartments, "approvedHeadcount"),
+            vacancy: sumField(unassignedDepartments, "vacancy"),
+            isActive: true, metadata: {}, hasChildren: false, isCollapsed: false,
+          },
+        });
+        edges.push({
+          id: `edge_root_${UNASSIGNED_NODE_ID}`, source: ROOT_NODE_ID, target: UNASSIGNED_NODE_ID,
+          type: "smoothstep", style: { stroke: "#d1d5db", strokeWidth: 1.5, strokeDasharray: "4 3" },
+        });
+        unassignedDepartments.forEach((n) => {
+          edges.push({
+            id: `edge_synthetic_root_${UNASSIGNED_NODE_ID}_${n.id}`, source: UNASSIGNED_NODE_ID, target: n.id,
+            type: "smoothstep", style: { stroke: "#d1d5db", strokeWidth: 1, strokeDasharray: "4 3" },
+          });
+        });
+      }
     }
   }
 
@@ -268,7 +357,7 @@ function Toolbar({
 }
 
 function ChartCanvasInner({
-  chart, orgUnits, companies, selectedNodeId, onSelectNode, onQuickAdd, onSetManager, onOpenFilters, activeFilterCount,
+  chart, orgUnits, companies, units, selectedNodeId, onSelectNode, onQuickAdd, onSetManager, onOpenFilters, activeFilterCount,
   searchValue, onSearchChange, history, onConnectNodes, onDragMove, loading, onImportLegacy, canImportLegacy,
   locked, onToggleLock, canUnlock, onLoadDepartmentEmployees, employeeRefreshSignal,
 }) {
@@ -438,12 +527,12 @@ function ChartCanvasInner({
   }, [mergedChart, focusNodeId]);
 
   const laidOut = useMemo(
-    () => toFlowElements(focusedChart, orgUnits, companies, {
+    () => toFlowElements(focusedChart, orgUnits, companies, units, {
       collapsedIds, onToggleCollapse: toggleCollapse, onQuickAdd: locked ? undefined : onQuickAdd,
       onSetManager: locked ? undefined : onSetManager,
       onFocus: enterFocus, loadingIds, includeRoot: !focusNodeId,
     }),
-    [focusedChart, orgUnits, companies, collapsedIds, onQuickAdd, onSetManager, toggleCollapse, enterFocus, locked, loadingIds, focusNodeId],
+    [focusedChart, orgUnits, companies, units, collapsedIds, onQuickAdd, onSetManager, toggleCollapse, enterFocus, locked, loadingIds, focusNodeId],
   );
 
   // A full dagre layout recomputes every node's position from scratch, so

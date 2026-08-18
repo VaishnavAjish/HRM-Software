@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class Department extends Model
 {
-    protected $fillable = ["name", "company_code", "manager_id"];
+    protected $fillable = ["name", "company_code", "manager_id", "unit_id"];
 
     public function managers()
     {
@@ -16,6 +16,11 @@ class Department extends Model
     public function manager()
     {
         return $this->belongsTo(User::class, "manager_id");
+    }
+
+    public function unit()
+    {
+        return $this->belongsTo(Unit::class, "unit_id");
     }
 }
 

@@ -36,22 +36,24 @@ export default function InsightsPanel({ chart, summary, activity, loading, onVie
   // stays at 0 until real positions/headcount targets exist.
   const total = donutData.reduce((sum, r) => sum + r.value, 0);
 
-  return (
-    <div className="space-y-4">
-      <Card padding={false} className="p-4">
-        <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Organization Insights</h3>
+  const recentActivity = activity.slice(0, 4);
 
-        <div className="mt-3">
-          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+  return (
+    <div className="space-y-2.5">
+      <Card padding={false} className="p-2.5">
+        <h3 className="text-xs font-semibold text-gray-900 dark:text-white">Organization Insights</h3>
+
+        <div className="mt-2">
+          <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
             Headcount by Department
           </p>
           {donutData.length === 0 ? (
-            <p className="py-6 text-center text-xs text-gray-400">No headcount data yet.</p>
+            <p className="py-3 text-center text-xs text-gray-400">No headcount data yet.</p>
           ) : (
             <div className="relative">
-              <ResponsiveContainer width="100%" height={180}>
+              <ResponsiveContainer width="100%" height={120}>
                 <PieChart>
-                  <Pie data={donutData} dataKey="value" nameKey="name" innerRadius={48} outerRadius={72} paddingAngle={2}>
+                  <Pie data={donutData} dataKey="value" nameKey="name" innerRadius={34} outerRadius={52} paddingAngle={2}>
                     {donutData.map((entry, i) => (
                       <Cell key={entry.name} fill={DONUT_COLORS[i % DONUT_COLORS.length]} />
                     ))}
@@ -60,16 +62,16 @@ export default function InsightsPanel({ chart, summary, activity, loading, onVie
                 </PieChart>
               </ResponsiveContainer>
               <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-                <span className="text-xl font-bold text-gray-900 dark:text-white">{total}</span>
-                <span className="text-[10px] uppercase tracking-wide text-gray-400">Total</span>
+                <span className="text-base font-bold text-gray-900 dark:text-white">{total}</span>
+                <span className="text-[9px] uppercase tracking-wide text-gray-400">Total</span>
               </div>
             </div>
           )}
-          <ul className="mt-2 space-y-1">
+          <ul className="mt-1 space-y-0.5">
             {donutData.map((row, i) => (
-              <li key={row.name} className="flex items-center justify-between text-xs text-gray-600 dark:text-gray-300">
+              <li key={row.name} className="flex items-center justify-between text-[11px] text-gray-600 dark:text-gray-300">
                 <span className="flex items-center gap-1.5 truncate">
-                  <span className="h-2 w-2 flex-shrink-0 rounded-full" style={{ backgroundColor: DONUT_COLORS[i % DONUT_COLORS.length] }} />
+                  <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full" style={{ backgroundColor: DONUT_COLORS[i % DONUT_COLORS.length] }} />
                   <span className="truncate">{row.name}</span>
                 </span>
                 <span>{row.value} ({total > 0 ? Math.round((row.value / total) * 100) : 0}%)</span>
@@ -80,8 +82,8 @@ export default function InsightsPanel({ chart, summary, activity, loading, onVie
       </Card>
 
       {summary && (
-        <Card padding={false} className="space-y-3 p-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Position Status</p>
+        <Card padding={false} className="space-y-1.5 p-2.5">
+          <p className="text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Position Status</p>
           <StatusBar label="Filled" value={summary.filledHeadcount ?? 0} max={summary.approvedHeadcount || 1} color="#22c55e" />
           <StatusBar label="Vacant" value={summary.vacantHeadcount ?? 0} max={summary.approvedHeadcount || 1} color="#f59e0b" />
           <StatusBar label="Frozen" value={summary.frozenCount ?? 0} max={summary.approvedHeadcount || 1} color="#0ea5e9" />
@@ -89,21 +91,21 @@ export default function InsightsPanel({ chart, summary, activity, loading, onVie
         </Card>
       )}
 
-      <Card padding={false} className="p-4">
+      <Card padding={false} className="p-2.5">
         <div className="flex items-center justify-between">
-          <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Recent Changes</p>
+          <p className="text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Recent Changes</p>
           {onViewAllActivity && (
-            <button type="button" onClick={onViewAllActivity} className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400">
+            <button type="button" onClick={onViewAllActivity} className="text-[10px] font-medium text-brand-600 hover:underline dark:text-brand-400">
               View All
             </button>
           )}
         </div>
-        <ul className="mt-2 space-y-3">
+        <ul className="mt-1.5 space-y-1.5">
           {loading && <li className="text-xs text-gray-400">Loading…</li>}
-          {!loading && activity.length === 0 && <li className="text-xs text-gray-400">No recent changes.</li>}
-          {activity.map((item) => (
-            <li key={item.id} className="text-xs">
-              <p className="text-gray-800 dark:text-gray-200">{item.description}</p>
+          {!loading && recentActivity.length === 0 && <li className="text-xs text-gray-400">No recent changes.</li>}
+          {recentActivity.map((item) => (
+            <li key={item.id} className="text-[11px]">
+              <p className="line-clamp-1 text-gray-800 dark:text-gray-200">{item.description}</p>
               <p className="mt-0.5 text-gray-400">
                 {item.createdAt ? new Date(item.createdAt).toLocaleString() : ""}
                 {item.actorName ? ` · by ${item.actorName}` : ""}

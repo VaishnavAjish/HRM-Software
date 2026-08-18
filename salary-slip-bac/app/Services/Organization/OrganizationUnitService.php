@@ -406,6 +406,7 @@ class OrganizationUnitService
                 'managerUserId' => $managerUserId,
                 'status' => 'active',
                 'legacyDepartmentId' => $department->id,
+                'legacyUnitId' => $department->unit_id,
             ];
 
             $existing = OrganizationUnit::query()->where('legacy_department_id', $department->id)->first();

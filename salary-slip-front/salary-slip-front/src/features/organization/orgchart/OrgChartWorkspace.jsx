@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import toast from "react-hot-toast";
-import { Network, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import Button from "../../../components/ui/Button";
 import { useAuth } from "../../../context/AuthContext";
 import { useAuthorization } from "../../../hooks/useAuthorization";
@@ -229,21 +229,13 @@ export default function OrgChartWorkspace() {
 
   return (
     <div className="min-w-0 max-w-full space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900 dark:text-white">
-            <Network size={20} /> Org Chart
-          </h1>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            Organization structure, reporting hierarchy and positions — live from the same data as Departments, Positions and Assignments.
-          </p>
-        </div>
-        {can("org.unit.create") && !locked && (
+      {can("org.unit.create") && !locked && (
+        <div className="flex justify-end">
           <Button onClick={() => setAddDialog({ open: true, key: "toolbar" })}>
             <Plus size={16} /> Add
           </Button>
-        )}
-      </div>
+        </div>
+      )}
 
       <KpiRow orgUnits={chartData.orgUnits} companies={chartData.companies} summary={chartData.summary} chart={chartData.chart} />
 
@@ -270,6 +262,7 @@ export default function OrgChartWorkspace() {
             chart={chartData.chart}
             orgUnits={chartData.orgUnits}
             companies={chartData.companies}
+            units={chartData.units}
             selectedNodeId={selectedNode?.id}
             onSelectNode={setSelectedNode}
             onQuickAdd={handleQuickAdd}

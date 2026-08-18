@@ -182,9 +182,10 @@ function UnitModal({ unit, companies, busy, onSave, onClose }) {
   );
 }
 
-function DepartmentModal({ department, companies, busy, onSave, onClose }) {
+function DepartmentModal({ department, companies, units, busy, onSave, onClose }) {
   const isEdit = Boolean(department?.id);
   const [name, setName] = useState(department?.name ?? "");
+  const [unitId, setUnitId] = useState(department?.unit_id ? String(department.unit_id) : "");
   const [selectedCompanies, setSelectedCompanies] = useState(() => {
     if (!department?.company_code) return [];
     return department.company_code.split(",").filter(Boolean);
@@ -206,7 +207,11 @@ function DepartmentModal({ department, companies, busy, onSave, onClose }) {
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
           <Button
             disabled={busy || !name.trim()}
-            onClick={() => onSave({ name: name.trim(), company_code: selectedCompanies.length > 0 ? selectedCompanies.join(",") : null })}
+            onClick={() => onSave({
+              name: name.trim(),
+              company_code: selectedCompanies.length > 0 ? selectedCompanies.join(",") : null,
+              unit_id: unitId ? Number(unitId) : null,
+            })}
           >
             {busy && <Loader2 size={16} className="animate-spin" />}
             Save
@@ -242,6 +247,22 @@ function DepartmentModal({ department, companies, busy, onSave, onClose }) {
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
+        </label>
+
+        <label className="block">
+          <span className={labelClass}>Branch (optional)</span>
+          <select
+            className={inputClass}
+            value={unitId}
+            onChange={(e) => setUnitId(e.target.value)}
+          >
+            <option value="">No branch — company-level department</option>
+            {(units || []).map((unit) => (
+              <option key={unit.id} value={unit.id}>
+                {unit.name}{unit.companyName ? ` (${unit.companyName})` : ""}
+              </option>
+            ))}
+          </select>
         </label>
       </div>
     </Modal>
@@ -938,13 +959,14 @@ export default function CompanyUnits({ initialTab = "companies", hideTabs = fals
                 <tr>
                   <Th>Department Name</Th>
                   <Th>Company</Th>
+                  <Th>Branch</Th>
                   <Th>Assigned Managers</Th>
                   <Th className="text-right">Actions</Th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700/60">
                 {departments.length === 0 && (
-                  <tr><td colSpan={4} className="p-10 text-center text-gray-500 dark:text-gray-400">
+                  <tr><td colSpan={5} className="p-10 text-center text-gray-500 dark:text-gray-400">
                     No departments match these filters.
                   </td></tr>
                 )}
@@ -965,6 +987,9 @@ export default function CompanyUnits({ initialTab = "companies", hideTabs = fals
                       ) : (
                         <span className="text-xs text-gray-400 italic">All Companies (Global)</span>
                       )}
+                    </td>
+                    <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
+                      {dept.unit?.name || <span className="text-xs text-gray-400 italic">—</span>}
                     </td>
                     <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
                       {dept.managers && dept.managers.length > 0 ? (
@@ -1131,6 +1156,7 @@ export default function CompanyUnits({ initialTab = "companies", hideTabs = fals
         <DepartmentModal
           department={departmentDialog.id ? departmentDialog : null}
           companies={companies}
+          units={units}
           busy={busy}
           onSave={saveDepartment}
           onClose={() => setDepartmentDialog(null)}

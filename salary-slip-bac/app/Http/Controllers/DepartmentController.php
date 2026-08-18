@@ -13,7 +13,11 @@ class DepartmentController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Department::with(["managers:id,name,emp_code,email,designation,department", "manager:id,name,emp_code,email,designation,department"]);
+        $query = Department::with([
+            "managers:id,name,emp_code,email,designation,department",
+            "manager:id,name,emp_code,email,designation,department",
+            "unit:id,name,company_id",
+        ]);
 
         if ($request->filled("company_code") && $request->company_code !== "ALL") {
             $companyCode = $request->company_code;
@@ -41,7 +45,8 @@ class DepartmentController extends Controller
         $validator = Validator::make($request->all(), [
             "name" => "required|string|max:255",
             "company_code" => "nullable|string|max:255",
-            "manager_id" => "nullable|exists:users,id"
+            "manager_id" => "nullable|exists:users,id",
+            "unit_id" => "nullable|exists:units,id"
         ]);
 
         if ($validator->fails()) {
@@ -65,7 +70,7 @@ class DepartmentController extends Controller
         return response()->json([
             "status" => true,
             "message" => "Department created successfully",
-            "data" => $department->load(["managers:id,name,emp_code,email,designation,department", "manager:id,name,emp_code,email,designation,department"])
+            "data" => $department->load(["managers:id,name,emp_code,email,designation,department", "manager:id,name,emp_code,email,designation,department", "unit:id,name,company_id"])
         ]);
     }
 
@@ -80,7 +85,8 @@ class DepartmentController extends Controller
         $validator = Validator::make($request->all(), [
             "name" => "required|string|max:255",
             "company_code" => "nullable|string|max:255",
-            "manager_id" => "nullable|exists:users,id"
+            "manager_id" => "nullable|exists:users,id",
+            "unit_id" => "nullable|exists:units,id"
         ]);
 
         if ($validator->fails()) {
@@ -97,7 +103,7 @@ class DepartmentController extends Controller
         return response()->json([
             "status" => true,
             "message" => "Department updated successfully",
-            "data" => $department->load(["managers:id,name,emp_code,email,designation,department", "manager:id,name,emp_code,email,designation,department"])
+            "data" => $department->load(["managers:id,name,emp_code,email,designation,department", "manager:id,name,emp_code,email,designation,department", "unit:id,name,company_id"])
         ]);
     }
 

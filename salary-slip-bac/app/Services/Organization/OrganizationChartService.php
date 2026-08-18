@@ -264,6 +264,7 @@ class OrganizationChartService
                     'companyId' => $dept->company_id === null ? null : (int) $dept->company_id,
                     'companyCode' => $dept->company?->code,
                     'legacyDepartmentId' => $dept->legacy_department_id === null ? null : (int) $dept->legacy_department_id,
+                    'unitId' => $dept->legacy_unit_id === null ? null : (int) $dept->legacy_unit_id,
                 ],
             ];
 
