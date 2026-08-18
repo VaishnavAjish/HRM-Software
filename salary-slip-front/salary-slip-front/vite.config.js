@@ -149,25 +149,28 @@ export default defineConfig(({ mode }) => {
         workbox: {
           skipWaiting: true,
           clientsClaim: true,
-          // precache essential app shell assets
-          globPatterns: ["**/*.{js,css,html,ico,png,svg,woff,woff2,ttf,eot}"],
-          globIgnores: [
-            "**/assets/ag-grid-*.js",
-            "**/assets/exceljs*.js",
-            "**/assets/jspdf*.js",
-            "**/assets/html2canvas*.js",
-            "**/assets/recharts-*.js",
-            "**/assets/CartesianChart-*.js",
-            "**/assets/AddEmployeePage-*.js",
-            "**/assets/HiringProcess-*.js",
+          // Precache ONLY the true app shell — the entry JS/CSS and static
+          // assets needed before any route can render. Every page in
+          // App.jsx is already route-level lazy-loaded (`lazy(() =>
+          // import(...))`), but the previous broad glob
+          // (`**/*.{js,css,html,...}` with only 5 vendor libs + 2 pages
+          // excluded) still swept up virtually every lazy page chunk into
+          // the precache manifest — Workbox then downloaded all of it in
+          // the background on every SW install/update (i.e. every deploy),
+          // regardless of which page the visitor was on. That's what showed
+          // up as a flood of unrelated route-chunk requests in the Network
+          // tab on a single page visit. Found + fixed 2026-08-18.
+          globPatterns: [
+            "index.html",
+            "manifest.webmanifest",
+            "*.{ico,png,svg}",
+            "assets/index-*.{js,css}",
           ],
-          // allow app shell bundles to be precached
           maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
           // serve index.html for all navigation requests (SPA routing)
           navigateFallback: "index.html",
           // remove caches from previous SW versions on activation
           cleanupOutdatedCaches: true,
-          // runtime cache for any remaining network requests
           runtimeCaching: [
             {
               urlPattern: /^https:\/\/fonts\.(googleapis|gstatic)\.com\/.*/i,
@@ -178,6 +181,20 @@ export default defineConfig(({ mode }) => {
                   maxEntries: 20,
                   maxAgeSeconds: 60 * 60 * 24 * 365,
                 },
+                cacheableResponse: { statuses: [0, 200] },
+              },
+            },
+            {
+              // Every lazy route/vendor chunk — cached the first time it's
+              // actually requested (i.e. that page/feature is visited),
+              // never swept into the upfront precache. StaleWhileRevalidate
+              // keeps a visited page fast on repeat visits while still
+              // picking up the next deploy's new hashed filename.
+              urlPattern: /\/assets\/.*\.(js|css)$/,
+              handler: "StaleWhileRevalidate",
+              options: {
+                cacheName: "route-chunks-cache",
+                expiration: { maxEntries: 200, maxAgeSeconds: 60 * 60 * 24 * 30 },
                 cacheableResponse: { statuses: [0, 200] },
               },
             },
