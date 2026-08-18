@@ -268,5 +268,61 @@ class TrialFormAuthorizationTest extends TestCase
         $this->assertNotContains($formSuper->id, $ids1, 'Agent 1 must NOT see superadmin trial form');
         $this->assertNotContains($formAgent2->id, $ids1, 'Agent 1 must NOT see Agent 2 trial form');
     }
+
+    /**
+     * Regression test for a real cross-tenant leak found 2026-08-18: this
+     * branch applied no company filter at all for company_code=all/empty
+     * regardless of role, so a role-1 (company-scoped) admin could pass
+     * ?company_code=all and see every other company's trial-form applicants
+     * — including their Aadhaar numbers via AadhaarDisclosure.
+     */
+    public function test_a_company_admin_cannot_see_another_companys_trial_forms_via_company_code_all(): void
+    {
+        $admin = $this->admin('nidhi-impex', 1);
+        $ownForm = $this->trialForm('nidhi-impex');
+        $otherForm = $this->trialForm('silver-star');
+
+        $response = $this->withToken(auth('api')->login($admin))
+            ->getJson('/api/trial-form/list?company_code=all');
+
+        $response->assertOk();
+        $ids = collect($response->json('data'))->pluck('id')->all();
+
+        $this->assertContains($ownForm->id, $ids, 'a company admin must still see their own company\'s trial forms');
+        $this->assertNotContains($otherForm->id, $ids, 'a company admin must NOT see another company\'s trial forms via company_code=all');
+    }
+
+    /** Same gap, no query string at all — must still fall back to the admin's own company, not everyone's. */
+    public function test_a_company_admin_cannot_see_another_companys_trial_forms_with_no_company_code(): void
+    {
+        $admin = $this->admin('nidhi-impex', 1);
+        $ownForm = $this->trialForm('nidhi-impex');
+        $otherForm = $this->trialForm('silver-star');
+
+        $response = $this->withToken(auth('api')->login($admin))->getJson('/api/trial-form/list');
+
+        $response->assertOk();
+        $ids = collect($response->json('data'))->pluck('id')->all();
+
+        $this->assertContains($ownForm->id, $ids);
+        $this->assertNotContains($otherForm->id, $ids, 'a company admin must NOT see another company\'s trial forms when no company_code is given');
+    }
+
+    /** A super admin (role 0) is the one role that IS meant to be unscoped. */
+    public function test_a_super_admin_sees_trial_forms_across_companies(): void
+    {
+        $super = $this->admin('nidhi-impex', 0);
+        $formA = $this->trialForm('nidhi-impex');
+        $formB = $this->trialForm('silver-star');
+
+        $response = $this->withToken(auth('api')->login($super))
+            ->getJson('/api/trial-form/list?company_code=all');
+
+        $response->assertOk();
+        $ids = collect($response->json('data'))->pluck('id')->all();
+
+        $this->assertContains($formA->id, $ids);
+        $this->assertContains($formB->id, $ids, 'a super admin must still see every company\'s trial forms');
+    }
 }
 

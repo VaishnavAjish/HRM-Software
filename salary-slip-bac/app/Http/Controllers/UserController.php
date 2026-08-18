@@ -2346,9 +2346,27 @@ class UserController extends Controller
         if ($userAuth && ($userAuth->type === 'agent' || (int) $userAuth->role === 4)) {
             $query->where('added_by', $userAuth->id);
         } elseif ($userAuth && ((int) $userAuth->role === 1 || (int) $userAuth->role === 0)) {
-            if ($request->company_code && ! in_array($request->company_code, ['all', 'all-companies'])) {
-                $codes = array_filter(array_map('trim', explode(',', $request->company_code)));
+            // Role 1 may narrow within its own companies but never outside them;
+            // only role 0 is unscoped when no filter is supplied. Previously this
+            // branch applied no filter at all for company_code=all/empty
+            // regardless of role, so a role-1 (company-scoped) admin could see
+            // every other company's trial-form applicants — including their
+            // Aadhaar numbers via AadhaarDisclosure — just by passing
+            // company_code=all. Found 2026-08-18 while investigating an
+            // unrelated timeout report; matches the pattern already used
+            // correctly by index()/getAppointment()/getAgents() in this file.
+            $requested = $request->company_code && ! in_array($request->company_code, ['all', 'all-companies'])
+                ? array_filter(array_map('trim', explode(',', $request->company_code)))
+                : [];
+            $own = array_filter(array_map('trim', explode(',', (string) $userAuth->company_code)));
+            $codes = (int) $userAuth->role === 0
+                ? $requested
+                : ($requested ? array_intersect($requested, $own) : $own);
+
+            if ($codes) {
                 $query->whereIn('company_code', $codes);
+            } elseif ((int) $userAuth->role !== 0) {
+                $query->whereRaw('1 = 0');
             }
         } elseif ($userAuth && (int) $userAuth->role === 2) {
             $query->where('company_code', $userAuth->company_code)->where('unit', $userAuth->unit);
