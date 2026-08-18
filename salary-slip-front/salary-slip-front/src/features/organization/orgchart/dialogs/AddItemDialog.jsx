@@ -141,7 +141,7 @@ export default function AddItemDialog({
               code: form.code || undefined,
               approvedHeadcount: Number(form.approvedHeadcount || 1),
               reportsToPositionId: form.reportsToPositionId || undefined,
-              status: "active",
+              status: "open",
             }, token, tokenType);
             form._createdId = res?.data?.id;
           },

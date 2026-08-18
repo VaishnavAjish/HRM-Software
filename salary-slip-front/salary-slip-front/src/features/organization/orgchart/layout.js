@@ -151,26 +151,47 @@ export function positionNewChildren(newNodes, edges, existingPositionById, direc
   const gapX = NODE_WIDTH + 40;
   const gapY = NODE_HEIGHT + 60;
 
-  byParent.forEach((children, parentId) => {
-    const parent = existingPositionById.get(parentId);
+  // Grows as each parent tier gets placed below, so a child whose own
+  // *parent* is itself new in this same batch (e.g. a manager and their
+  // direct report both loading in together) is anchored to that parent's
+  // just-computed position instead of falling back to the canvas origin —
+  // the previous behavior, which produced stray lines stretching from the
+  // department across to (0, 0).
+  const knownPositionById = new Map(existingPositionById);
+
+  const placeChildren = (parentId, children) => {
+    const parent = knownPositionById.get(parentId);
     const baseX = parent ? parent.x : 0;
     const baseY = parent ? parent.y : 0;
 
     children.forEach((child, i) => {
       const offset = (i - (children.length - 1) / 2);
-      if (isHorizontal) {
-        positions.set(child.id, {
-          x: baseX + (parent ? NODE_WIDTH + 120 : 0),
-          y: baseY + offset * gapY,
-        });
-      } else {
-        positions.set(child.id, {
-          x: baseX + offset * gapX,
-          y: baseY + (parent ? NODE_HEIGHT + 120 : 0),
-        });
-      }
+      const position = isHorizontal
+        ? { x: baseX + (parent ? NODE_WIDTH + 120 : 0), y: baseY + offset * gapY }
+        : { x: baseX + offset * gapX, y: baseY + (parent ? NODE_HEIGHT + 120 : 0) };
+      positions.set(child.id, position);
+      knownPositionById.set(child.id, position);
     });
-  });
+  };
+
+  // Place any parent tier whose own position is already known, repeating
+  // until nothing new resolves — this is what lets a multi-level batch
+  // (department -> new manager -> new subordinate) place correctly in one
+  // pass instead of only the first level. Any batch whose parent chain
+  // never resolves (shouldn't normally happen) still gets placed at the
+  // end, anchored to the canvas origin, rather than silently dropped.
+  let progressed = true;
+  while (progressed && byParent.size > 0) {
+    progressed = false;
+    Array.from(byParent.keys()).forEach((parentId) => {
+      if (!knownPositionById.has(parentId) && parentId !== "__root__") return;
+      placeChildren(parentId, byParent.get(parentId));
+      byParent.delete(parentId);
+      progressed = true;
+    });
+  }
+
+  byParent.forEach((children, parentId) => placeChildren(parentId, children));
 
   return positions;
 }

@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class Department extends Model
 {
-    protected $fillable = ["name", "company_code", "manager_id", "unit_id"];
+    protected $fillable = ["name", "company_code", "manager_id", "unit_id", "parent_department_id"];
 
     public function managers()
     {
@@ -21,6 +21,16 @@ class Department extends Model
     public function unit()
     {
         return $this->belongsTo(Unit::class, "unit_id");
+    }
+
+    public function parentDepartment()
+    {
+        return $this->belongsTo(Department::class, "parent_department_id");
+    }
+
+    public function childDepartments()
+    {
+        return $this->hasMany(Department::class, "parent_department_id");
     }
 }
 

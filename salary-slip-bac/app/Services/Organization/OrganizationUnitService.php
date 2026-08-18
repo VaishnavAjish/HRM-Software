@@ -426,6 +426,39 @@ class OrganizationUnitService
             }
         }
 
+        // Sub-departments (e.g. IT -> Frontend, Backend): applied as a second
+        // pass, after every department in this sync has a known unit id,
+        // since a department can reference a parent that sorts after it in
+        // this loop. Every department not given a real parent here already
+        // got 'parentId' => null above, so this only ever adds real parent
+        // links — it never needs to explicitly re-flatten anything.
+        $subDepartmentsLinked = 0;
+        foreach ($departments as $department) {
+            if (!$department->parent_department_id) {
+                continue;
+            }
+
+            $childUnitId = $unitIdByDepartmentId[$department->id] ?? null;
+            $parentUnitId = $unitIdByDepartmentId[$department->parent_department_id] ?? null;
+            if (!$childUnitId || !$parentUnitId || $childUnitId === $parentUnitId) {
+                continue;
+            }
+
+            $childUnit = OrganizationUnit::query()->find($childUnitId);
+            if (!$childUnit || $childUnit->parent_id === $parentUnitId) {
+                continue;
+            }
+
+            try {
+                $this->update($childUnit, ['parentId' => $parentUnitId], $actor);
+                $subDepartmentsLinked++;
+            } catch (OrganizationException $e) {
+                // A cycle, or the parent living in a different company —
+                // resolveParent() already guards both; skip rather than abort.
+                $skipped[] = ['legacyDepartmentId' => $department->id, 'reason' => $e->getMessage()];
+            }
+        }
+
         $assignments = $this->syncAssignmentsFromLegacyDepartments($departments, $unitIdByDepartmentId, $actor);
         $cleanup = $this->cleanupDuplicateGlobalDepartments($actor);
 
@@ -438,6 +471,7 @@ class OrganizationUnitService
             'duplicatesRemoved' => $cleanup['removed'],
             'assignmentsCreated' => $assignments['created'],
             'assignmentsSkipped' => $assignments['skipped'],
+            'subDepartmentsLinked' => $subDepartmentsLinked,
         ];
     }
 

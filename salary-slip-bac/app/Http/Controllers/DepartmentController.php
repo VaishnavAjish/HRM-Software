@@ -8,6 +8,7 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 
 class DepartmentController extends Controller
 {
@@ -17,6 +18,7 @@ class DepartmentController extends Controller
             "managers:id,name,emp_code,email,designation,department",
             "manager:id,name,emp_code,email,designation,department",
             "unit:id,name,company_id",
+            "parentDepartment:id,name",
         ]);
 
         if ($request->filled("company_code") && $request->company_code !== "ALL") {
@@ -46,7 +48,8 @@ class DepartmentController extends Controller
             "name" => "required|string|max:255",
             "company_code" => "nullable|string|max:255",
             "manager_id" => "nullable|exists:users,id",
-            "unit_id" => "nullable|exists:units,id"
+            "unit_id" => "nullable|exists:units,id",
+            "parent_department_id" => "nullable|exists:departments,id"
         ]);
 
         if ($validator->fails()) {
@@ -70,7 +73,7 @@ class DepartmentController extends Controller
         return response()->json([
             "status" => true,
             "message" => "Department created successfully",
-            "data" => $department->load(["managers:id,name,emp_code,email,designation,department", "manager:id,name,emp_code,email,designation,department", "unit:id,name,company_id"])
+            "data" => $department->load(["managers:id,name,emp_code,email,designation,department", "manager:id,name,emp_code,email,designation,department", "unit:id,name,company_id", "parentDepartment:id,name"])
         ]);
     }
 
@@ -86,7 +89,12 @@ class DepartmentController extends Controller
             "name" => "required|string|max:255",
             "company_code" => "nullable|string|max:255",
             "manager_id" => "nullable|exists:users,id",
-            "unit_id" => "nullable|exists:units,id"
+            "unit_id" => "nullable|exists:units,id",
+            "parent_department_id" => [
+                "nullable",
+                "exists:departments,id",
+                Rule::notIn([$id]),
+            ]
         ]);
 
         if ($validator->fails()) {
@@ -103,7 +111,7 @@ class DepartmentController extends Controller
         return response()->json([
             "status" => true,
             "message" => "Department updated successfully",
-            "data" => $department->load(["managers:id,name,emp_code,email,designation,department", "manager:id,name,emp_code,email,designation,department", "unit:id,name,company_id"])
+            "data" => $department->load(["managers:id,name,emp_code,email,designation,department", "manager:id,name,emp_code,email,designation,department", "unit:id,name,company_id", "parentDepartment:id,name"])
         ]);
     }
 
