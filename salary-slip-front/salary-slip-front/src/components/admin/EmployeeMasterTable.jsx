@@ -171,8 +171,8 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
       // needing more than 1 worker from this page at a time.
       const trialRes = await authApi.getTrialForms(user?.accessToken, user?.tokenType, companyScope);
       const appointmentRes = await authApi.getAppointmentForms(user?.accessToken, user?.tokenType, companyScope);
-      const pendingRes = await salaryApi.getAllEmployees(user?.accessToken, user?.tokenType, { status: "2", limit: 1000 }, companyScope);
-      const employeeRes = await salaryApi.getAllEmployees(user?.accessToken, user?.tokenType, { limit: 1000 }, companyScope);
+      const pendingRes = await salaryApi.getAllEmployees(user?.accessToken, user?.tokenType, { status: "2", limit: 100 }, companyScope);
+      const employeeRes = await salaryApi.getAllEmployees(user?.accessToken, user?.tokenType, { limit: 100 }, companyScope);
 
       const trialRows = (trialRes?.data || []).map((r) => ({ ...r, __stage: "trial" }));
       // Appointments that are NOT yet approved (checkbox !== 1, no emp_code, status !== 1)
