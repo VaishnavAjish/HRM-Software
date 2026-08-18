@@ -22,6 +22,7 @@ class Designation extends Model
         'job_function_id',
         'job_level_id',
         'job_grade_id',
+        'department_id',
         'code',
         'title',
         'description',
@@ -66,6 +67,11 @@ class Designation extends Model
     public function grade()
     {
         return $this->belongsTo(JobGrade::class, 'job_grade_id');
+    }
+
+    public function department()
+    {
+        return $this->belongsTo(Department::class, 'department_id');
     }
 
     public function jobs()

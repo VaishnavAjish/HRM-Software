@@ -45,12 +45,13 @@ const SYNC_POLL_MS = 60000;
  */
 export function assignmentsToEmployeeTree(assignments) {
   const nodes = [];
-  const edges = [];
   const seenUsers = new Set();
+  const byUserId = new Map();
 
   assignments.forEach((a) => {
     if (!a.isPrimary || !a.isActive || seenUsers.has(a.userId)) return;
     seenUsers.add(a.userId);
+    byUserId.set(a.userId, a);
 
     nodes.push({
       id: `user_${a.userId}`,
@@ -62,14 +63,42 @@ export function assignmentsToEmployeeTree(assignments) {
       approvedHeadcount: 0,
       vacancy: 0,
       isActive: true,
-      metadata: { department: a.organizationUnitName },
+      metadata: {
+        department: a.organizationUnitName,
+        assignmentId: a.id,
+        organizationUnitId: a.organizationUnitId,
+        managerUserId: a.managerUserId ?? null,
+        managerName: a.managerName ?? null,
+      },
     });
+  });
+
+  // A manager only nests an employee under that manager's own node when the
+  // manager is also loaded in this same department AND doing so wouldn't
+  // create a cycle. employee_organization_assignments.manager_user_id has
+  // no server-side cycle guard (unlike org units/positions/reporting
+  // relationships), so this walks the chain client-side instead, the same
+  // way the backend's own resolveParent()/position cycle checks do.
+  function resolvesToCycle(userId, managerId) {
+    let cursor = managerId;
+    for (let hops = 0; hops < 100 && cursor != null; hops += 1) {
+      if (cursor === userId) return true;
+      cursor = byUserId.get(cursor)?.managerUserId ?? null;
+    }
+    return false;
+  }
+
+  const edges = [];
+  byUserId.forEach((a, userId) => {
+    const managerId = a.managerUserId;
+    const nestsUnderManager = managerId && managerId !== userId
+      && byUserId.has(managerId) && !resolvesToCycle(userId, managerId);
 
     edges.push({
-      id: `edge_assignment_${a.id}`,
-      source: `org_unit_${a.organizationUnitId}`,
-      target: `user_${a.userId}`,
-      type: "primary",
+      id: nestsUnderManager ? `edge_manager_${managerId}_${userId}` : `edge_assignment_${a.id}`,
+      source: nestsUnderManager ? `user_${managerId}` : `org_unit_${a.organizationUnitId}`,
+      target: `user_${userId}`,
+      type: nestsUnderManager ? "manager" : "primary",
     });
   });
 

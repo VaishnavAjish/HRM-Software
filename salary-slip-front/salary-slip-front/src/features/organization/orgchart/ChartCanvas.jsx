@@ -29,7 +29,7 @@ const SPACINGS = [
 
 const ROOT_NODE_ID = "__root__";
 
-function toFlowElements(chart, orgUnits, companies, { collapsedIds, onQuickAdd, onToggleCollapse, onFocus, loadingIds, includeRoot }) {
+function toFlowElements(chart, orgUnits, companies, { collapsedIds, onQuickAdd, onSetManager, onToggleCollapse, onFocus, loadingIds, includeRoot }) {
   const unitsById = new Map(orgUnits.map((u) => [u.id, u]));
   const reportCounts = new Map();
   (chart.edges || []).forEach((e) => reportCounts.set(e.source, (reportCounts.get(e.source) || 0) + 1));
@@ -61,6 +61,7 @@ function toFlowElements(chart, orgUnits, companies, { collapsedIds, onQuickAdd, 
         reportCount: reportCounts.get(apiNode.id) || 0,
         metadata: { ...(apiNode.metadata || {}), parentId: unit?.parentId ?? null },
         onQuickAdd,
+        onSetManager: kind === "employee" ? onSetManager : undefined,
         onToggleCollapse,
         onFocus: kind === "department" ? onFocus : undefined,
       },
@@ -72,7 +73,9 @@ function toFlowElements(chart, orgUnits, companies, { collapsedIds, onQuickAdd, 
     source: e.source,
     target: e.target,
     type: "smoothstep",
-    style: { stroke: "#9ca3af", strokeWidth: 1.5 },
+    style: e.type === "manager"
+      ? { stroke: "#6366f1", strokeWidth: 1.5 }
+      : { stroke: "#9ca3af", strokeWidth: 1.5 },
   }));
 
   // The position chart only edges position → position via reports_to_position_id,
@@ -265,9 +268,9 @@ function Toolbar({
 }
 
 function ChartCanvasInner({
-  chart, orgUnits, companies, selectedNodeId, onSelectNode, onQuickAdd, onOpenFilters, activeFilterCount,
+  chart, orgUnits, companies, selectedNodeId, onSelectNode, onQuickAdd, onSetManager, onOpenFilters, activeFilterCount,
   searchValue, onSearchChange, history, onConnectNodes, onDragMove, loading, onImportLegacy, canImportLegacy,
-  locked, onToggleLock, canUnlock, onLoadDepartmentEmployees,
+  locked, onToggleLock, canUnlock, onLoadDepartmentEmployees, employeeRefreshSignal,
 }) {
   const [direction, setDirection] = useState("TB");
   const [spacing, setSpacing] = useState("balanced");
@@ -309,8 +312,8 @@ function ChartCanvasInner({
   // Real headcount here runs into the thousands, so a department's
   // employees are fetched only the moment someone actually expands (or
   // focuses into) it — never all at once.
-  const ensureEmployeesLoaded = useCallback((id) => {
-    if (loadedEmployees.has(id) || !onLoadDepartmentEmployees) return;
+  const fetchDepartmentEmployees = useCallback((id) => {
+    if (!onLoadDepartmentEmployees) return;
     const { rawId } = parseNodeId(id);
     setLoadingIds((ids) => new Set(ids).add(id));
     onLoadDepartmentEmployees(rawId)
@@ -323,7 +326,29 @@ function ChartCanvasInner({
       .finally(() => {
         setLoadingIds((ids) => { const next = new Set(ids); next.delete(id); return next; });
       });
-  }, [loadedEmployees, onLoadDepartmentEmployees]);
+  }, [onLoadDepartmentEmployees]);
+
+  const ensureEmployeesLoaded = useCallback((id) => {
+    if (loadedEmployees.has(id)) return;
+    fetchDepartmentEmployees(id);
+  }, [loadedEmployees, fetchDepartmentEmployees]);
+
+  // Fired after a "Set Manager" edit succeeds — that action changes a
+  // single employee's manager_user_id, which changes how that department's
+  // employees nest, but the department's employee list is cached in
+  // loadedEmployees above and won't reflect the change on its own. Refetches
+  // just that one department in place, same as any other structural edit.
+  useEffect(() => {
+    if (!employeeRefreshSignal?.unitId) return undefined;
+    let active = true;
+    Promise.resolve().then(() => {
+      if (!active) return;
+      fetchDepartmentEmployees(`org_unit_${employeeRefreshSignal.unitId}`);
+      forceRelayoutRef.current = true;
+    });
+    return () => { active = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [employeeRefreshSignal]);
 
   // Collapsing again just hides the (now-cached) nodes; it doesn't refetch
   // or discard them.
@@ -415,9 +440,10 @@ function ChartCanvasInner({
   const laidOut = useMemo(
     () => toFlowElements(focusedChart, orgUnits, companies, {
       collapsedIds, onToggleCollapse: toggleCollapse, onQuickAdd: locked ? undefined : onQuickAdd,
+      onSetManager: locked ? undefined : onSetManager,
       onFocus: enterFocus, loadingIds, includeRoot: !focusNodeId,
     }),
-    [focusedChart, orgUnits, companies, collapsedIds, onQuickAdd, toggleCollapse, enterFocus, locked, loadingIds, focusNodeId],
+    [focusedChart, orgUnits, companies, collapsedIds, onQuickAdd, onSetManager, toggleCollapse, enterFocus, locked, loadingIds, focusNodeId],
   );
 
   // A full dagre layout recomputes every node's position from scratch, so

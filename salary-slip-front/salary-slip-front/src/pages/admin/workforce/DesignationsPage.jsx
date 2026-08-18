@@ -1,7 +1,27 @@
 import { useEffect, useState } from "react";
 import { createWorkforceListPage } from "./WorkforceListPage";
 import { designationApi } from "../../../features/workforce/services/workforceApi";
+import { departmentApi } from "../../../utils/api";
+import { useAuth } from "../../../context/AuthContext";
 import Badge from "../../../components/ui/Badge";
+
+function useDepartmentOptions() {
+  const { user } = useAuth();
+  const token = user?.accessToken;
+  const tokenType = user?.tokenType || "Bearer";
+  const [departments, setDepartments] = useState([]);
+
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    departmentApi.departments({}, token, tokenType)
+      .then((res) => { if (!cancelled) setDepartments(res?.data ?? []); })
+      .catch(() => { if (!cancelled) setDepartments([]); });
+    return () => { cancelled = true; };
+  }, [token, tokenType]);
+
+  return departments;
+}
 
 const inputClass =
   "w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500";
@@ -22,6 +42,7 @@ function DesignationColumns() {
     { key: "jobFunctionName", label: "Function", render: (row) => row.jobFunctionName || "—" },
     { key: "jobLevelName", label: "Level", render: (row) => row.jobLevelName || "—" },
     { key: "jobGradeName", label: "Grade", render: (row) => row.jobGradeName || "—" },
+    { key: "departmentName", label: "Department", render: (row) => row.departmentName || "—" },
     { key: "status", label: "Status", render: (row) => <Badge status={row.status} /> },
     { key: "jobCount", label: "Jobs", render: (row) => row.jobCount ?? 0 },
     { key: "createdAt", label: "Created", render: (row) => row.createdAt ? new Date(row.createdAt).toLocaleDateString() : "—" },
@@ -29,6 +50,7 @@ function DesignationColumns() {
 }
 
 function DesignationCreateForm({ onChange }) {
+  const departments = useDepartmentOptions();
   const [form, setForm] = useState({
     enterpriseId: "",
     companyId: "",
@@ -36,6 +58,7 @@ function DesignationCreateForm({ onChange }) {
     jobFunctionId: "",
     jobLevelId: "",
     jobGradeId: "",
+    departmentId: "",
     code: "",
     title: "",
     description: "",
@@ -92,6 +115,13 @@ function DesignationCreateForm({ onChange }) {
         </select>
       </label>
       <label className="block">
+        <span className={labelClass}>Department</span>
+        <select className={selectClass} value={form.departmentId} onChange={handleSelectChange("departmentId")}>
+          <option value="">Select Department</option>
+          {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+        </select>
+      </label>
+      <label className="block">
         <span className={labelClass}>Code</span>
         <input type="text" className={inputClass} value={form.code} onChange={handleChange("code")} placeholder="Auto-generated if empty" />
       </label>
@@ -122,6 +152,7 @@ function DesignationCreateForm({ onChange }) {
 }
 
 function DesignationEditForm({ item, onChange }) {
+  const departments = useDepartmentOptions();
   const [form, setForm] = useState({
     enterpriseId: item.enterpriseId ?? "",
     companyId: item.companyId ?? "",
@@ -129,6 +160,7 @@ function DesignationEditForm({ item, onChange }) {
     jobFunctionId: item.jobFunctionId ?? "",
     jobLevelId: item.jobLevelId ?? "",
     jobGradeId: item.jobGradeId ?? "",
+    departmentId: item.departmentId ?? "",
     code: item.code ?? "",
     title: item.title ?? "",
     description: item.description ?? "",
@@ -181,6 +213,13 @@ function DesignationEditForm({ item, onChange }) {
         </select>
       </label>
       <label className="block">
+        <span className={labelClass}>Department</span>
+        <select className={selectClass} value={form.departmentId} onChange={handleSelectChange("departmentId")}>
+          <option value="">Select Department</option>
+          {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+        </select>
+      </label>
+      <label className="block">
         <span className={labelClass}>Code</span>
         <input type="text" className={inputClass} value={form.code} onChange={handleChange("code")} />
       </label>
@@ -220,6 +259,7 @@ function DesignationViewContent({ item }) {
         <div><dt className="text-sm text-gray-500 dark:text-gray-400">Function</dt><dd>{item.jobFunctionName || "—"}</dd></div>
         <div><dt className="text-sm text-gray-500 dark:text-gray-400">Level</dt><dd>{item.jobLevelName || "—"}</dd></div>
         <div><dt className="text-sm text-gray-500 dark:text-gray-400">Grade</dt><dd>{item.jobGradeName || "—"}</dd></div>
+        <div><dt className="text-sm text-gray-500 dark:text-gray-400">Department</dt><dd>{item.departmentName || "—"}</dd></div>
         <div><dt className="text-sm text-gray-500 dark:text-gray-400">Enterprise</dt><dd>{item.enterpriseName || "—"}</dd></div>
         <div><dt className="text-sm text-gray-500 dark:text-gray-400">Company</dt><dd>{item.companyName || "—"}</dd></div>
         <div><dt className="text-sm text-gray-500 dark:text-gray-400">Status</dt><dd><Badge status={item.status} /></dd></div>
@@ -241,6 +281,7 @@ function toDesignationPayload(form) {
     jobFunctionId: Number(form.jobFunctionId) || null,
     jobLevelId: Number(form.jobLevelId) || null,
     jobGradeId: Number(form.jobGradeId) || null,
+    departmentId: Number(form.departmentId) || null,
     code: form.code || undefined,
     title: form.title,
     description: form.description || null,

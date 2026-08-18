@@ -2,6 +2,7 @@
 
 namespace App\Services\JobArchitecture;
 
+use App\Models\Department;
 use App\Models\Designation;
 use App\Models\JobFamily;
 use App\Models\JobFunction;
@@ -31,7 +32,7 @@ class DesignationService
     public function designations(array $filters, ?User $actor): array
     {
         $query = Designation::query()
-            ->with(['enterprise', 'company', 'family', 'function', 'level', 'grade'])
+            ->with(['enterprise', 'company', 'family', 'function', 'level', 'grade', 'department'])
             ->orderBy('title');
 
         if (!empty($filters['enterpriseId'])) {
@@ -60,6 +61,10 @@ class DesignationService
 
         if (!empty($filters['jobGradeId'])) {
             $query->where('job_grade_id', (int) $filters['jobGradeId']);
+        }
+
+        if (!empty($filters['departmentId'])) {
+            $query->where('department_id', (int) $filters['departmentId']);
         }
 
         if (($status = strtoupper((string) ($filters['status'] ?? ''))) !== '' && $status !== 'ALL') {
@@ -110,6 +115,8 @@ class DesignationService
             'jobLevelCode' => $des->level?->code,
             'jobGradeId' => $des->job_grade_id === null ? null : (int) $des->job_grade_id,
             'jobGradeName' => $des->grade?->name,
+            'departmentId' => $des->department_id === null ? null : (int) $des->department_id,
+            'departmentName' => $des->department?->name,
             'code' => $des->code,
             'title' => $des->title,
             'description' => $des->description,
@@ -129,6 +136,7 @@ class DesignationService
         $jobFunctionId = isset($data['jobFunctionId']) && $data['jobFunctionId'] !== '' ? (int) $data['jobFunctionId'] : null;
         $jobLevelId = isset($data['jobLevelId']) && $data['jobLevelId'] !== '' ? (int) $data['jobLevelId'] : null;
         $jobGradeId = isset($data['jobGradeId']) && $data['jobGradeId'] !== '' ? (int) $data['jobGradeId'] : null;
+        $departmentId = isset($data['departmentId']) && $data['departmentId'] !== '' ? (int) $data['departmentId'] : null;
 
         if ($enterpriseId) {
             $enterprise = Enterprise::query()->findOrFail($enterpriseId);
@@ -168,10 +176,14 @@ class DesignationService
             $this->assertGradeVisible($grade, $actor);
         }
 
+        if ($departmentId) {
+            Department::query()->findOrFail($departmentId);
+        }
+
         $code = $data['code'] ?? Str::upper(Str::slug($data['title'], '-'));
         $this->assertCodeFree($enterpriseId, $companyId, $code, null);
 
-        $des = DB::transaction(function () use ($data, $enterpriseId, $companyId, $jobFamilyId, $jobFunctionId, $jobLevelId, $jobGradeId, $code, $actor) {
+        $des = DB::transaction(function () use ($data, $enterpriseId, $companyId, $jobFamilyId, $jobFunctionId, $jobLevelId, $jobGradeId, $departmentId, $code, $actor) {
             return Designation::query()->create([
                 'enterprise_id' => $enterpriseId,
                 'company_id' => $companyId,
@@ -179,6 +191,7 @@ class DesignationService
                 'job_function_id' => $jobFunctionId,
                 'job_level_id' => $jobLevelId,
                 'job_grade_id' => $jobGradeId,
+                'department_id' => $departmentId,
                 'code' => $code,
                 'title' => trim((string) $data['title']),
                 'description' => $this->blankToNull($data['description'] ?? null),
@@ -261,6 +274,16 @@ class DesignationService
                     $this->assertGradeVisible($grade, $actor);
                 }
                 $des->job_grade_id = $jobGradeId;
+            }
+        }
+
+        if (array_key_exists('departmentId', $data)) {
+            $departmentId = $data['departmentId'] === '' || $data['departmentId'] === null ? null : (int) $data['departmentId'];
+            if ($departmentId !== $des->department_id) {
+                if ($departmentId) {
+                    Department::query()->findOrFail($departmentId);
+                }
+                $des->department_id = $departmentId;
             }
         }
 
@@ -402,6 +425,7 @@ class DesignationService
             'jobFunctionId' => $des->job_function_id === null ? null : (int) $des->job_function_id,
             'jobLevelId' => $des->job_level_id === null ? null : (int) $des->job_level_id,
             'jobGradeId' => $des->job_grade_id === null ? null : (int) $des->job_grade_id,
+            'departmentId' => $des->department_id === null ? null : (int) $des->department_id,
             'code' => $des->code,
             'title' => $des->title,
             'status' => $des->status,

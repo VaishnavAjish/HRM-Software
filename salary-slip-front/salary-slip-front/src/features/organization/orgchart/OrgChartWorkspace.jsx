@@ -17,6 +17,7 @@ import FilterDrawer from "./FilterDrawer";
 import AddItemDialog from "./dialogs/AddItemDialog";
 import MoveDialog from "./dialogs/MoveDialog";
 import ConnectRelationshipDialog from "./dialogs/ConnectRelationshipDialog";
+import SetManagerDialog from "./dialogs/SetManagerDialog";
 import { parseNodeId } from "./nodeId";
 
 const DEFAULT_FILTERS = { companyIds: [], asOf: "", includeInactive: false, includeVacant: true, search: "" };
@@ -64,6 +65,8 @@ export default function OrgChartWorkspace() {
   const [addDialog, setAddDialog] = useState({ open: false });
   const [moveDialog, setMoveDialog] = useState({ open: false });
   const [connectDialog, setConnectDialog] = useState({ open: false });
+  const [setManagerDialog, setSetManagerDialog] = useState({ open: false });
+  const [employeeRefreshSignal, setEmployeeRefreshSignal] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState({ open: false });
   const [deleteBusy, setDeleteBusy] = useState(false);
 
@@ -116,6 +119,12 @@ export default function OrgChartWorkspace() {
     if (draggedNode.type !== "department" && draggedNode.type !== "employee") return;
     setMoveDialog({ open: true, node: draggedNode, initialTargetId: targetNode.data.rawId, key: `drag-${draggedNode.id}-${targetNode.id}` });
   };
+  const handleSetManager = (nodeData) => {
+    if (locked) { toast.error("Unlock the chart to make changes"); return; }
+    if (!can("org.unit_assignment.update")) { toast.error("You don't have permission to change reporting lines"); return; }
+    setSetManagerDialog({ open: true, node: nodeData, key: `set-manager-${nodeData.rawId}` });
+  };
+
   const handleConnectNodes = (sourceId, targetId) => {
     if (locked) return;
     const sourceApi = nodesById.get(sourceId);
@@ -264,6 +273,8 @@ export default function OrgChartWorkspace() {
             selectedNodeId={selectedNode?.id}
             onSelectNode={setSelectedNode}
             onQuickAdd={handleQuickAdd}
+            onSetManager={handleSetManager}
+            employeeRefreshSignal={employeeRefreshSignal}
             onOpenFilters={() => setFilterOpen(true)}
             activeFilterCount={activeFilterCount}
             searchValue={chartSearch}
@@ -351,6 +362,19 @@ export default function OrgChartWorkspace() {
           run={history.run}
           onClose={() => setConnectDialog({ open: false })}
           onDone={onDoneMutating}
+        />
+      )}
+
+      {setManagerDialog.open && (
+        <SetManagerDialog
+          key={setManagerDialog.key}
+          open={setManagerDialog.open}
+          node={setManagerDialog.node}
+          token={token}
+          tokenType={tokenType}
+          run={history.run}
+          onClose={() => setSetManagerDialog({ open: false })}
+          onDone={(unitId) => setEmployeeRefreshSignal({ unitId, ts: Date.now() })}
         />
       )}
 

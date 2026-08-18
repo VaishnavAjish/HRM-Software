@@ -1,4 +1,3 @@
-import { Building2 } from "lucide-react";
 import OrgWorkspaceTabs from "../../../features/organization/components/OrgWorkspaceTabs";
 import OverviewTab from "./organization/OverviewTab";
 import PromotionTransferTab from "./organization/PromotionTransferTab";
@@ -34,10 +33,10 @@ import CompanyUnits from "../accessControl/CompanyUnits";
 // Unit" Departments tab's role; "Departments" now refers to the real one.
 const TABS = [
   { key: "overview", label: "Overview", permission: "org.unit.read", render: () => <OverviewTab /> },
-  { key: "companies", label: "Companies", permission: "admin.company.read", render: () => <CompanyUnits initialTab="companies" hideTabs /> },
-  { key: "units", label: "Units", permission: "admin.company.read", render: () => <CompanyUnits initialTab="units" hideTabs /> },
-  { key: "departments", label: "Departments", permission: "admin.company.read", render: () => <CompanyUnits initialTab="departments" hideTabs /> },
-  { key: "department-managers", label: "Department Managers", permission: "admin.company.read", render: () => <CompanyUnits initialTab="department_managers" hideTabs /> },
+  { key: "companies", label: "Companies", permission: "admin.company.read", render: () => <CompanyUnits key="companies" initialTab="companies" hideTabs /> },
+  { key: "units", label: "Units", permission: "admin.company.read", render: () => <CompanyUnits key="units" initialTab="units" hideTabs /> },
+  { key: "departments", label: "Departments", permission: "admin.company.read", render: () => <CompanyUnits key="departments" initialTab="departments" hideTabs /> },
+  { key: "department-managers", label: "Department Managers", permission: "admin.company.read", render: () => <CompanyUnits key="department_managers" initialTab="department_managers" hideTabs /> },
   { key: "org-chart", label: "Org Chart", permission: "org.chart.read", render: () => <OrgChartPage /> },
   { key: "positions", label: "Positions", permission: "org.unit_position.read", render: () => <PositionsPage /> },
   { key: "designations", label: "Designations", permission: "workforce.designation.read", render: () => <DesignationsPage /> },
@@ -48,15 +47,6 @@ const TABS = [
 export default function HrOrganization() {
   return (
     <div className="min-w-0 max-w-full space-y-4">
-      <div>
-        <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900 dark:text-white">
-          <Building2 size={20} /> Organization
-        </h1>
-        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          Manage companies, units, departments, positions, designations, reporting structure and
-          promotions/transfers — the same data as the Organization, Access Control and Workforce modules.
-        </p>
-      </div>
       <OrgWorkspaceTabs tabs={TABS} />
     </div>
   );

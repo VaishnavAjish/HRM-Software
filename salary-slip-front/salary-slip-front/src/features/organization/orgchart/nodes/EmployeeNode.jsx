@@ -1,6 +1,6 @@
 import { memo } from "react";
 import { Handle, Position } from "@xyflow/react";
-import { Plus } from "lucide-react";
+import { Plus, UserCog } from "lucide-react";
 import { CARD_BASE, initials, statusDotClass } from "./nodeStyles";
 
 /**
@@ -33,6 +33,9 @@ function EmployeeNode({ data, selected, sourcePosition, targetPosition }) {
           {data.metadata?.department && (
             <p className="truncate text-[11px] text-gray-400 dark:text-gray-500">{data.metadata.department}</p>
           )}
+          {data.metadata?.managerName && (
+            <p className="truncate text-[11px] text-gray-400 dark:text-gray-500">Reports to {data.metadata.managerName}</p>
+          )}
         </div>
       </div>
 
@@ -42,16 +45,28 @@ function EmployeeNode({ data, selected, sourcePosition, targetPosition }) {
             {reportCount} direct report{reportCount === 1 ? "" : "s"}
           </span>
         )}
-        {data.onQuickAdd && (
-          <button
-            type="button"
-            title="Add a direct report"
-            onClick={(e) => { e.stopPropagation(); data.onQuickAdd(data); }}
-            className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-brand-600 dark:hover:bg-gray-700"
-          >
-            <Plus size={13} />
-          </button>
-        )}
+        <div className="ml-auto flex items-center gap-0.5">
+          {data.onSetManager && (
+            <button
+              type="button"
+              title="Set manager"
+              onClick={(e) => { e.stopPropagation(); data.onSetManager(data); }}
+              className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-brand-600 dark:hover:bg-gray-700"
+            >
+              <UserCog size={13} />
+            </button>
+          )}
+          {data.onQuickAdd && (
+            <button
+              type="button"
+              title="Add a direct report"
+              onClick={(e) => { e.stopPropagation(); data.onQuickAdd(data); }}
+              className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-brand-600 dark:hover:bg-gray-700"
+            >
+              <Plus size={13} />
+            </button>
+          )}
+        </div>
       </div>
 
       <Handle type="source" position={sourcePosition || Position.Bottom} className="!bg-gray-400" />
