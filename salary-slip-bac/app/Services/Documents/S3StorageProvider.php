@@ -35,13 +35,20 @@ class S3StorageProvider implements StorageProvider
 
         $this->bucket = $config['bucket'];
 
-        // No credentials block: the SDK's default provider chain resolves the
-        // EC2/ECS/EKS role in production and falls back to env keys locally.
+        $credentials = null;
+        if (!empty($config['key']) && !empty($config['secret'])) {
+            $credentials = [
+                'key'    => $config['key'],
+                'secret' => $config['secret'],
+            ];
+        }
+
         $this->client = $client ?? new S3Client(array_filter([
             'version'                 => 'latest',
             'region'                  => $config['region'] ?: 'us-east-1',
             'endpoint'                => $config['endpoint'] ?: null,
             'use_path_style_endpoint' => (bool) $config['path_style'],
+            'credentials'             => $credentials,
             'retries'                 => 3,
             // TLS verification stays on; this only tells cURL where the trust
             // store is when the host has not configured one.

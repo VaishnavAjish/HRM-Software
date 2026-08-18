@@ -10,6 +10,8 @@ return [
     'legacy_read_enabled' => env('DOCUMENT_LEGACY_READ_ENABLED', true),
 
     's3' => [
+        'key'               => env('AWS_ACCESS_KEY_ID'),
+        'secret'            => env('AWS_SECRET_ACCESS_KEY'),
         'bucket'            => env('AWS_S3_BUCKET'),
         'region'            => env('AWS_REGION', env('AWS_DEFAULT_REGION')),
         'endpoint'          => env('AWS_S3_ENDPOINT'),
