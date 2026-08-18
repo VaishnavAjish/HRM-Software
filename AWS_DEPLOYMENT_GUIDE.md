@@ -321,13 +321,31 @@ echo "🚀 Starting 1-Click Production Update..."
 BUILD_DIR="$HOME/HRM-Software-build-$(date +'%s')"
 git clone --depth 1 https://github.com/VaishnavAjish/HRM-Software.git "$BUILD_DIR"
 
-# 2. Sync backend application files (app/routes/database/config — not
-#    vendor, dependencies aren't part of this update path)
+# 2. Sync backend application files
 sudo chown -R ubuntu:ubuntu ~/salary-slip-bac/
 cp -r "$BUILD_DIR/salary-slip-bac/app" ~/salary-slip-bac/
 cp -r "$BUILD_DIR/salary-slip-bac/routes" ~/salary-slip-bac/
 cp -r "$BUILD_DIR/salary-slip-bac/database" ~/salary-slip-bac/
 cp -r "$BUILD_DIR/salary-slip-bac/config" ~/salary-slip-bac/
+cp "$BUILD_DIR/salary-slip-bac/composer.json" ~/salary-slip-bac/
+cp "$BUILD_DIR/salary-slip-bac/composer.lock" ~/salary-slip-bac/
+
+# 2b. Install any composer dependencies added since the last deploy.
+#    Missing until 2026-08-18: this update path never synced
+#    composer.json/composer.lock or ran composer install, so vendor/ silently
+#    drifted out of sync with composer.json. The google/apiclient package
+#    (added for real Google Meet integration) was the first dependency to
+#    actually hit the gap — GoogleMeetService's SCOPES constant references
+#    Google\Service\Calendar as a class-constant expression, which PHP must
+#    resolve at container-build time. Since InterviewController
+#    constructor-injects GoogleMeetService, EVERY route on that controller —
+#    including a plain GET listing with nothing to do with Google Calendar —
+#    threw "Class Google\Service\Calendar not found" and 500'd. `composer
+#    install` (not `update`) only installs exactly what composer.lock
+#    already pins, so it's fast/safe to run on every deploy, not just when a
+#    dependency is known to have changed.
+cd ~/salary-slip-bac
+composer install --no-dev --optimize-autoloader
 
 # 3. Clear Laravel caches, run migrations, then rebuild the caches.
 #    Clearing without rebuilding leaves the app running uncached in
@@ -335,7 +353,6 @@ cp -r "$BUILD_DIR/salary-slip-bac/config" ~/salary-slip-bac/
 #    re-resolves the full route table from scratch instead of reading
 #    the compiled cache, which is a significant, silent slowdown on
 #    every single request until the next deploy clears it again.
-cd ~/salary-slip-bac
 php artisan config:clear
 php artisan route:clear
 php artisan view:clear
