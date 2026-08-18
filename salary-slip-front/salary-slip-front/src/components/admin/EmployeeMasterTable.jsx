@@ -169,10 +169,17 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
       // AWS_DEPLOYMENT_GUIDE.md §3.5), not any single query being slow.
       // Sequential trades a small amount of total load time for never
       // needing more than 1 worker from this page at a time.
-      const trialRes = await authApi.getTrialForms(user?.accessToken, user?.tokenType, companyScope);
-      const appointmentRes = await authApi.getAppointmentForms(user?.accessToken, user?.tokenType, companyScope);
-      const pendingRes = await salaryApi.getAllEmployees(user?.accessToken, user?.tokenType, { status: "2", limit: 100 }, companyScope);
-      const employeeRes = await salaryApi.getAllEmployees(user?.accessToken, user?.tokenType, { limit: 100 }, companyScope);
+      const [trialResult, appointmentResult, pendingResult, employeeResult] = await Promise.allSettled([
+        authApi.getTrialForms(user?.accessToken, user?.tokenType, companyScope),
+        authApi.getAppointmentForms(user?.accessToken, user?.tokenType, companyScope),
+        salaryApi.getAllEmployees(user?.accessToken, user?.tokenType, { status: "2", limit: 100 }, companyScope),
+        salaryApi.getAllEmployees(user?.accessToken, user?.tokenType, { limit: 100 }, companyScope),
+      ]);
+
+      const trialRes = trialResult.status === "fulfilled" ? trialResult.value : null;
+      const appointmentRes = appointmentResult.status === "fulfilled" ? appointmentResult.value : null;
+      const pendingRes = pendingResult.status === "fulfilled" ? pendingResult.value : null;
+      const employeeRes = employeeResult.status === "fulfilled" ? employeeResult.value : null;
 
       const trialRows = (trialRes?.data || []).map((r) => ({ ...r, __stage: "trial" }));
       // Appointments that are NOT yet approved (checkbox !== 1, no emp_code, status !== 1)
