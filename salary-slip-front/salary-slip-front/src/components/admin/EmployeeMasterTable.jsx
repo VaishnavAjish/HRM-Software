@@ -160,12 +160,19 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
       // immediately flips its type to 'pending_employee' / status 2, which is
       // exactly the pendingRes query below. So "approved" and "shows up here
       // as Pending" are the same event; nothing unapproved should ever appear.
-      const [trialRes, appointmentRes, pendingRes, employeeRes] = await Promise.all([
-        authApi.getTrialForms(user?.accessToken, user?.tokenType, companyScope),
-        authApi.getAppointmentForms(user?.accessToken, user?.tokenType, companyScope),
-        salaryApi.getAllEmployees(user?.accessToken, user?.tokenType, { status: "2", limit: 1000 }, companyScope),
-        salaryApi.getAllEmployees(user?.accessToken, user?.tokenType, { limit: 1000 }, companyScope),
-      ]);
+      //
+      // Fetched sequentially, not via Promise.all: each individual query is
+      // cheap (sub-second), but firing all 4 at once means one page load
+      // claims 4 PHP-FPM workers simultaneously. Under real concurrent HR
+      // usage — several staff loading admin pages at the same moment — that
+      // peak demand is what has twice exhausted the worker pool (see
+      // AWS_DEPLOYMENT_GUIDE.md §3.5), not any single query being slow.
+      // Sequential trades a small amount of total load time for never
+      // needing more than 1 worker from this page at a time.
+      const trialRes = await authApi.getTrialForms(user?.accessToken, user?.tokenType, companyScope);
+      const appointmentRes = await authApi.getAppointmentForms(user?.accessToken, user?.tokenType, companyScope);
+      const pendingRes = await salaryApi.getAllEmployees(user?.accessToken, user?.tokenType, { status: "2", limit: 1000 }, companyScope);
+      const employeeRes = await salaryApi.getAllEmployees(user?.accessToken, user?.tokenType, { limit: 1000 }, companyScope);
 
       const trialRows = (trialRes?.data || []).map((r) => ({ ...r, __stage: "trial" }));
       // Appointments that are NOT yet approved (checkbox !== 1, no emp_code, status !== 1)
