@@ -1,6 +1,6 @@
 import { memo } from "react";
 import { Handle, Position } from "@xyflow/react";
-import { Briefcase } from "lucide-react";
+import { Briefcase, UserPlus } from "lucide-react";
 import { CARD_BASE } from "./nodeStyles";
 
 function PositionNode({ data, selected, sourcePosition, targetPosition }) {
@@ -31,6 +31,16 @@ function PositionNode({ data, selected, sourcePosition, targetPosition }) {
           </span>
         )}
       </div>
+      {data.onAssignEmployee && (
+        <button
+          type="button"
+          title="Assign an employee to this position"
+          onClick={(e) => { e.stopPropagation(); data.onAssignEmployee(data); }}
+          className="mt-2 flex w-full items-center justify-center gap-1 rounded-md border border-dashed border-gray-300 py-1 text-xs text-gray-500 hover:border-brand-400 hover:text-brand-600 dark:border-gray-600 dark:text-gray-400"
+        >
+          <UserPlus size={12} /> Assign Employee
+        </button>
+      )}
       <Handle type="source" position={sourcePosition || Position.Bottom} className="!bg-gray-400" />
     </div>
   );

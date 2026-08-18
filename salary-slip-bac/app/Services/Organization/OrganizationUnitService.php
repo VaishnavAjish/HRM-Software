@@ -177,7 +177,7 @@ class OrganizationUnitService
             }
         }
 
-        $this->assertCodeFree($enterpriseId, $companyId, trim((string) ($data['code'] ?: $data['name'])), null);
+        $this->assertCodeFree($enterpriseId, $companyId, trim((string) (($data['code'] ?? null) ?: $data['name'])), null);
         $this->resolveParent($enterpriseId, $companyId, $parentId, null);
 
         $unit = DB::transaction(function () use ($data, $enterpriseId, $companyId, $parentId, $actor) {
@@ -185,7 +185,7 @@ class OrganizationUnitService
                 'enterprise_id' => $enterpriseId,
                 'company_id' => $companyId,
                 'parent_id' => $parentId,
-                'code' => trim((string) ($data['code'] ?: $data['name'])),
+                'code' => trim((string) (($data['code'] ?? null) ?: $data['name'])),
                 'name' => trim((string) $data['name']),
                 'type' => $data['type'] ?? 'department',
                 'status' => $data['status'] ?? 'active',
@@ -724,7 +724,7 @@ class OrganizationUnitService
             }
         }
 
-        $this->assertPositionCodeFree($unitId, trim((string) ($data['code'] ?: $data['title'])), null);
+        $this->assertPositionCodeFree($unitId, trim((string) (($data['code'] ?? null) ?: $data['title'])), null);
         // Note: a new position has no id yet, so ignoreId is null — cycles can
         // only occur once the position exists and gets re-pointed via update().
 
@@ -733,7 +733,7 @@ class OrganizationUnitService
 
             return OrganizationPosition::query()->create([
                 'organization_unit_id' => $unitId,
-                'code' => trim((string) ($data['code'] ?: $data['title'])),
+                'code' => trim((string) (($data['code'] ?? null) ?: $data['title'])),
                 'title' => trim((string) $data['title']),
                 'description' => $this->blankToNull($data['description'] ?? null),
                 'approved_headcount' => $approvedHeadcount,

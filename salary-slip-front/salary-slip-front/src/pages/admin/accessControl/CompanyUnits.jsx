@@ -182,14 +182,19 @@ function UnitModal({ unit, companies, busy, onSave, onClose }) {
   );
 }
 
-function DepartmentModal({ department, companies, units, busy, onSave, onClose }) {
+function DepartmentModal({ department, companies, units, departments, busy, onSave, onClose }) {
   const isEdit = Boolean(department?.id);
   const [name, setName] = useState(department?.name ?? "");
   const [unitId, setUnitId] = useState(department?.unit_id ? String(department.unit_id) : "");
+  const [parentDepartmentId, setParentDepartmentId] = useState(
+    department?.parent_department_id ? String(department.parent_department_id) : "",
+  );
   const [selectedCompanies, setSelectedCompanies] = useState(() => {
     if (!department?.company_code) return [];
     return department.company_code.split(",").filter(Boolean);
   });
+
+  const parentOptions = (departments || []).filter((d) => d.id !== department?.id);
 
   const toggleCompany = (code) => {
     setSelectedCompanies(prev => 
@@ -211,6 +216,7 @@ function DepartmentModal({ department, companies, units, busy, onSave, onClose }
               name: name.trim(),
               company_code: selectedCompanies.length > 0 ? selectedCompanies.join(",") : null,
               unit_id: unitId ? Number(unitId) : null,
+              parent_department_id: parentDepartmentId ? Number(parentDepartmentId) : null,
             })}
           >
             {busy && <Loader2 size={16} className="animate-spin" />}
@@ -261,6 +267,20 @@ function DepartmentModal({ department, companies, units, busy, onSave, onClose }
               <option key={unit.id} value={unit.id}>
                 {unit.name}{unit.companyName ? ` (${unit.companyName})` : ""}
               </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="block">
+          <span className={labelClass}>Parent Department (optional — for sub-departments)</span>
+          <select
+            className={inputClass}
+            value={parentDepartmentId}
+            onChange={(e) => setParentDepartmentId(e.target.value)}
+          >
+            <option value="">No parent — top-level department</option>
+            {parentOptions.map((d) => (
+              <option key={d.id} value={d.id}>{d.name}</option>
             ))}
           </select>
         </label>
@@ -960,13 +980,14 @@ export default function CompanyUnits({ initialTab = "companies", hideTabs = fals
                   <Th>Department Name</Th>
                   <Th>Company</Th>
                   <Th>Branch</Th>
+                  <Th>Parent Department</Th>
                   <Th>Assigned Managers</Th>
                   <Th className="text-right">Actions</Th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700/60">
                 {departments.length === 0 && (
-                  <tr><td colSpan={5} className="p-10 text-center text-gray-500 dark:text-gray-400">
+                  <tr><td colSpan={6} className="p-10 text-center text-gray-500 dark:text-gray-400">
                     No departments match these filters.
                   </td></tr>
                 )}
@@ -990,6 +1011,9 @@ export default function CompanyUnits({ initialTab = "companies", hideTabs = fals
                     </td>
                     <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
                       {dept.unit?.name || <span className="text-xs text-gray-400 italic">—</span>}
+                    </td>
+                    <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
+                      {dept.parentDepartment?.name || <span className="text-xs text-gray-400 italic">—</span>}
                     </td>
                     <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
                       {dept.managers && dept.managers.length > 0 ? (
@@ -1157,6 +1181,7 @@ export default function CompanyUnits({ initialTab = "companies", hideTabs = fals
           department={departmentDialog.id ? departmentDialog : null}
           companies={companies}
           units={units}
+          departments={departments}
           busy={busy}
           onSave={saveDepartment}
           onClose={() => setDepartmentDialog(null)}

@@ -5,6 +5,7 @@ import Modal from "../../../../components/ui/Modal";
 import Button from "../../../../components/ui/Button";
 import UserPicker from "../../../../components/authorization/UserPicker";
 import { organizationApi } from "../../services/organizationApi";
+import { departmentApi } from "../../../../utils/api";
 import { parseNodeId } from "../nodeId";
 
 const inputClass =
@@ -54,10 +55,44 @@ export default function MoveDialog({ open, node, orgUnits, token, tokenType, run
       if (isDepartment) {
         const unit = orgUnits.find((u) => u.id === rawId);
         const previousParentId = unit?.parentId ?? null;
+        const targetUnit = orgUnits.find((u) => u.id === Number(targetId));
+        const previousParentUnit = previousParentId ? orgUnits.find((u) => u.id === previousParentId) : null;
+        const legacyDepartmentId = unit?.legacyDepartmentId ?? null;
+        const targetLegacyDepartmentId = targetUnit?.legacyDepartmentId ?? null;
+        const previousLegacyParentId = previousParentUnit?.legacyDepartmentId ?? null;
+
+        // The next auto-sync (every 60s) re-derives organization_units'
+        // parent_id from the legacy department's own parent_department_id —
+        // without also writing that here, a chart-based move would look
+        // right for under a minute and then silently revert, same as the
+        // Department Head fix elsewhere in this dialog set.
+        let legacyPayloadBase = null;
+        if (legacyDepartmentId) {
+          const deptsRes = await departmentApi.departments({}, token, tokenType);
+          const legacyDept = (deptsRes?.data || []).find((d) => d.id === legacyDepartmentId);
+          if (legacyDept) {
+            legacyPayloadBase = { name: legacyDept.name, company_code: legacyDept.company_code, unit_id: legacyDept.unit_id };
+          }
+        }
+
         await run({
           label: `Move ${node.data.name}`,
-          do: () => organizationApi.updateOrgUnit(rawId, { parentId: targetId }, token, tokenType),
-          undo: () => organizationApi.updateOrgUnit(rawId, { parentId: previousParentId }, token, tokenType),
+          do: async () => {
+            await organizationApi.updateOrgUnit(rawId, { parentId: targetId }, token, tokenType);
+            if (legacyDepartmentId && legacyPayloadBase) {
+              await departmentApi.updateDepartment(
+                legacyDepartmentId, { ...legacyPayloadBase, parent_department_id: targetLegacyDepartmentId }, token, tokenType,
+              );
+            }
+          },
+          undo: async () => {
+            await organizationApi.updateOrgUnit(rawId, { parentId: previousParentId }, token, tokenType);
+            if (legacyDepartmentId && legacyPayloadBase) {
+              await departmentApi.updateDepartment(
+                legacyDepartmentId, { ...legacyPayloadBase, parent_department_id: previousLegacyParentId }, token, tokenType,
+              );
+            }
+          },
         });
         toast.success("Department moved");
       } else if (isEmployee) {

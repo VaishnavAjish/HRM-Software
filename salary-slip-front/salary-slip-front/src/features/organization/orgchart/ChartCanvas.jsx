@@ -31,7 +31,7 @@ const ROOT_NODE_ID = "__root__";
 
 const UNASSIGNED_NODE_ID = "__unassigned__";
 
-function toFlowElements(chart, orgUnits, companies, units, { collapsedIds, onQuickAdd, onSetManager, onToggleCollapse, onFocus, loadingIds, includeRoot }) {
+function toFlowElements(chart, orgUnits, companies, units, { collapsedIds, onQuickAdd, onSetManager, onAssignEmployee, onToggleCollapse, onFocus, loadingIds, includeRoot }) {
   const unitsById = new Map(orgUnits.map((u) => [u.id, u]));
   const reportCounts = new Map();
   (chart.edges || []).forEach((e) => reportCounts.set(e.source, (reportCounts.get(e.source) || 0) + 1));
@@ -64,6 +64,7 @@ function toFlowElements(chart, orgUnits, companies, units, { collapsedIds, onQui
         metadata: { ...(apiNode.metadata || {}), parentId: unit?.parentId ?? null },
         onQuickAdd,
         onSetManager: kind === "employee" ? onSetManager : undefined,
+        onAssignEmployee: kind === "position" ? onAssignEmployee : undefined,
         onToggleCollapse,
         onFocus: kind === "department" ? onFocus : undefined,
       },
@@ -357,7 +358,7 @@ function Toolbar({
 }
 
 function ChartCanvasInner({
-  chart, orgUnits, companies, units, selectedNodeId, onSelectNode, onQuickAdd, onSetManager, onOpenFilters, activeFilterCount,
+  chart, orgUnits, companies, units, selectedNodeId, onSelectNode, onQuickAdd, onSetManager, onAssignEmployee, onOpenFilters, activeFilterCount,
   searchValue, onSearchChange, history, onConnectNodes, onDragMove, loading, onImportLegacy, canImportLegacy,
   locked, onToggleLock, canUnlock, onLoadDepartmentEmployees, employeeRefreshSignal,
 }) {
@@ -530,9 +531,10 @@ function ChartCanvasInner({
     () => toFlowElements(focusedChart, orgUnits, companies, units, {
       collapsedIds, onToggleCollapse: toggleCollapse, onQuickAdd: locked ? undefined : onQuickAdd,
       onSetManager: locked ? undefined : onSetManager,
+      onAssignEmployee: locked ? undefined : onAssignEmployee,
       onFocus: enterFocus, loadingIds, includeRoot: !focusNodeId,
     }),
-    [focusedChart, orgUnits, companies, units, collapsedIds, onQuickAdd, onSetManager, toggleCollapse, enterFocus, locked, loadingIds, focusNodeId],
+    [focusedChart, orgUnits, companies, units, collapsedIds, onQuickAdd, onSetManager, onAssignEmployee, toggleCollapse, enterFocus, locked, loadingIds, focusNodeId],
   );
 
   // A full dagre layout recomputes every node's position from scratch, so
