@@ -158,6 +158,52 @@ page load via `Promise.all`. Combining these into one backend endpoint that retu
 groups from a single query would cut this page's worker consumption from 4 to 1 and reduce load
 on the rest of the site.
 
+### 3.6. Assessment invitation queue (2026-08-17, Phase B)
+
+`SendAssessmentInvitationJob` (`app/Jobs/`) is a real `ShouldQueue` job — dispatched via
+`SendAssessmentInvitationJob::dispatch(...)`, not called inline. Today it still runs
+synchronously within the request because `QUEUE_CONNECTION=sync` in `.env` (this app's
+config default is `database`, and the `jobs`/`job_batches`/`failed_jobs` tables already exist
+from the base Laravel migrations — no schema work needed to go async). To make assessment email
+delivery genuinely non-blocking:
+
+```bash
+# .env
+QUEUE_CONNECTION=database
+
+# supervise a worker the same way laravel-backend was supervised before the
+# PHP-FPM migration — pm2, not a bare background process, so a crash restarts it
+pm2 start "php artisan queue:work --tries=3 --max-time=3600" --name assessment-queue-worker
+pm2 save
+```
+
+Until that's done, `queue:work` isn't running and nothing needs it to be — sync execution means
+the HTTP response already reflects the real send outcome (`email_status` is `sent`/`failed`, not
+just `queued`, by the time the API responds). This is intentional, not a bug: see
+`SendAssessmentInvitationJob`'s docblock.
+
+### 3.7. Authorization enforcement mode — production gap (2026-08-17, Phase B)
+
+New `assessment.*` permission codes were registered through `PermissionRegistry` (the same
+matrix every other hiring feature uses) and wired into the `quiz-attempts` routes' middleware.
+**They are not yet actually enforced.** This app's fine-grained permission engine ships in
+`AUTHZ_MODE=shadow` by default (`config/authorization.php`, `.env` comment dated 2026-08-13:
+"authorization stays advisory until the agent / role-less canonical grants are fixed and
+verified — agents are locked out under enforced mode"). Any permission code not listed in
+`AUTHZ_ENFORCED_PREFIXES` falls back to a coarse legacy role check
+(`AuthorizationEngine::legacyRole()`) where roles 0/1/2 all map to an unconditionally-allowed
+"admin" bucket — this was already true for the `hr.training.*` codes the assignment routes used
+before Phase B, so nothing regresses, but it means `assessment.*` doesn't yet block anyone that
+`hr.training.*` didn't already let through either.
+
+To actually enforce: add `assessment.` to `AUTHZ_ENFORCED_PREFIXES` in `.env` — but per the
+existing safety note, only after confirming (e.g. via `authz:audit-role-migration` if that
+command still applies) that no currently-relied-upon workflow depends on the legacy-role
+fallback for these specific codes. The Phase B permission-seeding migration already copies
+grants from `hr.training.read/create/update/delete` to the new codes, so real (non-legacy)
+access should already be correct for whoever had explicit grants — this is about closing the
+legacy-fallback gap, not about anyone losing access they're supposed to have.
+
 **`listen.owner`/`listen.group` must match whichever user nginx's worker processes actually run
 as** (`ps -ef | grep "nginx: worker"` — confirmed `ubuntu` on this box, not the apt default
 `www-data`), or nginx gets `(13: Permission denied)` connecting to the FPM socket despite the

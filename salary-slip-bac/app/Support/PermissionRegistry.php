@@ -693,6 +693,24 @@ class PermissionRegistry
             'description' => 'Export candidate records.',
             'implies' => ['hr.candidate.export'],
         ],
+        'ui.hr.hiring.assessment' => [
+            'type' => self::TYPE_FEATURE, 'label' => 'Assessments', 'order' => 75,
+            'parent' => 'ui.hr.hiring',
+            'description' => 'View assigned assessments and their results.',
+            'implies' => ['assessment.view'],
+        ],
+        'ui.hr.hiring.assessment_assign' => [
+            'type' => self::TYPE_ACTION, 'label' => 'Assign & Send Assessment', 'order' => 76,
+            'parent' => 'ui.hr.hiring.assessment',
+            'description' => 'Assign an assessment to a candidate, preview the invitation, and send or resend it.',
+            'implies' => ['assessment.assign', 'assessment.preview_email', 'assessment.send_invitation', 'assessment.resend_invitation'],
+        ],
+        'ui.hr.hiring.assessment_revoke' => [
+            'type' => self::TYPE_ACTION, 'label' => 'Revoke Assessment', 'order' => 77,
+            'parent' => 'ui.hr.hiring.assessment', 'sensitivity' => self::SENSITIVITY_SENSITIVE,
+            'description' => 'Revoke a candidate\'s assessment access.',
+            'implies' => ['assessment.revoke'],
+        ],
         'ui.hr.hiring.interviews' => [
             'type' => self::TYPE_FEATURE, 'label' => 'Interviews', 'order' => 80,
             'parent' => 'ui.hr.hiring',

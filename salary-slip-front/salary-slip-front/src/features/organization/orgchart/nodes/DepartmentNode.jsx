@@ -1,6 +1,6 @@
 import { memo } from "react";
 import { Handle, Position } from "@xyflow/react";
-import { Building2, ChevronDown, ChevronRight, Plus } from "lucide-react";
+import { Building2, ChevronDown, ChevronRight, Focus, Loader2, Plus, UserRound } from "lucide-react";
 import { CARD_BASE, statusDotClass } from "./nodeStyles";
 
 function DepartmentNode({ data, selected, sourcePosition, targetPosition }) {
@@ -25,11 +25,14 @@ function DepartmentNode({ data, selected, sourcePosition, targetPosition }) {
         {collapsible && (
           <button
             type="button"
-            title={data.hasHiddenChildren ? "Expand" : "Collapse"}
+            title={data.loadingChildren ? "Loading…" : data.isCollapsed ? "Load and expand" : "Collapse"}
+            disabled={data.loadingChildren}
             onClick={(e) => { e.stopPropagation(); data.onToggleCollapse?.(data.id); }}
-            className="rounded-md p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+            className="rounded-md p-1 text-gray-400 hover:bg-gray-100 disabled:opacity-60 dark:hover:bg-gray-700"
           >
-            {data.hasHiddenChildren ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+            {data.loadingChildren ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : data.isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
           </button>
         )}
       </div>
@@ -39,16 +42,39 @@ function DepartmentNode({ data, selected, sourcePosition, targetPosition }) {
         <span>{data.metadata?.positionCount ?? 0} positions</span>
       </div>
 
-      {data.onQuickAdd && (
-        <button
-          type="button"
-          title="Add under this unit"
-          onClick={(e) => { e.stopPropagation(); data.onQuickAdd(data); }}
-          className="mt-2 flex w-full items-center justify-center gap-1 rounded-md border border-dashed border-gray-300 py-1 text-xs text-gray-500 hover:border-brand-400 hover:text-brand-600 dark:border-gray-600 dark:text-gray-400"
-        >
-          <Plus size={12} /> Add
-        </button>
+      {data.type === "department" && (
+        data.metadata?.managerName ? (
+          <div className="mt-1.5 flex items-center gap-1 truncate text-xs text-gray-500 dark:text-gray-400">
+            <UserRound size={11} className="flex-shrink-0" />
+            <span className="truncate">Head: {data.metadata.managerName}</span>
+          </div>
+        ) : (
+          <p className="mt-1.5 text-xs italic text-amber-600 dark:text-amber-400">No department head assigned</p>
+        )
       )}
+
+      <div className="mt-2 flex items-center gap-1.5">
+        {data.onQuickAdd && (
+          <button
+            type="button"
+            title="Add under this unit"
+            onClick={(e) => { e.stopPropagation(); data.onQuickAdd(data); }}
+            className="flex flex-1 items-center justify-center gap-1 rounded-md border border-dashed border-gray-300 py-1 text-xs text-gray-500 hover:border-brand-400 hover:text-brand-600 dark:border-gray-600 dark:text-gray-400"
+          >
+            <Plus size={12} /> Add
+          </button>
+        )}
+        {data.hasChildren && data.onFocus && (
+          <button
+            type="button"
+            title="View sub-chart — focus on just this department"
+            onClick={(e) => { e.stopPropagation(); data.onFocus(data.id); }}
+            className="flex flex-1 items-center justify-center gap-1 rounded-md border border-dashed border-gray-300 py-1 text-xs text-gray-500 hover:border-brand-400 hover:text-brand-600 dark:border-gray-600 dark:text-gray-400"
+          >
+            <Focus size={12} /> Sub-chart
+          </button>
+        )}
+      </div>
 
       <Handle type="source" position={sourcePosition || Position.Bottom} className="!bg-gray-400" />
     </div>

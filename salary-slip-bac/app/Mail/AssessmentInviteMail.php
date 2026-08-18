@@ -28,13 +28,18 @@ class AssessmentInviteMail extends Mailable
         public ?string $quizUrl,
         public ?string $startsAt,
         public ?string $expiresAt,
+        public ?string $companyName = null,
+        public ?string $location = null,
+        public ?string $departmentName = null,
+        public ?string $subjectOverride = null,
+        public ?string $personalMessage = null,
     ) {
     }
 
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: "Assessment invite: {$this->roleTitle}",
+            subject: $this->subjectOverride ?: "Your NISS Assessment Is Ready – {$this->roleTitle}",
         );
     }
 
@@ -77,7 +82,12 @@ class AssessmentInviteMail extends Mailable
                 'quizUrl' => $this->quizUrl,
                 'startsAt' => $this->startsAt,
                 'expiresAt' => $this->expiresAt,
-            
+                'companyName' => $this->companyName,
+                'location' => $this->location,
+                'departmentName' => $this->departmentName,
+                // Blade's {{ }} auto-escapes this — never rendered with {!! !!},
+                // so a recruiter's free-text message can't break the template.
+                'personalMessage' => $this->personalMessage,
                 'customBody' => $customBody,
             ])->render(),
         );

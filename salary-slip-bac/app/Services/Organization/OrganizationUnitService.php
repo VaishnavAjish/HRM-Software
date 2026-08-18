@@ -353,6 +353,19 @@ class OrganizationUnitService
      */
     public function syncFromLegacyDepartments(User $actor): array
     {
+        // Only ~5 employees were showing up on the chart even though the
+        // company has hundreds: the `departments` table only had rows for
+        // whichever department names someone had manually created via
+        // Company & Unit, so any employee whose real `users.department` text
+        // didn't already have a matching row simply had nothing to attach
+        // to. This discovers every distinct (department, company_code) pair
+        // that actually exists on real employees and creates the missing
+        // `departments` row first — same dedup key DepartmentController::
+        // seedLegacy() already uses, so it can't create duplicates of
+        // anything that already exists, and every subsequent employee match
+        // below is guaranteed a real unit to land on.
+        $departmentsDiscovered = $this->discoverLegacyDepartmentsFromUsers();
+
         $created = 0;
         $updated = 0;
         $skipped = [];
@@ -384,6 +397,12 @@ class OrganizationUnitService
                 'code' => $name,
                 'type' => 'department',
                 'companyId' => $company?->id,
+                // Legacy departments have no hierarchy at all — force flat on
+                // every sync. Without this, a stray parentId set once via the
+                // chart's own Move action (or manual testing) sticks forever,
+                // since this payload never included parentId before and
+                // update() only touches fields it's explicitly given.
+                'parentId' => null,
                 'managerUserId' => $managerUserId,
                 'status' => 'active',
                 'legacyDepartmentId' => $department->id,
@@ -407,15 +426,132 @@ class OrganizationUnitService
         }
 
         $assignments = $this->syncAssignmentsFromLegacyDepartments($departments, $unitIdByDepartmentId, $actor);
+        $cleanup = $this->cleanupDuplicateGlobalDepartments($actor);
 
         return [
             'total' => $departments->count(),
             'created' => $created,
             'updated' => $updated,
             'skipped' => $skipped,
+            'departmentsDiscovered' => $departmentsDiscovered,
+            'duplicatesRemoved' => $cleanup['removed'],
             'assignmentsCreated' => $assignments['created'],
             'assignmentsSkipped' => $assignments['skipped'],
         ];
+    }
+
+    /**
+     * Mirrors DepartmentController::seedLegacy() exactly (same dedup key,
+     * same "trim, skip blanks, whereNull for no company" rules) so it can
+     * never create a duplicate of a department that page would recognize —
+     * it just also runs automatically as part of the chart's own sync
+     * instead of requiring someone to separately hit that endpoint.
+     *
+     * One refinement over seedLegacy() itself: if a department with this
+     * exact name already exists but scoped to "All Companies" (no
+     * company_code) and genuinely has no real employees sitting under that
+     * global version, this claims it for the company instead of creating a
+     * same-named row next to it — that's exactly how "IT" ended up listed
+     * twice, once as a leftover global entry nothing pointed at and once as
+     * the real, company-scoped one every actual employee matches.
+     */
+    private function discoverLegacyDepartmentsFromUsers(): int
+    {
+        $rows = \Illuminate\Support\Facades\DB::table('users')
+            ->select('department', 'company_code')
+            ->whereNotNull('department')
+            ->where('department', '!=', '')
+            ->distinct()
+            ->get();
+
+        $imported = 0;
+
+        foreach ($rows as $row) {
+            $deptName = trim((string) $row->department);
+            $companyCode = $row->company_code ? trim((string) $row->company_code) : null;
+
+            if ($deptName === '') {
+                continue;
+            }
+
+            $existing = \App\Models\Department::query()->where('name', $deptName);
+            $companyCode
+                ? $existing->where('company_code', $companyCode)
+                : $existing->whereNull('company_code');
+
+            if ($existing->exists()) {
+                continue;
+            }
+
+            if ($companyCode) {
+                $orphanGlobal = \App\Models\Department::query()
+                    ->where('name', $deptName)
+                    ->whereNull('company_code')
+                    ->first();
+
+                if ($orphanGlobal && !$this->legacyDepartmentHasRealEmployees($orphanGlobal)) {
+                    $orphanGlobal->update(['company_code' => $companyCode]);
+                    continue;
+                }
+            }
+
+            \App\Models\Department::create(['name' => $deptName, 'company_code' => $companyCode]);
+            $imported++;
+        }
+
+        return $imported;
+    }
+
+    private function legacyDepartmentHasRealEmployees(\App\Models\Department $department): bool
+    {
+        $query = \Illuminate\Support\Facades\DB::table('users')->where('department', $department->name);
+        $department->company_code
+            ? $query->where('company_code', $department->company_code)
+            : $query->where(fn ($q) => $q->whereNull('company_code')->orWhere('company_code', ''));
+
+        return $query->exists();
+    }
+
+    /**
+     * Cleans up the specific kind of duplicate the earlier bug above left
+     * behind: a global (no company_code) department with zero real
+     * employees, sitting next to a properly company-scoped department of
+     * the exact same name that real employees actually match. Deletes both
+     * the legacy row and its synced organization_units entry — guarded by
+     * OrganizationUnitService::delete()'s existing dependency checks, so
+     * this only ever removes something that was already empty.
+     */
+    private function cleanupDuplicateGlobalDepartments(User $actor): array
+    {
+        $removed = 0;
+        $skipped = 0;
+
+        $globals = \App\Models\Department::query()->whereNull('company_code')->get();
+
+        foreach ($globals as $global) {
+            $hasCompanyScopedSibling = \App\Models\Department::query()
+                ->where('name', $global->name)
+                ->whereNotNull('company_code')
+                ->exists();
+
+            if (!$hasCompanyScopedSibling || $this->legacyDepartmentHasRealEmployees($global)) {
+                continue;
+            }
+
+            $unit = OrganizationUnit::query()->where('legacy_department_id', $global->id)->first();
+
+            try {
+                if ($unit) {
+                    $this->delete($unit, $actor);
+                }
+                $global->delete();
+                $removed++;
+            } catch (OrganizationException $e) {
+                $skipped++;
+            }
+        }
+
+        return ['removed' => $removed, 'skipped' => $skipped];
     }
 
     /**

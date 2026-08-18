@@ -36,8 +36,14 @@ const SYNC_POLL_MS = 60000;
  * a real tree instead of a bare headcount number. Non-primary/inactive
  * assignments are skipped so every employee has exactly one parent (a tree,
  * not a DAG) and a duplicate primary row can't produce two parents.
+ *
+ * Deliberately NOT called for the whole org up front — with real headcount
+ * in the thousands that means thousands of DOM nodes and a dagre layout
+ * pass that can take the browser down with it. ChartCanvas calls this
+ * per-department, only for a department someone actually expands, via
+ * organizationApi.orgUnitAssignments({ organizationUnitId }).
  */
-function assignmentsToEmployeeTree(assignments) {
+export function assignmentsToEmployeeTree(assignments) {
   const nodes = [];
   const edges = [];
   const seenUsers = new Set();
@@ -159,6 +165,13 @@ export function useOrgChartData({ token, tokenType, view, filters }) {
         companyIds,
       };
 
+      // Organization View only ever fetches structural nodes (department,
+      // team, position) — never the employee list. At real scale (this org
+      // alone is heading past 10,000 employees) building every employee as
+      // a node up front is the one thing guaranteed to eventually hang the
+      // tab, no matter how aggressively collapse defaults are tuned. Each
+      // department's employees are loaded lazily by ChartCanvas only when
+      // that specific department is expanded.
       const chartPromise = view === "reporting"
         ? organizationApi.orgChart({ ...baseFilters, chartType: "manager_hierarchy" }, token, tokenType)
           .then((res) => res?.data)
@@ -166,14 +179,7 @@ export function useOrgChartData({ token, tokenType, view, filters }) {
           organizationApi.orgChart({ ...baseFilters, chartType: "department" }, token, tokenType),
           organizationApi.orgChart({ ...baseFilters, chartType: "team" }, token, tokenType),
           organizationApi.orgChart({ ...baseFilters, chartType: "position" }, token, tokenType),
-          // No unit filter — the assignments endpoint returns everyone when
-          // called bare, one request instead of one per department.
-          organizationApi.orgUnitAssignments({}, token, tokenType).catch(() => ({ data: [] })),
-        ]).then(([deptRes, teamRes, posRes, assignmentsRes]) => {
-          const structural = mergeCharts(mergeCharts(deptRes?.data, teamRes?.data), posRes?.data);
-          const employeeTree = assignmentsToEmployeeTree(assignmentsRes?.data || []);
-          return mergeCharts(structural, employeeTree);
-        });
+        ]).then(([deptRes, teamRes, posRes]) => mergeCharts(mergeCharts(deptRes?.data, teamRes?.data), posRes?.data));
 
       try {
         const [chartData, unitsRes, summaryRes, activityRes] = await Promise.all([

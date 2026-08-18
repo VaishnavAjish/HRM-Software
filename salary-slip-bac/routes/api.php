@@ -1379,11 +1379,14 @@ Route::post('publish-indeed/{id}', [JobRequisitionController::class, 'publishToI
             // score + proctoring trail. The candidate's own runner is public
             // (see the token routes at the bottom of this file).
             Route::group(['prefix' => 'quiz-attempts'], function () {
-                Route::get('get', [QuizAttemptController::class, 'index'])->middleware('permission:hr.training.read');
-                Route::get('show/{id}', [QuizAttemptController::class, 'show'])->middleware('permission:hr.training.read');
-                Route::get('candidates', [QuizAttemptController::class, 'assignableCandidates'])->middleware('permission:hr.training.read');
-                Route::post('store', [QuizAttemptController::class, 'store'])->middleware('permission:hr.training.create');
-                Route::delete('delete/{id}', [QuizAttemptController::class, 'destroy'])->middleware('permission:hr.training.delete');
+                Route::get('get', [QuizAttemptController::class, 'index'])->middleware('permission:assessment.view');
+                Route::get('show/{id}', [QuizAttemptController::class, 'show'])->middleware('permission:assessment.view');
+                Route::get('candidates', [QuizAttemptController::class, 'assignableCandidates'])->middleware('permission:assessment.view');
+                Route::post('store', [QuizAttemptController::class, 'store'])->middleware('permission:assessment.assign');
+                Route::get('{id}/email-preview', [QuizAttemptController::class, 'previewEmail'])->middleware('permission:assessment.preview_email');
+                Route::post('{id}/send-invitation', [QuizAttemptController::class, 'sendInvitation'])->middleware('permission:assessment.send_invitation');
+                Route::post('{id}/resend-invitation', [QuizAttemptController::class, 'resendInvitation'])->middleware('permission:assessment.resend_invitation');
+                Route::delete('delete/{id}', [QuizAttemptController::class, 'destroy'])->middleware('permission:assessment.revoke');
             });
 
             Route::group(['prefix' => 'onboarding'], function () {

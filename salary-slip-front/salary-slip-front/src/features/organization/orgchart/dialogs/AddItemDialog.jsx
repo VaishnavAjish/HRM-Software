@@ -5,6 +5,7 @@ import Modal from "../../../../components/ui/Modal";
 import Button from "../../../../components/ui/Button";
 import UserPicker from "../../../../components/authorization/UserPicker";
 import { organizationApi } from "../../services/organizationApi";
+import { departmentApi } from "../../../../utils/api";
 
 const inputClass =
   "w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500";
@@ -39,6 +40,7 @@ export default function AddItemDialog({
     title: editNode.data.name,
     approvedHeadcount: editNode.data.approvedHeadcount ?? 1,
     reportsToPositionId: editNode.data.metadata?.reportsToPositionId || "",
+    managerUserId: editNode.data.metadata?.managerUserId || "",
   } : {
     type: initialKind === "team" ? "team" : "department",
     parentId: initialUnitId || "",
@@ -61,11 +63,34 @@ export default function AddItemDialog({
     try {
       if (isEdit && kind === "department") {
         const before = { name: editNode.data.name, code: editNode.data.code, type: editNode.data.type, parentId: editNode.data.metadata?.parentId || null };
+        const beforeManagerUserId = editNode.data.metadata?.managerUserId || null;
         const rawId = editNode.data.rawId;
+        // The department head has to be written to the legacy Department
+        // record (Company & Unit), not just organization_units — the chart's
+        // own sync re-derives manager_user_id from departments.manager_id
+        // every 60s, so writing only to the org unit would get silently
+        // reverted by the next sync cycle.
+        const legacyDepartmentId = editNode.data.metadata?.legacyDepartmentId;
+        const companyCode = editNode.data.metadata?.companyCode;
+
         await run({
           label: `Edit ${before.name}`,
-          do: () => organizationApi.updateOrgUnit(rawId, { name: form.name, code: form.code, type: form.type, parentId: form.parentId || null }, token, tokenType),
-          undo: () => organizationApi.updateOrgUnit(rawId, before, token, tokenType),
+          do: async () => {
+            await organizationApi.updateOrgUnit(rawId, { name: form.name, code: form.code, type: form.type, parentId: form.parentId || null }, token, tokenType);
+            if (legacyDepartmentId) {
+              await departmentApi.updateDepartment(legacyDepartmentId, {
+                name: form.name, company_code: companyCode, manager_id: form.managerUserId || null,
+              }, token, tokenType);
+            }
+          },
+          undo: async () => {
+            await organizationApi.updateOrgUnit(rawId, before, token, tokenType);
+            if (legacyDepartmentId) {
+              await departmentApi.updateDepartment(legacyDepartmentId, {
+                name: before.name, company_code: companyCode, manager_id: beforeManagerUserId,
+              }, token, tokenType);
+            }
+          },
         });
         toast.success("Updated");
       } else if (isEdit && kind === "position") {
@@ -227,6 +252,27 @@ export default function AddItemDialog({
                 {unitOptions.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
               </select>
             </label>
+            {isEdit && kind === "department" && (
+              <div className="sm:col-span-2">
+                {editNode.data.metadata?.managerName && (
+                  <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">
+                    Currently: <span className="font-medium text-gray-700 dark:text-gray-200">{editNode.data.metadata.managerName}</span>
+                    {" — search below to replace, or clear to unassign."}
+                  </p>
+                )}
+                <UserPicker
+                  label="Department Head"
+                  value={form.managerUserId || ""}
+                  onChange={(id) => set({ managerUserId: id })}
+                  token={token}
+                  tokenType={tokenType}
+                />
+                <p className="mt-1 text-xs text-gray-400">
+                  Writes to the same manager Company &amp; Unit &gt; Departments uses — for multiple managers on
+                  one department, use the Department Managers tab.
+                </p>
+              </div>
+            )}
           </div>
         )}
 

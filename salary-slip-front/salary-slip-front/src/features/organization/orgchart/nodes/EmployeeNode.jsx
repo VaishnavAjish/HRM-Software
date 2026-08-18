@@ -25,18 +25,22 @@ function EmployeeNode({ data, selected, sourcePosition, targetPosition }) {
           <span className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white dark:border-gray-800 ${statusDotClass(data.isActive)}`} />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">{data.name}</p>
+          <div className="flex items-baseline gap-1.5">
+            <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">{data.name}</p>
+            {data.code && <span className="flex-shrink-0 text-[10px] text-gray-400">#{data.code}</span>}
+          </div>
           <p className="truncate text-xs text-gray-500 dark:text-gray-400">{data.title || "Employee"}</p>
+          {data.metadata?.department && (
+            <p className="truncate text-[11px] text-gray-400 dark:text-gray-500">{data.metadata.department}</p>
+          )}
         </div>
       </div>
 
       <div className="mt-2 flex items-center justify-between">
-        {isManager ? (
+        {isManager && (
           <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
             {reportCount} direct report{reportCount === 1 ? "" : "s"}
           </span>
-        ) : (
-          <span className="text-xs text-gray-400 dark:text-gray-500">{data.metadata?.department || ""}</span>
         )}
         {data.onQuickAdd && (
           <button

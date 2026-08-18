@@ -13,6 +13,9 @@ class QuizAttempt extends Model
         'duration_minutes', 'answers', 'total_questions', 'correct_count',
         'score', 'passed', 'violation_count', 'proctor_events', 'ip_address',
         'user_agent', 'company_code', 'unit', 'created_by',
+        'revoked_at', 'revoked_by', 'revoke_reason',
+        'email_status', 'email_queued_at', 'email_sent_at', 'email_failed_at',
+        'email_failure_reason', 'email_attempt_count', 'email_provider_message_id',
     ];
 
     protected function casts(): array
@@ -25,6 +28,10 @@ class QuizAttempt extends Model
             'submitted_at' => 'datetime',
             'link_expires_at' => 'datetime',
             'scheduled_start_at' => 'datetime',
+            'revoked_at' => 'datetime',
+            'email_queued_at' => 'datetime',
+            'email_sent_at' => 'datetime',
+            'email_failed_at' => 'datetime',
         ];
     }
 

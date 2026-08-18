@@ -38,6 +38,11 @@ class PublicQuizController extends Controller
         if (!$attempt) {
             return response()->json(['status' => false, 'message' => 'This quiz link is not valid'], 404);
         }
+        // Revoked is checked before anything else and returns nothing about
+        // why — no revoke reason, no recruiter name, no internal status.
+        if ($attempt->status === 'revoked') {
+            return response()->json(['status' => false, 'message' => 'This assessment is no longer available. Please contact the recruitment team if you believe this is an error.'], 410);
+        }
 
         // A link that was never started can expire; one already in progress
         // is governed by its own countdown instead.
@@ -90,8 +95,11 @@ class PublicQuizController extends Controller
         if (!$attempt) {
             return response()->json(['status' => false, 'message' => 'This quiz link is not valid'], 404);
         }
+        if ($attempt->status === 'revoked') {
+            return response()->json(['status' => false, 'message' => 'This assessment is no longer available. Please contact the recruitment team if you believe this is an error.'], 410);
+        }
         if ($attempt->isFinished()) {
-            return response()->json(['status' => false, 'message' => 'This quiz has already been completed'], 422);
+            return response()->json(['status' => false, 'message' => 'This assessment has already been completed.'], 422);
         }
         if ($attempt->status === 'in_progress') {
             return response()->json(['status' => true, 'message' => 'Already in progress']);
@@ -99,7 +107,7 @@ class PublicQuizController extends Controller
         if ($attempt->notYetOpen()) {
             return response()->json([
                 'status' => false,
-                'message' => 'This assessment is not open yet. It becomes available on ' . $attempt->scheduled_start_at->format('l, d M Y \a\t h:i A') . '.',
+                'message' => 'This assessment is not available yet. Available from ' . $attempt->scheduled_start_at->format('d M Y, h:i A') . '.',
             ], 422);
         }
         if ($attempt->link_expires_at && now()->greaterThan($attempt->link_expires_at)) {
@@ -202,6 +210,9 @@ class PublicQuizController extends Controller
         $attempt = $this->findAttempt($token);
         if (!$attempt) {
             return response()->json(['status' => false, 'message' => 'This quiz link is not valid'], 404);
+        }
+        if ($attempt->status === 'revoked') {
+            return response()->json(['status' => false, 'message' => 'This assessment is no longer available.'], 410);
         }
         if ($attempt->isFinished()) {
             return response()->json(['status' => false, 'message' => 'This quiz has already been submitted'], 422);

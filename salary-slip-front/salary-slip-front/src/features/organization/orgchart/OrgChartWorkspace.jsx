@@ -5,7 +5,7 @@ import Button from "../../../components/ui/Button";
 import { useAuth } from "../../../context/AuthContext";
 import { useAuthorization } from "../../../hooks/useAuthorization";
 import { organizationApi } from "../services/organizationApi";
-import { useOrgChartData } from "./useOrgChartData";
+import { useOrgChartData, assignmentsToEmployeeTree } from "./useOrgChartData";
 import { useChartHistory } from "./useChartHistory";
 import KpiRow from "./KpiRow";
 import OrgTreePanel from "./OrgTreePanel";
@@ -29,14 +29,19 @@ function permissionForKind(kind) {
   }[kind];
 }
 
-function canManageNode(can, node) {
-  if (!node) return false;
+function canManageNode(can, node, locked) {
+  if (!node || locked) return false;
   if (node.type === "department") {
     return can("org.unit.update") || can("org.unit.delete") || can("org.unit_position.create") || can("org.reporting.create");
   }
   if (node.type === "position") return can("org.unit_position.update") || can("org.unit_position.delete");
   if (node.type === "employee") return can("org.reporting.update") || can("org.reporting.create");
   return false;
+}
+
+function canEditAnything(can) {
+  return can("org.unit.create") || can("org.unit.update") || can("org.unit.delete")
+    || can("org.unit_position.create") || can("org.unit_assignment.create") || can("org.reporting.create");
 }
 
 export default function OrgChartWorkspace() {
@@ -46,6 +51,11 @@ export default function OrgChartWorkspace() {
   const tokenType = user?.tokenType || "Bearer";
 
   const [view, setView] = useState("organization");
+  // Defaults locked: this chart drives real department/manager/reporting
+  // data, and a single stray drag-to-move on a shared live chart can
+  // silently reassign someone's manager or department. Unlocking is a
+  // deliberate, visible action (toolbar button), not the default state.
+  const [locked, setLocked] = useState(true);
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [filterOpen, setFilterOpen] = useState(false);
   const [chartSearch, setChartSearch] = useState("");
@@ -76,6 +86,7 @@ export default function OrgChartWorkspace() {
   const closeDrawer = () => { setSelectedNode(null); setEmployeesState(null); };
 
   const handleQuickAdd = (nodeData) => {
+    if (locked) { toast.error("Unlock the chart to make changes"); return; }
     if (!nodeData) { setAddDialog({ open: true, initialKind: "department", key: "root" }); return; }
     if (nodeData.type === "employee") {
       setAddDialog({ open: true, initialKind: "reporting", initialManagerId: nodeData.rawId, key: `mgr-${nodeData.rawId}` });
@@ -101,10 +112,12 @@ export default function OrgChartWorkspace() {
     setMoveDialog({ open: true, node, key: `move-${node.id}` });
   };
   const handleDragMove = (draggedNode, targetNode) => {
+    if (locked) return;
     if (draggedNode.type !== "department" && draggedNode.type !== "employee") return;
     setMoveDialog({ open: true, node: draggedNode, initialTargetId: targetNode.data.rawId, key: `drag-${draggedNode.id}-${targetNode.id}` });
   };
   const handleConnectNodes = (sourceId, targetId) => {
+    if (locked) return;
     const sourceApi = nodesById.get(sourceId);
     const targetApi = nodesById.get(targetId);
     if (!sourceApi || !targetApi) return;
@@ -121,11 +134,18 @@ export default function OrgChartWorkspace() {
     setImportBusy(true);
     try {
       const res = await organizationApi.syncLegacyDepartments(token, tokenType);
-      const { created = 0, updated = 0, skipped = [], assignmentsCreated = 0 } = res?.data || {};
+      const {
+        created = 0, updated = 0, skipped = [], departmentsDiscovered = 0, duplicatesRemoved = 0,
+        assignmentsCreated = 0, assignmentsSkipped = 0,
+      } = res?.data || {};
       toast.success(
-        `Imported: ${created} department${created === 1 ? "" : "s"} created, ${updated} updated, `
+        `Imported: ${departmentsDiscovered} new department${departmentsDiscovered === 1 ? "" : "s"} discovered from employee records, `
+        + `${created} created, ${updated} updated`
+        + `${duplicatesRemoved ? `, ${duplicatesRemoved} duplicate${duplicatesRemoved === 1 ? "" : "s"} cleaned up` : ""}, `
         + `${assignmentsCreated} employee assignment${assignmentsCreated === 1 ? "" : "s"} linked`
-        + `${skipped.length ? `, ${skipped.length} skipped` : ""}`,
+        + `${assignmentsSkipped ? ` (${assignmentsSkipped} employees had no matching department)` : ""}`
+        + `${skipped.length ? `, ${skipped.length} department(s) skipped` : ""}`,
+        { duration: 8000 },
       );
       chartData.refetch();
     } catch (err) {
@@ -133,6 +153,14 @@ export default function OrgChartWorkspace() {
     } finally {
       setImportBusy(false);
     }
+  };
+
+  // Fetches one department's employees on demand — see ChartCanvas, which
+  // only calls this the moment a specific department is expanded, never for
+  // the whole org at once.
+  const loadDepartmentEmployees = async (unitId) => {
+    const res = await organizationApi.orgUnitAssignments({ organizationUnitId: unitId }, token, tokenType);
+    return assignmentsToEmployeeTree(res?.data || []);
   };
 
   const handleViewEmployees = async (node) => {
@@ -201,7 +229,7 @@ export default function OrgChartWorkspace() {
             Organization structure, reporting hierarchy and positions — live from the same data as Departments, Positions and Assignments.
           </p>
         </div>
-        {can("org.unit.create") && (
+        {can("org.unit.create") && !locked && (
           <Button onClick={() => setAddDialog({ open: true, key: "toolbar" })}>
             <Plus size={16} /> Add
           </Button>
@@ -222,7 +250,7 @@ export default function OrgChartWorkspace() {
             selectedId={selectedNode?.id}
             onSelect={(unit) => setSelectedNode({ id: `org_unit_${unit.id}`, type: "department", data: nodesById.get(`org_unit_${unit.id}`) || { name: unit.name, rawId: unit.id, metadata: {} } })}
             onAddUnit={() => setAddDialog({ open: true, initialKind: "department", key: "tree-add" })}
-            canAdd={can("org.unit.create")}
+            canAdd={can("org.unit.create") && !locked}
             onImportLegacy={handleImportLegacy}
             canImportLegacy={can("org.unit.create") && !importBusy}
           />
@@ -232,6 +260,7 @@ export default function OrgChartWorkspace() {
           <ChartCanvas
             chart={chartData.chart}
             orgUnits={chartData.orgUnits}
+            companies={chartData.companies}
             selectedNodeId={selectedNode?.id}
             onSelectNode={setSelectedNode}
             onQuickAdd={handleQuickAdd}
@@ -242,9 +271,13 @@ export default function OrgChartWorkspace() {
             history={history}
             onConnectNodes={handleConnectNodes}
             onDragMove={handleDragMove}
+            onLoadDepartmentEmployees={loadDepartmentEmployees}
             loading={chartData.loading}
             onImportLegacy={handleImportLegacy}
             canImportLegacy={can("org.unit.create") && !importBusy}
+            locked={locked}
+            onToggleLock={() => setLocked((l) => !l)}
+            canUnlock={canEditAnything(can)}
           />
         </div>
 
@@ -260,7 +293,7 @@ export default function OrgChartWorkspace() {
 
       <NodeDetailDrawer
         node={selectedNode}
-        canManage={canManageNode(can, selectedNode)}
+        canManage={canManageNode(can, selectedNode, locked)}
         employees={selectedNode?.type === "department" && employeesState?.unitId === selectedNode?.data?.rawId ? employeesState : null}
         actions={{
           onEdit: handleEdit,

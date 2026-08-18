@@ -258,8 +258,12 @@ class OrganizationChartService
                 'spanOfControl' => $dept->children()->where('status', 'active')->count(),
                 'isActive' => $dept->status === 'active',
                 'metadata' => [
+                    'managerUserId' => $dept->manager_user_id === null ? null : (int) $dept->manager_user_id,
                     'managerName' => $dept->manager?->name,
                     'positionCount' => $positions->count(),
+                    'companyId' => $dept->company_id === null ? null : (int) $dept->company_id,
+                    'companyCode' => $dept->company?->code,
+                    'legacyDepartmentId' => $dept->legacy_department_id === null ? null : (int) $dept->legacy_department_id,
                 ],
             ];
 

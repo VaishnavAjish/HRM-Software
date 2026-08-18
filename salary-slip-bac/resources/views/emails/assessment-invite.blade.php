@@ -31,18 +31,43 @@
                             <p style="margin:0 0 8px;color:#6b7280;font-size:14px;font-weight:500;text-transform:uppercase;letter-spacing:1px;">Hello,</p>
                             <h2 style="margin:0 0 16px;color:#111827;font-size:22px;font-weight:700;">{{ $candidateName }}</h2>
                             <p style="margin:0 0 24px;color:#4b5563;font-size:15px;line-height:1.7;">
-                                Thanks for applying for the <strong>{{ $roleTitle }}</strong> role. As the next step, we'd like you to complete a short online assessment.
+                                Thank you for your interest in the <strong>{{ $roleTitle }}</strong> opportunity. As the next step in our recruitment process, we have assigned an assessment for you to complete.
                                 @if($startsAt)
                                     The link below becomes active on <strong>{{ $startsAt }}</strong> — it won't let you start before then, so no need to try early.
                                 @endif
                             </p>
 @endif
 
+                            @if($personalMessage ?? null)
+                            <div style="background:#f9fafb;border-left:3px solid #f97316;border-radius:6px;padding:14px 18px;margin-bottom:24px;">
+                                <p style="margin:0 0 4px;color:#9a3412;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">Message from your recruiter</p>
+                                <p style="margin:0;color:#4b5563;font-size:14px;line-height:1.6;white-space:pre-wrap;">{{ $personalMessage }}</p>
+                            </div>
+                            @endif
+
                             {{-- Details card --}}
                             <table width="100%" cellpadding="0" cellspacing="0" style="background:#fff7ed;border:1px solid #fed7aa;border-radius:12px;margin-bottom:28px;">
                                 <tr>
                                     <td style="padding:20px 24px;">
                                         <table width="100%" cellpadding="0" cellspacing="0">
+                                            @if($companyName ?? null)
+                                            <tr>
+                                                <td style="padding:6px 0;color:#9a3412;font-size:13px;font-weight:600;">Company</td>
+                                                <td style="padding:6px 0;color:#431407;font-size:13px;text-align:right;">{{ $companyName }}</td>
+                                            </tr>
+                                            @endif
+                                            @if($location ?? null)
+                                            <tr>
+                                                <td style="padding:6px 0;color:#9a3412;font-size:13px;font-weight:600;">Location</td>
+                                                <td style="padding:6px 0;color:#431407;font-size:13px;text-align:right;">{{ $location }}</td>
+                                            </tr>
+                                            @endif
+                                            @if($departmentName ?? null)
+                                            <tr>
+                                                <td style="padding:6px 0;color:#9a3412;font-size:13px;font-weight:600;">Department</td>
+                                                <td style="padding:6px 0;color:#431407;font-size:13px;text-align:right;">{{ $departmentName }}</td>
+                                            </tr>
+                                            @endif
                                             <tr>
                                                 <td style="padding:6px 0;color:#9a3412;font-size:13px;font-weight:600;">Assessment</td>
                                                 <td style="padding:6px 0;color:#431407;font-size:13px;text-align:right;">{{ $quizTitle }}</td>

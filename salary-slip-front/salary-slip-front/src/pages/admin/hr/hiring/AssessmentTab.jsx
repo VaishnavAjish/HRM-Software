@@ -9,8 +9,10 @@ import CandidateDrawer from "./CandidateDrawer";
 import Badge from "../../../../components/ui/Badge";
 import Modal from "../../../../components/ui/Modal";
 import { SkeletonTable } from "../../../../components/ui/Skeleton";
-import DatePicker from "../../../../components/ui/DatePicker";
+import AssignAssessmentModal from "./AssignAssessmentModal";
+import RevokeAssessmentDialog from "./RevokeAssessmentDialog";
 import { useAuth } from "../../../../context/AuthContext";
+import { useAuthorization } from "../../../../hooks/useAuthorization";
 import { hrApi } from "../../../../utils/api";
 import { TAB_STAGE_KEYS, promptRejectionReason, MAIN_STAGES, TERMINAL_STAGES, STAGE_INDEX } from "./stageMeta";
 
@@ -19,8 +21,10 @@ const inputClass =
 
 const ASSESSMENT_STAGES = TAB_STAGE_KEYS.assessment;
 
-const ATTEMPT_VARIANT = { pending: "gray", in_progress: "yellow", submitted: "green", terminated: "red", expired: "gray" };
-const ATTEMPT_LABEL = { pending: "Not started", in_progress: "In progress", submitted: "Submitted", terminated: "Terminated", expired: "Expired" };
+const ATTEMPT_VARIANT = { pending: "gray", in_progress: "yellow", submitted: "green", terminated: "red", expired: "gray", revoked: "red" };
+const ATTEMPT_LABEL = { pending: "Not started", in_progress: "In progress", submitted: "Submitted", terminated: "Terminated", expired: "Expired", revoked: "Revoked" };
+const EMAIL_VARIANT = { not_requested: "gray", pending: "gray", queued: "yellow", sending: "yellow", sent: "green", failed: "red" };
+const EMAIL_LABEL = { not_requested: "No email", pending: "Pending", queued: "Queued", sending: "Sending", sent: "Sent", failed: "Failed" };
 
 const EMPTY_QUESTION = { text: "", options: ["", "", "", ""], correct_index: 0 };
 const EMPTY_QUIZ = { title: "", description: "", interview_id: "", passing_score: 60, duration_minutes: 30, max_violations: 3, questions: [{ ...EMPTY_QUESTION, options: ["", "", "", ""] }] };
@@ -42,6 +46,7 @@ function latestAttempt(candidateId, attempts) {
  */
 export default function AssessmentTab() {
   const { user } = useAuth();
+  const { can } = useAuthorization();
   const token = user?.accessToken;
   const tokenType = user?.tokenType;
 
@@ -79,10 +84,6 @@ export default function AssessmentTab() {
   }, [rosterByReq.length]);
 
   const [assignTarget, setAssignTarget] = useState(null); // candidate being assigned a quiz
-  const [assignQuizId, setAssignQuizId] = useState("");
-  const [assignStartAt, setAssignStartAt] = useState(""); // blank = startable immediately
-  const [assignExpiresAt, setAssignExpiresAt] = useState(""); // blank = defaults to start/now + 7 days
-  const [assigning, setAssigning] = useState(false);
   const [assignedLink, setAssignedLink] = useState(null);
 
   const [reportAttempt, setReportAttempt] = useState(null);
@@ -127,39 +128,12 @@ export default function AssessmentTab() {
 
   /* --------------------------------------------------------- roster actions */
 
-  const openAssign = (candidate) => {
-    setAssignTarget(candidate);
-    setAssignQuizId(quizzes[0]?.id ?? "");
-    setAssignStartAt("");
-    setAssignExpiresAt("");
-  };
+  const openAssign = (candidate) => setAssignTarget(candidate);
 
-  const assign = async () => {
-    if (!assignQuizId) { toast.error("Pick a quiz"); return; }
-    if (assignStartAt && new Date(assignStartAt).getTime() < Date.now()) {
-      toast.error("Start time must be in the future"); return;
-    }
-    if (assignStartAt && assignExpiresAt && new Date(assignExpiresAt) <= new Date(assignStartAt)) {
-      toast.error("Expiry must be after the start time"); return;
-    }
-    setAssigning(true);
-    try {
-      const res = await hrApi.assignQuiz({
-        quiz_id: assignQuizId,
-        candidate_id: assignTarget.id,
-        scheduled_start_at: assignStartAt || undefined,
-        link_expires_at: assignExpiresAt || undefined,
-      }, token, tokenType);
-      if (!res.status) throw new Error(res.message);
-      toast.success("Quiz assigned — invite emailed to the candidate");
-      setAssignedLink(quizLink(res.data.access_token));
-      setAssignTarget(null);
-      reload();
-    } catch (err) {
-      toast.error(err.message || "Failed to assign quiz");
-    } finally {
-      setAssigning(false);
-    }
+  const onAssessmentAssigned = (accessToken) => {
+    setAssignedLink(quizLink(accessToken));
+    setAssignTarget(null);
+    reload();
   };
 
   const skipAssessment = async (candidate) => {
@@ -207,12 +181,37 @@ export default function AssessmentTab() {
     }
   };
 
-  const revoke = async (id) => {
-    if (!window.confirm("Revoke this attempt? The candidate's link will stop working.")) return;
+  const [revokeTarget, setRevokeTarget] = useState(null); // { attempt, candidate }
+  const [revoking, setRevoking] = useState(false);
+
+  const confirmRevoke = async (reason) => {
+    setRevoking(true);
     try {
-      const res = await hrApi.revokeQuizAttempt(id, token, tokenType);
-      if (res.status) { toast.success("Attempt revoked"); reload(); }
-    } catch (err) { toast.error(err.message || "Failed to revoke"); }
+      const res = await hrApi.revokeQuizAttempt(revokeTarget.attempt.id, { reason }, token, tokenType);
+      if (!res.status) throw new Error(res.message);
+      toast.success("Assessment access revoked — history preserved");
+      setRevokeTarget(null);
+      reload();
+    } catch (err) {
+      toast.error(err.message || "Failed to revoke");
+    } finally {
+      setRevoking(false);
+    }
+  };
+
+  const [resendingId, setResendingId] = useState(null);
+  const resend = async (id) => {
+    setResendingId(id);
+    try {
+      const res = await hrApi.resendQuizInvitation(id, {}, token, tokenType);
+      if (!res.status) throw new Error(res.message);
+      toast.success("Invitation resent");
+      reload();
+    } catch (err) {
+      toast.error(err.message || "Assessment record kept, but the invitation could not be resent.");
+    } finally {
+      setResendingId(null);
+    }
   };
 
   const openReport = async (a) => {
@@ -375,12 +374,18 @@ export default function AssessmentTab() {
                                   <span className="text-gray-400 text-xs">No quiz assigned</span>
                                 ) : (
                                   <div>
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-1.5">
                                       <Badge variant={ATTEMPT_VARIANT[attempt.status] || "gray"}>{ATTEMPT_LABEL[attempt.status] || attempt.status}</Badge>
-                                      <span className="text-xs text-gray-400">{attempt.quiz?.title}</span>
+                                      {attempt.email_status && attempt.email_status !== "not_requested" && (
+                                        <Badge variant={EMAIL_VARIANT[attempt.email_status] || "gray"}>{EMAIL_LABEL[attempt.email_status] || attempt.email_status}</Badge>
+                                      )}
                                     </div>
+                                    <span className="text-xs text-gray-400">{attempt.quiz?.title}</span>
                                     {attempt.status === "pending" && attempt.scheduled_start_at && new Date(attempt.scheduled_start_at) > new Date() && (
                                       <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">Opens {new Date(attempt.scheduled_start_at).toLocaleString()}</p>
+                                    )}
+                                    {attempt.status === "revoked" && attempt.revoke_reason && (
+                                      <p className="mt-1 text-[11px] text-gray-400">Reason: {attempt.revoke_reason}</p>
                                     )}
                                   </div>
                                 )}
@@ -411,10 +416,12 @@ export default function AssessmentTab() {
                                 <div className="flex items-center justify-end gap-1.5">
                                   {!attempt && (
                                     <>
-                                      <button disabled={busy} onClick={() => openAssign(c)}
-                                        className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20 border border-brand-100 dark:border-brand-900/40 disabled:opacity-50">
-                                        <Link2 size={13} /> Assign Quiz
-                                      </button>
+                                      {can("assessment.assign") && (
+                                        <button disabled={busy} onClick={() => openAssign(c)}
+                                          className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20 border border-brand-100 dark:border-brand-900/40 disabled:opacity-50">
+                                          <Link2 size={13} /> Assign Quiz
+                                        </button>
+                                      )}
                                       <button disabled={busy} onClick={() => skipAssessment(c)}
                                         className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 disabled:opacity-50">
                                         <SkipForward size={13} /> Process without Assessment
@@ -424,7 +431,12 @@ export default function AssessmentTab() {
                                   {attempt && ["pending", "in_progress"].includes(attempt.status) && (
                                     <>
                                       <button title="Copy candidate link" onClick={() => copy(quizLink(attempt.access_token))} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"><Copy size={14} /></button>
-                                      <button title="Revoke" onClick={() => revoke(attempt.id)} className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"><Trash2 size={14} /></button>
+                                      {can("assessment.resend_invitation") && attempt.email_status && attempt.email_status !== "not_requested" && (
+                                        <button title="Resend invitation" disabled={resendingId === attempt.id} onClick={() => resend(attempt.id)} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50"><RefreshCw size={14} /></button>
+                                      )}
+                                      {can("assessment.revoke") && (
+                                        <button title="Revoke" onClick={() => setRevokeTarget({ attempt, candidate: c })} className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"><Trash2 size={14} /></button>
+                                      )}
                                     </>
                                   )}
                                   {finished && (
@@ -503,32 +515,26 @@ export default function AssessmentTab() {
         </div>
       )}
 
+      {revokeTarget && (
+        <RevokeAssessmentDialog
+          candidateName={revokeTarget.candidate.name}
+          onCancel={() => setRevokeTarget(null)}
+          onConfirm={confirmRevoke}
+          revoking={revoking}
+        />
+      )}
+
       {/* -------------------------------------------------------- assign modal */}
-      <Modal isOpen={Boolean(assignTarget)} onClose={() => setAssignTarget(null)} title={`Assign a quiz — ${assignTarget?.name || ""}`} size="md"
-        footer={<div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setAssignTarget(null)}>Cancel</Button><Button onClick={assign} disabled={assigning}>{assigning ? "Assigning..." : "Assign & Email Candidate"}</Button></div>}>
-        <Field label="Quiz" required full>
-          <select className={inputClass} value={assignQuizId} onChange={(e) => setAssignQuizId(e.target.value)}>
-            <option value="">— Select quiz —</option>
-            {quizzes.map((q) => <option key={q.id} value={q.id}>{q.title}</option>)}
-          </select>
-        </Field>
-        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Field label="Available from">
-            <DatePicker withTime value={assignStartAt} onChange={setAssignStartAt} placeholder="Starts immediately" />
-            <p className="mt-1 text-[11px] text-gray-400">Leave blank to let the candidate start immediately.</p>
-          </Field>
-          <Field label="Available until">
-            <DatePicker withTime value={assignExpiresAt} onChange={setAssignExpiresAt} placeholder="7 days after start" />
-            <p className="mt-1 text-[11px] text-gray-400">Leave blank for 7 days after the start time.</p>
-          </Field>
-        </div>
-        <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
-          A unique, single-use link is emailed to the candidate and generated here too. It works without a login and can only be completed once — the candidate can't start it before "Available from", and it stops working after "Available until".
-        </p>
-        {quizzes.length === 0 && (
-          <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">No quizzes exist yet — create one in the Quiz Library tab first.</p>
-        )}
-      </Modal>
+      {assignTarget && (
+        <AssignAssessmentModal
+          candidate={assignTarget}
+          quizzes={quizzes}
+          token={token}
+          tokenType={tokenType}
+          onClose={() => setAssignTarget(null)}
+          onAssigned={onAssessmentAssigned}
+        />
+      )}
 
       <Modal isOpen={Boolean(assignedLink)} onClose={() => setAssignedLink(null)} title="Candidate quiz link" size="md"
         footer={<div className="flex justify-end"><Button onClick={() => setAssignedLink(null)}>Done</Button></div>}>

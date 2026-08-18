@@ -2045,8 +2045,21 @@ export const hrApi = {
   assignQuiz(payload, accessToken, tokenType = "Bearer") {
     return apiRequest("/hr/quiz-attempts/store", { method: "POST", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(payload) });
   },
-  revokeQuizAttempt(id, accessToken, tokenType = "Bearer") {
-    return apiRequest(`/hr/quiz-attempts/delete/${id}`, { method: "DELETE", headers: hrAuthHeaders(accessToken, tokenType) });
+  previewQuizEmail(attemptId, payload, accessToken, tokenType = "Bearer") {
+    const params = new URLSearchParams();
+    if (payload?.subject_override) params.set("subject_override", payload.subject_override);
+    if (payload?.personal_message) params.set("personal_message", payload.personal_message);
+    const query = params.toString() ? `?${params}` : "";
+    return apiRequest(`/hr/quiz-attempts/${attemptId}/email-preview${query}`, { headers: hrAuthHeaders(accessToken, tokenType) });
+  },
+  sendQuizInvitation(attemptId, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/quiz-attempts/${attemptId}/send-invitation`, { method: "POST", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(payload) });
+  },
+  resendQuizInvitation(attemptId, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/quiz-attempts/${attemptId}/resend-invitation`, { method: "POST", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(payload || {}) });
+  },
+  revokeQuizAttempt(id, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/quiz-attempts/delete/${id}`, { method: "DELETE", headers: hrAuthHeaders(accessToken, tokenType), body: JSON.stringify(payload || {}) });
   },
 
   // Candidates
