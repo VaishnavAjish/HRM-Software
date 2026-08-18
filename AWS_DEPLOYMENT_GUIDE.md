@@ -131,11 +131,13 @@ sudo systemctl start php8.3-fpm
 
 Sized for this instance's ~900MB RAM (SQLite has no separate DB process to budget around; each
 idle worker runs ~40-55MB RSS). Started at `pm.max_children = 6`, raised to `12` on 2026-08-17
-after the Employee Master page (which fires 4 parallel `limit=1000` requests per load) timed out
-under worker exhaustion — the underlying queries were fast (<35ms), the pool just had too few
-workers to serve normal concurrent staff usage. Verified safe with a 24-concurrent-request burst
-(peak FPM memory 74MB, ~400MB RAM stayed available). Re-apply these if the pool config is ever
-regenerated (fresh instance, package reinstall):
+after the Employee Master page (4 parallel `limit=1000` requests per load) timed out under worker
+exhaustion, then to `14` on 2026-08-18 after the same failure mode recurred on the Add Employee
+page (`AddEmployeePage`, ~10 parallel API calls per load: trial-form/list, appointment,
+employee/get ×2, department/get, notifications, modules, provisioning/company-options,
+authorization/me, profile). Both times the underlying queries were fast (single-digit-to-low-
+triple-digit ms) — the pool just didn't have enough workers to absorb one heavy page's fan-out
+plus any other concurrent user. Re-apply if the pool config is ever regenerated:
 
 ```bash
 sudo sed -i \
@@ -143,20 +145,22 @@ sudo sed -i \
   -e 's/^group = .*/group = ubuntu/' \
   -e 's/^listen.owner = .*/listen.owner = ubuntu/' \
   -e 's/^listen.group = .*/listen.group = ubuntu/' \
-  -e 's/^pm.max_children = .*/pm.max_children = 12/' \
+  -e 's/^pm.max_children = .*/pm.max_children = 14/' \
   -e 's/^pm.start_servers = .*/pm.start_servers = 4/' \
   -e 's/^pm.min_spare_servers = .*/pm.min_spare_servers = 2/' \
-  -e 's/^pm.max_spare_servers = .*/pm.max_spare_servers = 6/' \
+  -e 's/^pm.max_spare_servers = .*/pm.max_spare_servers = 7/' \
   /etc/php/8.3/fpm/pool.d/www.conf
 grep -q "^pm.max_requests" /etc/php/8.3/fpm/pool.d/www.conf || echo "pm.max_requests = 500" | sudo tee -a /etc/php/8.3/fpm/pool.d/www.conf
 sudo systemctl restart php8.3-fpm
 ```
 
-**Follow-up worth doing, not done tonight**: `EmployeeMasterTable.jsx` fires 4 separate
-`limit=1000` requests (trial/appointment/pending/employee status filters) in parallel on every
-page load via `Promise.all`. Combining these into one backend endpoint that returns all four
-groups from a single query would cut this page's worker consumption from 4 to 1 and reduce load
-on the rest of the site.
+**This is a recurring pattern, not two isolated bugs — the real fix, not done yet**: multiple
+admin pages fire many parallel API calls per load (`EmployeeMasterTable.jsx`: 4, `AddEmployeePage`:
+~10) instead of one combined backend call. Raising `pm.max_children` is a capacity band-aid with a
+hard ceiling — this box's ~900MB RAM caps workers around 14-16 before risking swap/OOM (already
+seeing ~410MB swap in use). If this keeps recurring on other heavy pages, the actual fix is
+reducing per-page parallel fetch count (combine into fewer backend endpoints) and/or upsizing the
+instance — worker count alone can't be pushed indefinitely on this hardware.
 
 ### 3.6. Assessment invitation queue (2026-08-17, Phase B)
 
