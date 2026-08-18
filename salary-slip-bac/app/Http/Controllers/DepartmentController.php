@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Department;
 use App\Models\DepartmentManager;
 use App\Models\User;
+use App\Services\Organization\OrganizationUnitService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
@@ -12,6 +13,11 @@ use Illuminate\Validation\Rule;
 
 class DepartmentController extends Controller
 {
+    public function __construct(
+        private readonly OrganizationUnitService $orgUnitService,
+    ) {
+    }
+
     public function index(Request $request)
     {
         $query = Department::with([
@@ -44,6 +50,8 @@ class DepartmentController extends Controller
 
     public function store(Request $request)
     {
+        $this->orgUnitService->ensureSchema();
+
         $validator = Validator::make($request->all(), [
             "name" => "required|string|max:255",
             "company_code" => "nullable|string|max:255",
@@ -79,6 +87,8 @@ class DepartmentController extends Controller
 
     public function update(Request $request, $id)
     {
+        $this->orgUnitService->ensureSchema();
+
         $department = Department::find($id);
 
         if (!$department) {

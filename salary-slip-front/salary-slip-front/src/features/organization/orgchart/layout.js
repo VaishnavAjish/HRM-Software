@@ -72,10 +72,17 @@ export function pruneCollapsed(nodes, edges, collapsedIds) {
   const hidden = new Set();
   const hiddenChildrenOf = new Set();
   const queue = [];
-  collapsedIds.forEach((id) => {
-    if (childrenOf.has(id)) {
-      hiddenChildrenOf.add(id);
-      queue.push(...childrenOf.get(id));
+  // A node's own rendered id can differ from the logical id collapsedIds is
+  // keyed by (data.id) — a department duplicated across several branches
+  // (one department, multiple branch parents) shares a single collapse
+  // state across all of its rendered copies, so match on data.id, not just
+  // a direct rendered-id lookup.
+  nodes.forEach((n) => {
+    const collapseKey = n.data?.id ?? n.id;
+    if (!collapsedIds.has(collapseKey)) return;
+    if (childrenOf.has(n.id)) {
+      hiddenChildrenOf.add(n.id);
+      queue.push(...childrenOf.get(n.id));
     }
   });
 

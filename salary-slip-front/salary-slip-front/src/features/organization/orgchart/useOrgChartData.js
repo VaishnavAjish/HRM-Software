@@ -70,6 +70,11 @@ export function assignmentsToEmployeeTree(assignments) {
         organizationUnitId: a.organizationUnitId,
         managerUserId: a.managerUserId ?? null,
         managerName: a.managerName ?? null,
+        // The employee's real branch(es) (Company & Unit's Units, via
+        // user_units) — used to place their department under the branch(es)
+        // it actually has people in, independent of any department-level
+        // branch field.
+        unitIds: a.unitIds ?? [],
       },
     });
   });
@@ -118,6 +123,7 @@ export function useOrgChartData({ token, tokenType, view, filters }) {
   const [orgUnits, setOrgUnits] = useState([]);
   const [companies, setCompanies] = useState([]);
   const [units, setUnits] = useState([]);
+  const [branchSummary, setBranchSummary] = useState([]);
   const [summary, setSummary] = useState(null);
   const [activity, setActivity] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -226,17 +232,19 @@ export function useOrgChartData({ token, tokenType, view, filters }) {
         ]).then(([deptRes, teamRes, posRes]) => mergeCharts(mergeCharts(deptRes?.data, teamRes?.data), posRes?.data));
 
       try {
-        const [chartData, unitsRes, summaryRes, activityRes] = await Promise.all([
+        const [chartData, unitsRes, summaryRes, activityRes, branchSummaryRes] = await Promise.all([
           chartPromise,
           organizationApi.orgUnits({ companyIds, search: filters.search || undefined }, token, tokenType),
           organizationApi.headcountSummary(companyIds ? { companyIds } : {}, token, tokenType),
           organizationApi.recentActivity({ perPage: 8 }, token, tokenType).catch(() => ({ data: { items: [] } })),
+          organizationApi.departmentBranchSummary(token, tokenType).catch(() => ({ data: [] })),
         ]);
         if (!active) return;
         setChart(chartData ?? EMPTY_CHART);
         setOrgUnits(unitsRes?.data ?? []);
         setSummary(summaryRes?.data?.totals ?? null);
         setActivity(activityRes?.data?.items ?? []);
+        setBranchSummary(branchSummaryRes?.data ?? []);
         hasLoadedOnceRef.current = true;
       } catch (err) {
         if (active) setError(err);
@@ -255,5 +263,5 @@ export function useOrgChartData({ token, tokenType, view, filters }) {
     filters.includeVacant, filters.search, companyIdsKey,
   ]);
 
-  return { chart, orgUnits, companies, units, summary, activity, loading, error, refetch };
+  return { chart, orgUnits, companies, units, branchSummary, summary, activity, loading, error, refetch };
 }

@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
-import { X, Pencil, Plus, ArrowRightLeft, Users, Trash2 } from "lucide-react";
+import { X, Pencil, Plus, ArrowRightLeft, Users, UserPlus, Trash2 } from "lucide-react";
 import Button from "../../../components/ui/Button";
 import Badge from "../../../components/ui/Badge";
 
@@ -42,7 +42,7 @@ export default function NodeDetailDrawer({ node, canManage, actions, employees, 
         <div className="flex items-start justify-between border-b border-gray-200 p-4 dark:border-gray-700">
           <div>
             <h3 className="text-base font-semibold text-gray-900 dark:text-white">{data.name}</h3>
-            <p className="text-xs capitalize text-gray-500 dark:text-gray-400">{data.title || data.type}</p>
+            <p className="text-xs capitalize text-gray-500 dark:text-gray-400">{isPosition ? "Designation" : (data.title || data.type)}</p>
           </div>
           <button onClick={onClose} className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700">
             <X size={18} />
@@ -59,9 +59,10 @@ export default function NodeDetailDrawer({ node, canManage, actions, employees, 
           <div>
             {isDepartment && (
               <>
-                <Row label="Department Head" value={data.metadata?.managerName} />
+                <Row label="Department Head" value={data.metadata?.managerName || "Not assigned"} />
+                <Row label="Sub-Departments" value={data.spanOfControl || 0} />
                 <Row label="Employees" value={data.employeeCount} />
-                <Row label="Positions" value={data.metadata?.positionCount} />
+                <Row label="Designations" value={data.metadata?.positionCount} />
                 <Row label="Approved Headcount" value={data.approvedHeadcount} />
                 <Row label="Vacant" value={data.vacancy} />
               </>
@@ -111,8 +112,11 @@ export default function NodeDetailDrawer({ node, canManage, actions, employees, 
                 )}
                 {isDepartment && (
                   <>
+                    <Button variant="secondary" size="sm" onClick={() => actions.onAddSubDepartment(node)}>
+                      <Plus size={13} /> Add Sub-Department
+                    </Button>
                     <Button variant="secondary" size="sm" onClick={() => actions.onAddPosition(node)}>
-                      <Plus size={13} /> Add Position
+                      <Plus size={13} /> Add Designation
                     </Button>
                     <Button variant="secondary" size="sm" onClick={() => actions.onAddTeam(node)}>
                       <Plus size={13} /> Add Team
@@ -121,6 +125,11 @@ export default function NodeDetailDrawer({ node, canManage, actions, employees, 
                       <Users size={13} /> View Employees
                     </Button>
                   </>
+                )}
+                {isPosition && (
+                  <Button variant="secondary" size="sm" onClick={() => actions.onAssignEmployee(node)}>
+                    <UserPlus size={13} /> Assign Employee
+                  </Button>
                 )}
                 {(isDepartment || isEmployee) && (
                   <Button variant="secondary" size="sm" onClick={() => actions.onMove(node)}>

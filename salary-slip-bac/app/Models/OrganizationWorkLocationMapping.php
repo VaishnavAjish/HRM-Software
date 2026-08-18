@@ -45,7 +45,7 @@ class OrganizationWorkLocationMapping extends Model
 
     public function position()
     {
-        return $this->belongsTo(OrganizationPosition::class);
+        return $this->belongsTo(OrganizationPosition::class, 'position_id');
     }
 
     public function user()

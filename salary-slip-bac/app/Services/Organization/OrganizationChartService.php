@@ -239,7 +239,7 @@ class OrganizationChartService
 
         foreach ($departments as $dept) {
             $employeeCount = $dept->assignments()->where('is_active', true)->count();
-            $positions = $dept->positions()->where('status', 'active')->get();
+            $positions = $dept->positions()->whereNotIn('status', ['cancelled', 'closed', 'expired'])->get();
             $approvedHeadcount = $positions->sum('approved_headcount');
             $currentHeadcount = $positions->sum('current_headcount');
             $vacancy = max(0, $approvedHeadcount - $currentHeadcount);
@@ -309,7 +309,7 @@ class OrganizationChartService
 
         foreach ($teams as $team) {
             $employeeCount = $team->assignments()->where('is_active', true)->count();
-            $positions = $team->positions()->where('status', 'active')->get();
+            $positions = $team->positions()->whereNotIn('status', ['cancelled', 'closed', 'expired'])->get();
             $approvedHeadcount = $positions->sum('approved_headcount');
             $currentHeadcount = $positions->sum('current_headcount');
             $vacancy = max(0, $approvedHeadcount - $currentHeadcount);
@@ -348,9 +348,16 @@ class OrganizationChartService
 
     private function buildPositionChart(array $filters, ?User $actor, string $asOf, int $maxDepth, bool $includeInactive, bool $includeVacant): array
     {
+        // 'active' was never a real OrganizationPosition status (the actual
+        // set is draft/requested/pending_approval/approved/open/filled/
+        // partially_filled/frozen/closed/cancelled/expired) — this filter
+        // could never match a single row, so no position has ever been able
+        // to appear on the chart regardless of data. Excluding only the
+        // genuinely terminal/inactive statuses is what "active" was meant
+        // to express.
         $query = OrganizationPosition::query()
             ->with(['organizationUnit', 'reportsTo'])
-            ->where('status', 'active');
+            ->whereNotIn('status', ['cancelled', 'closed', 'expired']);
 
         if (!empty($filters['enterpriseId'])) {
             $query->whereHas('organizationUnit', fn ($q) => $q->where('enterprise_id', (int) $filters['enterpriseId']));
@@ -387,7 +394,7 @@ class OrganizationChartService
                 'approvedHeadcount' => (int) $pos->approved_headcount,
                 'vacancy' => $vacancy,
                 'spanOfControl' => 0,
-                'isActive' => $pos->status === 'active',
+                'isActive' => !in_array($pos->status, ['cancelled', 'closed', 'expired'], true),
                 'metadata' => [
                     'organizationUnitId' => (int) $pos->organization_unit_id,
                     'organizationUnitName' => $pos->organizationUnit?->name,

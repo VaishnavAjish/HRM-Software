@@ -41,19 +41,19 @@ export default function KpiRow({ orgUnits, companies, summary, chart }) {
       <Tile label="Departments" value={departmentCount} />
       <Tile label="Teams" value={teamCount} />
       <Tile
-        label="Positions"
+        label="Designations"
         value={summary?.positionCount}
         sub={summary ? `${summary.filledHeadcount ?? 0} Filled` : null}
         subClass="text-green-600 dark:text-green-400"
       />
       <Tile label="Employees Active" value={employeesActive} />
       <Tile
-        label="Vacant Positions"
+        label="Vacant Designations"
         value={summary?.vacantHeadcount}
         sub={summary?.vacantHeadcount > 0 ? "Needs attention" : null}
         subClass="text-amber-600 dark:text-amber-400"
       />
-      <Tile label="Frozen Positions" value={summary?.frozenCount} />
+      <Tile label="Frozen Designations" value={summary?.frozenCount} />
     </div>
   );
 }

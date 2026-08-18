@@ -94,7 +94,7 @@ class OrganizationPosition extends Model
 
     public function assignments()
     {
-        return $this->hasMany(EmployeeOrganizationAssignment::class);
+        return $this->hasMany(EmployeeOrganizationAssignment::class, 'position_id');
     }
 
     public function approver()

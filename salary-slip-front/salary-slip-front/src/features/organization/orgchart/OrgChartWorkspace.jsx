@@ -24,7 +24,7 @@ const DEFAULT_FILTERS = { companyIds: [], asOf: "", includeInactive: false, incl
 
 function permissionForKind(kind) {
   return {
-    department: "org.unit.create", team: "org.unit.create",
+    department: "org.unit.create", team: "org.unit.create", sub_department: "org.unit.create",
     position: "org.unit_position.create", assignment: "org.unit_assignment.create",
     reporting: "org.reporting.create",
   }[kind];
@@ -94,10 +94,21 @@ export default function OrgChartWorkspace() {
     if (nodeData.type === "employee") {
       setAddDialog({ open: true, initialKind: "reporting", initialManagerId: nodeData.rawId, key: `mgr-${nodeData.rawId}` });
     } else {
-      setAddDialog({ open: true, initialUnitId: nodeData.rawId, key: `unit-${nodeData.rawId}` });
+      // A department's own "+" only ever makes sense for things that live
+      // inside it — sub-department, team, or designation — not the full
+      // toolbar picker (which also lists Employee Assignment/Reporting
+      // Relationship, neither of which take a unit as their subject).
+      setAddDialog({
+        open: true, initialUnitId: nodeData.rawId, contextKinds: ["sub_department", "team", "position"],
+        key: `unit-${nodeData.rawId}`,
+      });
     }
   };
 
+  const handleAddSubDepartment = (node) => {
+    closeDrawer();
+    setAddDialog({ open: true, initialKind: "sub_department", initialUnitId: node.data.rawId, key: `subdept-${node.data.rawId}` });
+  };
   const handleAddPosition = (node) => {
     closeDrawer();
     setAddDialog({ open: true, initialKind: "position", initialUnitId: node.data.rawId, key: `pos-${node.data.rawId}` });
@@ -119,6 +130,17 @@ export default function OrgChartWorkspace() {
     if (draggedNode.type !== "department" && draggedNode.type !== "employee") return;
     setMoveDialog({ open: true, node: draggedNode, initialTargetId: targetNode.data.rawId, key: `drag-${draggedNode.id}-${targetNode.id}` });
   };
+  const handleAssignEmployee = (nodeData) => {
+    if (locked) { toast.error("Unlock the chart to make changes"); return; }
+    setAddDialog({
+      open: true,
+      initialKind: "assignment",
+      initialUnitId: nodeData.metadata?.organizationUnitId,
+      initialPositionId: nodeData.rawId,
+      key: `assign-position-${nodeData.rawId}`,
+    });
+  };
+
   const handleSetManager = (nodeData) => {
     if (locked) { toast.error("Unlock the chart to make changes"); return; }
     if (!can("org.unit_assignment.update")) { toast.error("You don't have permission to change reporting lines"); return; }
@@ -145,7 +167,8 @@ export default function OrgChartWorkspace() {
       const res = await organizationApi.syncLegacyDepartments(token, tokenType);
       const {
         created = 0, updated = 0, skipped = [], departmentsDiscovered = 0, duplicatesRemoved = 0,
-        assignmentsCreated = 0, assignmentsSkipped = 0,
+        assignmentsCreated = 0, assignmentsSkipped = 0, positionsCreated = 0, positionsUpdated = 0,
+        assignmentsLinkedToPositions = 0, positionsDebug = null,
       } = res?.data || {};
       toast.success(
         `Imported: ${departmentsDiscovered} new department${departmentsDiscovered === 1 ? "" : "s"} discovered from employee records, `
@@ -153,9 +176,15 @@ export default function OrgChartWorkspace() {
         + `${duplicatesRemoved ? `, ${duplicatesRemoved} duplicate${duplicatesRemoved === 1 ? "" : "s"} cleaned up` : ""}, `
         + `${assignmentsCreated} employee assignment${assignmentsCreated === 1 ? "" : "s"} linked`
         + `${assignmentsSkipped ? ` (${assignmentsSkipped} employees had no matching department)` : ""}`
-        + `${skipped.length ? `, ${skipped.length} department(s) skipped` : ""}`,
+        + `${skipped.length ? `, ${skipped.length} department(s) skipped` : ""}`
+        + `, ${positionsCreated} designation${positionsCreated === 1 ? "" : "s"} discovered, ${positionsUpdated} updated`
+        + `, ${assignmentsLinkedToPositions} employee${assignmentsLinkedToPositions === 1 ? "" : "s"} linked to a designation`
+        + `${positionsDebug && positionsDebug.usersMatched === 0 ? " — see browser console for why" : ""}`,
         { duration: 8000 },
       );
+      if (positionsDebug && positionsDebug.usersMatched === 0) {
+        console.log("[Org Chart] Designation sync found 0 matching users — debug info:", positionsDebug);
+      }
       chartData.refetch();
     } catch (err) {
       toast.error(err.message || "Could not import from Company & Unit");
@@ -263,10 +292,12 @@ export default function OrgChartWorkspace() {
             orgUnits={chartData.orgUnits}
             companies={chartData.companies}
             units={chartData.units}
+            branchSummary={chartData.branchSummary}
             selectedNodeId={selectedNode?.id}
             onSelectNode={setSelectedNode}
             onQuickAdd={handleQuickAdd}
             onSetManager={handleSetManager}
+            onAssignEmployee={handleAssignEmployee}
             employeeRefreshSignal={employeeRefreshSignal}
             onOpenFilters={() => setFilterOpen(true)}
             activeFilterCount={activeFilterCount}
@@ -301,9 +332,11 @@ export default function OrgChartWorkspace() {
         employees={selectedNode?.type === "department" && employeesState?.unitId === selectedNode?.data?.rawId ? employeesState : null}
         actions={{
           onEdit: handleEdit,
+          onAddSubDepartment: handleAddSubDepartment,
           onAddPosition: handleAddPosition,
           onAddTeam: handleAddTeam,
           onViewEmployees: handleViewEmployees,
+          onAssignEmployee: (node) => handleAssignEmployee(node.data),
           onMove: handleMove,
           onDelete: handleDeleteRequest,
         }}
@@ -317,6 +350,8 @@ export default function OrgChartWorkspace() {
           initialKind={addDialog.initialKind}
           initialUnitId={addDialog.initialUnitId}
           initialManagerId={addDialog.initialManagerId}
+          initialPositionId={addDialog.initialPositionId}
+          contextKinds={addDialog.contextKinds}
           editNode={addDialog.editNode}
           orgUnits={chartData.orgUnits}
           companies={chartData.companies}

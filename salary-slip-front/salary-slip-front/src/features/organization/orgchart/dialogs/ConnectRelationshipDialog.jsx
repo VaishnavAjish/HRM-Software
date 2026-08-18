@@ -63,7 +63,7 @@ export default function ConnectRelationshipDialog({ open, sourceNode, targetNode
             { reportsToPositionId: previousReportsTo }, token, tokenType,
           ),
         });
-        toast.success("Position reporting line updated");
+        toast.success("Designation reporting line updated");
       } else {
         toast.error("Connections are only supported between two employees or two positions");
         setBusy(false);

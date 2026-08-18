@@ -31,7 +31,7 @@ const ROOT_NODE_ID = "__root__";
 
 const UNASSIGNED_NODE_ID = "__unassigned__";
 
-function toFlowElements(chart, orgUnits, companies, units, { collapsedIds, onQuickAdd, onSetManager, onAssignEmployee, onToggleCollapse, onFocus, loadingIds, includeRoot }) {
+function toFlowElements(chart, orgUnits, companies, units, branchSummary, { collapsedIds, onQuickAdd, onSetManager, onAssignEmployee, onToggleCollapse, onFocus, loadingIds, includeRoot }) {
   const unitsById = new Map(orgUnits.map((u) => [u.id, u]));
   const reportCounts = new Map();
   (chart.edges || []).forEach((e) => reportCounts.set(e.source, (reportCounts.get(e.source) || 0) + 1));
@@ -117,7 +117,38 @@ function toFlowElements(chart, orgUnits, companies, units, { collapsedIds, onQui
 
     if (rootLevelDepartments.length > 0) {
       const sumField = (deps, field) => deps.reduce((sum, n) => sum + (n.data[field] || 0), 0);
-      const unitsById = new Map((units || []).map((u) => [u.id, u]));
+
+      // Which branch(es) a department's employees are actually in, as plain
+      // counts — from the eager department-branch-summary endpoint, so
+      // placement is correct immediately rather than only after someone
+      // expands that department. Loaded employees (lazy, per department)
+      // are still used below only to route each already-visible employee
+      // card to the correct branch duplicate, never to decide placement.
+      const summaryByDept = new Map();
+      (branchSummary || []).forEach((row) => {
+        const key = `org_unit_${row.organizationUnitId}`;
+        if (!summaryByDept.has(key)) summaryByDept.set(key, new Map());
+        summaryByDept.get(key).set(row.unitId, row.employeeCount);
+      });
+      const employeesByDeptId = new Map();
+      nodes.forEach((n) => {
+        if (n.data.type !== "employee") return;
+        const deptRawId = n.data.metadata?.organizationUnitId;
+        if (!deptRawId) return;
+        const key = `org_unit_${deptRawId}`;
+        if (!employeesByDeptId.has(key)) employeesByDeptId.set(key, []);
+        employeesByDeptId.get(key).push(n);
+      });
+      // Department -> employee anchor edges get rewritten below to point at
+      // whichever branch-specific duplicate that employee actually belongs
+      // to, keyed by "source|target" so only the top-of-department edges are
+      // touched — a manager -> subordinate edge never has a department as
+      // its source, so it's untouched and still nests correctly either way.
+      const deptAnchorRemap = new Map();
+      // Fallback target for any edge sourced from an original department id
+      // that deptAnchorRemap doesn't specifically cover (positions, and
+      // anything else that isn't split per-branch) — see placeDept below.
+      const deptFallbackDup = new Map();
 
       nodes.push({
         id: ROOT_NODE_ID,
@@ -136,6 +167,8 @@ function toFlowElements(chart, orgUnits, companies, units, { collapsedIds, onQui
         rootLevelDepartments.map((n) => n.data.metadata?.companyId).filter(Boolean),
       );
       const unassignedDepartments = rootLevelDepartments.filter((n) => !n.data.metadata?.companyId);
+
+      const consumedDeptIds = new Set();
 
       (companies || []).forEach((c) => {
         if (!companyIdsInUse.has(c.id)) return;
@@ -159,29 +192,79 @@ function toFlowElements(chart, orgUnits, companies, units, { collapsedIds, onQui
         });
 
         // Branch layer — Units is the existing, real, company-scoped named
-        // site/branch entity (Company & Unit's "Units" tab). A department
-        // assigned a real unit nests under that branch; one with no branch
-        // assigned falls under a per-company "General" branch, so every
-        // department under a company follows the same Company -> Branch ->
-        // Department shape rather than only some of them.
-        const branchIdsInUse = new Set(
-          deptsUnderCompany.map((n) => n.data.metadata?.unitId).filter((id) => id && unitsById.has(id)),
-        );
-        let hasGeneralBranch = false;
+        // site/branch entity (Company & Unit's "Units" tab). Every real
+        // branch belonging to this company renders immediately (e.g. Nidhi
+        // Impex -> Shreeji, Ichapur). A department's actual placement comes
+        // from where its employees really are (each employee's own unit
+        // membership, once that department has been expanded and its
+        // employees loaded) — a department whose people span two branches
+        // renders once under each, with counts scoped to that branch, rather
+        // than one department "belonging" to a single branch. A department
+        // not yet expanded (unknown split) or with no branch-mapped people
+        // falls under a per-company "General" branch alongside the real ones.
+        const companyUnits = (units || []).filter((u) => u.companyId === c.id);
+        const companyUnitIds = new Set(companyUnits.map((u) => u.id));
 
-        branchIdsInUse.forEach((unitId) => {
-          const unit = unitsById.get(unitId);
-          const branchNodeId = `unit_${unitId}`;
-          const deptsUnderBranch = deptsUnderCompany.filter((n) => n.data.metadata?.unitId === unitId);
+        // branchPlacements: branchNodeId -> [{ deptNode, count }]
+        const branchPlacements = new Map();
+        const generalPlacements = [];
+
+        deptsUnderCompany.forEach((n) => {
+          const branchCounts = summaryByDept.get(n.id) || new Map();
+          const inBranches = Array.from(branchCounts.entries()).filter(([unitId]) => companyUnitIds.has(unitId) && unitId != null);
+          const totalInBranches = inBranches.reduce((sum, [, count]) => sum + count, 0);
+          const deptTotal = n.data.employeeCount || 0;
+          const generalCount = Math.max(0, deptTotal - totalInBranches);
+
+          inBranches.forEach(([unitId, count]) => {
+            if (count <= 0) return;
+            const branchNodeId = `unit_${unitId}`;
+            if (!branchPlacements.has(branchNodeId)) branchPlacements.set(branchNodeId, []);
+            branchPlacements.get(branchNodeId).push({ deptNode: n, count });
+          });
+
+          if (generalCount > 0 || totalInBranches === 0) {
+            generalPlacements.push({ deptNode: n, count: generalCount || deptTotal });
+          }
+        });
+
+        // Loaded employees (only for departments someone has expanded) are
+        // matched to a placement purely to route their already-rendered
+        // card to the right duplicate — the counts above (from the eager
+        // summary) are what's actually displayed and never depend on this.
+        const placeDept = (branchNodeId, deptNode, employeeCount, unitId) => {
+          consumedDeptIds.add(deptNode.id);
+          const dupId = `${deptNode.id}__at__${branchNodeId}`;
+          // First duplicate created for this department also becomes the
+          // fallback target for anything else anchored to the original
+          // department id (positions, and any other non-employee edge) —
+          // those aren't split by branch, so they need exactly one home,
+          // not zero. Without this they kept pointing at the now-removed
+          // original department id and rendered as disconnected nodes.
+          if (!deptFallbackDup.has(deptNode.id)) deptFallbackDup.set(deptNode.id, dupId);
+          nodes.push({ ...deptNode, id: dupId, data: { ...deptNode.data, employeeCount } });
+          edges.push({
+            id: `edge_branch_${branchNodeId}_${dupId}`, source: branchNodeId, target: dupId,
+            type: "smoothstep", style: { stroke: "#9ca3af", strokeWidth: 1.5 },
+          });
+          const loadedEmployees = employeesByDeptId.get(deptNode.id) || [];
+          const anchorEmployees = unitId
+            ? loadedEmployees.filter((emp) => (emp.data.metadata?.unitIds || []).includes(unitId))
+            : loadedEmployees.filter((emp) => !(emp.data.metadata?.unitIds || []).some((id) => companyUnitIds.has(id)));
+          anchorEmployees.forEach((emp) => deptAnchorRemap.set(`${deptNode.id}|${emp.id}`, dupId));
+        };
+
+        companyUnits.forEach((unit) => {
+          const branchNodeId = `unit_${unit.id}`;
+          const placements = branchPlacements.get(branchNodeId) || [];
           nodes.push({
             id: branchNodeId,
             type: "department",
             position: { x: 0, y: 0 },
             data: {
               id: branchNodeId, type: "branch", name: unit.name, title: "Branch",
-              employeeCount: sumField(deptsUnderBranch, "employeeCount"),
-              approvedHeadcount: sumField(deptsUnderBranch, "approvedHeadcount"),
-              vacancy: sumField(deptsUnderBranch, "vacancy"),
+              employeeCount: placements.reduce((sum, p) => sum + p.count, 0),
+              approvedHeadcount: 0, vacancy: 0,
               isActive: true, metadata: {}, hasChildren: false, isCollapsed: false,
             },
           });
@@ -189,42 +272,50 @@ function toFlowElements(chart, orgUnits, companies, units, { collapsedIds, onQui
             id: `edge_company_${companyNodeId}_${branchNodeId}`, source: companyNodeId, target: branchNodeId,
             type: "smoothstep", style: { stroke: "#9ca3af", strokeWidth: 1.5 },
           });
+          placements.forEach(({ deptNode, count }) => placeDept(branchNodeId, deptNode, count, unit.id));
         });
 
-        deptsUnderCompany.forEach((n) => {
-          const unitId = n.data.metadata?.unitId;
-          const hasRealBranch = unitId && unitsById.has(unitId);
-          const branchNodeId = hasRealBranch ? `unit_${unitId}` : `unit_general_${c.id}`;
-
-          if (!hasRealBranch && !hasGeneralBranch) {
-            hasGeneralBranch = true;
-            const deptsUnderGeneral = deptsUnderCompany.filter((d) => {
-              const dUnitId = d.data.metadata?.unitId;
-              return !(dUnitId && unitsById.has(dUnitId));
-            });
-            nodes.push({
-              id: branchNodeId,
-              type: "department",
-              position: { x: 0, y: 0 },
-              data: {
-                id: branchNodeId, type: "branch", name: "General", title: "Branch",
-                employeeCount: sumField(deptsUnderGeneral, "employeeCount"),
-                approvedHeadcount: sumField(deptsUnderGeneral, "approvedHeadcount"),
-                vacancy: sumField(deptsUnderGeneral, "vacancy"),
-                isActive: true, metadata: {}, hasChildren: false, isCollapsed: false,
-              },
-            });
-            edges.push({
-              id: `edge_company_${companyNodeId}_${branchNodeId}`, source: companyNodeId, target: branchNodeId,
-              type: "smoothstep", style: { stroke: "#9ca3af", strokeWidth: 1.5 },
-            });
-          }
-
+        if (generalPlacements.length > 0) {
+          const branchNodeId = `unit_general_${c.id}`;
+          nodes.push({
+            id: branchNodeId,
+            type: "department",
+            position: { x: 0, y: 0 },
+            data: {
+              id: branchNodeId, type: "branch", name: "General", title: "Branch",
+              employeeCount: generalPlacements.reduce((sum, p) => sum + p.count, 0),
+              approvedHeadcount: 0, vacancy: 0,
+              isActive: true, metadata: {}, hasChildren: false, isCollapsed: false,
+            },
+          });
           edges.push({
-            id: `edge_synthetic_root_${branchNodeId}_${n.id}`, source: branchNodeId, target: n.id,
+            id: `edge_company_${companyNodeId}_${branchNodeId}`, source: companyNodeId, target: branchNodeId,
             type: "smoothstep", style: { stroke: "#9ca3af", strokeWidth: 1.5 },
           });
-        });
+          generalPlacements.forEach(({ deptNode, count }) => placeDept(branchNodeId, deptNode, count, null));
+        }
+      });
+
+      // The original single department node has been replaced by one or
+      // more branch-specific duplicates above — drop it so it doesn't also
+      // render on its own.
+      const finalNodes = nodes.filter((n) => !consumedDeptIds.has(n.id));
+      nodes.length = 0;
+      nodes.push(...finalNodes);
+
+      // Apply the department -> employee anchor-edge remap computed above,
+      // now that every branch duplicate exists — a top-of-department
+      // employee's edge moves from the shared original department id to
+      // whichever specific duplicate they actually belong under. Anything
+      // else still sourced from a consumed department id (positions, most
+      // notably) falls back to that department's first duplicate instead of
+      // being left pointing at a node that no longer exists.
+      edges.forEach((e) => {
+        const remapped = deptAnchorRemap.get(`${e.source}|${e.target}`);
+        if (remapped) { e.source = remapped; return; }
+        if (consumedDeptIds.has(e.source) && deptFallbackDup.has(e.source)) {
+          e.source = deptFallbackDup.get(e.source);
+        }
       });
 
       if (unassignedDepartments.length > 0) {
@@ -254,7 +345,17 @@ function toFlowElements(chart, orgUnits, companies, units, { collapsedIds, onQui
     }
   }
 
-  const pruned = pruneCollapsed(nodes, edges, collapsedIds);
+  // Belt-and-suspenders against dangling lines: an edge from chart.edges (or
+  // from a department's cached loadedEmployees) can outlive the node it
+  // points at — e.g. a department that disappears from a background chart
+  // refetch while its already-loaded employees stay cached still has edges
+  // referencing that now-gone department id. Nothing upstream validates
+  // that both endpoints of every edge still exist, so do it once here,
+  // right before collapse-pruning, instead of rendering a line to nowhere.
+  const liveNodeIds = new Set(nodes.map((n) => n.id));
+  const validEdges = edges.filter((e) => liveNodeIds.has(e.source) && liveNodeIds.has(e.target));
+
+  const pruned = pruneCollapsed(nodes, validEdges, collapsedIds);
   pruned.nodes.forEach((n) => { n.data.hasHiddenChildren = pruned.hiddenChildrenOf.has(n.id); });
   return pruned;
 }
@@ -358,7 +459,7 @@ function Toolbar({
 }
 
 function ChartCanvasInner({
-  chart, orgUnits, companies, units, selectedNodeId, onSelectNode, onQuickAdd, onSetManager, onAssignEmployee, onOpenFilters, activeFilterCount,
+  chart, orgUnits, companies, units, branchSummary, selectedNodeId, onSelectNode, onQuickAdd, onSetManager, onAssignEmployee, onOpenFilters, activeFilterCount,
   searchValue, onSearchChange, history, onConnectNodes, onDragMove, loading, onImportLegacy, canImportLegacy,
   locked, onToggleLock, canUnlock, onLoadDepartmentEmployees, employeeRefreshSignal,
 }) {
@@ -504,6 +605,33 @@ function ChartCanvasInner({
     return () => { active = false; };
   }, [chart]);
 
+  // A department can disappear from chart.nodes on a background refetch
+  // (renamed, filtered out, deleted) while its employees are still sitting
+  // in loadedEmployees from an earlier expand. Left alone, that stale entry
+  // keeps contributing edges that point at a department id which no longer
+  // exists — the source of the dangling "line to nowhere" artifact after
+  // collapsing/expanding, on top of the belt-and-suspenders edge filter in
+  // toFlowElements. Dropping it here fixes the cause, not just the symptom.
+  useEffect(() => {
+    if (loadedEmployees.size === 0) return undefined;
+    let active = true;
+    Promise.resolve().then(() => {
+      if (!active) return;
+      const liveIds = new Set((chart.nodes || []).map((n) => n.id));
+      setLoadedEmployees((prev) => {
+        let changed = false;
+        const next = new Map();
+        prev.forEach((value, key) => {
+          if (liveIds.has(key)) { next.set(key, value); return; }
+          changed = true;
+        });
+        return changed ? next : prev;
+      });
+    });
+    return () => { active = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chart]);
+
   const mergedChart = useMemo(() => {
     if (loadedEmployees.size === 0) return chart;
     const extraNodes = [];
@@ -528,13 +656,13 @@ function ChartCanvasInner({
   }, [mergedChart, focusNodeId]);
 
   const laidOut = useMemo(
-    () => toFlowElements(focusedChart, orgUnits, companies, units, {
+    () => toFlowElements(focusedChart, orgUnits, companies, units, branchSummary, {
       collapsedIds, onToggleCollapse: toggleCollapse, onQuickAdd: locked ? undefined : onQuickAdd,
       onSetManager: locked ? undefined : onSetManager,
       onAssignEmployee: locked ? undefined : onAssignEmployee,
       onFocus: enterFocus, loadingIds, includeRoot: !focusNodeId,
     }),
-    [focusedChart, orgUnits, companies, units, collapsedIds, onQuickAdd, onSetManager, onAssignEmployee, toggleCollapse, enterFocus, locked, loadingIds, focusNodeId],
+    [focusedChart, orgUnits, companies, units, branchSummary, collapsedIds, onQuickAdd, onSetManager, onAssignEmployee, toggleCollapse, enterFocus, locked, loadingIds, focusNodeId],
   );
 
   // A full dagre layout recomputes every node's position from scratch, so

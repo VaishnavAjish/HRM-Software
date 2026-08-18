@@ -155,6 +155,8 @@ class OrganizationUnitController extends Controller
 
     public function storePosition(Request $request, int $unitId): JsonResponse
     {
+        $this->service->ensureSchema();
+
         if (! $this->unitExists($unitId)) {
             return $this->missing('Organization unit not found.');
         }
@@ -269,6 +271,14 @@ class OrganizationUnitController extends Controller
         ]));
     }
 
+    public function departmentBranchSummary(): JsonResponse
+    {
+        return $this->guarded(fn () => response()->json([
+            'success' => true,
+            'data' => $this->service->departmentBranchSummary(auth('api')->user()),
+        ]));
+    }
+
     /* ---------------------------------------------------------- assignments */
 
     public function assignments(Request $request): JsonResponse
@@ -278,7 +288,8 @@ class OrganizationUnitController extends Controller
             'data' => $this->service->assignments([
                 'enterpriseId' => $request->query('enterprise_id', $request->query('enterpriseId')),
                 'companyIds' => $request->query('company_ids', $request->query('companyIds')),
-                'unitId' => $request->query('unit_id', $request->query('unitId')),
+                'organizationUnitId' => $request->query('unit_id', $request->query('unitId', $request->query('organizationUnitId'))),
+                'positionId' => $request->query('position_id', $request->query('positionId')),
                 'userId' => $request->query('user_id', $request->query('userId')),
                 'status' => $request->query('status'),
             ], auth('api')->user()),

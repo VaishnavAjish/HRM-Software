@@ -39,7 +39,7 @@ function DepartmentNode({ data, selected, sourcePosition, targetPosition }) {
 
       <div className="mt-2 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
         <span>{data.employeeCount ?? 0} employees</span>
-        <span>{data.metadata?.positionCount ?? 0} positions</span>
+        <span>{data.metadata?.positionCount ?? 0} designations</span>
       </div>
 
       {data.type === "department" && (

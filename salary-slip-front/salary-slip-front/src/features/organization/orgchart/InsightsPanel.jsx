@@ -83,7 +83,7 @@ export default function InsightsPanel({ chart, summary, activity, loading, onVie
 
       {summary && (
         <Card padding={false} className="space-y-1.5 p-2.5">
-          <p className="text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Position Status</p>
+          <p className="text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Designation Status</p>
           <StatusBar label="Filled" value={summary.filledHeadcount ?? 0} max={summary.approvedHeadcount || 1} color="#22c55e" />
           <StatusBar label="Vacant" value={summary.vacantHeadcount ?? 0} max={summary.approvedHeadcount || 1} color="#f59e0b" />
           <StatusBar label="Frozen" value={summary.frozenCount ?? 0} max={summary.approvedHeadcount || 1} color="#0ea5e9" />

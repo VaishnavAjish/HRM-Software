@@ -18,7 +18,7 @@ function PositionNode({ data, selected, sourcePosition, targetPosition }) {
         <Briefcase size={15} className={isVacant ? "text-amber-500" : "text-gray-400"} />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">{data.name}</p>
-          <p className="truncate text-xs text-gray-500 dark:text-gray-400">{data.metadata?.organizationUnitName || "Position"}</p>
+          <p className="truncate text-xs text-gray-500 dark:text-gray-400">{data.metadata?.organizationUnitName || "Designation"}</p>
         </div>
       </div>
       <div className="mt-2 flex items-center justify-between text-xs">
@@ -34,7 +34,7 @@ function PositionNode({ data, selected, sourcePosition, targetPosition }) {
       {data.onAssignEmployee && (
         <button
           type="button"
-          title="Assign an employee to this position"
+          title="Assign an employee to this designation"
           onClick={(e) => { e.stopPropagation(); data.onAssignEmployee(data); }}
           className="mt-2 flex w-full items-center justify-center gap-1 rounded-md border border-dashed border-gray-300 py-1 text-xs text-gray-500 hover:border-brand-400 hover:text-brand-600 dark:border-gray-600 dark:text-gray-400"
         >

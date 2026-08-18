@@ -503,6 +503,10 @@ export const organizationApi = {
     return apiRequest(`/v1/admin/organization/org-units/headcount-summary${query(filters)}`, { headers: headers(accessToken, tokenType) });
   },
 
+  departmentBranchSummary(accessToken, tokenType = "Bearer") {
+    return apiRequest("/v1/admin/organization/org-units/department-branch-summary", { headers: headers(accessToken, tokenType) });
+  },
+
   deleteOrgUnitPosition(unitId, positionId, accessToken, tokenType = "Bearer") {
     return apiRequest(`/v1/admin/organization/org-units/${unitId}/positions/${positionId}`, {
       method: "DELETE",

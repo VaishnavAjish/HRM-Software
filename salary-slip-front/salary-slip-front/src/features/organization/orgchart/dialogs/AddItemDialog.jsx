@@ -12,9 +12,10 @@ const inputClass =
 const labelClass = "mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400";
 
 const KIND_OPTIONS = [
-  { key: "department", label: "Department", icon: Building2, desc: "A department under a company or parent unit." },
+  { key: "department", label: "Department", icon: Building2, desc: "A top-level department under a company." },
+  { key: "sub_department", label: "Sub-Department", icon: GitBranch, desc: "A department nested under another department." },
   { key: "team", label: "Team", icon: Building2, desc: "A team or section under a department." },
-  { key: "position", label: "Position", icon: Briefcase, desc: "A role with approved headcount inside a unit." },
+  { key: "position", label: "Designation", icon: Briefcase, desc: "A role with approved headcount inside a unit." },
   { key: "assignment", label: "Employee Assignment", icon: Users, desc: "Assign an employee to an organization unit." },
   { key: "reporting", label: "Reporting Relationship", icon: GitBranch, desc: "Set who an employee reports to." },
 ];
@@ -25,7 +26,7 @@ const KIND_OPTIONS = [
  * "editing must not require understanding graph software" requirement.
  */
 export default function AddItemDialog({
-  open, initialKind, initialUnitId, initialManagerId, editNode, orgUnits, companies, positions = [], token, tokenType, canCreate, run, onClose, onDone,
+  open, initialKind, initialUnitId, initialManagerId, initialPositionId, contextKinds, editNode, orgUnits, companies, positions = [], token, tokenType, canCreate, run, onClose, onDone,
 }) {
   const isEdit = Boolean(editNode);
   const [kind, setKind] = useState(isEdit ? editNode.type : (initialKind || null));
@@ -42,10 +43,15 @@ export default function AddItemDialog({
     reportsToPositionId: editNode.data.metadata?.reportsToPositionId || "",
     managerUserId: editNode.data.metadata?.managerUserId || "",
   } : {
+    // "Sub-Department" is really just type=department with a required
+    // parent — kept as its own picker entry (rather than folded into the
+    // generic "Department" option) so the intent is explicit instead of
+    // being a side-effect of which dropdown value someone happened to pick.
     type: initialKind === "team" ? "team" : "department",
     parentId: initialUnitId || "",
     unitId: initialUnitId || "",
     managerId: initialManagerId || "",
+    positionId: initialPositionId || "",
     isPrimary: true,
     effectiveFrom: new Date().toISOString().slice(0, 10),
   }));
@@ -53,6 +59,15 @@ export default function AddItemDialog({
   const set = (patch) => setForm((f) => ({ ...f, ...patch }));
 
   const unitOptions = useMemo(() => orgUnits.filter((u) => u.status === "active"), [orgUnits]);
+  const parentName = useMemo(
+    () => unitOptions.find((u) => String(u.id) === String(form.parentId))?.name || null,
+    [unitOptions, form.parentId],
+  );
+  // A sub-department opened from a specific department's own "+"/"Add
+  // Sub-Department" already has an unambiguous parent — locking it instead
+  // of re-showing an editable dropdown is what actually makes this feel
+  // like a distinct action rather than "Add Department" with an extra step.
+  const parentLocked = kind === "sub_department" && Boolean(initialUnitId);
 
   if (!open) return null;
 
@@ -113,14 +128,15 @@ export default function AddItemDialog({
           undo: () => organizationApi.updateOrgUnitPosition(unitId, rawId, before, token, tokenType),
         });
         toast.success("Updated");
-      } else if (kind === "department" || kind === "team") {
+      } else if (kind === "department" || kind === "team" || kind === "sub_department") {
+        const type = kind === "sub_department" ? "department" : form.type;
         await run({
-          label: `Create ${form.type}`,
+          label: `Create ${type}`,
           do: async () => {
             const res = await organizationApi.createOrgUnit({
               name: form.name,
               code: form.code || undefined,
-              type: form.type,
+              type,
               parentId: form.parentId || undefined,
               companyId: form.companyId || undefined,
               status: "active",
@@ -131,7 +147,7 @@ export default function AddItemDialog({
             if (form._createdId) await organizationApi.deleteOrgUnit(form._createdId, token, tokenType);
           },
         });
-        toast.success(`${form.type === "team" ? "Team" : "Department"} created`);
+        toast.success(kind === "sub_department" ? "Sub-department created" : type === "team" ? "Team created" : "Department created");
       } else if (kind === "position") {
         await run({
           label: "Create position",
@@ -149,7 +165,7 @@ export default function AddItemDialog({
             if (form._createdId) await organizationApi.deleteOrgUnitPosition(form.unitId, form._createdId, token, tokenType);
           },
         });
-        toast.success("Position created");
+        toast.success("Designation created");
       } else if (kind === "assignment") {
         await run({
           label: "Create assignment",
@@ -157,6 +173,7 @@ export default function AddItemDialog({
             const res = await organizationApi.createOrgUnitAssignment({
               userId: form.userId,
               organizationUnitId: form.unitId,
+              positionId: form.positionId || undefined,
               assignmentType: form.assignmentType || "primary",
               isPrimary: form.isPrimary,
               effectiveFrom: form.effectiveFrom,
@@ -196,10 +213,11 @@ export default function AddItemDialog({
   };
 
   if (!kind) {
+    const options = contextKinds ? KIND_OPTIONS.filter((o) => contextKinds.includes(o.key)) : KIND_OPTIONS;
     return (
       <Modal isOpen onClose={close} title="Add to Organization" size="sm">
         <div className="space-y-2">
-          {KIND_OPTIONS.map((opt) => (
+          {options.map((opt) => (
             <button
               key={opt.key}
               type="button"
@@ -219,10 +237,14 @@ export default function AddItemDialog({
     );
   }
 
+  const dialogTitle = kind === "sub_department" && !isEdit
+    ? (parentName ? `Add Sub-Department under ${parentName}` : "Add Sub-Department")
+    : `${isEdit ? "Edit" : "Add"} ${KIND_OPTIONS.find((o) => o.key === kind)?.label || ""}`;
+
   return (
-    <Modal isOpen onClose={close} title={`${isEdit ? "Edit" : "Add"} ${KIND_OPTIONS.find((o) => o.key === kind)?.label || ""}`} size="lg">
+    <Modal isOpen onClose={close} title={dialogTitle} size="lg">
       <div className="space-y-4">
-        {(kind === "department" || kind === "team") && (
+        {(kind === "department" || kind === "team" || kind === "sub_department") && (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <label className="block"><span className={labelClass}>Name *</span>
               <input className={inputClass} value={form.name || ""} onChange={(e) => set({ name: e.target.value })} />
@@ -230,14 +252,16 @@ export default function AddItemDialog({
             <label className="block"><span className={labelClass}>Code</span>
               <input className={inputClass} value={form.code || ""} onChange={(e) => set({ code: e.target.value })} />
             </label>
-            <label className="block"><span className={labelClass}>Type</span>
-              <select className={inputClass} value={form.type} onChange={(e) => set({ type: e.target.value })}>
-                <option value="department">Department</option>
-                <option value="team">Team</option>
-                <option value="section">Section</option>
-                <option value="sub_department">Sub-department</option>
-              </select>
-            </label>
+            {kind !== "sub_department" && (
+              <label className="block"><span className={labelClass}>Type</span>
+                <select className={inputClass} value={form.type} onChange={(e) => set({ type: e.target.value })}>
+                  <option value="department">Department</option>
+                  <option value="team">Team</option>
+                  <option value="section">Section</option>
+                  <option value="sub_department">Sub-department</option>
+                </select>
+              </label>
+            )}
             {!isEdit && (
               <label className="block"><span className={labelClass}>Company</span>
                 <select className={inputClass} value={form.companyId || ""} onChange={(e) => set({ companyId: e.target.value })}>
@@ -246,12 +270,21 @@ export default function AddItemDialog({
                 </select>
               </label>
             )}
-            <label className="block sm:col-span-2"><span className={labelClass}>Parent Unit</span>
-              <select className={inputClass} value={form.parentId || ""} onChange={(e) => set({ parentId: e.target.value })}>
-                <option value="">None (top-level)</option>
-                {unitOptions.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-              </select>
-            </label>
+            {parentLocked ? (
+              <label className="block sm:col-span-2"><span className={labelClass}>Parent Department</span>
+                <div className={`${inputClass} bg-gray-50 text-gray-600 dark:bg-gray-800 dark:text-gray-300`}>
+                  {parentName || "Selected department"}
+                </div>
+              </label>
+            ) : (
+              <label className="block sm:col-span-2">
+                <span className={labelClass}>{kind === "sub_department" ? "Parent Department *" : "Parent Unit"}</span>
+                <select className={inputClass} value={form.parentId || ""} onChange={(e) => set({ parentId: e.target.value })}>
+                  <option value="">{kind === "sub_department" ? "Select parent department" : "None (top-level)"}</option>
+                  {unitOptions.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                </select>
+              </label>
+            )}
             {isEdit && kind === "department" && (
               <div className="sm:col-span-2">
                 {editNode.data.metadata?.managerName && (
@@ -310,9 +343,17 @@ export default function AddItemDialog({
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <UserPicker label="Employee" required value={form.userId || ""} onChange={(id) => set({ userId: id })} token={token} tokenType={tokenType} />
             <label className="block"><span className={labelClass}>Organization Unit *</span>
-              <select className={inputClass} value={form.unitId || ""} onChange={(e) => set({ unitId: e.target.value })}>
+              <select className={inputClass} value={form.unitId || ""} onChange={(e) => set({ unitId: e.target.value, positionId: "" })} disabled={Boolean(initialPositionId)}>
                 <option value="">Select unit</option>
                 {unitOptions.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+              </select>
+            </label>
+            <label className="block"><span className={labelClass}>Designation (optional)</span>
+              <select className={inputClass} value={form.positionId || ""} onChange={(e) => set({ positionId: e.target.value })} disabled={Boolean(initialPositionId)}>
+                <option value="">No specific position</option>
+                {positions
+                  .filter((p) => p.metadata?.organizationUnitId === Number(form.unitId))
+                  .map((p) => <option key={p.id} value={p.id.replace("position_", "")}>{p.name}</option>)}
               </select>
             </label>
             <label className="block"><span className={labelClass}>Effective From *</span>
@@ -346,7 +387,10 @@ export default function AddItemDialog({
       </div>
       <footer className="mt-4 flex justify-end gap-2">
         <Button variant="secondary" onClick={close} disabled={busy}>Cancel</Button>
-        <Button onClick={submit} disabled={busy}>
+        <Button
+          onClick={submit}
+          disabled={busy || (kind === "sub_department" && !isEdit && (!form.name?.trim() || !form.parentId))}
+        >
           {busy && <Loader2 size={16} className="animate-spin" />}
           {isEdit ? "Save" : "Create"}
         </Button>

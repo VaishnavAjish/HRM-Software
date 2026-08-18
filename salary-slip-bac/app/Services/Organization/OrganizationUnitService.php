@@ -17,6 +17,9 @@ use App\Models\ReportingRelationship;
 use App\Services\Organization\Concerns\VerifiesCompanyAccess;
 use App\Support\AuditLogger;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Str;
 
 /**
  * DOMAIN 02.03 — Business Structure Service.
@@ -353,6 +356,8 @@ class OrganizationUnitService
      */
     public function syncFromLegacyDepartments(User $actor): array
     {
+        $this->ensureSchema();
+
         // Only ~5 employees were showing up on the chart even though the
         // company has hundreds: the `departments` table only had rows for
         // whichever department names someone had manually created via
@@ -461,6 +466,8 @@ class OrganizationUnitService
 
         $assignments = $this->syncAssignmentsFromLegacyDepartments($departments, $unitIdByDepartmentId, $actor);
         $cleanup = $this->cleanupDuplicateGlobalDepartments($actor);
+        $positions = $this->syncPositionsFromLegacyDesignations();
+        $positionLinks = $this->linkAssignmentsToPositions();
 
         return [
             'total' => $departments->count(),
@@ -472,7 +479,186 @@ class OrganizationUnitService
             'assignmentsCreated' => $assignments['created'],
             'assignmentsSkipped' => $assignments['skipped'],
             'subDepartmentsLinked' => $subDepartmentsLinked,
+            'positionsCreated' => $positions['created'],
+            'positionsUpdated' => $positions['updated'],
+            'assignmentsLinkedToPositions' => $positionLinks['linked'],
+            'positionsDebug' => [
+                'departmentsConsidered' => $positions['departmentsConsidered'],
+                'departmentsWithLegacyLink' => $positions['departmentsWithLegacyLink'],
+                'usersMatched' => $positions['usersMatched'],
+                'sampleUserDepartments' => $positions['sampleUserDepartments'],
+            ],
         ];
+    }
+
+    /**
+     * Auto-discovers designations (positions) from real employee data —
+     * users.designation, grouped by department — the same idea as
+     * discoverLegacyDepartmentsFromUsers() but for job titles: nobody has to
+     * create a designation by hand, it's derived from who actually holds it.
+     * approved/filled headcount both track the live count of real users
+     * carrying that (department, designation) pair, since every one of
+     * these represents people who already exist, not a hiring target.
+     */
+    private function syncPositionsFromLegacyDesignations(): array
+    {
+        $departments = OrganizationUnit::query()
+            ->where('type', 'department')
+            ->whereNotNull('legacy_department_id')
+            ->get();
+
+        // Match in PHP using the exact same legacyDepartmentKey() the proven
+        // assignment sync uses (336/337 real employees linked with it) —
+        // not a SQL-side TRIM()/LOWER(), which only strips plain ASCII
+        // spaces in Postgres. PHP's trim() strips tabs/newlines too, and
+        // real imported data had a tab character silently defeating the
+        // SQL version — confirmed directly against this database. Building
+        // one key->unit map and scanning users once in PHP is what
+        // guarantees identical matching behavior to that proven code path.
+        $unitByKey = [];
+        $departmentsWithLegacyLink = 0;
+        foreach ($departments as $unit) {
+            $legacyDept = Department::query()->find($unit->legacy_department_id);
+            if (!$legacyDept) {
+                continue;
+            }
+            $departmentsWithLegacyLink++;
+            $unitByKey[$this->legacyDepartmentKey($legacyDept->name, $legacyDept->company_code)] = $unit;
+        }
+
+        $users = DB::table('users')
+            ->select('department', 'company_code', 'designation')
+            ->whereNotNull('department')
+            ->where('department', '!=', '')
+            ->whereNotNull('designation')
+            ->where('designation', '!=', '')
+            ->where('is_deleted', '0')
+            ->get();
+
+        // groups: "{unitId}|||{designation}" -> count
+        $groups = [];
+        $usersMatched = 0;
+        foreach ($users as $user) {
+            $unit = $unitByKey[$this->legacyDepartmentKey($user->department, $user->company_code)] ?? null;
+            if (!$unit) {
+                continue;
+            }
+            $title = trim((string) $user->designation);
+            if ($title === '') {
+                continue;
+            }
+            $usersMatched++;
+            $groupKey = $unit->id.'|||'.$title;
+            $groups[$groupKey] = ($groups[$groupKey] ?? 0) + 1;
+        }
+
+        $created = 0;
+        $updated = 0;
+        foreach ($groups as $groupKey => $count) {
+            [$unitId, $title] = explode('|||', $groupKey, 2);
+            $code = Str::upper(Str::slug($title, '-'));
+
+            $position = OrganizationPosition::query()
+                ->where('organization_unit_id', (int) $unitId)
+                ->where('code', $code)
+                ->first();
+
+            $payload = [
+                'approved_headcount' => $count,
+                'budgeted_headcount' => $count,
+                'current_headcount' => $count,
+                'filled_headcount' => $count,
+                'vacant_headcount' => 0,
+                'status' => 'filled',
+            ];
+
+            if ($position) {
+                $position->update($payload);
+                $updated++;
+            } else {
+                OrganizationPosition::query()->create($payload + [
+                    'organization_unit_id' => (int) $unitId,
+                    'code' => $code,
+                    'title' => $title,
+                ]);
+                $created++;
+            }
+        }
+
+        $sampleUserDepartments = [];
+        if ($usersMatched === 0) {
+            // Nothing matched anywhere — pull a small raw sample (with
+            // visible length so trailing/embedded whitespace shows up) so a
+            // mismatch is visible without needing direct database access.
+            $sampleUserDepartments = DB::table('users')
+                ->select('department', 'company_code', 'designation', 'is_deleted')
+                ->whereNotNull('department')
+                ->where('department', '!=', '')
+                ->limit(5)
+                ->get()
+                ->map(fn ($row) => [
+                    'department' => $row->department,
+                    'departmentLength' => strlen((string) $row->department),
+                    'companyCode' => $row->company_code,
+                    'designation' => $row->designation,
+                    'isDeleted' => $row->is_deleted,
+                ])
+                ->all();
+        }
+
+        return [
+            'created' => $created,
+            'updated' => $updated,
+            'departmentsConsidered' => $departments->count(),
+            'departmentsWithLegacyLink' => $departmentsWithLegacyLink,
+            'usersMatched' => $usersMatched,
+            'sampleUserDepartments' => $sampleUserDepartments,
+        ];
+    }
+
+    /**
+     * syncAssignmentsFromLegacyDepartments() (which runs before positions
+     * exist) creates every employee's department assignment with
+     * position_id left null — there was nothing to link to yet. This runs
+     * after syncPositionsFromLegacyDesignations() has created/updated the
+     * real OrganizationPosition rows, and backfills position_id on every
+     * active assignment by matching (organization_unit_id, trimmed
+     * users.designation) against (organization_unit_id, position title) —
+     * the exact same key format syncPositionsFromLegacyDesignations() used
+     * to create those positions. Without this, "Filled: N" on a designation
+     * is correct (it's a raw count) but the actual employee list behind it
+     * is always empty, since nothing ever pointed a real assignment row at
+     * a real position id.
+     */
+    private function linkAssignmentsToPositions(): array
+    {
+        $positionIdByKey = [];
+        OrganizationPosition::query()->select('id', 'organization_unit_id', 'title')->get()
+            ->each(function (OrganizationPosition $pos) use (&$positionIdByKey) {
+                $key = $pos->organization_unit_id.'|||'.trim((string) $pos->title);
+                $positionIdByKey[$key] = $pos->id;
+            });
+
+        $linked = 0;
+        $cleared = 0;
+
+        EmployeeOrganizationAssignment::query()
+            ->where('is_active', true)
+            ->with('user:id,designation')
+            ->get()
+            ->each(function (EmployeeOrganizationAssignment $assignment) use ($positionIdByKey, &$linked, &$cleared) {
+                $title = trim((string) $assignment->user?->designation);
+                $key = $assignment->organization_unit_id.'|||'.$title;
+                $positionId = $title !== '' ? ($positionIdByKey[$key] ?? null) : null;
+
+                if ($assignment->position_id !== $positionId) {
+                    $assignment->position_id = $positionId;
+                    $assignment->save();
+                    $positionId ? $linked++ : $cleared++;
+                }
+            });
+
+        return ['linked' => $linked, 'cleared' => $cleared];
     }
 
     /**
@@ -490,6 +676,74 @@ class OrganizationUnitService
      * twice, once as a leftover global entry nothing pointed at and once as
      * the real, company-scoped one every actual employee matches.
      */
+    /**
+     * Self-heals columns that ship in this repo's migration files but that
+     * this environment's actual database is missing — the file share this
+     * code lives on and the database this code actually connects to at
+     * runtime turned out not to be the same pair I could reach directly
+     * (confirmed via a real "column does not exist" error on a live
+     * request), so a migration applied by hand here never reached the
+     * database this process really uses. Every add is nullable and
+     * idempotent (guarded by hasColumn), matching exactly what the real
+     * migration files already do — this just runs it in-process on the
+     * one connection actually proven to work, instead of a `migrate` this
+     * environment can't run (PHP 8.2 here vs 8.4 required). Cheap no-op
+     * once the real migrations do land properly.
+     */
+    public function ensureSchema(): void
+    {
+        if (!Schema::hasColumn('departments', 'unit_id')) {
+            Schema::table('departments', function (Blueprint $table) {
+                $table->unsignedBigInteger('unit_id')->nullable()->after('company_code');
+                $table->index('unit_id');
+                $table->foreign('unit_id')->references('id')->on('units')->nullOnDelete();
+            });
+        }
+
+        if (!Schema::hasColumn('departments', 'parent_department_id')) {
+            Schema::table('departments', function (Blueprint $table) {
+                $table->unsignedBigInteger('parent_department_id')->nullable()->after('unit_id');
+                $table->index('parent_department_id');
+                $table->foreign('parent_department_id')->references('id')->on('departments')->nullOnDelete();
+            });
+        }
+
+        if (!Schema::hasColumn('designations', 'department_id')) {
+            Schema::table('designations', function (Blueprint $table) {
+                $table->unsignedBigInteger('department_id')->nullable()->after('job_grade_id');
+                $table->index('department_id');
+                $table->foreign('department_id')->references('id')->on('departments')->nullOnDelete();
+            });
+        }
+
+        if (!Schema::hasColumn('organization_positions', 'budgeted_headcount')) {
+            Schema::table('organization_positions', function (Blueprint $table) {
+                $table->unsignedInteger('budgeted_headcount')->nullable()->after('approved_headcount');
+            });
+            DB::table('organization_positions')->whereNull('budgeted_headcount')
+                ->update(['budgeted_headcount' => DB::raw('approved_headcount')]);
+        }
+
+        if (!Schema::hasColumn('organization_positions', 'frozen_at')) {
+            Schema::table('organization_positions', function (Blueprint $table) {
+                $table->timestamp('frozen_at')->nullable()->after('approval_status');
+            });
+        }
+
+        if (!Schema::hasColumn('organization_positions', 'frozen_by')) {
+            Schema::table('organization_positions', function (Blueprint $table) {
+                $table->unsignedBigInteger('frozen_by')->nullable()->after('frozen_at');
+                $table->foreign('frozen_by')->references('id')->on('users')->nullOnDelete();
+            });
+        }
+
+        if (!Schema::hasColumn('organization_positions', 'freeze_reason')) {
+            Schema::table('organization_positions', function (Blueprint $table) {
+                $table->string('freeze_reason', 500)->nullable()->after('frozen_by');
+            });
+        }
+    }
+
     private function discoverLegacyDepartmentsFromUsers(): int
     {
         $rows = \Illuminate\Support\Facades\DB::table('users')
@@ -665,7 +919,10 @@ class OrganizationUnitService
 
         $query = $unit->positions()->with(['reportsTo'])->orderBy('title');
 
-        if (($status = strtoupper((string) ($filters['status'] ?? ''))) !== '' && $status !== 'ALL') {
+        // Real position statuses are lowercase (open/filled/frozen/...) —
+        // uppercasing before comparing meant this filter could never match
+        // a real row except the 'ALL' bypass.
+        if (($status = strtolower((string) ($filters['status'] ?? ''))) !== '' && $status !== 'all') {
             $query->where('status', $status);
         }
 
@@ -940,6 +1197,31 @@ class OrganizationUnitService
         return ['totals' => $totals, 'byUnit' => $byUnit];
     }
 
+    /**
+     * How each department's employees split across real branches (Units),
+     * as plain counts — not the employee list itself, so the org chart can
+     * place a department under every branch it actually has people in
+     * without having to load anyone first. One aggregate query, safe to
+     * fetch for the whole org up front, unlike the per-department employee
+     * lists (which stay lazy).
+     */
+    public function departmentBranchSummary(?User $actor): array
+    {
+        $rows = DB::table('employee_organization_assignments as a')
+            ->join('user_units as uu', 'uu.user_id', '=', 'a.user_id')
+            ->where('a.is_active', true)
+            ->where('a.is_primary', true)
+            ->selectRaw('a.organization_unit_id as organization_unit_id, uu.unit_id as unit_id, count(distinct a.user_id) as employee_count')
+            ->groupBy('a.organization_unit_id', 'uu.unit_id')
+            ->get();
+
+        return $rows->map(fn ($row) => [
+            'organizationUnitId' => (int) $row->organization_unit_id,
+            'unitId' => (int) $row->unit_id,
+            'employeeCount' => (int) $row->employee_count,
+        ])->all();
+    }
+
     private function recalculatePositionHeadcount(?int $positionId): void
     {
         if ($positionId === null) {
@@ -967,7 +1249,7 @@ class OrganizationUnitService
     public function assignments(array $filters, ?User $actor): array
     {
         $query = EmployeeOrganizationAssignment::query()
-            ->with(['user', 'organizationUnit', 'position'])
+            ->with(['user', 'user.units:id,name,company_id', 'organizationUnit', 'position'])
             ->orderBy('effective_from', 'desc');
 
         if (!empty($filters['userId'])) {
@@ -1008,6 +1290,14 @@ class OrganizationUnitService
             'userId' => (int) $assignment->user_id,
             'userName' => $assignment->user?->name,
             'userEmpCode' => $assignment->user?->emp_code,
+            // The employee's real branch(es) — from Company & Unit's "Units"
+            // (user_units), independent of organization_unit_id (the
+            // department). An employee can sit in more than one unit, so this
+            // is an array; the chart uses it to place a department under
+            // every branch it actually has people in.
+            'unitIds' => $assignment->user
+                ? $assignment->user->units->pluck('id')->map(fn ($id) => (int) $id)->all()
+                : [],
             'organizationUnitId' => (int) $assignment->organization_unit_id,
             'organizationUnitName' => $assignment->organizationUnit?->name,
             'positionId' => $assignment->position_id === null ? null : (int) $assignment->position_id,

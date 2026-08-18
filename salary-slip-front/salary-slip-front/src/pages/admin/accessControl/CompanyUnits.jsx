@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import {
   Plus, RefreshCw, Search, Loader2, Pencil, Trash2,
-  Power, PowerOff, Link2, AlertTriangle, Users, UserCheck, Check,
+  Power, PowerOff, Link2, AlertTriangle, Users, UserCheck, UserPlus, Check, FolderPlus,
 } from "lucide-react";
 import Badge from "../../../components/ui/Badge";
 import Button from "../../../components/ui/Button";
@@ -182,19 +182,47 @@ function UnitModal({ unit, companies, busy, onSave, onClose }) {
   );
 }
 
-function DepartmentModal({ department, companies, units, departments, busy, onSave, onClose }) {
+// Departments can self-reference via parent_department_id, so a parent
+// picker has to exclude the department's own descendants — not just
+// itself — or you could pick a sub-department as the parent of its own
+// ancestor and create a loop the backend has no cycle guard against.
+function descendantIds(deptId, departments) {
+  const byParent = new Map();
+  departments.forEach((d) => {
+    const key = d.parent_department_id || null;
+    if (!byParent.has(key)) byParent.set(key, []);
+    byParent.get(key).push(d.id);
+  });
+  const ids = new Set();
+  const stack = [...(byParent.get(deptId) || [])];
+  while (stack.length) {
+    const id = stack.pop();
+    if (ids.has(id)) continue;
+    ids.add(id);
+    stack.push(...(byParent.get(id) || []));
+  }
+  return ids;
+}
+
+function DepartmentModal({ department, presetParentId, companies, units, departments, busy, onSave, onClose }) {
   const isEdit = Boolean(department?.id);
+  const parentDept = presetParentId ? (departments || []).find((d) => d.id === presetParentId) : null;
   const [name, setName] = useState(department?.name ?? "");
-  const [unitId, setUnitId] = useState(department?.unit_id ? String(department.unit_id) : "");
+  const [unitId, setUnitId] = useState(
+    department?.unit_id ? String(department.unit_id) : (parentDept?.unit_id ? String(parentDept.unit_id) : ""),
+  );
   const [parentDepartmentId, setParentDepartmentId] = useState(
-    department?.parent_department_id ? String(department.parent_department_id) : "",
+    department?.parent_department_id ? String(department.parent_department_id)
+      : presetParentId ? String(presetParentId) : "",
   );
   const [selectedCompanies, setSelectedCompanies] = useState(() => {
-    if (!department?.company_code) return [];
-    return department.company_code.split(",").filter(Boolean);
+    if (department?.company_code) return department.company_code.split(",").filter(Boolean);
+    if (parentDept?.company_code) return parentDept.company_code.split(",").filter(Boolean);
+    return [];
   });
 
-  const parentOptions = (departments || []).filter((d) => d.id !== department?.id);
+  const excludedIds = isEdit ? descendantIds(department.id, departments || []) : new Set();
+  const parentOptions = (departments || []).filter((d) => d.id !== department?.id && !excludedIds.has(d.id));
 
   const toggleCompany = (code) => {
     setSelectedCompanies(prev => 
@@ -206,7 +234,7 @@ function DepartmentModal({ department, companies, units, departments, busy, onSa
     <Modal
       isOpen
       onClose={onClose}
-      title={isEdit ? `Edit Department: ${department.name}` : "Add Department"}
+      title={isEdit ? `Edit Department: ${department.name}` : parentDept ? `Add Sub-Department under ${parentDept.name}` : "Add Department"}
       footer={
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
@@ -291,16 +319,38 @@ function DepartmentModal({ department, companies, units, departments, busy, onSa
 
 const USER_SEARCH_MIN_CHARS = 2;
 
-function AssignManagerModal({ managerData, allDepartments, eligibleUsers, token, tokenType, busy, onSave, onClose }) {
+function AssignManagerModal({ managerData, initialDepartmentIds, allDepartments, eligibleUsers, token, tokenType, busy, onSave, onClose }) {
   const isEdit = Boolean(managerData?.id);
   const [selectedUserId, setSelectedUserId] = useState(managerData?.id ? String(managerData.id) : "");
   const [selectedDeptIds, setSelectedDeptIds] = useState(
-    managerData?.departments ? managerData.departments.map((d) => d.id) : []
+    managerData?.departments ? managerData.departments.map((d) => d.id) : (initialDepartmentIds || [])
   );
   const [deptSearch, setDeptSearch] = useState("");
   const [userSearch, setUserSearch] = useState("");
   const [searchedUsers, setSearchedUsers] = useState(null);
   const [searchingUsers, setSearchingUsers] = useState(false);
+
+  // Saving replaces this user's entire department-manager list server-side
+  // (see saveManagerAssignment/assignManager) — picking a user who already
+  // manages other departments and saving with only the newly-checked one(s)
+  // would silently drop those. Once a user is picked here (not editing an
+  // existing manager, which already has its full list), merge in whatever
+  // departments they already show as managing across the loaded list so a
+  // quick "assign this one department" action can't wipe out the rest.
+  useEffect(() => {
+    if (isEdit || !selectedUserId) return undefined;
+    let active = true;
+    Promise.resolve().then(() => {
+      if (!active) return;
+      const existingDeptIds = allDepartments
+        .filter((d) => d.managers?.some((m) => String(m.id) === selectedUserId))
+        .map((d) => d.id);
+      if (existingDeptIds.length === 0) return;
+      setSelectedDeptIds((prev) => Array.from(new Set([...prev, ...existingDeptIds])));
+    });
+    return () => { active = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedUserId]);
 
   const toggleDept = (id) => {
     setSelectedDeptIds((prev) =>
@@ -517,6 +567,102 @@ function AssignManagerModal({ managerData, allDepartments, eligibleUsers, token,
   );
 }
 
+// Renders the department table body as a real parent → sub-department
+// tree (same recursion shape as Positions.jsx's DesignationRows) instead
+// of a flat list where "Parent Department" was just a text column you had
+// to cross-reference by eye.
+function DepartmentRows({ byParent, parentId, depth, visited, canManage, onAssignManager, onAddSub, onEdit, onDelete, onRemoveManager }) {
+  const children = byParent.get(parentId) || [];
+
+  return children.flatMap((dept) => {
+    if (visited.has(dept.id)) return [];
+    const nextVisited = new Set(visited).add(dept.id);
+    return [
+      <tr key={dept.id} className="hover:bg-gray-50/70 dark:hover:bg-gray-700/40">
+        <td className="px-4 py-3 font-semibold text-gray-900 dark:text-white">
+          <span style={{ paddingLeft: `${depth * 18}px` }} className="inline-flex items-center gap-1.5">
+            {depth > 0 && <span className="font-normal text-gray-300 dark:text-gray-600">└</span>}
+            {dept.name}
+          </span>
+        </td>
+        <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
+          {dept.company_code ? (
+            <div className="flex flex-wrap gap-1">
+              {dept.company_code.split(",").filter(Boolean).map((code) => (
+                <span key={code} className="inline-flex items-center rounded-md bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-300 border border-gray-200 dark:border-gray-700">
+                  {code}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <span className="text-xs text-gray-400 italic">All Companies (Global)</span>
+          )}
+        </td>
+        <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
+          {dept.unit?.name || <span className="text-xs text-gray-400 italic">—</span>}
+        </td>
+        <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
+          {dept.managers && dept.managers.length > 0 ? (
+            <div className="flex flex-wrap gap-1">
+              {dept.managers.map((m) => (
+                <span
+                  key={m.id}
+                  className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-brand-50 dark:bg-brand-900/40 text-brand-700 dark:text-brand-300 border border-brand-200 dark:border-brand-800"
+                >
+                  <UserCheck size={11} /> {m.name}
+                  {canManage && (
+                    <button
+                      type="button"
+                      aria-label={`Remove ${m.name} as manager of ${dept.name}`}
+                      className="ml-0.5 text-brand-500 hover:text-red-600 dark:text-brand-400 dark:hover:text-red-400"
+                      onClick={() => onRemoveManager(m.id, dept.id)}
+                    >
+                      ×
+                    </button>
+                  )}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <span className="text-xs text-gray-400 italic">No head assigned</span>
+          )}
+        </td>
+        <td className="px-4 py-3 text-right">
+          <div className="flex justify-end gap-1">
+            {canManage && (
+              <Button size="sm" variant="ghost" aria-label={`Add sub-department under ${dept.name}`} title="Add sub-department"
+                onClick={() => onAddSub(dept)}>
+                <FolderPlus size={14} />
+              </Button>
+            )}
+            {canManage && (
+              <Button size="sm" variant="ghost" aria-label={`Assign head to ${dept.name}`} title="Assign department head"
+                onClick={() => onAssignManager(dept)}>
+                <UserPlus size={14} />
+              </Button>
+            )}
+            {canManage && (
+              <Button size="sm" variant="ghost" aria-label={`Edit ${dept.name}`} onClick={() => onEdit(dept)}>
+                <Pencil size={14} />
+              </Button>
+            )}
+            {canManage && (
+              <Button size="sm" variant="ghost" aria-label={`Delete ${dept.name}`} onClick={() => onDelete(dept)}>
+                <Trash2 size={14} className="text-red-600 dark:text-red-400" />
+              </Button>
+            )}
+          </div>
+        </td>
+      </tr>,
+      <DepartmentRows
+        key={`${dept.id}-children`}
+        byParent={byParent} parentId={dept.id} depth={depth + 1} visited={nextVisited}
+        canManage={canManage} onAssignManager={onAssignManager} onAddSub={onAddSub} onEdit={onEdit} onDelete={onDelete} onRemoveManager={onRemoveManager}
+      />,
+    ];
+  });
+}
+
 function LegacyUnitsPanel({ rows, companies, busy, onAdopt }) {
   const [choices, setChoices] = useState({});
 
@@ -699,6 +845,21 @@ export default function CompanyUnits({ initialTab = "companies", hideTabs = fals
     [companies],
   );
 
+  // A department whose parent_department_id points outside the current
+  // (possibly company-filtered) list would otherwise vanish entirely
+  // instead of just losing its indentation — fall back to root so a
+  // filtered view never silently drops a row.
+  const departmentTree = useMemo(() => {
+    const ids = new Set(departments.map((d) => d.id));
+    const byParent = new Map();
+    departments.forEach((d) => {
+      const key = d.parent_department_id && ids.has(d.parent_department_id) ? d.parent_department_id : null;
+      if (!byParent.has(key)) byParent.set(key, []);
+      byParent.get(key).push(d);
+    });
+    return byParent;
+  }, [departments]);
+
   const canManage = can("admin.company.create") || can("admin.company.update") || can("admin.company.manage");
 
   return (
@@ -833,60 +994,126 @@ export default function CompanyUnits({ initialTab = "companies", hideTabs = fals
                   </td></tr>
                 )}
 
-                {companies.map((company) => (
-                  <tr key={company.id} className="hover:bg-gray-50/70 dark:hover:bg-gray-700/40">
-                    <td className="px-4 py-3 font-semibold text-gray-900 dark:text-white">{company.name}</td>
-                    <td className="px-4 py-3 font-mono text-xs text-gray-600 dark:text-gray-300">{company.code}</td>
-                    <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{company.units}</td>
-                    <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
-                      <UsageCell assigned={company.assignedUsers} legacy={company.legacyUsers} />
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge variant={company.isActive ? "green" : "yellow"}>
-                        {company.isActive ? "Active" : "Inactive"}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400">{formatDate(company.createdAt)}</td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex justify-end gap-1">
-                        {can("admin.company.update") && (
-                          <Button size="sm" variant="ghost" aria-label={`Edit ${company.name}`}
-                            onClick={() => setCompanyDialog(company)}>
-                            <Pencil size={14} />
-                          </Button>
-                        )}
-                        {can("admin.company.status") && (
-                          <Button
-                            size="sm" variant="ghost"
-                            aria-label={`${company.isActive ? "Deactivate" : "Activate"} ${company.name}`}
-                            onClick={() => run(
-                              () => companyUnitApi.setCompanyStatus(company.id, !company.isActive, token, tokenType),
-                              company.isActive ? "Company deactivated" : "Company activated",
+                {companies.map((company) => {
+                  const companyUnits = units.filter((u) => u.companyId === company.id);
+                  return (
+                    <Fragment key={company.id}>
+                      <tr className="hover:bg-gray-50/70 dark:hover:bg-gray-700/40">
+                        <td className="px-4 py-3 font-semibold text-gray-900 dark:text-white">{company.name}</td>
+                        <td className="px-4 py-3 font-mono text-xs text-gray-600 dark:text-gray-300">{company.code}</td>
+                        <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{company.units}</td>
+                        <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
+                          <UsageCell assigned={company.assignedUsers} legacy={company.legacyUsers} />
+                        </td>
+                        <td className="px-4 py-3">
+                          <Badge variant={company.isActive ? "green" : "yellow"}>
+                            {company.isActive ? "Active" : "Inactive"}
+                          </Badge>
+                        </td>
+                        <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400">{formatDate(company.createdAt)}</td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex justify-end gap-1">
+                            {can("admin.unit.create") && (
+                              <Button size="sm" variant="ghost" aria-label="Add unit" title="Add unit"
+                                onClick={() => setUnitDialog({})}>
+                                <Plus size={14} />
+                              </Button>
                             )}
-                          >
-                            {company.isActive ? <PowerOff size={14} /> : <Power size={14} />}
-                          </Button>
-                        )}
-                        {can("admin.company.delete") && (
-                          <Button
-                            size="sm" variant="ghost"
-                            aria-label={`Delete ${company.name}`}
-                            disabled={company.units > 0 || company.assignedUsers > 0 || company.legacyUsers > 0}
-                            title={company.units > 0 || company.assignedUsers > 0 || company.legacyUsers > 0
-                              ? "Cannot delete this company because users or units are assigned to it."
-                              : "Delete company"}
-                            onClick={() => run(
-                              () => companyUnitApi.deleteCompany(company.id, token, tokenType),
-                              "Company deleted",
+                            {can("admin.company.update") && (
+                              <Button size="sm" variant="ghost" aria-label={`Edit ${company.name}`}
+                                onClick={() => setCompanyDialog(company)}>
+                                <Pencil size={14} />
+                              </Button>
                             )}
-                          >
-                            <Trash2 size={14} className="text-red-600 dark:text-red-400" />
-                          </Button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                            {can("admin.company.status") && (
+                              <Button
+                                size="sm" variant="ghost"
+                                aria-label={`${company.isActive ? "Deactivate" : "Activate"} ${company.name}`}
+                                onClick={() => run(
+                                  () => companyUnitApi.setCompanyStatus(company.id, !company.isActive, token, tokenType),
+                                  company.isActive ? "Company deactivated" : "Company activated",
+                                )}
+                              >
+                                {company.isActive ? <PowerOff size={14} /> : <Power size={14} />}
+                              </Button>
+                            )}
+                            {can("admin.company.delete") && (
+                              <Button
+                                size="sm" variant="ghost"
+                                aria-label={`Delete ${company.name}`}
+                                disabled={company.units > 0 || company.assignedUsers > 0 || company.legacyUsers > 0}
+                                title={company.units > 0 || company.assignedUsers > 0 || company.legacyUsers > 0
+                                  ? "Cannot delete this company because users or units are assigned to it."
+                                  : "Delete company"}
+                                onClick={() => {
+                                  if (!window.confirm(`Delete "${company.name}"? This cannot be undone.`)) return;
+                                  run(() => companyUnitApi.deleteCompany(company.id, token, tokenType), "Company deleted");
+                                }}
+                              >
+                                <Trash2 size={14} className="text-red-600 dark:text-red-400" />
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                      {companyUnits.map((unit) => (
+                        <tr key={`unit-${unit.id}`} className="bg-gray-50/50 dark:bg-gray-900/20 hover:bg-gray-100/70 dark:hover:bg-gray-700/40">
+                          <td className="px-4 py-2 pl-10 text-sm text-gray-700 dark:text-gray-300">
+                            <span className="mr-1.5 text-gray-300 dark:text-gray-600">└</span>{unit.name}
+                          </td>
+                          <td className="px-4 py-2 text-xs text-gray-400 dark:text-gray-500">Branch</td>
+                          <td className="px-4 py-2" />
+                          <td className="px-4 py-2 text-gray-600 dark:text-gray-300">
+                            <UsageCell assigned={unit.assignedUsers} legacy={unit.legacyUsers} />
+                          </td>
+                          <td className="px-4 py-2">
+                            <Badge variant={unit.isActive ? "green" : "yellow"}>
+                              {unit.isActive ? "Active" : "Inactive"}
+                            </Badge>
+                          </td>
+                          <td className="px-4 py-2 text-right">
+                            <div className="flex justify-end gap-1">
+                              {can("admin.unit.update") && (
+                                <Button size="sm" variant="ghost" aria-label={`Edit ${unit.name}`}
+                                  onClick={() => setUnitDialog(unit)}>
+                                  <Pencil size={13} />
+                                </Button>
+                              )}
+                              {can("admin.unit.status") && (
+                                <Button
+                                  size="sm" variant="ghost"
+                                  aria-label={`${unit.isActive ? "Deactivate" : "Activate"} ${unit.name}`}
+                                  onClick={() => run(
+                                    () => companyUnitApi.setUnitStatus(unit.id, !unit.isActive, token, tokenType),
+                                    unit.isActive ? "Unit deactivated" : "Unit activated",
+                                  )}
+                                >
+                                  {unit.isActive ? <PowerOff size={13} /> : <Power size={13} />}
+                                </Button>
+                              )}
+                              {can("admin.unit.delete") && (
+                                <Button
+                                  size="sm" variant="ghost"
+                                  aria-label={`Delete ${unit.name}`}
+                                  disabled={unit.assignedUsers > 0 || unit.legacyUsers > 0}
+                                  title={unit.assignedUsers > 0 || unit.legacyUsers > 0
+                                    ? "Cannot delete this unit because users are assigned to it."
+                                    : "Delete unit"}
+                                  onClick={() => {
+                                    if (!window.confirm(`Delete "${unit.name}"? This cannot be undone.`)) return;
+                                    run(() => companyUnitApi.deleteUnit(unit.id, token, tokenType), "Unit deleted");
+                                  }}
+                                >
+                                  <Trash2 size={13} className="text-red-600 dark:text-red-400" />
+                                </Button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -954,10 +1181,10 @@ export default function CompanyUnits({ initialTab = "companies", hideTabs = fals
                             title={unit.assignedUsers > 0 || unit.legacyUsers > 0
                               ? "Cannot delete this unit because users are assigned to it."
                               : "Delete unit"}
-                            onClick={() => run(
-                              () => companyUnitApi.deleteUnit(unit.id, token, tokenType),
-                              "Unit deleted",
-                            )}
+                            onClick={() => {
+                              if (!window.confirm(`Delete "${unit.name}"? This cannot be undone.`)) return;
+                              run(() => companyUnitApi.deleteUnit(unit.id, token, tokenType), "Unit deleted");
+                            }}
                           >
                             <Trash2 size={14} className="text-red-600 dark:text-red-400" />
                           </Button>
@@ -980,75 +1207,33 @@ export default function CompanyUnits({ initialTab = "companies", hideTabs = fals
                   <Th>Department Name</Th>
                   <Th>Company</Th>
                   <Th>Branch</Th>
-                  <Th>Parent Department</Th>
-                  <Th>Assigned Managers</Th>
+                  <Th>Department Head</Th>
                   <Th className="text-right">Actions</Th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700/60">
                 {departments.length === 0 && (
-                  <tr><td colSpan={6} className="p-10 text-center text-gray-500 dark:text-gray-400">
+                  <tr><td colSpan={5} className="p-10 text-center text-gray-500 dark:text-gray-400">
                     No departments match these filters.
                   </td></tr>
                 )}
-                {departments.map((dept) => (
-                  <tr key={dept.id} className="hover:bg-gray-50/70 dark:hover:bg-gray-700/40">
-                    <td className="px-4 py-3 font-semibold text-gray-900 dark:text-white">
-                      {dept.name}
-                    </td>
-                    <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
-                      {dept.company_code ? (
-                        <div className="flex flex-wrap gap-1">
-                          {dept.company_code.split(",").filter(Boolean).map(code => (
-                            <span key={code} className="inline-flex items-center rounded-md bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-300 border border-gray-200 dark:border-gray-700">
-                              {code}
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="text-xs text-gray-400 italic">All Companies (Global)</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
-                      {dept.unit?.name || <span className="text-xs text-gray-400 italic">—</span>}
-                    </td>
-                    <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
-                      {dept.parentDepartment?.name || <span className="text-xs text-gray-400 italic">—</span>}
-                    </td>
-                    <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
-                      {dept.managers && dept.managers.length > 0 ? (
-                        <div className="flex flex-wrap gap-1">
-                          {dept.managers.map((m) => (
-                            <span
-                              key={m.id}
-                              className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-brand-50 dark:bg-brand-900/40 text-brand-700 dark:text-brand-300 border border-brand-200 dark:border-brand-800"
-                            >
-                              <UserCheck size={11} /> {m.name}
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="text-xs text-gray-400 italic">No manager assigned</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex justify-end gap-1">
-                        {canManage && (
-                          <Button size="sm" variant="ghost" aria-label={`Edit ${dept.name}`} onClick={() => setDepartmentDialog(dept)}>
-                            <Pencil size={14} />
-                          </Button>
-                        )}
-                        {canManage && (
-                          <Button size="sm" variant="ghost" aria-label={`Delete ${dept.name}`}
-                            onClick={() => run(() => departmentApi.deleteDepartment(dept.id, token, tokenType), "Department deleted")}
-                          >
-                            <Trash2 size={14} className="text-red-600 dark:text-red-400" />
-                          </Button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {departments.length > 0 && (
+                  <DepartmentRows
+                    byParent={departmentTree}
+                    parentId={null}
+                    depth={0}
+                    visited={new Set()}
+                    canManage={canManage}
+                    onAssignManager={(dept) => setManagerDialog({ initialDepartmentIds: [dept.id] })}
+                    onAddSub={(dept) => setDepartmentDialog({ presetParentId: dept.id })}
+                    onEdit={(dept) => setDepartmentDialog(dept)}
+                    onDelete={(dept) => {
+                      if (!window.confirm(`Delete "${dept.name}"? This cannot be undone.`)) return;
+                      run(() => departmentApi.deleteDepartment(dept.id, token, tokenType), "Department deleted");
+                    }}
+                    onRemoveManager={removeManagerAssignment}
+                  />
+                )}
               </tbody>
             </table>
           </div>
@@ -1179,6 +1364,7 @@ export default function CompanyUnits({ initialTab = "companies", hideTabs = fals
       {departmentDialog && (
         <DepartmentModal
           department={departmentDialog.id ? departmentDialog : null}
+          presetParentId={departmentDialog.presetParentId ?? null}
           companies={companies}
           units={units}
           departments={departments}
@@ -1191,6 +1377,7 @@ export default function CompanyUnits({ initialTab = "companies", hideTabs = fals
       {managerDialog && (
         <AssignManagerModal
           managerData={managerDialog.id ? managerDialog : null}
+          initialDepartmentIds={managerDialog.initialDepartmentIds}
           allDepartments={departments}
           eligibleUsers={eligibleUsers}
           token={token}
