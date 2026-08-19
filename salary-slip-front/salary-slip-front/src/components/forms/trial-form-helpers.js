@@ -6,6 +6,8 @@
  * are all components, and mixing these in meant editing a date formatter
  * remounted the print preview.
  */
+import { getEmployeePhotoUrl } from "../../pages/admin/AdminModals/employee-helpers";
+
 export function firstPresent(...values) {
   return values.find((value) => value !== undefined && value !== null) ?? "";
 }
@@ -35,6 +37,7 @@ export function normalizeTrialForm(item, index) {
     gender: item.gender || "-",
     email: item.email || "-",
     unit: firstPresent(item.unit, item.unit_name),
+    photo: getEmployeePhotoUrl(item.photo),
     lastCompanyName: firstPresent(item.last_company_name, item.lastCompanyName),
     lastCompanyAddress: firstPresent(
       item.last_company_address,

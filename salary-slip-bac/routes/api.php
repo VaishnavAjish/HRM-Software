@@ -1132,7 +1132,7 @@ Route::middleware('jwt.auth')->group(function () {
     });
 
     /* --------------------------------------------------- 03.01 Job Architecture */
-    Route::prefix('workforce')->middleware('module.schema:hr')->group(function () {
+    Route::prefix('v1/admin/workforce')->middleware('module.schema:hr')->group(function () {
         // Job Functions
         Route::get('job-functions', [\App\Http\Controllers\Api\V1\Admin\Workforce\JobFunctionController::class, 'index'])
             ->middleware('permission:workforce.job_function.read');

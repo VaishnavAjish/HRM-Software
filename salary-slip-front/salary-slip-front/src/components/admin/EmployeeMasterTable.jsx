@@ -152,6 +152,30 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
   const [editForm, setEditForm] = useState({});
   const [editSaving, setEditSaving] = useState(false);
 
+  // UserController::index() paginates (`limit` query param, defaulting to
+  // 15, becomes the page size — it does not raise or remove the cap). A
+  // single request for "the first 100" silently drops everyone past that,
+  // ordered newest-first, so it's the OLDEST employees that vanish first —
+  // exactly what made this look like random records going missing. Paging
+  // through with `last_page` until exhausted is the only way to actually
+  // get everyone, matching the fix already applied to this same endpoint's
+  // CSV export path elsewhere in this app.
+  const fetchAllEmployeePages = async (extraFilters) => {
+    const perPage = 500;
+    const collected = [];
+    let page = 1;
+    for (;;) {
+      const res = await salaryApi.getAllEmployees(
+        user?.accessToken, user?.tokenType, { ...extraFilters, limit: perPage, page }, companyScope,
+      );
+      const users = res?.data?.users;
+      collected.push(...(users?.data ?? []));
+      if (page >= (users?.last_page ?? 1)) break;
+      page += 1;
+    }
+    return collected;
+  };
+
   const requestAll = async () => {
     try {
       // Appointments are deliberately NOT fetched here. An appointment only
@@ -172,14 +196,14 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
       const [trialResult, appointmentResult, pendingResult, employeeResult] = await Promise.allSettled([
         authApi.getTrialForms(user?.accessToken, user?.tokenType, companyScope),
         authApi.getAppointmentForms(user?.accessToken, user?.tokenType, companyScope),
-        salaryApi.getAllEmployees(user?.accessToken, user?.tokenType, { status: "2", limit: 100 }, companyScope),
-        salaryApi.getAllEmployees(user?.accessToken, user?.tokenType, { limit: 100 }, companyScope),
+        fetchAllEmployeePages({ status: "2" }),
+        fetchAllEmployeePages({}),
       ]);
 
       const trialRes = trialResult.status === "fulfilled" ? trialResult.value : null;
       const appointmentRes = appointmentResult.status === "fulfilled" ? appointmentResult.value : null;
-      const pendingRes = pendingResult.status === "fulfilled" ? pendingResult.value : null;
-      const employeeRes = employeeResult.status === "fulfilled" ? employeeResult.value : null;
+      const pendingUsers = pendingResult.status === "fulfilled" ? pendingResult.value : [];
+      const employeeUsers = employeeResult.status === "fulfilled" ? employeeResult.value : [];
 
       const trialRows = (trialRes?.data || []).map((r) => ({ ...r, __stage: "trial" }));
       // Appointments that are NOT yet approved (checkbox !== 1, no emp_code, status !== 1)
@@ -189,8 +213,8 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
       const appointmentRows = appointmentList
         .filter((a) => !a.emp_code && Number(a.checkbox) !== 1 && String(a.status) !== '1' && a.status !== 'Approved')
         .map((r) => ({ ...r, __stage: "appointment" }));
-      const pendingRows = (pendingRes?.data?.users?.data ?? pendingRes?.data?.users ?? []).map((r) => ({ ...r, __stage: "pending" }));
-      const employeeRows = (employeeRes?.data?.users?.data ?? employeeRes?.data?.users ?? []).map((r) => ({ ...r, __stage: "employee" }));
+      const pendingRows = pendingUsers.map((r) => ({ ...r, __stage: "pending" }));
+      const employeeRows = employeeUsers.map((r) => ({ ...r, __stage: "employee" }));
 
       const merged = new Map();
       [...trialRows, ...appointmentRows, ...pendingRows, ...employeeRows].forEach((r) => merged.set(r.id, r));

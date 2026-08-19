@@ -22,6 +22,7 @@ const Row = ({ label, value, full }) => (
 
 export const PrintableTrialForm = ({ data, formRef }) => {
   const mobileFields = [
+    { label: "Branch / Unit", value: data.unit },
     { label: "Department", value: data.department },
     { label: "Designation", value: data.designation },
     { label: "Name of Employee", value: data.name },
@@ -55,7 +56,15 @@ export const PrintableTrialForm = ({ data, formRef }) => {
       className="mx-auto w-full max-w-[850px] rounded-lg border border-dotted border-gray-600 bg-white p-6 text-black shadow-sm"
     >
       <div className="mb-1 flex items-start justify-between">
-        <div className="flex-1" />
+        <div className="flex-1">
+          <div className="w-24 h-32 border border-black flex items-center justify-center bg-gray-50 overflow-hidden print:w-[30mm] print:h-[40mm]">
+            {data.photo ? (
+              <img src={data.photo} alt="Photo" className="w-full h-full object-cover" />
+            ) : (
+              <span className="text-[10px] text-gray-400">Photo</span>
+            )}
+          </div>
+        </div>
         <div className="flex-1 text-center">
           <h1 className="text-2xl font-black uppercase tracking-widest text-black">
             Nidhi Impex
@@ -107,6 +116,20 @@ export const PrintableTrialForm = ({ data, formRef }) => {
                 {data.designation}
               </td>
             </tr>
+            <tr>
+              <td className="border border-black bg-gray-50 px-3 py-2 text-[12px] font-bold uppercase text-black">
+                Branch / Unit
+              </td>
+              <td className="border border-black px-3 py-2 text-[13px] font-medium uppercase text-black">
+                {data.unit}
+              </td>
+              <td className="border border-black bg-gray-50 px-3 py-2 text-[12px] font-bold uppercase text-black">
+                Gender
+              </td>
+              <td className="border border-black px-3 py-2 text-[13px] font-medium uppercase text-black">
+                {data.gender}
+              </td>
+            </tr>
             <Row label="Name of Employee" value={data.name} full />
             <Row label="Aadhaar Number" value={data.aadharCardNo} full />
             <Row label="Address" value={data.address} full />
@@ -118,26 +141,13 @@ export const PrintableTrialForm = ({ data, formRef }) => {
                 {data.mobileNo1}
               </td>
               <td className="border border-black bg-gray-50 px-3 py-2 text-[12px] font-bold uppercase text-black">
-                Gender
-              </td>
-              <td className="border border-black px-3 py-2 text-[13px] font-medium uppercase text-black">
-                {data.gender}
-              </td>
-            </tr>
-            <tr>
-              <td className="border border-black bg-gray-50 px-3 py-2 text-[12px] font-bold uppercase text-black">
                 Mobile No 2
               </td>
               <td className="border border-black px-3 py-2 text-[13px] font-medium text-black">
                 {data.mobileNo2}
               </td>
-              <td className="border border-black bg-gray-50 px-3 py-2 text-[12px] font-bold uppercase text-black">
-                Email Id
-              </td>
-              <td className="border border-black px-3 py-2 text-[13px] font-medium lowercase text-black">
-                {data.email}
-              </td>
             </tr>
+            <Row label="Email Id" value={data.email} full />
             <Row label="Last Company Name" value={data.lastCompanyName} full />
             <Row
               label="Last Company Address"

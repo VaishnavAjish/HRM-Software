@@ -262,21 +262,22 @@ const PrintableTrialForm = ({ data, formRef }) => {
                 <td className="border border-black bg-gray-50 px-3 py-2 text-[12px] font-bold uppercase text-black">Designation</td>
                 <td className="border border-black px-3 py-2 text-[13px] font-medium uppercase text-black">{data.designation}</td>
               </tr>
+              <tr>
+                <td className="border border-black bg-gray-50 px-3 py-2 text-[12px] font-bold uppercase text-black">Branch / Unit</td>
+                <td className="border border-black px-3 py-2 text-[13px] font-medium uppercase text-black">{data.unit}</td>
+                <td className="border border-black bg-gray-50 px-3 py-2 text-[12px] font-bold uppercase text-black">Gender</td>
+                <td className="border border-black px-3 py-2 text-[13px] font-medium uppercase text-black">{data.gender}</td>
+              </tr>
               <Row label="Name of Employee" value={data.name} full />
               <Row label="Address" value={data.address} full />
               <Row label="Aadhaar Number" value={data.aadharCardNo} full />
               <tr>
                 <td className="border border-black bg-gray-50 px-3 py-2 text-[12px] font-bold uppercase text-black">Mobile No 1</td>
                 <td className="border border-black px-3 py-2 text-[13px] font-medium text-black">{data.mobileNo1}</td>
-                <td className="border border-black bg-gray-50 px-3 py-2 text-[12px] font-bold uppercase text-black">Gender</td>
-                <td className="border border-black px-3 py-2 text-[13px] font-medium uppercase text-black">{data.gender}</td>
-              </tr>
-              <tr>
                 <td className="border border-black bg-gray-50 px-3 py-2 text-[12px] font-bold uppercase text-black">Mobile No 2</td>
                 <td className="border border-black px-3 py-2 text-[13px] font-medium text-black">{data.mobileNo2}</td>
-                <td className="border border-black bg-gray-50 px-3 py-2 text-[12px] font-bold uppercase text-black">Email Id</td>
-                <td className="border border-black px-3 py-2 text-[13px] font-medium lowercase text-black">{data.email}</td>
               </tr>
+              <Row label="Email Id" value={data.email} full />
               <Row label="Last Company Name" value={data.lastCompanyName} full />
               <Row label="Last Company Address" value={data.lastCompanyAddress} full />
               <tr>
@@ -353,7 +354,13 @@ export default function TrialForm() {
   const canCreateTrial = trialAccess.create || user?.role === "agent";
   const canUpdateTrial = trialAccess.update;
   const canDeleteTrial = trialAccess.deleteRecord;
-  const canCreateAppointment = trialAccess.processIntoAppointment;
+  // Mirrors canCreateTrial above: the Agent Dashboard's own Process button
+  // (AgentDashboard.jsx canProcessAsAppointment) has no permission check at
+  // all — any agent can process an approved trial form there. This page is
+  // the same data reused at /agent/trial-forms, so without this fallback an
+  // agent lacking the ui.forms.appointment.create grant saw Process on one
+  // tab and not the other for the exact same candidate.
+  const canCreateAppointment = trialAccess.processIntoAppointment || user?.role === "agent";
   const [loading, setLoading] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [prefillTrialData, setPrefillTrialData] = useState(null);

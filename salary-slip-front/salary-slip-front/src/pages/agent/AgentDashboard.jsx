@@ -61,6 +61,31 @@ export default function AgentDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
+  // An admin approving a Trial Form (Company & Unit's own "Approve" button)
+  // happens entirely outside this page — there's no push/websocket telling
+  // an already-open Agent Portal that a candidate's checkbox flipped, so the
+  // Process button (canProcessAsAppointment, gated on that same field) never
+  // appeared until a manual reload re-mounted the page. Polling quietly in
+  // the background, plus refetching whenever the tab regains focus, closes
+  // that gap without the agent having to know to refresh.
+  useEffect(() => {
+    if (!user?.accessToken) return undefined;
+
+    const quietRefetch = () => { requestCandidates().catch(() => {}); };
+    const onVisible = () => { if (document.visibilityState === "visible") quietRefetch(); };
+
+    const interval = setInterval(quietRefetch, 30000);
+    window.addEventListener("focus", quietRefetch);
+    document.addEventListener("visibilitychange", onVisible);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("focus", quietRefetch);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
   const handleModalClose = (wasSubmitted) => {
     // Clearing the query string is what closes the modal.
     navigate("/agent", { replace: true });
