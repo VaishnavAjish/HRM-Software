@@ -286,6 +286,21 @@ export function buildPayslipData({ emp = {}, payslip = {}, companyId } = {}) {
     readNumber(payslip.grossSalary, payslip.gross_salary) ||
     computedGrossSalary;
 
+  const explicitSalary = readNumber(
+    payslip.salary,
+    payslip.fixedSalary,
+    payslip.fixed_salary,
+    payslip.fix_salary,
+    payslip.fixSalary,
+    emp.salary,
+    emp.fixedSalary,
+    emp.fixed_salary,
+    emp.fix_salary,
+    emp.fixSalary,
+  );
+
+  const fixedSalary = explicitSalary > 0 ? explicitSalary : grossSalary;
+
   const inferredDeductions = Math.max(
     0,
     grossSalary -
@@ -565,7 +580,7 @@ export function buildPayslipData({ emp = {}, payslip = {}, companyId } = {}) {
       earnings: totalEarnings,
       deductions: totalDeductions,
       netPay,
-      salaryCredited: netPay,
+      salaryCredited: fixedSalary,
     },
     netPayInWords: `${numberToWords(netPay)} Only`,
   };

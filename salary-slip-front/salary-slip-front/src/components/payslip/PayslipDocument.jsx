@@ -528,6 +528,10 @@ function SilverPayslipLayout({ data, className }) {
             <span>In Words</span>
             <span className="font-normal">: Rs. {numberToWords(netPay)} Only</span>
           </div>
+          <div className="grid grid-cols-[82px_1fr] border-b border-black px-1.5 py-1 font-extrabold">
+            <span>Salary</span>
+            <span className="font-bold">: {formatCurrency(data.totals.salaryCredited)}</span>
+          </div>
           <div className="border-b border-black px-1.5 py-1 font-extrabold">
             This is Computer Generated Sheet, does not require Signature.
           </div>

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
-import { ClipboardList, FileText, CheckCircle2, Clock, Printer, Eye, ArrowRightCircle, Loader2, Plus } from "lucide-react";
+import { ClipboardList, FileText, CheckCircle2, Clock, Printer, Eye, ArrowRightCircle, Loader2, Plus, Pencil } from "lucide-react";
 import AppointmentModal from "../auth/AppointmentModal";
 import TrialFormModal from "../auth/TrialFormModal";
 import { authApi } from "../../utils/api";
@@ -23,6 +23,7 @@ export default function AgentDashboard() {
   const formOpen = new URLSearchParams(location.search).get("modal") === "appointment";
   const trialFormOpen = new URLSearchParams(location.search).get("modal") === "trial";
   const [viewCandidate, setViewCandidate] = useState(null);
+  const [editCandidate, setEditCandidate] = useState(null);
   const [processCandidate, setProcessCandidate] = useState(null);
   const [candidates, setCandidates] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -529,12 +530,21 @@ export default function AgentDashboard() {
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <button
-                      onClick={() => setViewCandidate(c)}
+                      onClick={() => { setEditCandidate(null); setViewCandidate(c); }}
                       className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-50 dark:bg-brand-900/20 hover:bg-brand-100 dark:hover:bg-brand-900/40 rounded-lg text-xs font-semibold text-brand-700 dark:text-brand-300 transition-colors"
                     >
                       <Eye size={12} />
                       View
                     </button>
+                    {!isCandidateApproved(c) && (
+                      <button
+                        onClick={() => { setViewCandidate(null); setEditCandidate(c); }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 dark:bg-amber-900/20 hover:bg-amber-100 dark:hover:bg-amber-900/40 rounded-lg text-xs font-semibold text-amber-700 dark:text-amber-300 transition-colors border border-amber-200 dark:border-amber-800"
+                      >
+                        <Pencil size={12} />
+                        Edit
+                      </button>
+                    )}
                     <button
                       onClick={() => handleDownloadPDF(c)}
                       disabled={pdfLoading === c.id}
@@ -642,12 +652,21 @@ export default function AgentDashboard() {
                       <td className="px-4 py-3 text-right whitespace-nowrap">
                         <div className="flex items-center justify-end gap-2">
                           <button
-                            onClick={() => setViewCandidate(c)}
+                            onClick={() => { setEditCandidate(null); setViewCandidate(c); }}
                             className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-brand-50 hover:bg-brand-100 text-brand-700 dark:bg-brand-900/20 dark:hover:bg-brand-900/40 dark:text-brand-300 rounded-lg text-xs font-semibold transition-colors"
                           >
                             <Eye size={14} />
                             View
                           </button>
+                          {!isCandidateApproved(c) && (
+                            <button
+                              onClick={() => { setViewCandidate(null); setEditCandidate(c); }}
+                              className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:hover:bg-amber-900/40 dark:text-amber-300 rounded-lg text-xs font-semibold transition-colors border border-amber-200 dark:border-amber-800"
+                            >
+                              <Pencil size={14} />
+                              Edit
+                            </button>
+                          )}
                           <button
                             onClick={() => handleDownloadPDF(c)}
                             disabled={pdfLoading === c.id}
@@ -682,39 +701,46 @@ export default function AgentDashboard() {
       </div>
 
       <AppointmentModal 
-        isOpen={formOpen || (!!viewCandidate && viewCandidate.type !== 'trial')} 
+        isOpen={formOpen || (!!viewCandidate && viewCandidate.type !== 'trial') || (!!editCandidate && editCandidate.type !== 'trial')} 
         onClose={() => {
-          if (viewCandidate) {
-            setViewCandidate(null);
-          } else {
-            handleModalClose(false);
-          }
+          if (viewCandidate) setViewCandidate(null);
+          else if (editCandidate) setEditCandidate(null);
+          else handleModalClose(false);
         }}
         onSuccess={() => {
-          if (viewCandidate) {
-            setViewCandidate(null);
-          }
+          if (viewCandidate) setViewCandidate(null);
+          if (editCandidate) setEditCandidate(null);
           handleModalClose(true);
         }}
-        initialData={viewCandidate && viewCandidate.type !== 'trial' ? { id: viewCandidate.id || viewCandidate._id, raw: viewCandidate, addedBy: viewCandidate.addedBy || user?.id } : { addedBy: user?.id }}
+        isViewMode={Boolean(viewCandidate && !editCandidate)}
+        initialData={
+          editCandidate && editCandidate.type !== 'trial'
+            ? { id: editCandidate.id || editCandidate._id, raw: editCandidate, addedBy: editCandidate.addedBy || editCandidate.added_by || user?.id }
+            : viewCandidate && viewCandidate.type !== 'trial'
+              ? { id: viewCandidate.id || viewCandidate._id, raw: viewCandidate, addedBy: viewCandidate.addedBy || viewCandidate.added_by || user?.id }
+              : { addedBy: user?.id }
+        }
       />
 
       <TrialFormModal
-        isOpen={trialFormOpen || (!!viewCandidate && viewCandidate.type === 'trial')}
+        isOpen={trialFormOpen || (!!viewCandidate && viewCandidate.type === 'trial') || (!!editCandidate && editCandidate.type === 'trial')}
         onClose={() => {
-          if (viewCandidate) {
-            setViewCandidate(null);
-          } else {
-            handleModalClose(false);
-          }
+          if (viewCandidate) setViewCandidate(null);
+          else if (editCandidate) setEditCandidate(null);
+          else handleModalClose(false);
         }}
-        initialData={viewCandidate && viewCandidate.type === 'trial' ? { id: viewCandidate.id || viewCandidate._id, raw: viewCandidate, addedBy: viewCandidate.addedBy || user?.id } : { addedBy: user?.id }}
+        isViewMode={Boolean(viewCandidate && !editCandidate)}
+        initialData={
+          editCandidate && editCandidate.type === 'trial'
+            ? { id: editCandidate.id || editCandidate._id, raw: editCandidate, addedBy: editCandidate.addedBy || editCandidate.added_by || user?.id }
+            : viewCandidate && viewCandidate.type === 'trial'
+              ? { id: viewCandidate.id || viewCandidate._id, raw: viewCandidate, addedBy: viewCandidate.addedBy || viewCandidate.added_by || user?.id }
+              : { addedBy: user?.id }
+        }
         onSuccess={() => {
-          if (viewCandidate) {
-            setViewCandidate(null);
-          } else {
-            handleModalClose(true);
-          }
+          if (viewCandidate) setViewCandidate(null);
+          if (editCandidate) setEditCandidate(null);
+          handleModalClose(true);
           refetchCandidates();
         }}
       />

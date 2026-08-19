@@ -106,6 +106,7 @@ const AppointmentModal = ({
   initialData = null,
   isPrefillFromTrial = false,
   onSuccess,
+  isViewMode = false,
 }) => {
   const { user } = useAuth();
   const { isAllCompanies } = useCompany();
@@ -1650,31 +1651,41 @@ const AppointmentModal = ({
                 <Printer size={16} />
                 Print
               </button>
-              <button
-                type="button"
-                onClick={handleSaveAndNext}
-                disabled={savePhase !== "idle"}
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-2.5 bg-brand-600 text-white text-sm font-semibold rounded-lg hover:bg-brand-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {savePhase !== "idle" ? (
-                  <>
-                    <RefreshCw size={16} className="animate-spin" />
-                    {{
-                      validating: "Validating...",
-                      creating: "Saving Appointment...",
-                      updating: "Saving Changes...",
-                      opening: "Opening Upload Documents...",
-                    }[savePhase]}
-                  </>
-                ) : (
-                  <>
-                    {savedAppointmentId
-                      ? "Save Changes & Next: Upload Documents"
-                      : "Save & Next: Upload Documents"}
-                    <ChevronRight size={16} />
-                  </>
-                )}
-              </button>
+              {isViewMode ? (
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-2.5 bg-gray-600 text-white text-sm font-semibold rounded-lg hover:bg-gray-700 transition"
+                >
+                  Close
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleSaveAndNext}
+                  disabled={savePhase !== "idle"}
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-2.5 bg-brand-600 text-white text-sm font-semibold rounded-lg hover:bg-brand-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {savePhase !== "idle" ? (
+                    <>
+                      <RefreshCw size={16} className="animate-spin" />
+                      {{
+                        validating: "Validating...",
+                        creating: "Saving Appointment...",
+                        updating: "Saving Changes...",
+                        opening: "Opening Upload Documents...",
+                      }[savePhase]}
+                    </>
+                  ) : (
+                    <>
+                      {savedAppointmentId
+                        ? "Save Changes & Next: Upload Documents"
+                        : "Save & Next: Upload Documents"}
+                      <ChevronRight size={16} />
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           </div>
         )}
