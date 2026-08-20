@@ -223,12 +223,12 @@ Route::middleware('jwt.auth')->group(function () {
         // Requiring self.profile.read here is circular: the browser needs this
         // snapshot to learn which permissions the actor holds in the first
         // place. The outer jwt.auth group remains the security boundary.
-        Route::get('me', [V1AuthorizationController::class, 'me'])->middleware('throttle:30,1');
+        Route::get('me', [V1AuthorizationController::class, 'me'])->middleware(['throttle:30,1', 'permission:self.profile.read']);
         // Tightened: a single batch (max 25 codes) answers a whole screen, so
         // these do not need high per-minute ceilings. Neither persists a
         // decision-log row (audit=false in the controller).
-        Route::post('check', [V1AuthorizationController::class, 'check'])->middleware('throttle:60,1');
-        Route::post('check-batch', [V1AuthorizationController::class, 'checkBatch'])->middleware('throttle:20,1');
+        Route::post('check', [V1AuthorizationController::class, 'check'])->middleware(['throttle:60,1', 'permission:self.profile.read']);
+        Route::post('check-batch', [V1AuthorizationController::class, 'checkBatch'])->middleware(['throttle:20,1', 'permission:self.profile.read']);
 
         /*
          * Administration surface for the Permission Matrix screen.
@@ -374,7 +374,8 @@ Route::middleware('jwt.auth')->group(function () {
         Route::delete('units/{id}', [V1CompanyUnitController::class, 'destroyUnit'])
             ->whereNumber('id')->middleware('permission:admin.unit.delete');
 
-        Route::get('departments/seed-legacy', [\App\Http\Controllers\DepartmentController::class, 'seedLegacy'])->name('departments.seed-legacy');
+        Route::get('departments/seed-legacy', [\App\Http\Controllers\DepartmentController::class, 'seedLegacy'])->name('departments.seed-legacy')
+            ->middleware('permission:admin.company.create');
         Route::get('departments', [\App\Http\Controllers\DepartmentController::class, 'index'])
             ->middleware('permission:admin.company.read');
         Route::post('departments', [\App\Http\Controllers\DepartmentController::class, 'store'])
@@ -397,13 +398,14 @@ Route::middleware('jwt.auth')->group(function () {
     Route::prefix('v1/delegations')->group(function () {
         Route::get('/', [V1DelegationController::class, 'index'])
             ->middleware('permission:admin.delegation.manage');
-        Route::get('mine', [V1DelegationController::class, 'mine']);
+        Route::get('mine', [V1DelegationController::class, 'mine'])
+            ->middleware('permission:self.profile.read');
         Route::post('/', [V1DelegationController::class, 'store'])
             ->middleware(['throttle:20,1', 'permission:admin.delegation.manage']);
         Route::post('{id}/accept', [V1DelegationController::class, 'accept'])
-            ->whereNumber('id')->middleware('throttle:30,1');
+            ->whereNumber('id')->middleware(['throttle:30,1', 'permission:self.profile.read']);
         Route::post('{id}/decline', [V1DelegationController::class, 'decline'])
-            ->whereNumber('id')->middleware('throttle:30,1');
+            ->whereNumber('id')->middleware(['throttle:30,1', 'permission:self.profile.read']);
         Route::post('{id}/revoke', [V1DelegationController::class, 'revoke'])
             ->whereNumber('id')->middleware('permission:admin.delegation.manage');
     });
@@ -661,7 +663,7 @@ Route::middleware('jwt.auth')->group(function () {
     // controller. Agent form pages reach it through the hr.department.read their
     // agent-portal nodes imply (see PermissionRegistry).
     Route::get('/department/get', [AdminController::class, 'getDepartment'])
-        ->middleware(['throttle:60,1']);
+        ->middleware(['throttle:60,1', 'permission:hr.department.read']);
 
     /*
      * In-app notifications — the caller's own, whatever their role.
@@ -1371,7 +1373,7 @@ Route::post('publish-indeed/{id}', [JobRequisitionController::class, 'publishToI
             });
             
             Route::group(['prefix' => 'quizzes'], function () {
-                Route::get('get', [TrainingQuizController::class, 'index'])->middleware('permission:hr.training.read');
+                Route::get('get', [TrainingQuizController::class, 'index'])->middleware('permission:hr.training.read,assessment.view,hr.requisition.read');
                 Route::get('show/{id}', [TrainingQuizController::class, 'show'])->middleware('permission:hr.training.read');
                 Route::post('store', [TrainingQuizController::class, 'store'])->middleware('permission:hr.training.create');
                 Route::put('update/{id}', [TrainingQuizController::class, 'update'])->middleware('permission:hr.training.update');

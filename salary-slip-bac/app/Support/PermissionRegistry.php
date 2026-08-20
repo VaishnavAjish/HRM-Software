@@ -697,7 +697,7 @@ class PermissionRegistry
             'type' => self::TYPE_FEATURE, 'label' => 'Assessments', 'order' => 75,
             'parent' => 'ui.hr.hiring',
             'description' => 'View assigned assessments and their results.',
-            'implies' => ['assessment.view'],
+            'implies' => ['assessment.view', 'hr.training.read'],
         ],
         'ui.hr.hiring.assessment_assign' => [
             'type' => self::TYPE_ACTION, 'label' => 'Assign & Send Assessment', 'order' => 76,

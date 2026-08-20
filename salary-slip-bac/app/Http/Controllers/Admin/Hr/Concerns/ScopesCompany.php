@@ -80,7 +80,12 @@ trait ScopesCompany
     {
         return $query->where(function ($q) use ($codes) {
             foreach ($codes as $code) {
-                $q->orWhereRaw("(',' || COALESCE(company_code, '') || ',') LIKE ?", ['%,' . $code . ',%']);
+                if ($code === 'all' || $code === 'all-companies') {
+                    $q->orWhereNotNull('company_code');
+                } else {
+                    $q->orWhere('company_code', $code)
+                      ->orWhere('company_code', 'like', "%{$code}%");
+                }
             }
         });
     }

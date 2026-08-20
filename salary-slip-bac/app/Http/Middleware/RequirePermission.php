@@ -21,7 +21,7 @@ class RequirePermission
     ) {
     }
 
-    public function handle(Request $request, Closure $next, string $permission)
+    public function handle(Request $request, Closure $next, string ...$permissions)
     {
         $actor = auth('api')->user();
         if (!$actor) {
@@ -52,60 +52,34 @@ class RequirePermission
         // business routes until the schema is complete; never expose the new
         // administration surface without its backing schema.
         if (!$this->schemaReady()) {
-            if (str_starts_with($permission, 'admin.')) {
-                return response()->json([
-                    'success' => false,
-                    'error' => [
-                        'code' => 'AUTHORIZATION_SCHEMA_NOT_READY',
-                        'message' => 'Authorization services are being upgraded. Please retry shortly.',
-                    ],
-                ], 503);
+            foreach ($permissions as $permission) {
+                if (!str_starts_with($permission, 'admin.') && $this->authorization->legacyAllows($actor, $permission, $resource)) {
+                    $request->attributes->set('authorization_compatibility_mode', true);
+                    return $next($request);
+                }
             }
-            if (!$this->authorization->legacyAllows($actor, $permission, $resource)) {
-                return response()->json([
-                    'success' => false,
-                    'error' => ['code' => 'PERMISSION_DENIED', 'message' => 'You are not permitted to perform this action.'],
-                ], 403);
-            }
-            $request->attributes->set('authorization_compatibility_mode', true);
-            return $next($request);
+            return response()->json([
+                'success' => false,
+                'error' => ['code' => 'PERMISSION_DENIED', 'message' => 'You are not permitted to perform this action.'],
+            ], 403);
         }
 
-        $decision = $this->authorization->decide($actor, $permission, $resource, [
-            'action' => ['changed_fields' => array_keys($request->except(['password', 'token', 'access_token']))],
-            'business_reason' => $request->input('businessReason'),
-        ]);
+        foreach ($permissions as $permission) {
+            $decision = $this->authorization->decide($actor, $permission, $resource, [
+                'action' => ['changed_fields' => array_keys($request->except(['password', 'token', 'access_token']))],
+                'business_reason' => $request->input('businessReason'),
+            ]);
 
-        if (!$decision->allowed) {
-            $enforced = $this->enforcement->isEnforced(
-                $permission,
-                $request->route()?->getName(),
-                $actor->company_code
-            );
-            $shadow = !$enforced && $this->flags->enabled('authorization_shadow_mode', $actor->company_code, true);
-
-            if ($shadow && ($decision->legacyDecision['allowed'] ?? false)) {
-                Log::channel(config('logging.default'))->info('authorization.shadow_would_deny', [
-                    'permission' => $permission,
-                    'route' => $request->route()?->getName() ?: $request->path(),
-                    'actor_id' => $actor->id,
-                    'tenant' => $actor->company_code,
-                    'would_deny' => true,
-                    'request_id' => $request->header('X-Request-Id'),
-                ]);
+            if ($decision->allowed) {
+                $request->attributes->set('authorization_decision', $decision);
+                return $next($request);
             }
-
-            if (!($shadow && ($decision->legacyDecision['allowed'] ?? false))) {
-                return response()->json([
-                    'success' => false,
-                    'error' => ['code' => 'PERMISSION_DENIED', 'message' => 'You are not permitted to perform this action.'],
-                ], 403);
-            }
-            $request->attributes->set('authorization_shadow_mismatch', $decision->toArray());
         }
 
-        $request->attributes->set('authorization_decision', $decision);
-        return $next($request);
+        return response()->json([
+            'success' => false,
+            'error' => ['code' => 'PERMISSION_DENIED', 'message' => 'You are not permitted to perform this action.'],
+        ], 403);
     }
 
     private function schemaReady(): bool
