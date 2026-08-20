@@ -11,20 +11,39 @@ import {
 const AuthContext = createContext(null);
 const STORAGE_KEY = "auth_user";
 
-function getUserRole(value, type) {
-  if (type === "agent" || Number(value) === 4 || String(value || "").toLowerCase() === "agent") {
-    return "agent";
+function getUserRole(value, type, apiUser) {
+  const userRoleCodes = (apiUser?.roles || []).map((r) =>
+    (typeof r === "string" ? r : r?.code || r?.name || "").toLowerCase()
+  );
+
+  const isHrOrAdmin = userRoleCodes.some((code) =>
+    ["admin", "super_admin", "superadmin", "owner", "security_admin", "tenant_admin", "hr_manager", "hr", "hr_admin", "hr_administrator"].includes(code) ||
+    code.includes("admin") ||
+    code.includes("hr")
+  );
+
+  if (isHrOrAdmin) {
+    return "admin";
   }
+
   const numVal = Number(value);
   const strVal = String(value || "").toLowerCase();
+
   if (
     numVal === 0 ||
     numVal === 1 ||
     numVal === 2 ||
-    ["admin", "super_admin", "superadmin", "owner", "security_admin", "tenant_admin", "hr_manager", "hr"].includes(strVal)
+    ["admin", "super_admin", "superadmin", "owner", "security_admin", "tenant_admin", "hr_manager", "hr", "hr_admin", "hr_administrator"].includes(strVal) ||
+    strVal.includes("admin") ||
+    strVal.includes("hr")
   ) {
     return "admin";
   }
+
+  if (type === "agent" || numVal === 4 || strVal === "agent") {
+    return "agent";
+  }
+
   return "employee";
 }
 
@@ -73,7 +92,7 @@ function buildAuthUser(apiUser, fallbackUser = {}, loginData = {}) {
     ...fallbackUser,
     ...(apiUser && typeof apiUser === "object" ? apiUser : {}),
     id: apiUser?.id || fallbackUser?.id || fallbackUser?.email || "user",
-    role: getUserRole(rawRole, rawType),
+    role: getUserRole(rawRole, rawType, apiUser),
     name: apiUser?.name || fallbackUser?.name || fallbackUser?.email || "User",
     email: apiUser?.email || fallbackUser?.email || "",
     accessToken:

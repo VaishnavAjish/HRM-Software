@@ -46,7 +46,7 @@ class UserTypeRoles
      */
     private const CODES = [
         self::SUPER_ADMIN => ['super_administrator', 'super_admin'],
-        self::ADMIN => ['tenant_administrator', 'admin'],
+        self::ADMIN => ['tenant_administrator', 'admin', 'hr_manager', 'hr', 'hr_admin', 'hr_administrator'],
         self::UNIT_ADMIN => ['unit_administrator', 'unit_admin'],
         self::EMPLOYEE => ['employee', 'emp'],
         self::AGENT => ['agent'],

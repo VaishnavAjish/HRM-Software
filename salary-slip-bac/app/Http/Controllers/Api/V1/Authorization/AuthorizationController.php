@@ -212,12 +212,21 @@ class AuthorizationController extends Controller
          */
         $holds = static fn (string $code): bool => (bool) ($decisions[$code]['engineAllowed'] ?? false);
 
-        if ($holds('ui.portals.agent')) {
-            return 'agent';
-        }
-
+        /*
+         * The most capable shell wins. Agent was checked first, so an account
+         * holding the agent capability through one of its roles could never
+         * reach the management shell, whatever else the matrix granted it —
+         * assigning HR Manager to an agent changed nothing the user could see.
+         * The business shell is the superset: every page inside it is still
+         * individually permission-gated, so landing there grants nothing by
+         * itself, while the agent and employee shells are deliberately narrow.
+         */
         if ($holds('ui.portals.business')) {
             return 'admin';
+        }
+
+        if ($holds('ui.portals.agent')) {
+            return 'agent';
         }
 
         if ($holds('ui.portals.employee')) {
@@ -232,12 +241,18 @@ class AuthorizationController extends Controller
     {
         $tier = (int) $actor->role;
 
-        if ($tier === 4 || $actor->type === 'agent') {
-            return 'agent';
+        $hasAdminRole = $actor->roles()->where(function ($q) {
+            $q->whereIn('code', ['admin', 'super_admin', 'super_administrator', 'tenant_administrator', 'hr_manager', 'hr', 'hr_admin', 'hr_administrator'])
+              ->orWhere('code', 'like', '%admin%')
+              ->orWhere('code', 'like', '%hr%');
+        })->exists();
+
+        if ($hasAdminRole || in_array($tier, [0, 1, 2], true)) {
+            return 'admin';
         }
 
-        if (in_array($tier, [0, 1, 2], true)) {
-            return 'admin';
+        if ($tier === 4 || $actor->type === 'agent') {
+            return 'agent';
         }
 
         $adminRouteCode = PermissionRegistry::routes()['/admin'] ?? null;

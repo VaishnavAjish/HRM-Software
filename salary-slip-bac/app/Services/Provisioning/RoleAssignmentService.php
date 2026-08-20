@@ -66,6 +66,15 @@ class RoleAssignmentService
 
         $user->roles()->sync(array_values(array_unique($keep)));
 
+        if ($target !== null) {
+            $tier = UserTypeRoles::tierForCode($target->code);
+            $user->role = $tier;
+            if (in_array($tier, [UserTypeRoles::SUPER_ADMIN, UserTypeRoles::ADMIN, UserTypeRoles::UNIT_ADMIN], true) && $user->type === 'agent') {
+                $user->type = null;
+            }
+            $user->save();
+        }
+
         $this->recordAssignments($user, $target, $actor, $reason);
         $this->cache->invalidate($user->company_code ?: null);
     }

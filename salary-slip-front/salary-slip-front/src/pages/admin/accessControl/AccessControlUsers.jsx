@@ -899,20 +899,35 @@ function ActionDialog({ dialog, options, token, tokenType, busy, setBusy, onDone
             <legend className={labelClass}>Roles</legend>
             <div className="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-gray-200 p-2 dark:border-gray-700">
               {(options?.roles ?? []).map((role) => (
-                <label key={role.id} className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
-                  <input
-                    type="checkbox"
-                    checked={roleIds.includes(role.id)}
-                    onChange={() => setRoleIds((current) =>
-                      current.includes(role.id)
-                        ? current.filter((value) => value !== role.id)
-                        : [...current, role.id])}
-                    className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
-                  />
-                  {role.name}
-                </label>
+                <div key={role.id} className="rounded-md px-1.5 py-1 hover:bg-gray-50 dark:hover:bg-gray-700/40">
+                  <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+                    <input
+                      type="checkbox"
+                      checked={roleIds.includes(role.id)}
+                      onChange={() => setRoleIds((current) =>
+                        current.includes(role.id)
+                          ? current.filter((value) => value !== role.id)
+                          : [...current, role.id])}
+                      className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                    />
+                    <span className="font-medium">{role.name}</span>
+                  </label>
+                  <p className="ml-6 mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    {role.grantedCount > 0 ? (
+                      <>
+                        {role.pages?.length > 0 ? role.pages.join(" · ") : `${role.grantedCount} permission(s)`}
+                        {role.more > 0 ? ` +${role.more} more` : ""}
+                      </>
+                    ) : (
+                      "No permissions assigned yet — configure in Permission Matrix."
+                    )}
+                  </p>
+                </div>
               ))}
             </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Roles the account already holds are pre-selected. Each role shows the pages it currently allows from the Permission Matrix.
+            </p>
           </fieldset>
         )}
 

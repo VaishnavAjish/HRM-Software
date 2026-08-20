@@ -176,6 +176,39 @@ describe("AccessControlUsers user type dropdown", () => {
   });
 });
 
+describe("assign role permission summary", () => {
+  /*
+   * The Assign Role dialog used to list bare role names, so an administrator
+   * picked blind — nothing said which pages a role allows until they opened the
+   * Permission Matrix. Each role now carries the pages its grants resolve to,
+   * and roles with no grants say so rather than implying access.
+   */
+  it("shows the pages each role allows from the permission matrix", async () => {
+    adminUserApi.filterOptions.mockResolvedValue({
+      data: {
+        departments: [], designations: [], branches: [], units: [], companies: [],
+        roles: [
+          { id: 28, name: "HR Manager", code: "hr_manager", grantedCount: 3, pages: ["HR", "Organization"], more: 1 },
+          { id: 27, name: "EMP", code: "emp", grantedCount: 0, pages: [], more: 0 },
+        ],
+        statuses: [], userTypes: [], unitOptions: [],
+        userTypeOptions: [HR, EMP],
+        userTypeOptionsByContext: { direct_create: [HR], edit_user: [HR, EMP] },
+      },
+    });
+
+    render(<AccessControlUsers />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /actions/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /assign role/i }));
+
+    expect(await screen.findByText("HR Manager")).toBeInTheDocument();
+    expect(await screen.findByText(/HR · Organization/)).toBeInTheDocument();
+    expect(await screen.findByText(/\+1 more/)).toBeInTheDocument();
+    expect(await screen.findByText(/No permissions assigned yet/i)).toBeInTheDocument();
+  });
+});
+
 describe("company multi-select", () => {
   it("lets more than one company be selected and submits ids", async () => {
     adminUserApi.create.mockResolvedValue({});

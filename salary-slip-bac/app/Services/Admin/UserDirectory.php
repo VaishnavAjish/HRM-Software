@@ -7,6 +7,7 @@ use App\Services\Authorization\SchemaSupport;
 use App\Services\Provisioning\CompanyMembershipService;
 use App\Services\Provisioning\RoleResolver;
 use App\Services\Provisioning\UnitMembershipService;
+use App\Support\PermissionRegistry;
 use App\Support\ProvisioningContext;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
@@ -212,6 +213,16 @@ class UserDirectory
             ])->all();
         }
 
+        if ($roles !== []) {
+            $summaries = $this->rolePermissionSummaries($roles);
+
+            $roles = array_map(fn ($role) => $role + ($summaries[$role['id']] ?? [
+                'grantedCount' => 0,
+                'pages' => [],
+                'more' => 0,
+            ]), $roles);
+        }
+
         return [
             'departments' => $distinct('department'),
             'designations' => $distinct('designation'),
@@ -352,6 +363,101 @@ class UserDirectory
         }
 
         return $out;
+    }
+
+    /**
+     * A compact "what can this role do" for the Assign Role picker.
+     *
+     * The assign-role dialog used to list role names with no indication of what
+     * granting one would open, so an administrator picked blind and the
+     * Permission Matrix remained the only place the answer lived. This batches
+     * role_permissions across the visible roles and resolves each granted code
+     * to the page label the registry renders, so the picker can show what a role
+     * actually allows.
+     *
+     * @param  list<array{id:int,name:string,code:?string}>  $roles
+     * @return array<int, array{grantedCount:int,pages:list<string>,more:int}>
+     */
+    private function rolePermissionSummaries(array $roles): array
+    {
+        if (! SchemaSupport::hasTable('role_permissions') || ! SchemaSupport::hasTable('permissions')) {
+            return [];
+        }
+
+        $roleIds = array_column($roles, 'id');
+
+        if ($roleIds === []) {
+            return [];
+        }
+
+        $query = DB::table('role_permissions')
+            ->join('permissions', 'permissions.id', '=', 'role_permissions.permission_id')
+            ->whereIn('role_permissions.role_id', $roleIds);
+
+        if (SchemaSupport::hasColumn('role_permissions', 'effect')) {
+            $query->where('role_permissions.effect', 'ALLOW');
+        }
+
+        $perRole = [];
+
+        foreach ($query->get(['role_permissions.role_id', 'permissions.code']) as $row) {
+            $label = $this->permissionPageLabel($row->code);
+
+            if ($label === null) {
+                continue;
+            }
+
+            $roleId = (int) $row->role_id;
+            $perRole[$roleId]['count'] = ($perRole[$roleId]['count'] ?? 0) + 1;
+            $perRole[$roleId]['labels'][$label] = true;
+        }
+
+        $out = [];
+
+        foreach ($roles as $role) {
+            $roleId = (int) $role['id'];
+            $labels = array_keys($perRole[$roleId]['labels'] ?? []);
+
+            sort($labels, SORT_STRING);
+
+            $out[$roleId] = [
+                'grantedCount' => $perRole[$roleId]['count'] ?? 0,
+                'pages' => array_slice($labels, 0, 6),
+                'more' => max(0, count($labels) - 6),
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * The page label an administrator will recognise for a granted permission code.
+     *
+     * Registry keys resolve directly; legacy business codes (org.unit.read, ...)
+     * resolve through the canonical nodes that imply them. Codes neither the
+     * registry nor its implied map recognises fall back to the module label.
+     */
+    private function permissionPageLabel(string $code): ?string
+    {
+        $keys = PermissionRegistry::has($code)
+            ? [$code]
+            : PermissionRegistry::nodesImplying($code);
+
+        foreach ($keys as $key) {
+            $page = PermissionRegistry::pageOf($key);
+
+            if ($page !== null) {
+                return PermissionRegistry::node($page)['label'] ?? null;
+            }
+
+            $module = PermissionRegistry::moduleOf($key);
+
+            if ($module !== null) {
+                return PermissionRegistry::node($module)['label'] ?? null;
+            }
+        }
+
+        return null;
     }
 
     public function selectColumns(): array
