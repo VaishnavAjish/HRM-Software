@@ -11,6 +11,7 @@ import Pagination from "../ui/Pagination";
 import { salaryApi, authApi } from "../../utils/api";
 import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";
+import { useAuthorization } from "../../hooks/useAuthorization";
 import { getCompanyConfig } from "../../config/companyConfig";
 // These two are the same production forms used on the Appointments and Trial
 // Form admin pages — reused here rather than rebuilt so "view/edit like the
@@ -108,6 +109,7 @@ const DETAIL_FIELDS = [
 
 export default function EmployeeMasterTable({ onBulkUpload }) {
   const { user } = useAuth();
+  const { can } = useAuthorization();
   const { companyScope, companyId } = useCompany();
 
   const [rows, setRows] = useState([]);
@@ -194,8 +196,8 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
       // Sequential trades a small amount of total load time for never
       // needing more than 1 worker from this page at a time.
       const [trialResult, appointmentResult, pendingResult, employeeResult] = await Promise.allSettled([
-        authApi.getTrialForms(user?.accessToken, user?.tokenType, companyScope),
-        authApi.getAppointmentForms(user?.accessToken, user?.tokenType, companyScope),
+        can("recruitment.trial_form.read") ? authApi.getTrialForms(user?.accessToken, user?.tokenType, companyScope) : Promise.resolve(null),
+        can("hr.appointment.read") ? authApi.getAppointmentForms(user?.accessToken, user?.tokenType, companyScope) : Promise.resolve(null),
         fetchAllEmployeePages({ status: "2" }),
         fetchAllEmployeePages({}),
       ]);

@@ -491,6 +491,8 @@ class UserController extends Controller
 
     public function index(Request $request)
     {
+        $userAuth = auth('api')->user();
+
         $status = $request->status;
         $query = User::where('is_deleted', 0)
             ->whereNotIn('role', [0, 1, 2]);
