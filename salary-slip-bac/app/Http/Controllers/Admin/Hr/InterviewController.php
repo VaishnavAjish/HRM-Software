@@ -9,6 +9,7 @@ use App\Models\Candidate;
 use App\Models\Interview;
 use App\Models\InterviewFeedback;
 use App\Models\InterviewPanelist;
+use App\Services\Authorization\SchemaSupport;
 use App\Services\Recruitment\GoogleMeetService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -57,15 +58,48 @@ class InterviewController extends Controller
     public function index(Request $request)
     {
         try {
-            $query = Interview::with(['candidate', 'requisition', 'panelists.user', 'feedback']);
+            if (!SchemaSupport::hasTable('interviews')) {
+                return response()->json([
+                    'status' => true,
+                    'data' => [
+                        'data' => [],
+                        'total' => 0,
+                        'per_page' => (int) ($request->per_page ?? 25),
+                        'current_page' => 1,
+                        'last_page' => 1,
+                    ],
+                ]);
+            }
+
+            $query = Interview::query();
+
+            $with = [];
+            if (SchemaSupport::hasTable('candidates')) {
+                $with[] = 'candidate';
+            }
+            if (SchemaSupport::hasTable('job_requisitions')) {
+                $with[] = 'requisition';
+            }
+            if (SchemaSupport::hasTable('interview_panelists')) {
+                $with[] = 'panelists.user';
+            }
+            if (SchemaSupport::hasTable('interview_feedback')) {
+                $with[] = 'feedback';
+            }
+
+            $query->with($with);
 
             $userAuth = auth('api')->user();
             if ($this->hasGlobalCompanyScope($userAuth)) {
                 if ($request->company_code && !in_array($request->company_code, ['all', 'all-companies'])) {
-                    $query->whereHas('candidate', fn ($q) => $this->applyCompanyScope($q, $request));
+                    if (SchemaSupport::hasTable('candidates')) {
+                        $query->whereHas('candidate', fn ($q) => $this->applyCompanyScope($q, $request));
+                    }
                 }
             } else {
-                $query->whereHas('candidate', fn ($q) => $this->applyCompanyScope($q, $request));
+                if (SchemaSupport::hasTable('candidates')) {
+                    $query->whereHas('candidate', fn ($q) => $this->applyCompanyScope($q, $request));
+                }
             }
 
             if ($request->candidate_id) {
@@ -83,7 +117,7 @@ class InterviewController extends Controller
 
             return response()->json(['status' => true, 'data' => $interviews->toArray()]);
         } catch (\Throwable $e) {
-            Log::error('interview_index_failed', ['error' => $e->getMessage()]);
+            Log::error('interview_index_failed', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
             return response()->json([
                 'status' => true,
                 'data' => [
