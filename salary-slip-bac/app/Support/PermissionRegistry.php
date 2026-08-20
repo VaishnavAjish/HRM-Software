@@ -550,7 +550,7 @@ class PermissionRegistry
             'type' => self::TYPE_PAGE, 'label' => 'Hiring', 'order' => 20,
             'parent' => 'ui.hr', 'route' => '/admin/hr/hiring',
             'description' => 'Open the hiring pipeline.',
-            'implies' => ['hr.requisition.read'],
+            'implies' => ['hr.requisition.read', 'hr.interview.read'],
         ],
         'ui.hr.hiring.requisition_create' => [
             'type' => self::TYPE_ACTION, 'label' => 'Create Requisition', 'order' => 10,

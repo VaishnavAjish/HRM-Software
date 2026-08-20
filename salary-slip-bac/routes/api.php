@@ -1437,8 +1437,8 @@ Route::post('publish-indeed/{id}', [JobRequisitionController::class, 'publishToI
             });
 
             Route::group(['prefix' => 'interviews'], function () {
-                Route::get('get', [InterviewController::class, 'index'])->middleware('permission:hr.interview.read');
-                Route::get('show/{id}', [InterviewController::class, 'show'])->middleware('permission:hr.interview.read');
+                Route::get('get', [InterviewController::class, 'index'])->middleware('permission:hr.interview.read,hr.requisition.read,ui.hr.hiring');
+                Route::get('show/{id}', [InterviewController::class, 'show'])->middleware('permission:hr.interview.read,hr.requisition.read,ui.hr.hiring');
                 Route::post('store', [InterviewController::class, 'store'])->middleware('permission:hr.interview.create');
                 Route::put('update/{id}', [InterviewController::class, 'update'])->middleware('permission:hr.interview.update');
                 Route::delete('delete/{id}', [InterviewController::class, 'destroy'])->middleware('permission:hr.interview.delete');
