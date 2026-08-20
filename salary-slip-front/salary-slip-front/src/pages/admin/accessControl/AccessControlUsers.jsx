@@ -460,9 +460,11 @@ function ActionDialog({ dialog, options, token, tokenType, busy, setBusy, onDone
   const [form, setForm] = useState(BLANK_USER);
   const [roleIds, setRoleIds] = useState([]);
   const [permissionRows, setPermissionRows] = useState([]);
+  const [permissionQuery, setPermissionQuery] = useState("");
   const [password, setPassword] = useState("");
   const [issued, setIssued] = useState(null);
   const [loadingUser, setLoadingUser] = useState(prefills);
+  const [prefillFailed, setPrefillFailed] = useState(false);
 
   useEffect(() => {
     if (!target || !prefills) return undefined;
@@ -497,7 +499,7 @@ function ActionDialog({ dialog, options, token, tokenType, busy, setBusy, onDone
         setRoleIds((detail?.roles ?? []).map((role) => role.id));
         setPermissionRows(detail?.directPermissions ?? []);
       })
-      .catch((err) => toast.error(err.message || "Could not load the user"))
+      .catch((err) => { if (active) { setPrefillFailed(true); toast.error(err.message || "Could not load the user"); } })
       .finally(() => { if (active) setLoadingUser(false); });
 
     return () => { active = false; };
@@ -730,6 +732,8 @@ function ActionDialog({ dialog, options, token, tokenType, busy, setBusy, onDone
       : `${reasonMeta?.title ?? dialog.kind.replace("-", " ")}${target ? ` — ${target.name}` : ""}`;
 
   const canSubmit = !busy
+    && !loadingUser
+    && !prefillFailed
     && !(reasonMeta?.required && reason.trim().length < 5)
     && !(dialog.kind === "create" && (
       !form.name || !form.email || !form.empCode || !form.password
@@ -934,6 +938,32 @@ function ActionDialog({ dialog, options, token, tokenType, busy, setBusy, onDone
         {dialog.kind === "assign-permissions" && !loadingUser && (
           <div className="space-y-2">
             <p className={labelClass}>Direct permissions</p>
+            <div className="flex items-center gap-2">
+              <input
+                list="assign-permission-options"
+                className={inputClass}
+                placeholder="Add permission by code…"
+                value={permissionQuery}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  const match = (options?.permissionOptions ?? []).find((p) => p.code === value);
+                  if (!match) {
+                    setPermissionQuery(value);
+                    return;
+                  }
+                  setPermissionRows((current) =>
+                    current.some((row) => row.permissionId === match.id)
+                      ? current
+                      : [...current, { permissionId: match.id, code: match.code, isDenied: false }]);
+                  setPermissionQuery("");
+                }}
+              />
+            </div>
+            <datalist id="assign-permission-options">
+              {(options?.permissionOptions ?? [])
+                .filter((p) => !permissionRows.some((row) => row.permissionId === p.id))
+                .map((p) => <option key={p.id} value={p.code} />)}
+            </datalist>
             {permissionRows.length === 0 && (
               <p className="text-sm text-gray-500 dark:text-gray-400">
                 No direct grants. This account inherits everything from its roles.

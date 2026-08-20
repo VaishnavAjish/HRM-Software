@@ -387,3 +387,73 @@ describe("unit multi-select", () => {
     expect(screen.getByRole("button", { name: /^save$/i })).toBeDisabled();
   });
 });
+
+describe("AccessControlUsers assign permissions", () => {
+  const openDialog = async () => {
+    render(<AccessControlUsers />);
+    await userEvent.click(await screen.findByRole("button", { name: /actions/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /assign permissions/i }));
+    await waitFor(() => expect(adminUserApi.get).toHaveBeenCalled());
+  };
+
+  it("keeps Save disabled until the current grants have loaded", async () => {
+    let resolveGet;
+    adminUserApi.get.mockReturnValue(new Promise((resolve) => { resolveGet = resolve; }));
+
+    await openDialog();
+
+    // The grants are still loading — clicking Save must not submit an empty
+    // list, because the backend treats that as "delete every direct grant".
+    expect(screen.getByRole("button", { name: /^save$/i })).toBeDisabled();
+
+    resolveGet({
+      data: {
+        name: "Asha Patel", username: "asha", email: "asha@test.local", empCode: "E-1001",
+        legacyRole: 3, companyIds: [2], roles: [{ id: 27, name: "EMP" }],
+        directPermissions: [{ permissionId: 121, code: "hr.dashboard.read", isDenied: false }],
+        employment: {},
+      },
+    });
+
+    expect(await screen.findByText("hr.dashboard.read")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^save$/i })).toBeEnabled();
+  });
+
+  it("keeps Save disabled if the grants failed to load", async () => {
+    adminUserApi.get.mockRejectedValue(new Error("boom"));
+
+    await openDialog();
+
+    expect(screen.getByRole("button", { name: /^save$/i })).toBeDisabled();
+  });
+
+  it("prefills existing grants and re-sends them on save", async () => {
+    adminUserApi.get.mockResolvedValue({
+      data: {
+        name: "Asha Patel", username: "asha", email: "asha@test.local", empCode: "E-1001",
+        legacyRole: 3, companyIds: [2], roles: [{ id: 27, name: "EMP" }],
+        directPermissions: [
+          { permissionId: 121, code: "hr.dashboard.read", isDenied: false },
+          { permissionId: 240, code: "ui.hr.hiring", isDenied: true },
+        ],
+        employment: {},
+      },
+    });
+
+    await openDialog();
+
+    expect(await screen.findByText("hr.dashboard.read")).toBeInTheDocument();
+    expect(screen.getByText("ui.hr.hiring")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => expect(adminUserApi.action).toHaveBeenCalled());
+    const [id, action, payload] = adminUserApi.action.mock.calls[0];
+    expect(id).toBe(7);
+    expect(action).toBe("assign-permissions");
+    expect(payload.permissions).toEqual([
+      { permissionId: 121, isDenied: false },
+      { permissionId: 240, isDenied: true },
+    ]);
+  });
+});

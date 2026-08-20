@@ -281,7 +281,8 @@ class AuthorizationController extends Controller
      */
     private function chainSnapshot(): array
     {
-        $out = [];
+        $own = [];
+        $implied = [];
 
         foreach (PermissionRegistry::all() as $key => $node) {
             $required = PermissionRegistry::requiredCodesFor($key);
@@ -294,19 +295,25 @@ class AuthorizationController extends Controller
             $ownChain = array_values(array_diff($required, [$key]));
 
             if ($ownChain !== []) {
-                $out[$key] = $ownChain;
+                $own[$key] = $ownChain;
             }
 
             foreach (PermissionRegistry::impliedCodes($key) as $code) {
-                // A code reached through several nodes keeps the shortest chain:
-                // holding it by any legitimate route is enough.
-                if (! isset($out[$code]) || count($required) < count($out[$code])) {
-                    $out[$code] = array_values(array_diff($required, [$code]));
-                }
+                // A code reached through several nodes requires only the
+                // ancestors common to every route: holding it by any
+                // legitimate route is enough. Keeping a single owner's chain
+                // here denied hr.dashboard.read to an account that held ui.hr
+                // but not ui.dashboard — one owner's chain vetoing another
+                // owner's legitimate grant.
+                $chain = array_values(array_diff($required, [$code]));
+
+                $implied[$code] = array_key_exists($code, $implied)
+                    ? array_values(array_intersect($implied[$code], $chain))
+                    : $chain;
             }
         }
 
-        return array_filter($out);
+        return array_filter($own + $implied);
     }
 
     /**

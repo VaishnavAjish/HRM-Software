@@ -847,7 +847,7 @@ class UserController extends Controller
         }
 
         $hasEffect = SchemaSupport::hasColumn('role_permissions', 'effect');
-        $columns = ['permissions.id', 'permissions.name', 'roles.name as role_name'];
+        $columns = ['permissions.id', 'permissions.code', 'roles.name as role_name'];
 
         if ($hasEffect) {
             $columns[] = 'role_permissions.effect';
@@ -858,20 +858,20 @@ class UserController extends Controller
             ->join('role_permissions', 'role_permissions.role_id', '=', 'roles.id')
             ->join('permissions', 'permissions.id', '=', 'role_permissions.permission_id')
             ->where('user_roles.user_id', $user->id)
-            ->orderBy('permissions.name')
+            ->orderBy('permissions.code')
             ->limit(1000)
             ->get($columns);
 
         $effective = [];
 
         foreach ($rows as $row) {
-            if (($effective[$row->name]['effect'] ?? null) === 'DENY') {
+            if (($effective[$row->code]['effect'] ?? null) === 'DENY') {
                 continue;
             }
 
-            $effective[$row->name] = [
+            $effective[$row->code] = [
                 'permissionId' => (int) $row->id,
-                'code' => $row->name,
+                'code' => $row->code,
                 'effect' => $hasEffect ? ($row->effect ?: 'ALLOW') : 'ALLOW',
                 'source' => $row->role_name,
             ];

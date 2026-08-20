@@ -256,7 +256,26 @@ class UserDirectory
             // Every unit within reach, carrying its company id so the picker can
             // group and filter without a second request.
             'unitOptions' => $units->optionsForCompanies(array_column($companyOptions, 'id')),
+            'permissionOptions' => $this->permissionOptions(),
         ];
+    }
+
+    private function permissionOptions(): array
+    {
+        if (! SchemaSupport::hasTable('permissions') || ! SchemaSupport::hasColumn('permissions', 'code')) {
+            return [];
+        }
+
+        return DB::table('permissions')
+            ->when(
+                SchemaSupport::hasColumn('permissions', 'is_active'),
+                static fn ($q) => $q->where('is_active', true)
+            )
+            ->orderBy('code')
+            ->limit(1000)
+            ->get(['id', 'code'])
+            ->map(static fn ($row) => ['id' => (int) $row->id, 'code' => (string) $row->code])
+            ->all();
     }
 
     public function statusOf(object $row): string

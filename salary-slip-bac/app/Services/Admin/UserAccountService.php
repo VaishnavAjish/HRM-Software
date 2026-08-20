@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Services\Authorization\AuthorizationCache;
 use App\Services\Authorization\SchemaSupport;
 use App\Support\AuditLogger;
+use App\Support\PermissionRegistry;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -279,6 +280,7 @@ class UserAccountService
         }
 
         $before = $this->directPermissionsOf($user);
+        $grants = $this->expandCanonicalGrants($grants);
 
         DB::transaction(function () use ($user, $grants) {
             DB::table('user_permissions')->where('user_id', $user->id)->delete();
@@ -321,6 +323,57 @@ class UserAccountService
     }
 
     /** @return list<array{permissionId:int,code:string,isDenied:bool}> */
+    private function expandCanonicalGrants(array $grants): array
+    {
+        $ids = array_map(static fn ($grant) => (int) $grant['permissionId'], $grants);
+        $codesById = DB::table('permissions')->whereIn('id', $ids)->pluck('code', 'id');
+
+        $picked = [];
+        foreach ($grants as $grant) {
+            $code = $codesById[(int) $grant['permissionId']] ?? null;
+            if ($code !== null) {
+                $picked[(string) $code] = true;
+            }
+        }
+
+        $closure = [];
+        foreach ($grants as $grant) {
+            if (!empty($grant['isDenied'])) {
+                continue;
+            }
+            $code = (string) ($codesById[(int) $grant['permissionId']] ?? '');
+            if ($code === '' || !PermissionRegistry::has($code)) {
+                continue;
+            }
+            $closure[$code] = true;
+            foreach (PermissionRegistry::requiredCodesFor($code) as $ancestor) {
+                if ($ancestor !== $code && (PermissionRegistry::node($ancestor)['permission'] ?? null) !== null) {
+                    $closure[$ancestor] = true;
+                }
+            }
+        }
+
+        $expansion = [];
+        foreach (array_keys($closure) as $code) {
+            $expansion[$code] = true;
+            foreach (PermissionRegistry::impliedCodes($code) as $implied) {
+                $expansion[$implied] = true;
+            }
+        }
+
+        $missing = array_diff_key($expansion, $picked);
+        if ($missing === []) {
+            return $grants;
+        }
+
+        $extraIds = DB::table('permissions')->whereIn('code', array_keys($missing))->pluck('id');
+        foreach ($extraIds as $id) {
+            $grants[] = ['permissionId' => (int) $id, 'isDenied' => false];
+        }
+
+        return $grants;
+    }
+
     public function directPermissionsOf(User $user): array
     {
         if (!SchemaSupport::hasTable('user_permissions')) {
@@ -330,11 +383,11 @@ class UserAccountService
         return DB::table('user_permissions')
             ->join('permissions', 'permissions.id', '=', 'user_permissions.permission_id')
             ->where('user_permissions.user_id', $user->id)
-            ->orderBy('permissions.name')
-            ->get(['permissions.id', 'permissions.name', 'user_permissions.is_denied'])
+            ->orderBy('permissions.code')
+            ->get(['permissions.id', 'permissions.code', 'user_permissions.is_denied'])
             ->map(static fn ($row) => [
                 'permissionId' => (int) $row->id,
-                'code' => $row->name,
+                'code' => $row->code,
                 'isDenied' => (bool) $row->is_denied,
             ])->all();
     }
