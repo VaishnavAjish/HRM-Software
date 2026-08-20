@@ -1,12 +1,3 @@
-/*
- * html2canvas (~201 kB) and jsPDF (~386 kB) are loaded when an export actually
- * runs, not when a page that *can* export is opened. They were static imports,
- * so every route touching this module carried ~590 kB of PDF machinery into its
- * initial download for a button most visits never press.
- *
- * Safe to defer here because exportNodeToPdf is already async and every caller
- * already awaits it — the exported signature does not change.
- */
 let html2canvasPromise;
 let jsPdfPromise;
 
@@ -20,11 +11,7 @@ function loadJsPdf() {
   return jsPdfPromise;
 }
 
-const PDF_TARGET_WIDTH = 800;
-const PDF_MARGIN_X = 5;
-const PDF_MARGIN_Y = 6;
-const PDF_PAGE_WIDTH = 210 - PDF_MARGIN_X * 2;
-const PDF_PAGE_HEIGHT = 297;
+const PDF_TARGET_WIDTH = 680;
 
 function isCanvasBlank(canvas) {
   const context = canvas.getContext("2d", { willReadFrequently: true });
@@ -57,6 +44,7 @@ function prepareCloneForPdf(clone, renderWidth) {
   clone.style.transform = "none";
   clone.style.background = "#ffffff";
   clone.style.textRendering = "geometricPrecision";
+  clone.style.paddingBottom = "12px";
 
   clone.querySelectorAll("table").forEach((table) => {
     table.style.borderCollapse = "collapse";
@@ -79,8 +67,6 @@ function blobToDataUrl(blob) {
   });
 }
 
-// Converts all <img> srcs in the clone to base64 data URLs so html2canvas
-// can render them regardless of CORS restrictions on the original URL.
 async function convertImagesToBase64(clone) {
   const imgs = Array.from(clone.querySelectorAll("img"));
 
@@ -89,7 +75,6 @@ async function convertImagesToBase64(clone) {
       const src = img.getAttribute("src");
       if (!src || src.startsWith("data:")) return;
 
-      // Try fetch → blob → base64 first (works when server sends CORS headers)
       try {
         const response = await fetch(src, { mode: "cors" });
         if (!response.ok) throw new Error("fetch failed");
@@ -97,10 +82,8 @@ async function convertImagesToBase64(clone) {
         img.src = await blobToDataUrl(blob);
         return;
       } catch {
-        // Fallback to canvas if fetch fails
       }
 
-      // Fallback: draw to an off-screen canvas (works for same-origin)
       try {
         const offscreen = document.createElement("canvas");
         const ctx = offscreen.getContext("2d");
@@ -116,7 +99,6 @@ async function convertImagesToBase64(clone) {
         ctx.drawImage(image, 0, 0);
         img.src = offscreen.toDataURL("image/png");
       } catch {
-        // Leave original src; html2canvas will skip it gracefully
       }
     }),
   );
@@ -162,19 +144,24 @@ async function captureCanvas(clone, captureWidth, captureHeight) {
   throw new Error("Blank PDF canvas generated");
 }
 
-// fitToOnePage: scales the content down to fit entirely on a single A4 page
-// when it would otherwise overflow onto a second page.
 export async function exportNodeToPdf(
   element,
   filename,
-  { fitToOnePage = false } = {},
+  { fitToOnePage = true, format = "a5", orientation = "portrait" } = {},
 ) {
   let wrapper = null;
 
   try {
-    // Use the element's actual rendered width so nothing gets clipped
+    const isA5 = format.toLowerCase() === "a5";
+    const pdfPageWidth = isA5 ? 148 : 210;
+    const pdfPageHeight = isA5 ? 210 : 297;
+    const marginX = isA5 ? 4 : 5;
+    const marginY = isA5 ? 5 : 6;
+    const usableWidth = pdfPageWidth - marginX * 2;
+    const usableHeight = pdfPageHeight - marginY * 2;
+
     const renderWidth =
-      Math.ceil(element.getBoundingClientRect().width) || PDF_TARGET_WIDTH;
+      Math.ceil(element.getBoundingClientRect().width) || (isA5 ? 680 : PDF_TARGET_WIDTH);
 
     wrapper = document.createElement("div");
     wrapper.style.cssText = [
@@ -197,15 +184,12 @@ export async function exportNodeToPdf(
     wrapper.appendChild(clone);
     document.body.appendChild(wrapper);
 
-    // Wait for layout
     await new Promise((resolve) =>
       requestAnimationFrame(() => requestAnimationFrame(resolve)),
     );
 
-    // Convert images to base64 to fix CORS rendering issues
     await convertImagesToBase64(clone);
 
-    // Then wait for any remaining img loads
     await Promise.all(
       Array.from(clone.querySelectorAll("img")).map(
         (img) =>
@@ -226,29 +210,19 @@ export async function exportNodeToPdf(
     const imgData = canvas.toDataURL("image/png");
     const jsPDF = await loadJsPdf();
     const doc = new jsPDF({
-      orientation: "portrait",
+      orientation: orientation,
       unit: "mm",
-      format: "a4",
+      format: format.toLowerCase(),
     });
 
-    const imageHeight = (canvas.height / canvas.width) * PDF_PAGE_WIDTH;
-    const usableHeight = PDF_PAGE_HEIGHT - PDF_MARGIN_Y * 2;
+    const imageHeight = (canvas.height / canvas.width) * usableWidth;
 
-    if (fitToOnePage && imageHeight > usableHeight) {
-      // Scale both dimensions down proportionally so everything fits on 1 page
-      const scale = usableHeight / imageHeight;
-      const scaledWidth = PDF_PAGE_WIDTH * scale;
-      const xOffset = (210 - scaledWidth) / 2;
-      doc.addImage(imgData, "PNG", xOffset, PDF_MARGIN_Y, scaledWidth, usableHeight);
-    } else if (imageHeight <= usableHeight) {
-      doc.addImage(
-        imgData,
-        "PNG",
-        PDF_MARGIN_X,
-        PDF_MARGIN_Y,
-        PDF_PAGE_WIDTH,
-        imageHeight,
-      );
+    if (fitToOnePage || imageHeight > usableHeight) {
+      const scale = Math.min(1, usableHeight / imageHeight);
+      const scaledWidth = usableWidth * scale;
+      const scaledHeight = imageHeight * scale;
+      const xOffset = marginX + (usableWidth - scaledWidth) / 2;
+      doc.addImage(imgData, "PNG", xOffset, marginY, scaledWidth, scaledHeight);
     } else {
       let page = 0;
       let yOffset = 0;
@@ -259,9 +233,9 @@ export async function exportNodeToPdf(
         doc.addImage(
           imgData,
           "PNG",
-          PDF_MARGIN_X,
-          PDF_MARGIN_Y - yOffset,
-          PDF_PAGE_WIDTH,
+          marginX,
+          marginY - yOffset,
+          usableWidth,
           imageHeight,
         );
 

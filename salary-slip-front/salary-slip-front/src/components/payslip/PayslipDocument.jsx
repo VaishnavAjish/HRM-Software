@@ -10,11 +10,11 @@ function CompanyLogo({ company, large = false }) {
   const isWideLogo = company?.id === "silver-star";
   const sizeClass = large
     ? isWideLogo
-      ? "h-[78px] w-[180px]"
-      : "h-[76px] w-[76px]"
+      ? "h-14 w-auto max-w-[160px]"
+      : "h-14 w-14"
     : isWideLogo
-      ? "h-10 w-[120px]"
-      : "h-14 w-14";
+      ? "h-9 w-auto max-w-[120px]"
+      : "h-10 w-10";
 
   if (company.logo) {
     return (
@@ -29,236 +29,205 @@ function CompanyLogo({ company, large = false }) {
 
   return (
     <div
-      className={`flex ${sizeClass} items-center justify-center rounded-2xl border border-neutral-300 bg-neutral-100 text-lg font-black text-neutral-700`}
+      className={`flex ${sizeClass} items-center justify-center rounded-xl border border-neutral-300 bg-neutral-100 text-base font-black text-neutral-700`}
     >
       {company.initials}
     </div>
   );
 }
 
+function buildNidhiTableRows(data) {
+  const activeEarnings = (data.earningRows || []).filter((r) => r && Number(r.amount || 0) !== 0);
+  const activeDeductions = (data.deductionRows || []).filter((r) => r && Number(r.amount || 0) !== 0);
+
+  if (activeEarnings.length === 0 && data.earningRows?.length > 0) {
+    activeEarnings.push(data.earningRows[0]);
+  }
+  if (activeDeductions.length === 0 && data.deductionRows?.length > 0) {
+    activeDeductions.push(data.deductionRows[0]);
+  }
+
+  const rowCount = Math.max(activeEarnings.length, activeDeductions.length, 4);
+
+  return Array.from({ length: rowCount }, (_, index) => ({
+    earning: activeEarnings[index] ?? null,
+    deduction: activeDeductions[index] ?? null,
+  }));
+}
 
 function NidhiPayslipLayout({ data, className }) {
-  const rows = Array.from({ length: data.rowCount }, (_, index) => ({
-    earning: data.earningRows[index],
-    deduction: data.deductionRows[index],
-  }));
+  const rows = buildNidhiTableRows(data);
 
   return (
     <article
-      className={`mx-auto w-full min-w-[680px] max-w-[960px] bg-white text-black shadow-[0_20px_50px_rgba(15,23,42,0.14)] ${className}`}
-      style={{ fontFamily: "Arial, sans-serif" }}
+      data-payslip-document="true"
+      className={`mx-auto w-full max-w-[720px] bg-white text-black shadow-[0_10px_30px_rgba(0,0,0,0.08)] ${className}`}
+      style={{ fontFamily: "Arial, Helvetica, sans-serif" }}
     >
-      <div className="border-[2px] border-black px-5 py-5 sm:px-7 sm:py-7">
-        <div className="grid grid-cols-[96px_1fr_96px] items-center gap-2 border-b-[2px] border-black pb-4">
-          <div className="flex h-[78px] items-center justify-start overflow-hidden">
+      <div className="border border-black p-3 sm:p-4 pb-5">
+        {/* Header */}
+        <div className="grid grid-cols-[100px_1fr_100px] items-center gap-2 border-b border-black pb-2.5 mb-2">
+          <div className="flex h-14 items-center justify-start overflow-hidden">
             <CompanyLogo company={data.company} large />
           </div>
           <div className="text-center">
-            <h1 className="text-[15px] font-extrabold uppercase leading-tight sm:text-[18px]">
+            <h1 className="text-sm font-extrabold uppercase leading-tight tracking-wide sm:text-base">
               {data.company.name}
             </h1>
             {data.company.addressLines.map((line) => (
               <p
                 key={line}
-                className="text-[9px] font-bold leading-snug sm:text-[11px]"
+                className="text-[9px] font-medium leading-tight text-neutral-800"
               >
                 {line}
               </p>
             ))}
-            <p className="mt-2 text-[14px] font-extrabold sm:text-[16px]">
+            <p className="mt-0.5 text-[11px] font-bold leading-tight">
               Pay Slip For the Month of {data.monthLabel}
             </p>
-            <p className="text-[12px] font-extrabold">
+            <p className="text-[9.5px] font-semibold text-neutral-700">
               (From {data.dateFrom} To {data.dateTo})
             </p>
           </div>
           <div />
         </div>
 
-        <section className="mt-4 border-[2px] border-black">
-          <table className="w-full border-collapse text-[12px] leading-tight sm:text-[13px]">
+        {/* Employee Info & Attendance (Unified Single Table - Zero Overlap) */}
+        <section className="border border-black mb-2">
+          <table className="w-full border-collapse text-[11px] leading-snug">
             <tbody>
-              <tr>
-                <td className="w-[18%] px-1.5 pt-1 align-top font-normal">
-                  Employee Name
-                </td>
-                <td className="w-[32%] px-1.5 pt-1 align-top font-bold">
-                  : {data.employee.nameUpper}
-                </td>
-                <td className="w-[18%] px-1.5 pt-1 align-top font-normal">
-                  Employee Code
-                </td>
-                <td className="w-[32%] px-1.5 pt-1 align-top font-bold">
-                  : {data.employee.empCode}
-                </td>
+              <tr className="border-b border-neutral-300">
+                <td className="w-[18%] px-2 py-1 align-middle font-normal">Employee Name</td>
+                <td className="w-[32%] px-2 py-1 align-middle font-bold">: {data.employee.nameUpper}</td>
+                <td className="w-[18%] px-2 py-1 align-middle font-normal">Employee Code</td>
+                <td className="w-[32%] px-2 py-1 align-middle font-bold">: {data.employee.empCode}</td>
               </tr>
-              <tr>
-                <td className="px-1.5 align-top">Bank A/c No.</td>
-                <td className="px-1.5 align-top font-bold">
-                  : {data.employee.bankAccount}
-                </td>
-                <td className="px-1.5 align-top">Bank Name</td>
-                <td className="px-1.5 align-top font-bold">
-                  : {data.employee.bankName}
-                </td>
+              <tr className="border-b border-neutral-300">
+                <td className="px-2 py-1 align-middle">Bank A/c No.</td>
+                <td className="px-2 py-1 align-middle font-bold">: {data.employee.bankAccount}</td>
+                <td className="px-2 py-1 align-middle">Bank Name</td>
+                <td className="px-2 py-1 align-middle font-bold">: {data.employee.bankName}</td>
               </tr>
-              <tr>
-                <td className="px-1.5 align-top">UAN</td>
-                <td className="px-1.5 align-top font-bold">
-                  : {data.employee.uan}
-                </td>
-                <td className="px-1.5 align-top">Mobile</td>
-                <td className="px-1.5 align-top font-bold">
-                  : {data.employee.mobile}
-                </td>
+              <tr className="border-b border-neutral-300">
+                <td className="px-2 py-1 align-middle">UAN</td>
+                <td className="px-2 py-1 align-middle font-bold">: {data.employee.uan}</td>
+                <td className="px-2 py-1 align-middle">Mobile</td>
+                <td className="px-2 py-1 align-middle font-bold">: {data.employee.mobile}</td>
               </tr>
-              <tr>
-                <td className="px-1.5 align-top">Designation</td>
-                <td className="px-1.5 align-top font-bold uppercase">
-                  : {data.employee.designation}
-                </td>
-                <td className="px-1.5 align-top">Unit</td>
-                <td className="px-1.5 align-top font-bold uppercase">
-                  : {data.employee.unit}
-                </td>
+              <tr className="border-b border-neutral-300">
+                <td className="px-2 py-1 align-middle">Designation</td>
+                <td className="px-2 py-1 align-middle font-bold uppercase">: {data.employee.designation}</td>
+                <td className="px-2 py-1 align-middle">Unit</td>
+                <td className="px-2 py-1 align-middle font-bold uppercase">: {data.employee.unit}</td>
               </tr>
-              <tr>
-                <td className="px-1.5 pb-2 align-top">PF Account No</td>
-                <td className="px-1.5 pb-2 align-top font-bold uppercase">
-                  : {data.employee.pfAccountNo}
-                </td>
-                <td className="px-1.5 pb-2 align-top">ESI ID No</td>
-                <td className="px-1.5 pb-2 align-top font-bold uppercase">
-                  : {data.employee.esiAccountNo}
-                </td>
+              <tr className="border-b border-black">
+                <td className="px-2 py-1 align-middle">PF Account No</td>
+                <td className="px-2 py-1 align-middle font-bold uppercase">: {data.employee.pfAccountNo}</td>
+                <td className="px-2 py-1 align-middle">ESI ID No</td>
+                <td className="px-2 py-1 align-middle font-bold uppercase">: {data.employee.esiAccountNo}</td>
+              </tr>
+              <tr className="border-b border-neutral-300 bg-neutral-50 font-bold">
+                <td className="px-2 py-1 align-middle">Total Paid Days</td>
+                <td className="px-2 py-1 align-middle font-bold">: {data.employee.totalPaidDays}</td>
+                <td className="px-2 py-1 align-middle font-bold">LWP</td>
+                <td className="px-2 py-1 align-middle font-bold">: {data.employee.lwp}</td>
+              </tr>
+              <tr className="bg-neutral-50 font-bold">
+                <td className="px-2 py-1 align-middle">Net Paid Days</td>
+                <td className="px-2 py-1 align-middle font-bold">: {data.employee.netPaidDays}</td>
+                <td className="px-2 py-1 align-middle"></td>
+                <td className="px-2 py-1 align-middle"></td>
               </tr>
             </tbody>
           </table>
-
-          <div className="grid grid-cols-2 border-t-[2px] border-black text-[12px] font-bold sm:text-[13px]">
-            <div className="grid grid-cols-[1fr_auto] border-r-[2px] border-black px-1.5 py-1">
-              <span>Total Paid Days</span>
-              <span>: {data.employee.totalPaidDays}</span>
-            </div>
-            <div className="grid grid-cols-[1fr_auto] px-1.5 py-1">
-              <span>LWP</span>
-              <span>: {data.employee.lwp}</span>
-            </div>
-            <div className="grid grid-cols-[1fr_auto] border-r-[2px] border-black px-1.5 py-1">
-              <span>Net Paid Days</span>
-              <span>: {data.employee.netPaidDays}</span>
-            </div>
-            <div className="px-1.5 py-1" />
-          </div>
         </section>
 
-        <section className="mt-4 border-[2px] border-black">
-          <table className="w-full border-collapse text-[11px] leading-tight sm:text-[13px]">
+        {/* Calculation Table */}
+        <section className="border border-black mb-2">
+          <table className="w-full border-collapse text-[11px] leading-snug">
             <thead>
-              <tr className="font-extrabold">
-                <th className="border-r-[2px] border-black px-1.5 py-1 text-left">
-                  Earnings
-                </th>
-                <th className="border-r-[2px] border-black px-1.5 py-1 text-right">
-                  Scale Rs.
-                </th>
-                <th className="border-r-[2px] border-black px-1.5 py-1 text-right">
-                  Amount Rs.
-                </th>
-                <th className="border-r-[2px] border-black px-1.5 py-1 text-left">
-                  Deductions
-                </th>
-                <th className="border-r-[2px] border-black px-1.5 py-1 text-right">
-                  Scale Rs.
-                </th>
-                <th className="px-1.5 py-1 text-right">Amount Rs.</th>
+              <tr className="font-bold border-b border-black bg-neutral-100">
+                <th className="border-r border-black px-2 py-1 text-left">Earnings</th>
+                <th className="border-r border-black px-2 py-1 text-right">Scale Rs.</th>
+                <th className="border-r border-black px-2 py-1 text-right">Amount Rs.</th>
+                <th className="border-r border-black px-2 py-1 text-left">Deductions</th>
+                <th className="border-r border-black px-2 py-1 text-right">Scale Rs.</th>
+                <th className="px-2 py-1 text-right">Amount Rs.</th>
               </tr>
             </thead>
             <tbody>
               {rows.map(({ earning, deduction }, index) => (
-                <tr key={index}>
-                  <td className="border-r-[2px] border-black px-1.5 py-1">
+                <tr key={index} className="border-b border-neutral-200">
+                  <td className="border-r border-black px-2 py-1 font-medium">
                     {earning?.label || ""}
                   </td>
-                  <td className="border-r-[2px] border-black px-1.5 py-1 text-right">
+                  <td className="border-r border-black px-2 py-1 text-right">
                     {earning ? formatMoneyValue(earning.amount) : ""}
                   </td>
-                  <td className="border-r-[2px] border-black px-1.5 py-1 text-right">
+                  <td className="border-r border-black px-2 py-1 text-right font-medium">
                     {earning ? formatMoneyValue(earning.amount) : ""}
                   </td>
-                  <td className="border-r-[2px] border-black px-1.5 py-1">
+                  <td className="border-r border-black px-2 py-1 font-medium">
                     {deduction?.label || ""}
                   </td>
-                  <td className="border-r-[2px] border-black px-1.5 py-1 text-right">
+                  <td className="border-r border-black px-2 py-1 text-right">
                     {deduction ? formatMoneyValue(deduction.amount) : ""}
                   </td>
-                  <td className="px-1.5 py-1 text-right">
+                  <td className="px-2 py-1 text-right font-medium">
                     {deduction ? formatMoneyValue(deduction.amount) : ""}
                   </td>
                 </tr>
               ))}
             </tbody>
             <tfoot>
-              <tr className="border-t-[2px] border-black text-[12px] font-extrabold sm:text-[13px]">
-                <td className="border-r-[2px] border-black px-1.5 py-1.5">
-                  Total Earnings
-                </td>
-                <td className="border-r-[2px] border-black px-1.5 py-1.5 text-right">
-                  {formatMoneyValue(data.totals.earnings)}
-                </td>
-                <td className="border-r-[2px] border-black px-1.5 py-1.5 text-right">
-                  {formatMoneyValue(data.totals.earnings)}
-                </td>
-                <td className="border-r-[2px] border-black px-1.5 py-1.5">
-                  Total Deductions
-                </td>
-                <td className="border-r-[2px] border-black px-1.5 py-1.5 text-right">
-                  {formatMoneyValue(data.totals.deductions)}
-                </td>
-                <td className="px-1.5 py-1.5 text-right">
-                  {formatMoneyValue(data.totals.deductions)}
-                </td>
+              <tr className="border-t border-black text-[11px] font-bold bg-neutral-50">
+                <td className="border-r border-black px-2 py-1">Total Earnings</td>
+                <td className="border-r border-black px-2 py-1 text-right">{formatMoneyValue(data.totals.earnings)}</td>
+                <td className="border-r border-black px-2 py-1 text-right">{formatMoneyValue(data.totals.earnings)}</td>
+                <td className="border-r border-black px-2 py-1">Total Deductions</td>
+                <td className="border-r border-black px-2 py-1 text-right">{formatMoneyValue(data.totals.deductions)}</td>
+                <td className="px-2 py-1 text-right">{formatMoneyValue(data.totals.deductions)}</td>
               </tr>
             </tfoot>
           </table>
         </section>
 
-        <section className="border-x-[2px] border-b-[2px] border-black text-[12px] sm:text-[13px]">
-          <div className="grid grid-cols-[82px_1fr] border-b border-black bg-neutral-50 px-1.5 py-1.5 font-extrabold">
+        {/* Net Pay */}
+        <section className="border border-black mb-2 text-[11px] leading-snug">
+          <div className="grid grid-cols-[76px_1fr] border-b border-black bg-neutral-50 px-2 py-1 font-extrabold">
             <span>Net Pay</span>
-            <span className="font-semibold">
-              : {formatCurrency(data.totals.netPay)}
-            </span>
+            <span>: {formatCurrency(data.totals.netPay)}</span>
           </div>
-          <div className="grid grid-cols-[82px_1fr] px-1.5 py-1.5 font-extrabold">
+          <div className="grid grid-cols-[76px_1fr] px-2 py-1 font-bold">
             <span>In Words</span>
-            <span className="font-normal">: Rs. {data.netPayInWords}</span>
+            <span className="font-medium">: Rs. {data.netPayInWords}</span>
           </div>
         </section>
 
-        <section className="mt-4 border-[2px] border-black text-[12px] sm:text-[13px]">
-          <div className="border-b-[2px] border-black bg-neutral-50 px-1.5 py-1 font-extrabold">
+        {/* Miscellaneous Information & Footer */}
+        <section className="border border-black text-[11px] leading-snug">
+          <div className="border-b border-black bg-neutral-100 px-2 py-1 font-bold">
             Miscellaneous Information
           </div>
-          <div className="grid grid-cols-[1fr_180px] border-b border-black">
-            <div className="px-1.5 py-1">SALARY</div>
-            <div className="border-l-[2px] border-black px-1.5 py-1 text-right font-bold">
+          <div className="grid grid-cols-[1fr_150px] border-b border-black">
+            <div className="px-2 py-1 font-semibold">SALARY</div>
+            <div className="border-l border-black px-2 py-1 text-right font-bold">
               {formatMoneyValue(data.totals.salaryCredited)}
             </div>
           </div>
-          <div className="min-h-[120px] px-1.5 py-3">
-            <p className="italic">
+          <div className="px-2 pt-1.5 pb-2">
+            <p className="italic text-neutral-600">
               TDS Deducted Upto {data.monthLabel}: Rs. Nil
             </p>
-            <p className="font-extrabold">
+            <p className="font-bold text-neutral-900 mt-0.5">
               This is Computer Generated Sheet, does not require Signature.
             </p>
-            <div className="mt-16 flex items-end justify-between gap-4">
-              <div className="text-[11px] font-bold text-neutral-600">
+            <div className="mt-4 flex items-end justify-between gap-4 pt-1">
+              <div className="text-[10px] font-semibold text-neutral-700">
                 Paid On: {formatDate(data.payDate)}
               </div>
               <div className="text-right">
-                <p className="text-[14px] font-extrabold">
+                <p className="text-[11px] font-extrabold text-neutral-900 uppercase">
                   {data.company.name}
                 </p>
               </div>
@@ -271,12 +240,6 @@ function NidhiPayslipLayout({ data, className }) {
 }
 
 function buildSilverTableRows(data) {
-  // Every earning/deduction component that can carry an amount — not just
-  // the handful this template usually prints — so a component with a real
-  // value (PF, ESI, TDS, LWF, Advance, ...) never gets silently dropped from
-  // the printed total the way it previously was (Total Deductions only ever
-  // summed Professional Tax, so Net Pay came out higher than the actual net
-  // salary whenever an employee had any other deduction).
   const earningDefs = [
     { key: "basicSalary", label: "BASIC" },
     { key: "dailyAllowance", label: "DA" },
@@ -329,10 +292,6 @@ function buildSilverTableRows(data) {
     deduction: deductions[index] ?? null,
   }));
 
-  // Totals come from the fully-aggregated figures buildPayslipData already
-  // computed (which prefer the backend's own gross/deduction/net values),
-  // so Net Pay on the printed slip always matches the net salary on file —
-  // never just "sum of the rows this template happens to itemize".
   return {
     rows,
     totalEarnings: data.totals.earnings,
@@ -347,196 +306,153 @@ function SilverPayslipLayout({ data, className }) {
 
   return (
     <article
-      className={`mx-auto w-full min-w-[720px] max-w-[960px] bg-white text-black shadow-[0_20px_50px_rgba(15,23,42,0.14)] ${className}`}
-      style={{ fontFamily: "Arial, sans-serif" }}
+      data-payslip-document="true"
+      className={`mx-auto w-full max-w-[720px] bg-white text-black shadow-[0_10px_30px_rgba(0,0,0,0.08)] ${className}`}
+      style={{ fontFamily: "Arial, Helvetica, sans-serif" }}
     >
-      <div className="border border-black px-4 py-5 sm:px-6 sm:py-6">
-        <div className="grid grid-cols-[180px_1fr_180px] items-center gap-2 border-b border-black pb-4">
-          <div className="flex h-[82px] items-center justify-start overflow-hidden">
+      <div className="border border-black p-3 sm:p-4 pb-5">
+        <div className="grid grid-cols-[140px_1fr_140px] items-center gap-2 border-b border-black pb-2.5 mb-2">
+          <div className="flex h-14 items-center justify-start overflow-hidden">
             <CompanyLogo company={data.company} large />
           </div>
           <div className="text-center">
-            <h1 className="text-[13px] font-extrabold uppercase leading-tight sm:text-[16px]">
+            <h1 className="text-xs font-extrabold uppercase leading-tight tracking-wide sm:text-sm">
               {data.company.name}
             </h1>
             {data.company.addressLines.map((line) => (
               <p
                 key={line}
-                className="text-[9px] font-bold uppercase leading-snug sm:text-[10px]"
+                className="text-[9px] font-medium uppercase leading-tight text-neutral-800"
               >
                 {line}
               </p>
             ))}
-            <p className="mt-2 text-[13px] font-extrabold sm:text-[15px]">
+            <p className="mt-0.5 text-[11px] font-bold leading-tight">
               Pay Slip For the Month of {data.monthLabel}
             </p>
-            <p className="text-[12px] font-extrabold">
+            <p className="text-[9.5px] font-semibold text-neutral-700">
               (From {data.dateFrom} To {data.dateTo})
             </p>
           </div>
           <div />
         </div>
 
-        <section className="mt-4 border border-black">
-          <table className="w-full border-collapse text-[12px] leading-tight sm:text-[13px]">
+        <section className="border border-black mb-2">
+          <table className="w-full border-collapse text-[11px] leading-snug">
             <tbody>
-              <tr>
-                <td className="w-[18%] px-1.5 pt-1 align-top">Employee Name</td>
-                <td className="w-[32%] px-1.5 pt-1 align-top font-bold uppercase">
-                  : {data.employee.nameUpper}
-                </td>
-                <td className="w-[18%] px-1.5 pt-1 align-top">Employee Code</td>
-                <td className="w-[32%] px-1.5 pt-1 align-top font-bold">
-                  : {data.employee.empCode}
-                </td>
+              <tr className="border-b border-neutral-300">
+                <td className="w-[18%] px-2 py-1 align-middle font-normal">Employee Name</td>
+                <td className="w-[32%] px-2 py-1 align-middle font-bold uppercase">: {data.employee.nameUpper}</td>
+                <td className="w-[18%] px-2 py-1 align-middle font-normal">Employee Code</td>
+                <td className="w-[32%] px-2 py-1 align-middle font-bold">: {data.employee.empCode}</td>
               </tr>
-              <tr>
-                <td className="px-1.5 align-top">Bank A/c No.</td>
-                <td className="px-1.5 align-top font-bold">
-                  : {data.employee.bankAccount}
-                </td>
-                <td className="px-1.5 align-top">ESI A/c No</td>
-                <td className="px-1.5 align-top font-bold">
-                  : {data.employee.esiAccountNo}
-                </td>
+              <tr className="border-b border-neutral-300">
+                <td className="px-2 py-1 align-middle">Bank A/c No.</td>
+                <td className="px-2 py-1 align-middle font-bold">: {data.employee.bankAccount}</td>
+                <td className="px-2 py-1 align-middle">ESI A/c No</td>
+                <td className="px-2 py-1 align-middle font-bold">: {data.employee.esiAccountNo}</td>
               </tr>
-              <tr>
-                <td className="px-1.5 align-top">Department</td>
-                <td className="px-1.5 align-top font-bold uppercase">
-                  : {data.employee.department}
-                </td>
-                <td className="px-1.5 align-top">Designation</td>
-                <td className="px-1.5 align-top font-bold uppercase">
-                  : {data.employee.designation}
-                </td>
+              <tr className="border-b border-neutral-300">
+                <td className="px-2 py-1 align-middle">Department</td>
+                <td className="px-2 py-1 align-middle font-bold uppercase">: {data.employee.department}</td>
+                <td className="px-2 py-1 align-middle">Designation</td>
+                <td className="px-2 py-1 align-middle font-bold uppercase">: {data.employee.designation}</td>
               </tr>
-              <tr>
-                <td className="px-1.5 align-top">Bank Name</td>
-                <td className="px-1.5 align-top font-bold uppercase">
-                  : {data.employee.bankName}
-                </td>
-                <td className="px-1.5 align-top">UAN</td>
-                <td className="px-1.5 align-top font-bold">
-                  : {data.employee.uan}
-                </td>
+              <tr className="border-b border-neutral-300">
+                <td className="px-2 py-1 align-middle">Bank Name</td>
+                <td className="px-2 py-1 align-middle font-bold uppercase">: {data.employee.bankName}</td>
+                <td className="px-2 py-1 align-middle">UAN</td>
+                <td className="px-2 py-1 align-middle font-bold">: {data.employee.uan}</td>
               </tr>
-              <tr>
-                <td className="px-1.5 pb-1 align-top">Mobile</td>
-                <td className="px-1.5 pb-1 align-top font-bold">
-                  : {data.employee.mobile}
-                </td>
-                <td className="px-1.5 pb-1 align-top"></td>
-                <td className="px-1.5 pb-1 align-top"></td>
+              <tr className="border-b border-black">
+                <td className="px-2 py-1 align-middle">Mobile</td>
+                <td className="px-2 py-1 align-middle font-bold">: {data.employee.mobile}</td>
+                <td className="px-2 py-1 align-middle"></td>
+                <td className="px-2 py-1 align-middle"></td>
+              </tr>
+              <tr className="border-b border-neutral-300 bg-neutral-50 font-bold">
+                <td className="px-2 py-1 align-middle">Month Days</td>
+                <td className="px-2 py-1 align-middle font-bold">: {data.attendance.monthDays}</td>
+                <td className="px-2 py-1 align-middle font-bold">Working Days</td>
+                <td className="px-2 py-1 align-middle font-bold">: {data.attendance.workingDays}</td>
+              </tr>
+              <tr className="bg-neutral-50 font-bold">
+                <td className="px-2 py-1 align-middle">LWP</td>
+                <td className="px-2 py-1 align-middle font-bold">: {data.attendance.lwp}</td>
+                <td className="px-2 py-1 align-middle"></td>
+                <td className="px-2 py-1 align-middle"></td>
               </tr>
             </tbody>
           </table>
-
-          <div className="grid grid-cols-2 border-t border-black text-[12px] font-bold sm:text-[13px]">
-            <div className="grid grid-cols-[1fr_auto] border-r border-black px-1.5 py-1">
-              <span>Month Days</span>
-              <span>: {data.attendance.monthDays}</span>
-            </div>
-            <div className="grid grid-cols-[1fr_auto] px-1.5 py-1">
-              <span>Working Days</span>
-              <span>: {data.attendance.workingDays}</span>
-            </div>
-            <div className="grid grid-cols-[1fr_auto] border-r border-black px-1.5 py-1">
-              <span>LWP</span>
-              <span>: {data.attendance.lwp}</span>
-            </div>
-            <div className="px-1.5 py-1" />
-          </div>
         </section>
 
-        <section className="mt-4 border border-black">
-          <table className="w-full border-collapse text-[11px] leading-tight sm:text-[13px]">
+        <section className="border border-black mb-2">
+          <table className="w-full border-collapse text-[11px] leading-snug">
             <thead>
-              <tr className="border-b border-black font-extrabold">
-                <th className="border-r border-black px-1.5 py-1 text-left">
-                  Earnings
-                </th>
-                <th className="border-r border-black px-1.5 py-1 text-right">
-                  Scale Rs.
-                </th>
-                <th className="border-r border-black px-1.5 py-1 text-right">
-                  Amount Rs.
-                </th>
-                <th className="border-r border-black px-1.5 py-1 text-left">
-                  Deductions
-                </th>
-                <th className="border-r border-black px-1.5 py-1 text-right">
-                  Scale Rs.
-                </th>
-                <th className="px-1.5 py-1 text-right">Amount Rs.</th>
+              <tr className="font-bold border-b border-black bg-neutral-100">
+                <th className="border-r border-black px-2 py-1 text-left">Earnings</th>
+                <th className="border-r border-black px-2 py-1 text-right">Scale Rs.</th>
+                <th className="border-r border-black px-2 py-1 text-right">Amount Rs.</th>
+                <th className="border-r border-black px-2 py-1 text-left">Deductions</th>
+                <th className="border-r border-black px-2 py-1 text-right">Scale Rs.</th>
+                <th className="px-2 py-1 text-right">Amount Rs.</th>
               </tr>
             </thead>
             <tbody>
               {rows.map(({ earning, deduction }, index) => (
-                <tr key={index}>
-                  <td className="border-r border-black px-1.5 py-0.5">
+                <tr key={index} className="border-b border-neutral-200">
+                  <td className="border-r border-black px-2 py-1 font-medium">
                     {earning?.label || "-"}
                   </td>
-                  <td className="border-r border-black px-1.5 py-0.5 text-right">
+                  <td className="border-r border-black px-2 py-1 text-right">
                     {earning ? formatMoneyValue(earning.amount) : "-"}
                   </td>
-                  <td className="border-r border-black px-1.5 py-0.5 text-right">
+                  <td className="border-r border-black px-2 py-1 text-right font-medium">
                     {earning ? formatMoneyValue(earning.amount) : "-"}
                   </td>
-                  <td className="border-r border-black px-1.5 py-0.5">
+                  <td className="border-r border-black px-2 py-1 font-medium">
                     {deduction?.label || "-"}
                   </td>
-                  <td className="border-r border-black px-1.5 py-0.5 text-right">
+                  <td className="border-r border-black px-2 py-1 text-right">
                     {deduction ? formatMoneyValue(deduction.amount) : "-"}
                   </td>
-                  <td className="px-1.5 py-0.5 text-right">
+                  <td className="px-2 py-1 text-right font-medium">
                     {deduction ? formatMoneyValue(deduction.amount) : "-"}
                   </td>
                 </tr>
               ))}
             </tbody>
             <tfoot>
-              <tr className="border-t border-black text-[12px] font-extrabold sm:text-[13px]">
-                <td className="border-r border-black px-1.5 py-1">
-                  Total Earnings
-                </td>
-                <td className="border-r border-black px-1.5 py-1 text-right">
-                  {formatMoneyValue(totalEarnings)}
-                </td>
-                <td className="border-r border-black px-1.5 py-1 text-right">
-                  {formatMoneyValue(totalEarnings)}
-                </td>
-                <td className="border-r border-black px-1.5 py-1">
-                  Total Deductions
-                </td>
-                <td className="border-r border-black px-1.5 py-1 text-right">
-                  {formatMoneyValue(totalDeductions)}
-                </td>
-                <td className="px-1.5 py-1 text-right">
-                  {formatMoneyValue(totalDeductions)}
-                </td>
+              <tr className="border-t border-black text-[11px] font-bold bg-neutral-50">
+                <td className="border-r border-black px-2 py-1">Total Earnings</td>
+                <td className="border-r border-black px-2 py-1 text-right">{formatMoneyValue(totalEarnings)}</td>
+                <td className="border-r border-black px-2 py-1 text-right">{formatMoneyValue(totalEarnings)}</td>
+                <td className="border-r border-black px-2 py-1">Total Deductions</td>
+                <td className="border-r border-black px-2 py-1 text-right">{formatMoneyValue(totalDeductions)}</td>
+                <td className="px-2 py-1 text-right">{formatMoneyValue(totalDeductions)}</td>
               </tr>
             </tfoot>
           </table>
         </section>
 
-        <section className="border-x border-b border-black text-[12px] sm:text-[13px]">
-          <div className="grid grid-cols-[82px_1fr] border-b border-black px-1.5 py-1 font-extrabold">
+        <section className="border border-black text-[11px] leading-snug">
+          <div className="grid grid-cols-[76px_1fr] border-b border-black bg-neutral-50 px-2 py-1 font-extrabold">
             <span>Net Pay</span>
             <span>: {formatCurrency(netPay)}</span>
           </div>
-          <div className="grid grid-cols-[82px_1fr] border-b border-black px-1.5 py-1 font-extrabold">
+          <div className="grid grid-cols-[76px_1fr] border-b border-black px-2 py-1 font-bold">
             <span>In Words</span>
-            <span className="font-normal">: Rs. {numberToWords(netPay)} Only</span>
+            <span className="font-medium">: Rs. {numberToWords(netPay)} Only</span>
           </div>
-          <div className="grid grid-cols-[82px_1fr] border-b border-black px-1.5 py-1 font-extrabold">
+          <div className="grid grid-cols-[76px_1fr] border-b border-black px-2 py-1 font-bold">
             <span>Salary</span>
             <span className="font-bold">: {formatCurrency(data.totals.salaryCredited)}</span>
           </div>
-          <div className="border-b border-black px-1.5 py-1 font-extrabold">
+          <div className="border-b border-black px-2 py-1 font-bold text-neutral-800">
             This is Computer Generated Sheet, does not require Signature.
           </div>
-          <div className="flex min-h-[60px] items-end justify-end px-4 py-3">
-            <p className="font-extrabold">Authorised Signatory</p>
+          <div className="flex min-h-[28px] items-end justify-end p-1.5">
+            <p className="font-extrabold text-[11px]">Authorised Signatory</p>
           </div>
         </section>
       </div>

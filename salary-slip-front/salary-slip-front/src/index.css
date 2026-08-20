@@ -1029,3 +1029,38 @@ main {
 .rich-text-editable li {
   margin-bottom: 0.25rem;
 }
+
+
+/* ─────────────────────────────────────────────────────────
+   A5 Salary Slip Print & PDF Styles
+   ───────────────────────────────────────────────────────── */
+@media print {
+  @page {
+    size: A5 portrait;
+    margin: 4mm;
+  }
+
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  nav, header, footer, sidebar, .no-print, [data-no-print] {
+    display: none !important;
+  }
+
+  [data-payslip-document],
+  article[data-payslip-document="true"] {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border-color: #000000 !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+}
