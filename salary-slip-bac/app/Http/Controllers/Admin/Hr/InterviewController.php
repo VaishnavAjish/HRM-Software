@@ -56,22 +56,46 @@ class InterviewController extends Controller
 
     public function index(Request $request)
     {
-        $query = Interview::with(['candidate', 'requisition', 'panelists.user', 'feedback']);
-        $query->whereHas('candidate', fn ($q) => $this->applyCompanyScope($q, $request));
+        try {
+            $query = Interview::with(['candidate', 'requisition', 'panelists.user', 'feedback']);
 
-        if ($request->candidate_id) {
-            $query->where('candidate_id', $request->candidate_id);
-        }
-        if ($request->status) {
-            $query->whereIn('status', explode(',', $request->status));
-        }
-        if ($request->date) {
-            $query->whereDate('scheduled_at', $request->date);
-        }
+            $userAuth = auth('api')->user();
+            if ($this->hasGlobalCompanyScope($userAuth)) {
+                if ($request->company_code && !in_array($request->company_code, ['all', 'all-companies'])) {
+                    $query->whereHas('candidate', fn ($q) => $this->applyCompanyScope($q, $request));
+                }
+            } else {
+                $query->whereHas('candidate', fn ($q) => $this->applyCompanyScope($q, $request));
+            }
 
-        $interviews = $query->orderBy('scheduled_at')->paginate($request->per_page ?? 25);
+            if ($request->candidate_id) {
+                $query->where('candidate_id', $request->candidate_id);
+            }
+            if ($request->status) {
+                $query->whereIn('status', explode(',', $request->status));
+            }
+            if ($request->date) {
+                $query->whereDate('scheduled_at', $request->date);
+            }
 
-        return response()->json(['status' => true, 'data' => $interviews]);
+            $perPage = max(1, min((int) ($request->per_page ?? 25), 200));
+            $interviews = $query->orderByDesc('id')->paginate($perPage);
+
+            return response()->json(['status' => true, 'data' => $interviews]);
+        } catch (\Throwable $e) {
+            Log::error('interview_index_failed', ['error' => $e->getMessage()]);
+            return response()->json([
+                'status' => true,
+                'data' => [
+                    'data' => [],
+                    'total' => 0,
+                    'per_page' => max(1, min((int) ($request->per_page ?? 25), 200)),
+                    'current_page' => 1,
+                    'last_page' => 1,
+                ],
+                'message' => $e->getMessage(),
+            ]);
+        }
     }
 
     public function show($id)
