@@ -81,7 +81,7 @@ class InterviewController extends Controller
             $perPage = max(1, min((int) ($request->per_page ?? 25), 200));
             $interviews = $query->orderByDesc('id')->paginate($perPage);
 
-            return response()->json(['status' => true, 'data' => $interviews]);
+            return response()->json(['status' => true, 'data' => $interviews->toArray()]);
         } catch (\Throwable $e) {
             Log::error('interview_index_failed', ['error' => $e->getMessage()]);
             return response()->json([

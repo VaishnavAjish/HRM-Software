@@ -722,12 +722,23 @@ class PermissionRegistry
             'parent' => 'ui.hr.hiring',
             'description' => 'View and manage interviews.',
             'implies' => ['hr.interview.read'],
+            'api' => [
+                ['GET', '/api/hr/interviews/get'],
+                ['GET', '/api/hr/interviews/show/{id}'],
+            ],
         ],
         'ui.hr.hiring.interview_feedback' => [
             'type' => self::TYPE_ACTION, 'label' => 'Interview Feedback', 'order' => 90,
             'parent' => 'ui.hr.hiring',
             'description' => 'Record interview feedback.',
             'implies' => ['hr.interview.feedback'],
+            'api' => [
+                ['POST', '/api/hr/interviews/store'],
+                ['PUT', '/api/hr/interviews/update/{id}'],
+                ['DELETE', '/api/hr/interviews/delete/{id}'],
+                ['POST', '/api/hr/interviews/reschedule/{id}'],
+                ['POST', '/api/hr/interviews/feedback/{id}'],
+            ],
         ],
         'ui.hr.hiring.offers' => [
             'type' => self::TYPE_FEATURE, 'label' => 'Offers', 'order' => 100,
