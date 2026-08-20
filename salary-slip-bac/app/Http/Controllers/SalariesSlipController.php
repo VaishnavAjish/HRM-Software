@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Admin\Hr\Concerns\ScopesCompany;
 use App\Models\SalarySlip;
 use Illuminate\Http\Request;
 
 class SalariesSlipController extends Controller
 {
+    use ScopesCompany;
     public function index(Request $request)
     {
         $query = SalarySlip::query();
@@ -30,24 +32,10 @@ class SalariesSlipController extends Controller
             // Non-admins may only ever see their own salary slips, regardless
             // of what emp_code (or lack of one) the client requests.
             $query->where('emp_code', $user->emp_code);
-        } elseif ($user && (int) $user->role === 1) {
-            $query->where('company_code', $user->company_code);
+        } else {
+            $this->applyCompanyScope($query, $request);
             if ($request->emp_code) {
                 $query->where('emp_code', $request->emp_code);
-            }
-        } elseif ($user && (int) $user->role === 2) {
-            $query->where('company_code', $user->company_code)->where('unit', $user->unit);
-            if ($request->emp_code) {
-                $query->where('emp_code', $request->emp_code);
-            }
-        } elseif ($request->emp_code) {
-            $query->where('emp_code', $request->emp_code);
-        }
-
-        if ($user && (int) $user->role !== 1 && (int) $user->role !== 2 && $request->company_code) {
-            $codes = explode(',', $request->company_code);
-            if (!in_array('all', $codes) && !in_array('all-companies', $codes)) {
-                $query->whereIn('company_code', $codes);
             }
         }
         if ($request->unit) {

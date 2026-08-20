@@ -27,6 +27,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
+use App\Http\Controllers\Admin\Hr\Concerns\ScopesCompany;
 use Illuminate\Validation\ValidationException;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Shared\Date;
@@ -34,6 +35,7 @@ use RuntimeException;
 
 class UserController extends Controller
 {
+    use ScopesCompany;
     /**
      * The shared provisioning core.
      *
@@ -522,42 +524,7 @@ class UserController extends Controller
             }
         }
 
-        $userAuth = auth('api')->user();
-        if ($userAuth && ((int) $userAuth->role === 1 || (int) $userAuth->role === 0)) {
-            $requested = $request->company_code && ! in_array($request->company_code, ['all', 'all-companies'])
-                ? array_filter(array_map('trim', explode(',', $request->company_code)))
-                : [];
-
-            // Role 1 may narrow within its own companies but never outside them;
-            // only role 0 is unscoped when no filter is supplied.
-            $own = array_filter(array_map('trim', explode(',', (string) $userAuth->company_code)));
-            $codes = (int) $userAuth->role === 0
-                ? $requested
-                : ($requested ? array_intersect($requested, $own) : $own);
-
-            if ($codes) {
-                $query->where(function ($q) use ($codes) {
-                    foreach ($codes as $code) {
-                        if ($code === 'nidhi-impex' || stripos($code, 'nidhi') !== false) {
-                            $q->orWhere('company_code', 'nidhi-impex')->orWhere('company_code', 'like', '%nidhi%');
-                        } elseif ($code === 'silverstar' || $code === 'silver-star' || stripos($code, 'silver') !== false) {
-                            $q->orWhere('company_code', 'silverstar')->orWhere('company_code', 'like', '%silver%');
-                        } else {
-                            $q->orWhere('company_code', 'like', "%{$code}%");
-                        }
-                    }
-                });
-            } elseif ((int) $userAuth->role !== 0) {
-                $query->whereRaw('1 = 0');
-            }
-        } elseif ($userAuth && (int) $userAuth->role === 2) {
-            $query->where('company_code', $userAuth->company_code)->where('unit', $userAuth->unit);
-        } elseif ($request->company_code) {
-            $codes = explode(',', $request->company_code);
-            if (! in_array('all', $codes) && ! in_array('all-companies', $codes)) {
-                $query->whereIn('company_code', $codes);
-            }
-        }
+        $this->applyCompanyScope($query, $request);
 
         if ($request->department) {
             $query->where('department', 'like', "%{$request->department}%");
@@ -1936,30 +1903,8 @@ class UserController extends Controller
 
         if ($userAuth && $userAuth->type === 'agent') {
             $query->where('added_by', $userAuth->id);
-        } elseif ($userAuth && ((int) $userAuth->role === 1 || (int) $userAuth->role === 0)) {
-            $own = array_filter(array_map('trim', explode(',', (string) $userAuth->company_code)));
-            if ($request->company_code && ! in_array($request->company_code, ['all', 'all-companies'])) {
-                $requested = array_filter(array_map('trim', explode(',', $request->company_code)));
-                $codes = (int) $userAuth->role === 0
-                    ? $requested
-                    : array_intersect($requested, $own);
-            } else {
-                $codes = (int) $userAuth->role === 0
-                    ? []
-                    : $own;
-            }
-            if ($codes) {
-                $query->whereIn('company_code', $codes);
-            } elseif ((int) $userAuth->role !== 0) {
-                $query->whereRaw('1 = 0');
-            }
-        } elseif ($userAuth && (int) $userAuth->role === 2) {
-            $query->where('company_code', $userAuth->company_code)->where('unit', $userAuth->unit);
-        } elseif ($request->company_code) {
-            $codes = explode(',', $request->company_code);
-            if (! in_array('all', $codes) && ! in_array('all-companies', $codes)) {
-                $query->whereIn('company_code', $codes);
-            }
+        } else {
+            $this->applyCompanyScope($query, $request);
         }
         if ($request->unit) {
             $query->where('unit', $request->unit);
@@ -2345,36 +2290,8 @@ class UserController extends Controller
 
         if ($userAuth && ($userAuth->type === 'agent' || (int) $userAuth->role === 4)) {
             $query->where('added_by', $userAuth->id);
-        } elseif ($userAuth && ((int) $userAuth->role === 1 || (int) $userAuth->role === 0)) {
-            // Role 1 may narrow within its own companies but never outside them;
-            // only role 0 is unscoped when no filter is supplied. Previously this
-            // branch applied no filter at all for company_code=all/empty
-            // regardless of role, so a role-1 (company-scoped) admin could see
-            // every other company's trial-form applicants — including their
-            // Aadhaar numbers via AadhaarDisclosure — just by passing
-            // company_code=all. Found 2026-08-18 while investigating an
-            // unrelated timeout report; matches the pattern already used
-            // correctly by index()/getAppointment()/getAgents() in this file.
-            $requested = $request->company_code && ! in_array($request->company_code, ['all', 'all-companies'])
-                ? array_filter(array_map('trim', explode(',', $request->company_code)))
-                : [];
-            $own = array_filter(array_map('trim', explode(',', (string) $userAuth->company_code)));
-            $codes = (int) $userAuth->role === 0
-                ? $requested
-                : ($requested ? array_intersect($requested, $own) : $own);
-
-            if ($codes) {
-                $query->whereIn('company_code', $codes);
-            } elseif ((int) $userAuth->role !== 0) {
-                $query->whereRaw('1 = 0');
-            }
-        } elseif ($userAuth && (int) $userAuth->role === 2) {
-            $query->where('company_code', $userAuth->company_code)->where('unit', $userAuth->unit);
-        } elseif ($request->company_code) {
-            $codes = explode(',', $request->company_code);
-            if (! in_array('all', $codes) && ! in_array('all-companies', $codes)) {
-                $query->whereIn('company_code', $codes);
-            }
+        } else {
+            $this->applyCompanyScope($query, $request);
         }
         if ($request->unit) {
             $query->where('unit', $request->unit);
@@ -2506,31 +2423,7 @@ class UserController extends Controller
 
         $query = User::where('type', 'agent');
 
-        if ($userAuth && ((int) $userAuth->role === 1 || (int) $userAuth->role === 0)) {
-            $requested = $request->company_code && ! in_array($request->company_code, ['all', 'all-companies'])
-                ? array_filter(array_map('trim', explode(',', $request->company_code)))
-                : [];
-
-            // Role 1 may narrow within its own companies but never outside them;
-            // only role 0 is unscoped when no filter is supplied.
-            $own = array_filter(array_map('trim', explode(',', (string) $userAuth->company_code)));
-            $codes = (int) $userAuth->role === 0
-                ? $requested
-                : ($requested ? array_intersect($requested, $own) : $own);
-
-            if ($codes) {
-                $query->whereIn('company_code', $codes);
-            } elseif ((int) $userAuth->role !== 0) {
-                $query->whereRaw('1 = 0');
-            }
-        } elseif ($userAuth && (int) $userAuth->role === 2) {
-            $query->where('company_code', $userAuth->company_code)->where('unit', $userAuth->unit);
-        } elseif ($request->company_code) {
-            $codes = explode(',', $request->company_code);
-            if (! in_array('all', $codes) && ! in_array('all-companies', $codes)) {
-                $query->whereIn('company_code', $codes);
-            }
-        }
+        $this->applyCompanyScope($query, $request);
 
         $agents = $query->orderBy('id', 'desc')->get();
 
