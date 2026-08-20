@@ -173,7 +173,7 @@ class PermissionCatalogSync
                 $granted++;
 
                 if (! $dryRun && isset($permissionIds[$key])) {
-                    DB::table('role_permissions')->insert([
+                    DB::table('role_permissions')->insertOrIgnore([
                         'role_id' => $roleId,
                         'permission_id' => $permissionIds[$key],
                         'effect' => 'ALLOW',

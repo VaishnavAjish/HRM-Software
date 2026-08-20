@@ -36,7 +36,6 @@ class ReverseRouteCoverageTest extends TestCase
         'admin.authorization.configure',
         'admin.configuration.read',
         'admin.configuration.update',
-        'admin.policy.update',
         'admin.user.assign_permission',
         'document.file.restore',
         'document.file.update',
@@ -55,10 +54,6 @@ class ReverseRouteCoverageTest extends TestCase
         'hr.performance.update',
         'hr.requisition.delete',
         'hr.requisition.update',
-        'hr.training.create',
-        'hr.training.delete',
-        'hr.training.read',
-        'hr.training.update',
         // recruitment.candidate.read left this list when ui.portals.agent_dashboard
         // gained it as an implied code (commit 318a020d), giving it a canonical
         // owner the Permission Matrix can grant.

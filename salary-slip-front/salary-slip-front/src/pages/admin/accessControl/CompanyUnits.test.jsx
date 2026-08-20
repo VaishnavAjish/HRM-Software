@@ -21,6 +21,16 @@ vi.mock("../../../utils/api", () => ({
     legacyUnits: vi.fn(),
     adoptLegacyUnit: vi.fn(),
   },
+  departmentApi: {
+    departments: vi.fn(),
+    departmentManagers: vi.fn(),
+    eligibleUsers: vi.fn(),
+    createDepartment: vi.fn(),
+    updateDepartment: vi.fn(),
+    deleteDepartment: vi.fn(),
+    assignManager: vi.fn(),
+    removeManager: vi.fn(),
+  },
 }));
 
 vi.mock("../../../context/AuthContext", () => ({
@@ -33,7 +43,7 @@ vi.mock("../../../hooks/useAuthorization", () => ({
   useAuthorization: () => ({ can: (code) => allowed.has(code) }),
 }));
 
-import { companyUnitApi } from "../../../utils/api";
+import { companyUnitApi, departmentApi } from "../../../utils/api";
 import CompanyUnits from "./CompanyUnits";
 
 const NIDHI = {
@@ -67,6 +77,9 @@ beforeEach(() => {
   companyUnitApi.legacyUnits.mockResolvedValue({
     data: [{ name: "Shreeji", companyCode: "silver-star", companyId: 2, users: 1, hasUnitRecord: false }],
   });
+  departmentApi.departments.mockResolvedValue({ data: [] });
+  departmentApi.departmentManagers.mockResolvedValue({ data: [] });
+  departmentApi.eligibleUsers.mockResolvedValue({ data: [] });
 });
 
 const rowFor = async (name) => {
@@ -109,7 +122,7 @@ describe("Companies tab", () => {
     await userEvent.click(within(row).getByRole("button", { name: /edit nidhi impex/i }));
 
     expect(await screen.findByLabelText(/company code/i)).toBeDisabled();
-    expect(screen.getByText(/tenant key every access check reads/i)).toBeInTheDocument();
+    expect(screen.getByText(/users or units already depend on it/i)).toBeInTheDocument();
     // The name is still editable — only the code is load-bearing.
     expect(screen.getByLabelText(/company name/i)).not.toBeDisabled();
   });

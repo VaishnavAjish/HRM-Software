@@ -58,11 +58,26 @@ class RequirePermission
                     return $next($request);
                 }
             }
+
+            foreach ($permissions as $permission) {
+                if (str_starts_with($permission, 'admin.')) {
+                    return response()->json([
+                        'success' => false,
+                        'error' => [
+                            'code' => 'AUTHORIZATION_SCHEMA_NOT_READY',
+                            'message' => 'Authorization services are being upgraded. Please retry shortly.',
+                        ],
+                    ], 503);
+                }
+            }
+
             return response()->json([
                 'success' => false,
                 'error' => ['code' => 'PERMISSION_DENIED', 'message' => 'You are not permitted to perform this action.'],
             ], 403);
         }
+
+        $denied = [];
 
         foreach ($permissions as $permission) {
             $decision = $this->authorization->decide($actor, $permission, $resource, [
@@ -74,6 +89,35 @@ class RequirePermission
                 $request->attributes->set('authorization_decision', $decision);
                 return $next($request);
             }
+
+            $denied[$permission] = $decision;
+        }
+
+        foreach ($denied as $permission => $decision) {
+            if (!($decision->legacyDecision['allowed'] ?? false)) {
+                continue;
+            }
+
+            if ($this->enforcement->isEnforced($permission, $request->route()?->getName(), $actor->company_code)) {
+                continue;
+            }
+
+            if (!$this->flags->enabled('authorization_shadow_mode', $actor->company_code, true)) {
+                continue;
+            }
+
+            Log::channel(config('logging.default'))->info('authorization.shadow_would_deny', [
+                'permission' => $permission,
+                'route' => $request->route()?->getName() ?: $request->path(),
+                'actor_id' => $actor->id,
+                'tenant' => $actor->company_code,
+                'would_deny' => true,
+                'request_id' => $request->header('X-Request-Id'),
+            ]);
+
+            $request->attributes->set('authorization_shadow_mismatch', $decision->toArray());
+            $request->attributes->set('authorization_decision', $decision);
+            return $next($request);
         }
 
         return response()->json([

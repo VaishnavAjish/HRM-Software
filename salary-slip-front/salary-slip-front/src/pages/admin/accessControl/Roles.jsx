@@ -282,7 +282,7 @@ export default function Roles() {
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap justify-end gap-1.5">
                         {manageRoles && can("admin.role.update") && (
-                          <Button size="sm" variant="outline" onClick={() => navigate("/admin/access-control/permission-matrix")}>
+                          <Button size="sm" variant="outline" onClick={() => navigate(`/admin/access-control/permission-matrix?roleId=${role.id}`)}>
                             <SlidersHorizontal size={14} /> Permissions
                           </Button>
                         )}

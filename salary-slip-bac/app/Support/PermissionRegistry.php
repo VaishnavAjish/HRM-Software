@@ -540,6 +540,12 @@ class PermissionRegistry
             'description' => 'Open the HR dashboard.',
             'implies' => ['hr.dashboard.read'],
         ],
+        'ui.hr.organization' => [
+            'type' => self::TYPE_PAGE, 'label' => 'Organization', 'order' => 15,
+            'parent' => 'ui.hr', 'route' => '/admin/hr/organization',
+            'description' => 'Open the HR organization workspace.',
+            'implies' => ['hr.dashboard.read'],
+        ],
         'ui.hr.hiring' => [
             'type' => self::TYPE_PAGE, 'label' => 'Hiring', 'order' => 20,
             'parent' => 'ui.hr', 'route' => '/admin/hr/hiring',
@@ -891,6 +897,13 @@ class PermissionRegistry
             'description' => 'Assign a support ticket to an agent.',
             'implies' => ['support.ticket.assign'],
         ],
+        'ui.tickets.control_center' => [
+            'type' => self::TYPE_PAGE, 'label' => 'Ticket Control Center', 'order' => 30,
+            'parent' => 'ui.tickets', 'route' => '/admin/tickets/control-center',
+            'sensitivity' => self::SENSITIVITY_PRIVILEGED,
+            'description' => 'Open the elevated ticket control center.',
+            'implies' => ['support.ticket.read'],
+        ],
 
         /* --------------------------------------------------------- reporting */
 
@@ -1019,7 +1032,7 @@ class PermissionRegistry
             'type' => self::TYPE_PAGE, 'label' => 'My Profile', 'order' => 28,
             'parent' => 'ui.portals', 'route' => '/employee/profile',
             'description' => 'Open the employee profile page.',
-            'implies' => ['self.profile.read'],
+            'implies' => ['self.profile.read', 'hr.department.read'],
             'api' => [['GET', '/api/profile']],
         ],
         'ui.portals.employee_profile.update' => [
@@ -1028,6 +1041,36 @@ class PermissionRegistry
             'description' => 'Edit own profile details.',
             'implies' => ['self.profile.update'],
             'api' => [['POST', '/api/profile-update']],
+        ],
+        'ui.portals.employee_security' => [
+            'type' => self::TYPE_PAGE, 'label' => 'Security Center', 'order' => 29,
+            'parent' => 'ui.portals', 'route' => '/employee/security',
+            'sensitivity' => self::SENSITIVITY_PRIVILEGED,
+            'description' => 'Open own sessions, devices, and MFA settings.',
+            'implies' => ['self.profile.read'],
+            'api' => [
+                ['GET', '/api/v1/authorization/sessions'],
+                ['GET', '/api/v1/authorization/devices'],
+                ['GET', '/api/v1/authorization/mfa'],
+            ],
+        ],
+        'ui.portals.employee_security.manage' => [
+            'type' => self::TYPE_ACTION, 'label' => 'Manage Security Settings', 'order' => 10,
+            'parent' => 'ui.portals.employee_security',
+            'sensitivity' => self::SENSITIVITY_PRIVILEGED,
+            'description' => 'Revoke sessions, manage trusted devices, and configure MFA.',
+            'implies' => ['self.profile.update'],
+            'api' => [
+                ['DELETE', '/api/v1/authorization/sessions/{id}'],
+                ['POST', '/api/v1/authorization/sessions/revoke-all-others'],
+                ['POST', '/api/v1/authorization/devices/{deviceId}/trust'],
+                ['POST', '/api/v1/authorization/devices/{deviceId}/block'],
+                ['POST', '/api/v1/authorization/devices/{deviceId}/unblock'],
+                ['POST', '/api/v1/authorization/mfa/totp/initiate'],
+                ['POST', '/api/v1/authorization/mfa/totp/complete'],
+                ['POST', '/api/v1/authorization/mfa/backup-codes'],
+                ['DELETE', '/api/v1/authorization/mfa/{id}'],
+            ],
         ],
         'ui.portals.employee_appointment' => [
             'type' => self::TYPE_PAGE, 'label' => 'Employee Appointment Form', 'order' => 30,
@@ -1260,24 +1303,35 @@ class PermissionRegistry
             'sensitivity' => self::SENSITIVITY_PRIVILEGED,
             'description' => 'Open policy management.',
             'implies' => ['admin.policy.read'],
+            'api' => [['GET', '/api/v1/policies'], ['GET', '/api/v1/policies/{id}']],
         ],
         'ui.access_control.policies.create' => [
             'type' => self::TYPE_ACTION, 'label' => 'Create Policy', 'order' => 10,
             'parent' => 'ui.access_control.policies', 'sensitivity' => self::SENSITIVITY_CRITICAL,
             'description' => 'Create an authorization policy.',
             'implies' => ['admin.policy.create'],
+            'api' => [['POST', '/api/v1/policies']],
+        ],
+        'ui.access_control.policies.update' => [
+            'type' => self::TYPE_ACTION, 'label' => 'Update Policy', 'order' => 15,
+            'parent' => 'ui.access_control.policies', 'sensitivity' => self::SENSITIVITY_CRITICAL,
+            'description' => 'Update an authorization policy draft.',
+            'implies' => ['admin.policy.update'],
+            'api' => [['PATCH', '/api/v1/policies/{id}']],
         ],
         'ui.access_control.policies.publish' => [
             'type' => self::TYPE_ACTION, 'label' => 'Publish Policy', 'order' => 20,
             'parent' => 'ui.access_control.policies', 'sensitivity' => self::SENSITIVITY_CRITICAL,
             'description' => 'Publish a policy version.',
             'implies' => ['admin.policy.publish'],
+            'api' => [['POST', '/api/v1/policies/{id}/publish']],
         ],
         'ui.access_control.policies.rollback' => [
             'type' => self::TYPE_ACTION, 'label' => 'Rollback Policy', 'order' => 30,
             'parent' => 'ui.access_control.policies', 'sensitivity' => self::SENSITIVITY_CRITICAL,
             'description' => 'Roll a policy back to an earlier version.',
             'implies' => ['admin.policy.rollback'],
+            'api' => [['POST', '/api/v1/policies/{id}/rollback']],
         ],
         'ui.access_control.access_requests' => [
             'type' => self::TYPE_PAGE, 'label' => 'Access Requests', 'order' => 50,
@@ -1285,18 +1339,24 @@ class PermissionRegistry
             'sensitivity' => self::SENSITIVITY_PRIVILEGED,
             'description' => 'Open access request review.',
             'implies' => ['admin.access_request.read'],
+            'api' => [['GET', '/api/v1/access-requests']],
         ],
         'ui.access_control.access_requests.approve' => [
             'type' => self::TYPE_ACTION, 'label' => 'Approve Request', 'order' => 10,
             'parent' => 'ui.access_control.access_requests', 'sensitivity' => self::SENSITIVITY_CRITICAL,
             'description' => 'Approve an access request.',
             'implies' => ['admin.access_request.approve'],
+            'api' => [
+                ['POST', '/api/v1/access-requests/{id}/approve'],
+                ['POST', '/api/v1/access-requests/{id}/reject'],
+            ],
         ],
         'ui.access_control.access_requests.revoke' => [
             'type' => self::TYPE_ACTION, 'label' => 'Revoke Request', 'order' => 20,
             'parent' => 'ui.access_control.access_requests', 'sensitivity' => self::SENSITIVITY_CRITICAL,
             'description' => 'Revoke previously granted access.',
             'implies' => ['admin.access_request.revoke'],
+            'api' => [['POST', '/api/v1/access-requests/{id}/revoke']],
         ],
         'ui.access_control.delegations' => [
             'type' => self::TYPE_PAGE, 'label' => 'Delegations', 'order' => 60,
@@ -1304,6 +1364,23 @@ class PermissionRegistry
             'sensitivity' => self::SENSITIVITY_CRITICAL,
             'description' => 'Open delegation management.',
             'implies' => ['admin.delegation.manage'],
+            'api' => [
+                ['GET', '/api/v1/delegations'],
+                ['POST', '/api/v1/delegations'],
+                ['POST', '/api/v1/delegations/{id}/revoke'],
+            ],
+        ],
+        'ui.access_control.my_delegations' => [
+            'type' => self::TYPE_PAGE, 'label' => 'My Delegations', 'order' => 65,
+            'parent' => 'ui.access_control', 'route' => '/admin/my-delegations',
+            'sensitivity' => self::SENSITIVITY_NORMAL,
+            'description' => 'Open personal delegations view.',
+            'implies' => ['self.profile.read'],
+            'api' => [
+                ['GET', '/api/v1/delegations/mine'],
+                ['POST', '/api/v1/delegations/{id}/accept'],
+                ['POST', '/api/v1/delegations/{id}/decline'],
+            ],
         ],
         'ui.access_control.emergency_access' => [
             'type' => self::TYPE_PAGE, 'label' => 'Emergency Access', 'order' => 70,
@@ -1311,6 +1388,11 @@ class PermissionRegistry
             'sensitivity' => self::SENSITIVITY_CRITICAL,
             'description' => 'Open emergency access review.',
             'implies' => ['admin.emergency_access.approve'],
+            'api' => [
+                ['GET', '/api/v1/emergency-access'],
+                ['POST', '/api/v1/emergency-access'],
+                ['POST', '/api/v1/emergency-access/{id}/revoke'],
+            ],
         ],
 
         /* ------------------------------------------------------------ profile */

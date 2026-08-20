@@ -424,9 +424,8 @@ class OrganizationUnitService
                 $existing ? $updated++ : $created++;
             } catch (OrganizationException $e) {
                 // Most commonly a duplicate department name within the same
-                // company — a known issue in the legacy table (see the
-                // cleanup-departments endpoint). Skip and keep going rather
-                // than aborting the whole sync over one bad row.
+                // company — a known issue in the legacy table. Skip and keep
+                // going rather than aborting the whole sync over one bad row.
                 $skipped[] = ['legacyDepartmentId' => $department->id, 'reason' => $e->getMessage()];
             }
         }

@@ -62,7 +62,10 @@ export default function usePermissionMatrix() {
       .then((response) => {
         const list = response?.data ?? [];
         setRoles(list);
-        setRoleId((current) => current ?? list[0]?.id ?? null);
+        const urlRoleId = new URLSearchParams(window.location.search).get("roleId");
+        const parsedRoleId = urlRoleId ? Number(urlRoleId) : null;
+        const initialRoleId = parsedRoleId && list.some((r) => r.id === parsedRoleId) ? parsedRoleId : list[0]?.id ?? null;
+        setRoleId((current) => current ?? initialRoleId);
         if (list.length === 0) setLoading(false);
       })
       .catch((err) => {

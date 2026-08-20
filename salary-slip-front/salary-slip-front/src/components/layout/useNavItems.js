@@ -138,7 +138,17 @@ function getAdminNav(companyId, user, isAllCompanies, isModuleAvailable = () => 
     nav.push({ to: "/admin/my-delegations", label: "My Delegations", icon: ShieldCheck });
   }
 
-  if ((rawRole === 0 || hasAccess("admin.role.read") || hasAccess("admin.user.read")) && isModuleAvailable("authorization")) {
+  const accessControlPagePermissions = [
+    "admin.user.read",
+    "admin.role.read",
+    "admin.policy.read",
+    "admin.access_request.read",
+    "admin.delegation.manage",
+    "admin.emergency_access.approve",
+  ];
+  const canOpenAccessControl = rawRole === 0 || accessControlPagePermissions.some(hasAccess);
+
+  if (canOpenAccessControl && isModuleAvailable("authorization")) {
     nav.push({
       label: "Access Control",
       icon: ShieldCheck,

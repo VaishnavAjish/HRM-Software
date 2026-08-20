@@ -1578,54 +1578,6 @@ Route::post('candidate-intake/{token}', [PublicCandidateIntakeController::class,
 
 Route::get('jobs/indeed-feed.xml', [\App\Http\Controllers\IndeedFeedController::class, 'index']);
 
-Route::get('seed-legacy-departments', [\App\Http\Controllers\DepartmentController::class, 'seedLegacy']);
-Route::get('cleanup-departments', function() {
-    $departments = \Illuminate\Support\Facades\DB::table('departments')->orderBy('name')->get();
-    $grouped = [];
-    foreach ($departments as $d) {
-        $grouped[$d->name][] = $d;
-    }
-    
-    $mergedCount = 0;
-    foreach ($grouped as $name => $rows) {
-        if (count($rows) > 1) {
-            $keep = $rows[0];
-            $keepId = $keep->id;
-            
-            $companies = [];
-            $isGlobal = false;
-            foreach ($rows as $r) {
-                $c = $r->company_code;
-                if (!$c) {
-                    $isGlobal = true;
-                } else {
-                    $parts = explode(',', $c);
-                    foreach ($parts as $p) {
-                        if (trim($p)) $companies[] = trim($p);
-                    }
-                }
-            }
-            
-            $companies = array_unique($companies);
-            $finalCompany = $isGlobal ? null : implode(',', $companies);
-            
-            \Illuminate\Support\Facades\DB::table('departments')->where('id', $keepId)->update(['company_code' => $finalCompany]);
-            
-            for ($i = 1; $i < count($rows); $i++) {
-                $delId = $rows[$i]->id;
-                \Illuminate\Support\Facades\DB::table('department_managers')->where('department_id', $delId)->update(['department_id' => $keepId]);
-                \Illuminate\Support\Facades\DB::table('departments')->where('id', $delId)->delete();
-            }
-            $mergedCount++;
-        }
-    }
-    return "Merged $mergedCount departments";
-});
-Route::get('migrate-db', function() {
-    \Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
-    return \Illuminate\Support\Facades\Artisan::output();
-});
-
 /* ------------------------------------------------ Public Jobs & Candidate Portal */
 Route::get('public/jobs', [\App\Http\Controllers\Public\PublicJobController::class, 'index'])->middleware('throttle:public-jobs');
 Route::get('public/jobs/{slug}', [\App\Http\Controllers\Public\PublicJobController::class, 'show'])->middleware('throttle:public-jobs');
