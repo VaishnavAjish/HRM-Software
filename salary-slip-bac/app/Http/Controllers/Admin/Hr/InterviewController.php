@@ -115,7 +115,39 @@ class InterviewController extends Controller
             $perPage = max(1, min((int) ($request->per_page ?? 25), 200));
             $interviews = $query->orderByDesc('id')->paginate($perPage);
 
-            return response()->json(['status' => true, 'data' => $interviews->toArray()]);
+            $formattedData = collect($interviews->items())->map(function ($item) {
+                try {
+                    return $item->toArray();
+                } catch (\Throwable $e) {
+                    Log::warning('interview_item_transform_failed', ['id' => $item->id ?? null, 'error' => $e->getMessage()]);
+                    return [
+                        'id' => $item->id ?? 0,
+                        'candidate_id' => $item->candidate_id ?? null,
+                        'round_name' => $item->round_name ?? 'Interview',
+                        'scheduled_at' => (string) ($item->scheduled_at ?? ''),
+                        'mode' => $item->mode ?? 'video',
+                        'status' => $item->status ?? 'scheduled',
+                    ];
+                }
+            })->all();
+
+            return response()->json([
+                'status' => true,
+                'data' => [
+                    'current_page' => $interviews->currentPage(),
+                    'data' => $formattedData,
+                    'first_page_url' => $interviews->url(1),
+                    'from' => $interviews->firstItem(),
+                    'last_page' => $interviews->lastPage(),
+                    'last_page_url' => $interviews->url($interviews->lastPage()),
+                    'next_page_url' => $interviews->nextPageUrl(),
+                    'path' => $interviews->path(),
+                    'per_page' => $interviews->perPage(),
+                    'prev_page_url' => $interviews->previousPageUrl(),
+                    'to' => $interviews->lastItem(),
+                    'total' => $interviews->total(),
+                ],
+            ]);
         } catch (\Throwable $e) {
             Log::error('interview_index_failed', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
             return response()->json([
