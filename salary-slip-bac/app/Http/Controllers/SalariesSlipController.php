@@ -4,11 +4,85 @@ namespace App\Http\Controllers;
 
 use App\Http\Controllers\Admin\Hr\Concerns\ScopesCompany;
 use App\Models\SalarySlip;
+use App\Support\UserTypeRoles;
 use Illuminate\Http\Request;
 
 class SalariesSlipController extends Controller
 {
     use ScopesCompany;
+
+    private function canManageOrViewAllSalaries($user): bool
+    {
+        if (!$user) {
+            return false;
+        }
+
+        // 1. Check legacy integer role (0 = SuperAdmin, 1 = Admin, 2 = UnitAdmin)
+        $legacyRole = (int) $user->role;
+        if (in_array($legacyRole, [0, 1, 2], true)) {
+            return true;
+        }
+
+        // 2. Check if user is an agent (agents never manage salary slips unless explicitly granted)
+        if ($user->type === 'agent') {
+            $hasAdminRole = $user->roles()->whereIn('code', [
+                'tenant_administrator', 'admin', 'hr_manager', 'hr', 'hr_admin',
+                'account_manager', 'accountant', 'account', 'accounts', 'payroll_manager', 'payroll_admin'
+            ])->exists();
+            if (!$hasAdminRole) {
+                return false;
+            }
+        }
+
+        // 3. Check assigned roles / role tier via UserTypeRoles or user_roles relationship
+        $assignedRoleCodes = $user->roles()->pluck('code')->toArray();
+        if ($user->role) {
+            $assignedRoleCodes[] = (string) $user->role;
+        }
+
+        foreach ($assignedRoleCodes as $code) {
+            $tier = UserTypeRoles::tierForCode($code);
+            if (in_array($tier, [UserTypeRoles::SUPER_ADMIN, UserTypeRoles::ADMIN, UserTypeRoles::UNIT_ADMIN], true)) {
+                return true;
+            }
+            if (in_array(strtolower($code), [
+                'account_manager', 'accountant', 'account', 'accounts', 'accounts_head',
+                'accounts_manager', 'payroll_manager', 'payroll_admin', 'hr', 'hr_manager', 'hr_admin'
+            ], true)) {
+                return true;
+            }
+        }
+
+        // 4. Check RBAC permissions evaluated by AuthorizationEngine
+        try {
+            $engine = app(\App\Services\Authorization\AuthorizationEngine::class);
+            $permissionsToCheck = [
+                'ui.salary',
+                'ui.salary.batch',
+                'ui.salary.upload',
+                'payroll.payslip.read',
+                'payroll.payslip.create',
+                'payroll.payslip.update',
+                'payroll.payslip.delete',
+                'payroll.run.execute',
+                'payroll.run.approve',
+                'payroll.run.export',
+                'salary.batch.read',
+                'salary.slip.read',
+            ];
+
+            foreach ($permissionsToCheck as $perm) {
+                if ($engine->decide($user, $perm, [], ['audit' => false])->allowed) {
+                    return true;
+                }
+            }
+        } catch (\Throwable $e) {
+            // Ignore engine resolution error
+        }
+
+        return false;
+    }
+
     public function index(Request $request)
     {
         $query = SalarySlip::query();
@@ -28,8 +102,8 @@ class SalariesSlipController extends Controller
         });
 
         $user = auth('api')->user();
-        if ($user && (int) $user->role !== 0 && (int) $user->role !== 1 && (int) $user->role !== 2) {
-            // Non-admins may only ever see their own salary slips, regardless
+        if ($user && !$this->canManageOrViewAllSalaries($user)) {
+            // Non-admins / self-service employees may only ever see their own salary slips, regardless
             // of what emp_code (or lack of one) the client requests.
             $query->where('emp_code', $user->emp_code);
         } else {
@@ -91,7 +165,7 @@ class SalariesSlipController extends Controller
 
         $user = auth('api')->user();
         if ($user) {
-            if ((int) $user->role !== 0 && (int) $user->role !== 1 && (int) $user->role !== 2 && (string) $slip->emp_code !== (string) $user->emp_code) {
+            if (!$this->canManageOrViewAllSalaries($user) && (string) $slip->emp_code !== (string) $user->emp_code) {
                 return response()->json(['status' => false, 'message' => 'Salary slip not found'], 404);
             }
             if ((int) $user->role === 1 && (string) $slip->company_code !== (string) $user->company_code) {
@@ -108,10 +182,24 @@ class SalariesSlipController extends Controller
         // same emp_code + company_code lookup salarySlipImport() uses.
         $employee = \App\Models\User::where('emp_code', $slip->emp_code)
             ->where('company_code', $slip->company_code)
-            ->first(['unit', 'department', 'designation', 'mobile_number', 'bank_account_no', 'bank_name', 'bank_ifsc_code', 'esi_no', 'pf_no', 'resignation_date']);
+            ->where('is_deleted', 0)
+            ->first();
 
         $data = $slip->toArray();
-        $data['user'] = $employee;
+        if ($employee) {
+            $data['user'] = [
+                'unit' => $employee->unit,
+                'department' => $employee->department,
+                'designation' => $employee->designation,
+                'mobile_number' => $employee->mobile_number,
+                'resignation_date' => $employee->resignation_date,
+                'bank_account_no' => $employee->bank_account_no,
+                'bank_name' => $employee->bank_name,
+                'bank_ifsc_code' => $employee->bank_ifsc_code,
+                'esi_no' => $employee->esi_no,
+                'pf_no' => $employee->pf_no,
+            ];
+        }
 
         return response()->json(['status' => true, 'data' => $data]);
     }
