@@ -191,7 +191,7 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess, isView
    */
   const writeCompanyCode = resolveWriteCompanyId(companyId || "nidhi-impex");
   const writeCompanyId = companyIdFor(writeCompanyCode);
-  const isEditMode = Boolean(initialData);
+  const isEditMode = Boolean(initialData?.id || initialData?.raw?.id);
   // The record as it was when the modal opened, so the update payload can send
   // only the fields that actually changed. State rather than a ref: it is
   // assigned during the open transition, and refs must not be written in render.
@@ -307,6 +307,7 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess, isView
    * values and only then replaces them.
    */
   const buildOpenState = () => {
+    const defaultUnit = user?.unit || user?.unit_name || user?.unitName || "";
     if (isEditMode && initialData) {
       const raw = initialData.raw || {};
       const populated = {
@@ -320,7 +321,7 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess, isView
         mobile_no_2: raw.mobile_no_2 || "",
         gender: raw.gender || "MALE",
         email: raw.email || "",
-        unit: raw.unit || "",
+        unit: raw.unit || raw.unit_name || raw.unitName || defaultUnit,
         last_company_name: raw.last_company_name || "",
         last_company_address: raw.last_company_address || "",
         experience: raw.experience || "",
@@ -344,7 +345,7 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess, isView
       return { formData: populated, snapshot: populated, photoPreview: initialData.photo || "" };
     }
 
-    return { formData: EMPTY_FORM, snapshot: null, photoPreview: "" };
+    return { formData: { ...EMPTY_FORM, unit: defaultUnit }, snapshot: null, photoPreview: "" };
   };
 
   // Populate on open and clear the validation state on close. Assigning state
@@ -602,10 +603,20 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess, isView
                     value: "",
                     label: optionsLoading ? "Loading branches…" : "Select Branch",
                   },
-                  ...unitsForCompany(writeCompanyCode).map((unit) => ({
-                    value: unit.name,
-                    label: unit.name,
-                  })),
+                  ...Array.from(
+                    new Set([
+                      ...unitsForCompany(writeCompanyCode).map((unit) => unit.name),
+                      ...(user?.unit ? [user.unit] : []),
+                      ...(user?.unit_name ? [user.unit_name] : []),
+                      ...(user?.unitName ? [user.unitName] : []),
+                      ...(formData.unit ? [formData.unit] : []),
+                    ])
+                  )
+                    .filter(Boolean)
+                    .map((unitName) => ({
+                      value: unitName,
+                      label: unitName,
+                    })),
                 ]}
               />
               <HalfField

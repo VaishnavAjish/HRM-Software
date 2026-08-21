@@ -11,7 +11,7 @@ import toast from "react-hot-toast";
 import ModernDatePicker from "../../components/ModernDatePicker";
 import PrintableForm from "../../components/forms/PrintableForm";
 import { authApi, salaryApi, appointmentV1Api, resolveWriteCompanyId } from "../../utils/api";
-import { normalizeCompanyId } from "../../config/companyConfig";
+import { normalizeCompanyId, getCompanyUnits } from "../../config/companyConfig";
 import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";
 import { useProvisioningOptions } from "../../hooks/useProvisioningOptions";
@@ -43,7 +43,7 @@ const DEFAULT_DEPARTMENTS = [
   "Pricing Dept.",
 ];
 
-const getBlankFormData = (companyCode = "") => ({
+const getBlankFormData = (companyCode = "", defaultUnit = "") => ({
   photo: null,
   emp_code: "",
   joining_date: `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`,
@@ -75,7 +75,7 @@ const getBlankFormData = (companyCode = "") => ({
   education: "",
   bank_account_no: "",
   company_code: companyCode,
-  unit: "",
+  unit: defaultUnit,
   emp_signature: "",
   members: Array(4).fill({
     name: "",
@@ -85,6 +85,17 @@ const getBlankFormData = (companyCode = "") => ({
     occupation: "",
   }),
 });
+
+const FAMILY_RELATIONS = [
+  "Father",
+  "Mother",
+  "Brother",
+  "Sister",
+  "Husband",
+  "Wife",
+  "Son",
+  "Daughter",
+];
 
 const MobileCard = ({ title, children, isMobile }) => {
   if (!isMobile) return <>{children}</>;
@@ -349,11 +360,21 @@ const AppointmentModal = ({
   // is already scoped to what the server will accept on write.
   const { companies: companyOptions, unitsForCompany } = useProvisioningOptions();
 
-  const unitOptions = unitsForCompany(selectedCompanyId).map((unit) => unit.name);
-
   const [formData, setFormData] = useState(() =>
     getBlankFormData(isAllCompanies ? "" : companyId),
   );
+
+  const agentUnit = user?.unit || user?.unit_name || user?.unitName || "";
+  const rawUnits = unitsForCompany(selectedCompanyId).map((unit) => unit.name);
+  const fallbackUnits = getCompanyUnits(selectedCompanyId);
+  const unitOptions = Array.from(
+    new Set([
+      ...rawUnits,
+      ...fallbackUnits,
+      ...(agentUnit ? [agentUnit] : []),
+      ...(formData.unit ? [formData.unit] : []),
+    ])
+  ).filter(Boolean);
 
   // Still used by the emp-code confirmation flow and the edit-mode loader,
   // which survive the removal of the old combined submit.
@@ -784,6 +805,7 @@ const AppointmentModal = ({
    * values and then immediately replaces them.
    */
   const buildOpenState = () => {
+    const defaultUnit = user?.unit || user?.unit_name || user?.unitName || "";
     if (initialData && (isEditMode || isPrefillFromTrial)) {
       const raw = initialData.raw || initialData || {};
 
@@ -879,7 +901,7 @@ const AppointmentModal = ({
         education: raw.education || "",
         bank_account_no: raw.bank_account_no || "",
         company_code: codeId,
-        unit: raw.unit || raw.unit_name || "",
+        unit: raw.unit || raw.unit_name || raw.unitName || defaultUnit,
         emp_signature: raw.emp_signature || "",
         members: parsedMembers,
       };
@@ -907,7 +929,7 @@ const AppointmentModal = ({
 
     return {
       selectedCompanyId: newCompanyId,
-      formData: getBlankFormData(newCompanyId),
+      formData: getBlankFormData(newCompanyId, defaultUnit),
       snapshot: null,
       photoPreview: "",
       aadhaarOnFile: false,
@@ -1422,11 +1444,17 @@ const AppointmentModal = ({
                           <div className="flex flex-col gap-1 flex-1">
                             <label className="text-xs font-semibold text-gray-600">Relation</label>
                             <input
+                              list={`family-relation-options-mobile-${index}`}
                               className="w-full transition-colors border border-gray-300 rounded-lg px-3 py-2 bg-white text-sm h-10 focus:border-brand-500 focus:outline-none"
                               value={member.relation}
                               onChange={(e) => handleFamilyChange(index, "relation", e.target.value)}
-                              placeholder="e.g. Father"
+                              placeholder="Select or type e.g. Father"
                             />
+                            <datalist id={`family-relation-options-mobile-${index}`}>
+                              {FAMILY_RELATIONS.map((rel) => (
+                                <option key={rel} value={rel} />
+                              ))}
+                            </datalist>
                           </div>
                           <div className="flex flex-col gap-1 flex-1">
                             <label className="text-xs font-semibold text-gray-600">Date of Birth</label>
@@ -1494,6 +1522,7 @@ const AppointmentModal = ({
                           </td>
                           <td className="border border-black px-1">
                             <input
+                              list={`family-relation-options-desktop-${index}`}
                               className="w-full outline-none text-[13px]"
                               value={member.relation}
                               onChange={(e) =>
@@ -1503,7 +1532,13 @@ const AppointmentModal = ({
                                   e.target.value,
                                 )
                               }
+                              placeholder="Select or type..."
                             />
+                            <datalist id={`family-relation-options-desktop-${index}`}>
+                              {FAMILY_RELATIONS.map((rel) => (
+                                <option key={rel} value={rel} />
+                              ))}
+                            </datalist>
                           </td>
                           <td className="border border-black px-1">
                             <ModernDatePicker

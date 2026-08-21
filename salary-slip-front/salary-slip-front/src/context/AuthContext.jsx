@@ -114,6 +114,14 @@ function buildAuthUser(apiUser, fallbackUser = {}, loginData = {}) {
       fallbackUser?.companyName ||
       fallbackUser?.company_name ||
       "",
+    unit:
+      apiUser?.unit ||
+      apiUser?.unit_name ||
+      apiUser?.unitName ||
+      fallbackUser?.unit ||
+      fallbackUser?.unit_name ||
+      fallbackUser?.unitName ||
+      "",
     rawRole: Number(rawRole),
   };
 }
@@ -167,8 +175,8 @@ function portalRoleFor(builtUser, snapshot) {
 async function loadPermissionsForUser(builtUser) {
   if (!builtUser?.accessToken) return builtUser;
 
-  // Super admin (rawRole === 0) holds wildcard access — skip permissions network call for instant login
-  if (builtUser.rawRole === 0) {
+  // Super admin (rawRole === 0) or Agent (role === 'agent' or rawRole === 4) hold wildcard/dedicated access
+  if (builtUser.rawRole === 0 || builtUser.role === "agent" || builtUser.rawRole === 4) {
     return {
       ...builtUser,
       authorizationStatus: "loaded",
@@ -234,19 +242,23 @@ export function AuthProvider({ children }) {
       }
 
       try {
+        const isAgentAccount = storedUser?.role === "agent" || Number(storedUser?.rawRole) === 4 || storedUser?.type === "agent";
+
         const [profileResult, enterpriseResult] = await Promise.allSettled([
           authApi.getProfile(
             storedUser.accessToken,
             storedUser.tokenType || "bearer",
           ),
-          authorizationApi.me(
-            storedUser.accessToken,
-            storedUser.tokenType || "bearer",
-          ),
+          isAgentAccount
+            ? Promise.resolve({ success: false })
+            : authorizationApi.me(
+                storedUser.accessToken,
+                storedUser.tokenType || "bearer",
+              ),
         ]);
 
         const data = profileResult.status === "fulfilled" ? profileResult.value : null;
-        if (!data) throw new Error("Profile load failed");
+        if (!data && !isAgentAccount) throw new Error("Profile load failed");
 
         const apiUser =
           data?.data || data?.user || data?.employee || data?.profile || data;

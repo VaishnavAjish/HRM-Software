@@ -924,11 +924,20 @@ export default function Appointments() {
   const { user } = useAuth();
   const { can } = useAuthorization();
   const { companyScope, scopeKey } = useCompany();
+  const isAgentUser = Boolean(
+    user?.type === "agent" ||
+    user?.role === "agent" ||
+    Number(user?.role) === 4 ||
+    Number(user?.rawRole) === 4 ||
+    user?.user_type === "agent" ||
+    user?.is_agent
+  );
   const appointmentAccess = appointmentActionAccess(can);
-  const canCreateAppointment = appointmentAccess.create || user?.role === "agent";
-  const canUpdateAppointment = appointmentAccess.update;
-  const canDeleteAppointment = appointmentAccess.deleteRecord;
-  const canCreateEmployee = appointmentAccess.createEmployee;
+  const canCreateAppointment = appointmentAccess.create || isAgentUser;
+  const canApproveOrReject = !isAgentUser && appointmentAccess.update;
+  const canEditAppointment = isAgentUser || appointmentAccess.update;
+  const canDeleteAppointment = !isAgentUser && appointmentAccess.deleteRecord;
+  const canCreateEmployee = !isAgentUser && appointmentAccess.createEmployee;
   const canPrintAppointment = appointmentAccess.print;
   const canExportAppointment = appointmentAccess.export;
   const [loading, setLoading] = useState(false);
@@ -1113,12 +1122,16 @@ export default function Appointments() {
     return Array.from(set).sort((a, b) => b - a);
   }, [appointments]);
 
-  const isAgentUser = user?.type === "agent" || user?.role === "agent" || Number(user?.role) === 4;
-
   const filtered = useMemo(() => {
     return appointments.filter((item) => {
-      // Exclude approved forms from table view ONLY for admin users (agents see all their submitted forms)
-      if (!isAgentUser && item.status === "Approved") return false;
+      // Agents strictly see only their own submitted forms (added_by === user.id)
+      if (isAgentUser) {
+        const addedBy = item.addedBy ?? item.added_by ?? item.raw?.added_by;
+        if (addedBy && String(addedBy) !== String(user?.id)) return false;
+      } else if (item.status === "Approved") {
+        // Exclude approved forms from table view ONLY for admin users (agents see all their submitted forms)
+        return false;
+      }
       // Search now runs in SQL. Re-applying it here would filter the returned
       // page a second time against different column names — a row the server
       // matched on mobile_number would vanish because the client compares
@@ -1562,9 +1575,9 @@ export default function Appointments() {
                       <Eye size={13} />
                       View
                     </button>
-                    {(canUpdateAppointment || canDeleteAppointment) && (
+                    {(canEditAppointment || canApproveOrReject || canDeleteAppointment) && (
                       <>
-                        {data.empCode && canUpdateAppointment ? (
+                        {canEditAppointment ? (
                           <button
                             onClick={() => setEditTarget(data)}
                             className="flex min-w-0 flex-1 justify-center items-center gap-1.5 rounded-lg bg-yellow-50 px-2 py-2 text-xs font-semibold text-yellow-600 transition hover:bg-yellow-100 min-h-[36px]"
@@ -1585,7 +1598,7 @@ export default function Appointments() {
                             )}
                             Delete
                           </button>
-                        ) : canUpdateAppointment ? (
+                        ) : canApproveOrReject ? (
                           <>
                             <button
                               onClick={() => handleStatusUpdate(data.id, true)}
@@ -1977,7 +1990,7 @@ export default function Appointments() {
         headerName: "Actions",
         field: "id",
         pinned: "right",
-        width: canUpdateAppointment || canDeleteAppointment ? 270 : 100,
+        width: canEditAppointment || canApproveOrReject || canDeleteAppointment ? 270 : 100,
         sortable: false,
         filter: false,
         cellRenderer: ({ data }) => (
@@ -1990,18 +2003,17 @@ export default function Appointments() {
             >
               View
             </Button>
-            {(canUpdateAppointment || canDeleteAppointment) && (
-              <>
-                {data.empCode && canUpdateAppointment ? (
-                  <Button
-                    size="sm"
-                    variant="warning"
-                    icon={<Pencil size={13} />}
-                    onClick={() => setEditTarget(data)}
-                  >
-                    Edit
-                  </Button>
-                ) : data.status === "Rejected" && canDeleteAppointment ? (
+            {canEditAppointment && (
+              <Button
+                size="sm"
+                variant="warning"
+                icon={<Pencil size={13} />}
+                onClick={() => setEditTarget(data)}
+              >
+                Edit
+              </Button>
+            )}
+            {data.status === "Rejected" && canDeleteAppointment ? (
                   <button
                     onClick={() => handleDeleteAppointment(data.id)}
                     disabled={statusLoading[data.id] === "Deleting"}
@@ -2014,7 +2026,7 @@ export default function Appointments() {
                     )}
                     Delete
                   </button>
-                ) : canUpdateAppointment ? (
+                ) : canApproveOrReject ? (
                   <>
                     <button
                       onClick={() => handleStatusUpdate(data.id, true)}
@@ -2048,13 +2060,11 @@ export default function Appointments() {
                     </button>
                   </>
                 ) : null}
-              </>
-            )}
           </div>
         ),
       },
     ];
-  }, [statusLoading, handleStatusUpdate, handleDeleteAppointment, setEditTarget, setGridLightbox, isMobile, canUpdateAppointment, canDeleteAppointment, visibleColumns]);
+  }, [statusLoading, handleStatusUpdate, handleDeleteAppointment, setEditTarget, setGridLightbox, isMobile, canEditAppointment, canApproveOrReject, canDeleteAppointment, visibleColumns]);
 
   const defaultColDef = useMemo(
     () => ({
@@ -2351,7 +2361,7 @@ export default function Appointments() {
             <div className="flex flex-wrap justify-between items-center gap-3 w-full">
               {/* Status actions — left side */}
               <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-                {(canUpdateAppointment || canDeleteAppointment) && (
+                {(canApproveOrReject || canDeleteAppointment) && (
                   <>
                     {!selected.empCode && (
                       <>
@@ -2368,7 +2378,7 @@ export default function Appointments() {
                             )}
                             Delete
                           </button>
-                        ) : canUpdateAppointment ? (
+                        ) : canApproveOrReject ? (
                           <>
                             <button
                               onClick={() => handleStatusUpdate(selected.id, true)}
@@ -2413,7 +2423,7 @@ export default function Appointments() {
                 <Button variant="secondary" onClick={() => setSelected(null)}>
                   Close
                 </Button>
-                {canUpdateAppointment && (
+                {canEditAppointment && (
                   <button
                     onClick={() => {
                       setSelected(null);

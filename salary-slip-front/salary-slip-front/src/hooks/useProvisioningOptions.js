@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { provisioningLookupApi } from "../utils/api";
+import { getCompanyUnits } from "../config/companyConfig";
 
 let inFlight = { token: null, promise: null };
 
@@ -88,9 +89,17 @@ export function useProvisioningOptions() {
     const company = byCode.get(companyCodeOrId)
       ?? companies.find((item) => String(item.id) === String(companyCodeOrId));
 
-    if (!company) return [];
+    const apiUnits = company ? units.filter((unit) => unit.companyId === company.id) : [];
+    const staticUnitNames = getCompanyUnits(companyCodeOrId);
 
-    return units.filter((unit) => unit.companyId === company.id);
+    const combinedNames = new Set();
+    apiUnits.forEach((u) => u?.name && combinedNames.add(u.name));
+    staticUnitNames.forEach((u) => u && combinedNames.add(u));
+
+    return Array.from(combinedNames).map((name) => {
+      const existing = apiUnits.find((u) => u.name === name);
+      return existing || { id: name, name, companyId: company?.id ?? null };
+    });
   }, [byCode, companies, units]);
 
   const companyIdFor = useCallback(

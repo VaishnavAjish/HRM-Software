@@ -735,7 +735,7 @@ export default function AgentDashboard() {
             ? { id: editCandidate.id || editCandidate._id, raw: editCandidate, addedBy: editCandidate.addedBy || editCandidate.added_by || user?.id }
             : viewCandidate && viewCandidate.type === 'trial'
               ? { id: viewCandidate.id || viewCandidate._id, raw: viewCandidate, addedBy: viewCandidate.addedBy || viewCandidate.added_by || user?.id }
-              : { addedBy: user?.id }
+              : null
         }
         onSuccess={() => {
           if (viewCandidate) setViewCandidate(null);

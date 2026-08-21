@@ -1825,7 +1825,7 @@ class UserController extends Controller
         $data['type'] = 'appointment';
 
         $userAuth = auth('api')->user();
-        if ($userAuth && $userAuth->type === 'agent' && empty($data['id'])) {
+        if ($userAuth && ($userAuth->type === 'agent' || (int) $userAuth->role === 4 || $userAuth->role === 'agent') && empty($data['id'])) {
             $data['added_by'] = $userAuth->id;
         } elseif ($addedBy) {
             $data['added_by'] = $addedBy;
@@ -1903,7 +1903,7 @@ class UserController extends Controller
             ->with('addedBy:id,name,email,emp_code');
         HiddenAccounts::exclude($query, 'users');
 
-        if ($userAuth && $userAuth->type === 'agent') {
+        if ($userAuth && ($userAuth->type === 'agent' || (int) $userAuth->role === 4 || $userAuth->role === 'agent')) {
             $query->where('added_by', $userAuth->id);
         } else {
             $this->applyCompanyScope($query, $request);

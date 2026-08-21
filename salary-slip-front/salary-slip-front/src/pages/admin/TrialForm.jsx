@@ -350,10 +350,19 @@ export default function TrialForm() {
   const { user } = useAuth();
   const { can } = useAuthorization();
   const { companyId, companyScope, scopeKey } = useCompany();
+  const isAgentUser = Boolean(
+    user?.type === "agent" ||
+    user?.role === "agent" ||
+    Number(user?.role) === 4 ||
+    Number(user?.rawRole) === 4 ||
+    user?.user_type === "agent" ||
+    user?.is_agent
+  );
   const trialAccess = trialActionAccess(can);
-  const canCreateTrial = trialAccess.create || user?.role === "agent";
-  const canUpdateTrial = trialAccess.update;
-  const canDeleteTrial = trialAccess.deleteRecord;
+  const canCreateTrial = trialAccess.create || isAgentUser;
+  const canApproveOrReject = !isAgentUser && trialAccess.update;
+  const canEditTrialForm = isAgentUser || trialAccess.update;
+  const canDeleteTrial = !isAgentUser && trialAccess.deleteRecord;
   // Mirrors canCreateTrial above: the Agent Dashboard's own Process button
   // (AgentDashboard.jsx canProcessAsAppointment) has no permission check at
   // all — any agent can process an approved trial form there. This page is
@@ -414,18 +423,26 @@ export default function TrialForm() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, scopeKey, isNidhiScope]);
 
+  const filteredForms = useMemo(() => {
+    if (!isAgentUser) return forms;
+    return forms.filter((f) => {
+      const addedBy = f.addedBy ?? f.added_by ?? f.raw?.added_by;
+      return !addedBy || String(addedBy) === String(user?.id);
+    });
+  }, [forms, isAgentUser, user?.id]);
+
   const counts = useMemo(
     () => ({
-      total: forms.length,
-      pending: forms.filter((f) => f.status === "Pending").length,
-      approved: forms.filter((f) => f.status === "Approved").length,
-      rejected: forms.filter((f) => f.status === "Rejected").length,
+      total: filteredForms.length,
+      pending: filteredForms.filter((f) => f.status === "Pending").length,
+      approved: filteredForms.filter((f) => f.status === "Approved").length,
+      rejected: filteredForms.filter((f) => f.status === "Rejected").length,
     }),
-    [forms],
+    [filteredForms],
   );
 
-  const pendingForms = forms.filter(f => f.status !== "Approved" && f.status !== "Rejected");
-  const historyForms = forms.filter(f => f.status === "Approved" || f.status === "Rejected");
+  const pendingForms = filteredForms.filter(f => f.status !== "Approved" && f.status !== "Rejected");
+  const historyForms = filteredForms.filter(f => f.status === "Approved" || f.status === "Rejected");
 
   const handleDownloadPDF = async () => {
     if (!selected || !formRef.current) return;
@@ -846,7 +863,7 @@ export default function TrialForm() {
         headerName: "Actions",
         field: "id",
         pinned: "right",
-        width: canUpdateTrial || canDeleteTrial || canCreateAppointment ? 380 : 100,
+        width: canEditTrialForm || canApproveOrReject || canDeleteTrial || canCreateAppointment ? 380 : 100,
         sortable: false,
         filter: false,
         cellRenderer: ({ data }) => {
@@ -861,7 +878,17 @@ export default function TrialForm() {
               >
                 View
               </Button>
-              {canUpdateTrial && !isHistory && (
+              {canEditTrialForm && (
+                <Button
+                  size="sm"
+                  variant="warning"
+                  icon={<Pencil size={13} />}
+                  onClick={() => setEditTarget(data)}
+                >
+                  Edit
+                </Button>
+              )}
+              {canApproveOrReject && !isHistory && (
                 <>
                   <button
                     onClick={() => handleStatusUpdate(data.id, true)}
@@ -919,7 +946,7 @@ export default function TrialForm() {
         },
       },
     ],
-    [statusLoading, handleStatusUpdate, visibleColumns, canUpdateTrial, canDeleteTrial, canCreateAppointment],
+    [statusLoading, handleStatusUpdate, visibleColumns, canEditTrialForm, canApproveOrReject, canDeleteTrial, canCreateAppointment],
   );
 
   const defaultColDef = useMemo(
@@ -1082,7 +1109,7 @@ export default function TrialForm() {
                     <Eye size={13} />
                     View Full Application
                   </button>
-                  {canUpdateTrial && (
+                  {canEditTrialForm && (
                     <button
                       onClick={() => setEditTarget(form)}
                       className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-xs font-semibold text-brand-700 transition hover:bg-brand-100 dark:border-brand-700 dark:bg-brand-900/20 dark:text-brand-400"
@@ -1091,7 +1118,7 @@ export default function TrialForm() {
                       Edit
                     </button>
                   )}
-                  {canUpdateTrial && (
+                  {canApproveOrReject && (
                     <>
                       <button
                         onClick={() => handleStatusUpdate(form.id, true)}
@@ -1235,7 +1262,7 @@ export default function TrialForm() {
           selected && (
             <div className="flex flex-wrap items-center gap-2">
               <div className="flex flex-wrap items-center gap-2 border-r border-gray-200 pr-3 mr-1">
-                {canUpdateTrial && (
+                {canApproveOrReject && (
                   <>
                     <button
                       onClick={() => handleStatusUpdate(selected.id, true)}
@@ -1299,7 +1326,7 @@ export default function TrialForm() {
                 <Button variant="secondary" onClick={() => setSelected(null)}>
                   Close
                 </Button>
-                {canUpdateTrial && (
+                {canEditTrialForm && (
                   <button
                     onClick={() => {
                       setSelected(null);
