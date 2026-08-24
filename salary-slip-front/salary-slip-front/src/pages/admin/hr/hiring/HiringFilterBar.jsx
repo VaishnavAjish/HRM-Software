@@ -168,7 +168,7 @@ export default function HiringFilterBar({
       </div>
 
       {selectedIds.length > 0 && bulkBar && (
-        <div className="flex items-center gap-3 mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+        <div className="flex flex-wrap items-center gap-3 mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
           <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">{selectedIds.length} selected</span>
           {bulkBar}
         </div>

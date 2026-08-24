@@ -211,7 +211,7 @@ export default function AssignAssessmentModal({ candidate, quizzes, token, token
           </div>
 
           {quiz && (
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <Metric icon={<Clock size={14} />} label="Duration" value={`${quiz.duration_minutes ?? 30} min`} />
               <Metric icon={<FileQuestion size={14} />} label="Questions" value={quiz.questions?.length ?? 0} />
               <Metric icon={<Target size={14} />} label="Passing Score" value={`${quiz.passing_score}%`} />

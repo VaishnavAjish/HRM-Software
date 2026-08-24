@@ -49,7 +49,7 @@ export default function UploadReportModal({ isOpen, onClose, batch, type, loadin
       size="xl"
       title="Upload Report"
       footer={
-        <div className="flex items-center justify-between w-full text-xs text-gray-500 dark:text-gray-400">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 w-full text-xs text-gray-500 dark:text-gray-400">
           <span>
             {batch ? `${batch.success_count} passed · ${batch.failed_count} failed · ${batch.total_rows} total rows` : ""}
           </span>

@@ -362,7 +362,7 @@ export default function CandidatePipeline({ people = [] }) {
       ) : loading ? (
         <div className="space-y-4">
           {STAGE_GROUPS.map((group) => (
-            <div key={group.label} className="grid gap-3" style={{ gridTemplateColumns: `repeat(${group.keys.length}, minmax(0, 1fr))` }}>
+            <div key={group.label} className="grid gap-3" style={{ gridTemplateColumns: `repeat(auto-fit, minmax(180px, 1fr))` }}>
               {group.keys.map((key) => <div key={key} className="skeleton h-64 rounded-2xl" />)}
             </div>
           ))}
@@ -380,7 +380,7 @@ export default function CandidatePipeline({ people = [] }) {
                 </p>
                 <div
                   className="grid gap-3 rounded-2xl border border-gray-100 dark:border-gray-800 bg-gray-100/50 dark:bg-gray-900/30 p-2"
-                  style={{ gridTemplateColumns: `repeat(${group.keys.length}, minmax(0, 1fr))` }}
+                  style={{ gridTemplateColumns: `repeat(auto-fit, minmax(180px, 1fr))` }}
                 >
                   {group.keys.map((key) => {
                     let filtered = columns[key] || [];

@@ -115,12 +115,12 @@ export function MonthYearPicker({ value, onChange, min, max, placeholder = "Sele
       </div>
 
       {isOpen && (
-        <div className="absolute top-full left-0 mt-2 p-3 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 z-50 w-64 select-none">
+        <div className="absolute top-full left-0 mt-2 p-3 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 z-50 w-64 max-w-[calc(100vw-2rem)] select-none">
           {/* Header */}
           <div className="flex items-center justify-between mb-4 bg-gray-100 dark:bg-gray-700/50 rounded-lg p-1">
             <button
               type="button"
-              className="p-1 hover:bg-white dark:hover:bg-gray-600 rounded-md text-gray-600 dark:text-gray-300 shadow-sm transition-all"
+              className="p-2 hover:bg-white dark:hover:bg-gray-600 rounded-md text-gray-600 dark:text-gray-300 shadow-sm transition-all"
               onClick={() => setViewYear(y => y - 1)}
             >
               <ChevronLeft size={18} />
@@ -130,7 +130,7 @@ export function MonthYearPicker({ value, onChange, min, max, placeholder = "Sele
             </span>
             <button
               type="button"
-              className="p-1 hover:bg-white dark:hover:bg-gray-600 rounded-md text-gray-600 dark:text-gray-300 shadow-sm transition-all"
+              className="p-2 hover:bg-white dark:hover:bg-gray-600 rounded-md text-gray-600 dark:text-gray-300 shadow-sm transition-all"
               onClick={() => setViewYear(y => y + 1)}
             >
               <ChevronRight size={18} />

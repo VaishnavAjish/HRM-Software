@@ -134,6 +134,7 @@ export default function TicketHierarchyView() {
         </div>
       ) : (
         <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-white/10 dark:bg-[#0b0f1a]">
+          <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead className="bg-gray-50 text-[10px] uppercase tracking-wider text-gray-500 dark:bg-white/5 dark:text-gray-400">
               <tr>
@@ -195,6 +196,7 @@ export default function TicketHierarchyView() {
               )}
             </tbody>
           </table>
+          </div>
 
           {meta && meta.last_page > 1 && (
             <div className="flex items-center justify-between border-t border-gray-100 px-3.5 py-2.5 text-[11px] text-gray-500 dark:border-white/10 dark:text-gray-400">

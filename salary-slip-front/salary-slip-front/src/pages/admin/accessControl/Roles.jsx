@@ -207,7 +207,7 @@ export default function Roles() {
         )}
       </header>
 
-      <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
         <Tile label="Total" value={summary?.total} />
         <Tile label="Active" value={summary?.active} />
         <Tile label="Inactive" value={summary?.inactive} />

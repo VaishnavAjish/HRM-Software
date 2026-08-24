@@ -25,8 +25,8 @@ export default function Header({ onMenuClick, title, isCollapsed }) {
         <Menu size={20} aria-hidden="true" />
       </button>
 
-      <div className="flex-1">
-        <h1 className="text-lg font-semibold text-gray-900 dark:text-white">
+      <div className="flex-1 min-w-0">
+        <h1 className="truncate text-base sm:text-lg font-semibold text-gray-900 dark:text-white">
           {title}
         </h1>
       </div>

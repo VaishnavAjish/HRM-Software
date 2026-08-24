@@ -276,47 +276,49 @@ function HolidaysDrawer({ calendar, year, onYearChange, holidays, busy, onSave, 
           </div>
         </Card>
 
-        <table className="w-full text-left text-sm">
-          <thead className="border-b border-gray-200 text-xs font-bold uppercase tracking-wider text-gray-600 dark:border-gray-700 dark:text-gray-300">
-            <tr>
-              <th className="py-2 pr-3">Date</th>
-              <th className="py-2 pr-3">Title</th>
-              <th className="py-2 pr-3">Kind</th>
-              <th className="py-2 pr-3">Type</th>
-              <th className="py-2 text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100 dark:divide-gray-700/60">
-            {holidays.length === 0 && (
-              <tr><td colSpan={5} className="py-10 text-center text-gray-500 dark:text-gray-400">
-                No holidays for {year}.
-              </td></tr>
-            )}
-
-            {holidays.map((holiday) => (
-              <tr key={holiday.id} className="hover:bg-gray-50/70 dark:hover:bg-gray-700/40">
-                <td className="py-2.5 pr-3 text-gray-900 dark:text-white">{holiday.date}</td>
-                <td className="py-2.5 pr-3 text-gray-900 dark:text-white">{holiday.title}</td>
-                <td className="py-2.5 pr-3">
-                  <Badge variant={KIND_BADGE[holiday.kind] || "gray"}>{holiday.kind}</Badge>
-                </td>
-                <td className="py-2.5 pr-3 text-xs text-gray-600 dark:text-gray-300">
-                  {holiday.isHalfDay ? "Half day" : "Full day"}
-                  {holiday.recurring ? " · annual" : ""}
-                </td>
-                <td className="py-2.5 text-right">
-                  <Button
-                    size="sm" variant="ghost"
-                    aria-label={`Delete holiday ${holiday.title}`}
-                    onClick={() => onDelete(holiday.id)}
-                  >
-                    <Trash2 size={14} className="text-red-600 dark:text-red-400" />
-                  </Button>
-                </td>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="border-b border-gray-200 text-xs font-bold uppercase tracking-wider text-gray-600 dark:border-gray-700 dark:text-gray-300">
+              <tr>
+                <th className="py-2 pr-3">Date</th>
+                <th className="py-2 pr-3">Title</th>
+                <th className="py-2 pr-3">Kind</th>
+                <th className="py-2 pr-3">Type</th>
+                <th className="py-2 text-right">Actions</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-gray-100 dark:divide-gray-700/60">
+              {holidays.length === 0 && (
+                <tr><td colSpan={5} className="py-10 text-center text-gray-500 dark:text-gray-400">
+                  No holidays for {year}.
+                </td></tr>
+              )}
+
+              {holidays.map((holiday) => (
+                <tr key={holiday.id} className="hover:bg-gray-50/70 dark:hover:bg-gray-700/40">
+                  <td className="py-2.5 pr-3 text-gray-900 dark:text-white">{holiday.date}</td>
+                  <td className="py-2.5 pr-3 text-gray-900 dark:text-white">{holiday.title}</td>
+                  <td className="py-2.5 pr-3">
+                    <Badge variant={KIND_BADGE[holiday.kind] || "gray"}>{holiday.kind}</Badge>
+                  </td>
+                  <td className="py-2.5 pr-3 text-xs text-gray-600 dark:text-gray-300">
+                    {holiday.isHalfDay ? "Half day" : "Full day"}
+                    {holiday.recurring ? " · annual" : ""}
+                  </td>
+                  <td className="py-2.5 text-right">
+                    <Button
+                      size="sm" variant="ghost"
+                      aria-label={`Delete holiday ${holiday.title}`}
+                      onClick={() => onDelete(holiday.id)}
+                    >
+                      <Trash2 size={14} className="text-red-600 dark:text-red-400" />
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </Drawer>
   );

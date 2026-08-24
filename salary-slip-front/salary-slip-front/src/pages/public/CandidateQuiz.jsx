@@ -347,7 +347,7 @@ export default function CandidateQuiz() {
               <p className="mt-3 text-sm text-gray-600 dark:text-gray-300">{data.quiz.description}</p>
             )}
 
-            <dl className="mt-4 grid grid-cols-3 gap-3 text-center">
+            <dl className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
               <Fact label="Questions" value={data.quiz.total_questions} />
               <Fact label="Time limit" value={`${data.duration_minutes} min`} />
               <Fact label="Pass mark" value={`${data.quiz.passing_score}%`} />

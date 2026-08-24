@@ -656,23 +656,22 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
 
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                       <Badge variant={meta.tone}>{meta.label}</Badge>
-                      <Badge variant={
-                        row.__stage === "trial" ? "gray"
-                        : row.__stage === "appointment" ? "blue"
-                        : isResigned(row) ? "red"
-                        : active ? "green"
-                        : (row.status === 2 || row.status === "2") ? "yellow"
-                        : "red"
-                      }>
-                        {row.__stage === "trial" ? "Trial"
-                        : row.__stage === "appointment" ? "Appointment"
-                        : isResigned(row) ? "Resigned"
-                        : active ? "Active"
-                        : (row.status === 2 || row.status === "2") ? "Pending"
-                        : "Inactive"}
-                      </Badge>
+                      {row.__stage !== "trial" && row.__stage !== "appointment" && (
+                        <Badge variant={
+                          isResigned(row) ? "red"
+                          : active ? "green"
+                          : (row.status === 2 || row.status === "2") ? "yellow"
+                          : "red"
+                        }>
+                          {isResigned(row) ? "Resigned"
+                          : active ? "Active"
+                          : (row.status === 2 || row.status === "2") ? "Pending"
+                          : "Inactive"}
+                        </Badge>
+                      )}
                     </div>
 
+                    {row.__stage !== "trial" && row.__stage !== "appointment" && (
                     <div className="mt-3 grid grid-cols-2 gap-2">
                       <div>
                         <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-gray-400 dark:text-slate-500">
@@ -683,7 +682,7 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
                           onChange={(e) => setDraft(row.id, "emp_code", e.target.value)}
                           onBlur={() => commitField(row, "emp_code")}
                           onKeyDown={handleCellKeyDown}
-                          disabled={savingCell === `${row.id}:emp_code` || row.__stage === "trial" || row.__stage === "appointment"}
+                          disabled={savingCell === `${row.id}:emp_code`}
                           placeholder="Assign code"
                           className={cellInputCls}
                         />
@@ -697,26 +696,27 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
                           onChange={(e) => setDraft(row.id, "punching_no", e.target.value)}
                           onBlur={() => commitField(row, "punching_no")}
                           onKeyDown={handleCellKeyDown}
-                          disabled={savingCell === `${row.id}:punching_no` || row.__stage === "trial" || row.__stage === "appointment"}
+                          disabled={savingCell === `${row.id}:punching_no`}
                           placeholder="Assign no."
                           className={cellInputCls}
                         />
                       </div>
                     </div>
+                    )}
 
                     <dl className="mt-3 grid grid-cols-2 gap-2 text-xs">
                       <div>
                         <dt className="font-semibold text-gray-500 dark:text-gray-400">Department</dt>
                         <dd className="text-gray-700 dark:text-gray-200 break-words">
                           {row.department || "—"}
-                          {row.designation ? ` Â· ${row.designation}` : ""}
+                          {row.designation ? ` · ${row.designation}` : ""}
                         </dd>
                       </div>
                       <div>
                         <dt className="font-semibold text-gray-500 dark:text-gray-400">Company / Unit</dt>
                         <dd className="text-gray-700 dark:text-gray-200 break-words">
                           {getCompanyConfig(row.company_code)?.label || row.company_code || "—"}
-                          {row.unit ? ` Â· ${row.unit}` : ""}
+                          {row.unit ? ` · ${row.unit}` : ""}
                         </dd>
                       </div>
                     </dl>

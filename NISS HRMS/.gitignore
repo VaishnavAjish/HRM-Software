@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.expo/
+ios/build/
+ios/Pods/
+*.ipa
+*.log
+.DS_Store

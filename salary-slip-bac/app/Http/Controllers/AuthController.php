@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\EmployeeFamilyMember;
 use App\Models\User;
 use App\Services\Authorization\SchemaSupport;
 use App\Services\Sms\Fast2SmsService;
@@ -441,6 +442,13 @@ class AuthController extends Controller
             $user,
             'EMPLOYEE_FULL_AADHAAR_VIEWED'
         );
+
+        if (SchemaSupport::hasTable('employee_family_members')) {
+            $payload['family_members'] = EmployeeFamilyMember::where('user_id', $user->id)
+                ->orderBy('id')
+                ->get(['id', 'name', 'relation', 'mobile_number'])
+                ->toArray();
+        }
 
         // The authoritative current-user response. Must not be cached, or the
         // next user through a shared cache receives this identity.

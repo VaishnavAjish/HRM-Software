@@ -1743,7 +1743,15 @@ export const authApi = {
     if (payload?.photo instanceof File) {
       const formData = new FormData();
       Object.entries(payload).forEach(([key, value]) => {
-        if (value !== undefined && value !== null) formData.append(key, value);
+        if (value === undefined || value === null) return;
+        // FormData.append stringifies non-File objects/arrays to
+        // "[object Object]" — JSON-encode them instead so fields like
+        // family_members survive the multipart trip intact.
+        if (value instanceof File || typeof value !== "object") {
+          formData.append(key, value);
+        } else {
+          formData.append(key, JSON.stringify(value));
+        }
       });
 
       return apiRequest("/profile-update", {

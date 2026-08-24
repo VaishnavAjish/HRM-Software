@@ -347,8 +347,8 @@ function DetailDrawer({ userId, token, tokenType, onClose }) {
 
               <DetailSection title="Permissions">
                 {detail.permissions?.length ? (
-                  <div className="max-h-56 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-700">
-                    <table className="w-full text-xs">
+                  <div className="max-h-56 overflow-y-auto overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+                    <table className="w-full min-w-[420px] text-xs">
                       <tbody>
                         {detail.permissions.map((permission) => (
                           <tr key={permission.code} className="border-b border-gray-100 last:border-0 dark:border-gray-700/60">

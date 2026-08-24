@@ -28,6 +28,10 @@ const FACE_CENTER = FACE_SIZE / 2;
 const FACE_RADIUS = 60;
 const HAND_LENGTH = 54;
 
+// Matches the popover's `w-[21rem]` class below — used to keep it from
+// running off the right edge of narrow viewports (see reposition/openPicker).
+const POPOVER_WIDTH = 336;
+
 /** "YYYY-MM-DD" or "YYYY-MM-DDTHH:mm" -> {y,m,d,hh,mm} (m is 0-indexed), or null. */
 function parseValue(value) {
   if (!value) return null;
@@ -125,7 +129,13 @@ export default function DatePicker({ value, onChange, withTime = false, placehol
     const top = shouldFlip
       ? Math.max(8, r.top - estimatedHeight - 4)
       : r.bottom + 4;
-    setCoords({ top, left: r.left, width: r.width });
+    // Keep the (fixed-width) popover from running off the right edge on
+    // narrow viewports — the trigger's left edge alone isn't safe once the
+    // popover is wider than the remaining space beside it.
+    const popoverWidth = popoverRef.current?.getBoundingClientRect().width || POPOVER_WIDTH;
+    const maxLeft = window.innerWidth - popoverWidth - 8;
+    const left = Math.min(r.left, Math.max(8, maxLeft));
+    setCoords({ top, left, width: r.width });
   };
 
   useLayoutEffect(() => {
@@ -155,7 +165,11 @@ export default function DatePicker({ value, onChange, withTime = false, placehol
   const openPicker = () => {
     if (parsed) { setViewY(parsed.y); setViewM(parsed.m); }
     const r = triggerRef.current?.getBoundingClientRect();
-    if (r) setCoords({ top: r.bottom + 4, left: r.left, width: r.width });
+    if (r) {
+      const maxLeft = window.innerWidth - POPOVER_WIDTH - 8;
+      const left = Math.min(r.left, Math.max(8, maxLeft));
+      setCoords({ top: r.bottom + 4, left, width: r.width });
+    }
     setFaceMode("hour");
     setStep("date");
     setOpen(true);
@@ -254,17 +268,17 @@ export default function DatePicker({ value, onChange, withTime = false, placehol
     (
       <div
         ref={popoverRef}
-        style={{ position: "fixed", top: coords.top, left: coords.left, maxHeight: "calc(100vh - 16px)" }}
+        style={{ position: "fixed", top: coords.top, left: coords.left, maxHeight: "calc(100vh - 16px)", maxWidth: "calc(100vw - 16px)" }}
         className="z-[1000] w-[21rem] overflow-y-auto rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-lg p-3"
       >
           {step === "date" ? (
             <>
               <div className="flex items-center justify-between mb-2">
-                <button type="button" onClick={() => shiftMonth(-1)} className="p-1 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700">
+                <button type="button" onClick={() => shiftMonth(-1)} className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700">
                   <ChevronLeft size={16} />
                 </button>
                 <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">{MONTHS[viewM]} {viewY}</span>
-                <button type="button" onClick={() => shiftMonth(1)} className="p-1 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700">
+                <button type="button" onClick={() => shiftMonth(1)} className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700">
                   <ChevronRight size={16} />
                 </button>
               </div>
@@ -283,7 +297,7 @@ export default function DatePicker({ value, onChange, withTime = false, placehol
                       key={i}
                       disabled={disabled}
                       onClick={() => pickDay(c.y, c.m, c.d)}
-                      className={`h-7 w-7 mx-auto rounded-full text-xs font-medium transition-colors ${
+                      className={`h-8 w-8 mx-auto rounded-full text-xs font-medium transition-colors ${
                         disabled ? "text-gray-300 dark:text-gray-700 cursor-not-allowed"
                         : isSelected ? "bg-brand-600 text-white"
                         : c.outside ? "text-gray-300 dark:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700"

@@ -331,6 +331,7 @@ export default function ChangeManagementPage() {
             {activeChange.items && activeChange.items.length > 0 && (
               <div>
                 <h4 className="font-semibold text-gray-600 dark:text-gray-300">Items ({activeChange.items.length})</h4>
+                <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
                   <thead>
                     <tr>
@@ -355,6 +356,7 @@ export default function ChangeManagementPage() {
                     ))}
                   </tbody>
                 </table>
+                </div>
               </div>
             )}
             <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
@@ -414,6 +416,7 @@ export default function ChangeManagementPage() {
 
                 <div>
                   <h4 className="mb-2 font-semibold text-gray-600 dark:text-gray-300">Per-Item Breakdown</h4>
+                  <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs">
                     <thead>
                       <tr>
@@ -439,6 +442,7 @@ export default function ChangeManagementPage() {
                       )}
                     </tbody>
                   </table>
+                  </div>
                 </div>
               </>
             )}

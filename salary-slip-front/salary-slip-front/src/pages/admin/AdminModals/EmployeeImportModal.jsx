@@ -291,7 +291,7 @@ export default function EmployeeImportModal({
             </div>
 
             {preview && (
-              <div className="grid grid-cols-3 gap-2.5">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                 {[
                   {
                     icon: <Hash size={13} />,
@@ -380,51 +380,53 @@ export default function EmployeeImportModal({
                     </div>
                   )}
 
-                  <div className="grid grid-cols-[minmax(0,1fr)_minmax(220px,1fr)] border-b border-gray-200 bg-white text-[11px] font-bold uppercase tracking-[0.18em] text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400">
-                    <div className="border-r border-gray-200 px-4 py-3 dark:border-gray-700">
-                      File Column
-                    </div>
-                    <div className="px-4 py-3">Database Column</div>
-                  </div>
-
-                  <div className="max-h-80 overflow-y-auto">
-                    {fileHeaders.map((header) => (
-                      <div
-                        key={header.id}
-                        className="grid grid-cols-[minmax(0,1fr)_minmax(220px,1fr)] border-b border-gray-100 last:border-b-0 dark:border-gray-700/70"
-                      >
-                        <div className="border-r border-gray-100 px-4 py-3 dark:border-gray-700/70">
-                          <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">
-                            {header.label}
-                          </p>
-                          <p className="mt-0.5 text-[11px] text-gray-400 dark:text-gray-500">
-                            Column {header.index + 1}
-                          </p>
-                        </div>
-
-                        <div className="px-4 py-3">
-                          <select
-                            value={columnMappings[header.id] || ""}
-                            onChange={(event) =>
-                              updateColumnMapping(header.id, event.target.value)
-                            }
-                            disabled={
-                              importColumnsLoading ||
-                              employeeImportColumns.length === 0
-                            }
-                            className={selectCls}
-                          >
-                            <option value="">Skip this column</option>
-                            {employeeImportColumns.map((field) => (
-                              <option key={field.key} value={field.key}>
-                                {formatEmployeeImportFieldLabel(field)}
-                                {field.required ? " *" : ""}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
+                  <div className="overflow-x-auto">
+                    <div className="grid grid-cols-[minmax(0,1fr)_minmax(220px,1fr)] border-b border-gray-200 bg-white text-[11px] font-bold uppercase tracking-[0.18em] text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400">
+                      <div className="border-r border-gray-200 px-4 py-3 dark:border-gray-700">
+                        File Column
                       </div>
-                    ))}
+                      <div className="px-4 py-3">Database Column</div>
+                    </div>
+
+                    <div className="max-h-80 overflow-y-auto">
+                      {fileHeaders.map((header) => (
+                        <div
+                          key={header.id}
+                          className="grid grid-cols-[minmax(0,1fr)_minmax(220px,1fr)] border-b border-gray-100 last:border-b-0 dark:border-gray-700/70"
+                        >
+                          <div className="border-r border-gray-100 px-4 py-3 dark:border-gray-700/70">
+                            <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">
+                              {header.label}
+                            </p>
+                            <p className="mt-0.5 text-[11px] text-gray-400 dark:text-gray-500">
+                              Column {header.index + 1}
+                            </p>
+                          </div>
+
+                          <div className="px-4 py-3">
+                            <select
+                              value={columnMappings[header.id] || ""}
+                              onChange={(event) =>
+                                updateColumnMapping(header.id, event.target.value)
+                              }
+                              disabled={
+                                importColumnsLoading ||
+                                employeeImportColumns.length === 0
+                              }
+                              className={selectCls}
+                            >
+                              <option value="">Skip this column</option>
+                              {employeeImportColumns.map((field) => (
+                                <option key={field.key} value={field.key}>
+                                  {formatEmployeeImportFieldLabel(field)}
+                                  {field.required ? " *" : ""}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
 
                   <div className="flex flex-wrap items-center justify-between gap-3 bg-gray-50 px-4 py-3 text-xs dark:bg-gray-800/80">

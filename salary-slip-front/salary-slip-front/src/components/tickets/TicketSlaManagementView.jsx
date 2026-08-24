@@ -270,6 +270,7 @@ function RuleTable({ title, subtitle, rules, onChange, onRemove }) {
         )}
       </div>
 
+      <div className="overflow-x-auto">
       <table className="w-full text-left text-xs">
         <thead className="bg-gray-50 uppercase tracking-wider text-gray-500 dark:bg-slate-900">
           <tr>
@@ -310,6 +311,7 @@ function RuleTable({ title, subtitle, rules, onChange, onRemove }) {
           })}
         </tbody>
       </table>
+      </div>
     </section>
   );
 }

@@ -1421,7 +1421,7 @@ const AppointmentModal = ({
               </MobileCard>
 
               {/* Family Members Table */}
-              <div className="mt-6 sm:overflow-visible overflow-visible pb-4">
+              <div className="mt-6 overflow-x-auto pb-4">
                 {isMobile ? (
                   <div className="flex flex-col gap-4">
                     <h3 className="text-base font-bold text-gray-800">Family Members</h3>

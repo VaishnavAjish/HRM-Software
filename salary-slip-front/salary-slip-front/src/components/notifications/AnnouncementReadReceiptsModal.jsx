@@ -24,7 +24,7 @@ export default function AnnouncementReadReceiptsModal({ isOpen, onClose, announc
     >
       <div className="space-y-4 font-sans text-xs">
         {/* Compliance Summary Metric Cards */}
-        <div className="grid grid-cols-3 gap-3 text-center">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
           <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 rounded-2xl border border-emerald-100 dark:border-emerald-900/40">
             <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase">Acknowledged</p>
             <p className="text-xl font-extrabold text-emerald-700 dark:text-emerald-300 mt-1">{ackCount}</p>

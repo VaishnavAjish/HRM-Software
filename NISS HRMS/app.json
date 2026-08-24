@@ -1,0 +1,31 @@
+{
+  "expo": {
+    "name": "NISS HRMS",
+    "slug": "niss-hrms",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "icon": "./assets/icon.png",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.niss.hrmsmobile",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSCameraUsageDescription": "NISS HRMS uses the camera to capture attendance photos and document images.",
+        "NSPhotoLibraryUsageDescription": "NISS HRMS needs photo library access to upload profile pictures and documents.",
+        "NSFaceIDUsageDescription": "NISS HRMS uses Face ID for secure sign-in.",
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true,
+          "NSAllowsLocalNetworking": true
+        },
+        "NSLocalNetworkUsageDescription": "NISS HRMS connects to the HRMS server on your office network."
+      }
+    },
+    "android": {
+      "package": "com.niss.hrmsmobile",
+      "navigationBarColor": "#F1F5F9",
+      "icon": "./assets/icon.png"
+    }
+  }
+}

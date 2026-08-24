@@ -326,6 +326,7 @@ export default function TicketSettingsView() {
               />
             )}
 
+            <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead className="bg-gray-50 uppercase tracking-wider text-gray-500 dark:bg-slate-900">
                 <tr>
@@ -406,6 +407,7 @@ export default function TicketSettingsView() {
                 )}
               </tbody>
             </table>
+            </div>
           </section>
 
           <p className="flex items-start gap-2 rounded-xl bg-blue-50 p-3 text-[11px] leading-relaxed text-blue-800 dark:bg-blue-950/30 dark:text-blue-300">

@@ -64,7 +64,6 @@ const Profile = lazy(() => import("./pages/employee/Profile"));
 const EmployeeAppointment = lazy(() => import("./pages/employee/EmployeeAppointment"));
 const RaiseTicket = lazy(() => import("./pages/employee/RaiseTicket"));
 const MyTickets = lazy(() => import("./pages/employee/MyTickets"));
-const SecurityCenter = lazy(() => import("./pages/employee/SecurityCenter"));
 
 // Agent pages
 const AgentDashboard = lazy(() => import("./pages/agent/AgentDashboard"));
@@ -541,7 +540,6 @@ function AppRoutes() {
         <Route path="payslips" element={<Payslips />} />
         <Route path="form16" element={<EmployeeForm16 />} />
         <Route path="profile" element={<Profile />} />
-        <Route path="security" element={<SecurityCenter />} />
         <Route path="appointment" element={<EmployeeAppointment />} />
         {/* "new" before the list so it is not swallowed as a ticket id. */}
         <Route path="tickets/new" element={<RaiseTicket />} />

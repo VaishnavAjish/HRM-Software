@@ -402,11 +402,11 @@ export default function LegalEntityProfiles() {
     }));
     return (
       <div className="min-w-0 max-w-full space-y-5">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button variant="secondary" onClick={() => setSelectedProfile(null)}><Back size={16} /> Back to Profiles</Button>
-          <h1 className="text-xl font-bold">{selectedProfile.legalName}</h1>
+          <h1 className="min-w-0 text-xl font-bold">{selectedProfile.legalName}</h1>
         </div>
-        <div className="flex gap-2 border-b border-gray-200 dark:border-gray-700 pb-2 mb-4">
+        <div className="flex flex-wrap gap-2 border-b border-gray-200 dark:border-gray-700 pb-2 mb-4">
           {tabsToRender.map((tab) => (
             <Button
               key={tab.id}

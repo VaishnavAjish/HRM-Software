@@ -1164,12 +1164,12 @@ export default function PerformanceMatrix() {
           {/* TAB 6: REPORTS */}
           {tab === "reports" && (
             <div className="space-y-6">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h3 className="text-lg font-bold text-gray-900 dark:text-white">Performance Analytics & Export Center</h3>
                   <p className="text-xs text-gray-500">Download formatted HR appraisal reports and audit summaries</p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <Button variant="secondary" icon={<Download size={14} />} onClick={() => toast.success("Exporting PDF Report...")}>Export PDF</Button>
                   <Button variant="primary" icon={<Download size={14} />} onClick={() => toast.success("Exporting Excel Spreadsheet...")}>Export Excel</Button>
                 </div>
@@ -1258,7 +1258,7 @@ export default function PerformanceMatrix() {
                   </div>
 
                   {/* Quick Stat Bar inside Drawer */}
-                  <div className="mt-6 grid grid-cols-4 gap-2 rounded-2xl bg-white/5 p-3 backdrop-blur-md text-center text-xs">
+                  <div className="mt-6 grid grid-cols-2 sm:grid-cols-4 gap-2 rounded-2xl bg-white/5 p-3 backdrop-blur-md text-center text-xs">
                     <div>
                       <span className="text-[10px] text-gray-400 block">Rating</span>
                       <span className="font-bold text-amber-400">{selectedEmp.rating} ★</span>

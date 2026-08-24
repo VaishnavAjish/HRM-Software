@@ -22,12 +22,38 @@ import {
   CreditCard,
   User,
   Home,
+  Users,
+  Plus,
+  Trash2,
+  GraduationCap,
+  Heart,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext"; // Corrected import path
 import { authApi, salaryApi } from "../../utils/api";
 import { getAadhaarDisplayValue, hasStoredAadhaar, buildSafeAadhaarUpdate } from "../../utils/aadhaar";
 import toast from "react-hot-toast";
 import usePhotoCapture from "../../hooks/usePhotoCapture";
+
+// Kept in sync with the backend's relation whitelist in
+// UserController::parseFamilyMembers().
+const RELATION_OPTIONS = [
+  "Father", "Mother", "Spouse", "Son", "Daughter",
+  "Brother", "Sister", "Guardian", "Other",
+];
+
+const BLANK_FAMILY_MEMBER = { name: "", relation: "", mobileNumber: "" };
+
+// Family details are mandatory: an employee with none on file always gets at
+// least one blank row to fill in, both on first load and after a cancel.
+function familyFromProfile(source) {
+  const rows = Array.isArray(source?.family_members) ? source.family_members : [];
+  if (rows.length === 0) return [{ ...BLANK_FAMILY_MEMBER }];
+  return rows.map((m) => ({
+    name: m.name || "",
+    relation: m.relation || "",
+    mobileNumber: m.mobile_number || "",
+  }));
+}
 
 function InfoRow({
   icon: Icon,
@@ -118,7 +144,11 @@ export default function Profile() {
     department: "",
     designation: "",
     joining_date: "",
+    education: "",
+    marital_status: "",
   });
+
+  const [familyDetails, setFamilyDetails] = useState([{ ...BLANK_FAMILY_MEMBER }]);
 
   const [departmentsList, setDepartmentsList] = useState([]);
 
@@ -164,7 +194,10 @@ export default function Profile() {
           department: data.department || "",
           designation: data.designation || "",
           joining_date: data.joining_date || "",
+          education: data.education || "",
+          marital_status: data.marital_status || "",
         });
+        setFamilyDetails(familyFromProfile(data));
       } catch (err) {
         toast.error(err.message || "Failed to load profile details");
       } finally {
@@ -200,6 +233,17 @@ export default function Profile() {
 
   const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
 
+  const updateFamilyMember = (index, key, value) => {
+    setFamilyDetails((prev) => prev.map((m, i) => (i === index ? { ...m, [key]: value } : m)));
+  };
+  const addFamilyMember = () => {
+    setFamilyDetails((prev) => [...prev, { ...BLANK_FAMILY_MEMBER }]);
+  };
+  const removeFamilyMember = (index) => {
+    // At least one row must always remain — family details are required, not optional.
+    setFamilyDetails((prev) => (prev.length > 1 ? prev.filter((_, i) => i !== index) : prev));
+  };
+
   const handleSave = async () => {
     if (form.pan_card_no && !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/i.test(form.pan_card_no)) {
       toast.error("Invalid PAN Card format. (e.g., ABCDE1234F)");
@@ -222,6 +266,40 @@ export default function Profile() {
       toast.error(aadhaar.error);
       setActiveStep(3);
       return;
+    }
+
+    // Family details are required, not optional: at least one complete row
+    // (name + relation) must be present before the profile can be saved.
+    const cleanFamily = familyDetails
+      .map((m) => ({
+        name: (m.name || "").trim(),
+        relation: (m.relation || "").trim(),
+        mobile_number: (m.mobileNumber || "").trim(),
+      }))
+      .filter((m) => m.name || m.relation || m.mobile_number);
+
+    if (cleanFamily.length === 0) {
+      toast.error("Add at least one family member — this section is required.");
+      setActiveStep(4);
+      return;
+    }
+    for (let i = 0; i < cleanFamily.length; i++) {
+      const member = cleanFamily[i];
+      if (!member.name) {
+        toast.error(`Family member ${i + 1}: enter a name.`);
+        setActiveStep(4);
+        return;
+      }
+      if (!member.relation) {
+        toast.error(`Family member ${i + 1}: select a relation.`);
+        setActiveStep(4);
+        return;
+      }
+      if (member.mobile_number && !/^\d{10}$/.test(member.mobile_number)) {
+        toast.error(`Family member ${i + 1}: enter a valid 10-digit mobile number.`);
+        setActiveStep(4);
+        return;
+      }
     }
 
     setLoading(true); // Use a loading state for the save operation
@@ -249,6 +327,9 @@ export default function Profile() {
         department: form.department,
         designation: form.designation,
         joining_date: form.joining_date,
+        education: form.education,
+        marital_status: form.marital_status,
+        family_members: cleanFamily,
       };
       if (photoFile) payload.photo = photoFile;
 
@@ -283,13 +364,18 @@ export default function Profile() {
         department: form.department,
         designation: form.designation,
         joining_date: form.joining_date,
+        education: form.education,
+        marital_status: form.marital_status,
         photo: updatedPhoto || prev?.photo,
+        family_members: cleanFamily,
       }));
+      setFamilyDetails(cleanFamily.map((m) => ({ name: m.name, relation: m.relation, mobileNumber: m.mobile_number })));
 
       if (updateCurrentUser) {
         updateCurrentUser({
           ...form,
-          photo: updatedPhoto || profile?.photo
+          photo: updatedPhoto || profile?.photo,
+          family_members: cleanFamily,
         });
       }
 
@@ -308,7 +394,9 @@ export default function Profile() {
           filled++;
         }
       });
-      const newCompletionPercentage = Math.round((filled / completionFields.length) * 100);
+      // Family details are validated as non-empty before this point is reached,
+      // so they always count as complete in this post-save check.
+      const newCompletionPercentage = Math.round(((filled + 1) / (completionFields.length + 1)) * 100);
 
       if (newCompletionPercentage === 100) {
         navigate("/employee");
@@ -345,7 +433,10 @@ export default function Profile() {
       department: profile?.department || "",
       designation: profile?.designation || "",
       joining_date: profile?.joining_date || "",
+      education: profile?.education || "",
+      marital_status: profile?.marital_status || "",
     });
+    setFamilyDetails(familyFromProfile(profile));
     setEditing(false);
     setActiveStep(1);
   };
@@ -446,7 +537,13 @@ export default function Profile() {
         filled++;
       }
     });
-    return Math.round((filled / completionFields.length) * 100);
+    // Family details count as one more required item: at least one row with
+    // both a name and a relation.
+    const familySource = editing ? familyDetails : (profile?.family_members || []);
+    const hasFamily = (familySource || []).some(
+      (m) => String(m.name || "").trim() && String(m.relation || "").trim()
+    );
+    return Math.round(((filled + (hasFamily ? 1 : 0)) / (completionFields.length + 1)) * 100);
   };
   const completionPercentage = calculateCompletion();
 
@@ -457,7 +554,7 @@ export default function Profile() {
           <div className="flex items-center gap-2">
             <AlertCircle className="text-amber-500 shrink-0" size={20} />
             <p className="text-sm font-semibold">
-              Notice: Portal pages are locked until your full profile details are completed and saved. (PF and ESI numbers are optional).
+              Notice: Portal pages are locked until your full profile details — including at least one Family Details entry — are completed and saved. (PF and ESI numbers are optional).
             </p>
           </div>
         </div>
@@ -531,7 +628,10 @@ export default function Profile() {
                   department: profile?.department || "",
                   designation: profile?.designation || "",
                   joining_date: profile?.joining_date || "",
+                  education: profile?.education || "",
+                  marital_status: profile?.marital_status || "",
                 });
+                setFamilyDetails(familyFromProfile(profile));
                 setEditing(true);
               }}
               className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-brand-600 dark:text-brand-400 bg-white dark:bg-gray-800 border border-brand-200 dark:border-brand-700 rounded-xl hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-colors shadow-sm"
@@ -648,6 +748,7 @@ export default function Profile() {
             { id: 1, label: "1. Basic Details" },
             { id: 2, label: "2. Address Details" },
             { id: 3, label: "3. Identity & Bank" },
+            { id: 4, label: "4. Family Details" },
           ].map(step => (
             <button
               key={step.id}
@@ -770,6 +871,41 @@ export default function Profile() {
                   <option value="Male">Male</option>
                   <option value="Female">Female</option>
                   <option value="Other">Other</option>
+                </select>
+              }
+            />
+            <InfoRow
+              icon={GraduationCap}
+              iconBg="bg-amber-50 dark:bg-amber-900/20"
+              iconColor="text-amber-600"
+              label="Education"
+              value={emp.education || "—"}
+              editing={editing}
+              editNode={
+                <input
+                  value={form.education}
+                  onChange={(e) => set("education", e.target.value)}
+                  placeholder="e.g. B.Com, MBA"
+                  className="mt-0.5 w-full text-sm bg-transparent border-b border-brand-400 text-gray-900 dark:text-white focus:outline-none py-0.5"
+                />
+              }
+            />
+            <InfoRow
+              icon={Heart}
+              iconBg="bg-rose-50 dark:bg-rose-900/20"
+              iconColor="text-rose-600"
+              label="Marital Status"
+              value={emp.marital_status || "—"}
+              editing={editing}
+              editNode={
+                <select
+                  value={form.marital_status}
+                  onChange={(e) => set("marital_status", e.target.value)}
+                  className="mt-0.5 w-full text-sm bg-transparent border-b border-brand-400 text-gray-900 dark:text-white focus:outline-none py-0.5"
+                >
+                  <option value="">Select Marital Status</option>
+                  <option value="MARRIED">Married</option>
+                  <option value="UNMARRIED">Unmarried</option>
                 </select>
               }
             />
@@ -1080,6 +1216,137 @@ export default function Profile() {
                 Previous
               </button>
               <button
+                onClick={() => setActiveStep(4)}
+                className="px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm"
+              >
+                Next Step
+              </button>
+            </div>
+          )}
+        </div>
+        </div>
+        )}
+
+        {activeStep === 4 && (
+          <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+        {/* Family Details — required, at least one member */}
+        <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700">
+            <div className="flex items-center gap-2">
+              <Users size={16} className="text-brand-600" />
+              <h3 className="font-semibold text-gray-900 dark:text-white">
+                Family Details
+              </h3>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400">
+                Required
+              </span>
+            </div>
+          </div>
+
+          <div className="p-5 space-y-3">
+            {!editing && (
+              (profile?.family_members || []).length > 0 ? (
+                (profile.family_members || []).map((m, i) => (
+                  <div
+                    key={m.id || i}
+                    className="flex items-center gap-3 py-2 border-b border-gray-50 dark:border-gray-700/50 last:border-0"
+                  >
+                    <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 bg-brand-50 dark:bg-brand-900/20">
+                      <Users size={16} className="text-brand-600" />
+                    </div>
+                    <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-0.5">
+                      <div>
+                        <p className="text-xs text-gray-400 font-medium">Name</p>
+                        <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{m.name || "—"}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-400 font-medium">Relation</p>
+                        <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{m.relation || "—"}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-400 font-medium">Mobile Number</p>
+                        <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{m.mobile_number || "—"}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="flex items-center gap-2 text-sm text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-4 py-3">
+                  <AlertCircle size={16} className="shrink-0" />
+                  No family members added yet. Click "Edit Profile" to add at least one — this is required.
+                </div>
+              )
+            )}
+
+            {editing && familyDetails.map((member, index) => (
+              <div
+                key={index}
+                className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_1fr_auto] gap-3 items-end bg-gray-50 dark:bg-gray-900/30 rounded-xl p-3"
+              >
+                <div>
+                  <p className="text-xs text-gray-400 font-medium mb-1">Name</p>
+                  <input
+                    value={member.name}
+                    onChange={(e) => updateFamilyMember(index, "name", e.target.value)}
+                    placeholder="Full name"
+                    className="w-full text-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white focus:outline-none focus:border-brand-500"
+                  />
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400 font-medium mb-1">Relation</p>
+                  <select
+                    value={member.relation}
+                    onChange={(e) => updateFamilyMember(index, "relation", e.target.value)}
+                    className="w-full text-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white focus:outline-none focus:border-brand-500"
+                  >
+                    <option value="">Select relation</option>
+                    {RELATION_OPTIONS.map((rel) => (
+                      <option key={rel} value={rel}>{rel}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400 font-medium mb-1">Mobile Number</p>
+                  <input
+                    maxLength={10}
+                    value={member.mobileNumber}
+                    onChange={(e) => updateFamilyMember(index, "mobileNumber", e.target.value.replace(/\D/g, ""))}
+                    placeholder="Optional"
+                    className="w-full text-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white focus:outline-none focus:border-brand-500"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removeFamilyMember(index)}
+                  disabled={familyDetails.length === 1}
+                  title={familyDetails.length === 1 ? "At least one family member is required" : "Remove"}
+                  className="flex items-center justify-center w-9 h-9 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            ))}
+
+            {editing && (
+              <button
+                type="button"
+                onClick={addFamilyMember}
+                className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-brand-600 dark:text-brand-400 border border-dashed border-brand-300 dark:border-brand-700 rounded-xl hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-colors w-full sm:w-auto justify-center"
+              >
+                <Plus size={16} /> Add Family Member
+              </button>
+            )}
+          </div>
+
+          {editing && (
+            <div className="px-5 pb-5 flex justify-between gap-3 border-t border-gray-100 dark:border-gray-700 pt-4">
+              <button
+                onClick={() => setActiveStep(3)}
+                className="px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 text-sm font-semibold rounded-xl transition-colors"
+              >
+                Previous
+              </button>
+              <button
                 onClick={handleSave}
                 className="flex items-center gap-1.5 px-6 py-2.5 text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-xl transition-colors shadow-sm shadow-brand-600/30"
               >
@@ -1090,7 +1357,6 @@ export default function Profile() {
         </div>
         </div>
         )}
-
 
       </div>
     </div>

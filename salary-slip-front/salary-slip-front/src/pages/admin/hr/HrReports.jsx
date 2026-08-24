@@ -93,7 +93,7 @@ export default function HrReports() {
                 <Badge variant="green">{report.rows.length} Records</Badge>
               </div>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <Button variant="secondary" size="sm" icon={<FileSpreadsheet size={14} />} onClick={exportExcel}>Export Excel</Button>
               <Button variant="secondary" size="sm" icon={<FileDown size={14} />} onClick={exportCsv}>Export CSV</Button>
               <Button variant="secondary" size="sm" icon={<FileText size={14} />} onClick={exportPdf}>Export PDF</Button>

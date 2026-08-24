@@ -142,6 +142,7 @@ export default function PermissionTreeTable({
   const someSelected = selectable.some((row) => checked.has(row.key));
 
   return (
+    <div className="overflow-x-auto">
     <div role="treegrid" aria-label="Permission tree" className="min-w-[900px]">
       <div
         style={gridStyle}
@@ -302,6 +303,7 @@ export default function PermissionTreeTable({
           );
         })}
       </div>
+    </div>
     </div>
   );
 }

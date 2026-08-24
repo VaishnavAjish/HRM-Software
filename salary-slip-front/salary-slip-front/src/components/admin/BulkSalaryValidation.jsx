@@ -193,7 +193,7 @@ export default function BulkSalaryValidation({
         size="full"
         noPadding
         footer={
-          <div className="flex items-center gap-3 text-xs">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs">
             <span className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 px-3 py-1.5 font-semibold text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-400">
               <CheckCircle2 size={14} /> {validatedRows.valid.length} Valid
             </span>
@@ -265,7 +265,7 @@ export default function BulkSalaryValidation({
                               </span>
                               {errorReason && (
                                 <span
-                                  className="mt-0.5 block truncate text-[10px] font-normal leading-tight text-red-500 dark:text-red-400"
+                                  className="mt-0.5 block break-words text-[10px] font-normal leading-tight text-red-500 dark:text-red-400"
                                   title={errorReason}
                                 >
                                   {errorReason}
@@ -294,12 +294,12 @@ export default function BulkSalaryValidation({
         </div>
       </Modal>
 
-      <div className="flex items-center justify-between gap-4 border-t border-gray-200 bg-gray-50 px-4 py-3 dark:border-white/10 dark:bg-white/[0.02]">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 border-t border-gray-200 bg-gray-50 px-4 py-3 dark:border-white/10 dark:bg-white/[0.02]">
         <p className="text-xs text-gray-500 dark:text-gray-400">
           {validatedRows.valid.length} row(s) ready to upload
           {validatedRows.invalid.length > 0 && ` · ${validatedRows.invalid.length} need correction`}
         </p>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
           <Button variant="secondary" onClick={onCancel} disabled={uploading}>Back</Button>
           <Button icon={<Upload size={14} />} onClick={handleConfirm} disabled={uploading || validatedRows.valid.length === 0}>
             {uploading ? "Uploading..." : `Upload ${validatedRows.valid.length} Slip(s)`}

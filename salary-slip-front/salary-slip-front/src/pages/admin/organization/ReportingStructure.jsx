@@ -236,7 +236,7 @@ export default function ReportingStructurePage() {
       <Card>
         <div className="p-4">
           <h3 className="font-semibold text-gray-900 dark:text-white mb-3">Reporting Chain</h3>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <div>
               <label className="block text-sm text-gray-500 dark:text-gray-400">Employee *</label>
               <select

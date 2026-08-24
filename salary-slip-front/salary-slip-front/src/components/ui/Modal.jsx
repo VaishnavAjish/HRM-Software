@@ -21,6 +21,15 @@ export default function Modal({
     };
   }, [isOpen]);
 
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") onClose?.();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   const sizes = {
@@ -41,7 +50,7 @@ export default function Modal({
         onClick={onClose}
       />
       <div
-        className={`relative bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full ${sizes[size]} max-h-[90vh] flex flex-col overflow-hidden`}
+        className={`relative bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full ${sizes[size]} modal-viewport-max-h flex flex-col overflow-hidden`}
       >
         {/* Header */}
         {!noHeader && (

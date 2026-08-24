@@ -140,6 +140,7 @@ class UserController extends Controller
         'aadhar_card_no', 'pan_card_no', 'bank_name', 'bank_ifsc_code',
         'bank_account_no', 'pf_no', 'esi_no',
         'gender', 'department', 'designation', 'joining_date',
+        'education', 'marital_status',
     ];
 
     /**
@@ -826,6 +827,16 @@ class UserController extends Controller
         }
 
         $rows = $request->input('family_members');
+
+        // A multipart/form-data request (e.g. the profile page submitting a
+        // photo alongside family details) can only carry this as a JSON string,
+        // since FormData has no native array-of-objects encoding.
+        if (is_string($rows)) {
+            $decoded = json_decode($rows, true);
+            if (json_last_error() === JSON_ERROR_NONE) {
+                $rows = $decoded;
+            }
+        }
 
         if (! is_array($rows)) {
             return [null, response()->json(['status' => false, 'message' => 'Family details must be a list of members.'], 422)];
@@ -1621,6 +1632,29 @@ class UserController extends Controller
 
         $request->validate($rules);
 
+        [$familyRows, $familyError] = $this->parseFamilyMembers($request);
+        if ($familyError) {
+            return $familyError;
+        }
+
+        // Family details are mandatory on the self-service profile, unlike the
+        // HR admin employee editor. A save must either submit at least one
+        // valid member or the employee must already have one on file — an
+        // empty submission from someone with zero saved members is rejected
+        // rather than silently accepted.
+        if (SchemaSupport::hasTable('employee_family_members')) {
+            $submittedCount = $familyRows === null ? 0 : count($familyRows);
+            $hasExisting = $familyRows === null
+                && EmployeeFamilyMember::where('user_id', $user->id)->exists();
+
+            if ($submittedCount === 0 && ! $hasExisting) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Add at least one family member before saving your profile.',
+                ], 422);
+            }
+        }
+
         $data = array_intersect_key(
             $request->except(array_merge(['_token'], self::FILE_UPLOAD_FIELDS)),
             array_flip(self::SELF_PROFILE_FIELDS)
@@ -1642,8 +1676,17 @@ class UserController extends Controller
         }
 
         $user->update($data);
+        $this->saveFamilyMembers($user, $familyRows);
 
-        return response()->json(['status' => true, 'message' => 'Profile updated', 'user' => $user->fresh()]);
+        $freshPayload = $user->fresh()->toArray();
+        if (SchemaSupport::hasTable('employee_family_members')) {
+            $freshPayload['family_members'] = EmployeeFamilyMember::where('user_id', $user->id)
+                ->orderBy('id')
+                ->get(['id', 'name', 'relation', 'mobile_number'])
+                ->toArray();
+        }
+
+        return response()->json(['status' => true, 'message' => 'Profile updated', 'user' => $freshPayload]);
     }
 
     public function createAppointmentAccount(Request $request)

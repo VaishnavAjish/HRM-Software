@@ -651,6 +651,21 @@ body {
 }
 
 /* ─────────────────────────────────────────────────────────
+   Viewport height primitives — dvh with vh fallback.
+   iOS Safari's collapsing address bar makes 100vh taller than the visible
+   viewport; 100dvh tracks it. Older engines ignore the second declaration.
+   ───────────────────────────────────────────────────────── */
+.app-viewport-h {
+  height: 100vh;
+  height: 100dvh;
+}
+
+.modal-viewport-max-h {
+  max-height: 90vh;
+  max-height: 90dvh;
+}
+
+/* ─────────────────────────────────────────────────────────
    Capacitor Mobile & Safe Area Responsive Adjustments
    ───────────────────────────────────────────────────────── */
 

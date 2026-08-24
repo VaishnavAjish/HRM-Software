@@ -34,7 +34,6 @@ const pageTitles = {
   "/employee/payslips": "Payslips",
   "/employee/form16": "Form 16",
   "/employee/profile": "Profile",
-  "/employee/security": "Security Center",
   "/employee/appointment": "Appointment Form",
   "/agent": "Dashboard",
   "/agent/trial-forms": "Trial Form",
@@ -92,7 +91,7 @@ export default function AppLayout() {
     : "0px";
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-50 dark:bg-[var(--sidebar-bg)] font-sans">
+    <div className="flex app-viewport-h overflow-hidden bg-gray-50 dark:bg-[var(--sidebar-bg)] font-sans">
       <div className="hidden lg:block">
         <EnterpriseNav onFlyoutChange={setFlyoutOpen} />
       </div>

@@ -420,7 +420,7 @@ export default function UploadSalarySlipModal({
               </div>
 
               {preview && (
-                <div className="grid grid-cols-3 gap-2.5">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                   {[
                     {
                       icon: <Hash size={13} />,

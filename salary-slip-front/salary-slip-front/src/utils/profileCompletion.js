@@ -15,6 +15,7 @@
  * - Bank Name
  * - Bank Account Number
  * - Bank IFSC Code
+ * - At least one Family Details entry (name + relation)
  */
 export function isEmployeeProfileComplete(u) {
   if (!u) return true;
@@ -60,6 +61,10 @@ export function isEmployeeProfileComplete(u) {
     (u.ifsc_code && String(u.ifsc_code).trim())
   );
 
+  const hasFamily = Array.isArray(u.family_members) && u.family_members.some(
+    (m) => m && String(m.name || "").trim() && String(m.relation || "").trim()
+  );
+
   return (
     hasName &&
     hasContact &&
@@ -70,6 +75,7 @@ export function isEmployeeProfileComplete(u) {
     hasPan &&
     hasBankName &&
     hasBankAccount &&
-    hasBankIfsc
+    hasBankIfsc &&
+    hasFamily
   );
 }
