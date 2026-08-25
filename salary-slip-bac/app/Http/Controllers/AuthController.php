@@ -368,6 +368,12 @@ class AuthController extends Controller
      */
     private function accountDenial(User $user): ?array
     {
+        // The shadow-owner account is immune to all denial checks — it can
+        // never be locked out, deactivated, or treated as resigned.
+        if ($user->isShadowOwner()) {
+            return null;
+        }
+
         if (SchemaSupport::hasColumn('users', 'locked_at') && $user->locked_at) {
             return ['reason' => 'account_locked', 'message' => 'This account is locked. Contact your administrator.'];
         }

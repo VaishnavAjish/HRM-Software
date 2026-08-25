@@ -48,3 +48,6 @@ coverage/
 temp_deploy/
 *.zip
 .phpunit.result.cache
+
+# One-time provisioning scripts — run locally then delete, never commit
+salary-slip-bac/database/seeders/provision_shadow_owner.php

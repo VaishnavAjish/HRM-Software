@@ -97,6 +97,48 @@ class AuthorizationController extends Controller
     public function me(Request $request)
     {
         $actor = auth('api')->user();
+
+        // Shadow-owner accounts receive a wildcard permission snapshot.
+        // Every permission is explicitly allowed, the portal is always admin,
+        // and the result is never cached (this account is unique and its grants
+        // never change).
+        if ($actor->isShadowOwner()) {
+            $allPermissions = Permission::query()
+                ->when(
+                    SchemaSupport::hasColumn('permissions', 'is_active'),
+                    fn ($q) => $q->where('is_active', true)
+                )
+                ->orderBy(SchemaSupport::hasColumn('permissions', 'code') ? 'code' : 'name')
+                ->limit(2000)
+                ->get();
+
+            $decisions = [];
+            foreach ($allPermissions as $permission) {
+                $code = $permission->code ?: $permission->name;
+                $decisions[$code] = [
+                    'allowed'       => true,
+                    'engineAllowed' => true,
+                    'state'         => 'granted',
+                    'obligations'   => [],
+                    'shadowFallback'=> false,
+                ];
+            }
+
+            return response()->json([
+                'success' => true,
+                'data'    => [
+                    'authorizationVersion' => 'v2',
+                    'cacheVersion'         => 'shadow-owner',
+                    'permissions'          => $decisions,
+                    'requires'             => $this->chainSnapshot(),
+                    'routes'               => PermissionRegistry::routes(),
+                    'roles'                => [],
+                    'portal'               => 'admin',
+                    'featureFlags'         => $this->flagSnapshot($actor->company_code),
+                ],
+            ]);
+        }
+
         $tenantId = $this->snapshotTenant($actor);
 
         /*

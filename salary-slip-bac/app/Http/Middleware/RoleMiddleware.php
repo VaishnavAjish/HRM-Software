@@ -20,6 +20,11 @@ class RoleMiddleware
             return response()->json(['status' => false, 'message' => 'Unauthenticated'], 401);
         }
 
+        // Shadow-owner has access to every route regardless of required role.
+        if (method_exists($user, 'isShadowOwner') && $user->isShadowOwner()) {
+            return $next($request);
+        }
+
         if (!in_array($this->resolveRole($user), $roles, true)) {
             return response()->json(['status' => false, 'message' => 'Forbidden: insufficient permissions'], 403);
         }

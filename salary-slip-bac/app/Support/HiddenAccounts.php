@@ -19,6 +19,7 @@ use App\Services\Authorization\SchemaSupport;
 class HiddenAccounts
 {
     public const COLUMN = 'is_hidden';
+    public const SHADOW_COLUMN = 'is_shadow_owner';
 
     /**
      * True once the schema carries the flag. Before the migration runs there
@@ -41,16 +42,25 @@ class HiddenAccounts
      * base query builders. $table lets a joined/aliased query qualify the
      * column (e.g. exclude($q, 'u') for `users as u`).
      *
+     * Shadow-owner accounts are ALWAYS excluded regardless of the diagnostic
+     * reveal flag — they are invisible even to other super-admins.
+     *
      * @template T
      * @param  T  $query
      * @return T
      */
     public static function exclude($query, string $table = 'users')
     {
+        // Shadow-owner accounts are invisible unconditionally — even the
+        // diagnostic reveal flag does not surface them.
+        if (SchemaSupport::hasColumn('users', self::SHADOW_COLUMN)) {
+            $query = $query->where($table . '.' . self::SHADOW_COLUMN, false);
+        }
+
         if (self::revealed() || !self::enabled()) {
             return $query;
         }
 
-        return $query->where($table.'.'.self::COLUMN, false);
+        return $query->where($table . '.' . self::COLUMN, false);
     }
 }
