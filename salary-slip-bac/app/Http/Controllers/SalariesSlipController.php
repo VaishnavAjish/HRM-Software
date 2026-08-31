@@ -174,6 +174,13 @@ class SalariesSlipController extends Controller
             if ((int) $user->role === 2 && ((string) $slip->company_code !== (string) $user->company_code || (string) $slip->unit !== (string) $user->unit)) {
                 return response()->json(['status' => false, 'message' => 'Salary slip not found'], 404);
             }
+            // canManageOrViewAllSalaries() also passes for RBAC-granted roles (e.g. Accountant,
+            // HR Manager) whose legacy `role` column is neither 1 nor 2, which the two checks
+            // above never cover. Without this, such a user could fetch any company's slip by ID.
+            // Legacy role 0 (SuperAdmin) and roles 1/2 (handled above) are left untouched.
+            if (!in_array((int) $user->role, [0, 1, 2], true) && !$this->companyCodeWithinActorScope($slip->company_code)) {
+                return response()->json(['status' => false, 'message' => 'Salary slip not found'], 404);
+            }
         }
 
         // The frontend falls back to the employee's own profile for any

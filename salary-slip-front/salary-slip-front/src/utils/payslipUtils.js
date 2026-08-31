@@ -226,6 +226,8 @@ export function buildPayslipData({ emp = {}, payslip = {}, companyId } = {}) {
     educationAllowance,
     medicalAllowance,
     mobileAllowance,
+    perfo = 0,
+    other = 0,
     owa = 0,
     ppa = 0,
     pda = 0,
@@ -233,18 +235,19 @@ export function buildPayslipData({ emp = {}, payslip = {}, companyId } = {}) {
     ha = 0;
 
   const hasExplicitAllowanceBreakdown = [
-    payslip.da, payslip.hra, payslip.wa, payslip.w_a, payslip.conveyance,
-    payslip.conv_a, payslip.con_al, payslip.education, payslip.edu_a,
-    payslip.medical, payslip.med_a, payslip.mob_a, payslip.bonus,
-    payslip.product_incentive, payslip.owa, payslip.o_w_a, payslip.ppa,
-    payslip.p_p_a, payslip.pda, payslip.p_d_a, payslip.lta, payslip.l_t_a,
-    payslip.ha, payslip.h_a
+    payslip.da, payslip.hra, payslip.wa, payslip.w_a, payslip.wa_al,
+    payslip.conveyance, payslip.conv_a, payslip.con_al, payslip.education,
+    payslip.edu_a, payslip.medical, payslip.med_a, payslip.mob_a,
+    payslip.bonus, payslip.product_incentive, payslip.comm, payslip.perfo,
+    payslip.performance, payslip.other, payslip.others, payslip.owa,
+    payslip.o_w_a, payslip.ppa, payslip.p_p_a, payslip.pda, payslip.p_d_a,
+    payslip.lta, payslip.l_t_a, payslip.ha, payslip.h_a
   ].some((value) => value != null);
 
   if (hasExplicitAllowanceBreakdown) {
     dailyAllowance = readNumber(payslip.da);
     hra = readNumber(payslip.hra);
-    wa = readNumber(payslip.wa, payslip.w_a);
+    wa = readNumber(payslip.wa, payslip.w_a, payslip.wa_al, emp.wa, emp.w_a, emp.wa_al);
     conveyanceAllowance = readNumber(
       payslip.conveyance,
       payslip.conv_a,
@@ -253,6 +256,20 @@ export function buildPayslipData({ emp = {}, payslip = {}, companyId } = {}) {
     educationAllowance = readNumber(payslip.education, payslip.edu_a);
     medicalAllowance = readNumber(payslip.medical, payslip.med_a);
     mobileAllowance = readNumber(payslip.mobileAllowance, payslip.mob_a);
+    perfo = readNumber(
+      payslip.perfo,
+      payslip.comm,
+      payslip.performance,
+      emp.perfo,
+      emp.comm,
+      emp.performance,
+    );
+    other = readNumber(
+      payslip.other,
+      payslip.others,
+      emp.other,
+      emp.others,
+    );
     owa = readNumber(payslip.owa, payslip.o_w_a);
     ppa = readNumber(payslip.ppa, payslip.p_p_a);
     pda = readNumber(payslip.pda, payslip.p_d_a);
@@ -267,6 +284,8 @@ export function buildPayslipData({ emp = {}, payslip = {}, companyId } = {}) {
     medicalAllowance = 0;
     wa = 0;
     mobileAllowance = 0;
+    perfo = 0;
+    other = 0;
   }
 
   let computedGrossSalary = 0;
@@ -274,12 +293,12 @@ export function buildPayslipData({ emp = {}, payslip = {}, companyId } = {}) {
     computedGrossSalary =
       basicSalary + dailyAllowance + hra + wa + conveyanceAllowance +
       educationAllowance + owa + ppa + pda + medicalAllowance + bonus +
-      lta + ha + mobileAllowance + productIncentive + unallocatedAllowances;
+      lta + ha + mobileAllowance + productIncentive + perfo + other + unallocatedAllowances;
   } else {
     computedGrossSalary =
       basicSalary + dailyAllowance + hra + wa + conveyanceAllowance +
       educationAllowance + medicalAllowance + mobileAllowance + bonus +
-      unallocatedAllowances;
+      perfo + other + unallocatedAllowances;
   }
 
   const grossSalary =
@@ -366,6 +385,12 @@ export function buildPayslipData({ emp = {}, payslip = {}, companyId } = {}) {
       { label: "Mob. A.", amount: mobileAllowance },
       { label: "Product Incentive", amount: productIncentive },
     ];
+    if (perfo > 0) {
+      earningRows.push({ label: "Perfo", amount: perfo });
+    }
+    if (other > 0) {
+      earningRows.push({ label: "Other", amount: other });
+    }
     if (unallocatedAllowances > 0) {
       earningRows.push({ label: "Allowances", amount: unallocatedAllowances });
     }
@@ -389,6 +414,9 @@ export function buildPayslipData({ emp = {}, payslip = {}, companyId } = {}) {
       { label: "Conv.A", amount: conveyanceAllowance },
       { label: "Edu.A", amount: educationAllowance },
       { label: "Med.A", amount: medicalAllowance },
+      { label: "Mob.A", amount: mobileAllowance },
+      { label: "PERFO", amount: perfo },
+      { label: "OTHER", amount: other },
       { label: "Prod. Ince.", amount: bonus },
     ];
     if (unallocatedAllowances > 0) {
@@ -564,6 +592,10 @@ export function buildPayslipData({ emp = {}, payslip = {}, companyId } = {}) {
       medicalAllowance,
       mobileAllowance,
       bonus,
+      perfo,
+      comm: perfo,
+      other,
+      others: other,
       aGross: readNumber(payslip.aGross, payslip.a_gross),
       grossSalary,
       professionalTax,

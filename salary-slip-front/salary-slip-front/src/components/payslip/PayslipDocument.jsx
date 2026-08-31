@@ -249,7 +249,9 @@ function buildSilverTableRows(data) {
     { key: "educationAllowance", label: "EDU.A" },
     { key: "medicalAllowance", label: "MED.A" },
     { key: "mobileAllowance", label: "MOB.A" },
-    { key: "bonus", label: "PERFO" },
+    { key: "perfo", label: "PERFO" },
+    { key: "other", label: "OTHER" },
+    { key: "bonus", label: "PROD. INCE." },
   ];
 
   const deductionDefs = [
@@ -263,14 +265,36 @@ function buildSilverTableRows(data) {
 
   const nonZeroRows = (defs) =>
     defs
-      .map((def) => ({
-        label: def.label,
-        amount: Number(data.components[def.key] || 0),
-      }))
+      .map((def) => {
+        let amount = Number(data.components[def.key] || 0);
+        if (def.key === "perfo" && amount === 0) {
+          amount = Number(data.components.comm || 0);
+        }
+        if (def.key === "other" && amount === 0) {
+          amount = Number(data.components.others || 0);
+        }
+        return {
+          label: def.label,
+          amount,
+        };
+      })
       .filter((row) => row.amount !== 0);
 
   const earnings = nonZeroRows(earningDefs);
+  const unallocatedEarning = (data.earningRows || []).find(
+    (r) => r?.label === "ALLOWANCES" && Number(r.amount || 0) !== 0,
+  );
+  if (unallocatedEarning) {
+    earnings.push(unallocatedEarning);
+  }
+
   const deductions = nonZeroRows(deductionDefs);
+  const unallocatedDeduction = (data.deductionRows || []).find(
+    (r) => r?.label === "OTHER DEDUCTION" && Number(r.amount || 0) !== 0,
+  );
+  if (unallocatedDeduction) {
+    deductions.push(unallocatedDeduction);
+  }
 
   if (earnings.length === 0) {
     earnings.push({
