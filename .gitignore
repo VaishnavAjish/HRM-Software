@@ -32,11 +32,15 @@ Thumbs.db
 # IDE / Editor files
 .vscode/
 .idea/
+.metals/
 
 # Backend
 uploads/
 *.log
 coverage/
+
+# Android releases
+*.aab
 
 # Database dumps / snapshots (may contain PII — never commit)
 *.bak
@@ -51,3 +55,4 @@ temp_deploy/
 
 # One-time provisioning scripts — run locally then delete, never commit
 salary-slip-bac/database/seeders/provision_shadow_owner.php
+
