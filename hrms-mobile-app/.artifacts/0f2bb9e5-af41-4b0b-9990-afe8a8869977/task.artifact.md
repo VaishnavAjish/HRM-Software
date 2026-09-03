@@ -1,3 +1,0 @@
-- `[/]` Run the app on Android
-    - `[/]` Start native Android build and deployment
-    - `[ ]` Verify app launch on emulator

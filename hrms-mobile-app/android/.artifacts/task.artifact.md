@@ -1,3 +1,0 @@
-- [ ] Update `settings.gradle` with absolute path for `@react-native/gradle-plugin`
-- [ ] Verify sync
-- [ ] Update walkthrough
