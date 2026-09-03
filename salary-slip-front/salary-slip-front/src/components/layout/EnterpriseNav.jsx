@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
-import { ChevronDown, ChevronRight, LogOut, UserCircle, LifeBuoy } from "lucide-react";
+import { ChevronDown, ChevronRight, LogOut, UserCircle, LifeBuoy, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useNavItems, dashboardPathFor } from "./useNavItems";
 
@@ -29,14 +29,30 @@ function isItemActive(item, pathname) {
   });
 }
 
+const PINNED_KEY = "hrms_sidebar_pinned";
+
 export default function EnterpriseNav({ onFlyoutChange }) {
   const { user, logout } = useAuth();
   const location = useLocation();
   const nav = useNavItems();
 
+  // Sidebar is pinned (expanded) by default — reads from localStorage, defaults to true
+  const [isPinned, setIsPinned] = useState(() => {
+    const stored = localStorage.getItem(PINNED_KEY);
+    // Default to true (expanded) if no preference is saved
+    return stored === null ? true : stored === "true";
+  });
   const [isHovered, setIsHovered] = useState(false);
   const [openMenus, setOpenMenus] = useState([]);
   const hoverTimerRef = useRef(null);
+
+  // The sidebar is visually expanded when pinned OR hovered
+  const isExpanded = isPinned || isHovered;
+
+  // Persist pin state
+  useEffect(() => {
+    localStorage.setItem(PINNED_KEY, String(isPinned));
+  }, [isPinned]);
 
   // Sync active section ONLY when location.pathname changes
   useEffect(() => {
@@ -50,21 +66,23 @@ export default function EnterpriseNav({ onFlyoutChange }) {
 
   useEffect(() => {
     if (onFlyoutChange) {
-      onFlyoutChange(isHovered);
+      onFlyoutChange(isExpanded);
     }
-  }, [isHovered, onFlyoutChange]);
+  }, [isExpanded, onFlyoutChange]);
 
   const handleMouseEnter = useCallback(() => {
+    if (isPinned) return; // No hover behavior when pinned
     if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
     setIsHovered(true);
-  }, []);
+  }, [isPinned]);
 
   const handleMouseLeave = useCallback(() => {
+    if (isPinned) return; // No hover behavior when pinned
     if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
     hoverTimerRef.current = setTimeout(() => {
       setIsHovered(false);
     }, 200);
-  }, []);
+  }, [isPinned]);
 
   // Toggle open/close for any accordion category
   const toggleMenu = (label) => {
@@ -81,30 +99,44 @@ export default function EnterpriseNav({ onFlyoutChange }) {
       onMouseLeave={handleMouseLeave}
       aria-label="Sidebar navigation"
       className="fixed inset-y-0 left-0 z-40 flex flex-col border-r border-gray-800 bg-gray-900 text-gray-200 shadow-2xl transition-[width] duration-300 ease-in-out font-sans overflow-hidden"
-      style={{ width: isHovered ? EXPANDED_WIDTH : RAIL_WIDTH }}
+      style={{ width: isExpanded ? EXPANDED_WIDTH : RAIL_WIDTH }}
     >
       {/* Top Brand Header */}
-      <div className="flex h-16 items-center px-4 border-b border-gray-800 flex-shrink-0">
-        <Link
-          to={dashboardPath}
-          aria-label="Home"
-          className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-600 text-sm font-bold text-white shadow-md flex-shrink-0"
-        >
-          {(user?.name ?? "N").slice(0, 2).toUpperCase()}
-        </Link>
+      <div className="flex h-16 items-center justify-between px-4 border-b border-gray-800 flex-shrink-0">
+        <div className="flex items-center min-w-0">
+          <Link
+            to={dashboardPath}
+            aria-label="Home"
+            className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-600 text-sm font-bold text-white shadow-md flex-shrink-0"
+          >
+            {(user?.name ?? "N").slice(0, 2).toUpperCase()}
+          </Link>
 
-        <div
-          className={`flex flex-col justify-center overflow-hidden transition-all duration-300 ease-in-out ${
-            isHovered ? "max-w-[180px] opacity-100 ml-3" : "max-w-0 opacity-0 ml-0 pointer-events-none"
-          }`}
-        >
-          <span className="block text-sm font-bold text-white tracking-tight whitespace-nowrap">
-            NISS HRMS
-          </span>
-          <span className="block text-[11px] font-medium text-brand-400 whitespace-nowrap">
-            Enterprise Portal
-          </span>
+          <div
+            className={`flex flex-col justify-center overflow-hidden transition-all duration-300 ease-in-out ${
+              isExpanded ? "max-w-[180px] opacity-100 ml-3" : "max-w-0 opacity-0 ml-0 pointer-events-none"
+            }`}
+          >
+            <span className="block text-sm font-bold text-white tracking-tight whitespace-nowrap">
+              NISS HRMS
+            </span>
+            <span className="block text-[11px] font-medium text-brand-400 whitespace-nowrap">
+              Enterprise Portal
+            </span>
+          </div>
         </div>
+
+        {/* Pin / Unpin toggle — only visible when expanded */}
+        {isExpanded && (
+          <button
+            type="button"
+            onClick={() => setIsPinned((prev) => !prev)}
+            title={isPinned ? "Collapse sidebar" : "Pin sidebar open"}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-800 hover:text-white transition-colors flex-shrink-0"
+          >
+            {isPinned ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
+          </button>
+        )}
       </div>
 
       {/* Navigation List */}
@@ -132,7 +164,7 @@ export default function EnterpriseNav({ onFlyoutChange }) {
 
                   <div
                     className={`flex flex-1 items-center justify-between overflow-hidden transition-all duration-300 ease-in-out ${
-                      isHovered ? "max-w-[180px] opacity-100 ml-3" : "max-w-0 opacity-0 ml-0 pointer-events-none"
+                      isExpanded ? "max-w-[180px] opacity-100 ml-3" : "max-w-0 opacity-0 ml-0 pointer-events-none"
                     }`}
                   >
                     <span className="truncate text-sm font-medium text-gray-200 whitespace-nowrap">
@@ -146,7 +178,7 @@ export default function EnterpriseNav({ onFlyoutChange }) {
                     />
                   </div>
 
-                  {!isHovered && (
+                  {!isExpanded && (
                     <div
                       role="tooltip"
                       className="pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-3 hidden items-center whitespace-nowrap rounded-lg bg-gray-800 px-3 py-1.5 text-xs font-medium text-white shadow-xl border border-gray-700 group-hover:flex z-50"
@@ -160,7 +192,7 @@ export default function EnterpriseNav({ onFlyoutChange }) {
                 {isMenuOpen && (
                   <div
                     className={`pl-10 space-y-1 overflow-hidden transition-all duration-300 ease-in-out ${
-                      isHovered ? "max-h-96 opacity-100 py-1" : "max-h-0 opacity-0 pointer-events-none py-0"
+                      isExpanded ? "max-h-96 opacity-100 py-1" : "max-h-0 opacity-0 pointer-events-none py-0"
                     }`}
                   >
                     {item.subItems.map((sub) => {
@@ -220,7 +252,7 @@ export default function EnterpriseNav({ onFlyoutChange }) {
 
                 <div
                   className={`overflow-hidden transition-all duration-300 ease-in-out ${
-                    isHovered ? "max-w-[180px] opacity-100 ml-3" : "max-w-0 opacity-0 ml-0 pointer-events-none"
+                    isExpanded ? "max-w-[180px] opacity-100 ml-3" : "max-w-0 opacity-0 ml-0 pointer-events-none"
                   }`}
                 >
                   <span className="truncate whitespace-nowrap text-sm font-medium">
@@ -252,7 +284,7 @@ export default function EnterpriseNav({ onFlyoutChange }) {
 
                   <div
                     className={`overflow-hidden transition-all duration-300 ease-in-out ${
-                      isHovered ? "max-w-[180px] opacity-100 ml-3" : "max-w-0 opacity-0 ml-0 pointer-events-none"
+                      isExpanded ? "max-w-[180px] opacity-100 ml-3" : "max-w-0 opacity-0 ml-0 pointer-events-none"
                     }`}
                   >
                     <span className="truncate text-sm font-medium text-gray-200 whitespace-nowrap">
@@ -260,7 +292,7 @@ export default function EnterpriseNav({ onFlyoutChange }) {
                     </span>
                   </div>
 
-                  {!isHovered && (
+                  {!isExpanded && (
                     <div
                       role="tooltip"
                       className="pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-3 hidden items-center whitespace-nowrap rounded-lg bg-gray-800 px-3 py-1.5 text-xs font-medium text-white shadow-xl border border-gray-700 group-hover:flex z-50"
@@ -278,7 +310,7 @@ export default function EnterpriseNav({ onFlyoutChange }) {
       {/* Bottom Footer */}
       <div className="border-t border-gray-800 py-3 px-3 flex items-center justify-center flex-shrink-0">
         <span className="text-xs font-semibold text-gray-400 whitespace-nowrap transition-all">
-          {isHovered ? "Version 1.2" : "v1.2"}
+          {isExpanded ? "Version 1.2" : "v1.2"}
         </span>
       </div>
     </aside>
