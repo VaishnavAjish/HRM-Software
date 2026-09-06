@@ -59,7 +59,10 @@ import NotificationDrawer from "../notifications/NotificationDrawer";
 
 export default function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [flyoutOpen, setFlyoutOpen] = useState(false);
+  const [flyoutOpen, setFlyoutOpen] = useState(() => {
+    const stored = localStorage.getItem("hrms_sidebar_pinned_v2");
+    return stored === null ? true : stored === "true";
+  });
   const [isDesktop, setIsDesktop] = useState(() => window.innerWidth >= 1024);
   const [isCollapsed, setIsCollapsed] = useState(() => {
     return localStorage.getItem("salaryms_sidebar_collapsed") === "true";

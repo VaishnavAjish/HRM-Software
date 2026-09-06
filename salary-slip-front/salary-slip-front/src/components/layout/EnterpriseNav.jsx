@@ -29,7 +29,7 @@ function isItemActive(item, pathname) {
   });
 }
 
-const PINNED_KEY = "hrms_sidebar_pinned";
+const PINNED_KEY = "hrms_sidebar_pinned_v2";
 
 export default function EnterpriseNav({ onFlyoutChange }) {
   const { user, logout } = useAuth();
