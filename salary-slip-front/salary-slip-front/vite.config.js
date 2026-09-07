@@ -5,8 +5,6 @@ import { VitePWA } from "vite-plugin-pwa";
 import { execSync } from "child_process";
 import path from "path";
 
-import fs from "fs";
-
 // On Windows, import.meta.url and process.cwd() can resolve to different
 // drive letters when the project lives on a mapped network share (e.g. T:\ and Z:\).
 // Keep projectRoot anchored to process.cwd() so config.root and Vite's HTML
