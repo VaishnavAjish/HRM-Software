@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Blue rounded background -->
+  <rect width="512" height="512" rx="80" fill="#1d4ed8"/>
+  <!-- White payslip document -->
+  <rect x="112" y="80" width="256" height="336" rx="16" fill="white"/>
+  <!-- Dog-ear fold corner -->
+  <path d="M304 80 L368 144 L304 144 Z" fill="#bfdbfe"/>
+  <path d="M304 80 L368 144" stroke="#93c5fd" stroke-width="2" fill="none"/>
+  <!-- Company name header band inside doc -->
+  <rect x="112" y="80" width="256" height="72" rx="16" fill="#1e40af"/>
+  <rect x="112" y="128" width="256" height="24" fill="#1e40af"/>
+  <rect x="136" y="100" width="108" height="12" rx="6" fill="white" opacity="0.95"/>
+  <rect x="136" y="120" width="72" height="8"  rx="4" fill="white" opacity="0.55"/>
+  <!-- Thin divider -->
+  <rect x="112" y="168" width="256" height="1.5" fill="#e2e8f0"/>
+  <!-- Data rows (earnings/deductions) -->
+  <rect x="136" y="188" width="100" height="9"  rx="4.5" fill="#94a3b8"/>
+  <rect x="312" y="188" width="36"  height="9"  rx="4.5" fill="#2563eb"/>
+  <rect x="136" y="212" width="80"  height="9"  rx="4.5" fill="#94a3b8"/>
+  <rect x="312" y="212" width="36"  height="9"  rx="4.5" fill="#2563eb"/>
+  <rect x="136" y="236" width="92"  height="9"  rx="4.5" fill="#94a3b8"/>
+  <rect x="312" y="236" width="36"  height="9"  rx="4.5" fill="#2563eb"/>
+  <!-- Divider before totals -->
+  <rect x="112" y="260" width="256" height="1.5" fill="#e2e8f0"/>
+  <!-- Totals row -->
+  <rect x="136" y="274" width="116" height="11" rx="5.5" fill="#1e3a8a"/>
+  <rect x="296" y="274" width="56"  height="11" rx="5.5" fill="#1e3a8a"/>
+  <!-- Net Pay banner -->
+  <rect x="112" y="304" width="256" height="48" rx="0" fill="#1e3a8a"/>
+  <rect x="112" y="336" width="256" height="16" rx="0" fill="#1e3a8a"/>
+  <rect x="136" y="318" width="64"  height="9"  rx="4.5" fill="white" opacity="0.65"/>
+  <rect x="260" y="316" width="88"  height="13" rx="6.5" fill="white"/>
+  <!-- Bottom section -->
+  <rect x="112" y="352" width="256" height="64" rx="0" fill="#eff6ff"/>
+  <rect x="112" y="400" width="256" height="16" rx="0" fill="#eff6ff"/>
+  <rect x="136" y="366" width="144" height="8"  rx="4"  fill="#bfdbfe"/>
+  <rect x="136" y="384" width="104" height="8"  rx="4"  fill="#bfdbfe"/>
+</svg>
