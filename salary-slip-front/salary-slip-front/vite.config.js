@@ -83,7 +83,7 @@ export default defineConfig(({ mode }) => {
         enforce: "pre",
         configResolved(config) {
           if (config.build) {
-            config.build.outDir = path.resolve(projectRoot, gitBranch);
+            config.build.outDir = path.resolve(projectRoot, "dist");
           }
         },
         resolveId(source) {
@@ -232,7 +232,7 @@ export default defineConfig(({ mode }) => {
       include: ["react-is", "exceljs", "jspdf", "jspdf-autotable"],
     },
     build: {
-      outDir: path.resolve(projectRoot, gitBranch),
+      outDir: path.resolve(projectRoot, "dist"),
       modulePreload: {
         // Vite's default preload-dependency resolver treats every chunk
         // reachable from ANY dynamic import as an entry dependency, so the
