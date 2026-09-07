@@ -3,6 +3,7 @@ import { Link, NavLink, useLocation } from "react-router-dom";
 import { ChevronDown, ChevronRight, LogOut, UserCircle, LifeBuoy, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useNavItems, dashboardPathFor } from "./useNavItems";
+import { prefetchRoute } from "../../utils/routePrefetch";
 
 /*
  * Nav widths as CSS lengths rather than raw numbers.
@@ -220,6 +221,8 @@ export default function EnterpriseNav({ onFlyoutChange }) {
                           key={sub.to}
                           to={sub.to}
                           end={sub.end}
+                          onMouseEnter={() => prefetchRoute(sub.to)}
+                          onFocus={() => prefetchRoute(sub.to)}
                           className={({ isActive }) =>
                             `block rounded-lg px-3 py-2 text-sm font-medium transition-all whitespace-nowrap ${
                               isActive
@@ -268,6 +271,8 @@ export default function EnterpriseNav({ onFlyoutChange }) {
               key={itemKey(item, index)}
               to={item.to}
               end={item.end}
+              onMouseEnter={() => prefetchRoute(item.to)}
+              onFocus={() => prefetchRoute(item.to)}
               className={({ isActive }) =>
                 `group relative flex h-11 w-full items-center rounded-xl px-2.5 text-sm font-medium transition-colors focus:outline-none ${
                   isActive

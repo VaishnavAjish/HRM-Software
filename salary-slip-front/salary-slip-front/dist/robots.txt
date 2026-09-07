@@ -1,0 +1,12 @@
+User-agent: *
+Allow: /
+Allow: /about-niss
+Allow: /login
+
+Disallow: /admin
+Disallow: /employee
+Disallow: /agent
+Disallow: /api
+Disallow: /dashboard
+
+Sitemap: https://niss.pro/sitemap.xml

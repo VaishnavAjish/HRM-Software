@@ -15,6 +15,7 @@ import {
   ChevronLeft,
   ChevronDown,
 } from "lucide-react";
+import { prefetchRoute } from "../../utils/routePrefetch";
 
 
 export default function Sidebar({ open, onClose, width, isCollapsed, onCollapse }) {
@@ -171,6 +172,8 @@ export default function Sidebar({ open, onClose, width, isCollapsed, onCollapse 
                           to={subItem.to}
                           end
                           onClick={onClose}
+                          onMouseEnter={() => prefetchRoute(subItem.to)}
+                          onFocus={() => prefetchRoute(subItem.to)}
                           className={({ isActive }) => {
                             const targetModal = new URL(subItem.to, window.location.origin).searchParams.get("modal");
                             const currentModal = new URLSearchParams(location.search).get("modal");
@@ -214,6 +217,8 @@ export default function Sidebar({ open, onClose, width, isCollapsed, onCollapse 
                 end={end}
                 title={isCollapsed ? label : undefined}
                 onClick={onClose}
+                onMouseEnter={() => prefetchRoute(to)}
+                onFocus={() => prefetchRoute(to)}
                 className={({ isActive }) => {
                   const targetModal = new URL(to, window.location.origin).searchParams.get("modal");
                   const currentModal = new URLSearchParams(location.search).get("modal");

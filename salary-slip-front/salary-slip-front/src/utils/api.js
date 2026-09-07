@@ -92,7 +92,32 @@ export function parseApiJsonResponse(text) {
   }
 }
 
+// High-performance In-Memory API Cache with Stale-While-Revalidate (SWR)
+const apiCache = new Map();
+const CACHE_TTL_MS = 30000; // 30 seconds fresh
+
+export function clearApiCache() {
+  apiCache.clear();
+}
+
 export async function apiRequest(path, options = {}) {
+  const method = (options.method || "GET").toUpperCase();
+  const isGet = method === "GET";
+  const bypassCache = Boolean(options.bypassCache);
+  const cacheKey = isGet && !bypassCache ? `${path}::${options.headers?.Authorization || ""}` : null;
+
+  if (cacheKey) {
+    const cached = apiCache.get(cacheKey);
+    if (cached && (Date.now() - cached.timestamp < CACHE_TTL_MS)) {
+      return cached.data;
+    }
+  }
+
+  if (!isGet && ["POST", "PUT", "DELETE", "PATCH"].includes(method)) {
+    // Invalidate cache on mutations so data never stays stale
+    apiCache.clear();
+  }
+
   const isFormData = options.body instanceof FormData;
 
   // Use CapacitorHttp for native builds to bypass CORS issues.
@@ -128,6 +153,11 @@ export async function apiRequest(path, options = {}) {
         }
         throw error;
       }
+
+      if (cacheKey) {
+        apiCache.set(cacheKey, { data, timestamp: Date.now() });
+      }
+
       return data;
     } catch (err) {
       if (err instanceof Error && !err.status) {
@@ -218,6 +248,10 @@ export async function apiRequest(path, options = {}) {
     }
 
     throw error;
+  }
+
+  if (cacheKey && data) {
+    apiCache.set(cacheKey, { data, timestamp: Date.now() });
   }
 
   return data;

@@ -9,13 +9,29 @@
     <!-- PWA theme / status bar color -->
     <meta name="theme-color" content="#1d4ed8" />
 
-    <!-- SEO & description -->
-    <meta name="description" content="Employee Payroll & Salary Management System by Nidhi Impex" />
+    <!-- Canonical Brand Title & SEO Description -->
+    <title>NISS HRMS</title>
+    <meta name="description" content="NISS HRMS – Nidhi Impex Silver Star Human Resource Management System for employee management, attendance, leave, payroll, HR operations and employee self-service." />
+    <link rel="canonical" href="https://niss.pro/" />
+
+    <!-- Open Graph Metadata -->
+    <meta property="og:site_name" content="NISS HRMS" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://niss.pro/" />
+    <meta property="og:title" content="NISS HRMS | Nidhi Impex Silver Star" />
+    <meta property="og:description" content="NISS HRMS – Nidhi Impex Silver Star Human Resource Management System." />
+    <meta property="og:image" content="https://niss.pro/nidhi_impex_logo.png" />
+
+    <!-- Twitter Card Metadata -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="NISS HRMS | Nidhi Impex Silver Star" />
+    <meta name="twitter:description" content="NISS HRMS – Nidhi Impex Silver Star Human Resource Management System." />
+    <meta name="twitter:image" content="https://niss.pro/nidhi_impex_logo.png" />
 
     <!-- iOS PWA support -->
-    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="SalaryMgmt" />
+    <meta name="apple-mobile-web-app-title" content="NISS HRMS" />
 
     <!-- Icons -->
     <link rel="icon"             type="image/svg+xml" href="/favicon.svg" />
@@ -26,12 +42,63 @@
     <!-- Android / Chrome splash screen color -->
     <meta name="msapplication-TileColor" content="#1d4ed8" />
 
-    <title>Master Admin – Salary Management</title>
-    <script type="module" crossorigin src="/assets/index-B_ZsHtvE.js"></script>
-    <link rel="modulepreload" crossorigin href="/assets/ag-grid-DDstB4RM.js">
-    <link rel="stylesheet" crossorigin href="/assets/index-B9MMND1j.css">
-  <link rel="manifest" href="/manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="/registerSW.js"></script></head>
+    <!--
+      Inter is self-hosted (see the @font-face rules in src/index.css), so there
+      is no render-blocking stylesheet from fonts.googleapis.com and no DNS/TLS
+      handshake to a third party before the first paint.
+
+      The preload starts the font fetch immediately rather than waiting for the
+      CSS bundle to parse and discover it. crossorigin is required even for a
+      same-origin font: fonts are always fetched in CORS mode, and without it the
+      browser downloads the file twice.
+    -->
+    <link rel="preload" href="/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin />
+
+    <!-- Structured Data (JSON-LD) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "WebSite",
+          "@id": "https://niss.pro/#website",
+          "url": "https://niss.pro/",
+          "name": "NISS HRMS",
+          "alternateName": [
+            "NISS",
+            "Nidhi Impex Silver Star HRMS",
+            "Nidhi Impex Silver Star Human Resource Management System"
+          ],
+          "publisher": {
+            "@id": "https://niss.pro/#organization"
+          }
+        },
+        {
+          "@type": "Organization",
+          "@id": "https://niss.pro/#organization",
+          "name": "Nidhi Impex Silver Star",
+          "alternateName": "NISS",
+          "url": "https://niss.pro/",
+          "logo": "https://niss.pro/nidhi_impex_logo.png",
+          "description": "Nidhi Impex Silver Star and its NISS Human Resource Management System."
+        },
+        {
+          "@type": "SoftwareApplication",
+          "@id": "https://niss.pro/#software",
+          "name": "NISS HRMS",
+          "alternateName": "Nidhi Impex Silver Star Human Resource Management System",
+          "applicationCategory": "BusinessApplication",
+          "operatingSystem": "Web",
+          "url": "https://niss.pro/",
+          "description": "NISS HRMS is the Human Resource Management System of Nidhi Impex Silver Star."
+        }
+      ]
+    }
+    </script>
+    <script type="module" crossorigin src="/assets/index-C0qUCnGm.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-Cji6yQN4.css">
+  <link rel="manifest" href="/manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="/registerSW.js" defer></script></head>
   <body>
-    <div id="root"></div>
+    <div id="root"></div>
   </body>
 </html>

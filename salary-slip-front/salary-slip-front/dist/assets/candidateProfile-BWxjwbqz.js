@@ -1,0 +1,1 @@
+const r=["name","phone","current_company","current_designation","experience_years","skills"];function l(e){if(!e)return 0;const t=r.filter(i=>{const n=e[i];return Array.isArray(n)?n.length>0:n!=null&&String(n).trim()!==""}).length;return Math.round(t/r.length*100)}export{l as p};
