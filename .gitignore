@@ -22,6 +22,7 @@ vendor/
 *.zip
 *.tar.gz
 dist/
+!salary-slip-front/salary-slip-front/dist/
 build/
 dev-dist/
 
