@@ -2188,6 +2188,26 @@ export const hrApi = {
   },
 
   // Onboarding
+  rejectOnboarding(id, reason = "", accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/onboarding/journeys/${id}/reject`, {
+      method: "POST",
+      headers: hrAuthHeaders(accessToken, tokenType),
+      body: JSON.stringify({ reason }),
+    });
+  },
+  approveOnboarding(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/onboarding/journeys/${id}/approve`, {
+      method: "POST",
+      headers: hrAuthHeaders(accessToken, tokenType),
+    });
+  },
+  copyOnboardingDocumentsToAppointment(candidateId, appointmentId, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/hr/onboarding/journeys/${candidateId}/copy-documents-to-appointment`, {
+      method: "POST",
+      headers: hrAuthHeaders(accessToken, tokenType),
+      body: JSON.stringify({ appointment_id: appointmentId }),
+    });
+  },
   getOnboardingDashboard(accessToken, tokenType = "Bearer") {
     return apiRequest(`/hr/onboarding/dashboard`, { headers: hrAuthHeaders(accessToken, tokenType) });
   },
@@ -2332,6 +2352,16 @@ export const hrApi = {
 export const publicQuizApi = {
   get(token) {
     return apiRequest(`/quiz/${token}`);
+  },
+  getTestQuiz(quizId) {
+    return apiRequest(`/quiz/test/${quizId}`);
+  },
+  submitTestQuiz(quizId, answers) {
+    return apiRequest(`/quiz/test/${quizId}/submit`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ answers }),
+    });
   },
   start(token) {
     return apiRequest(`/quiz/${token}/start`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
@@ -2829,6 +2859,48 @@ export const candidateApi = {
   },
   getApplication(id, token) {
     return apiRequest(`/candidate/applications/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+  },
+  respondOffer(id, payload, token) {
+    return apiRequest(`/candidate/applications/${id}/offer/respond`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+  },
+  getOnboardingDocumentTypes(token) {
+    return apiRequest(`/candidate/onboarding/document-types`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  },
+  saveOnboarding(id, payload, token) {
+    return apiRequest(`/candidate/applications/${id}/onboarding`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+  },
+  uploadOnboardingDocument(id, formData, token) {
+    return apiRequest(`/candidate/applications/${id}/onboarding/document`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: formData,
+    });
+  },
+  deleteOnboardingDocument(id, docId, token) {
+    return apiRequest(`/candidate/applications/${id}/onboarding/document/${docId}`, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
   },
 
   getSavedJobs(token) {

@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
-import { Download, Search, Users } from "lucide-react";
+import { useMemo, useState } from "react";
+import toast from "react-hot-toast";
+import { Download, PlayCircle, Search, Users, Loader2 } from "lucide-react";
 import Button from "../../../../components/ui/Button";
 import { SkeletonTable } from "../../../../components/ui/Skeleton";
 import DataTable from "../../../../components/onboarding/DataTable";
@@ -12,6 +13,7 @@ import {
   StatusPill,
 } from "../../../../components/onboarding/primitives";
 import { onboardingApi } from "../../../../utils/onboardingApi";
+import { useAuth } from "../../../../context/AuthContext";
 import { useOnboardingResource } from "../../../../hooks/useOnboardingResource";
 import { downloadCsv } from "./onboardingCsv";
 
@@ -29,16 +31,14 @@ function docStatusLabel(progress) {
 }
 
 export default function EmployeesTab({ initialFilter, onOpenEmployee }) {
+  const { user } = useAuth();
   const { data, loading, error, reload } = useOnboardingResource(
     (token, type) => onboardingApi.getJourneys(token, type),
     [],
   );
   const [filter, setFilter] = useState(initialFilter || "ALL");
   const [search, setSearch] = useState("");
-
-  useEffect(() => {
-    if (initialFilter) setFilter(initialFilter);
-  }, [initialFilter]);
+  const [processingId, setProcessingId] = useState(null);
 
   const journeys = useMemo(() => data || [], [data]);
 
@@ -80,6 +80,24 @@ export default function EmployeesTab({ initialFilter, onOpenEmployee }) {
     );
   };
 
+  const handleProcess = async (j) => {
+    setProcessingId(j.id);
+    try {
+      const res = await onboardingApi.processJourney(j.id, user?.accessToken, user?.tokenType);
+      if (res && (res.status === true || res.ok)) {
+        toast.success(res.message || `Onboarding process initiated for ${j.name || "candidate"}!`);
+        reload();
+      } else {
+        toast.error(res?.message || "Failed to initiate onboarding process.");
+      }
+    } catch (err) {
+      console.error("Process error:", err);
+      toast.error(err?.message || "Failed to initiate onboarding process.");
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
   const columns = [
     { key: "name", label: "Employee", render: (j) => <Person name={j.name} meta={j.code} /> },
     {
@@ -111,9 +129,27 @@ export default function EmployeesTab({ initialFilter, onOpenEmployee }) {
       key: "actions",
       label: "",
       render: (j) => (
-        <Button variant="secondary" size="sm" onClick={() => onOpenEmployee?.(j)}>
-          Open
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="secondary" size="sm" onClick={() => onOpenEmployee?.(j)}>
+            Open
+          </Button>
+          {j.isProcessed ? (
+            <StatusPill tone="warn">
+              <Loader2 size={12} className="mr-1 inline animate-spin" />
+              Onboarding under processing
+            </StatusPill>
+          ) : (
+            <Button
+              variant="primary"
+              size="sm"
+              disabled={processingId === j.id}
+              icon={<PlayCircle size={14} />}
+              onClick={() => handleProcess(j)}
+            >
+              {processingId === j.id ? "Processing..." : "Process"}
+            </Button>
+          )}
+        </div>
       ),
     },
   ];

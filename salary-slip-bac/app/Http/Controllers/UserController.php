@@ -537,6 +537,34 @@ class UserController extends Controller
             $query->where('unit', 'like', "%{$request->unit}%");
         }
 
+        if ($request->filled('gender')) {
+            $gender = trim((string) $request->gender);
+            $genderLower = strtolower($gender);
+            if ($genderLower === 'blank' || $genderLower === 'unspecified' || $genderLower === 'empty') {
+                $query->where(function ($q) {
+                    $q->whereNull('gender')
+                        ->orWhere('gender', '')
+                        ->orWhere('gender', '-');
+                });
+            } elseif ($genderLower === 'male') {
+                $query->where(function ($q) {
+                    $q->where('gender', 'Male')
+                        ->orWhere('gender', 'male')
+                        ->orWhere('gender', 'M')
+                        ->orWhere('gender', 'm');
+                });
+            } elseif ($genderLower === 'female') {
+                $query->where(function ($q) {
+                    $q->where('gender', 'Female')
+                        ->orWhere('gender', 'female')
+                        ->orWhere('gender', 'F')
+                        ->orWhere('gender', 'f');
+                });
+            } elseif ($gender !== '' && $genderLower !== 'all') {
+                $query->where('gender', $gender);
+            }
+        }
+
         if ($request->search) {
             $query->where(function ($q) use ($request) {
                 $q->where('name', 'like', "%{$request->search}%")
@@ -1115,6 +1143,50 @@ class UserController extends Controller
         return null;
     }
 
+    /** Company code => lowercased valid unit names, cached for the request's lifetime. */
+    private ?array $unitNamesByCompany = null;
+
+    /**
+     * Whether $unit is one of the company's actual units (Settings-backed units
+     * table when present, else the hard-coded 4-unit list this product has
+     * always offered), so an import can't write an unrelated string —
+     * a department, a designation, junk — into the unit column.
+     */
+    private function isKnownUnit(string $unit, ?string $companyCode): bool
+    {
+        if ($companyCode === null || $companyCode === '') {
+            return false;
+        }
+
+        if ($this->unitNamesByCompany === null) {
+            $this->unitNamesByCompany = [];
+
+            if (SchemaSupport::hasTable('units') && SchemaSupport::hasTable('companies')) {
+                $rows = DB::table('units')
+                    ->join('companies', 'companies.id', '=', 'units.company_id')
+                    ->select('companies.code as company_code', 'units.name as unit_name');
+
+                if (SchemaSupport::hasColumn('units', 'is_active')) {
+                    $rows->where('units.is_active', true);
+                }
+
+                foreach ($rows->get() as $row) {
+                    $this->unitNamesByCompany[$row->company_code][] = strtolower(trim($row->unit_name));
+                }
+            }
+
+            if (empty($this->unitNamesByCompany)) {
+                // Fallback so this still works before the units table has been
+                // migrated/seeded on a given environment.
+                foreach (\Database\Seeders\UnitDefinitionSeeder::DEFINITIONS as $code => $names) {
+                    $this->unitNamesByCompany[$code] = array_map(fn ($n) => strtolower(trim($n)), $names);
+                }
+            }
+        }
+
+        return in_array(strtolower(trim($unit)), $this->unitNamesByCompany[$companyCode] ?? [], true);
+    }
+
     private function sanitizeRowData(array $rowData): array
     {
         // 1. Employee Code
@@ -1332,6 +1404,16 @@ class UserController extends Controller
                 if ($unit && empty($rowData['unit'])) {
                     $rowData['unit'] = $unit;
                 }
+                // A spreadsheet's "Branch/Unit" column sometimes holds a department,
+                // designation, or other unrelated value (misaligned columns, bad
+                // copy-paste) — sanitizeRowData() already maps known spellings
+                // (Daduk/Shreeji/Ichapur) to their canonical name, but anything left
+                // over is NOT a real unit for this company and must not be saved as
+                // one, or the Employee Master's Company/Unit column ends up showing
+                // garbage like "IT" or "aaa" where a branch name belongs.
+                if (! empty($rowData['unit']) && ! $this->isKnownUnit($rowData['unit'], $rowData['company_code'])) {
+                    $rowData['unit'] = null;
+                }
 
                 // Date normalization
                 if (isset($rowData['dob'])) {
@@ -1540,6 +1622,24 @@ class UserController extends Controller
             if (! $this->inManagedScope($userAuth, $employee)) {
                 return response()->json(['status' => false, 'message' => 'Employee not found'], 404);
             }
+
+            // users.email is unique at the database level. Without this check,
+            // saving an edit whose email already belongs to a different row
+            // (e.g. a duplicate appointment created earlier for the same
+            // candidate) crashes the whole request with a raw SQL 500 instead
+            // of a clean, actionable message.
+            if (array_key_exists('email', $data) && trim((string) $data['email']) !== '') {
+                $emailConflict = User::where('email', $data['email'])
+                    ->where('id', '!=', $employee->id)
+                    ->first();
+                if ($emailConflict) {
+                    return response()->json([
+                        'status' => false,
+                        'message' => "Email '{$data['email']}' is already used by another record ({$emailConflict->name}).",
+                    ], 422);
+                }
+            }
+
             $newEmpCode = isset($data['emp_code']) ? trim((string) $data['emp_code']) : null;
             if ($newEmpCode && $employee->emp_code !== $newEmpCode) {
                 // Assigning an emp_code onto this record (typically converting
@@ -1800,6 +1900,18 @@ class UserController extends Controller
             $trialForm->update(['email' => null]);
         }
 
+        // trial_form_id doubles as a candidate id when this appointment was
+        // created from the "Onboarding Appointment" tab (TimelineTab.jsx ->
+        // ViewAppointmentModal, isPrefillFromTrial=true) rather than an actual
+        // trial-form row — $trialForm above only ever matches a real `users`
+        // row of type 'trial', so it stays null for that path. Recording the
+        // link on the candidate lets the Onboarding Appointment list detect
+        // "already sent to Appointment" and move it into history instead of
+        // showing it (and letting HR create a second, duplicate appointment).
+        $sourceCandidate = (!$trialForm && $trialFormId && \Illuminate\Support\Facades\Schema::hasColumn('candidates', 'converted_appointment_user_id'))
+            ? \App\Models\Candidate::find($trialFormId)
+            : null;
+
         if ($trialForm) {
             // getRawOriginal(), not the ->photo/->adhar_image accessors: those
             // resolve an S3 key to a short-lived presigned URL (expires in
@@ -1874,13 +1986,17 @@ class UserController extends Controller
             $data['added_by'] = $addedBy;
         }
 
-        $employee = DB::transaction(function () use ($data, $userAuth, $trialForm) {
+        $employee = DB::transaction(function () use ($data, $userAuth, $trialForm, $sourceCandidate) {
             $created = User::create($data);
 
             $this->provisioning->provisionEmployee($created, ProvisioningContext::APPOINTMENT, $userAuth);
 
             if ($trialForm) {
                 $trialForm->update(['processed' => 1]);
+            }
+
+            if ($sourceCandidate) {
+                $sourceCandidate->update(['converted_appointment_user_id' => $created->id]);
             }
 
             return $created;

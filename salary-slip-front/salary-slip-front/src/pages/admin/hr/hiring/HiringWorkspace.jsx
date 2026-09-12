@@ -108,7 +108,7 @@ export default function HiringWorkspace() {
 
   return (
     <div className="space-y-4">
-      <div className="sticky top-0 z-30 -mx-4 md:-mx-6 px-4 md:px-6 bg-gray-50/95 dark:bg-[var(--sidebar-bg)]/95 backdrop-blur-sm border-b border-gray-200 dark:border-gray-700">
+      <div className="sticky top-0 z-30 -mx-4 md:-mx-6 px-4 md:px-6 bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur-sm border-b border-gray-200 dark:border-gray-700">
         <div className="flex gap-1 overflow-x-auto scrollbar-hide">
           {availableTabs.map((t) => (
             <button
@@ -131,7 +131,7 @@ export default function HiringWorkspace() {
       {tab === "requisitions" && <RequisitionsTab departments={departments} people={people} openRequisitionForm={openRequisitionForm} />}
       {tab === "candidates" && <CandidatePipeline departments={departments} people={people} />}
       {tab === "assessment" && <AssessmentTab />}
-      {tab === "interview" && <InterviewManagement />}
+      {tab === "interview" && <InterviewManagement departments={departments} people={people} />}
       {tab === "offer" && <OfferManagement />}
       {tab === "hr-manager" && <HRManagerTab departments={departments} people={people} openRequisitionForm={openRequisitionForm} isHrManagerView={true} />}
       {tab === "director" && <ApprovalReviewTab kind="director" departments={departments} people={people} openRequisitionForm={openRequisitionForm} />}

@@ -30,6 +30,15 @@ export const onboardingApi = {
     );
   },
 
+  processJourney(id, accessToken, tokenType) {
+    return unwrap(() =>
+      apiRequest(`/hr/onboarding/journeys/${id}/process`, {
+        method: "POST",
+        headers: authHeaders(accessToken, tokenType),
+      }),
+    );
+  },
+
   getJourneys(accessToken, tokenType, filters = {}) {
     return unwrap(() =>
       apiRequest(`/hr/onboarding/journeys${query(filters)}`, {
@@ -51,6 +60,14 @@ export const onboardingApi = {
       method: "POST",
       headers: authHeaders(accessToken, tokenType),
       body: JSON.stringify({ remarks }),
+    });
+  },
+
+  sendReminderEmail(id, payload, accessToken, tokenType) {
+    return apiRequest(`/hr/onboarding/journeys/${id}/send-reminder`, {
+      method: "POST",
+      headers: authHeaders(accessToken, tokenType),
+      body: JSON.stringify(payload),
     });
   },
 };

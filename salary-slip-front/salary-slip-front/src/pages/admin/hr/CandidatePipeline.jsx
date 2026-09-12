@@ -17,8 +17,13 @@ import {
   PauseCircle,
   Eye,
   Lock,
-  Folder,
   ArrowLeft,
+  Zap,
+  Trash2,
+  UserX,
+  ChevronRight,
+  CheckSquare,
+  Award,
 } from "lucide-react";
 import Button from "../../../components/ui/Button";
 import Badge from "../../../components/ui/Badge";
@@ -32,6 +37,8 @@ import useHrFilters from "./hiring/useHrFilters";
 import HiringFilterBar from "./hiring/HiringFilterBar";
 import { runBulk } from "./hiring/bulkActions";
 import CandidateDrawer from "./hiring/CandidateDrawer";
+import BulkAssignAtsModal from "./hiring/BulkAssignAtsModal";
+import BulkAssignSelectedModal from "./hiring/BulkAssignSelectedModal";
 import {
   MAIN_STAGES, TERMINAL_STAGES, ALL_COLUMNS, STAGE_INDEX, STAGE_GROUPS,
   TAB_STAGE_KEYS, stageLabel, stageColor, nextMainStage, promptRejectionReason,
@@ -136,6 +143,8 @@ export default function CandidatePipeline({ people = [] }) {
     if (view === "list") loadList();
   }, [view, loadList]);
 
+  const [quizzes, setQuizzes] = useState([]);
+
   /* ── requisitions (needed by both views' filters) ── */
   useEffect(() => {
     if (!user?.accessToken) return;
@@ -144,6 +153,15 @@ export default function CandidatePipeline({ people = [] }) {
       .then((res) => res.status && setRequisitions(res.data?.data || res.data || []))
       .catch(() => {});
   }, [user, scopeKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* ── quizzes (for assigning quizzes to candidates) ── */
+  useEffect(() => {
+    if (!user?.accessToken) return;
+    hrApi
+      .getQuizzes(user.accessToken, user.tokenType, { per_page: 100 })
+      .then((res) => res.status && setQuizzes(res.data?.data || res.data || []))
+      .catch(() => {});
+  }, [user]);
 
   const reload = () => {
     if (view === "board") { setLoading(true); load(); }
@@ -355,9 +373,15 @@ export default function CandidatePipeline({ people = [] }) {
           onPageSizeChange={setListPerPage}
           onOpenDetail={openDetail}
           onAdvance={advanceTo}
+          onDelete={deleteCandidate}
           selectedIds={hr.selectedIds}
           onToggleSelected={hr.toggleSelected}
           onSelectAll={hr.setAllSelected}
+          onClearSelected={hr.clearSelected}
+          quizzes={quizzes}
+          token={user?.accessToken}
+          tokenType={user?.tokenType}
+          reload={reload}
         />
       ) : loading ? (
         <div className="space-y-4">
@@ -428,30 +452,140 @@ export default function CandidatePipeline({ people = [] }) {
   );
 }
 
-/* ─────────────────── List View (default — scales to many candidates) ─────────────────── */
+/* ─────────────────── List View (Requisition Table & Candidate Pipeline) ─────────────────── */
 
 export function CandidateListView({
   compact, loading, candidates, total, page, perPage, onPageChange, onPageSizeChange,
-  onOpenDetail, onAdvance, selectedIds = [], onToggleSelected, onSelectAll,
+  onOpenDetail, onAdvance, selectedIds = [], onToggleSelected, onSelectAll, onClearSelected,
+  quizzes = [], token, tokenType = "Bearer", reload,
 }) {
-  const allSelected = candidates.length > 0 && candidates.every((c) => selectedIds.includes(c.id));
   const [selectedFolder, setSelectedFolder] = useState(null);
+  const [atsModalOpen, setAtsModalOpen] = useState(false);
+  const [bulkAssignModalOpen, setBulkAssignModalOpen] = useState(false);
+  const [reqSearch, setReqSearch] = useState("");
+  const [bulkActing, setBulkActing] = useState(false);
 
   const groupedCandidates = useMemo(() => {
     const groups = {};
     candidates.forEach((c) => {
-      const reqId = c.requisition?.id || "unassigned";
+      const rawId = c.requisition?.id || c.requisition_id;
+      const isDeleted = Boolean(c.requisition?.deleted_at);
+      const reqId = rawId ? String(rawId) : "unassigned";
+
       if (!groups[reqId]) {
         groups[reqId] = {
           id: reqId,
-          title: c.requisition?.title || "General / Unassigned",
+          title: c.requisition?.title || (c.requisition_id ? `Requisition #${c.requisition_id}` : "General / Unassigned"),
+          isDeleted,
+          department: c.requisition?.department?.name || c.requisition?.department || "—",
+          code: c.requisition?.code || "",
           candidates: [],
         };
+      } else {
+        if (isDeleted) groups[reqId].isDeleted = true;
+        if ((!groups[reqId].title || groups[reqId].title.startsWith("Requisition #")) && c.requisition?.title) {
+          groups[reqId].title = c.requisition.title;
+        }
+        if ((!groups[reqId].department || groups[reqId].department === "—") && (c.requisition?.department?.name || c.requisition?.department)) {
+          groups[reqId].department = c.requisition?.department?.name || c.requisition?.department;
+        }
       }
       groups[reqId].candidates.push(c);
     });
-    return Object.values(groups).sort((a, b) => a.title.localeCompare(b.title));
+
+    return Object.values(groups).map((group) => {
+      const scores = group.candidates
+        .map((c) => (c.ats_score != null ? Number(c.ats_score) : null))
+        .filter((s) => s !== null);
+      const avgAts = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null;
+      return {
+        ...group,
+        avgAts,
+      };
+    }).sort((a, b) => a.title.localeCompare(b.title));
   }, [candidates]);
+
+  const filteredGroups = useMemo(() => {
+    if (!reqSearch.trim()) return groupedCandidates;
+    const q = reqSearch.toLowerCase();
+    return groupedCandidates.filter(
+      (g) => g.title.toLowerCase().includes(q) || String(g.department).toLowerCase().includes(q)
+    );
+  }, [groupedCandidates, reqSearch]);
+
+  const activeGroup = useMemo(() => {
+    return groupedCandidates.find((g) => String(g.id) === String(selectedFolder)) || null;
+  }, [groupedCandidates, selectedFolder]);
+
+  const groupCandidateIds = useMemo(() => {
+    return activeGroup ? activeGroup.candidates.map((c) => c.id) : [];
+  }, [activeGroup]);
+
+  const selectedInGroup = useMemo(() => {
+    return selectedIds.filter((id) => groupCandidateIds.includes(id));
+  }, [selectedIds, groupCandidateIds]);
+
+  const allGroupSelected = groupCandidateIds.length > 0 && groupCandidateIds.every((id) => selectedIds.includes(id));
+
+  const handleToggleSelectAllGroup = () => {
+    if (allGroupSelected) {
+      const remaining = selectedIds.filter((id) => !groupCandidateIds.includes(id));
+      onSelectAll?.(remaining);
+    } else {
+      const union = Array.from(new Set([...selectedIds, ...groupCandidateIds]));
+      onSelectAll?.(union);
+    }
+  };
+
+  const selectedCandidatesInGroup = useMemo(() => {
+    if (!activeGroup) return [];
+    return activeGroup.candidates.filter((c) => selectedInGroup.includes(c.id));
+  }, [activeGroup, selectedInGroup]);
+
+  // Bulk reject handler
+  const handleBulkReject = async () => {
+    if (selectedInGroup.length === 0) return;
+    const reason = promptRejectionReason();
+    if (!reason) return;
+
+    setBulkActing(true);
+    let ok = 0;
+    for (const id of selectedInGroup) {
+      try {
+        const res = await hrApi.moveCandidateStage(id, { to_stage: "rejected", rejection_reason: reason }, token, tokenType);
+        if (res.status) ok++;
+      } catch {
+        // continue
+      }
+    }
+    setBulkActing(false);
+    toast.success(`Rejected ${ok} candidate${ok !== 1 ? "s" : ""}`);
+    onClearSelected?.();
+    reload?.();
+  };
+
+  // Bulk delete handler
+  const handleBulkDelete = async () => {
+    if (selectedInGroup.length === 0) return;
+    if (!window.confirm(`Are you sure you want to delete ${selectedInGroup.length} selected candidate${selectedInGroup.length !== 1 ? "s" : ""}? This action cannot be undone.`)) {
+      return;
+    }
+
+    setBulkActing(true);
+    let ok = 0;
+    for (const id of selectedInGroup) {
+      try {
+        const res = await hrApi.deleteCandidate(id, token, tokenType);
+        if (res.status) ok++;
+      } catch {
+        // continue
+      }
+    }
+    setBulkActing(false);
+    toast.success(`Deleted ${ok} candidate${ok !== 1 ? "s" : ""}`);
+    onClearSelected?.();
+    reload?.();
+  };
 
   return (
     <div className="space-y-4">
@@ -466,156 +600,386 @@ export function CandidateListView({
       ) : (
         <div className="space-y-4">
           {!selectedFolder ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {groupedCandidates.map((group) => (
-                <div 
-                  key={group.id} 
-                  className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm hover:shadow-md hover:border-brand-300 dark:hover:border-brand-700 p-6 cursor-pointer flex flex-col items-center justify-center gap-3 transition-all hover:-translate-y-1"
-                  onClick={() => setSelectedFolder(group.id)}
-                >
-                  <Folder size={48} className="text-brand-500 fill-brand-50 dark:fill-brand-900/20" strokeWidth={1} />
-                  <div className="text-center">
-                    <h3 className="font-bold text-gray-900 dark:text-white leading-tight">{group.title}</h3>
-                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mt-1">{group.candidates.length} Candidate{group.candidates.length !== 1 ? 's' : ''}</p>
-                  </div>
+            /* ────────────────── Requisition List / Table View ────────────────── */
+            <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
+              {/* Header & Filter */}
+              <div className="p-4 border-b border-gray-100 dark:border-gray-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gray-50/50 dark:bg-gray-800/50">
+                <div>
+                  <h3 className="font-bold text-gray-900 dark:text-white text-base flex items-center gap-2">
+                    <Briefcase size={18} className="text-brand-500" />
+                    Job Requisitions
+                  </h3>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                    Select any requisition below to manage candidate pipeline and perform bulk assessments.
+                  </p>
                 </div>
-              ))}
+                <div className="w-full sm:w-64">
+                  <input
+                    type="text"
+                    placeholder="Filter requisitions..."
+                    value={reqSearch}
+                    onChange={(e) => setReqSearch(e.target.value)}
+                    className="w-full rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 px-3.5 py-2 text-xs text-gray-900 dark:text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                  />
+                </div>
+              </div>
+
+              {/* Table */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50/70 dark:bg-gray-800/70 text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-gray-700">
+                    <tr>
+                      <th className="text-left px-5 py-3.5">Requisition Title</th>
+                      <th className="text-left px-5 py-3.5">Department</th>
+                      <th className="text-center px-5 py-3.5">Total Candidates</th>
+                      <th className="text-center px-5 py-3.5">Avg ATS Score</th>
+                      <th className="text-right px-5 py-3.5">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-gray-700/60">
+                    {filteredGroups.map((group) => (
+                      <tr
+                        key={group.id}
+                        onClick={() => setSelectedFolder(group.id)}
+                        className="hover:bg-brand-50/40 dark:hover:bg-brand-900/15 cursor-pointer transition-colors group"
+                      >
+                        <td className="px-5 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400 flex items-center justify-center font-bold text-sm shadow-sm group-hover:scale-105 transition-transform">
+                              <Briefcase size={18} />
+                            </div>
+                            <div>
+                              {group.isDeleted ? (
+                                <div className="flex items-center gap-2">
+                                  <span className="font-bold text-gray-500 dark:text-gray-400 text-sm line-through">
+                                    {group.title}
+                                  </span>
+                                  <span className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 border border-red-200 dark:border-red-800">
+                                    Deleted
+                                  </span>
+                                </div>
+                              ) : (
+                                <p className="font-bold text-gray-900 dark:text-white text-sm group-hover:text-brand-600 dark:group-hover:text-brand-400 transition-colors">
+                                  {group.title}
+                                </p>
+                              )}
+                              {group.code && (
+                                <span className="text-[11px] font-medium text-gray-400">
+                                  Code: {group.code}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-5 py-4 text-xs font-medium text-gray-600 dark:text-gray-300">
+                          {group.department}
+                        </td>
+                        <td className="px-5 py-4 text-center">
+                          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-brand-50 text-brand-700 dark:bg-brand-900/40 dark:text-brand-300 border border-brand-200 dark:border-brand-800 shadow-sm">
+                            {group.candidates.length} Candidate{group.candidates.length !== 1 ? "s" : ""}
+                          </span>
+                        </td>
+                        <td className="px-5 py-4 text-center">
+                          {group.avgAts != null ? (
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-black bg-emerald-50 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 shadow-sm">
+                              {group.avgAts}%
+                            </span>
+                          ) : (
+                            <span className="text-xs text-gray-400 font-medium">—</span>
+                          )}
+                        </td>
+                        <td className="px-5 py-4 text-right" onClick={(e) => e.stopPropagation()}>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => setSelectedFolder(group.id)}
+                            className="inline-flex items-center gap-1.5 hover:border-brand-300 dark:hover:border-brand-600"
+                          >
+                            <span>View Candidates</span>
+                            <ChevronRight size={14} />
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           ) : (
+            /* ────────────────── Opened Requisition Candidate Pipeline View ────────────────── */
             <div className="space-y-4">
               {(() => {
-                const group = groupedCandidates.find(g => g.id === selectedFolder);
-                if (!group) {
+                if (!activeGroup) {
                   setSelectedFolder(null);
                   return null;
                 }
                 return (
                   <>
-                    <div className="flex items-center gap-3 mb-2">
-                      <Button variant="secondary" onClick={() => setSelectedFolder(null)}>
-                        <ArrowLeft size={16} className="mr-1.5" /> Back
-                      </Button>
-                      <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                        <Folder size={20} className="text-brand-500 fill-brand-50 dark:fill-brand-900/20" />
-                        {group.title}
-                      </h2>
+                    {/* Top Bar with Back button, Requisition Header and Bulk Assign ATS button */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm">
+                      <div className="flex items-center gap-3">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => {
+                            setSelectedFolder(null);
+                            onClearSelected?.();
+                          }}
+                          className="flex items-center gap-1.5 text-xs font-semibold"
+                        >
+                          <ArrowLeft size={15} /> All Requisitions
+                        </Button>
+                        <div>
+                          <h2 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                            {activeGroup.isDeleted ? (
+                              <>
+                                <span className="line-through text-gray-400 dark:text-gray-500">{activeGroup.title}</span>
+                                <span className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 border border-red-200 dark:border-red-800">
+                                  Deleted
+                                </span>
+                              </>
+                            ) : (
+                              activeGroup.title
+                            )}
+                          </h2>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            {activeGroup.candidates.length} candidate{activeGroup.candidates.length !== 1 ? "s" : ""} in this pipeline
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="primary"
+                          onClick={() => setAtsModalOpen(true)}
+                          className="flex items-center gap-2 text-xs font-bold px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white shadow-md shadow-amber-500/20"
+                        >
+                          <Zap size={14} className="fill-white" />
+                          Bulk Assign Quiz by ATS
+                        </Button>
+                      </div>
                     </div>
+
+                    {/* Bulk Selection Actions Bar */}
+                    {selectedInGroup.length > 0 && (
+                      <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-2xl bg-brand-500 text-white shadow-lg animate-in fade-in slide-in-from-top-2 duration-200">
+                        <div className="flex items-center gap-2 font-bold text-sm pl-2">
+                          <CheckSquare size={18} />
+                          <span>{selectedInGroup.length} candidate{selectedInGroup.length !== 1 ? "s" : ""} selected</span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            onClick={() => setBulkAssignModalOpen(true)}
+                            disabled={bulkActing}
+                            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-white text-brand-700 hover:bg-brand-50 text-xs font-bold shadow-sm transition-all active:scale-95"
+                          >
+                            <Zap size={13} className="text-amber-500 fill-amber-500" />
+                            Assign Quiz
+                          </button>
+                          <button
+                            onClick={handleBulkReject}
+                            disabled={bulkActing}
+                            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold shadow-sm transition-all active:scale-95"
+                          >
+                            <UserX size={13} />
+                            Reject
+                          </button>
+                          <button
+                            onClick={handleBulkDelete}
+                            disabled={bulkActing}
+                            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gray-900/80 hover:bg-black text-white text-xs font-bold shadow-sm transition-all active:scale-95"
+                          >
+                            <Trash2 size={13} />
+                            Delete
+                          </button>
+                          <button
+                            onClick={() => {
+                              const remaining = selectedIds.filter((id) => !groupCandidateIds.includes(id));
+                              onSelectAll?.(remaining);
+                            }}
+                            className="px-2.5 py-1.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white/90 text-xs font-medium transition-all"
+                          >
+                            Deselect
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Candidate Table */}
                     <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
                       {compact ? (
-                    <div className="divide-y divide-gray-50 dark:divide-gray-700/50 bg-white dark:bg-gray-800">
-                      {group.candidates.map((c) => {
-                        const isTerminal = ["rejected", "on_hold"].includes(c.stage);
-                        const next = !isTerminal && canAct(c.stage) ? nextMainStage(c.stage) : null;
-                        return (
-                          <div key={c.id} className="flex items-center gap-3 px-5 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/30 cursor-pointer transition-colors" onClick={() => onOpenDetail(c)}>
-                            <input type="checkbox" checked={selectedIds.includes(c.id)} onChange={(e) => { e.stopPropagation(); onToggleSelected(c.id); }} onClick={(e) => e.stopPropagation()} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />
-                            <span className={`w-2 h-2 rounded-full flex-shrink-0 shadow-sm ${PRIORITY_DOT[c.priority] || "bg-gray-400"}`} />
-                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-brand-500 to-indigo-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0 shadow-sm">
-                              {c.name?.[0]?.toUpperCase() ?? "?"}
-                            </div>
-                            <p className="font-medium text-gray-900 dark:text-white truncate flex-1 min-w-0">{c.name}</p>
-                            <span className="text-[11px] font-bold tracking-wide uppercase px-2.5 py-1 rounded-full flex-shrink-0 shadow-sm" style={{ backgroundColor: `${stageColor(c.stage)}15`, color: stageColor(c.stage) }}>
-                              {stageLabel(c.stage)}
-                            </span>
-                            {c.ats_score != null && (
-                              <span className="text-[11px] font-bold px-2.5 py-1 rounded-full flex-shrink-0 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-800">
-                                ATS: {c.ats_score}%
-                              </span>
-                            )}
-                            {next ? (
-                              <button title={`Move to ${next.label}`} onClick={(e) => { e.stopPropagation(); onAdvance(c.id, next.key); }} className="p-1.5 rounded-lg text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20 flex-shrink-0 transition-colors">
-                                <ArrowRight size={15} />
-                              </button>
-                            ) : !canAct(c.stage) && (
-                              <span title="Managed in another tab now" className="p-1 flex-shrink-0 text-gray-300 dark:text-gray-600"><Lock size={14} /></span>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="overflow-x-auto bg-white dark:bg-gray-800">
-                      <table className="w-full text-sm">
-                        <thead className="bg-gray-50/50 dark:bg-gray-800/50 text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-gray-700">
-                          <tr>
-                            <th className="px-5 py-3 w-8">
-                              <input type="checkbox" checked={allSelected} onChange={() => onSelectAll(allSelected ? [] : candidates.map((c) => c.id))} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />
-                            </th>
-                            <th className="text-left px-5 py-3">Candidate</th>
-                            <th className="text-left px-5 py-3">Stage</th>
-                            <th className="text-left px-5 py-3">Experience</th>
-                            <th className="text-left px-5 py-3">Priority</th>
-                            <th className="text-left px-5 py-3">ATS Score</th>
-                            <th className="text-left px-5 py-3">Recruiter</th>
-                            <th className="text-right px-5 py-3">Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
-                          {group.candidates.map((c) => {
+                        <div className="divide-y divide-gray-50 dark:divide-gray-700/50 bg-white dark:bg-gray-800">
+                          {activeGroup.candidates.map((c) => {
                             const isTerminal = ["rejected", "on_hold"].includes(c.stage);
                             const next = !isTerminal && canAct(c.stage) ? nextMainStage(c.stage) : null;
                             return (
-                              <tr key={c.id} className="hover:bg-brand-50/30 dark:hover:bg-brand-900/10 cursor-pointer transition-colors" onClick={() => onOpenDetail(c)}>
-                                <td className="px-5 py-3.5" onClick={(e) => e.stopPropagation()}>
-                                  <input type="checkbox" checked={selectedIds.includes(c.id)} onChange={() => onToggleSelected(c.id)} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />
-                                </td>
-                                <td className="px-5 py-3.5">
-                                  <div className="flex items-center gap-3 min-w-0">
-                                    <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 shadow-sm ${PRIORITY_DOT[c.priority] || "bg-gray-400"}`} />
-                                    <div className="min-w-0">
-                                      <p className="font-semibold text-gray-900 dark:text-white truncate">{c.name}</p>
-                                      {c.email && <p className="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5">{c.email}</p>}
-                                    </div>
-                                  </div>
-                                </td>
-                                <td className="px-5 py-3.5">
-                                  <span
-                                    className="inline-flex text-[11px] font-bold uppercase tracking-wide px-2.5 py-1 rounded-full shadow-sm"
-                                    style={{ backgroundColor: `${stageColor(c.stage)}15`, color: stageColor(c.stage) }}
-                                  >
-                                    {stageLabel(c.stage)}
+                              <div
+                                key={c.id}
+                                className="flex items-center gap-3 px-5 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/30 cursor-pointer transition-colors"
+                                onClick={() => onOpenDetail(c)}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={selectedIds.includes(c.id)}
+                                  onChange={(e) => {
+                                    e.stopPropagation();
+                                    onToggleSelected(c.id);
+                                  }}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                                />
+                                <span className={`w-2 h-2 rounded-full flex-shrink-0 shadow-sm ${PRIORITY_DOT[c.priority] || "bg-gray-400"}`} />
+                                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-brand-500 to-indigo-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0 shadow-sm">
+                                  {c.name?.[0]?.toUpperCase() ?? "?"}
+                                </div>
+                                <p className="font-medium text-gray-900 dark:text-white truncate flex-1 min-w-0">{c.name}</p>
+                                <span
+                                  className="text-[11px] font-bold tracking-wide uppercase px-2.5 py-1 rounded-full flex-shrink-0 shadow-sm"
+                                  style={{ backgroundColor: `${stageColor(c.stage)}15`, color: stageColor(c.stage) }}
+                                >
+                                  {stageLabel(c.stage)}
+                                </span>
+                                {c.ats_score != null && (
+                                  <span className="text-[11px] font-bold px-2.5 py-1 rounded-full flex-shrink-0 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-800">
+                                    ATS: {c.ats_score}%
                                   </span>
-                                </td>
-                                <td className="px-5 py-3.5 text-gray-600 dark:text-gray-300 font-medium">{c.experience_years ?? 0} yrs</td>
-                                <td className="px-5 py-3.5"><Badge variant={PRIORITY_VARIANT[c.priority] || "gray"} className="shadow-sm">{c.priority}</Badge></td>
-                                <td className="px-5 py-3.5">
-                                  {c.ats_score != null ? (
-                                    <span className="inline-flex text-[11px] font-bold px-2 py-0.5 rounded border border-emerald-100 dark:border-emerald-800 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 shadow-sm">
-                                      {c.ats_score}%
-                                    </span>
-                                  ) : (
-                                    <span className="text-xs text-gray-400">—</span>
-                                  )}
-                                </td>
-                                <td className="px-5 py-3.5 text-gray-600 dark:text-gray-300">
-                                  {c.recruiter?.name ? (
-                                    <div className="flex items-center gap-1.5">
-                                      <div className="w-5 h-5 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-[8px] font-bold text-gray-600 dark:text-gray-300">{c.recruiter.name[0]}</div>
-                                      <span className="text-xs font-medium truncate">{c.recruiter.name}</span>
-                                    </div>
-                                  ) : "—"}
-                                </td>
-                                <td className="px-5 py-3.5">
-                                  <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
-                                    {next && (
-                                      <button
-                                        title={`Move to ${next.label}`}
-                                        onClick={() => onAdvance(c.id, next.key)}
-                                        className="p-1.5 rounded-lg text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-colors"
-                                      >
-                                        <ArrowRight size={16} />
-                                      </button>
-                                    )}
-                                    <button title="View details" onClick={() => onOpenDetail(c)} className="p-1.5 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700 dark:hover:text-gray-300 transition-colors">
-                                      <Eye size={16} />
-                                    </button>
-                                  </div>
-                                </td>
-                              </tr>
+                                )}
+                                {next ? (
+                                  <button
+                                    title={`Move to ${next.label}`}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onAdvance(c.id, next.key);
+                                    }}
+                                    className="p-1.5 rounded-lg text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20 flex-shrink-0 transition-colors"
+                                  >
+                                    <ArrowRight size={15} />
+                                  </button>
+                                ) : !canAct(c.stage) && (
+                                  <span title="Managed in another tab now" className="p-1 flex-shrink-0 text-gray-300 dark:text-gray-600">
+                                    <Lock size={14} />
+                                  </span>
+                                )}
+                              </div>
                             );
                           })}
-                        </tbody>
-                      </table>
+                        </div>
+                      ) : (
+                        <div className="overflow-x-auto bg-white dark:bg-gray-800">
+                          <table className="w-full text-sm">
+                            <thead className="bg-gray-50/50 dark:bg-gray-800/50 text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-gray-700">
+                              <tr>
+                                <th className="px-5 py-3 w-8" onClick={(e) => e.stopPropagation()}>
+                                  <input
+                                    type="checkbox"
+                                    checked={allGroupSelected}
+                                    onChange={handleToggleSelectAllGroup}
+                                    className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                                  />
+                                </th>
+                                <th className="text-left px-5 py-3">Candidate</th>
+                                <th className="text-left px-5 py-3">Stage</th>
+                                <th className="text-left px-5 py-3">Experience</th>
+                                <th className="text-left px-5 py-3">Priority</th>
+                                <th className="text-left px-5 py-3">ATS Score</th>
+                                <th className="text-left px-5 py-3">Recruiter</th>
+                                <th className="text-right px-5 py-3">Actions</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
+                              {activeGroup.candidates.map((c) => {
+                                const isTerminal = ["rejected", "on_hold"].includes(c.stage);
+                                const next = !isTerminal && canAct(c.stage) ? nextMainStage(c.stage) : null;
+                                return (
+                                  <tr
+                                    key={c.id}
+                                    className="hover:bg-brand-50/30 dark:hover:bg-brand-900/10 cursor-pointer transition-colors"
+                                    onClick={() => onOpenDetail(c)}
+                                  >
+                                    <td className="px-5 py-3.5" onClick={(e) => e.stopPropagation()}>
+                                      <input
+                                        type="checkbox"
+                                        checked={selectedIds.includes(c.id)}
+                                        onChange={() => onToggleSelected(c.id)}
+                                        className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                                      />
+                                    </td>
+                                    <td className="px-5 py-3.5">
+                                      <div className="flex items-center gap-3 min-w-0">
+                                        <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 shadow-sm ${PRIORITY_DOT[c.priority] || "bg-gray-400"}`} />
+                                        <div className="min-w-0">
+                                          <p className="font-semibold text-gray-900 dark:text-white truncate">{c.name}</p>
+                                          {c.email && <p className="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5">{c.email}</p>}
+                                          {Array.isArray(c.quiz_attempts || c.quizAttempts) && (c.quiz_attempts || c.quizAttempts).length > 0 && (
+                                            <div className="flex flex-wrap items-center gap-1 mt-1">
+                                              {(c.quiz_attempts || c.quizAttempts).map((qa) => (
+                                                <span
+                                                  key={qa.id}
+                                                  className={`inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                                                    qa.status === "submitted"
+                                                      ? "bg-purple-50 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 border border-purple-200 dark:border-purple-800"
+                                                      : "bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 border border-blue-200 dark:border-blue-800"
+                                                  }`}
+                                                >
+                                                  <Award size={10} />
+                                                  {qa.status === "submitted"
+                                                    ? `Quiz: ${qa.score != null ? `${qa.score}%` : "Completed"}`
+                                                    : `Quiz: ${qa.status === "in_progress" ? "In Progress" : "Assigned"}`}
+                                                </span>
+                                              ))}
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </td>
+                                    <td className="px-5 py-3.5">
+                                      <span
+                                        className="inline-flex text-[11px] font-bold uppercase tracking-wide px-2.5 py-1 rounded-full shadow-sm"
+                                        style={{ backgroundColor: `${stageColor(c.stage)}15`, color: stageColor(c.stage) }}
+                                      >
+                                        {stageLabel(c.stage)}
+                                      </span>
+                                    </td>
+                                    <td className="px-5 py-3.5 text-gray-600 dark:text-gray-300 font-medium">{c.experience_years ?? 0} yrs</td>
+                                    <td className="px-5 py-3.5"><Badge variant={PRIORITY_VARIANT[c.priority] || "gray"} className="shadow-sm">{c.priority}</Badge></td>
+                                    <td className="px-5 py-3.5">
+                                      {c.ats_score != null ? (
+                                        <span className="inline-flex text-[11px] font-bold px-2 py-0.5 rounded border border-emerald-100 dark:border-emerald-800 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 shadow-sm">
+                                          {c.ats_score}%
+                                        </span>
+                                      ) : (
+                                        <span className="text-xs text-gray-400">—</span>
+                                      )}
+                                    </td>
+                                    <td className="px-5 py-3.5 text-gray-600 dark:text-gray-300">
+                                      {c.recruiter?.name ? (
+                                        <div className="flex items-center gap-1.5">
+                                          <div className="w-5 h-5 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-[8px] font-bold text-gray-600 dark:text-gray-300">{c.recruiter.name[0]}</div>
+                                          <span className="text-xs font-medium truncate">{c.recruiter.name}</span>
+                                        </div>
+                                      ) : "—"}
+                                    </td>
+                                    <td className="px-5 py-3.5">
+                                      <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+                                        {next && (
+                                          <button
+                                            title={`Move to ${next.label}`}
+                                            onClick={() => onAdvance(c.id, next.key)}
+                                            className="p-1.5 rounded-lg text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-colors"
+                                          >
+                                            <ArrowRight size={16} />
+                                          </button>
+                                        )}
+                                        <button title="View details" onClick={() => onOpenDetail(c)} className="p-1.5 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700 dark:hover:text-gray-300 transition-colors">
+                                          <Eye size={16} />
+                                        </button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
                         </div>
                       )}
                     </div>
@@ -631,6 +995,37 @@ export function CandidateListView({
       <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm p-4 flex items-center justify-between">
         <Pagination current={page} total={total} pageSize={perPage} onChange={onPageChange} onPageSizeChange={onPageSizeChange} />
       </div>
+
+      {/* Bulk Assign by ATS Modal */}
+      {atsModalOpen && activeGroup && (
+        <BulkAssignAtsModal
+          isOpen={atsModalOpen}
+          onClose={() => setAtsModalOpen(false)}
+          requisitionTitle={activeGroup.title}
+          isDeleted={activeGroup.isDeleted}
+          candidates={activeGroup.candidates}
+          quizzes={quizzes}
+          token={token}
+          tokenType={tokenType}
+          onAssigned={reload}
+        />
+      )}
+
+      {/* Bulk Assign Selected Modal */}
+      {bulkAssignModalOpen && selectedCandidatesInGroup.length > 0 && (
+        <BulkAssignSelectedModal
+          isOpen={bulkAssignModalOpen}
+          onClose={() => setBulkAssignModalOpen(false)}
+          selectedCandidates={selectedCandidatesInGroup}
+          quizzes={quizzes}
+          token={token}
+          tokenType={tokenType}
+          onAssigned={() => {
+            onClearSelected?.();
+            reload?.();
+          }}
+        />
+      )}
     </div>
   );
 }

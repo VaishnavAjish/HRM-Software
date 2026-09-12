@@ -422,7 +422,10 @@ class OrganizationChartService
             ->where('is_deleted', '0')
             ->where('status', '0')
             ->where(function ($q) {
-                $q->whereNull('type')->orWhereNotIn('type', ['appointment', 'agent']);
+                // 'trial' (Trial Form submissions) belongs in this exclusion
+                // alongside appointment/agent — none of them are real
+                // employees, so none belong on a manager/reporting chart.
+                $q->whereNull('type')->orWhereNotIn('type', ['appointment', 'agent', 'trial', 'account-master']);
             });
 
         if (!empty($filters['companyIds'])) {

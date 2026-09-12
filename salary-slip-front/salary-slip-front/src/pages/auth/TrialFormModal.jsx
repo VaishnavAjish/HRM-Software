@@ -212,8 +212,12 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess, isView
           writeCompanyCode
         );
         if (!cancelled && res?.data) {
+          // Dedupe by name — the legacy departments table can carry more
+          // than one row with the same name (e.g. a leftover global "IT"
+          // alongside the real, company-scoped "IT"), and this dropdown
+          // only shows/sends the name, never the row id.
           const list = res.data.map((dept) => (typeof dept === "string" ? dept : dept.name)).filter(Boolean);
-          setDepartmentsList(list);
+          setDepartmentsList(Array.from(new Set(list)));
         }
       } catch (err) {
         console.error("Failed to fetch departments in TrialFormModal:", err);

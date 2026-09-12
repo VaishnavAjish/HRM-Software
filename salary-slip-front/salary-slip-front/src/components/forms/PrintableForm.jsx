@@ -506,7 +506,7 @@ const PrintableForm = ({ data, formRef }) => {
           <div className="flex flex-row items-center gap-2 w-full">
             <span className="font-bold whitespace-nowrap uppercase text-[12px] text-black">Company :</span>
             <span className="border-b border-black flex-grow px-1 min-h-[20px] pb-0.5 text-[13px] uppercase font-bold leading-none">
-              {data.companyId || data.companyCode || data.company_code || data.companyName || data.company || ""}
+              {data.companyName || data.companyId || data.companyCode || data.company_code || data.company || ""}
             </span>
           </div>
           <div className="flex flex-row items-center gap-2 w-full">

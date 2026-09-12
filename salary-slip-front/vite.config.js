@@ -141,7 +141,8 @@ export default defineConfig(({ mode }) => {
     ],
     server: {
       host: true,
-      port: 5175,
+      port: 5176,
+      strictPort: true,
     },
     optimizeDeps: {
       include: ["react-is"],

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
+import { copyToClipboard } from "../../../../utils/clipboard";
 import { ClipboardCopy } from "lucide-react";
 import Button from "../../../../components/ui/Button";
 import Modal from "../../../../components/ui/Modal";
@@ -468,7 +469,7 @@ export default function RequisitionFormModal({ targetId, isOpen, onClose, onSucc
                 <button
                   type="button"
                   onClick={() => {
-                    navigator.clipboard.writeText(htmlToPlainText(jdText));
+                    copyToClipboard(htmlToPlainText(jdText));
                     toast.success("JD copied to clipboard");
                   }}
                   className="flex items-center gap-1 text-[11px] font-semibold text-gray-500 hover:underline dark:text-gray-400"

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Globe, ExternalLink, Copy, Search, Lock, Pencil } from "lucide-react";
 import toast from "react-hot-toast";
+import { copyToClipboard } from "../../../../utils/clipboard";
 import Badge from "../../../../components/ui/Badge";
 import Button from "../../../../components/ui/Button";
 import Pagination from "../../../../components/ui/Pagination";
@@ -117,10 +118,14 @@ export default function JobPortalTab({ departments = [], openRequisitionForm }) 
     }
   };
 
-  const copyPublicLink = (id) => {
-    const url = `${window.location.origin}/careers/jobs/${id}`;
-    navigator.clipboard.writeText(url);
-    toast.success("Public job link copied to clipboard!");
+  const copyPublicLink = async (id) => {
+    const url = `${window.location.origin}/careers/job/${id}`;
+    const ok = await copyToClipboard(url);
+    if (ok) {
+      toast.success("Public job link copied to clipboard!");
+    } else {
+      toast.error("Failed to copy link");
+    }
   };
 
   return (

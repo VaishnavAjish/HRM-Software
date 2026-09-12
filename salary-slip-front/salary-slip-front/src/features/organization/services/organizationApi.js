@@ -507,9 +507,58 @@ export const organizationApi = {
     return apiRequest("/v1/admin/organization/org-units/department-branch-summary", { headers: headers(accessToken, tokenType) });
   },
 
+  missingDesignations(accessToken, tokenType = "Bearer") {
+    return apiRequest("/v1/admin/organization/org-units/missing-designations", { headers: headers(accessToken, tokenType) });
+  },
+
   deleteOrgUnitPosition(unitId, positionId, accessToken, tokenType = "Bearer") {
     return apiRequest(`/v1/admin/organization/org-units/${unitId}/positions/${positionId}`, {
       method: "DELETE",
+      headers: headers(accessToken, tokenType),
+    });
+  },
+
+  /* ------------------------------------------- standalone (global) designations */
+  // A designation created directly, not nested under any department/org unit.
+
+  globalPositions(filters = {}, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/admin/organization/org-units/positions${query(filters)}`, { headers: headers(accessToken, tokenType) });
+  },
+
+  createGlobalPosition(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest("/v1/admin/organization/org-units/positions", {
+      method: "POST",
+      headers: headers(accessToken, tokenType),
+      body: JSON.stringify(payload),
+    });
+  },
+
+  updateGlobalPosition(positionId, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/admin/organization/org-units/positions/${positionId}`, {
+      method: "PUT",
+      headers: headers(accessToken, tokenType),
+      body: JSON.stringify(payload),
+    });
+  },
+
+  deleteGlobalPosition(positionId, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/admin/organization/org-units/positions/${positionId}`, {
+      method: "DELETE",
+      headers: headers(accessToken, tokenType),
+    });
+  },
+
+  freezeGlobalPosition(positionId, reason, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/admin/organization/org-units/positions/${positionId}/freeze`, {
+      method: "POST",
+      headers: headers(accessToken, tokenType),
+      body: JSON.stringify({ reason }),
+    });
+  },
+
+  releaseGlobalPosition(positionId, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/admin/organization/org-units/positions/${positionId}/release`, {
+      method: "POST",
       headers: headers(accessToken, tokenType),
     });
   },

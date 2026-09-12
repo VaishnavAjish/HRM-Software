@@ -917,6 +917,9 @@ Route::middleware('jwt.auth')->group(function () {
         Route::get('org-units/department-branch-summary', [V1OrganizationUnitController::class, 'departmentBranchSummary'])
             ->middleware('permission:org.unit.read');
 
+        Route::get('org-units/missing-designations', [V1OrganizationUnitController::class, 'missingDesignations'])
+            ->middleware('permission:org.unit_position.read');
+
         Route::post('org-units/sync-legacy-departments', [V1OrganizationUnitController::class, 'syncLegacyDepartments'])
             ->middleware('permission:org.unit.create');
 
@@ -945,6 +948,21 @@ Route::middleware('jwt.auth')->group(function () {
             ->whereNumber('id')->whereNumber('positionId')->middleware(['throttle:30,1', 'permission:org.unit_position.update']);
         Route::post('org-units/{id}/positions/{positionId}/release', [V1OrganizationUnitController::class, 'releasePosition'])
             ->whereNumber('id')->whereNumber('positionId')->middleware(['throttle:30,1', 'permission:org.unit_position.update']);
+
+        // Standalone designations — created directly, not nested under any
+        // department/org unit (organization_unit_id is null on these rows).
+        Route::get('org-units/positions', [V1OrganizationUnitController::class, 'globalPositions'])
+            ->middleware('permission:org.unit_position.read');
+        Route::post('org-units/positions', [V1OrganizationUnitController::class, 'storeGlobalPosition'])
+            ->middleware(['throttle:30,1', 'permission:org.unit_position.create']);
+        Route::put('org-units/positions/{positionId}', [V1OrganizationUnitController::class, 'updateGlobalPosition'])
+            ->whereNumber('positionId')->middleware('permission:org.unit_position.update');
+        Route::delete('org-units/positions/{positionId}', [V1OrganizationUnitController::class, 'destroyGlobalPosition'])
+            ->whereNumber('positionId')->middleware('permission:org.unit_position.delete');
+        Route::post('org-units/positions/{positionId}/freeze', [V1OrganizationUnitController::class, 'freezeGlobalPosition'])
+            ->whereNumber('positionId')->middleware(['throttle:30,1', 'permission:org.unit_position.update']);
+        Route::post('org-units/positions/{positionId}/release', [V1OrganizationUnitController::class, 'releaseGlobalPosition'])
+            ->whereNumber('positionId')->middleware(['throttle:30,1', 'permission:org.unit_position.update']);
 
         /* ---------------------------------------------- 02.04 organization locations */
         Route::get('org-locations/options', [V1OrganizationOrgLocationController::class, 'options'])
@@ -1398,6 +1416,11 @@ Route::post('publish-indeed/{id}', [JobRequisitionController::class, 'publishToI
                 Route::get('dashboard', [OnboardingController::class, 'dashboard'])->middleware('permission:hr.onboarding.read');
                 Route::get('journeys', [OnboardingController::class, 'journeys'])->middleware('permission:hr.onboarding.read');
                 Route::get('journeys/{id}', [OnboardingController::class, 'showJourney'])->middleware('permission:hr.onboarding.read');
+                Route::post('journeys/{id}/process', [OnboardingController::class, 'processJourney'])->middleware('permission:hr.onboarding.read');
+                Route::post('journeys/{id}/send-reminder', [OnboardingController::class, 'sendReminderEmail'])->middleware('permission:hr.onboarding.read');
+                Route::post('journeys/{id}/reject', [OnboardingController::class, 'rejectOnboarding'])->middleware('permission:hr.onboarding.read');
+                Route::post('journeys/{id}/approve', [OnboardingController::class, 'approveOnboarding'])->middleware('permission:hr.onboarding.read');
+                Route::post('journeys/{id}/copy-documents-to-appointment', [OnboardingController::class, 'copyDocumentsToAppointment'])->middleware('permission:hr.onboarding.read');
                 Route::get('documents', [OnboardingController::class, 'documents'])->middleware('permission:document.file.read');
                 Route::post('documents/{id}/{decision}', [OnboardingController::class, 'reviewDocument'])->middleware('permission:document.file.read');
             });
@@ -1559,6 +1582,8 @@ Route::post('publish-indeed/{id}', [JobRequisitionController::class, 'publishToI
  * controller never serialises the answer key or trusts a client-sent score.
  */
 Route::group(['prefix' => 'quiz'], function () {
+    Route::get('test/{quizId}', [PublicQuizController::class, 'testQuiz'])->middleware('throttle:60,1');
+    Route::post('test/{quizId}/submit', [PublicQuizController::class, 'submitTestQuiz'])->middleware('throttle:60,1');
     Route::get('{token}', [PublicQuizController::class, 'show'])->middleware('throttle:60,1');
     Route::post('{token}/start', [PublicQuizController::class, 'start'])->middleware('throttle:20,1');
     Route::post('{token}/progress', [PublicQuizController::class, 'saveProgress'])->middleware('throttle:120,1');
@@ -1599,6 +1624,12 @@ Route::group(['prefix' => 'candidate'], function () {
         Route::get('applications', [\App\Http\Controllers\Candidate\CandidateApplicationController::class, 'index']);
         Route::get('applications/{id}', [\App\Http\Controllers\Candidate\CandidateApplicationController::class, 'show']);
         Route::get('applications/{id}/resume', [\App\Http\Controllers\Candidate\CandidateApplicationController::class, 'downloadResume']);
+        Route::post('applications/{id}/offer/respond', [\App\Http\Controllers\Candidate\CandidateApplicationController::class, 'respondOffer']);
+        Route::get('onboarding/document-types', [\App\Http\Controllers\Candidate\CandidateApplicationController::class, 'onboardingDocumentTypes']);
+        Route::post('applications/{id}/onboarding', [\App\Http\Controllers\Candidate\CandidateApplicationController::class, 'saveOnboarding']);
+        Route::post('applications/{id}/onboarding/document', [\App\Http\Controllers\Candidate\CandidateApplicationController::class, 'uploadOnboardingDocument']);
+        Route::delete('applications/{id}/onboarding/document/{docId}', [\App\Http\Controllers\Candidate\CandidateApplicationController::class, 'deleteOnboardingDocument']);
+        Route::get('applications/{id}/communications', [\App\Http\Controllers\Candidate\CandidateApplicationController::class, 'getCommunications']);
 
         Route::get('saved-jobs', [\App\Http\Controllers\Candidate\CandidateSavedJobController::class, 'index']);
         Route::post('jobs/{slug}/save', [\App\Http\Controllers\Candidate\CandidateSavedJobController::class, 'store']);
@@ -1618,5 +1649,6 @@ Route::group(['prefix' => 'candidate'], function () {
         Route::delete('educations/{id}', [\App\Http\Controllers\Candidate\CandidateEducationController::class, 'destroy']);
     });
 });
+
 
 

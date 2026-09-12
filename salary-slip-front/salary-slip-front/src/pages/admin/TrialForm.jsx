@@ -23,6 +23,9 @@ import {
   XCircle,
   TableProperties,
   CheckCircle,
+  AlertTriangle,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import Badge from "../../components/ui/Badge";
@@ -443,6 +446,16 @@ export default function TrialForm() {
 
   const pendingForms = filteredForms.filter(f => f.status !== "Approved" && f.status !== "Rejected");
   const historyForms = filteredForms.filter(f => f.status === "Approved" || f.status === "Rejected");
+
+  // Trial forms currently missing a Designation — the exact symptom of the
+  // backend bug where opening an Organization admin page could silently
+  // null out a trial applicant's designation (fixed on the backend now, but
+  // any form already affected needs its Designation re-typed by hand).
+  const missingDesignationForms = useMemo(
+    () => filteredForms.filter((f) => !f.designation || String(f.designation).trim() === ""),
+    [filteredForms],
+  );
+  const [showMissingDesignationPanel, setShowMissingDesignationPanel] = useState(false);
 
   const handleDownloadPDF = async () => {
     if (!selected || !formRef.current) return;
@@ -1044,6 +1057,49 @@ export default function TrialForm() {
           </div>
         ))}
       </div>
+
+      {/* Missing Designation alert — trial forms whose Designation went
+          blank (either the old sync bug, or simply never filled in) */}
+      {missingDesignationForms.length > 0 && (
+        <div className="overflow-hidden rounded-xl border border-amber-300 bg-amber-50/70 dark:border-amber-800 dark:bg-amber-950/20">
+          <button
+            type="button"
+            onClick={() => setShowMissingDesignationPanel((v) => !v)}
+            className="flex w-full items-center justify-between gap-3 p-4 text-left"
+          >
+            <div className="flex items-center gap-2.5">
+              <AlertTriangle size={18} className="flex-shrink-0 text-amber-600 dark:text-amber-400" />
+              <div>
+                <p className="text-sm font-bold text-amber-800 dark:text-amber-300">
+                  {missingDesignationForms.length} trial form{missingDesignationForms.length === 1 ? "" : "s"} missing a designation
+                </p>
+                <p className="text-xs text-amber-700/80 dark:text-amber-400/80">
+                  Click a name to open it and re-type the designation.
+                </p>
+              </div>
+            </div>
+            {showMissingDesignationPanel ? <ChevronDown size={16} className="text-amber-600 dark:text-amber-400" /> : <ChevronRight size={16} className="text-amber-600 dark:text-amber-400" />}
+          </button>
+          {showMissingDesignationPanel && (
+            <div className="max-h-64 divide-y divide-amber-100 overflow-y-auto border-t border-amber-200 dark:divide-amber-900/40 dark:border-amber-900/50">
+              {missingDesignationForms.map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  onClick={() => setEditTarget(f)}
+                  className="flex w-full items-center justify-between gap-3 px-4 py-2 text-left text-xs hover:bg-amber-100/60 dark:hover:bg-amber-900/30"
+                >
+                  <span className="font-semibold text-gray-800 dark:text-gray-200">
+                    {f.name || "Unnamed"}
+                    {f.fromNo && <span className="ml-1.5 font-mono text-[10px] font-normal text-gray-400">Form #{f.fromNo}</span>}
+                  </span>
+                  <span className="text-gray-500 dark:text-gray-400">{f.department || "—"}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Table — desktop only */}
       {isMobile ? (

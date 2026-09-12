@@ -12,6 +12,7 @@ import { SkeletonTable } from "../../../components/ui/Skeleton";
 import { useAuth } from "../../../context/AuthContext";
 import { useAuthorization } from "../../../hooks/useAuthorization";
 import { companyUnitApi, departmentApi } from "../../../utils/api";
+import { organizationApi } from "../../../features/organization/services/organizationApi";
 
 const inputClass =
   "w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500";
@@ -602,6 +603,9 @@ function DepartmentRows({ byParent, parentId, depth, visited, canManage, onAssig
           {dept.unit?.name || <span className="text-xs text-gray-400 italic">—</span>}
         </td>
         <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
+          <Badge variant="gray"><Users size={12} className="inline mr-1 opacity-70" />{dept.employeeCount || 0}</Badge>
+        </td>
+        <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
           {dept.managers && dept.managers.length > 0 ? (
             <div className="flex flex-wrap gap-1">
               {dept.managers.map((m) => (
@@ -771,13 +775,32 @@ export default function CompanyUnits({ initialTab = "companies", hideTabs = fals
       departmentApi.departments({ company_code: companyFilter, search }, token, tokenType).catch(() => ({ data: [] })),
       departmentApi.departmentManagers({ company_code: companyFilter, search }, token, tokenType).catch(() => ({ data: [] })),
       departmentApi.eligibleUsers({}, token, tokenType).catch(() => ({ data: [] })),
+      organizationApi.orgUnits({}, token, tokenType).catch(() => ({ data: [] })),
     ])
-      .then(([companyRes, unitRes, legacyRes, deptRes, managersRes, usersRes]) => {
+      .then(([companyRes, unitRes, legacyRes, deptRes, managersRes, usersRes, orgUnitsRes]) => {
         if (!active) return;
         setCompanies(companyRes?.data ?? []);
         setUnits(unitRes?.data ?? []);
         setLegacy(legacyRes?.data ?? []);
-        setDepartments(deptRes?.data ?? []);
+        
+        const deptCountMap = new Map();
+        const orgUnitIdMap = new Map();
+        if (Array.isArray(orgUnitsRes?.data)) {
+          orgUnitsRes.data.forEach(u => {
+            if (u.legacyDepartmentId) {
+              deptCountMap.set(u.legacyDepartmentId, u.assignmentCount || 0);
+              orgUnitIdMap.set(u.legacyDepartmentId, u.id);
+            }
+          });
+        }
+        
+        const depts = (deptRes?.data ?? []).map(d => ({
+          ...d,
+          employeeCount: deptCountMap.get(d.id) || 0,
+          orgUnitId: orgUnitIdMap.get(d.id) || null
+        }));
+        
+        setDepartments(depts);
         setDepartmentManagers(managersRes?.data ?? []);
         setEligibleUsers(usersRes?.data ?? []);
       })
@@ -889,8 +912,8 @@ export default function CompanyUnits({ initialTab = "companies", hideTabs = fals
       )}
 
       <Card>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative flex-1 min-w-[220px] max-w-xs">
+        <div className="flex flex-col sm:flex-row flex-wrap items-center gap-3">
+          <div className="relative w-full sm:flex-1 sm:max-w-xs">
             <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               aria-label="Search records"
@@ -912,7 +935,7 @@ export default function CompanyUnits({ initialTab = "companies", hideTabs = fals
           {(tab === "units" || tab === "departments" || tab === "department_managers") && (
             <select
               aria-label="Filter by company"
-              className={`${inputClass} w-48`}
+              className={`${inputClass.replace("w-full", "")} w-full sm:w-48`}
               value={companyFilter}
               onChange={(e) => changeFilter(setCompanyFilter)(e.target.value)}
             >
@@ -928,7 +951,7 @@ export default function CompanyUnits({ initialTab = "companies", hideTabs = fals
           {(tab === "companies" || tab === "units") && (
             <select
               aria-label="Filter by status"
-              className={`${inputClass} w-36`}
+              className={`${inputClass.replace("w-full", "")} w-full sm:w-40`}
               value={status}
               onChange={(e) => changeFilter(setStatus)(e.target.value)}
             >
@@ -1207,6 +1230,7 @@ export default function CompanyUnits({ initialTab = "companies", hideTabs = fals
                   <Th>Department Name</Th>
                   <Th>Company</Th>
                   <Th>Branch</Th>
+                  <Th>Employees</Th>
                   <Th>Department Head</Th>
                   <Th className="text-right">Actions</Th>
                 </tr>
@@ -1228,8 +1252,31 @@ export default function CompanyUnits({ initialTab = "companies", hideTabs = fals
                     onAddSub={(dept) => setDepartmentDialog({ presetParentId: dept.id })}
                     onEdit={(dept) => setDepartmentDialog(dept)}
                     onDelete={(dept) => {
-                      if (!window.confirm(`Delete "${dept.name}"? This cannot be undone.`)) return;
-                      run(() => departmentApi.deleteDepartment(dept.id, token, tokenType), "Department deleted");
+                      if (!window.confirm(`Delete "${dept.name}"${departmentTree.has(dept.id) ? " and all its subdepartments" : ""}? This cannot be undone.`)) return;
+                      run(async () => {
+                        const deptsToDelete = [dept];
+                        const queue = [dept];
+                        while (queue.length > 0) {
+                          const current = queue.shift();
+                          const children = departmentTree.get(current.id) || [];
+                          children.forEach(c => {
+                            deptsToDelete.push(c);
+                            queue.push(c);
+                          });
+                        }
+                        
+                        const reverseDepts = deptsToDelete.reverse();
+                        for (const d of reverseDepts) {
+                          await departmentApi.deleteDepartment(d.id, token, tokenType);
+                          if (d.orgUnitId) {
+                            try {
+                              await organizationApi.deleteOrgUnit(d.orgUnitId, token, tokenType);
+                            } catch (e) {
+                              // ignore if it fails or already deleted
+                            }
+                          }
+                        }
+                      }, "Department deleted");
                     }}
                     onRemoveManager={removeManagerAssignment}
                   />

@@ -221,9 +221,17 @@ class DepartmentController extends Controller
      */
     public function eligibleUsers(Request $request)
     {
+        // Trial Form / Careers Portal Appointment / agent rows all live in
+        // this same `users` table but aren't real employees — without this
+        // filter they showed up as assignable "employees" here, and
+        // assigning one to a real designation would overwrite that trial/
+        // appointment row's own designation with whatever was picked here.
         $query = User::query()
             ->where("is_deleted", 0)
             ->whereIn("status", ["0", "ACTIVE", 0])
+            ->where(function ($q) {
+                $q->whereNull("type")->orWhereNotIn("type", ["trial", "appointment", "agent", "account-master"]);
+            })
             ->select(["id", "name", "emp_code", "email", "designation", "department", "company_code"]);
 
         if ($request->filled("company_code") && $request->company_code !== "ALL") {

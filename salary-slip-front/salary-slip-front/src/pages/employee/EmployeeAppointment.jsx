@@ -73,22 +73,24 @@ export default function EmployeeAppointment() {
           typeof item.name === "string" ? item.name : ""
         );
 
-        let parsedMembers = [];
-        try {
-          let m = item.members;
-          if (typeof m === "string" && m.trim() !== "") {
-            let firstParse = JSON.parse(m);
-            m = typeof firstParse === "string" ? JSON.parse(firstParse) : firstParse;
+        const parsedMembers = (() => {
+          try {
+            if (typeof item.members === "string") {
+              const firstParse = JSON.parse(item.members);
+              return typeof firstParse === "string" ? JSON.parse(firstParse) : firstParse;
+            }
+            if (Array.isArray(item.members)) return item.members;
+          } catch {
+            return [];
           }
-          if (Array.isArray(m)) {
-            parsedMembers = m.filter(mem => mem?.name);
-          }
-        } catch {
-          // ignore
-        }
+          return [];
+        })();
+
+        const companyConfig = getCompanyConfig(item.company_code);
 
         const normalizedData = {
           empCode: firstPresent(item.empCode, item.emp_code) || "",
+          companyName: companyConfig ? companyConfig.name : item.company_code,
           fullName: fullName || "",
           department: firstPresent(item.department, item.dept) || "",
           managerName: firstPresent(item.managerName, item.manager_name) || "",

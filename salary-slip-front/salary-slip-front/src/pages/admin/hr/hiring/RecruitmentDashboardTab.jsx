@@ -90,7 +90,7 @@ export default function RecruitmentDashboardTab({ onNavigate = () => {} }) {
                   <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e5e7eb" />
                   <XAxis type="number" allowDecimals={false} tick={{ fontSize: 12, fill: "#6b7280" }} />
                   <YAxis type="category" dataKey="label" width={104} tick={{ fontSize: 12, fill: "#6b7280" }} />
-                  <Tooltip contentStyle={{ borderRadius: 16, border: "none", boxShadow: "0 10px 25px rgba(0,0,0,0.1)" }} cursor={{ fill: "#f8fafc" }} />
+                  <Tooltip contentStyle={{ backgroundColor: "#1f2937", color: "#f9fafb", border: "1px solid #374151", borderRadius: 12 }} cursor={{ fill: "rgba(255, 255, 255, 0.05)" }} />
                   <Bar dataKey="count" fill="#4f46e5" radius={[0, 4, 4, 0]} barSize={16} />
                 </BarChart>
               </ResponsiveContainer>

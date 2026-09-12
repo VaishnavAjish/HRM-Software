@@ -27,7 +27,7 @@ class Interview extends Model
 
     public function requisition()
     {
-        return $this->belongsTo(JobRequisition::class, 'requisition_id');
+        return $this->belongsTo(JobRequisition::class, 'requisition_id')->withTrashed();
     }
 
     public function panelists()

@@ -260,6 +260,71 @@ class OrganizationUnitController extends Controller
         ]));
     }
 
+    /**
+     * Standalone designations — created directly, the same simple way a
+     * Department itself is (just a title, nothing mandatory nested under
+     * it), rather than requiring a department to be picked/expanded first.
+     * update/destroy/freeze/release below reuse the same-named unit-scoped
+     * methods above with a dummy unitId: those methods already resolve and
+     * act on the position purely by its own id and never actually use the
+     * unitId argument beyond routing, so a standalone position works there
+     * unchanged.
+     */
+    public function globalPositions(Request $request): JsonResponse
+    {
+        return $this->guarded(fn () => response()->json([
+            'success' => true,
+            'data' => $this->service->globalPositions([
+                'search' => $request->query('search'),
+                'status' => $request->query('status'),
+            ], auth('api')->user()),
+        ]));
+    }
+
+    public function storeGlobalPosition(Request $request): JsonResponse
+    {
+        $this->service->ensureSchema();
+
+        $data = $request->validate([
+            'reportsToPositionId' => ['sometimes', 'nullable', 'integer'],
+            'code' => ['sometimes', 'nullable', 'string', 'max:60'],
+            'title' => ['required', 'string', 'max:190'],
+            'description' => ['sometimes', 'nullable', 'string', 'max:2000'],
+            'approvedHeadcount' => ['sometimes', 'integer', 'min:0'],
+            'budgetedHeadcount' => ['sometimes', 'nullable', 'integer', 'min:0'],
+            'status' => ['sometimes', 'string', Rule::in(OrganizationPosition::STATUSES)],
+            'effectiveFrom' => ['sometimes', 'nullable', 'date'],
+            'effectiveTo' => ['sometimes', 'nullable', 'date', 'after_or_equal:effectiveFrom'],
+        ]);
+
+        return $this->guarded(fn () => response()->json([
+            'success' => true,
+            'data' => $this->service->presentPosition(
+                $this->service->createPosition(null, $data, auth('api')->user())
+            ),
+        ], 201));
+    }
+
+    public function updateGlobalPosition(Request $request, int $id): JsonResponse
+    {
+        return $this->updatePosition($request, 0, $id);
+    }
+
+    public function destroyGlobalPosition(int $id): JsonResponse
+    {
+        return $this->destroyPosition(0, $id);
+    }
+
+    public function freezeGlobalPosition(Request $request, int $id): JsonResponse
+    {
+        return $this->freezePosition($request, 0, $id);
+    }
+
+    public function releaseGlobalPosition(int $id): JsonResponse
+    {
+        return $this->releasePosition(0, $id);
+    }
+
     public function headcountSummary(Request $request): JsonResponse
     {
         return $this->guarded(fn () => response()->json([
@@ -276,6 +341,14 @@ class OrganizationUnitController extends Controller
         return $this->guarded(fn () => response()->json([
             'success' => true,
             'data' => $this->service->departmentBranchSummary(auth('api')->user()),
+        ]));
+    }
+
+    public function missingDesignations(): JsonResponse
+    {
+        return $this->guarded(fn () => response()->json([
+            'success' => true,
+            'data' => $this->service->employeesMissingDesignation(auth('api')->user()),
         ]));
     }
 

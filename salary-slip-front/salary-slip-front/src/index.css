@@ -75,6 +75,7 @@
   --brand-700:  67  56 202;
   --brand-800:  55  48 163;
   --brand-900:  49  46 129;
+  --brand-950:  30  27  75;
   /* structural */
   --sidebar-bg: #0d0e1e;
   --page-bg:    #f6f6ff;
@@ -91,6 +92,7 @@
   --brand-700: 180  83   9;
   --brand-800: 146  64  14;
   --brand-900: 120  53  15;
+  --brand-950:  69  26   3;
   /* structural */
   --sidebar-bg: #1a1200;
   --page-bg:    #fffdf5;
@@ -107,6 +109,7 @@
   --brand-700: 190  18  60;
   --brand-800: 159  18  57;
   --brand-900: 136  19  55;
+  --brand-950:  76   5  25;
   /* structural */
   --sidebar-bg: #1c080f;
   --page-bg:    #fff6f8;
@@ -123,6 +126,7 @@
   --brand-700:   3 105 161;
   --brand-800:   7  89 133;
   --brand-900:  12  74 110;
+  --brand-950:   8  47  73;
   /* structural */
   --sidebar-bg: #04101e;
   --page-bg:    #f5fbff;

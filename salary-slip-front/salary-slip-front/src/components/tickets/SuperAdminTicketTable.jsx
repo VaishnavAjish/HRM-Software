@@ -192,7 +192,7 @@ export default function SuperAdminTicketTable({
                       />
                     </td>
                     <td className="px-3.5 py-3">
-                      <span className="inline-flex items-center font-mono text-[11px] font-bold text-brand-600 bg-brand-50/80 border border-brand-200/60 dark:bg-brand-950/40 dark:text-brand-300 dark:border-brand-800/50 rounded-lg px-2.5 py-1 shadow-2xs group-hover:border-brand-300">
+                      <span className="inline-flex items-center font-mono text-[11px] font-bold text-brand-600 bg-brand-50/80 border border-brand-200/60 dark:bg-slate-800 dark:text-brand-300 dark:border-slate-700 rounded-lg px-2.5 py-1 shadow-2xs group-hover:border-brand-300">
                         {t.ticket_number}
                       </span>
                     </td>

@@ -1,10 +1,7 @@
+import "../../test/setup";
 import { render, screen } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-
-// Regression coverage for a real gap: `candidateApi.getApplication` existed
-// and was fully wired in the API client, but no page ever rendered it —
-// candidates had no way to see a single application's progress timeline.
 
 const authState = vi.hoisted(() => ({
   candidate: { name: "Jane Candidate", email: "jane@example.com" },
@@ -23,6 +20,7 @@ const apiState = vi.hoisted(() => ({
       job_title: "Senior Software Engineer",
       department_name: "Technology",
       status_label: "Interview",
+      stage: "interview",
       applied_at: "2026-08-10T10:00:00Z",
       resume_name: "jane-resume.pdf",
       timeline: [
@@ -30,6 +28,13 @@ const apiState = vi.hoisted(() => ({
         { status_label: "Under Review", occurred_at: "2026-08-12T10:00:00Z" },
         { status_label: "Interview", occurred_at: "2026-08-14T10:00:00Z" },
       ],
+      interviews: [
+        { id: 1, round_name: "Technical Round 1", mode: "video", scheduled_at: "2026-08-15T14:00:00Z", status: "scheduled" },
+      ],
+      communications: [
+        { id: 1, subject: "Welcome to our hiring process", body: "Hello Jane, your application is moving forward.", type: "email", sent_at: "2026-08-11T10:00:00Z" },
+      ],
+      latest_offer: null,
     },
   },
 }));
@@ -37,10 +42,10 @@ const apiState = vi.hoisted(() => ({
 vi.mock("../../utils/api", () => ({
   candidateApi: {
     getApplication: vi.fn(() => Promise.resolve(apiState.response)),
+    respondOffer: vi.fn(() => Promise.resolve({ status: true })),
   },
 }));
 
-// Resume blob fetch is a raw `fetch`, not routed through the mocked api client.
 globalThis.fetch = vi.fn(() => Promise.resolve({ ok: true, blob: () => Promise.resolve(new Blob(["fake"])) }));
 
 import CandidateApplicationDetail from "./CandidateApplicationDetail";
@@ -60,13 +65,25 @@ describe("CandidateApplicationDetail", () => {
     apiState.response = {
       status: true,
       data: {
-        id: 42, job_title: "Senior Software Engineer", department_name: "Technology",
-        status_label: "Interview", applied_at: "2026-08-10T10:00:00Z", resume_name: "jane-resume.pdf",
+        id: 42,
+        job_title: "Senior Software Engineer",
+        department_name: "Technology",
+        status_label: "Interview",
+        stage: "interview",
+        applied_at: "2026-08-10T10:00:00Z",
+        resume_name: "jane-resume.pdf",
         timeline: [
           { status_label: "Submitted", occurred_at: "2026-08-10T10:00:00Z" },
           { status_label: "Under Review", occurred_at: "2026-08-12T10:00:00Z" },
           { status_label: "Interview", occurred_at: "2026-08-14T10:00:00Z" },
         ],
+        interviews: [
+          { id: 1, round_name: "Technical Round 1", mode: "video", scheduled_at: "2026-08-15T14:00:00Z", status: "scheduled" },
+        ],
+        communications: [
+          { id: 1, subject: "Welcome to our hiring process", body: "Hello Jane, your application is moving forward.", type: "email", sent_at: "2026-08-11T10:00:00Z" },
+        ],
+        latest_offer: null,
       },
     };
     vi.clearAllMocks();
@@ -78,33 +95,30 @@ describe("CandidateApplicationDetail", () => {
     expect(screen.getByText("Sign in to view this application")).toBeInTheDocument();
   });
 
-  it("loads the application and renders the candidate-safe timeline", async () => {
+  it("loads the application and renders the overview and timeline", async () => {
     renderDetail();
 
     expect(await screen.findByText("Senior Software Engineer")).toBeInTheDocument();
     expect(candidateApi.getApplication).toHaveBeenCalledWith("42", "candidate-token");
     expect(screen.getAllByText("Interview").length).toBeGreaterThan(0);
-    expect(screen.getByText("Submitted")).toBeInTheDocument();
-    expect(screen.getByText("Under Review")).toBeInTheDocument();
-    expect(screen.getByText("Final Decision — Pending")).toBeInTheDocument();
+    expect(screen.getByText("1. Submitted")).toBeInTheDocument();
+    expect(screen.getByText("2. Under Review")).toBeInTheDocument();
   });
 
-  it("does not render a pending-decision step once a final status is reached", async () => {
-    apiState.response = {
-      status: true,
-      data: {
-        id: 43, job_title: "Product Analyst", department_name: "Analytics",
-        status_label: "Closed", applied_at: "2026-08-01T10:00:00Z", resume_name: null,
-        timeline: [
-          { status_label: "Submitted", occurred_at: "2026-08-01T10:00:00Z" },
-          { status_label: "Closed", occurred_at: "2026-08-05T10:00:00Z" },
-        ],
-      },
+  it("renders offer letter when offer is present", async () => {
+    apiState.response.data.latest_offer = {
+      id: 99,
+      designation: "Senior Software Engineer",
+      ctc_annual: 1500000,
+      status: "released",
+      joining_date: "2026-09-01",
+      joining_date_formatted: "01 Sep 2026",
     };
-    renderDetail("43");
 
-    expect(await screen.findByText("Product Analyst")).toBeInTheDocument();
-    expect(screen.queryByText("Final Decision — Pending")).not.toBeInTheDocument();
+    renderDetail("42");
+
+    expect(await screen.findByText("Official Job Offer", {}, { timeout: 3000 })).toBeInTheDocument();
+    expect(screen.getByText("Accept Offer")).toBeInTheDocument();
   });
 
   it("shows a not-found state when the application does not belong to this candidate", async () => {

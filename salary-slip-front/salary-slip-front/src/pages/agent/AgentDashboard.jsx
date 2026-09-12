@@ -11,6 +11,7 @@ import { normalizeTrialForm } from "../../components/forms/trial-form-helpers";
 import toast from "react-hot-toast";
 import { getAadhaarDisplayValue } from "../../utils/aadhaar";
 import { escapeHtml, safeImageSrc } from "../../utils/html";
+import { getCompanyConfig } from "../../config/companyConfig";
 
 export default function AgentDashboard() {
   const { user } = useAuth();
@@ -127,10 +128,14 @@ export default function AgentDashboard() {
       typeof item.name === "string" ? item.name : "",
       [name.first, name.mid, name.surname].filter(Boolean).join(" "),
     );
+
+    const companyCode = firstPresent(item.companyId, item.companyCode, item.company_code, item.company);
+    const companyConfig = getCompanyConfig(companyCode);
   
     return {
       id: firstPresent(item.id, item.appointment_id, item._id, index),
       empCode: firstPresent(item.empCode, item.emp_code),
+      companyName: companyConfig ? companyConfig.name : companyCode,
       fullName: fullName || "-",
       department: firstPresent(item.department, item.dept),
       managerName: firstPresent(item.managerName, item.manager_name),

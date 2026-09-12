@@ -33,7 +33,13 @@ class QuizAttemptController extends Controller
 
     public function index(Request $request)
     {
-        $query = QuizAttempt::with(['quiz:id,title,passing_score', 'candidate:id,name,email,stage', 'interview:id,round_name,scheduled_at']);
+        $query = QuizAttempt::with([
+            'quiz:id,title,passing_score,duration_minutes',
+            'candidate:id,name,email,phone,experience_years,stage,priority,ats_score,requisition_id,recruiter_id,company_code,unit',
+            'candidate.requisition:id,title,department_id,deleted_at',
+            'candidate.requisition.department:id,name',
+            'interview:id,round_name,scheduled_at'
+        ]);
         $this->applyCompanyScope($query, $request);
 
         if ($request->quiz_id) {
@@ -73,17 +79,106 @@ class QuizAttemptController extends Controller
 
         $breakdown = [];
         foreach ($questions as $i => $q) {
+            $type = $q['type'] ?? 'mcq';
+            $marks = isset($q['marks']) ? (float) $q['marks'] : 1.0;
+            $options = array_values($q['options'] ?? []);
+            $optionMarks = isset($q['option_marks']) && is_array($q['option_marks']) ? $q['option_marks'] : [];
             $given = $answers[$i] ?? null;
-            $correct = $q['correct_index'] ?? null;
-            $breakdown[] = [
-                'index' => $i,
-                'text' => $q['text'] ?? '',
-                'options' => array_values($q['options'] ?? []),
-                'given_index' => $given,
-                'correct_index' => $correct,
-                'is_correct' => $given !== null && (int) $given === (int) $correct,
-                'answered' => $given !== null,
-            ];
+            
+            $isCorrect = false;
+            $earnedMarks = 0.0;
+            $givenText = '';
+            $correctText = '';
+
+            if ($type === 'msq') {
+                $correctIndices = $q['correct_indices'] ?? (isset($q['correct_index']) ? [$q['correct_index']] : []);
+                $correctIndices = array_values(array_unique(array_map('intval', (array) $correctIndices)));
+                sort($correctIndices);
+
+                $givenIndices = is_array($given) ? array_values(array_unique(array_map('intval', $given))) : ($given !== null ? [(int) $given] : []);
+                sort($givenIndices);
+
+                $hasWrongSelection = false;
+                foreach ($givenIndices as $gIdx) {
+                    if (!in_array($gIdx, $correctIndices, true)) {
+                        $hasWrongSelection = true;
+                        break;
+                    }
+                }
+
+                if ($hasWrongSelection) {
+                    $earnedMarks = 0.0;
+                } elseif (count($givenIndices) > 0) {
+                    if (count($optionMarks) > 0) {
+                        foreach ($givenIndices as $gIdx) {
+                            if (isset($optionMarks[$gIdx])) {
+                                $earnedMarks += max(0.0, (float) $optionMarks[$gIdx]);
+                            }
+                        }
+                    } elseif ($givenIndices === $correctIndices) {
+                        $earnedMarks = $marks;
+                    }
+                }
+
+                $earnedMarks = min($marks, max(0.0, $earnedMarks));
+                if ($earnedMarks >= $marks - 0.001 && $marks > 0) {
+                    $isCorrect = true;
+                }
+
+                $givenText = count($givenIndices) > 0 ? implode(', ', array_map(fn($idx) => $options[$idx] ?? ("#".($idx+1)), $givenIndices)) : 'Not answered';
+                $correctText = implode(', ', array_map(fn($idx) => $options[$idx] ?? ("#".($idx+1)), $correctIndices));
+
+                $breakdown[] = [
+                    'index' => $i,
+                    'type' => 'msq',
+                    'marks' => $marks,
+                    'earned_marks' => $earnedMarks,
+                    'text' => $q['text'] ?? '',
+                    'options' => $options,
+                    'option_marks' => $optionMarks,
+                    'given_indices' => $givenIndices,
+                    'correct_indices' => $correctIndices,
+                    'given_text' => $givenText,
+                    'correct_text' => $correctText,
+                    'is_correct' => $isCorrect,
+                    'answered' => count($givenIndices) > 0,
+                ];
+            } else {
+                $correctIndex = isset($q['correct_index']) ? (int) $q['correct_index'] : (isset($q['correct_indices'][0]) ? (int) $q['correct_indices'][0] : 0);
+                $givenIndex = is_array($given) ? ($given[0] ?? null) : $given;
+                if ($givenIndex !== null) {
+                    $gIdx = (int) $givenIndex;
+                    if (count($optionMarks) > 0 && isset($optionMarks[$gIdx])) {
+                        $earnedMarks = max(0.0, (float) $optionMarks[$gIdx]);
+                    } elseif ($gIdx === $correctIndex) {
+                        $earnedMarks = $marks;
+                    }
+                }
+
+                $earnedMarks = min($marks, max(0.0, $earnedMarks));
+                if ($earnedMarks >= $marks - 0.001 && $marks > 0) {
+                    $isCorrect = true;
+                }
+
+                $givenText = $givenIndex !== null ? ($options[$givenIndex] ?? ("#".($givenIndex+1))) : 'Not answered';
+                $correctText = $options[$correctIndex] ?? ("#".($correctIndex+1));
+
+                $breakdown[] = [
+                    'index' => $i,
+                    'type' => 'mcq',
+                    'marks' => $marks,
+                    'earned_marks' => $earnedMarks,
+                    'text' => $q['text'] ?? '',
+                    'options' => $options,
+                    'option_marks' => $optionMarks,
+                    'given_index' => $givenIndex,
+                    'correct_index' => $correctIndex,
+                    'given_text' => $givenText,
+                    'correct_text' => $correctText,
+                    'is_correct' => $isCorrect,
+                    'answered' => $givenIndex !== null,
+                ];
+            }
         }
 
         return response()->json(['status' => true, 'data' => [
@@ -148,18 +243,18 @@ class QuizAttemptController extends Controller
         }
 
         try {
-            // One live attempt per candidate+quiz: re-assigning while an earlier
-            // attempt is still open would hand out two valid tokens for the same
-            // assessment.
-            $open = QuizAttempt::where('quiz_id', $data['quiz_id'])
+            // Prevent assigning quiz to candidate who already has an attempt (open or completed)
+            $existing = QuizAttempt::where('quiz_id', $data['quiz_id'])
                 ->where('candidate_id', $data['candidate_id'])
-                ->whereIn('status', ['pending', 'in_progress'])
                 ->first();
-            if ($open) {
+            if ($existing) {
+                $msg = in_array($existing->status, ['pending', 'in_progress'])
+                    ? 'This candidate already has an open attempt for this quiz'
+                    : 'This candidate has already been given/completed this quiz (Status: ' . $existing->status . ')';
                 return response()->json([
                     'status' => false,
-                    'message' => 'This candidate already has an open attempt for this quiz',
-                    'data' => $open,
+                    'message' => $msg,
+                    'data' => $existing,
                 ], 422);
             }
 
@@ -191,6 +286,21 @@ class QuizAttemptController extends Controller
                     'link_expires_at' => $attempt->link_expires_at?->toIso8601String(),
                     'send_immediately' => $data['send_immediately'] ?? true,
                 ]);
+
+                // Automatically advance candidate stage to 'assessment' if they are in an earlier stage
+                $candidate = Candidate::find($data['candidate_id']);
+                if ($candidate && in_array($candidate->stage, ['applied', 'screening', 'shortlisted', null])) {
+                    $fromStage = $candidate->stage;
+                    $candidate->update(['stage' => 'assessment']);
+                    \App\Models\CandidateStageHistory::create([
+                        'candidate_id' => $candidate->id,
+                        'from_stage' => $fromStage,
+                        'to_stage' => 'assessment',
+                        'changed_by' => auth('api')->id(),
+                        'notes' => 'Assigned assessment quiz: ' . $quiz->title,
+                        'created_at' => now(),
+                    ]);
+                }
 
                 return $attempt;
             });

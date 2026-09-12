@@ -40,6 +40,7 @@ import { SkeletonTable } from "../../components/ui/Skeleton";
 import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";
 import { useAuthorization } from "../../hooks/useAuthorization";
+import { useProvisioningOptions } from "../../hooks/useProvisioningOptions";
 import { authApi, salaryApi, appointmentV1Api, documentV1Api } from "../../utils/api";
 import DocumentViewerModal from "../../components/documents/DocumentViewerModal";
 import PrintableForm from "../../components/forms/PrintableForm";
@@ -924,6 +925,7 @@ export default function Appointments() {
   const { user } = useAuth();
   const { can } = useAuthorization();
   const { companyScope, scopeKey } = useCompany();
+  const { companies: provisioningCompanies } = useProvisioningOptions();
   const isAgentUser = Boolean(
     user?.type === "agent" ||
     user?.role === "agent" ||
@@ -1180,13 +1182,26 @@ export default function Appointments() {
   const detailsView = useMemo(() => {
     if (!selected) return null;
 
+    // The record's real company only ever survives on the untouched API item
+    // (`selected.raw`) — normalizeAppointment() never copies a company field
+    // onto the row itself, so reading selected.companyId/companyCode/etc.
+    // here always came back undefined and silently fell through to whichever
+    // company happened to sort first (usually "All Companies"). Edit mode
+    // (AppointmentModal) already reads raw.company_code for the same reason;
+    // this now does too, resolved against the same API-backed company list
+    // edit mode uses (useProvisioningOptions) instead of the static
+    // companyConfig.js list, whose entries have no `code` field to match on.
+    const companyCode = selected.raw?.company_code || selected.companyId || selected.companyCode || selected.company_code || selected.company;
+    const foundCompany = provisioningCompanies?.find(c => String(c.code) === String(companyCode) || String(c.id) === String(companyCode));
+
     return {
       ...selected,
+      companyName: foundCompany ? foundCompany.name : companyCode,
       photo: selected.photo || photoUrlFromV1 || null,
       containsFullAadhaar: isCompleteAadhaar(selected.aadharNo),
       printedBy: user?.name || "",
     };
-  }, [selected, photoUrlFromV1, user?.name]);
+  }, [selected, photoUrlFromV1, user?.name, provisioningCompanies]);
 
   /**
    * The appointment PDF, rendered from the same view model as the screen.

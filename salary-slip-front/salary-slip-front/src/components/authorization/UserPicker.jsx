@@ -47,7 +47,7 @@ export default function UserPicker({ value, onChange, token, tokenType, label = 
     setTerm("");
     setResults([]);
     setOpen(false);
-    onChange(user.id);
+    onChange(user.id, user);
   };
 
   const clear = () => {

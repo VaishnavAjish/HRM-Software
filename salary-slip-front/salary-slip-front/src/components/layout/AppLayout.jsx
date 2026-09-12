@@ -118,8 +118,22 @@ export default function AppLayout() {
           title={title}
           isCollapsed={isCollapsed}
         />
-        <main className="flex-1 overflow-y-auto p-4 md:p-6 bg-gray-50 dark:bg-[var(--sidebar-bg)]">
-          <Outlet />
+        {/* Padding-top deliberately lives on the wrapper below, not on <main>
+            itself: Chromium traps a scroll container's own declared
+            padding-top above any position:sticky descendant permanently
+            (it does not scroll away, no matter what margin the sticky child
+            uses to try to cancel it) — verified by screenshotting a headless
+            render of both versions. Padding on this plain, non-scrolling
+            wrapper has no such bug, and looks identical for every page that
+            has no sticky child. */}
+        <main className="flex-1 overflow-y-auto px-4 md:px-6 pb-4 md:pb-6 bg-gray-50 dark:bg-[var(--sidebar-bg)]">
+          {/* h-full/flex here don't force other pages' natural (auto) height —
+              they only give a page that opts in (e.g. the onboarding
+              Documents tab) a real height to fill so it can scroll its own
+              inner panels instead of the whole page ever needing to scroll. */}
+          <div className="pt-4 md:pt-6 h-full flex flex-col">
+            <Outlet />
+          </div>
         </main>
       </div>
 

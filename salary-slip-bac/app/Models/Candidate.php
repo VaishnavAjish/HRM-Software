@@ -13,8 +13,8 @@ class Candidate extends Model
         'requisition_id', 'candidate_account_id', 'name', 'email', 'phone', 'experience_years',
         'current_company', 'current_designation', 'skills', 'resume_path',
         'resume_original_name', 'source', 'recruiter_id', 'priority', 'stage',
-        'rating', 'notes', 'rejection_reason', 'ats_score', 'ats_score_breakdown', 'ats_scored_at',
-        'ats_score_source', 'company_code', 'unit', 'created_by',
+        'rating', 'notes', 'onboarding_details', 'onboarding_status', 'onboarding_initiated_at', 'onboarding_completed_at', 'rejection_reason', 'ats_score', 'ats_score_breakdown', 'ats_scored_at',
+        'ats_score_source', 'company_code', 'unit', 'created_by', 'converted_appointment_user_id',
     ];
 
     protected function casts(): array
@@ -23,6 +23,9 @@ class Candidate extends Model
             'skills' => 'array',
             'ats_score_breakdown' => 'array',
             'ats_scored_at' => 'datetime',
+            'onboarding_details' => 'array', // 'array' in Laravel casts JSON to associative array
+            'onboarding_initiated_at' => 'datetime',
+            'onboarding_completed_at' => 'datetime',
         ];
     }
 
@@ -33,12 +36,20 @@ class Candidate extends Model
 
     public function requisition()
     {
-        return $this->belongsTo(JobRequisition::class, 'requisition_id');
+        return $this->belongsTo(JobRequisition::class, 'requisition_id')->withTrashed();
     }
 
     public function recruiter()
     {
         return $this->belongsTo(User::class, 'recruiter_id');
+    }
+
+    /** The Appointment (`users`, type='appointment') created from this
+     *  candidate's onboarding submission once HR approves it — see
+     *  OnboardingController::approveOnboarding(). */
+    public function convertedAppointment()
+    {
+        return $this->belongsTo(User::class, 'converted_appointment_user_id');
     }
 
     public function stageHistory()
@@ -76,5 +87,10 @@ class Candidate extends Model
     public function communications()
     {
         return $this->hasMany(CandidateCommunication::class, 'candidate_id')->orderByDesc('created_at');
+    }
+
+    public function quizAttempts()
+    {
+        return $this->hasMany(QuizAttempt::class, 'candidate_id');
     }
 }

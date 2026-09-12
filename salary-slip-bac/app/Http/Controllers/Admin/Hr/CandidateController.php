@@ -16,7 +16,7 @@ class CandidateController extends Controller
 
     private const STAGES = [
         'applied', 'screening', 'shortlisted', 'assessment', 'interview',
-        'selected', 'offer_sent', 'offer_accepted', 'rejected', 'on_hold',
+        'selected', 'offer_sent', 'offer_accepted', 'onboarding', 'hired', 'rejected', 'on_hold',
     ];
 
     public function __construct(
@@ -40,7 +40,20 @@ class CandidateController extends Controller
 
     public function index(Request $request)
     {
-        $query = Candidate::with(['requisition', 'recruiter']);
+        $eagerLoads = [
+            'requisition',
+            'recruiter',
+            'quizAttempts:id,candidate_id,quiz_id,status,score,passed,created_at',
+        ];
+        // Guarded: this column ships in a migration that may not have run yet
+        // on every environment — eager-loading a relation keyed on a column
+        // that doesn't exist would crash this list for every candidate, not
+        // just the onboarding-appointment flow that actually needs it.
+        if (\Illuminate\Support\Facades\Schema::hasColumn('candidates', 'converted_appointment_user_id')) {
+            $eagerLoads[] = 'convertedAppointment:id,name,emp_code,type,status';
+        }
+
+        $query = Candidate::with($eagerLoads);
         $this->applyCompanyScope($query, $request);
 
         if ($request->requisition_id) {
@@ -63,7 +76,7 @@ class CandidateController extends Controller
 
     public function pipeline(Request $request)
     {
-        $query = Candidate::with(['requisition', 'recruiter']);
+        $query = Candidate::with(['requisition', 'recruiter', 'quizAttempts:id,candidate_id,quiz_id,status,score,passed,created_at']);
         $this->applyCompanyScope($query, $request);
         if ($request->requisition_id) {
             $query->where('requisition_id', $request->requisition_id);
@@ -79,7 +92,12 @@ class CandidateController extends Controller
 
     public function show($id)
     {
-        $candidate = Candidate::with(['requisition', 'recruiter', 'stageHistory.changedBy', 'interviews.panelists.user', 'interviews.feedback', 'offers'])->find($id);
+        $eagerLoads = ['requisition', 'recruiter', 'stageHistory.changedBy', 'interviews.panelists.user', 'interviews.feedback', 'offers'];
+        if (\Illuminate\Support\Facades\Schema::hasColumn('candidates', 'converted_appointment_user_id')) {
+            $eagerLoads[] = 'convertedAppointment:id,name,emp_code,type,status';
+        }
+
+        $candidate = Candidate::with($eagerLoads)->find($id);
         if (!$candidate || !$this->candidateWithinActorScope($candidate)) {
             return response()->json(['status' => false, 'message' => 'Candidate not found'], 404);
         }

@@ -4,9 +4,8 @@ import {
   ChevronRight,
   RefreshCw,
   AlertCircle,
-  Printer,
-  X,
-} from "lucide-react";
+  
+  X, Eye, Printer} from "lucide-react";
 import toast from "react-hot-toast";
 import ModernDatePicker from "../../components/ModernDatePicker";
 import PrintableForm from "../../components/forms/PrintableForm";
@@ -117,7 +116,7 @@ const AppointmentModal = ({
   initialData = null,
   isPrefillFromTrial = false,
   onSuccess,
-  isViewMode = false,
+  uploadedDocs = [],
 }) => {
   const { user } = useAuth();
   const { isAllCompanies } = useCompany();
@@ -129,7 +128,7 @@ const AppointmentModal = ({
 
   // Depend on the credentials themselves, not the `user` object. AuthProvider
   // passes an inline object literal as its context value, so `user` is a new
-  // reference on every provider render — depending on it re-fetched departments,
+  // reference on every provider render â€” depending on it re-fetched departments,
   // which set new state, which re-rendered, which re-fetched. In tests that mock
   // useAuth the loop is unbounded (84 fetches in 300ms of idle), and it is what
   // stopped React's act() from ever draining.
@@ -149,7 +148,13 @@ const AppointmentModal = ({
           normalizeCompanyId(selectedCompanyId || companyId)
         );
         if (cancelled) return;
-        setDepartmentsList(res?.data?.map((dept) => dept.name) || []);
+        // Dedupe by name — the legacy departments table can carry more than
+        // one row with the same name (e.g. a leftover global "IT" alongside
+        // the real, company-scoped "IT"), and this dropdown only shows/sends
+        // the name, never the row id, so duplicate rows would otherwise
+        // render as duplicate <option> entries with the same React key.
+        const names = (res?.data ?? []).map((dept) => dept.name).filter(Boolean);
+        setDepartmentsList(Array.from(new Set(names)));
       } catch {
         // Suppress expected 403s for Agents so it gracefully falls back to text input
         // without panicking the console.
@@ -194,7 +199,7 @@ const AppointmentModal = ({
   // flash the empty create form before the restore begins. Back/Forward pushes
   // a fresh request in through the popstate handler below.
   const [routeRequest, setRouteRequest] = useState(readAppointmentRouteState);
-  // idle | loading | success | error — drives the rehydration spinner.
+  // idle | loading | success | error â€” drives the rehydration spinner.
   const [rehydrateState, setRehydrateState] = useState(
     routeRequest.appointmentId ? "loading" : "idle",
   );
@@ -215,7 +220,7 @@ const AppointmentModal = ({
    * Step state lives in the URL as well as React state so a refresh mid-flow
    * recovers instead of dropping the user back to an empty form. This is a
    * modal rather than a route page, so search params are used on whatever
-   * route it was opened from — no route restructuring.
+   * route it was opened from â€” no route restructuring.
    */
   const syncRoute = (appointmentId, which) => {
     if (typeof window === "undefined") return;
@@ -232,7 +237,7 @@ const AppointmentModal = ({
 
   /**
    * Browser Back/Forward. syncRoute uses replaceState, so popstate only fires
-   * for real history moves — each one re-reads the URL and asks for that record.
+   * for real history moves â€” each one re-reads the URL and asks for that record.
    * A fresh object is pushed even when the id is unchanged, so returning to the
    * same appointment still re-fetches rather than trusting stale state.
    */
@@ -252,7 +257,7 @@ const AppointmentModal = ({
 
   /**
    * Restore the workflow from ?appointmentId=&step= so a refresh mid-flow does
-   * not drop the user back onto an empty create form. Never creates a record —
+   * not drop the user back onto an empty create form. Never creates a record â€”
    * it only ever loads an existing one.
    */
   useEffect(() => {
@@ -290,7 +295,7 @@ const AppointmentModal = ({
         if (cancelled) return;
 
         setRehydrateState("error");
-        // Do not silently fall back to create mode — that is how duplicates get
+        // Do not silently fall back to create mode â€” that is how duplicates get
         // made. Clear the bad params and stay on step 1.
         syncRoute(null);
         setStep(1);
@@ -316,7 +321,7 @@ const AppointmentModal = ({
   };
 
   /**
-   * Uploads the profile photo as a document — only ever after the appointment
+   * Uploads the profile photo as a document â€” only ever after the appointment
    * has a real id. Resolves to whether it succeeded; the caller decides what to
    * do with the file, so this never clears state behind its back.
    *
@@ -342,7 +347,7 @@ const AppointmentModal = ({
     }
   };
 
-  /** Step 2 reports a successful retry — drop the file so it is not re-sent. */
+  /** Step 2 reports a successful retry â€” drop the file so it is not re-sent. */
   const handlePendingPhotoUploaded = () => {
     setPendingPhoto(null);
     setFormData((prev) => ({ ...prev, photo: null }));
@@ -396,7 +401,7 @@ const AppointmentModal = ({
    * stored as NULL.
    *
    * What remains below is *format* validation, and it only ever runs on a field
-   * that has something in it — see the `value !== ""` guard in validateStep1. So
+   * that has something in it â€” see the `value !== ""` guard in validateStep1. So
    * a blank mobile number saves, while "12345" is still refused rather than
    * being written as a phone number nobody can call.
    */
@@ -483,7 +488,7 @@ const AppointmentModal = ({
    * Persist the appointment fields (no documents) and return its database id.
    *
    * Documents are uploaded separately against that id, so the backend can read
-   * the Aadhaar number from the saved record instead of from form state — which
+   * the Aadhaar number from the saved record instead of from form state â€” which
    * was blank whenever the record had not been saved yet, producing an invalid
    * S3 key and a failed upload.
    */
@@ -500,7 +505,7 @@ const AppointmentModal = ({
     }
 
     // Digits only, so "1234 5678 9012" reaches the backend the same way the
-    // stored value does. Left as a string throughout — an Aadhaar is an
+    // stored value does. Left as a string throughout â€” an Aadhaar is an
     // identifier, not a number, and leading zeros must survive.
     const aadhaarDigits = normaliseAadhaar(formData.aadhar_card_no);
 
@@ -509,7 +514,7 @@ const AppointmentModal = ({
 
       if (key === "aadhar_card_no") {
         // Only send a complete number. A cleared or partly-deleted field means
-        // "keep what is stored" — posting it would wipe the record's Aadhaar and
+        // "keep what is stored" â€” posting it would wipe the record's Aadhaar and
         // orphan its documents in S3.
         if (aadhaarDigits.length === 12) payload.append(key, aadhaarDigits);
         return;
@@ -544,8 +549,8 @@ const AppointmentModal = ({
 
   /**
    * Maps the live form state into PrintableForm's view model, so the printed
-   * sheet always matches whatever is currently on screen — including unsaved
-   * edits — rather than requiring a save first.
+   * sheet always matches whatever is currently on screen â€” including unsaved
+   * edits â€” rather than requiring a save first.
    */
   const buildPrintData = () => {
     const fullName = `${formData.name.first} ${formData.name.mid} ${formData.name.surname}`
@@ -586,6 +591,7 @@ const AppointmentModal = ({
       education: formData.education,
       accountNo: formData.bank_account_no,
       companyId: formData.company_code,
+      companyName: companyOptions?.find(c => String(c.id) === String(formData.company_code) || String(c.code) === String(formData.company_code))?.name || formData.company_code,
       unitName: formData.unit,
       signature: formData.emp_signature,
       members: formData.members,
@@ -617,7 +623,7 @@ const AppointmentModal = ({
         try {
           for (const rule of sheet.cssRules) cssText += rule.cssText + "\n";
         } catch {
-          // Cross-origin stylesheet — skip, print degrades to unstyled.
+          // Cross-origin stylesheet â€” skip, print degrades to unstyled.
         }
       }
     } catch {
@@ -763,7 +769,7 @@ const AppointmentModal = ({
           : "Appointment details saved successfully.",
       );
     } catch (error) {
-      // Stay on step 1 — the documents step is useless without a saved record.
+      // Stay on step 1 â€” the documents step is useless without a saved record.
       setStep(1);
       toast.error(error?.message || "Unable to save appointment details.");
     } finally {
@@ -774,7 +780,7 @@ const AppointmentModal = ({
 
   // Assigning an emp_code converts this record into a full employee, so
   // before asking "are you sure?" we check whether that code is already
-  // taken — if it is, the popup shows the conflict as an error instead of a
+  // taken â€” if it is, the popup shows the conflict as an error instead of a
   // Yes/No confirmation, so a duplicate emp_code never gets created.
   const openEmpCodeConfirm = async (empCode, isFirstAssignment) => {
     setEmpCodeConflict(null);
@@ -792,15 +798,15 @@ const AppointmentModal = ({
         setEmpCodeConflict(res.employee);
       }
     } catch {
-      // Fail open — the backend still enforces this on submit either way.
+      // Fail open â€” the backend still enforces this on submit either way.
     } finally {
       setCheckingEmpCode(false);
     }
   };
 
   /**
-   * The state a freshly opened modal should show. Pure — it returns values
-   * instead of assigning them — so the open transition can apply it during
+   * The state a freshly opened modal should show. Pure â€” it returns values
+   * instead of assigning them â€” so the open transition can apply it during
    * render rather than from an effect, which renders the previous record's
    * values and then immediately replaces them.
    */
@@ -916,7 +922,7 @@ const AppointmentModal = ({
         },
         photoPreview: initialData.photo || "",
         // Only an existing appointment has an Aadhaar on file. A trial prefill
-        // creates a brand-new record, so the number has to be entered again —
+        // creates a brand-new record, so the number has to be entered again â€”
         // inheriting the trial row's mask would let the new appointment save
         // with no Aadhaar at all and land its documents in a fallback folder.
         aadhaarOnFile: isEditMode
@@ -982,7 +988,7 @@ const AppointmentModal = ({
     reader.readAsDataURL(file);
   };
 
-  // Camera-only capture — no gallery/file-picker path.
+  // Camera-only capture â€” no gallery/file-picker path.
   const { requestCapture, cameraModal } = usePhotoCapture({
     onCapture: handlePhotoChange,
   });
@@ -1081,13 +1087,13 @@ const AppointmentModal = ({
           </button>
         </div>
 
-        {/* ─── STEP 1: Form ─── */}
-        {/* Restoring from ?appointmentId=… — showing an empty step 1 here would
+        {/* â”€â”€â”€ STEP 1: Form â”€â”€â”€ */}
+        {/* Restoring from ?appointmentId=â€¦ â€” showing an empty step 1 here would
             look like a fresh create form and invite a duplicate record. */}
         {rehydrateState === "loading" && (
           <div className="flex items-center justify-center gap-2 p-16 text-sm text-gray-500">
             <RefreshCw size={16} className="animate-spin" />
-            Loading appointment…
+            Loading appointmentâ€¦
           </div>
         )}
 
@@ -1106,7 +1112,7 @@ const AppointmentModal = ({
                 {/* Photo */}
                 <div className="md:col-span-5 flex flex-col items-center">
                   {/* The camera modal is a full-screen overlay and must NOT be
-                      a child of this click target — its own clicks would bubble
+                      a child of this click target â€” its own clicks would bubble
                       back into requestCapture and immediately re-open it. */}
                   <div
                     className="cursor-pointer group relative"
@@ -1138,7 +1144,7 @@ const AppointmentModal = ({
                 <div className="md:col-span-7 space-y-3 w-full">
                   <div>
                     {/* Assigning emp_code now happens from Employee Master only,
-                        so this field is always locked here — kept visible
+                        so this field is always locked here â€” kept visible
                         rather than removed since existing appointments still
                         show whichever code they already have. */}
                     <RowField
@@ -1672,11 +1678,44 @@ const AppointmentModal = ({
               </MobileCard>
             </div>
 
-            {/* Step 1 Footer — must render on mobile too. On mobile this is the
+            {/* Step 1 Footer â€” must render on mobile too. On mobile this is the
                 *only* way savedAppointmentId ever gets set (steps 1 and 2 both
                 render inline on mobile, see the `isMobile` checks above and
                 below), so hiding this button didn't just look wrong, it made
                 the Documents step permanently unreachable on a phone. */}
+            
+            {/* Uploaded Documents Section */}
+            {uploadedDocs && uploadedDocs.length > 0 && (
+              <div className="mt-8 mb-4 border border-gray-200 rounded-xl overflow-hidden mx-3 sm:mx-8">
+                <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                  <h3 className="text-sm font-bold text-gray-800">Uploaded Documents</h3>
+                </div>
+                <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {uploadedDocs.map((doc, idx) => (
+                    <div key={idx} className="p-3 border border-gray-200 rounded-lg flex items-center justify-between bg-white">
+                      <div className="min-w-0 pr-3">
+                        <p className="text-sm font-semibold text-gray-800 truncate">
+                          {doc.document_type || doc.name || "Document"}
+                        </p>
+                        <p className="text-xs text-gray-500 truncate mt-0.5" title={doc.original_filename}>
+                          {doc.original_filename || "View Only"}
+                        </p>
+                      </div>
+                      <a
+                        href={doc.url || "#"}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="shrink-0 flex items-center justify-center w-8 h-8 rounded-full bg-brand-50 text-brand-600 hover:bg-brand-100 transition"
+                        title="View Document"
+                      >
+                        <Eye size={14} />
+                      </a>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
             <div className="mt-4 flex flex-col sm:flex-row justify-center sm:justify-end gap-2">
               <button
                 type="button"
@@ -1686,46 +1725,36 @@ const AppointmentModal = ({
                 <Printer size={16} />
                 Print
               </button>
-              {isViewMode ? (
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-2.5 bg-gray-600 text-white text-sm font-semibold rounded-lg hover:bg-gray-700 transition"
-                >
-                  Close
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleSaveAndNext}
-                  disabled={savePhase !== "idle"}
-                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-2.5 bg-brand-600 text-white text-sm font-semibold rounded-lg hover:bg-brand-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {savePhase !== "idle" ? (
-                    <>
-                      <RefreshCw size={16} className="animate-spin" />
-                      {{
-                        validating: "Validating...",
-                        creating: "Saving Appointment...",
-                        updating: "Saving Changes...",
-                        opening: "Opening Upload Documents...",
-                      }[savePhase]}
-                    </>
-                  ) : (
-                    <>
-                      {savedAppointmentId
-                        ? "Save Changes & Next: Upload Documents"
-                        : "Save & Next: Upload Documents"}
-                      <ChevronRight size={16} />
-                    </>
-                  )}
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={handleSaveAndNext}
+                disabled={savePhase !== "idle"}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-2.5 bg-brand-600 text-white text-sm font-semibold rounded-lg hover:bg-brand-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {savePhase !== "idle" ? (
+                  <>
+                    <RefreshCw size={16} className="animate-spin" />
+                    {{
+                      validating: "Validating...",
+                      creating: "Saving Appointment...",
+                      updating: "Saving Changes...",
+                      opening: "Opening Upload Documents...",
+                    }[savePhase]}
+                  </>
+                ) : (
+                  <>
+                    {savedAppointmentId
+                      ? "Save Changes & Next"
+                      : "Save & Next: Upload Documents"}
+                    <ChevronRight size={16} />
+                  </>
+                )}
+              </button>
             </div>
           </div>
         )}
 
-        {/* ─── STEP 2: Documents ─── */}
+        {/* â”€â”€â”€ STEP 2: Documents â”€â”€â”€ */}
         {/* Gated on savedAppointmentId: uploads post to
             /v1/appointments/{id}/documents, so without a real id there is
             nothing to attach them to. On mobile both steps render together, so
@@ -1758,7 +1787,7 @@ const AppointmentModal = ({
             {checkingEmpCode ? (
               <div className="flex flex-col items-center py-4 gap-3">
                 <span className="w-8 h-8 border-2 border-gray-200 border-t-brand-600 rounded-full animate-spin" />
-                <p className="text-sm text-gray-500">Checking employee code…</p>
+                <p className="text-sm text-gray-500">Checking employee codeâ€¦</p>
               </div>
             ) : empCodeConflict ? (
               <>
@@ -1851,7 +1880,7 @@ const AppointmentModal = ({
         document.body,
       )}
 
-      {/* Off-screen — exists only so handlePrint has a real DOM node (with the
+      {/* Off-screen â€” exists only so handlePrint has a real DOM node (with the
           same markup used elsewhere in the app) to clone into the print window. */}
       <div className="fixed -left-[9999px] top-0" aria-hidden="true">
         <PrintableForm data={buildPrintData()} formRef={printFormRef} />
@@ -1860,8 +1889,8 @@ const AppointmentModal = ({
   );
 };
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-// ─── Form Helpers ─────────────────────────────────────────────────────────────
+// â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â”€â”€â”€ Form Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const RowField = ({
   label,
@@ -1965,3 +1994,4 @@ const NameInput = ({ label, name, value, onChange, error }) => (
 );
 
 export default AppointmentModal;
+

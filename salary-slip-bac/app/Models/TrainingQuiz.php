@@ -62,6 +62,8 @@ class TrainingQuiz extends Model
         return collect($this->questions ?? [])->values()->map(fn ($q, $i) => [
             'index' => $i,
             'text' => $q['text'] ?? '',
+            'type' => $q['type'] ?? 'mcq',
+            'marks' => (float) ($q['marks'] ?? 1),
             'options' => array_values($q['options'] ?? []),
         ])->all();
     }

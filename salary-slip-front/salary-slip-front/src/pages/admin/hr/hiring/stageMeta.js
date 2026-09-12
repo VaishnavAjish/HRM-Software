@@ -19,6 +19,8 @@ export const MAIN_STAGES = [
   { key: "selected",      label: "Selected",      color: "#22c55e", icon: Award },
   { key: "offer_sent",    label: "Offer Sent",    color: "#84cc16", icon: Send },
   { key: "offer_accepted", label: "Offer Accepted", color: "#16a34a", icon: PartyPopper },
+  { key: "onboarding",    label: "Onboarding",     color: "#0284c7", icon: PartyPopper },
+  { key: "hired",         label: "Hired",          color: "#059669", icon: PartyPopper },
 ];
 
 export const TERMINAL_STAGES = [
@@ -54,7 +56,7 @@ export const TAB_STAGE_KEYS = {
   candidates: ["applied", "screening", "shortlisted", "rejected", "on_hold"],
   assessment: ["assessment", "rejected", "on_hold"],
   interview:  ["interview", "rejected", "on_hold"],
-  offer:      ["selected", "offer_sent", "offer_accepted", "rejected", "on_hold"],
+  offer:      ["selected", "offer_sent", "offer_accepted", "onboarding", "hired", "rejected", "on_hold"],
 };
 
 export function stageLabel(key) {

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
+import { copyToClipboard } from "../../../../utils/clipboard";
 import { Check, ChevronLeft, Clock, FileQuestion, Target, User, Mail, Briefcase, Building2, MapPin } from "lucide-react";
 import Button from "../../../../components/ui/Button";
 import Modal from "../../../../components/ui/Modal";
@@ -287,7 +288,7 @@ export default function AssignAssessmentModal({ candidate, quizzes, token, token
               <label className="mb-1 block text-xs font-semibold text-gray-500 dark:text-gray-400">Secure Assessment Link</label>
               <div className="flex gap-2">
                 <input readOnly value={`${window.location.origin}/quiz/${attempt.access_token}`} className={`${inputClass} font-mono text-xs`} />
-                <Button size="sm" variant="secondary" onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/quiz/${attempt.access_token}`); toast.success("Link copied"); }}>
+                <Button size="sm" variant="secondary" onClick={async () => { const ok = await copyToClipboard(`${window.location.origin}/quiz/${attempt.access_token}`); if (ok) toast.success("Link copied"); else toast.error("Failed to copy link"); }}>
                   Copy
                 </Button>
               </div>

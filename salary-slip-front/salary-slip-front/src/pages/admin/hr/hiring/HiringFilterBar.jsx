@@ -28,7 +28,7 @@ export default function HiringFilterBar({
   const has = (f) => fields.includes(f);
 
   return (
-    <div className="sticky top-0 z-20 -mx-4 md:-mx-6 px-4 md:px-6 py-2.5 bg-gray-50/95 dark:bg-[var(--sidebar-bg)]/95 backdrop-blur-sm border-b border-gray-200 dark:border-gray-700">
+    <div className="sticky top-0 z-20 -mx-4 md:-mx-6 px-4 md:px-6 py-2.5 bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur-sm border-b border-gray-200 dark:border-gray-700">
       <div className="flex flex-wrap items-center gap-2">
         {has("search") && (
           <div className="relative flex-1 min-w-[180px] max-w-xs">

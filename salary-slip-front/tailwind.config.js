@@ -34,6 +34,7 @@ export default {
           700: 'rgb(var(--brand-700) / <alpha-value>)',
           800: 'rgb(var(--brand-800) / <alpha-value>)',
           900: 'rgb(var(--brand-900) / <alpha-value>)',
+          950: 'rgb(var(--brand-950) / <alpha-value>)',
         },
       },
       fontFamily: {

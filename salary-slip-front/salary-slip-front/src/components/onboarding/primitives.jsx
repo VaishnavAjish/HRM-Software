@@ -178,7 +178,7 @@ export function SectionCard({ title, action, children, className = "" }) {
     >
       {title ? (
         <header className="flex items-center gap-2.5 border-b border-gray-200 px-4 py-3 dark:border-gray-800">
-          <h3 className="text-[13.5px] font-semibold">{title}</h3>
+          <h3 className="text-[13.5px] font-semibold text-gray-900 dark:text-white">{title}</h3>
           {action ? <div className="ml-auto">{action}</div> : null}
         </header>
       ) : null}

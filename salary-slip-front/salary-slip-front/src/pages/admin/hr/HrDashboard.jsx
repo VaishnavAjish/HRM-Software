@@ -42,8 +42,9 @@ function todayKey() {
 
 const STAGE_LABELS = {
   applied: "Applied", screening: "Screening", shortlisted: "Shortlisted",
-  interview: "Interview", selected: "Selected", offer_sent: "Offer Sent",
-  offer_accepted: "Offer Accepted", rejected: "Rejected", on_hold: "On Hold",
+  assessment: "Assessment", interview: "Interview", selected: "Selected",
+  offer_sent: "Offer Sent", offer_accepted: "Offer Accepted",
+  onboarding: "Onboarding", rejected: "Rejected", on_hold: "On Hold",
 };
 
 const ACTIVITY_META = {
@@ -223,12 +224,12 @@ export default function HrDashboard() {
         <div className="h-72">
           {funnelData.length ? (
             <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={50}>
-              <BarChart data={funnelData} layout="vertical" margin={{ left: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e5e7eb" />
-                <XAxis type="number" allowDecimals={false} tick={{ fontSize: 12, fill: "#6b7280" }} />
-                <YAxis type="category" dataKey="stage" width={120} tick={{ fontSize: 12, fill: "#6b7280" }} />
-                <Tooltip contentStyle={{ borderRadius: 16, border: "none", boxShadow: "0 10px 25px rgba(0,0,0,0.1)" }} cursor={{ fill: "#f8fafc" }} />
-                <Bar dataKey="count" fill="#4f46e5" radius={[0, 8, 8, 0]} />
+              <BarChart data={funnelData} layout="vertical" margin={{ left: 24, right: 16 }}>
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#374151" />
+                <XAxis type="number" allowDecimals={false} tick={{ fontSize: 12, fill: "#9ca3af" }} />
+                <YAxis type="category" dataKey="stage" width={104} tick={{ fontSize: 12, fill: "#9ca3af" }} />
+                <Tooltip contentStyle={{ backgroundColor: "#1f2937", color: "#f9fafb", border: "1px solid #374151", borderRadius: 12 }} cursor={{ fill: "rgba(255, 255, 255, 0.05)" }} />
+                <Bar dataKey="count" fill="#4f46e5" radius={[0, 4, 4, 0]} barSize={16} />
               </BarChart>
             </ResponsiveContainer>
           ) : <EmptyChart text="No candidates in hiring funnel" /> }
@@ -256,7 +257,7 @@ export default function HrDashboard() {
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
                     <XAxis dataKey="month" tick={{ fontSize: 12, fill: "#6b7280" }} />
                     <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: "#6b7280" }} />
-                    <Tooltip contentStyle={{ borderRadius: 16, border: "none" }} />
+                    <Tooltip contentStyle={{ backgroundColor: "#1f2937", color: "#f9fafb", border: "1px solid #374151", borderRadius: 12 }} cursor={{ fill: "rgba(255, 255, 255, 0.05)" }} />
                     <Legend />
                     <Bar dataKey="joiners" name="Joiners" fill="#10b981" radius={[8, 8, 0, 0]} barSize={24} />
                     <Line type="monotone" dataKey="resignations" name="Resignations" stroke="#ef4444" strokeWidth={3} dot={{ r: 4 }} />

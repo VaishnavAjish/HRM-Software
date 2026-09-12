@@ -1,22 +1,49 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import toast from "react-hot-toast";
-import { Search, Users, RefreshCw } from "lucide-react";
-import Badge from "../../../../components/ui/Badge";
-import Button from "../../../../components/ui/Button";
-import Card from "../../../../components/ui/Card";
-import { SkeletonTable } from "../../../../components/ui/Skeleton";
+import { useEffect, useState } from "react";
+import {
+  Users, Briefcase, Layers, ArrowRightLeft, Building2, MapPin, ScatterChart as ScatterIcon
+} from "lucide-react";
+import {
+  ResponsiveContainer, PieChart, Pie, Cell, Tooltip, 
+  BarChart, Bar, XAxis, YAxis, CartesianGrid,
+  ScatterChart, Scatter, ZAxis
+} from "recharts";
+import { StatCard } from "../../../../components/ui/Card";
 import { useAuth } from "../../../../context/AuthContext";
 import { organizationApi } from "../../../../features/organization/services/organizationApi";
 
-const inputClass =
-  "w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500";
+const DEPT_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300"];
+const BRANCH_COLORS = ["#8b5cf6", "#ec4899", "#14b8a6", "#f59e0b", "#6366f1", "#ef4444"];
+const DEPT_OTHER_COLOR = "#94a3b8";
+const MAX_SLICES = 6;
 
-function KpiTile({ label, value }) {
+function Lift({ children }) {
+  return <div className="transition-transform duration-200 hover:-translate-y-0.5">{children}</div>;
+}
+
+function SectionCard({ title, subtitle, icon, compact, children }) {
   return (
-    <Card padding={false} className="p-4">
-      <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">{label}</p>
-      <p className="mt-1 text-2xl font-bold text-gray-900 dark:text-white">{value ?? 0}</p>
-    </Card>
+    <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-200/80 dark:border-gray-800 shadow-sm p-6 transition-all hover:shadow-md flex flex-col h-full">
+      <div className="flex flex-wrap items-start justify-between gap-4 mb-4 shrink-0">
+        <div>
+          <h3 className={`font-bold text-gray-900 dark:text-white flex items-center gap-2.5 ${compact ? "text-sm" : "text-base"}`}>
+            {icon && <span className="text-brand-600 dark:text-brand-400">{icon}</span>}
+            {title}
+          </h3>
+          {subtitle && <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{subtitle}</p>}
+        </div>
+      </div>
+      <div className="flex-1 min-h-0">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function EmptyChart({ text, compact }) {
+  return (
+    <div className={`flex items-center justify-center ${compact ? "h-32" : "h-full"} text-xs font-semibold text-gray-400 dark:text-gray-500`}>
+      {text}
+    </div>
   );
 }
 
@@ -24,243 +51,157 @@ export default function OverviewTab() {
   const { user } = useAuth();
   const token = user?.accessToken;
   const tokenType = user?.tokenType || "Bearer";
-
-  const [companies, setCompanies] = useState([]);
-  const [companyId, setCompanyId] = useState("");
-  const [units, setUnits] = useState([]);
-  const [search, setSearch] = useState("");
-  const [selectedUnitId, setSelectedUnitId] = useState(null);
-  const [positions, setPositions] = useState([]);
+  
   const [summary, setSummary] = useState(null);
-  const [loadingUnits, setLoadingUnits] = useState(true);
-  const [loadingPositions, setLoadingPositions] = useState(false);
-  const [refreshKey, setRefreshKey] = useState(0);
+  const [companyCount, setCompanyCount] = useState(0);
+  const [pendingChanges, setPendingChanges] = useState(0);
+  const [deptData, setDeptData] = useState([]);
+  const [branchData, setBranchData] = useState([]);
 
   useEffect(() => {
     if (!token) return undefined;
     let active = true;
-    organizationApi.legalEntityProfileCompanies(token, tokenType)
-      .then((res) => { if (active) setCompanies(res?.data ?? []); })
+
+    organizationApi.headcountSummary({}, token, tokenType)
+      .then(res => { if (active) setSummary(res?.data?.totals ?? null); })
       .catch(() => {});
+
+    organizationApi.legalEntityProfileCompanies(token, tokenType)
+      .then(res => { if (active) setCompanyCount(res?.data?.length || 0); })
+      .catch(() => {});
+
+    organizationApi.orgChanges({ status: "pending_approval" }, token, tokenType)
+      .then(res => { if (active) setPendingChanges(res?.data?.total || res?.data?.data?.length || 0); })
+      .catch(() => {});
+      
+    organizationApi.departmentBranchSummary(token, tokenType)
+      .then(res => {
+        if (!active) return;
+        const depts = res?.data?.departments || [];
+        const branches = res?.data?.branches || res?.data?.units || [];
+        
+        setDeptData(depts.map(d => ({ name: d.name || "Unknown", total: Number(d.employeeCount || d.total || 0) })));
+        setBranchData(branches.map(b => ({ name: b.name || "Unknown", total: Number(b.employeeCount || b.total || 0) })));
+      })
+      .catch(() => {});
+
     return () => { active = false; };
   }, [token, tokenType]);
 
-  useEffect(() => {
-    if (!token) return undefined;
-    let active = true;
-    organizationApi.headcountSummary(
-      companyId ? { companyIds: [companyId] } : {},
-      token, tokenType,
-    )
-      .then((res) => { if (active) setSummary(res?.data?.totals ?? null); })
-      .catch(() => {});
-    return () => { active = false; };
-  }, [token, tokenType, companyId, refreshKey]);
+  // Format Department Pie Data
+  const deptTotal = deptData.reduce((sum, d) => sum + d.total, 0);
+  const sortedDept = [...deptData].sort((a, b) => b.total - a.total);
+  const otherDeptTotal = sortedDept.slice(MAX_SLICES).reduce((sum, d) => sum + d.total, 0);
+  const pieChartData = [
+    ...sortedDept.slice(0, MAX_SLICES).map((d, i) => ({
+      name: d.name, total: d.total, color: DEPT_COLORS[i % DEPT_COLORS.length],
+    })),
+    ...(otherDeptTotal > 0 ? [{ name: "Other", total: otherDeptTotal, color: DEPT_OTHER_COLOR }] : []),
+  ].map((d) => ({ ...d, pct: deptTotal ? Math.round((d.total / deptTotal) * 100) : 0 }));
 
-  useEffect(() => {
-    if (!token) return undefined;
-    let active = true;
-    organizationApi.orgUnits(
-      { companyIds: companyId ? [companyId] : undefined, search: search || undefined },
-      token, tokenType,
-    )
-      .then((res) => { if (active) setUnits(res?.data ?? []); })
-      .catch((err) => toast.error(err.message || "Could not load organization units"))
-      .finally(() => { if (active) setLoadingUnits(false); });
-    return () => { active = false; };
-  }, [token, tokenType, companyId, search, refreshKey]);
+  // Format Branch Bar Data
+  const topBranches = [...branchData].sort((a, b) => b.total - a.total).slice(0, 8);
 
-  useEffect(() => {
-    if (!token || !selectedUnitId) return undefined;
-    let active = true;
-    organizationApi.orgUnitPositions(selectedUnitId, {}, token, tokenType)
-      .then((res) => { if (active) setPositions(res?.data ?? []); })
-      .catch((err) => toast.error(err.message || "Could not load positions"))
-      .finally(() => { if (active) setLoadingPositions(false); });
-    return () => { active = false; };
-  }, [token, tokenType, selectedUnitId]);
-
-  const selectedUnit = useMemo(
-    () => units.find((u) => u.id === selectedUnitId) || null,
-    [units, selectedUnitId],
-  );
-
-  const reload = useCallback(() => { setLoadingUnits(true); setRefreshKey((v) => v + 1); }, []);
-
-  const changeSearch = (event) => { setLoadingUnits(true); setSearch(event.target.value); };
-
-  const changeCompany = (event) => {
-    setLoadingUnits(true);
-    setCompanyId(event.target.value);
-    setSelectedUnitId(null);
-    setPositions([]);
-  };
-
-  const selectUnit = (unitId) => {
-    setSelectedUnitId(unitId);
-    setLoadingPositions(true);
-    setPositions([]);
-  };
+  // Scatter Data (Derived distribution)
+  const scatterData = sortedDept.map((d, i) => ({
+    x: i + 1, // pseudo-index for spread
+    y: d.total,
+    z: d.total * 10, // size of bubble
+    name: d.name,
+    fill: DEPT_COLORS[i % DEPT_COLORS.length] || DEPT_OTHER_COLOR
+  }));
 
   return (
-    <div className="min-w-0 max-w-full space-y-5">
-      {summary && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-          <KpiTile label="Org Units" value={units.length} />
-          <KpiTile label="Positions" value={summary.positionCount} />
-          <KpiTile label="Approved HC" value={summary.approvedHeadcount} />
-          <KpiTile label="Filled" value={summary.filledHeadcount} />
-          <KpiTile label="Vacant" value={summary.vacantHeadcount} />
-          <KpiTile label="Frozen" value={summary.frozenCount} />
-        </div>
-      )}
+    <div className="space-y-6 pb-12 font-sans text-gray-900 dark:text-gray-100">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Lift><StatCard compact title="Total Workforce" value={summary?.approvedHeadcount ?? "—"} icon={<Users size={20} />} color="blue" /></Lift>
+        <Lift><StatCard compact title="Open Positions" value={summary?.vacantHeadcount ?? "—"} icon={<Briefcase size={20} />} color="yellow" /></Lift>
+        <Lift><StatCard compact title="Total Companies" value={companyCount ?? "—"} icon={<Building2 size={20} />} color="green" /></Lift>
+        <Lift><StatCard compact title="Pending Org Changes" value={pendingChanges ?? "—"} icon={<ArrowRightLeft size={20} />} color="red" /></Lift>
+      </div>
 
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-5">
-        <Card padding={false} className="lg:col-span-2">
-          <div className="border-b border-gray-200 p-4 dark:border-gray-700">
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="relative flex-1 min-w-[160px]">
-                <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input
-                  aria-label="Search organization units"
-                  className={`${inputClass} pl-8`}
-                  placeholder="Search department or unit…"
-                  value={search}
-                  onChange={changeSearch}
-                />
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <SectionCard title="Headcount by Department" subtitle="Distribution of employees" icon={<Layers size={18} />}>
+          <div className="h-80">
+            {pieChartData.length > 0 ? (
+              <div className="flex flex-col h-full items-center gap-4 py-2">
+                <div className="w-full h-48">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie data={pieChartData} dataKey="total" nameKey="name" innerRadius="55%" outerRadius="95%" paddingAngle={2} stroke="none">
+                        {pieChartData.map((d) => <Cell key={d.name} fill={d.color} />)}
+                      </Pie>
+                      <Tooltip
+                        contentStyle={{ backgroundColor: "#1f2937", color: "#f9fafb", border: "1px solid #374151", borderRadius: 12 }}
+                        formatter={(value, _name, entry) => [`${value} (${entry.payload.pct}%)`, entry.payload.name]}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="w-full flex flex-wrap justify-center gap-x-4 gap-y-2 px-2 max-h-24 overflow-y-auto text-xs">
+                  {pieChartData.map((d) => (
+                    <div key={d.name} className="flex items-center gap-1.5 whitespace-nowrap">
+                      <span className="w-2.5 h-2.5 rounded-full" style={{ background: d.color }} />
+                      <span className="text-gray-700 dark:text-gray-300 truncate max-w-[120px]">{d.name}</span>
+                      <span className="font-semibold text-gray-900 dark:text-gray-100 ml-1">{d.total}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <select
-                aria-label="Filter by company"
-                className={`${inputClass} w-40`}
-                value={companyId}
-                onChange={changeCompany}
-              >
-                <option value="">All companies</option>
-                {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-              <Button variant="ghost" onClick={reload} title="Refresh"><RefreshCw size={16} /></Button>
-            </div>
+            ) : <EmptyChart text="No department data available" />}
           </div>
+        </SectionCard>
 
-          {loadingUnits && <div className="p-4"><SkeletonTable rows={6} /></div>}
+        <SectionCard title="Workforce by Branch" subtitle="Top branches by employee count" icon={<MapPin size={18} />}>
+          <div className="h-80">
+            {topBranches.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={topBranches} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                  <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#6b7280" }} tickLine={false} axisLine={false} />
+                  <YAxis tick={{ fontSize: 11, fill: "#6b7280" }} tickLine={false} axisLine={false} allowDecimals={false} />
+                  <Tooltip 
+                    contentStyle={{ backgroundColor: "#1f2937", color: "#f9fafb", border: "1px solid #374151", borderRadius: 12 }} 
+                    cursor={{ fill: "rgba(255, 255, 255, 0.05)" }}
+                  />
+                  <Bar dataKey="total" fill="#4f46e5" radius={[6, 6, 0, 0]} barSize={32}>
+                    {topBranches.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={BRANCH_COLORS[index % BRANCH_COLORS.length]} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            ) : <EmptyChart text="No branch data available" />}
+          </div>
+        </SectionCard>
 
-          {!loadingUnits && (
-            <div className="max-h-[520px] divide-y divide-gray-100 overflow-y-auto dark:divide-gray-700/60">
-              {units.length === 0 && (
-                <p className="p-8 text-center text-sm text-gray-500 dark:text-gray-400">
-                  No organization units match these filters.
-                </p>
-              )}
-              {units.map((unit) => (
-                <button
-                  key={unit.id}
-                  type="button"
-                  onClick={() => selectUnit(unit.id)}
-                  className={`flex w-full items-center justify-between gap-2 px-4 py-3 text-left text-sm hover:bg-gray-50 dark:hover:bg-gray-700/40 ${
-                    selectedUnitId === unit.id ? "bg-brand-50 dark:bg-brand-900/20" : ""
-                  }`}
-                >
-                  <span className="min-w-0">
-                    <span className="block truncate font-medium text-gray-900 dark:text-white">{unit.name}</span>
-                    <span className="block truncate text-xs text-gray-500 dark:text-gray-400">
-                      {unit.companyName || "—"} · {unit.managerName ? `Manager: ${unit.managerName}` : "No manager set"}
-                    </span>
-                  </span>
-                  <span className="flex shrink-0 items-center gap-2">
-                    <Badge variant={unit.status === "active" ? "green" : "gray"}>
-                      <span className="capitalize">{unit.type?.replace(/_/g, " ") || "—"}</span>
-                    </Badge>
-                  </span>
-                </button>
-              ))}
+        <div className="xl:col-span-2">
+          <SectionCard title="Department Density Analysis" subtitle="Headcount concentration mapping" icon={<ScatterIcon size={18} />}>
+            <div className="h-72">
+              {scatterData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: -20 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
+                    <XAxis type="number" dataKey="x" name="Department Index" hide />
+                    <YAxis type="number" dataKey="y" name="Headcount" tick={{ fontSize: 12, fill: "#6b7280" }} tickLine={false} axisLine={false} allowDecimals={false} />
+                    <ZAxis type="number" dataKey="z" range={[100, 1500]} name="Density" />
+                    <Tooltip 
+                      cursor={{ strokeDasharray: '3 3' }} 
+                      contentStyle={{ backgroundColor: "#1f2937", color: "#f9fafb", border: "1px solid #374151", borderRadius: 12 }}
+                      formatter={(value, name, props) => name === 'Headcount' ? [value, props.payload.name] : null}
+                      labelFormatter={() => ''}
+                    />
+                    <Scatter name="Departments" data={scatterData}>
+                      {scatterData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.fill} />
+                      ))}
+                    </Scatter>
+                  </ScatterChart>
+                </ResponsiveContainer>
+              ) : <EmptyChart text="Not enough data for density chart" />}
             </div>
-          )}
-        </Card>
-
-        <Card className="lg:col-span-3">
-          {!selectedUnit && (
-            <p className="flex h-full min-h-[200px] items-center justify-center text-center text-sm text-gray-500 dark:text-gray-400">
-              Select an organization unit to see its positions.
-            </p>
-          )}
-
-          {selectedUnit && (
-            <div className="space-y-4">
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <div>
-                  <h2 className="text-lg font-bold text-gray-900 dark:text-white">{selectedUnit.name}</h2>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    {selectedUnit.companyName || "—"} · {selectedUnit.parentName ? `Under ${selectedUnit.parentName}` : "Top level"}
-                  </p>
-                </div>
-                <Badge variant={selectedUnit.status === "active" ? "green" : "gray"}>
-                  <span className="capitalize">{selectedUnit.status}</span>
-                </Badge>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
-                <div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Manager</p>
-                  <p className="text-gray-900 dark:text-white">{selectedUnit.managerName || "—"}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Active Assignments</p>
-                  <p className="text-gray-900 dark:text-white">{selectedUnit.assignmentCount ?? "—"}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Sub-units</p>
-                  <p className="text-gray-900 dark:text-white">{selectedUnit.hasChildren ? "Yes" : "No"}</p>
-                </div>
-              </div>
-
-              <div>
-                <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200">
-                  <Users size={15} /> Positions
-                </div>
-                {loadingPositions && <SkeletonTable rows={3} />}
-                {!loadingPositions && positions.length === 0 && (
-                  <p className="rounded-lg border border-dashed border-gray-200 p-6 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
-                    No positions on this unit yet.
-                  </p>
-                )}
-                {!loadingPositions && positions.length > 0 && (
-                  <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
-                    <table className="w-full text-left text-sm">
-                      <thead className="bg-gray-50 text-xs font-semibold uppercase text-gray-600 dark:bg-gray-800 dark:text-gray-300">
-                        <tr>
-                          <th className="px-3 py-2">Title</th>
-                          <th className="px-3 py-2">Approved</th>
-                          <th className="px-3 py-2">Filled</th>
-                          <th className="px-3 py-2">Vacant</th>
-                          <th className="px-3 py-2">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100 dark:divide-gray-700/60">
-                        {positions.map((pos) => (
-                          <tr key={pos.id}>
-                            <td className="px-3 py-2 font-medium text-gray-900 dark:text-white">{pos.title}</td>
-                            <td className="px-3 py-2 text-gray-600 dark:text-gray-300">{pos.approvedHeadcount ?? 0}</td>
-                            <td className="px-3 py-2 text-gray-600 dark:text-gray-300">{pos.filledHeadcount ?? pos.currentHeadcount ?? 0}</td>
-                            <td className="px-3 py-2">
-                              <span className={pos.vacantHeadcount > 0 ? "font-semibold text-amber-600 dark:text-amber-400" : "text-gray-600 dark:text-gray-300"}>
-                                {pos.vacantHeadcount ?? pos.vacancy ?? 0}
-                              </span>
-                            </td>
-                            <td className="px-3 py-2">
-                              <Badge variant={pos.status === "frozen" ? "yellow" : "green"}>
-                                <span className="capitalize">{pos.status}</span>
-                              </Badge>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </Card>
+          </SectionCard>
+        </div>
       </div>
     </div>
   );

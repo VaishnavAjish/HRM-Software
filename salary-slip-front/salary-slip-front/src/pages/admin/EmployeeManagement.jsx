@@ -88,6 +88,7 @@ const FILTER_KEY_MAP = {
   companyLabel: "company_code",
   department: "department",
   status: "status",
+  gender: "gender",
 };
 
 const selectCls =
@@ -246,7 +247,7 @@ export default function EmployeeManagement() {
   ], []);
 
   const [visibleColumns, setVisibleColumns] = useState([
-    "empCode", "name", "department", "designation", "companyLabel", "unit", "loginRole", "status"
+    "empCode", "name", "gender", "department", "designation", "companyLabel", "unit", "loginRole", "status"
   ]);
   const [showColModal, setShowColModal] = useState(false);
 
@@ -274,6 +275,7 @@ export default function EmployeeManagement() {
   const [selectedDepartment, setSelectedDepartment] = useState("");
   const [selectedCompany, setSelectedCompany] = useState("");
   const [selectedUnit, setSelectedUnit] = useState("");
+  const [selectedGender, setSelectedGender] = useState("");
 
   const [departmentsList, setDepartmentsList] = useState([]);
   const [allDepartments, setAllDepartments] = useState([]);
@@ -335,8 +337,11 @@ export default function EmployeeManagement() {
     if (selectedUnit) {
       filters.unit = selectedUnit;
     }
+    if (selectedGender) {
+      filters.gender = selectedGender;
+    }
     return filters;
-  }, [apiFilter, searchQuery, selectedStatus, selectedDepartment, selectedCompany, selectedUnit]);
+  }, [apiFilter, searchQuery, selectedStatus, selectedDepartment, selectedCompany, selectedUnit, selectedGender]);
 
   const mergedFiltersKey = useMemo(() => JSON.stringify(mergedFilters), [mergedFilters]);
 
@@ -861,7 +866,7 @@ export default function EmployeeManagement() {
         // Without an explicit limit the backend paginates at 15
         // (UserController::index), so the export silently dropped every
         // employee past the first page.
-        { ...apiFilter, limit: 1000 },
+        { ...mergedFilters, limit: 1000 },
         companyScope,
       );
 
@@ -880,7 +885,7 @@ export default function EmployeeManagement() {
         Unit: e.unit || "N.A.",
         "Emp Code": e.empCode,
         Name: e.name || "N.A.",
-        Gender: e.gender || "N.A.",
+        Gender: e.gender && e.gender !== "-" ? e.gender : "",
         Email: e.email || "N.A.",
         "Mobile Number": e.mobileNo || "N.A.",
         "Date of Birth": formatDisplayDate(e.dob) || "N.A.",
@@ -1049,16 +1054,24 @@ export default function EmployeeManagement() {
         headerName: "Gender",
         field: "gender",
         flex: 1,
-        minWidth: 120,
+        minWidth: 110,
         hide: isMobile || !visibleColumns.includes("gender"),
         filter: "agTextColumnFilter",
-        cellRenderer: ({ value }) => (
-          <div className="flex h-full w-full items-center overflow-hidden">
-            <span className="text-sm text-gray-600 dark:text-gray-300 truncate">
-              {value || "-"}
-            </span>
-          </div>
-        ),
+        valueGetter: ({ data }) => {
+          const g = data?.gender;
+          if (!g || g === "-" || String(g).trim() === "") return "";
+          return g;
+        },
+        cellRenderer: ({ value }) => {
+          const val = value && value !== "-" ? value : "";
+          return (
+            <div className="flex h-full w-full items-center overflow-hidden">
+              <span className="text-sm text-gray-600 dark:text-gray-300 truncate">
+                {val}
+              </span>
+            </div>
+          );
+        },
       },
       {
         headerName: "Email",
@@ -1590,6 +1603,21 @@ export default function EmployeeManagement() {
                 {u}
               </option>
             ))}
+          </select>
+
+          {/* Gender Filter */}
+          <select
+            value={selectedGender}
+            onChange={(e) => {
+              setSelectedGender(e.target.value);
+              setApiPage(1);
+            }}
+            className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-500/20 dark:border-white/10 dark:bg-[#0b0f1a] dark:text-white"
+          >
+            <option value="">All Genders</option>
+            <option value="Male">Male</option>
+            <option value="Female">Female</option>
+            <option value="blank">Blank</option>
           </select>
 
           {/* Employee Counts */}

@@ -28,6 +28,134 @@ class PublicQuizController extends Controller
     }
 
     /**
+     * Test / simulation mode endpoint for HR to experience the exact candidate quiz interface.
+     */
+    public function testQuiz($quizId)
+    {
+        $quiz = \App\Models\TrainingQuiz::find($quizId);
+        if (!$quiz) {
+            return response()->json(['status' => false, 'message' => 'Quiz not found'], 404);
+        }
+
+        return response()->json(['status' => true, 'data' => [
+            'candidate_name' => 'HR / Recruiter (Test Simulation)',
+            'is_test_simulation' => true,
+            'quiz' => [
+                'id' => $quiz->id,
+                'title' => $quiz->title,
+                'description' => $quiz->description,
+                'passing_score' => $quiz->passing_score ?? 60,
+                'max_violations' => $quiz->max_violations ?? 3,
+                'total_questions' => count($quiz->questions ?? []),
+            ],
+            'status' => 'pending',
+            'duration_minutes' => $quiz->duration_minutes ?? 30,
+            'scheduled_start_at' => null,
+            'not_yet_open' => false,
+            'started_at' => null,
+            'deadline' => null,
+            'seconds_remaining' => ($quiz->duration_minutes ?? 30) * 60,
+            'violation_count' => 0,
+            'answers' => [],
+            'questions' => $quiz->questionsForCandidate(),
+            'result' => null,
+        ]]);
+    }
+
+    /**
+     * Evaluate submitted answers in test simulation mode.
+     */
+    public function submitTestQuiz(Request $request, $quizId)
+    {
+        $quiz = \App\Models\TrainingQuiz::find($quizId);
+        if (!$quiz) {
+            return response()->json(['status' => false, 'message' => 'Quiz not found'], 404);
+        }
+
+        $questions = $quiz->questions ?? [];
+        $data = $request->validate(['answers' => 'nullable|array']);
+        $answers = $data['answers'] ?? [];
+
+        $correct = 0;
+        $totalMarks = 0.0;
+        $earnedMarks = 0.0;
+
+        foreach ($questions as $i => $q) {
+            $type = $q['type'] ?? 'mcq';
+            $qMarks = isset($q['marks']) && is_numeric($q['marks']) ? (float) $q['marks'] : 1.0;
+            $totalMarks += $qMarks;
+
+            $given = $answers[$i] ?? null;
+            $optionMarks = isset($q['option_marks']) && is_array($q['option_marks']) ? $q['option_marks'] : [];
+            $qEarned = 0.0;
+
+            if ($type === 'msq') {
+                $correctIndices = $q['correct_indices'] ?? (isset($q['correct_index']) ? [$q['correct_index']] : []);
+                $correctIndices = array_values(array_unique(array_map('intval', (array) $correctIndices)));
+                sort($correctIndices);
+
+                $givenIndices = is_array($given) ? array_values(array_unique(array_map('intval', $given))) : ($given !== null ? [(int) $given] : []);
+                sort($givenIndices);
+
+                $hasWrongSelection = false;
+                foreach ($givenIndices as $gIdx) {
+                    if (!in_array($gIdx, $correctIndices, true)) {
+                        $hasWrongSelection = true;
+                        break;
+                    }
+                }
+
+                if ($hasWrongSelection) {
+                    $qEarned = 0.0;
+                } elseif (count($givenIndices) > 0) {
+                    if (count($optionMarks) > 0) {
+                        foreach ($givenIndices as $gIdx) {
+                            if (isset($optionMarks[$gIdx])) {
+                                $qEarned += max(0.0, (float) $optionMarks[$gIdx]);
+                            }
+                        }
+                    } elseif ($givenIndices === $correctIndices) {
+                        $qEarned = $qMarks;
+                    }
+                }
+            } else {
+                $correctIndex = isset($q['correct_index']) ? (int) $q['correct_index'] : (isset($q['correct_indices'][0]) ? (int) $q['correct_indices'][0] : 0);
+                $givenIndex = is_array($given) ? ($given[0] ?? null) : $given;
+                if ($givenIndex !== null) {
+                    $gIdx = (int) $givenIndex;
+                    if (count($optionMarks) > 0 && isset($optionMarks[$gIdx])) {
+                        $qEarned = max(0.0, (float) $optionMarks[$gIdx]);
+                    } elseif ($gIdx === $correctIndex) {
+                        $qEarned = $qMarks;
+                    }
+                }
+            }
+
+            $qEarned = min($qMarks, max(0.0, $qEarned));
+            $earnedMarks += $qEarned;
+
+            if ($qEarned >= $qMarks - 0.001 && $qMarks > 0) {
+                $correct++;
+            } elseif ($qEarned > 0 && $qMarks > 0) {
+                $correct += ($qEarned / $qMarks);
+            }
+        }
+
+        $total = count($questions);
+        $score = $totalMarks > 0 ? (int) round(($earnedMarks / $totalMarks) * 100) : ($total > 0 ? (int) round(($correct / $total) * 100) : 0);
+        $passing = $quiz->passing_score ?? 60;
+
+        return response()->json(['status' => true, 'message' => 'Test quiz submitted', 'data' => [
+            'score' => $score,
+            'passed' => $score >= $passing,
+            'correct_count' => round($correct, 1),
+            'total_questions' => $total,
+            'earned_marks' => round($earnedMarks, 2),
+            'total_marks' => $totalMarks,
+        ]]);
+    }
+
+    /**
      * Attempt metadata + questions. Returns the questions only once the
      * attempt is actually in progress, so the paper can't be lifted from the
      * link before starting the timer.
@@ -245,15 +373,75 @@ class PublicQuizController extends Controller
         $answers = $attempt->answers ?? [];
 
         $correct = 0;
+        $totalMarks = 0.0;
+        $earnedMarks = 0.0;
+
         foreach ($questions as $i => $q) {
+            $type = $q['type'] ?? 'mcq';
+            $qMarks = isset($q['marks']) && is_numeric($q['marks']) ? (float) $q['marks'] : 1.0;
+            $totalMarks += $qMarks;
+
             $given = $answers[$i] ?? null;
-            if ($given !== null && (int) $given === (int) ($q['correct_index'] ?? -1)) {
+            $optionMarks = isset($q['option_marks']) && is_array($q['option_marks']) ? $q['option_marks'] : [];
+            $qEarned = 0.0;
+            $isFullyCorrect = false;
+
+            if ($type === 'msq') {
+                $correctIndices = $q['correct_indices'] ?? (isset($q['correct_index']) ? [$q['correct_index']] : []);
+                $correctIndices = array_values(array_unique(array_map('intval', (array) $correctIndices)));
+                sort($correctIndices);
+
+                $givenIndices = is_array($given) ? array_values(array_unique(array_map('intval', $given))) : ($given !== null ? [(int) $given] : []);
+                sort($givenIndices);
+
+                $hasWrongSelection = false;
+                foreach ($givenIndices as $gIdx) {
+                    if (!in_array($gIdx, $correctIndices, true)) {
+                        $hasWrongSelection = true;
+                        break;
+                    }
+                }
+
+                if ($hasWrongSelection) {
+                    $qEarned = 0.0;
+                } elseif (count($givenIndices) > 0) {
+                    if (count($optionMarks) > 0) {
+                        foreach ($givenIndices as $gIdx) {
+                            if (isset($optionMarks[$gIdx])) {
+                                $qEarned += max(0.0, (float) $optionMarks[$gIdx]);
+                            }
+                        }
+                    } elseif ($givenIndices === $correctIndices) {
+                        $qEarned = $qMarks;
+                    }
+                }
+            } else {
+                $correctIndex = isset($q['correct_index']) ? (int) $q['correct_index'] : (isset($q['correct_indices'][0]) ? (int) $q['correct_indices'][0] : 0);
+                $givenIndex = is_array($given) ? ($given[0] ?? null) : $given;
+                if ($givenIndex !== null) {
+                    $gIdx = (int) $givenIndex;
+                    if (count($optionMarks) > 0 && isset($optionMarks[$gIdx])) {
+                        $qEarned = max(0.0, (float) $optionMarks[$gIdx]);
+                    } elseif ($gIdx === $correctIndex) {
+                        $qEarned = $qMarks;
+                    }
+                }
+            }
+
+            // Cap earned marks to question total
+            $qEarned = min($qMarks, max(0.0, $qEarned));
+            $earnedMarks += $qEarned;
+
+            if ($qEarned >= $qMarks - 0.001 && $qMarks > 0) {
                 $correct++;
+            } elseif ($qEarned > 0 && $qMarks > 0) {
+                // Partial credit ratio for correct_count metric
+                $correct += ($qEarned / $qMarks);
             }
         }
 
         $total = count($questions);
-        $score = $total > 0 ? (int) round(($correct / $total) * 100) : 0;
+        $score = $totalMarks > 0 ? (int) round(($earnedMarks / $totalMarks) * 100) : ($total > 0 ? (int) round(($correct / $total) * 100) : 0);
         $passing = $attempt->quiz?->passing_score ?? 60;
 
         $events = $attempt->proctor_events ?? [];

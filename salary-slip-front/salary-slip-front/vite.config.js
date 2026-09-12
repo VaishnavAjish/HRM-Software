@@ -60,6 +60,17 @@ export default defineConfig(({ mode }) => {
 
   return {
     root: projectRoot,
+    // Same mapped-network-drive problem as the HTML-drive-letter plugin below,
+    // one layer deeper: Vite/Rollup's default module resolution calls
+    // fs.realpath on every id, which canonicalizes a mapped drive (F:\...) to
+    // its UNC form (\\host\share\...). That UNC id then gets resolved against
+    // projectRoot's drive-letter path, producing a broken hybrid path like
+    // "F:\\host\\share\\..." — exactly the ENOENT this build was hitting on
+    // /src/main.jsx. preserveSymlinks keeps every id in the form Vite was
+    // invoked with instead of canonicalizing it.
+    resolve: {
+      preserveSymlinks: true,
+    },
     define: {
       __COMPANY_MODE__: JSON.stringify(COMPANY_MODE),
       __PROD_API_URL__: JSON.stringify(PROD_API_URL || ""),
@@ -211,7 +222,8 @@ export default defineConfig(({ mode }) => {
     ],
     server: {
       host: true,
-      port: 5175,
+      port: 5176,
+      strictPort: true,
       watch: {
         ignored: ["**/main/**", "**/master/**", "**/nidhi-impex/**", "**/silver-star/**"],
       },

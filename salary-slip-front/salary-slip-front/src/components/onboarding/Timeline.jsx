@@ -27,7 +27,7 @@ export default function Timeline({ items = [] }) {
             <Check size={11} strokeWidth={2.6} />
           </span>
           <div className="min-w-0 pt-px">
-            <b className="text-[13px] font-semibold">{item.title}</b>
+            <b className="text-[13px] font-semibold text-gray-900 dark:text-gray-100">{item.title}</b>
             {item.description ? (
               <p className="mt-px text-[12.5px] text-gray-500 dark:text-gray-400">{item.description}</p>
             ) : null}

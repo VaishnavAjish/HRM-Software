@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import {
   Plus, RefreshCw, Search, Loader2, Pencil, Trash2, Shield, Building2, Briefcase,
-  Snowflake, PlayCircle, ChevronDown, ChevronRight, UserPlus, UserRound,
+  Snowflake, PlayCircle, ChevronDown, ChevronRight, UserPlus, UserRound, Crown,
 } from "lucide-react";
 import Badge from "../../../components/ui/Badge";
 import Button from "../../../components/ui/Button";
@@ -16,6 +16,10 @@ import { departmentApi } from "../../../utils/api";
 const inputClass =
   "w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500";
 const labelClass = "mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400";
+
+// Requested to be hidden "for now" — department-scoped designations still
+// work exactly as before underneath, this only stops them from rendering.
+const SHOW_DEPARTMENT_DESIGNATIONS = false;
 
 const POSITION_TYPES = [
   { value: "executive", label: "Executive" },
@@ -98,18 +102,27 @@ function DesignationRows({ positions, depth, parentId, visited, can, onEdit, onF
     if (visited.has(pos.id)) return [];
     const nextVisited = new Set(visited).add(pos.id);
     return [
-      <tr key={pos.id} className="hover:bg-gray-50/70 dark:hover:bg-gray-700/40">
+      <tr key={pos.id} className={`hover:bg-gray-50/70 dark:hover:bg-gray-700/40 ${depth === 0 ? "bg-amber-50/40 dark:bg-amber-900/10" : ""}`}>
         <td className="px-3 py-2 font-medium text-gray-900 dark:text-white">
-          <button
-            type="button"
-            onClick={() => onView(pos)}
-            title="View employees in this designation"
-            style={{ paddingLeft: `${depth * 18}px` }}
-            className="inline-flex items-center gap-1.5 text-left hover:text-brand-600 hover:underline dark:hover:text-brand-400"
-          >
-            {depth > 0 && <span className="text-gray-300 dark:text-gray-600">└</span>}
-            {pos.title}
-          </button>
+          {onView ? (
+            <button
+              type="button"
+              onClick={() => onView(pos)}
+              title="View employees in this designation"
+              style={{ paddingLeft: `${depth * 18}px` }}
+              className="inline-flex items-center gap-1.5 text-left hover:text-brand-600 hover:underline dark:hover:text-brand-400"
+            >
+              {depth > 0 && <span className="text-gray-300 dark:text-gray-600">└</span>}
+              {depth === 0 && <Crown size={12} className="flex-shrink-0 text-amber-500" />}
+              {pos.title}
+            </button>
+          ) : (
+            <span style={{ paddingLeft: `${depth * 18}px` }} className="inline-flex items-center gap-1.5">
+              {depth > 0 && <span className="text-gray-300 dark:text-gray-600">└</span>}
+              {depth === 0 && <Crown size={12} className="flex-shrink-0 text-amber-500" />}
+              {pos.title}
+            </span>
+          )}
         </td>
         <td className="px-3 py-2 font-mono text-xs text-gray-500 dark:text-gray-300">{pos.code || "—"}</td>
         <td className="px-3 py-2 text-gray-600 dark:text-gray-300"><span className="capitalize">{pos.type || "—"}</span></td>
@@ -123,7 +136,7 @@ function DesignationRows({ positions, depth, parentId, visited, can, onEdit, onF
         <td className="px-3 py-2"><StatusBadge status={pos.status} freezeReason={pos.freezeReason} /></td>
         <td className="px-3 py-2 text-right">
           <div className="flex justify-end gap-1">
-            {can("org.unit_assignment.create") && (
+            {can("org.unit_assignment.create") && onAssign && (
               <Button size="sm" variant="ghost" title="Assign employee" onClick={() => onAssign(pos)}>
                 <UserPlus size={13} />
               </Button>
@@ -159,6 +172,8 @@ function DesignationRows({ positions, depth, parentId, visited, can, onEdit, onF
 }
 
 function DepartmentCard({ dept, depth = 0, expanded, onToggle, positions, loading, can, onAdd, onEdit, onFreeze, onRelease, onDelete, onAssign, onView }) {
+  const managerPosition = (positions || []).find((p) => !p.reportsToPositionId);
+  const vacantCount = (positions || []).reduce((sum, p) => sum + (p.vacantHeadcount ?? 0), 0);
   return (
     <Card padding={false} className={`overflow-hidden ${depth > 0 ? "border-l-2 border-l-indigo-200 dark:border-l-indigo-800" : ""}`}>
       <button
@@ -186,18 +201,25 @@ function DepartmentCard({ dept, depth = 0, expanded, onToggle, positions, loadin
             )}
           </div>
           <p className="mt-0.5 flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
-            <UserRound size={12} className="flex-shrink-0" />
-            {dept.managerName ? `Head: ${dept.managerName}` : "No department head assigned"}
+            <Crown size={12} className="flex-shrink-0 text-amber-500" />
+            {managerPosition ? `Manager designation: ${managerPosition.title}` : dept.managerName ? `Head: ${dept.managerName}` : "No manager designation yet"}
           </p>
         </div>
-        <div className="flex-shrink-0 text-right text-xs text-gray-500 dark:text-gray-400">
-          <span className="font-semibold text-gray-900 dark:text-white">{dept.positionCount ?? 0}</span> designation{dept.positionCount === 1 ? "" : "s"}
+        <div className="flex flex-shrink-0 items-center gap-3 text-right">
+          {expanded && vacantCount > 0 && (
+            <span className="rounded-md bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+              {vacantCount} vacant
+            </span>
+          )}
+          <span className="text-xs text-gray-500 dark:text-gray-400">
+            <span className="font-semibold text-gray-900 dark:text-white">{dept.positionCount ?? 0}</span> designation{dept.positionCount === 1 ? "" : "s"}
+          </span>
         </div>
       </button>
 
       {expanded && (
         <div className="border-t border-gray-100 dark:border-gray-700">
-          <div className="flex items-center justify-end gap-2 p-2">
+          <div className="flex flex-wrap items-center justify-end gap-2 p-2">
             {can("org.unit_position.create") && (
               <Button size="sm" onClick={onAdd}><Plus size={14} /> Add Designation</Button>
             )}
@@ -250,7 +272,7 @@ function DesignationDialog({ dept, editing, allPositions, busy, onSave, onClose 
   const set = (patch) => setForm((f) => ({ ...f, ...patch }));
 
   return (
-    <Modal isOpen onClose={onClose} title={`${isEdit ? "Edit" : "Add"} Designation — ${dept.name}`} size="lg">
+    <Modal isOpen onClose={onClose} title={`${isEdit ? "Edit" : "Add"} Designation${dept ? ` — ${dept.name}` : " (Standalone)"}`} size="lg">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <label className="block sm:col-span-2"><span className={labelClass}>Title *</span>
           <input className={inputClass} value={form.title} onChange={(e) => set({ title: e.target.value })} />
@@ -271,7 +293,7 @@ function DesignationDialog({ dept, editing, allPositions, busy, onSave, onClose 
         </label>
         <label className="block"><span className={labelClass}>Reports To</span>
           <select className={inputClass} value={form.reportsToPositionId} onChange={(e) => set({ reportsToPositionId: e.target.value })}>
-            <option value="">None (top of department)</option>
+            <option value="">{dept ? "None (top of department)" : "None (top-level)"}</option>
             {allPositions.filter((p) => p.id !== editing?.id).map((p) => (
               <option key={p.id} value={p.id}>{p.title}</option>
             ))}
@@ -519,6 +541,9 @@ export default function PositionsPage() {
   const [expandedDeptId, setExpandedDeptId] = useState(null);
   const [positionsByDept, setPositionsByDept] = useState(() => new Map());
   const [loadingDeptId, setLoadingDeptId] = useState(null);
+  const [globalPositions, setGlobalPositions] = useState([]);
+  const [globalLoading, setGlobalLoading] = useState(true);
+  const [globalExpanded, setGlobalExpanded] = useState(true);
   const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState("");
   const [summary, setSummary] = useState(null);
@@ -556,6 +581,20 @@ export default function PositionsPage() {
     return () => { active = false; };
   }, [token, tokenType, refreshKey]);
 
+  const loadGlobalPositions = () => {
+    if (!token) return;
+    Promise.resolve().then(() => setGlobalLoading(true));
+    organizationApi.globalPositions({}, token, tokenType)
+      .then((res) => setGlobalPositions(res?.data ?? []))
+      .catch((err) => toast.error(err.message || "Could not load standalone designations"))
+      .finally(() => setGlobalLoading(false));
+  };
+
+  useEffect(() => {
+    loadGlobalPositions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, tokenType, refreshKey]);
+
   const loadDeptPositions = (deptId) => {
     setLoadingDeptId(deptId);
     organizationApi.orgUnitPositions(deptId, {}, token, tokenType)
@@ -578,16 +617,20 @@ export default function PositionsPage() {
   };
 
   const saveDesignation = async (payload) => {
-    const deptId = dialog.dept.id;
+    const dept = dialog.dept;
     try {
       await run(
         () => dialog.editing
-          ? organizationApi.updateOrgUnitPosition(deptId, dialog.editing.id, payload, token, tokenType)
-          : organizationApi.createOrgUnitPosition(deptId, payload, token, tokenType),
+          ? (dept
+            ? organizationApi.updateOrgUnitPosition(dept.id, dialog.editing.id, payload, token, tokenType)
+            : organizationApi.updateGlobalPosition(dialog.editing.id, payload, token, tokenType))
+          : (dept
+            ? organizationApi.createOrgUnitPosition(dept.id, payload, token, tokenType)
+            : organizationApi.createGlobalPosition(payload, token, tokenType)),
         dialog.editing ? "Designation updated" : "Designation created",
       );
       setDialog(null);
-      loadDeptPositions(deptId);
+      if (dept) loadDeptPositions(dept.id); else loadGlobalPositions();
       reload();
     } catch { /* toast already shown by run() */ }
   };
@@ -595,19 +638,31 @@ export default function PositionsPage() {
   const freezePosition = (dept, pos) => {
     const reason = window.prompt("Why is this designation being frozen?");
     if (!reason) return;
-    run(() => organizationApi.freezeOrgUnitPosition(dept.id, pos.id, reason, token, tokenType), "Designation frozen")
-      .then(() => loadDeptPositions(dept.id)).catch(() => {});
+    run(
+      () => dept
+        ? organizationApi.freezeOrgUnitPosition(dept.id, pos.id, reason, token, tokenType)
+        : organizationApi.freezeGlobalPosition(pos.id, reason, token, tokenType),
+      "Designation frozen",
+    ).then(() => (dept ? loadDeptPositions(dept.id) : loadGlobalPositions())).catch(() => {});
   };
 
   const releasePosition = (dept, pos) => {
-    run(() => organizationApi.releaseOrgUnitPosition(dept.id, pos.id, token, tokenType), "Designation released")
-      .then(() => loadDeptPositions(dept.id)).catch(() => {});
+    run(
+      () => dept
+        ? organizationApi.releaseOrgUnitPosition(dept.id, pos.id, token, tokenType)
+        : organizationApi.releaseGlobalPosition(pos.id, token, tokenType),
+      "Designation released",
+    ).then(() => (dept ? loadDeptPositions(dept.id) : loadGlobalPositions())).catch(() => {});
   };
 
   const deletePosition = (dept, pos) => {
     if (!window.confirm(`Delete "${pos.title}"? This cannot be undone.`)) return;
-    run(() => organizationApi.deleteOrgUnitPosition(dept.id, pos.id, token, tokenType), "Designation deleted")
-      .then(() => { loadDeptPositions(dept.id); reload(); }).catch(() => {});
+    run(
+      () => dept
+        ? organizationApi.deleteOrgUnitPosition(dept.id, pos.id, token, tokenType)
+        : organizationApi.deleteGlobalPosition(pos.id, token, tokenType),
+      "Designation deleted",
+    ).then(() => { if (dept) loadDeptPositions(dept.id); else loadGlobalPositions(); reload(); }).catch(() => {});
   };
 
   // Processes every queued row from one dialog session, one API call each
@@ -667,11 +722,13 @@ export default function PositionsPage() {
           <Briefcase size={20} /> Designations
         </h1>
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          Every department, with its designations and their reporting hierarchy — expand a department to manage them.
+          {SHOW_DEPARTMENT_DESIGNATIONS
+            ? "Every department, with its designations and their reporting hierarchy — expand a department to manage them."
+            : "Standalone designations — created directly, with no department attached."}
         </p>
       </div>
 
-      {summary && (
+      {SHOW_DEPARTMENT_DESIGNATIONS && summary && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           {[
             { label: "Designations", value: summary.positionCount },
@@ -690,26 +747,94 @@ export default function PositionsPage() {
       )}
 
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative">
-          <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input
-            aria-label="Search departments"
-            className={`${inputClass} w-64 pl-8`}
-            placeholder="Search department…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </div>
+        {SHOW_DEPARTMENT_DESIGNATIONS && (
+          <div className="relative">
+            <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              aria-label="Search departments"
+              className={`${inputClass} w-64 pl-8`}
+              placeholder="Search department…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+        )}
         <Button variant="secondary" onClick={reload}><RefreshCw size={16} /> Refresh</Button>
       </div>
 
-      {deptsLoading && <p className="text-sm text-gray-400">Loading departments…</p>}
+      {/* Standalone designations — just a title, added directly the same
+          simple way a Department itself is, with no department required. */}
+      <Card padding={false} className="overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setGlobalExpanded((v) => !v)}
+          className="flex w-full items-center gap-3 p-4 text-left hover:bg-gray-50/70 dark:hover:bg-gray-700/30"
+        >
+          {globalExpanded ? <ChevronDown size={16} className="text-gray-400 flex-shrink-0" /> : <ChevronRight size={16} className="text-gray-400 flex-shrink-0" />}
+          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-300">
+            <Briefcase size={16} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold text-gray-900 dark:text-white">Standalone Designations</p>
+            <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Not tied to any department — added directly, just like a department.</p>
+          </div>
+          <span className="flex-shrink-0 text-xs text-gray-500 dark:text-gray-400">
+            <span className="font-semibold text-gray-900 dark:text-white">{globalPositions.length}</span> designation{globalPositions.length === 1 ? "" : "s"}
+          </span>
+        </button>
 
-      {!deptsLoading && grouped.length === 0 && (
+        {globalExpanded && (
+          <div className="border-t border-gray-100 dark:border-gray-700">
+            <div className="flex flex-wrap items-center justify-end gap-2 p-2">
+              {can("org.unit_position.create") && (
+                <Button size="sm" onClick={() => setDialog({ dept: null, editing: null })}><Plus size={14} /> Add Designation</Button>
+              )}
+            </div>
+            {globalLoading && <div className="p-6 text-center text-xs text-gray-400">Loading…</div>}
+            {!globalLoading && globalPositions.length === 0 && (
+              <p className="p-6 text-center text-xs text-gray-400">No standalone designations yet — add one directly, without picking a department.</p>
+            )}
+            {!globalLoading && globalPositions.length > 0 && (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="border-b border-gray-200 bg-gray-50 text-[11px] font-bold uppercase tracking-wider text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                    <tr>
+                      <th className="px-3 py-2">Title</th>
+                      <th className="px-3 py-2">Code</th>
+                      <th className="px-3 py-2">Type</th>
+                      <th className="px-3 py-2">Approved</th>
+                      <th className="px-3 py-2">Filled</th>
+                      <th className="px-3 py-2">Vacant</th>
+                      <th className="px-3 py-2">Status</th>
+                      <th className="px-3 py-2 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-gray-700/60">
+                    <DesignationRows
+                      positions={globalPositions} depth={0} parentId={null} visited={new Set()}
+                      can={can}
+                      onEdit={(pos) => setDialog({ dept: null, editing: pos })}
+                      onFreeze={(pos) => freezePosition(null, pos)}
+                      onRelease={(pos) => releasePosition(null, pos)}
+                      onDelete={(pos) => deletePosition(null, pos)}
+                      onAssign={null}
+                      onView={null}
+                    />
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+      </Card>
+
+      {SHOW_DEPARTMENT_DESIGNATIONS && deptsLoading && <p className="text-sm text-gray-400">Loading departments…</p>}
+
+      {SHOW_DEPARTMENT_DESIGNATIONS && !deptsLoading && grouped.length === 0 && (
         <Card><p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">No departments match this search.</p></Card>
       )}
 
-      {!deptsLoading && grouped.map((group) => (
+      {SHOW_DEPARTMENT_DESIGNATIONS && !deptsLoading && grouped.map((group) => (
         <div key={group.label} className="space-y-2">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{group.label}</h2>
           <div className="space-y-2">
@@ -748,7 +873,7 @@ export default function PositionsPage() {
         <DesignationDialog
           dept={dialog.dept}
           editing={dialog.editing}
-          allPositions={positionsByDept.get(dialog.dept.id) || []}
+          allPositions={dialog.dept ? (positionsByDept.get(dialog.dept.id) || []) : globalPositions}
           busy={busy}
           onSave={saveDesignation}
           onClose={() => setDialog(null)}

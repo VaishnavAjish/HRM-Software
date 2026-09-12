@@ -105,4 +105,33 @@ describe("CandidateListView compact mode", () => {
     expect(screen.queryByTitle("Managed in another tab now")).not.toBeInTheDocument();
     expect(screen.queryByTitle(/Move to/)).not.toBeInTheDocument();
   });
+
+  it("renders deleted requisition with strikethrough name and Deleted badge", () => {
+    render(
+      <CandidateListView
+        loading={false}
+        candidates={[
+          candidate({
+            id: 10,
+            name: "John Doe",
+            requisition: { id: 5, title: "Senior AI Engineer", deleted_at: "2026-09-07T12:00:00Z" },
+          }),
+        ]}
+        total={1}
+        page={1}
+        perPage={20}
+        onPageChange={vi.fn()}
+        onPageSizeChange={vi.fn()}
+        onOpenDetail={vi.fn()}
+        onAdvance={vi.fn()}
+        onToggleSelected={vi.fn()}
+        onSelectAll={vi.fn()}
+      />,
+    );
+
+    const titleEl = screen.getByText("Senior AI Engineer");
+    expect(titleEl).toBeInTheDocument();
+    expect(titleEl.className).toContain("line-through");
+    expect(screen.getByText("Deleted")).toBeInTheDocument();
+  });
 });

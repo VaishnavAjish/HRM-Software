@@ -1,13 +1,11 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import toast from "react-hot-toast";
+import { copyToClipboard } from "../../../utils/clipboard";
 import {
-  Settings,
   BellRing,
   Plus,
   Trash2,
   Edit2,
-  Check,
-  X,
   Search,
   Download,
   Upload,
@@ -19,8 +17,6 @@ import {
   Sparkles,
   Eye,
   Copy,
-  CheckCircle2,
-  FileSpreadsheet,
   Globe
 } from "lucide-react";
 import Button from "../../../components/ui/Button";
@@ -34,8 +30,6 @@ const inputClass =
 
 const selectClass =
   "w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3.5 py-2.5 text-xs font-semibold text-gray-700 dark:text-gray-200 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none shadow-sm transition-all";
-
-const STORAGE_KEY = "hr_settings_config_v1";
 
 const DEFAULT_NOTIFICATIONS = {
   onNewRequisition: true,
@@ -123,7 +117,6 @@ const AVAILABLE_TOKENS = [
 export default function HrSettings() {
   const [activeTab, setActiveTab] = useState("documents");
   const [searchQuery, setSearchQuery] = useState("");
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const fileInputRef = useRef(null);
 
   // States
@@ -184,10 +177,12 @@ export default function HrSettings() {
 
   // Document Modal state
   const [docModalOpen, setDocModalOpen] = useState(false);
+  const [editingDocId, setEditingDocId] = useState(null);
   const [newDocName, setNewDocName] = useState("");
   const [newDocMandatory, setNewDocMandatory] = useState(true);
   const [newDocExpiry, setNewDocExpiry] = useState(false);
-  const [newDocAllowed, setNewDocAllowed] = useState("PDF, JPG");
+  const [newDocAllowed, setNewDocAllowed] = useState("PDF, JPG, PNG");
+  const [newDocMaxSize, setNewDocMaxSize] = useState("5 MB");
 
   // Template Create/Edit Modal state
   const [tplModalOpen, setTplModalOpen] = useState(false);
@@ -211,7 +206,39 @@ export default function HrSettings() {
     tenure: "2.5 Years"
   });
 
+  // Direct persistence helper for docTypes
+  const persistDocTypes = async (updatedDocs) => {
+    setDocTypes(updatedDocs);
+    if (!user?.accessToken) return;
+    try {
+      await rbacApi.updateSettings(
+        [{ key: "hr.doc_types", value: JSON.stringify(updatedDocs) }],
+        user.accessToken,
+        user.tokenType,
+        "hr"
+      );
+    } catch (err) {
+      console.error("Failed to auto-save doc types", err);
+      toast.error("Failed to persist document setting to server");
+    }
+  };
 
+  // Direct persistence helper for templates
+  const persistTemplates = async (updatedTemplates) => {
+    setLetterTemplates(updatedTemplates);
+    if (!user?.accessToken) return;
+    try {
+      await rbacApi.updateSettings(
+        [{ key: "hr.mail_templates", value: JSON.stringify(updatedTemplates) }],
+        user.accessToken,
+        user.tokenType,
+        "hr"
+      );
+    } catch (err) {
+      console.error("Failed to auto-save templates", err);
+      toast.error("Failed to persist template setting to server");
+    }
+  };
 
   // Save all settings to backend
   const handleSaveAll = async () => {
@@ -220,12 +247,14 @@ export default function HrSettings() {
     try {
       const res = await rbacApi.updateSettings([
         { key: "hr.doc_types", value: JSON.stringify(docTypes) },
-        { key: "hr.mail_templates", value: JSON.stringify(letterTemplates) }
+        { key: "hr.mail_templates", value: JSON.stringify(letterTemplates) },
+        { key: "hr.indeed_client_id", value: (indeedClientId || "").trim() },
+        { key: "hr.indeed_client_secret", value: (indeedClientSecret || "").trim() },
+        { key: "hr.indeed_employer_id", value: (indeedEmployerId || "").trim() }
       ], user?.accessToken, user?.tokenType, "hr");
       
       if (res.status) {
-        setHasUnsavedChanges(false);
-        toast.success("All HR Settings successfully saved!");
+        toast.success("All HR Settings successfully saved to server!");
       } else {
         throw new Error(res.message);
       }
@@ -237,15 +266,21 @@ export default function HrSettings() {
   };
 
   // Reset defaults
-  const handleResetDefaults = () => {
+  const handleResetDefaults = async () => {
     if (!window.confirm("Reset all HR Settings to factory defaults?")) return;
     setNotifications(DEFAULT_NOTIFICATIONS);
     setGeneralConfig(DEFAULT_GENERAL);
     setDocTypes(DEFAULT_DOC_TYPES);
     setLetterTemplates(DEFAULT_TEMPLATES);
-    localStorage.removeItem(STORAGE_KEY);
-    setHasUnsavedChanges(false);
-    toast.success("Settings reset to factory defaults!");
+    try {
+      await rbacApi.updateSettings([
+        { key: "hr.doc_types", value: JSON.stringify(DEFAULT_DOC_TYPES) },
+        { key: "hr.mail_templates", value: JSON.stringify(DEFAULT_TEMPLATES) }
+      ], user?.accessToken, user?.tokenType, "hr");
+      toast.success("Settings reset to factory defaults and saved!");
+    } catch (err) {
+      toast.error(err.message || "Failed to save default settings to server");
+    }
   };
 
   // Export JSON
@@ -266,20 +301,25 @@ export default function HrSettings() {
   };
 
   // Import JSON
-  const handleImportJSON = (e) => {
+  const handleImportJSON = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       try {
         const parsed = JSON.parse(event.target.result);
         if (parsed.notifications) setNotifications(parsed.notifications);
         if (parsed.generalConfig) setGeneralConfig(parsed.generalConfig);
-        if (parsed.docTypes) setDocTypes(parsed.docTypes);
-        if (parsed.letterTemplates) setLetterTemplates(parsed.letterTemplates);
-        setHasUnsavedChanges(true);
-        toast.success("Configuration imported successfully!");
-      } catch (err) {
+        if (parsed.docTypes) {
+          setDocTypes(parsed.docTypes);
+          await persistDocTypes(parsed.docTypes);
+        }
+        if (parsed.letterTemplates) {
+          setLetterTemplates(parsed.letterTemplates);
+          await persistTemplates(parsed.letterTemplates);
+        }
+        toast.success("Configuration imported and saved successfully!");
+      } catch {
         toast.error("Invalid configuration JSON file");
       }
     };
@@ -288,35 +328,79 @@ export default function HrSettings() {
   };
 
   // Document Handlers
-  const handleAddDocument = () => {
+  const openCreateDocModal = () => {
+    setEditingDocId(null);
+    setNewDocName("");
+    setNewDocMandatory(true);
+    setNewDocExpiry(false);
+    setNewDocAllowed("PDF, JPG, PNG");
+    setNewDocMaxSize("5 MB");
+    setDocModalOpen(true);
+  };
+
+  const openEditDocModal = (doc) => {
+    setEditingDocId(doc.id);
+    setNewDocName(doc.name || "");
+    setNewDocMandatory(Boolean(doc.mandatory));
+    setNewDocExpiry(Boolean(doc.expiryTracked));
+    setNewDocAllowed(doc.allowed || "PDF, JPG, PNG");
+    setNewDocMaxSize(doc.maxSize || "5 MB");
+    setDocModalOpen(true);
+  };
+
+  const handleSaveDocument = async () => {
     if (!newDocName.trim()) {
       toast.error("Document name is required");
       return;
     }
-    const newDoc = {
-      id: newDocName.toLowerCase().replace(/\s+/g, "_") + "_" + Date.now(),
-      name: newDocName.trim(),
-      mandatory: newDocMandatory,
-      expiryTracked: newDocExpiry,
-      allowed: newDocAllowed,
-      maxSize: "5 MB"
-    };
-    setDocTypes([...docTypes, newDoc]);
+    let updated;
+    if (editingDocId) {
+      updated = docTypes.map((d) =>
+        d.id === editingDocId
+          ? {
+              ...d,
+              name: newDocName.trim(),
+              mandatory: newDocMandatory,
+              expiryTracked: newDocExpiry,
+              allowed: newDocAllowed,
+              maxSize: newDocMaxSize || "5 MB"
+            }
+          : d
+      );
+    } else {
+      const newDoc = {
+        id: newDocName.toLowerCase().replace(/[^a-z0-9]+/g, "_") + "_" + Date.now(),
+        name: newDocName.trim(),
+        mandatory: newDocMandatory,
+        expiryTracked: newDocExpiry,
+        allowed: newDocAllowed,
+        maxSize: newDocMaxSize || "5 MB"
+      };
+      updated = [...docTypes, newDoc];
+    }
+    await persistDocTypes(updated);
     setDocModalOpen(false);
+    setEditingDocId(null);
     setNewDocName("");
-    setHasUnsavedChanges(true);
-    toast.success("Document verification rule added!");
+    toast.success(editingDocId ? "Document verification rule updated!" : "Document verification rule added!");
   };
 
-  const handleToggleDocMandatory = (id) => {
-    setDocTypes(docTypes.map((d) => (d.id === id ? { ...d, mandatory: !d.mandatory } : d)));
-    setHasUnsavedChanges(true);
+  const handleToggleDocMandatory = async (id) => {
+    const updated = docTypes.map((d) => (d.id === id ? { ...d, mandatory: !d.mandatory } : d));
+    await persistDocTypes(updated);
     toast.success("Document requirement updated!");
   };
 
-  const handleDeleteDoc = (id) => {
-    setDocTypes(docTypes.filter((d) => d.id !== id));
-    setHasUnsavedChanges(true);
+  const handleToggleDocExpiry = async (id) => {
+    const updated = docTypes.map((d) => (d.id === id ? { ...d, expiryTracked: !d.expiryTracked } : d));
+    await persistDocTypes(updated);
+    toast.success("Document expiry tracking updated!");
+  };
+
+  const handleDeleteDoc = async (id) => {
+    if (!window.confirm("Remove this document verification rule?")) return;
+    const updated = docTypes.filter((d) => d.id !== id);
+    await persistDocTypes(updated);
     toast.success("Document type removed!");
   };
 
@@ -339,7 +423,7 @@ export default function HrSettings() {
     setTplModalOpen(true);
   };
 
-  const handleSaveTemplate = () => {
+  const handleSaveTemplate = async () => {
     if (!tplName.trim()) {
       toast.error("Template name is required");
       return;
@@ -349,13 +433,13 @@ export default function HrSettings() {
       return;
     }
 
+    let updated;
     if (editingTplId) {
-      setLetterTemplates(letterTemplates.map((t) => (
+      updated = letterTemplates.map((t) => (
         t.id === editingTplId
           ? { ...t, name: tplName.trim(), category: tplCategory, vars: tplVars, body: tplBody, updated: "Just now" }
           : t
-      )));
-      toast.success("Mail template updated!");
+      ));
     } else {
       const newTpl = {
         id: Date.now().toString(),
@@ -365,23 +449,22 @@ export default function HrSettings() {
         vars: tplVars,
         body: tplBody
       };
-      setLetterTemplates([...letterTemplates, newTpl]);
-      toast.success("Mail template created!");
+      updated = [...letterTemplates, newTpl];
     }
-
+    await persistTemplates(updated);
     setTplModalOpen(false);
-    setHasUnsavedChanges(true);
+    toast.success(editingTplId ? "Mail template updated!" : "Mail template created!");
   };
 
-  const handleDeleteTemplate = (id) => {
+  const handleDeleteTemplate = async (id) => {
     if (!window.confirm("Delete this letter template?")) return;
-    setLetterTemplates(letterTemplates.filter((t) => t.id !== id));
-    setHasUnsavedChanges(true);
+    const updated = letterTemplates.filter((t) => t.id !== id);
+    await persistTemplates(updated);
     toast.success("Template removed!");
   };
 
   const handleCopyTemplate = (text) => {
-    navigator.clipboard.writeText(text);
+    copyToClipboard(text);
     toast.success("Template content copied to clipboard!");
   };
 
@@ -525,9 +608,9 @@ export default function HrSettings() {
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-base font-bold text-gray-900 dark:text-white">Document Verification Rules</h3>
-                <p className="text-xs text-gray-400">Manage required onboarding & employee compliance documents</p>
+                <p className="text-xs text-gray-400">Manage required onboarding & employee compliance documents (changes persist immediately)</p>
               </div>
-              <Button size="sm" icon={<Plus size={14} />} onClick={() => setDocModalOpen(true)}>Add Required Document</Button>
+              <Button size="sm" icon={<Plus size={14} />} onClick={openCreateDocModal}>Add Required Document</Button>
             </div>
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -535,26 +618,47 @@ export default function HrSettings() {
                 <div key={doc.id} className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900 shadow-xs space-y-3">
                   <div className="flex items-center justify-between">
                     <h4 className="text-xs font-bold text-gray-900 dark:text-white">{doc.name}</h4>
-                    <button onClick={() => handleDeleteDoc(doc.id)} className="p-1 text-gray-400 hover:text-rose-600 rounded-lg">
-                      <Trash2 size={14} />
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => openEditDocModal(doc)}
+                        className="p-1 text-gray-400 hover:text-brand-600 rounded-lg transition-colors"
+                        title="Edit rule"
+                      >
+                        <Edit2 size={14} />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteDoc(doc.id)}
+                        className="p-1 text-gray-400 hover:text-rose-600 rounded-lg transition-colors"
+                        title="Delete rule"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <Badge variant={doc.mandatory ? "red" : "gray"}>
-                      {doc.mandatory ? "Mandatory" : "Optional"}
+                      {doc.mandatory ? "Mandatory *" : "Optional"}
                     </Badge>
                     {doc.expiryTracked && <Badge variant="amber">Expiry Tracked</Badge>}
                   </div>
                   <div className="text-[11px] text-gray-400 space-y-0.5 border-t border-gray-100 dark:border-gray-800 pt-2">
-                    <p>Allowed formats: <span className="font-semibold text-gray-700 dark:text-gray-300">{doc.allowed}</span></p>
-                    <p>Max file size: <span className="font-semibold text-gray-700 dark:text-gray-300">{doc.maxSize}</span></p>
+                    <p>Allowed formats: <span className="font-semibold text-gray-700 dark:text-gray-300">{doc.allowed || "PDF, JPG"}</span></p>
+                    <p>Max file size: <span className="font-semibold text-gray-700 dark:text-gray-300">{doc.maxSize || "5 MB"}</span></p>
                   </div>
-                  <button
-                    onClick={() => handleToggleDocMandatory(doc.id)}
-                    className="w-full text-center text-[11px] font-semibold text-brand-600 dark:text-brand-400 hover:underline pt-1"
-                  >
-                    Toggle {doc.mandatory ? "Optional" : "Mandatory"}
-                  </button>
+                  <div className="flex items-center justify-between gap-2 border-t border-gray-100 dark:border-gray-800 pt-2">
+                    <button
+                      onClick={() => handleToggleDocMandatory(doc.id)}
+                      className="text-[11px] font-semibold text-brand-600 dark:text-brand-400 hover:underline"
+                    >
+                      Make {doc.mandatory ? "Optional" : "Mandatory"}
+                    </button>
+                    <button
+                      onClick={() => handleToggleDocExpiry(doc.id)}
+                      className="text-[11px] font-semibold text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
+                    >
+                      {doc.expiryTracked ? "Disable Expiry" : "Track Expiry"}
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -702,15 +806,15 @@ export default function HrSettings() {
         )}
       </div>
 
-      {/* ADD DOCUMENT MODAL */}
+      {/* ADD / EDIT DOCUMENT MODAL */}
       <Modal
         isOpen={docModalOpen}
-        onClose={() => setDocModalOpen(false)}
-        title="Add Required Verification Document"
+        onClose={() => { setDocModalOpen(false); setEditingDocId(null); }}
+        title={editingDocId ? "Edit Verification Document Rule" : "Add Required Verification Document"}
         footer={
           <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setDocModalOpen(false)}>Cancel</Button>
-            <Button onClick={handleAddDocument}>Add Document</Button>
+            <Button variant="secondary" onClick={() => { setDocModalOpen(false); setEditingDocId(null); }}>Cancel</Button>
+            <Button onClick={handleSaveDocument}>{editingDocId ? "Save Changes" : "Add Document"}</Button>
           </div>
         }
       >
@@ -725,10 +829,32 @@ export default function HrSettings() {
               className={inputClass}
             />
           </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">Allowed Formats</label>
+              <input
+                type="text"
+                placeholder="e.g. PDF, JPG, PNG"
+                value={newDocAllowed}
+                onChange={(e) => setNewDocAllowed(e.target.value)}
+                className={inputClass}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">Max File Size</label>
+              <input
+                type="text"
+                placeholder="e.g. 5 MB"
+                value={newDocMaxSize}
+                onChange={(e) => setNewDocMaxSize(e.target.value)}
+                className={inputClass}
+              />
+            </div>
+          </div>
           <div className="flex items-center justify-between p-3 rounded-xl border border-gray-100 bg-gray-50 dark:border-gray-800 dark:bg-gray-800/50">
             <div>
               <p className="text-xs font-bold text-gray-900 dark:text-white">Mandatory Requirement</p>
-              <p className="text-[11px] text-gray-400">Require candidates to upload before onboarding</p>
+              <p className="text-[11px] text-gray-400">Require candidates to upload before onboarding completion</p>
             </div>
             <input
               type="checkbox"

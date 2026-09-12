@@ -1,0 +1,1989 @@
+/* eslint-disable no-unused-vars */
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import {
+  ChevronRight,
+  RefreshCw,
+  AlertCircle,
+  
+  X, Eye, Download} from "lucide-react";
+import toast from "react-hot-toast";
+import ModernDatePicker from "../../components/ModernDatePicker";
+import PrintableForm from "../../components/forms/PrintableForm";
+import { authApi, salaryApi, appointmentV1Api, hrApi, resolveWriteCompanyId } from "../../utils/api";
+import { normalizeCompanyId, getCompanyUnits } from "../../config/companyConfig";
+import { useAuth } from "../../context/AuthContext";
+import { useCompany } from "../../context/CompanyContext";
+import { useProvisioningOptions } from "../../hooks/useProvisioningOptions";
+import useIsMobile from "../../hooks/useIsMobile";
+import usePhotoCapture from "../../hooks/usePhotoCapture";
+import AppointmentDocumentsStep from "./AppointmentDocumentsStep";
+import { PHOTO_DOCUMENT_TYPE } from "./documentTypes";
+import { readAppointmentRouteState, STEP_DOCUMENTS } from "./appointmentRouteState";
+import { formatFullAadhaar, getAadhaarDisplayValue, normaliseAadhaar } from "../../utils/aadhaar";
+
+const DOC_FIELDS = [
+  { key: "adhar_image", label: "Aadhar Card" },
+  { key: "pan_image", label: "PAN Card" },
+  { key: "check_image", label: "Cheque" },
+  { key: "account_book", label: "Bank Passbook" },
+];
+
+const DEFAULT_DEPARTMENTS = [
+  "IT",
+  "Office",
+  "Polish-01 (MFG)",
+  "Polish-02 (MFG)",
+  "Polish-03 (MFG)",
+  "Polish-05 (MFG)",
+  "Polish-07 (MFG)",
+  "Polish-11 (MFG)",
+  "Polish-14 (MFG)",
+  "Polish-15 (MFG)",
+  "Pricing Dept.",
+];
+
+const getBlankFormData = (companyCode = "", defaultUnit = "") => ({
+  photo: null,
+  emp_code: "",
+  joining_date: `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`,
+  department: "",
+  designation: "",
+  manager_name: "",
+  salary: "",
+  mobile_number: "",
+  emp_whatsapp_no: "",
+  punching_no: "",
+  name: { first: "", mid: "", surname: "" },
+  email: "",
+  address: "",
+  village: "",
+  taluka: "",
+  district: "",
+  dob: "",
+  birth_place: "",
+  gender: "",
+  cast: "",
+  marital_status: "",
+  blood_group: "",
+  reference_name: "",
+  reference_mobile_no: "",
+  aadhar_card_no: "",
+  bank_name: "",
+  pan_card_no: "",
+  bank_ifsc_code: "",
+  education: "",
+  bank_account_no: "",
+  company_code: companyCode,
+  unit: defaultUnit,
+  emp_signature: "",
+  members: Array(4).fill({
+    name: "",
+    relation: "",
+    dob: "",
+    mobile: "",
+    occupation: "",
+  }),
+});
+
+const FAMILY_RELATIONS = [
+  "Father",
+  "Mother",
+  "Brother",
+  "Sister",
+  "Husband",
+  "Wife",
+  "Son",
+  "Daughter",
+];
+
+const MobileCard = ({ title, children, isMobile }) => {
+  const isViewMode = true;
+  if (!isMobile) return <>{children}</>;
+  return (
+    <div className="border border-gray-200 rounded-xl p-4 bg-gray-50 flex flex-col gap-4 shadow-sm mb-5">
+      {title && (
+        <div className="border-b border-gray-200 pb-2 mb-1">
+          <h3 className="text-[15px] font-bold text-gray-800">{title}</h3>
+        </div>
+      )}
+      {children}
+    </div>
+  );
+};
+
+const ViewAppointmentModal = ({
+  isOpen,
+  onClose,
+  initialData = null,
+  isPrefillFromTrial = false,
+  onSuccess,
+  uploadedDocs = [],
+}) => {
+  const isViewMode = true;
+  const { user } = useAuth();
+  const { isAllCompanies } = useCompany();
+  const { companyId } = useCompany();
+  const [departmentsList, setDepartmentsList] = useState([]);
+  const [selectedCompanyId, setSelectedCompanyId] = useState(
+    isAllCompanies ? "" : companyId,
+  );
+
+  // Depend on the credentials themselves, not the `user` object. AuthProvider
+  // passes an inline object literal as its context value, so `user` is a new
+  // reference on every provider render â€” depending on it re-fetched departments,
+  // which set new state, which re-rendered, which re-fetched. In tests that mock
+  // useAuth the loop is unbounded (84 fetches in 300ms of idle), and it is what
+  // stopped React's act() from ever draining.
+  const accessToken = user?.accessToken;
+  const tokenType = user?.tokenType;
+
+  useEffect(() => {
+    if (!isOpen || !accessToken) return undefined;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await salaryApi.getDepartments(
+          accessToken,
+          tokenType,
+          normalizeCompanyId(selectedCompanyId || companyId)
+        );
+        if (cancelled) return;
+        // The legacy departments table can carry more than one row with the
+        // exact same name (e.g. a leftover global "IT" alongside the real,
+        // company-scoped "IT" — see OrganizationUnitService's
+        // cleanupDuplicateGlobalDepartments()) — dedupe by name here since
+        // this dropdown only ever shows/sends the name, never the row id, so
+        // two rows sharing a name are indistinguishable to it anyway.
+        const names = (res?.data ?? []).map((dept) => dept.name).filter(Boolean);
+        setDepartmentsList(Array.from(new Set(names)));
+      } catch {
+        // Suppress expected 403s for Agents so it gracefully falls back to text input
+        // without panicking the console.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, accessToken, tokenType, selectedCompanyId, companyId]);
+
+  const getTodayDate = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+
+  const isEditMode = Boolean(initialData?.id) && !isPrefillFromTrial;
+  // The record as it was when the modal opened, used to tell whether the
+  // employee code actually changed. State rather than a ref: it is assigned
+  // during the open transition, and refs must not be written during render.
+  const [originalSnapshot, setOriginalSnapshot] = useState(null);
+
+  const isMobile = useIsMobile();
+  const [step, setStep] = useState(1);
+
+  // The appointment's real database id. Step 2 is gated on this, so documents
+  // can never be uploaded against an unsaved record. Seeded from initialData so
+  // editing an existing appointment updates rather than creating a duplicate.
+  const [savedAppointmentId, setSavedAppointmentId] = useState(
+    initialData?.id && !isPrefillFromTrial ? initialData.id : null,
+  );
+  const [isSaving, setIsSaving] = useState(false);
+  // idle | validating | creating | updating | opening
+  const [savePhase, setSavePhase] = useState("idle");
+  // Bumped once the candidate's Careers Portal documents have been copied
+  // into this appointment's own document list, forcing AppointmentDocumentsStep
+  // to remount and reload so the copied documents actually appear.
+  const [documentsRefreshKey, setDocumentsRefreshKey] = useState(0);
+  const [appointmentSummary, setAppointmentSummary] = useState({});
+  // Held back from the appointment payload and uploaded as a PHOTOGRAPH
+  // the record has an id. Kept on failure so it can be retried.
+  const [pendingPhoto, setPendingPhoto] = useState(null);
+  // The URL is an external source of truth for which appointment to restore.
+  // It is read during render rather than synced in from an effect: assigning
+  // route-derived state in an effect body is a cascading render, and it would
+  // flash the empty create form before the restore begins. Back/Forward pushes
+  // a fresh request in through the popstate handler below.
+  const [routeRequest, setRouteRequest] = useState(readAppointmentRouteState);
+  // idle | loading | success | error â€” drives the rehydration spinner.
+  const [rehydrateState, setRehydrateState] = useState(
+    routeRequest.appointmentId ? "loading" : "idle",
+  );
+
+  // Whether the record already has an Aadhaar stored, so a cleared input reads
+  // as "keep it" rather than "this is missing". The value itself now lives in
+  // formData, prefilled from the record.
+  const [aadhaarOnFile, setAadhaarOnFile] = useState(false);
+
+  // Belt and braces: if anything else moves the form to step 2 without a saved
+  // record, fall back to step 1 rather than showing an upload form that cannot
+  // work. Adjusting state during render avoids a cascading re-render.
+  if (step === 2 && !savedAppointmentId) {
+    setStep(1);
+  }
+
+  /**
+   * Step state lives in the URL as well as React state so a refresh mid-flow
+   * recovers instead of dropping the user back to an empty form. This is a
+   * modal rather than a route page, so search params are used on whatever
+   * route it was opened from â€” no route restructuring.
+   */
+  const syncRoute = (appointmentId, which) => {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    if (appointmentId) {
+      url.searchParams.set("appointmentId", String(appointmentId));
+      url.searchParams.set("step", which);
+    } else {
+      url.searchParams.delete("appointmentId");
+      url.searchParams.delete("step");
+    }
+    window.history.replaceState({}, "", url);
+  };
+
+  /**
+   * Browser Back/Forward. syncRoute uses replaceState, so popstate only fires
+   * for real history moves â€” each one re-reads the URL and asks for that record.
+   * A fresh object is pushed even when the id is unchanged, so returning to the
+   * same appointment still re-fetches rather than trusting stale state.
+   */
+  useEffect(() => {
+    if (!isOpen) return undefined;
+
+    const onPop = () => {
+      const next = readAppointmentRouteState();
+      setRouteRequest(next);
+      setRehydrateState(next.appointmentId ? "loading" : "idle");
+      if (!next.appointmentId) setStep(1);
+    };
+
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [isOpen]);
+
+  /**
+   * Restore the workflow from ?appointmentId=&step= so a refresh mid-flow does
+   * not drop the user back onto an empty create form. Never creates a record â€”
+   * it only ever loads an existing one.
+   */
+  useEffect(() => {
+    if (!isOpen || !routeRequest.appointmentId) return undefined;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await appointmentV1Api.get(
+          routeRequest.appointmentId,
+          accessToken,
+          tokenType,
+        );
+        if (cancelled) return;
+
+        const record = res?.data?.appointment;
+        if (!record?.id) throw new Error("Appointment not found.");
+
+        setSavedAppointmentId(record.id);
+        // Restoring mid-flow: remember that an Aadhaar is on file so a cleared
+        // input is not read as "erase it".
+        setAadhaarOnFile(Boolean(record.aadhaar_full || record.aadhaar_masked));
+        setAppointmentSummary({
+          appointmentNumber: res?.data?.appointmentNumber,
+          name: record.name,
+          aadhaarDisplay: getAadhaarDisplayValue(record),
+          company: record.company_code,
+          unit: record.unit,
+        });
+        setRehydrateState("success");
+        // Documents only open once the record actually loaded.
+        setStep(routeRequest.step === STEP_DOCUMENTS ? 2 : 1);
+      } catch (err) {
+        if (cancelled) return;
+
+        setRehydrateState("error");
+        // Do not silently fall back to create mode â€” that is how duplicates get
+        // made. Clear the bad params and stay on step 1.
+        syncRoute(null);
+        setStep(1);
+        toast.error(err?.message || "Appointment not found.");
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, routeRequest, accessToken, tokenType]);
+
+  /**
+   * Carries the candidate's already-verified Careers Portal documents into
+   * this appointment's own Upload Documents list, so they show up there
+   * directly instead of the candidate having to re-upload anything HR
+   * already verified during onboarding. Runs whenever Step 2 opens for an
+   * appointment sourced from a candidate (covers both a fresh save and
+   * reopening an existing one, e.g. via the ?appointmentId=&step=documents
+   * restore above) â€” the backend call is idempotent, so re-running it for an
+   * appointment that already has them is a safe no-op.
+   */
+  useEffect(() => {
+    if (step !== 2 || !savedAppointmentId || !isPrefillFromTrial || !initialData?.id) return undefined;
+
+    let cancelled = false;
+
+    hrApi
+      .copyOnboardingDocumentsToAppointment(initialData.id, savedAppointmentId, accessToken, tokenType)
+      .catch(() => {
+        // Best-effort â€” the appointment and its form data are already saved;
+        // worst case HR uploads these manually, same as any other appointment.
+      })
+      .finally(() => {
+        if (!cancelled) setDocumentsRefreshKey((k) => k + 1);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [step, savedAppointmentId, isPrefillFromTrial, initialData?.id, accessToken, tokenType]);
+
+  const handleBackToDetails = () => {
+    setStep(1);
+    syncRoute(savedAppointmentId, "details");
+    window.scrollTo(0, 0);
+  };
+
+  const handleAppointmentCompleted = () => {
+    syncRoute(null);
+    if (onSuccess) onSuccess();
+    else onClose();
+  };
+
+  /**
+   * Uploads the profile photo as a document â€” only ever after the appointment
+   * has a real id. Resolves to whether it succeeded; the caller decides what to
+   * do with the file, so this never clears state behind its back.
+   *
+   * The file is passed in rather than read from state: a `setPendingPhoto` in
+   * the same render is not visible to this closure, and reading state here once
+   * skipped the upload silently.
+   */
+  const uploadPhotoDocument = async (appointmentId, file) => {
+    if (!(file instanceof File)) return false;
+    try {
+      await appointmentV1Api.uploadDocument(
+        appointmentId,
+        { file, documentType: PHOTO_DOCUMENT_TYPE },
+        user?.accessToken,
+        user?.tokenType,
+      );
+      return true;
+    } catch {
+      toast.error(
+        "Appointment details were saved, but the profile photo upload failed. Retry from Upload Documents.",
+      );
+      return false;
+    }
+  };
+
+  /** Step 2 reports a successful retry â€” drop the file so it is not re-sent. */
+  const handlePendingPhotoUploaded = () => {
+    setPendingPhoto(null);
+    setFormData((prev) => ({ ...prev, photo: null }));
+  };
+
+  /** The user chose to abandon the photo. The saved appointment is untouched. */
+  const handleDiscardPendingPhoto = () => {
+    setPendingPhoto(null);
+    setFormData((prev) => ({ ...prev, photo: null }));
+    setPhotoPreview("");
+  };
+
+  // Canonical master data rather than a build-time constant: a company added in
+  // Company & Unit Management is offered here without a rebuild, and the list
+  // is already scoped to what the server will accept on write.
+  const { companies: companyOptions, unitsForCompany } = useProvisioningOptions();
+
+  const [formData, setFormData] = useState(() =>
+    getBlankFormData(isAllCompanies ? "" : companyId),
+  );
+
+  const agentUnit = user?.unit || user?.unit_name || user?.unitName || "";
+  const rawUnits = unitsForCompany(selectedCompanyId).map((unit) => unit.name);
+  const fallbackUnits = getCompanyUnits(selectedCompanyId);
+  const unitOptions = Array.from(
+    new Set([
+      ...rawUnits,
+      ...fallbackUnits,
+      ...(agentUnit ? [agentUnit] : []),
+      ...(formData.unit ? [formData.unit] : []),
+    ])
+  ).filter(Boolean);
+
+  // Still used by the emp-code confirmation flow and the edit-mode loader,
+  // which survive the removal of the old combined submit.
+
+  const [photoPreview, setPhotoPreview] = useState("");
+  const printFormRef = useRef(null);
+  const [errors, setErrors] = useState({});
+  const [showConfirmTransfer, setShowConfirmTransfer] = useState(false);
+  const [checkingEmpCode, setCheckingEmpCode] = useState(false);
+  const [empCodeConflict, setEmpCodeConflict] = useState(null);
+  const [isFirstEmpCodeAssignment, setIsFirstEmpCodeAssignment] = useState(true);
+
+  /*
+   * Every field on this form is optional.
+   *
+   * There is no required-field list any more: a record can be created from
+   * whatever the person filling it in actually has to hand, and the rest can be
+   * completed later through Edit. Blank fields are omitted from the payload and
+   * stored as NULL.
+   *
+   * What remains below is *format* validation, and it only ever runs on a field
+   * that has something in it â€” see the `value !== ""` guard in validateStep1. So
+   * a blank mobile number saves, while "12345" is still refused rather than
+   * being written as a phone number nobody can call.
+   */
+  const fieldValidators = [
+    {
+      path: "mobile_number",
+      isValid: (v) => /^[6-9]\d{9}$/.test(v),
+      message: "Must be a valid 10-digit mobile number.",
+    },
+    {
+      path: "emp_whatsapp_no",
+      isValid: (v) => /^[6-9]\d{9}$/.test(v),
+      message: "Must be a valid 10-digit mobile number.",
+    },
+    {
+      path: "punching_no",
+      isValid: (v) => /^\d+$/.test(v),
+      message: "Must contain digits only.",
+    },
+    {
+      path: "reference_mobile_no",
+      isValid: (v) => /^[6-9]\d{9}$/.test(v),
+      message: "Must be a valid 10-digit mobile number.",
+    },
+    {
+      path: "aadhar_card_no",
+      // The input is displayed grouped ("7151 1598 8793"), so validate the
+      // digits rather than the display string.
+      isValid: (v) => normaliseAadhaar(v).length === 12,
+      message: "Must be 12 digits.",
+    },
+    {
+      path: "pan_card_no",
+      isValid: (v) => /^[A-Z]{5}\d{4}[A-Z]$/.test(v),
+      message: "Must be in valid format, e.g. ABCDE1234F.",
+    },
+    {
+      path: "bank_ifsc_code",
+      isValid: (v) => /^[A-Z]{4}0[A-Z0-9]{6}$/.test(v),
+      message: "Must be in valid format, e.g. SBIN0001234.",
+    },
+    {
+      path: "bank_account_no",
+      isValid: (v) => /^\d{9,18}$/.test(v),
+      message: "Must be 9 to 18 digits.",
+    },
+    {
+      path: "email",
+      isValid: (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v),
+      message: "Must be a valid email address.",
+    },
+  ];
+
+  const getFieldValue = (path) =>
+    path.split(".").reduce((val, key) => val?.[key], formData);
+
+  const validateStep1 = () => {
+    const nextErrors = {};
+
+    // No emptiness checks: a blank field is a valid answer everywhere on this
+    // form. Only the shape of a value that was actually entered is checked.
+    fieldValidators.forEach(({ path, isValid, message }) => {
+  const isViewMode = true;
+      const value = String(getFieldValue(path) ?? "")
+        .trim()
+        .toUpperCase();
+      if (!nextErrors[path] && value !== "" && !isValid(value)) {
+        nextErrors[path] = message;
+      }
+    });
+    setErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  };
+
+  const clearError = (path) => {
+    setErrors((prev) => {
+      if (!prev[path]) return prev;
+      const updated = { ...prev };
+      delete updated[path];
+      return updated;
+    });
+  };
+
+  /**
+   * Persist the appointment fields (no documents) and return its database id.
+   *
+   * Documents are uploaded separately against that id, so the backend can read
+   * the Aadhaar number from the saved record instead of from form state â€” which
+   * was blank whenever the record had not been saved yet, producing an invalid
+   * S3 key and a failed upload.
+   */
+  const persistAppointment = async () => {
+    const fullName = `${formData.name.first} ${formData.name.mid} ${formData.name.surname}`
+      .replace(/\s+/g, " ")
+      .trim();
+
+    const payload = new FormData();
+
+    const targetId = savedAppointmentId || (isEditMode ? initialData?.id : null);
+    if (targetId) {
+      payload.append("id", targetId);
+    }
+
+    // Digits only, so "1234 5678 9012" reaches the backend the same way the
+    // stored value does. Left as a string throughout â€” an Aadhaar is an
+    // identifier, not a number, and leading zeros must survive.
+    const aadhaarDigits = normaliseAadhaar(formData.aadhar_card_no);
+
+    Object.entries({ ...formData, name: fullName }).forEach(([key, value]) => {
+      if (DOC_FIELDS.some((d) => d.key === key) || key === "photo") return;
+
+      if (key === "aadhar_card_no") {
+        // Only send a complete number. A cleared or partly-deleted field means
+        // "keep what is stored" â€” posting it would wipe the record's Aadhaar and
+        // orphan its documents in S3.
+        if (aadhaarDigits.length === 12) payload.append(key, aadhaarDigits);
+        return;
+      }
+
+      if (key === "members") {
+        payload.append(key, JSON.stringify(value));
+      } else if (key === "company_code") {
+        payload.append(key, resolveWriteCompanyId(value));
+      } else if (value !== null && value !== undefined) {
+        payload.append(key, value);
+      }
+    });
+
+    // The photo is deliberately NOT part of this request. It is uploaded as a
+    // PHOTOGRAPH document once the appointment has an id, so the two
+    // operations can fail independently.
+
+    if (targetId) {
+      const res = await authApi.updateAppointment(payload, user?.accessToken, user?.tokenType);
+      return res?.user?.id ?? res?.data?.id ?? targetId;
+    }
+
+    payload.append("type", "appointment");
+    if (initialData?.addedBy) payload.append("added_by", initialData.addedBy);
+    if (isPrefillFromTrial && initialData?.id) payload.append("trial_form_id", initialData.id);
+
+    const res = await authApi.submitAppointmentForm(payload, user?.accessToken, user?.tokenType);
+
+    return res?.data?.id ?? null;
+  };
+
+  /**
+   * Maps the live form state into PrintableForm's view model, so the printed
+   * sheet always matches whatever is currently on screen â€” including unsaved
+   * edits â€” rather than requiring a save first.
+   */
+  const buildPrintData = () => {
+    const fullName = `${formData.name.first} ${formData.name.mid} ${formData.name.surname}`
+      .replace(/\s+/g, " ")
+      .trim();
+    const aadhaarDigits = normaliseAadhaar(formData.aadhar_card_no);
+    const appointmentId = savedAppointmentId || (isEditMode ? initialData?.id : null);
+
+    return {
+      photo: photoPreview || null,
+      empCode: formData.emp_code,
+      joiningDate: formData.joining_date,
+      department: formData.department,
+      designation: formData.designation,
+      managerName: formData.manager_name,
+      salary: formData.salary,
+      empMobile: formData.mobile_number,
+      empWhatsapp: formData.emp_whatsapp_no,
+      punchingNo: formData.punching_no,
+      fullName,
+      email: formData.email,
+      address: formData.address,
+      village: formData.village,
+      taluka: formData.taluka,
+      district: formData.district,
+      dob: formData.dob,
+      birthPlace: formData.birth_place,
+      gender: formData.gender,
+      cast: formData.cast,
+      maritalStatus: formData.marital_status,
+      bloodGroup: formData.blood_group,
+      refName: formData.reference_name,
+      refMobile: formData.reference_mobile_no,
+      aadharNo: formData.aadhar_card_no,
+      bankName: formData.bank_name,
+      panNo: formData.pan_card_no,
+      ifscCode: formData.bank_ifsc_code,
+      education: formData.education,
+      accountNo: formData.bank_account_no,
+      companyId: formData.company_code,
+      companyName: companyOptions?.find(c => String(c.id) === String(formData.company_code) || String(c.code) === String(formData.company_code))?.name || formData.company_code,
+      unitName: formData.unit,
+      signature: formData.emp_signature,
+      members: formData.members,
+      containsFullAadhaar: aadhaarDigits.length === 12,
+      printedBy: user?.name || "",
+      appointmentNumber: appointmentId ? `APT-${String(appointmentId).padStart(6, "0")}` : "",
+    };
+  };
+
+  /**
+   * Opens a dedicated print window with the same hidden PrintableForm node
+   * used elsewhere in the app (Appointments admin page), so printed output
+   * stays visually consistent across the whole app instead of relying on
+   * print styles for the live edit form (which still shows input chrome).
+   */
+  const handlePrint = () => {
+    const node = printFormRef.current;
+    if (!node) return;
+
+    const win = window.open("", "_blank", "width=1000,height=750");
+    if (!win) {
+      toast.error("Please allow pop-ups to print the appointment form");
+      return;
+    }
+
+    let cssText = "";
+    try {
+      for (const sheet of document.styleSheets) {
+        try {
+          for (const rule of sheet.cssRules) cssText += rule.cssText + "\n";
+        } catch {
+          // Cross-origin stylesheet â€” skip, print degrades to unstyled.
+        }
+      }
+    } catch {
+      // Enumerating stylesheets can throw; still open the window.
+    }
+
+    win.document.write(
+      `<!DOCTYPE html><html><head>
+        <base href="${document.baseURI}">
+        <style>${cssText}</style>
+        <title>Appointment Form</title>
+        <style>
+          *, *::before, *::after { box-sizing: border-box; }
+          html, body { margin: 0; padding: 0; background: white; font-family: sans-serif; }
+          [data-appointment-print-form] { box-shadow: none !important; }
+          @media print {
+            @page { size: A4 portrait; margin: 4mm; }
+            html, body {
+              margin: 0 !important;
+              padding: 0 !important;
+              print-color-adjust: exact;
+              -webkit-print-color-adjust: exact;
+            }
+            [data-appointment-print-form] {
+              zoom: 0.72;
+              width: 850px !important;
+              max-width: none !important;
+              box-shadow: none !important;
+              border: 1px dotted #555 !important;
+            }
+          }
+        </style>
+      </head><body>${node.outerHTML}</body></html>`,
+    );
+    win.document.close();
+
+    const printWhenReady = async () => {
+      await win.document.fonts?.ready;
+      await Promise.all(
+        Array.from(win.document.images).map((image) =>
+          image.complete
+            ? Promise.resolve()
+            : new Promise((resolve) => {
+                image.onload = resolve;
+                image.onerror = resolve;
+              }),
+        ),
+      );
+      win.focus();
+      win.print();
+    };
+
+    if (win.document.readyState === "complete") {
+      printWhenReady();
+    } else {
+      win.addEventListener("load", printWhenReady, { once: true });
+    }
+  };
+
+  const handleSaveAndNext = async () => {
+    if (isSaving) return; // guards against a double click creating two records
+
+    setSavePhase("validating");
+
+    if (!validateStep1()) {
+      setSavePhase("idle");
+      toast.error("Please correct the highlighted fields.");
+      return;
+    }
+
+    // Assigning or changing an emp_code converts this record into a full
+    // employee, so the duplicate-code confirmation has to run first. This guard
+    // lived in the old combined submit; without it the confirmation dialog was
+    // unreachable and a clashing code went straight through to the backend.
+    const empCode = String(formData.emp_code ?? "").trim();
+
+    if (empCode) {
+      const previousEmpCode = String(originalSnapshot?.emp_code ?? "").trim();
+
+      if (empCode !== previousEmpCode) {
+        setSavePhase("idle");
+        openEmpCodeConfirm(empCode, !previousEmpCode);
+        return;
+      }
+    }
+
+    await proceedSaveAndNext();
+  };
+
+  /**
+   * The save itself, split out so the employee-code confirmation dialog can
+   * resume it without re-running the guard that opened the dialog.
+   */
+  const proceedSaveAndNext = async () => {
+
+    setIsSaving(true);
+    const wasUpdate = Boolean(savedAppointmentId) || isEditMode;
+    setSavePhase(wasUpdate ? "updating" : "creating");
+
+    try {
+      const id = await persistAppointment();
+
+      if (!id) {
+        throw new Error("Appointment ID was not returned by the server.");
+      }
+
+      setSavedAppointmentId(id);
+
+      // Separate operation: a photo failure must not undo the saved record. The
+      // file is snapshotted here so nothing that re-renders in between can
+      // change what gets sent, and it is only dropped once the upload confirms.
+      const photoToUpload = formData.photo instanceof File ? formData.photo : null;
+      const photoUploaded = photoToUpload
+        ? await uploadPhotoDocument(id, photoToUpload)
+        : false;
+
+      // Survives into step 2 so the Retry control has something to send.
+      setPendingPhoto(photoUploaded ? null : photoToUpload);
+
+      // Recorded so a further edit in this same session still knows an Aadhaar
+      // is on file even if the input is cleared.
+      const savedAadhaar = formatFullAadhaar(formData.aadhar_card_no);
+      const stillOnFile = savedAadhaar !== "-" || aadhaarOnFile;
+      setAadhaarOnFile(stillOnFile);
+
+      setSavePhase("opening");
+      setAppointmentSummary({
+        appointmentNumber: `APT-${String(id).padStart(6, "0")}`,
+        name: `${formData.name.first} ${formData.name.mid} ${formData.name.surname}`
+          .replace(/\s+/g, " ")
+          .trim(),
+        aadhaarDisplay: savedAadhaar !== "-" ? savedAadhaar : "-",
+        company: formData.company_code,
+        unit: formData.unit,
+      });
+
+      setStep(2);
+      syncRoute(id, "documents");
+      window.scrollTo(0, 0);
+      toast.success(
+        wasUpdate
+          ? "Appointment details updated successfully."
+          : "Appointment details saved successfully.",
+      );
+    } catch (error) {
+      // Stay on step 1 â€” the documents step is useless without a saved record.
+      setStep(1);
+      toast.error(error?.message || "Unable to save appointment details.");
+    } finally {
+      setIsSaving(false);
+      setSavePhase("idle");
+    }
+  };
+
+  // Assigning an emp_code converts this record into a full employee, so
+  // before asking "are you sure?" we check whether that code is already
+  // taken â€” if it is, the popup shows the conflict as an error instead of a
+  // Yes/No confirmation, so a duplicate emp_code never gets created.
+  const openEmpCodeConfirm = async (empCode, isFirstAssignment) => {
+    setEmpCodeConflict(null);
+    setIsFirstEmpCodeAssignment(isFirstAssignment);
+    setShowConfirmTransfer(true);
+    setCheckingEmpCode(true);
+    try {
+      const res = await authApi.checkEmpCodeAvailability(
+        empCode,
+        initialData?.id,
+        user?.accessToken,
+        user?.tokenType,
+      );
+      if (res?.exists) {
+        setEmpCodeConflict(res.employee);
+      }
+    } catch {
+      // Fail open â€” the backend still enforces this on submit either way.
+    } finally {
+      setCheckingEmpCode(false);
+    }
+  };
+
+  /**
+   * The state a freshly opened modal should show. Pure â€” it returns values
+   * instead of assigning them â€” so the open transition can apply it during
+   * render rather than from an effect, which renders the previous record's
+   * values and then immediately replaces them.
+   */
+  const buildOpenState = () => {
+    const defaultUnit = user?.unit || user?.unit_name || user?.unitName || "";
+    if (initialData && (isEditMode || isPrefillFromTrial)) {
+      const raw = initialData.raw || initialData || {};
+
+      // Split "First Mid Surname" back into parts
+      const nameStr = String(raw.name || "").trim();
+      const parts = nameStr.split(/\s+/).filter(Boolean);
+      let nameObj = { first: "", mid: "", surname: "" };
+      if (parts.length === 1)
+        nameObj = { first: parts[0], mid: "", surname: "" };
+      else if (parts.length === 2)
+        nameObj = { first: parts[0], mid: "", surname: parts[1] };
+      else if (parts.length >= 3)
+        nameObj = {
+          first: parts[0],
+          mid: parts.slice(1, -1).join(" "),
+          surname: parts[parts.length - 1],
+        };
+
+      // Parse members array
+      let parsedMembers = Array(4).fill({
+        name: "",
+        relation: "",
+        dob: "",
+        mobile: "",
+        occupation: "",
+      });
+      try {
+        let m = raw.members;
+        if (typeof m === "string" && m.trim()) {
+          const p = JSON.parse(m);
+          m = typeof p === "string" ? JSON.parse(p) : p;
+        }
+        if (Array.isArray(m)) {
+          parsedMembers = [...m, ...Array(Math.max(0, 4 - m.length)).fill({})]
+            .slice(0, 4)
+            .map((mem) => ({
+              name: mem?.name || "",
+              relation: mem?.relation || "",
+              dob: mem?.dob || "",
+              mobile: mem?.mobile || "",
+              occupation: mem?.occupation || "",
+            }));
+        }
+      } catch {
+        // ignore
+      }
+
+      const codeId = raw.company_code || raw.companyId || (isAllCompanies ? "" : companyId);
+
+      const populated = {
+        photo: null,
+        emp_code: raw.emp_code || "",
+        joining_date: raw.joining_date || getTodayDate(),
+        department: raw.department || "",
+        designation: raw.designation || "",
+        manager_name: raw.manager_name || "",
+        salary: String(raw.salary || ""),
+        mobile_number: raw.mobile_number || "",
+        emp_whatsapp_no: raw.emp_whatsapp_no || "",
+        punching_no: String(raw.punching_no || ""),
+        name: nameObj,
+        email: raw.email || "",
+        address: raw.address || "",
+        village: raw.village || "",
+        taluka: raw.taluka || "",
+        district: raw.district || "",
+        dob: raw.dob || "",
+        birth_place: raw.birth_place || "",
+        gender: raw.gender || "",
+        cast: raw.cast || "",
+        marital_status: raw.marital_status || "",
+        blood_group: raw.blood_group || "",
+        reference_name: raw.reference_name || "",
+        reference_mobile_no: raw.reference_mobile_no || "",
+        // Prefilled with the complete stored number so it can be checked against
+        // the document without retyping. Safe to post back because it is the real
+        // value; a partial edit is still refused by validation rather than
+        // overwriting what is stored, and a cleared field means "unchanged".
+        //
+        // overwriting what is stored, and a cleared field means "unchanged".
+        //
+        // A trial prefill creates a brand-new appointment, but now copies over
+        // the aadhaar number so the user doesn't have to type it again.
+        aadhar_card_no:
+          isEditMode
+            ? (formatFullAadhaar(raw.aadhaar_full) !== "-" ? formatFullAadhaar(raw.aadhaar_full) : "")
+            : isPrefillFromTrial
+              ? formatFullAadhaar(raw.aadhar_card_no || raw.aadhaar_full) !== "-" ? formatFullAadhaar(raw.aadhar_card_no || raw.aadhaar_full) : ""
+              : "",
+        bank_name: raw.bank_name || "",
+        pan_card_no: raw.pan_card_no || "",
+        bank_ifsc_code: raw.bank_ifsc_code || "",
+        education: raw.education || "",
+        bank_account_no: raw.bank_account_no || "",
+        company_code: codeId,
+        unit: raw.unit || raw.unit_name || raw.unitName || defaultUnit,
+        emp_signature: raw.emp_signature || "",
+        members: parsedMembers,
+      };
+
+      return {
+        selectedCompanyId: codeId,
+        formData: populated,
+        snapshot: {
+          ...populated,
+          nameStr,
+          membersJson: JSON.stringify(parsedMembers),
+        },
+        photoPreview: initialData.photo || "",
+        // Only an existing appointment has an Aadhaar on file. A trial prefill
+        // creates a brand-new record, so the number has to be entered again â€”
+        // inheriting the trial row's mask would let the new appointment save
+        // with no Aadhaar at all and land its documents in a fallback folder.
+        aadhaarOnFile: isEditMode
+          ? Boolean(raw.aadhaar_full || raw.aadhaar_masked || raw.aadhar_card_no)
+          : false,
+      };
+    }
+
+    const newCompanyId = isAllCompanies ? "" : companyId;
+
+    return {
+      selectedCompanyId: newCompanyId,
+      formData: getBlankFormData(newCompanyId, defaultUnit),
+      snapshot: null,
+      photoPreview: "",
+      aadhaarOnFile: false,
+    };
+  };
+
+  // Populate on open and clear on close. Assigning state during render is the
+  // supported way to reset when a prop changes; doing it in an effect body
+  // renders the previous record's values first and only then replaces them,
+  // which is what the set-state-in-effect rule warns about.
+  const [wasOpen, setWasOpen] = useState(false);
+
+  if (wasOpen !== isOpen) {
+    setWasOpen(isOpen);
+
+    if (isOpen) {
+      const next = buildOpenState();
+      setSelectedCompanyId(next.selectedCompanyId);
+      setFormData(next.formData);
+      setPhotoPreview(next.photoPreview);
+      setOriginalSnapshot(next.snapshot);
+      setAadhaarOnFile(next.aadhaarOnFile);
+    } else {
+      setStep(1);
+      setErrors({});
+      setShowConfirmTransfer(false);
+      setEmpCodeConflict(null);
+      setCheckingEmpCode(false);
+    }
+  }
+
+  // The scroll lock is a genuine external side effect, so it stays in an effect.
+  useEffect(() => {
+    if (!isOpen) {
+      document.body.style.overflow = "";
+      return undefined;
+    }
+
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [isOpen]);
+
+  const handlePhotoChange = (file) => {
+    if (!file) return;
+    setFormData((prev) => ({ ...prev, photo: file }));
+    const reader = new FileReader();
+    reader.onloadend = () => setPhotoPreview(reader.result);
+    reader.readAsDataURL(file);
+  };
+
+  // Camera-only capture â€” no gallery/file-picker path.
+  const { requestCapture, cameraModal } = usePhotoCapture({
+    onCapture: handlePhotoChange,
+  });
+
+  if (!isOpen) return null;
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    let nextValue = value;
+
+    if (name === "pan_card_no" || name === "bank_ifsc_code") {
+      nextValue = value.toUpperCase();
+    }
+
+    const numericLimits = {
+      aadhar_card_no: 12,
+      mobile_number: 10,
+      emp_whatsapp_no: 10,
+      reference_mobile_no: 10,
+      bank_account_no: 18,
+      punching_no: 20,
+      salary: 10,
+    };
+
+    if (Object.keys(numericLimits).includes(name)) {
+      nextValue = value.replace(/\D/g, "");
+      if (numericLimits[name]) {
+        nextValue = nextValue.slice(0, numericLimits[name]);
+      }
+    }
+
+    // Regroup as it is typed, so the input reads the way the card does and matches
+    // how the number is displayed everywhere else. Validation normalises to digits,
+    // so the spaces never reach the payload.
+    if (name === "aadhar_card_no") {
+      nextValue = nextValue.replace(/(\d{4})(?=\d)/g, "$1 ").trim();
+    }
+
+    if (name === "pan_card_no") nextValue = nextValue.slice(0, 10);
+    if (name === "bank_ifsc_code") nextValue = nextValue.slice(0, 11);
+
+    setFormData((prev) => {
+      const newData = { ...prev, [name]: nextValue };
+      if (name === "salary") {
+        newData.gross_salary = nextValue;
+      }
+      return newData;
+    });
+    clearError(name);
+  };
+
+  const handleCompanyChange = (e) => {
+    const newCompanyId = e.target.value;
+    setSelectedCompanyId(newCompanyId);
+    setFormData((prev) => ({ ...prev, company_code: newCompanyId, unit: "" }));
+    clearError("company_code");
+    clearError("unit");
+  };
+
+  const handleNameChange = (e) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, name: { ...prev.name, [name]: value } }));
+    clearError(`name.${name}`);
+  };
+
+  const handleFamilyChange = (index, field, value) => {
+    const updatedFamily = [...formData.members];
+    let nextValue = value;
+    if (field === "mobile") {
+      nextValue = value.replace(/\D/g, "").slice(0, 10);
+    }
+    updatedFamily[index] = { ...updatedFamily[index], [field]: nextValue };
+    setFormData((prev) => ({ ...prev, members: updatedFamily }));
+  };
+
+  return (
+    <>
+    {createPortal(
+    <div className={`fixed inset-0 bg-black/60 backdrop-blur-sm overflow-y-auto z-[1001] text-[13px] ${isMobile ? "p-0" : "p-4"}`}>
+      <div className={`relative mx-auto w-full max-w-[850px] bg-white overflow-hidden ${isMobile ? "min-h-screen" : "my-4 shadow-2xl rounded-xl"}`}>
+        {/* Top bar */}
+        <div className="safe-top-bar flex items-center justify-between px-4 py-2 border-b border-gray-100 bg-white">
+          {isEditMode ? (
+            <span className="text-xs font-bold text-brand-600 bg-brand-50 px-2.5 py-1 rounded-lg">
+              Editing Appointment #{initialData?.id}
+            </span>
+          ) : (
+            <span />
+          )}
+          <button
+            onClick={onClose}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-50 text-red-500 hover:bg-red-500 hover:text-white text-xs font-semibold transition"
+          >
+            <X size={13} />
+            Close
+          </button>
+        </div>
+
+        {/* â”€â”€â”€ STEP 1: Form â”€â”€â”€ */}
+        {/* Restoring from ?appointmentId=â€¦ â€” showing an empty step 1 here would
+            look like a fresh create form and invite a duplicate record. */}
+        {rehydrateState === "loading" && (
+          <div className="flex items-center justify-center gap-2 p-16 text-sm text-gray-500">
+            <RefreshCw size={16} className="animate-spin" />
+            Loading appointmentâ€¦
+          </div>
+        )}
+
+        {rehydrateState !== "loading" && (step === 1 || isMobile) && (
+          <div className="sm:p-8 p-3">
+            <div className="sm:border sm:border-dotted sm:border-gray-600 sm:p-6 bg-white sm:bg-transparent rounded-none">
+              <div className="text-center mb-0">
+                <h1 className="inline-block text-xl font-black tracking-widest uppercase">
+                  APPOINTMENT FORM
+                </h1>
+              </div>
+              <div className="border-t-2 border-black mt-2 mb-6" />
+
+              <MobileCard title="Employee Details" isMobile={isMobile}>
+                <div className="flex flex-col md:grid md:grid-cols-12 gap-8 items-start">
+                {/* Photo */}
+                <div className="md:col-span-5 flex flex-col items-center">
+                  {/* The camera modal is a full-screen overlay and must NOT be
+                      a child of this click target â€” its own clicks would bubble
+                      back into requestCapture and immediately re-open it. */}
+                  <div
+                    className="cursor-pointer group relative"
+                    onClick={requestCapture}
+                  >
+                    <div className="w-48 h-56 border border-gray-400 flex items-center justify-center bg-gray-50 overflow-hidden">
+                      {photoPreview ? (
+                        <img
+                          src={photoPreview}
+                          alt="Profile"
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="text-center">
+                          <p className="font-bold text-gray-400 group-hover:text-brand-500">
+                            TAP TO TAKE PHOTO
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-gray-400 mt-1 text-center">
+                      (Click box to take photo)
+                    </p>
+                  </div>
+                  {cameraModal}
+                </div>
+
+                {/* Top Right Fields */}
+                <div className="md:col-span-7 space-y-3 w-full">
+                  <div>
+                    {/* Assigning emp_code now happens from Employee Master only,
+                        so this field is always locked here â€” kept visible
+                        rather than removed since existing appointments still
+                        show whichever code they already have. */}
+                    <RowField
+                      label="Emp. Code"
+                      name="emp_code"
+                      value={formData.emp_code}
+                      onChange={handleChange}
+                      disabled
+                    />
+                    <p className="text-[10px] text-gray-400 mt-1 sm:ml-[138px]">
+                      Assign or change the employee code from Employee Master.
+                    </p>
+                  </div>
+                  <RowField
+                    label="Joining Date"
+                    name="joining_date"
+                    value={formData.joining_date}
+                    onChange={handleChange}
+                    error={errors.joining_date}
+                    type="date"
+                  />
+                  <RowField
+                    label="Department"
+                    name="department"
+                    value={formData.department}
+                    onChange={handleChange}
+                    error={errors.department}
+                    type="select"
+                    options={departmentsList.length > 0 ? departmentsList : DEFAULT_DEPARTMENTS}
+                  />
+                  <RowField
+                    label="Designation"
+                    name="designation"
+                    value={formData.designation}
+                    onChange={handleChange}
+                    error={errors.designation}
+                  />
+                  <RowField
+                    label="Manager Name"
+                    name="manager_name"
+                    value={formData.manager_name}
+                    onChange={handleChange}
+                    error={errors.manager_name}
+                  />
+                  <RowField
+                    label="Salary"
+                    name="salary"
+                    value={formData.salary}
+                    onChange={handleChange}
+                    error={errors.salary}
+                  />
+                  <RowField
+                    label="Emp. Mobile No"
+                    name="mobile_number"
+                    value={formData.mobile_number}
+                    onChange={handleChange}
+                    error={errors.mobile_number}
+                    inputMode="numeric"
+                    maxLength={10}
+                  />
+                  <RowField
+                    label="Emp. Whatsapp No"
+                    name="emp_whatsapp_no"
+                    value={formData.emp_whatsapp_no}
+                    onChange={handleChange}
+                    error={errors.emp_whatsapp_no}
+                    inputMode="numeric"
+                    maxLength={10}
+                  />
+                </div>
+              </div>
+              </MobileCard>
+
+              <MobileCard title="Personal Information" isMobile={isMobile}>
+                <div className="mt-6 space-y-4">
+                  {/* Punching No */}
+                  <RowField
+                    label="Punching No"
+                    name="punching_no"
+                    value={formData.punching_no}
+                    onChange={handleChange}
+                    error={errors.punching_no}
+                    inputMode="numeric"
+                  />
+
+                {/* Name */}
+                <div className="flex flex-col sm:flex-row items-start gap-1 sm:gap-2">
+                  <label className="font-bold w-full sm:w-[130px] sm:shrink-0 pt-1 text-[13px]">
+                    Name
+                  </label>
+                  <span className="font-bold pt-1 hidden sm:inline">:</span>
+                  <div className="flex-grow grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <NameInput
+                      label="(FIRST NAME)"
+                      name="first"
+                      value={formData.name.first}
+                      onChange={handleNameChange}
+                      error={errors["name.first"]}
+                    />
+                    <NameInput
+                      label="(MID NAME)"
+                      name="mid"
+                      value={formData.name.mid}
+                      onChange={handleNameChange}
+                      error={errors["name.mid"]}
+                    />
+                    <NameInput
+                      label="(SURNAME)"
+                      name="surname"
+                      value={formData.name.surname}
+                      onChange={handleNameChange}
+                      error={errors["name.surname"]}
+                    />
+                  </div>
+                </div>
+
+                <RowField
+                  label="Email"
+                  name="email"
+                  value={formData.email}
+                  onChange={handleChange}
+                  error={errors.email}
+                  type="email"
+                />
+
+                <RowField
+                  label="Resident Add"
+                  name="address"
+                  value={formData.address}
+                  onChange={handleChange}
+                  error={errors.address}
+                />
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 w-full">
+                  <InlineField
+                    label="Village"
+                    name="village"
+                    value={formData.village}
+                    onChange={handleChange}
+                    error={errors.village}
+                  />
+                  <InlineField
+                    label="Taluka"
+                    name="taluka"
+                    value={formData.taluka}
+                    onChange={handleChange}
+                    error={errors.taluka}
+                  />
+                  <InlineField
+                    label="District"
+                    name="district"
+                    value={formData.district}
+                    onChange={handleChange}
+                    error={errors.district}
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-12 gap-y-3">
+                  <RowField
+                    label="Birth Date"
+                    name="dob"
+                    value={formData.dob}
+                    onChange={handleChange}
+                    error={errors.dob}
+                    type="date"
+                  />
+                  <RowField
+                    label="Birth Place"
+                    name="birth_place"
+                    value={formData.birth_place}
+                    onChange={handleChange}
+                  />
+                  <RowField
+                    label="Gender"
+                    name="gender"
+                    value={formData.gender}
+                    onChange={handleChange}
+                    error={errors.gender}
+                    type="select"
+                    options={["MALE", "FEMALE", "OTHER"]}
+                  />
+                  <RowField
+                    label="Cast"
+                    name="cast"
+                    value={formData.cast}
+                    onChange={handleChange}
+                  />
+                  <RowField
+                    label="Marital Status"
+                    name="marital_status"
+                    value={formData.marital_status}
+                    onChange={handleChange}
+                    error={errors.marital_status}
+                    type="select"
+                    options={["MARRIED", "UNMARRIED"]}
+                  />
+                  <RowField
+                    label="Blood Group"
+                    name="blood_group"
+                    value={formData.blood_group}
+                    onChange={handleChange}
+                  />
+                </div>
+                </div>
+              </MobileCard>
+
+              <MobileCard title="Banking & Reference Details" isMobile={isMobile}>
+                <div className="mt-0 sm:mt-6 grid grid-cols-1 sm:grid-cols-2 gap-x-12 gap-y-3">
+                  <RowField
+                    label="Reference Name"
+                    name="reference_name"
+                    value={formData.reference_name}
+                    onChange={handleChange}
+                    error={errors.reference_name}
+                  />
+                  <RowField
+                    label="Reference Mobile"
+                    name="reference_mobile_no"
+                    value={formData.reference_mobile_no}
+                    onChange={handleChange}
+                    error={errors.reference_mobile_no}
+                    inputMode="numeric"
+                    maxLength={10}
+                  />
+                  <div>
+                    <RowField
+                      label="Aadhaar Card No"
+                      name="aadhar_card_no"
+                      value={formData.aadhar_card_no}
+                      onChange={handleChange}
+                      error={errors.aadhar_card_no}
+                      inputMode="numeric"
+                      maxLength={14}
+                    />
+                    {(isEditMode || aadhaarOnFile) && (
+                      <p className="mt-1 text-[11px] text-gray-500">
+                        Leave blank to keep the number already on file, or enter all 12 digits to replace it.
+                      </p>
+                    )}
+                  </div>
+                  <RowField
+                    label="Bank Name"
+                    name="bank_name"
+                    value={formData.bank_name}
+                    onChange={handleChange}
+                    error={errors.bank_name}
+                  />
+                  <RowField
+                    label="PAN Card No"
+                    name="pan_card_no"
+                    value={formData.pan_card_no}
+                    onChange={handleChange}
+                    error={errors.pan_card_no}
+                    maxLength={10}
+                  />
+                  <RowField
+                    label="Bank IFSC Code"
+                    name="bank_ifsc_code"
+                    value={formData.bank_ifsc_code}
+                    onChange={handleChange}
+                    error={errors.bank_ifsc_code}
+                    maxLength={11}
+                  />
+                  <RowField
+                    label="Education"
+                    name="education"
+                    value={formData.education}
+                    onChange={handleChange}
+                  />
+                  <RowField
+                    label="Bank Account No"
+                    name="bank_account_no"
+                    value={formData.bank_account_no}
+                    onChange={handleChange}
+                    error={errors.bank_account_no}
+                    inputMode="numeric"
+                    maxLength={18}
+                  />
+                </div>
+              </MobileCard>
+
+              {/* Family Members Table */}
+              <div className="mt-6 overflow-x-auto pb-4">
+                {isMobile ? (
+                  <div className="flex flex-col gap-4">
+                    <h3 className="text-base font-bold text-gray-800">Family Members</h3>
+                    {formData.members.map((member, index) => (
+                      <div key={index} className="border border-gray-200 rounded-xl p-4 bg-gray-50 flex flex-col gap-3 shadow-sm">
+                        <div className="font-bold text-sm text-brand-600 mb-1 flex items-center gap-2">
+                          <div className="w-5 h-5 rounded-full bg-brand-100 flex items-center justify-center text-[10px]">{index + 1}</div>
+                          Member
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs font-semibold text-gray-600">Full Name</label>
+                          <input
+                            className="w-full transition-colors border border-gray-300 rounded-lg px-3 py-2 bg-white text-sm h-10 focus:border-brand-500 focus:outline-none"
+                            value={member.name}
+                            onChange={(e) => handleFamilyChange(index, "name", e.target.value)}
+                            placeholder="Name"
+                          />
+                        </div>
+                        <div className="flex gap-3">
+                          <div className="flex flex-col gap-1 flex-1">
+                            <label className="text-xs font-semibold text-gray-600">Relation</label>
+                            <input
+                              list={`family-relation-options-mobile-${index}`}
+                              className="w-full transition-colors border border-gray-300 rounded-lg px-3 py-2 bg-white text-sm h-10 focus:border-brand-500 focus:outline-none"
+                              value={member.relation}
+                              onChange={(e) => handleFamilyChange(index, "relation", e.target.value)}
+                              placeholder="Select or type e.g. Father"
+                            />
+                            <datalist id={`family-relation-options-mobile-${index}`}>
+                              {FAMILY_RELATIONS.map((rel) => (
+                                <option key={rel} value={rel} />
+                              ))}
+                            </datalist>
+                          </div>
+                          <div className="flex flex-col gap-1 flex-1">
+                            <label className="text-xs font-semibold text-gray-600">Date of Birth</label>
+                            <ModernDatePicker
+                              className="w-full transition-colors border border-gray-300 rounded-lg px-3 py-2 bg-white text-sm h-10 focus:border-brand-500 focus:outline-none"
+                              value={member.dob}
+                              onChange={(e) => handleFamilyChange(index, "dob", e.target.value)}
+                            />
+                          </div>
+                        </div>
+                        <div className="flex gap-3">
+                          <div className="flex flex-col gap-1 flex-1">
+                            <label className="text-xs font-semibold text-gray-600">Mobile No</label>
+                            <input
+                              className="w-full transition-colors border border-gray-300 rounded-lg px-3 py-2 bg-white text-sm h-10 focus:border-brand-500 focus:outline-none"
+                              value={member.mobile}
+                              onChange={(e) => handleFamilyChange(index, "mobile", e.target.value)}
+                              placeholder="Mobile Number"
+                              inputMode="numeric"
+                            />
+                          </div>
+                          <div className="flex flex-col gap-1 flex-1">
+                            <label className="text-xs font-semibold text-gray-600">Occupation</label>
+                            <input
+                              className="w-full transition-colors border border-gray-300 rounded-lg px-3 py-2 bg-white text-sm h-10 focus:border-brand-500 focus:outline-none"
+                              value={member.occupation}
+                              onChange={(e) => handleFamilyChange(index, "occupation", e.target.value)}
+                              placeholder="Occupation"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <table className="w-full border-collapse border border-black text-[13px] min-w-[600px]">
+                    <thead>
+                      <tr className="font-bold bg-gray-50">
+                        <th className="border border-black p-1 w-12 text-center">
+                          Sr No
+                        </th>
+                        <th className="border border-black p-1">
+                          Family Members Name
+                        </th>
+                        <th className="border border-black p-1">Relation</th>
+                        <th className="border border-black p-1">D.O.B.</th>
+                        <th className="border border-black p-1">Mobile No</th>
+                        <th className="border border-black p-1">Occupation</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {formData.members.map((member, index) => (
+                        <tr key={index} className="h-8">
+                          <td className="border border-black text-center font-bold">
+                            {index + 1}
+                          </td>
+                          <td className="border border-black px-1">
+                            <input
+                              className="w-full outline-none text-[13px]"
+                              value={member.name}
+                              onChange={(e) =>
+                                handleFamilyChange(index, "name", e.target.value)
+                              }
+                            />
+                          </td>
+                          <td className="border border-black px-1">
+                            <input
+                              list={`family-relation-options-desktop-${index}`}
+                              className="w-full outline-none text-[13px]"
+                              value={member.relation}
+                              onChange={(e) =>
+                                handleFamilyChange(
+                                  index,
+                                  "relation",
+                                  e.target.value,
+                                )
+                              }
+                              placeholder="Select or type..."
+                            />
+                            <datalist id={`family-relation-options-desktop-${index}`}>
+                              {FAMILY_RELATIONS.map((rel) => (
+                                <option key={rel} value={rel} />
+                              ))}
+                            </datalist>
+                          </td>
+                          <td className="border border-black px-1">
+                            <ModernDatePicker
+                              className="w-full outline-none text-[13px] bg-transparent min-h-0 h-6 px-1"
+                              value={member.dob}
+                              onChange={(e) =>
+                                handleFamilyChange(index, "dob", e.target.value)
+                              }
+                            />
+                          </td>
+                          <td className="border border-black px-1">
+                            <input
+                              className="w-full outline-none text-[13px]"
+                              value={member.mobile}
+                              onChange={(e) =>
+                                handleFamilyChange(
+                                  index,
+                                  "mobile",
+                                  e.target.value,
+                                )
+                              }
+                            />
+                          </td>
+                          <td className="border border-black px-1">
+                            <input
+                              className="w-full outline-none text-[13px]"
+                              value={member.occupation}
+                              onChange={(e) =>
+                                handleFamilyChange(
+                                  index,
+                                  "occupation",
+                                  e.target.value,
+                                )
+                              }
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+
+              {/* Signature Row */}
+              {!isMobile && (
+                <div className="mt-10 grid grid-cols-1 sm:grid-cols-3 gap-6 sm:gap-12 font-bold text-[13px]">
+                  <div>
+                    <p className="mb-1">Check By, Manager</p>
+                    <div className="border-b border-black w-full h-8" />
+                  </div>
+                  <div className="text-center">
+                    <p className="mb-1">Confirm By,</p>
+                    <div className="border-b border-black w-full h-8" />
+                    <p className="mt-1 font-normal">(Ketanbhai)</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="mb-1">Auth. By,</p>
+                    <div className="border-b border-black w-full h-8" />
+                    <p className="mt-1 font-normal">HR Dept</p>
+                  </div>
+                </div>
+              )}
+
+              <MobileCard title="Company & Authorization" isMobile={isMobile}>
+                <div className="mt-0 sm:mt-6 flex flex-col md:flex-row justify-between md:items-end gap-6 md:gap-10">
+                  <div className="flex flex-col gap-4 md:gap-2 flex-1 w-full">
+                  {isAllCompanies && (
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 w-full">
+                      <span className="font-bold whitespace-nowrap uppercase">
+                        Company :
+                      </span>
+                      <select
+                        value={selectedCompanyId}
+                        onChange={handleCompanyChange}
+                        className={`border-b flex-grow h-6 outline-none text-[13px] bg-transparent ${errors.company_code ? "border-red-500" : "border-black"}`}
+                      >
+                        <option value="">Select Company</option>
+                        {companyOptions.map((company) => (
+                          <option key={company.id} value={company.code}>
+                            {company.name}
+                          </option>
+                        ))}
+                      </select>
+                      {errors.company_code && (
+                        <p className="text-[11px] text-red-600">
+                          {errors.company_code}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 w-full">
+                    <span className="font-bold whitespace-nowrap uppercase">
+                      UNIT NAME :
+                    </span>
+                    <select
+                      name="unit"
+                      value={formData.unit}
+                      onChange={handleChange}
+                      disabled={!selectedCompanyId}
+                      className={`border-b flex-grow h-6 outline-none text-[13px] bg-transparent ${errors.unit ? "border-red-500" : "border-black"} ${!selectedCompanyId ? "opacity-50 cursor-not-allowed" : ""}`}
+                    >
+                      <option value="">Select Unit</option>
+                      {unitOptions.map((unit) => (
+                        <option key={unit} value={unit}>
+                          {unit}
+                        </option>
+                      ))}
+                    </select>
+                    {errors.unit && (
+                      <p className="text-[11px] text-red-600">{errors.unit}</p>
+                    )}
+                  </div>
+                </div>
+                <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 flex-1 w-full">
+                  <span className="font-bold whitespace-nowrap uppercase">
+                    Emp. Signature :
+                  </span>
+                  <input
+                    name="emp_signature"
+                    value={formData.emp_signature}
+                    onChange={handleChange}
+                    className={`border-b flex-grow h-6 outline-none text-[13px] bg-transparent ${errors.emp_signature ? "border-red-500" : "border-black"}`}
+                  />
+                  {errors.emp_signature && (
+                    <p className="text-[11px] text-red-600">
+                      {errors.emp_signature}
+                    </p>
+                  )}
+                </div>
+              </div>
+              </MobileCard>
+            </div>
+
+            {/* Step 1 Footer â€” must render on mobile too. On mobile this is the
+                *only* way savedAppointmentId ever gets set (steps 1 and 2 both
+                render inline on mobile, see the `isMobile` checks above and
+                below), so hiding this button didn't just look wrong, it made
+                the Documents step permanently unreachable on a phone. */}
+            
+            <div className="mt-4 flex flex-col sm:flex-row justify-center sm:justify-end gap-2">
+              <button
+                type="button"
+                onClick={handlePrint}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-2.5 border border-gray-300 text-gray-700 text-sm font-semibold rounded-lg hover:bg-gray-50 transition"
+              >
+                <Download size={16} />
+                Download
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveAndNext}
+                disabled={isSaving}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-2.5 bg-brand-600 text-white text-sm font-semibold rounded-lg hover:bg-brand-700 transition disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {isSaving ? "Saving..." : "Proceed To Appointment"}
+                <ChevronRight size={16} />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* â”€â”€â”€ STEP 2: Documents â”€â”€â”€ */}
+        {/* Gated on savedAppointmentId: uploads post to
+            /v1/appointments/{id}/documents, so without a real id there is
+            nothing to attach them to. On mobile both steps render together, so
+            the gate applies there too. */}
+        {(step === 2 || isMobile) && savedAppointmentId && (
+          <div className="sm:p-8 p-3">
+            {/* The legacy inline document grid and its combined submit were
+                removed: they posted all four documents through the appointment
+                form, which required the record to already exist. Uploads now go
+                one at a time to /v1/appointments/{id}/documents. */}
+            <AppointmentDocumentsStep
+              key={documentsRefreshKey}
+              appointmentId={savedAppointmentId}
+              summary={appointmentSummary}
+              onBack={handleBackToDetails}
+              onComplete={handleAppointmentCompleted}
+              pendingPhoto={pendingPhoto}
+              onPendingPhotoUploaded={handlePendingPhotoUploaded}
+              onDiscardPendingPhoto={handleDiscardPendingPhoto}
+            />
+          </div>
+        )}
+      </div>
+    </div>,
+    document.body,
+    )}
+    {showConfirmTransfer &&
+      createPortal(
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[1002] p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6">
+            {checkingEmpCode ? (
+              <div className="flex flex-col items-center py-4 gap-3">
+                <span className="w-8 h-8 border-2 border-gray-200 border-t-brand-600 rounded-full animate-spin" />
+                <p className="text-sm text-gray-500">Checking employee codeâ€¦</p>
+              </div>
+            ) : empCodeConflict ? (
+              <>
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-10 h-10 rounded-full bg-red-50 text-red-500 flex items-center justify-center flex-shrink-0">
+                    <AlertCircle size={20} />
+                  </div>
+                  <h3 className="text-base font-bold text-gray-900">
+                    Employee Code Already In Use
+                  </h3>
+                </div>
+                <p className="text-sm text-gray-600 mb-6">
+                  Employee code{" "}
+                  <span className="font-semibold text-gray-900">
+                    {formData.emp_code}
+                  </span>{" "}
+                  is already assigned to{" "}
+                  <span className="font-semibold text-gray-900">
+                    {empCodeConflict.name}
+                  </span>
+                  . Please use a different employee code.
+                </p>
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmTransfer(false)}
+                    className="px-4 py-2 rounded-lg bg-gray-100 text-sm font-semibold text-gray-700 hover:bg-gray-200 transition"
+                  >
+                    OK
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-10 h-10 rounded-full bg-amber-50 text-amber-500 flex items-center justify-center flex-shrink-0">
+                    <AlertCircle size={20} />
+                  </div>
+                  <h3 className="text-base font-bold text-gray-900">
+                    {isFirstEmpCodeAssignment
+                      ? "Assign Employee Code?"
+                      : "Change Employee Code?"}
+                  </h3>
+                </div>
+                <p className="text-sm text-gray-600 mb-6">
+                  {!isFirstEmpCodeAssignment ? (
+                    <>
+                      Changing the employee code to{" "}
+                      <span className="font-semibold text-gray-900">
+                        {formData.emp_code}
+                      </span>
+                      . Continue?
+                    </>
+                  ) : (
+                    <>
+                      Assigning employee code{" "}
+                      <span className="font-semibold text-gray-900">
+                        {formData.emp_code}
+                      </span>{" "}
+                      will convert this appointment into a full employee record and
+                      remove it from the Appointments list. Continue?
+                    </>
+                  )}
+                </p>
+                <div className="flex justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmTransfer(false)}
+                    className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowConfirmTransfer(false);
+                      proceedSaveAndNext();
+                    }}
+                    className="px-4 py-2 rounded-lg bg-brand-600 text-white text-sm font-semibold hover:bg-brand-700 transition"
+                  >
+                    {isFirstEmpCodeAssignment
+                      ? "Yes, Convert to Employee"
+                      : "Yes, Change Code"}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>,
+        document.body,
+      )}
+
+      {/* Off-screen â€” exists only so handlePrint has a real DOM node (with the
+          same markup used elsewhere in the app) to clone into the print window. */}
+      <div className="fixed -left-[9999px] top-0" aria-hidden="true">
+        <PrintableForm data={buildPrintData()} formRef={printFormRef} />
+      </div>
+    </>
+  );
+};
+
+// â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â”€â”€â”€ Form Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+const RowField = ({
+  label,
+
+  name,
+  value,
+  onChange,
+  error,
+  type = "text",
+  options = [],
+  inputMode,
+  maxLength,
+  disabled,
+}) => (
+  <div className="w-full">
+    <div className="flex flex-col sm:flex-row sm:items-center items-start gap-1 sm:gap-2 w-full">
+      {/* htmlFor/id so the label actually names the control for screen readers. */}
+      <label
+        htmlFor={`appt-${name}`}
+        className="text-sm font-semibold text-gray-700 sm:text-[13px] sm:font-bold sm:text-black sm:whitespace-nowrap w-full sm:w-[130px] sm:shrink-0 mb-1 sm:mb-0"
+      >
+        {label}
+      </label>
+      <span className="font-bold hidden sm:inline">:</span>
+      {type === "date" ? (
+        <ModernDatePicker
+          id={`appt-${name}`}
+          name={name}
+          value={value}
+          onChange={onChange}
+          disabled={disabled}
+          className={`w-full sm:flex-grow focus:outline-none transition-colors border rounded-lg px-3 py-2 bg-gray-50 text-sm h-10 ${error ? "border-red-500 bg-red-50" : "border-gray-300 focus:border-brand-500"} sm:border-t-0 sm:border-l-0 sm:border-r-0 sm:border-b sm:rounded-none sm:px-1 sm:h-5 sm:text-[13px] ${disabled ? "bg-gray-100 cursor-not-allowed text-gray-500" : "sm:bg-transparent"} sm:border-black`}
+        />
+      ) : type === "select" ? (
+        <div className="w-full sm:flex-grow relative">
+          <select
+            id={`appt-${name}`}
+            name={name}
+            value={value}
+            onChange={onChange}
+            disabled={disabled}
+            className={`w-full focus:outline-none transition-colors border rounded-lg px-3 py-2 bg-white text-sm h-10 ${error ? "border-red-500 bg-red-50" : "border-gray-300 focus:border-brand-500"} sm:border-t-0 sm:border-l-0 sm:border-r-0 sm:border-b sm:rounded-none sm:px-2 sm:h-7 sm:py-0 sm:text-[13px] ${disabled ? "bg-gray-100 cursor-not-allowed text-gray-500" : "sm:bg-white"} sm:border-black font-semibold text-black`}
+          >
+            <option value="">Select {label}</option>
+            {options.map((opt) => (
+              <option key={opt.value || opt} value={opt.value || opt}>
+                {opt.label || opt}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : (
+        <input
+          id={`appt-${name}`}
+          type={type}
+          name={name}
+          value={value}
+          onChange={onChange}
+          inputMode={inputMode}
+          maxLength={maxLength}
+          disabled={disabled}
+          className={`w-full sm:flex-grow focus:outline-none transition-colors border rounded-lg px-3 py-2 bg-gray-50 text-sm h-10 ${error ? "border-red-500 bg-red-50" : "border-gray-300 focus:border-brand-500"} sm:border-t-0 sm:border-l-0 sm:border-r-0 sm:border-b sm:rounded-none sm:px-1 sm:h-5 sm:text-[13px] ${disabled ? "bg-gray-100 cursor-not-allowed text-gray-500" : "sm:bg-transparent"} sm:border-black`}
+        />
+      )}
+    </div>
+    {error && (
+      <p className="sm:ml-[138px] mt-1 text-[11px] text-red-600">{error}</p>
+    )}
+  </div>
+);
+
+const InlineField = ({ label, name, value, onChange, error }) => (
+  <div className="min-w-0">
+    <div className="flex flex-col sm:flex-row sm:items-end gap-1 sm:gap-2">
+      <label className="text-sm font-semibold text-gray-700 sm:text-[13px] sm:font-bold sm:text-black whitespace-nowrap mb-1 sm:mb-0">
+        {label}
+      </label>
+      <span className="font-bold hidden sm:inline">:</span>
+      <input
+        name={name}
+        value={value}
+        onChange={onChange}
+        className={`min-w-0 flex-1 outline-none transition-colors border rounded-lg px-3 py-2 bg-gray-50 text-sm h-10 ${error ? "border-red-500 bg-red-50" : "border-gray-300 focus:border-brand-500"} sm:border-t-0 sm:border-l-0 sm:border-r-0 sm:border-b sm:rounded-none sm:px-1 sm:h-5 sm:text-[13px] sm:bg-transparent sm:border-black`}
+      />
+    </div>
+    {error && <p className="mt-1 text-[11px] text-red-600">{error}</p>}
+  </div>
+);
+
+const NameInput = ({ label, name, value, onChange, error }) => (
+  <div className="text-center sm:text-center text-left">
+    <input
+      name={name}
+      value={value}
+      onChange={onChange}
+      className={`w-full transition-colors border rounded-lg px-3 py-2 bg-gray-50 text-sm h-10 ${error ? "border-red-500 bg-red-50" : "border-gray-300 focus:border-brand-500"} sm:border-t-0 sm:border-l-0 sm:border-r-0 sm:border-b sm:rounded-none sm:px-1 sm:h-7 sm:text-[13px] sm:bg-transparent sm:border-black focus:outline-none sm:text-center text-left uppercase`}
+    />
+    <span className="text-[10px] sm:text-[10px] text-xs text-gray-500 sm:text-gray-700 font-bold block mt-1 sm:inline-block sm:mt-0">{label}</span>
+    {error && <p className="mt-1 text-[11px] text-red-600">{error}</p>}
+  </div>
+);
+
+export default ViewAppointmentModal;
+

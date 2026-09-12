@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import toast from "react-hot-toast";
+import { copyToClipboard } from "../../utils/clipboard";
 import {
   X, Send, Clock, User as UserIcon, Building2, Tag, Loader2,
   RotateCcw, Lock, ShieldAlert, Copy, Check, Calendar,
@@ -84,7 +85,7 @@ export default function TicketDetailDrawer({ ticketId, onClose, onChanged }) {
 
   const copyTicketNumber = () => {
     if (ticket?.ticket_number) {
-      navigator.clipboard.writeText(ticket.ticket_number);
+      copyToClipboard(ticket.ticket_number);
       setCopied(true);
       toast.success("Ticket number copied!");
       setTimeout(() => setCopied(false), 2000);
@@ -193,7 +194,7 @@ export default function TicketDetailDrawer({ ticketId, onClose, onChanged }) {
                   <button
                     onClick={copyTicketNumber}
                     title="Click to copy ticket number"
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50/80 px-2.5 py-0.5 font-mono text-xs font-bold text-brand-700 transition hover:bg-brand-100 dark:border-brand-900/50 dark:bg-brand-950/50 dark:text-brand-300 dark:hover:bg-brand-900/50"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50/80 px-2.5 py-0.5 font-mono text-xs font-bold text-brand-700 transition hover:bg-brand-100 dark:border-brand-800/80 dark:bg-brand-950/70 dark:text-brand-300 dark:hover:bg-brand-900/80"
                   >
                     {ticket?.ticket_number}
                     {copied ? <Check size={12} className="text-emerald-600" /> : <Copy size={12} className="opacity-60" />}

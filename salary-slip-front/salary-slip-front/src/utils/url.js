@@ -19,8 +19,8 @@ function getDevBaseUrl() {
   const hostname = window.location.hostname;
   const port = window.location.port;
 
-  // Local development detection: running on Vite dev server ports (e.g. 5173, 5174, 5175, 5176)
-  const isDevPort = Boolean(port && ["5173", "5174", "5175", "5176", "3000"].includes(port));
+  // Local development detection: running on Vite dev server ports (e.g. 5173, 5175, 5176, 5177, etc.)
+  const isDevPort = Boolean(import.meta.env.DEV && port && port !== "8000");
 
   if (isDevPort) {
     const host = hostname === "localhost" ? "127.0.0.1" : hostname;

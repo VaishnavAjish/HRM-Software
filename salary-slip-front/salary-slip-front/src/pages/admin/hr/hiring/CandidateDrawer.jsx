@@ -142,10 +142,7 @@ function useResumeObjectUrl(candidate, user) {
   const [objectUrl, setObjectUrl] = useState("");
 
   useEffect(() => {
-    if (!endpoint) {
-      setObjectUrl("");
-      return undefined;
-    }
+    if (!endpoint) return undefined;
 
     const controller = new AbortController();
     let created = "";
@@ -169,6 +166,7 @@ function useResumeObjectUrl(candidate, user) {
       cancelled = true;
       controller.abort();
       if (created) URL.revokeObjectURL(created);
+      setObjectUrl("");
     };
   }, [endpoint, user?.accessToken, user?.tokenType]);
 
@@ -200,7 +198,7 @@ function ownerTabLabel(stage) {
  */
 export default function CandidateDrawer({
   candidate, loadingDetail, onClose, onAdvance, onDelete, advancing,
-  mainStages, terminalStages, stageIndex, ownedStages,
+  mainStages, terminalStages, stageIndex, ownedStages, hideCrmSections, hideAdvanceButton,
 }) {
   const { user } = useAuth();
   const token = user?.accessToken;
@@ -256,13 +254,15 @@ export default function CandidateDrawer({
       size="lg"
       footer={
         <div className="flex items-center justify-between gap-2 w-full">
-          <button
-            onClick={() => onDelete(candidate.id)}
-            className="flex items-center gap-1.5 text-sm text-red-500 hover:text-red-700 px-3 py-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-          >
-            <Trash2 size={14} /> Delete
-          </button>
-          {next && (
+          {onDelete ? (
+            <button
+              onClick={() => onDelete(candidate.id)}
+              className="flex items-center gap-1.5 text-sm text-red-500 hover:text-red-700 px-3 py-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+            >
+              <Trash2 size={14} /> Delete
+            </button>
+          ) : <div />}
+          {next && !hideAdvanceButton && onAdvance && (
             <Button icon={<ArrowRight size={15} />} onClick={() => onAdvance(candidate.id, next.key)} disabled={advancing}>
               {advancing ? "Moving..." : `Advance to ${next.label}`}
             </Button>
@@ -441,22 +441,122 @@ export default function CandidateDrawer({
           )}
         </CollapsibleSection>
 
-        <CollapsibleSection title="Interviews" icon={<CalendarClock size={15} />} count={interviews.length} defaultOpen={false}>
+        <CollapsibleSection title="Interviews & Evaluation Notes" icon={<CalendarClock size={15} />} count={interviews.length} defaultOpen={interviews.length > 0}>
           {loadingDetail ? (
             <p className="text-xs text-gray-400 text-center py-2">Loading…</p>
           ) : interviews.length === 0 ? (
             <p className="text-xs text-gray-400 text-center py-2">No interviews scheduled yet</p>
           ) : (
-            <div className="space-y-2">
-              {interviews.map((iv) => (
-                <div key={iv.id} className="rounded-lg border border-gray-100 dark:border-gray-700 px-3 py-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-gray-900 dark:text-white">{iv.round_name}</span>
-                    <Badge variant="gray">{iv.status?.replace("_", " ")}</Badge>
+            <div className="space-y-3">
+              {interviews.map((iv) => {
+                const feedbacks = Array.isArray(iv.feedback)
+                  ? iv.feedback
+                  : iv.feedback && typeof iv.feedback === "object"
+                  ? [iv.feedback]
+                  : [];
+                const directFeedback = (iv.rating || iv.recommendation || iv.strengths || iv.concerns || iv.notes) ? [iv] : [];
+                const allFeedbacks = feedbacks.length > 0 ? feedbacks : directFeedback;
+
+                return (
+                  <div key={iv.id} className="rounded-xl border border-gray-200 dark:border-gray-700/80 bg-gray-50/50 dark:bg-gray-800/40 p-3.5 space-y-2.5">
+                    <div className="flex items-center justify-between flex-wrap gap-1.5">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-bold text-gray-900 dark:text-white">{iv.round_name || "Interview Round"}</span>
+                        {iv.mode && (
+                          <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-md bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+                            {iv.mode}
+                          </span>
+                        )}
+                      </div>
+                      <Badge variant={iv.status === "completed" ? "green" : iv.status === "scheduled" ? "blue" : "gray"}>
+                        {iv.status?.replace("_", " ")}
+                      </Badge>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+                      {iv.scheduled_at && (
+                        <span>📅 {new Date(iv.scheduled_at).toLocaleString()}</span>
+                      )}
+                      {iv.duration_minutes && (
+                        <span>⏱️ {iv.duration_minutes} mins</span>
+                      )}
+                      {iv.meeting_link && (
+                        <a href={iv.meeting_link} target="_blank" rel="noreferrer" className="text-brand-600 dark:text-brand-400 hover:underline flex items-center gap-1">
+                          <ExternalLink size={11} /> Meeting Link
+                        </a>
+                      )}
+                    </div>
+
+                    {/* Interview Feedback & Evaluation Notes */}
+                    {allFeedbacks.length > 0 ? (
+                      <div className="pt-2 border-t border-gray-200 dark:border-gray-700 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold uppercase tracking-wider text-brand-600 dark:text-brand-400">
+                            Evaluation Feedback
+                          </span>
+                        </div>
+                        {allFeedbacks.map((fb, idx) => (
+                          <div key={idx} className="bg-white dark:bg-gray-800 rounded-lg p-3 border border-gray-100 dark:border-gray-700 space-y-2 text-xs shadow-2xs">
+                            <div className="flex items-center justify-between flex-wrap gap-2">
+                              <div className="flex items-center gap-2">
+                                {fb.rating != null && (
+                                  <span className="inline-flex items-center gap-1 font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                                    ★ {fb.rating}/5
+                                  </span>
+                                )}
+                                {fb.recommendation && (
+                                  <span
+                                    className={`font-bold px-2 py-0.5 rounded-full ${
+                                      fb.recommendation.includes("yes")
+                                        ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200"
+                                        : "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border border-rose-200"
+                                    }`}
+                                  >
+                                    {fb.recommendation.replace("_", " ").toUpperCase()}
+                                  </span>
+                                )}
+                              </div>
+                              {fb.created_at && (
+                                <span className="text-[10.5px] text-gray-400">
+                                  {new Date(fb.created_at).toLocaleDateString()}
+                                </span>
+                              )}
+                            </div>
+
+                            {fb.strengths && (
+                              <div className="p-2 rounded-md bg-emerald-50/60 dark:bg-emerald-950/20 text-emerald-900 dark:text-emerald-200 border border-emerald-100 dark:border-emerald-900/40">
+                                <span className="font-bold block text-[11px] text-emerald-700 dark:text-emerald-300">Strengths:</span>
+                                <p className="mt-0.5 whitespace-pre-line">{fb.strengths}</p>
+                              </div>
+                            )}
+
+                            {fb.concerns && (
+                              <div className="p-2 rounded-md bg-amber-50/60 dark:bg-amber-950/20 text-amber-900 dark:text-amber-200 border border-amber-100 dark:border-amber-900/40">
+                                <span className="font-bold block text-[11px] text-amber-700 dark:text-amber-300">Concerns:</span>
+                                <p className="mt-0.5 whitespace-pre-line">{fb.concerns}</p>
+                              </div>
+                            )}
+
+                            {fb.notes && (
+                              <div className="p-2 rounded-md bg-gray-50 dark:bg-gray-700/50 text-gray-700 dark:text-gray-200">
+                                <span className="font-bold block text-[11px] text-gray-500 dark:text-gray-400">Interviewer Notes:</span>
+                                <p className="mt-0.5 whitespace-pre-line font-normal">{fb.notes}</p>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      iv.notes && (
+                        <div className="pt-2 border-t border-gray-200 dark:border-gray-700 text-xs">
+                          <span className="font-semibold text-gray-500 dark:text-gray-400 block text-[11px]">Round Notes:</span>
+                          <p className="text-gray-700 dark:text-gray-300 whitespace-pre-line mt-0.5">{iv.notes}</p>
+                        </div>
+                      )
+                    )}
                   </div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{iv.scheduled_at ? new Date(iv.scheduled_at).toLocaleString() : "—"}</p>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </CollapsibleSection>
@@ -481,9 +581,9 @@ export default function CandidateDrawer({
           )}
         </CollapsibleSection>
 
-        <CandidateCrmSections candidate={candidate} loading={loadingDetail} />
+        {!hideCrmSections && <CandidateCrmSections candidate={candidate} loading={loadingDetail} />}
 
-        {candidate.notes && (
+        {!hideCrmSections && candidate.notes && (
           <CollapsibleSection title="Notes" icon={<StickyNote size={15} />}>
             <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-line">{candidate.notes}</p>
           </CollapsibleSection>

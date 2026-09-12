@@ -35,7 +35,9 @@ const VIOLATION_EVENTS = {
 };
 
 export default function CandidateQuiz() {
-  const { token } = useParams();
+  const { token, quizId } = useParams();
+  const isTestMode = Boolean(quizId);
+
   const [state, setState] = useState({ loading: true, error: null, data: null });
   const [answers, setAnswers] = useState({});
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -73,7 +75,13 @@ export default function CandidateQuiz() {
 
   const load = useCallback(async () => {
     try {
-      const res = await publicQuizApi.get(token);
+      let res;
+      if (isTestMode) {
+        res = await publicQuizApi.getTestQuiz(quizId);
+      } else {
+        res = await publicQuizApi.get(token);
+      }
+
       if (!res.status) throw new Error(res.message || "This quiz link is not valid");
       setState({ loading: false, error: null, data: res.data });
       setViolations(res.data.violation_count || 0);
@@ -87,7 +95,7 @@ export default function CandidateQuiz() {
     } catch (err) {
       setState({ loading: false, error: err.message || "Could not load this quiz", data: null });
     }
-  }, [token]);
+  }, [token, quizId, isTestMode]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -125,7 +133,13 @@ export default function CandidateQuiz() {
     if (submitting) return;
     setSubmitting(true);
     try {
-      const res = await publicQuizApi.submit(token, answersArray());
+      let res;
+      if (isTestMode) {
+        res = await publicQuizApi.submitTestQuiz(quizId, answersArray());
+      } else {
+        res = await publicQuizApi.submit(token, answersArray());
+      }
+
       if (res.status) {
         setResult(res.data);
         if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
@@ -139,12 +153,31 @@ export default function CandidateQuiz() {
     } finally {
       setSubmitting(false);
     }
-  }, [token, answersArray, submitting, load]);
+  }, [token, quizId, isTestMode, answersArray, submitting, load]);
 
   /* ------------------------------------------------------- proctoring */
 
   const reportEvent = useCallback(async (type) => {
     if (!runningRef.current) return;
+    if (isTestMode) {
+      setViolations((prev) => {
+        const next = prev + 1;
+        const max = data?.quiz?.max_violations ?? 3;
+        if (next >= max) {
+          runningRef.current = false;
+          setWarning(null);
+          setState((s) => ({ ...s, data: { ...s.data, status: "terminated" } }));
+          if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+        } else {
+          setWarning(
+            `${VIOLATION_EVENTS[type] || "Proctoring violation"} — recorded in test simulation. ${max - next} more will end attempt automatically.`
+          );
+        }
+        return next;
+      });
+      return;
+    }
+
     try {
       const res = await publicQuizApi.logEvent(token, type, VIOLATION_EVENTS[type] || type, true);
       if (res?.data) {
@@ -164,7 +197,7 @@ export default function CandidateQuiz() {
     } catch {
       /* Never block the candidate on a logging failure. */
     }
-  }, [token, load]);
+  }, [token, isTestMode, data?.quiz?.max_violations, load]);
 
   useEffect(() => {
     if (!running) return undefined;
@@ -225,12 +258,12 @@ export default function CandidateQuiz() {
 
   // Periodic save so a crash or a hard timeout keeps whatever was answered.
   useEffect(() => {
-    if (!running) return undefined;
+    if (!running || isTestMode) return undefined;
     const t = setInterval(() => {
       publicQuizApi.saveProgress(token, answersArray()).catch(() => {});
     }, 20000);
     return () => clearInterval(t);
-  }, [running, token, answersArray]);
+  }, [running, token, isTestMode, answersArray]);
 
   /* ------------------------------------------------------------ start */
 
@@ -238,6 +271,18 @@ export default function CandidateQuiz() {
     try {
       if (shellRef.current?.requestFullscreen) {
         await shellRef.current.requestFullscreen().catch(() => {});
+      }
+      if (isTestMode) {
+        setState((s) => ({
+          ...s,
+          data: {
+            ...s.data,
+            status: "in_progress",
+            started_at: new Date().toISOString(),
+          },
+        }));
+        setSecondsLeft((data?.duration_minutes || 30) * 60);
+        return;
       }
       const res = await publicQuizApi.start(token);
       if (!res.status) { setWarning(res.message || "Could not start"); return; }
@@ -270,17 +315,23 @@ export default function CandidateQuiz() {
     const r = result || data.result || {};
     return (
       <Centered>
+        {isTestMode && (
+          <div className="mb-4 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 text-xs font-bold">
+            <span>🧪 CANDIDATE TEST SIMULATION</span>
+          </div>
+        )}
         {expired ? <Clock size={40} className="text-gray-400" />
           : terminated ? <ShieldAlert size={40} className="text-red-500" />
           : r.passed ? <CheckCircle2 size={40} className="text-green-500" />
           : <XCircle size={40} className="text-red-500" />}
         <h1 className="mt-3 text-xl font-semibold text-gray-900 dark:text-white">
-          {expired ? "This link has expired" : terminated ? "Attempt terminated" : "Quiz submitted"}
+          {expired ? "This link has expired" : terminated ? "Attempt terminated" : isTestMode ? "Test Simulation Submitted" : "Quiz submitted"}
         </h1>
         {terminated && (
           <p className="mt-1 max-w-md text-sm text-gray-500 dark:text-gray-400">
-            Your attempt was ended automatically after repeated proctoring violations. The full activity
-            log has been shared with the hiring team.
+            {isTestMode
+              ? `Test attempt was terminated in simulation after reaching ${data.quiz?.max_violations ?? 3} proctoring violations.`
+              : "Your attempt was ended automatically after repeated proctoring violations. The full activity log has been shared with the hiring team."}
           </p>
         )}
         {!expired && r.total_questions != null && (
@@ -288,10 +339,41 @@ export default function CandidateQuiz() {
             <p className="text-4xl font-bold tabular-nums text-gray-900 dark:text-white">{r.score ?? 0}%</p>
             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
               {r.correct_count ?? 0} of {r.total_questions ?? 0} correct
+              {r.earned_marks != null && r.total_marks != null && (
+                <span className="block mt-0.5 text-xs font-semibold text-brand-600 dark:text-brand-400">
+                  {r.earned_marks} / {r.total_marks} Marks Earned
+                </span>
+              )}
             </p>
           </div>
         )}
-        <p className="mt-5 text-xs text-gray-400">You can close this window. The hiring team has your result.</p>
+        {isTestMode ? (
+          <div className="mt-6 flex items-center justify-center gap-3">
+            <button
+              onClick={() => {
+                setResult(null);
+                setState((s) => ({
+                  ...s,
+                  data: { ...s.data, status: "pending" },
+                }));
+                setAnswers({});
+                setViolations(0);
+                setCurrentIndex(0);
+              }}
+              className="px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold shadow-sm transition"
+            >
+              Retake Test Simulation
+            </button>
+            <button
+              onClick={() => window.close()}
+              className="px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 text-xs font-semibold transition"
+            >
+              Close Tab
+            </button>
+          </div>
+        ) : (
+          <p className="mt-5 text-xs text-gray-400">You can close this window. The hiring team has your result.</p>
+        )}
       </Centered>
     );
   }
@@ -337,11 +419,19 @@ export default function CandidateQuiz() {
   if (data.status === "pending") {
     return (
       <div ref={shellRef} className="min-h-screen bg-gray-50 dark:bg-gray-900">
+        {isTestMode && (
+          <div className="bg-purple-600 text-white text-center py-2 px-4 text-xs font-bold shadow-sm flex items-center justify-center gap-2">
+            <span>🧪 CANDIDATE TEST SIMULATION</span>
+            <span className="opacity-80 font-normal">&bull; Full candidate interface & scoring experience in a new tab</span>
+          </div>
+        )}
         <Centered>
           <div className="w-full max-w-lg rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-6 shadow-sm">
             <h1 className="text-xl font-semibold text-gray-900 dark:text-white">{data.quiz.title}</h1>
             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              Hello {data.candidate_name || "there"} — please read this before you begin.
+              {isTestMode
+                ? "Hello HR / Recruiter — test the assessment exactly as a candidate sees it."
+                : `Hello ${data.candidate_name || "there"} — please read this before you begin.`}
             </p>
             {data.quiz.description && (
               <p className="mt-3 text-sm text-gray-600 dark:text-gray-300">{data.quiz.description}</p>
@@ -390,6 +480,11 @@ export default function CandidateQuiz() {
 
   return (
     <div ref={shellRef} className="min-h-screen select-none bg-gray-50 dark:bg-gray-900">
+      {isTestMode && (
+        <div className="bg-purple-600 text-white text-center py-1 px-4 text-xs font-bold tracking-wide flex items-center justify-center gap-2">
+          <span>🧪 CANDIDATE TEST SIMULATOR</span>
+        </div>
+      )}
       <header className="sticky top-0 z-20 border-b border-gray-200 bg-white/95 backdrop-blur dark:border-gray-700 dark:bg-gray-800/95">
         <div className="mx-auto flex max-w-3xl flex-wrap items-center gap-3 px-4 py-3">
           <div className="min-w-0 flex-1">
@@ -424,44 +519,92 @@ export default function CandidateQuiz() {
           const q = data.questions[currentIndex];
           if (!q) return null;
           const isLast = currentIndex === total - 1;
-          const answered = answers[currentIndex] !== undefined;
+          const isMsq = q.type === "msq";
+          const currentAnswer = answers[currentIndex];
+          const answered = isMsq
+            ? Array.isArray(currentAnswer) && currentAnswer.length > 0
+            : currentAnswer !== undefined && currentAnswer !== null;
 
           const goNext = () => {
-            if (!answered) { setWarning("Pick an answer before moving to the next question."); return; }
+            if (!answered) { setWarning(isMsq ? "Select at least one option before moving to the next question." : "Pick an answer before moving to the next question."); return; }
             setWarning(null);
             setCurrentIndex((i) => Math.min(total - 1, i + 1));
           };
 
+          const handleToggleMsq = (oi) => {
+            const cur = Array.isArray(currentAnswer) ? currentAnswer : [];
+            const next = cur.includes(oi) ? cur.filter((x) => x !== oi) : [...cur, oi];
+            setAnswers((a) => ({ ...a, [currentIndex]: next }));
+            setWarning(null);
+          };
+
           return (
-            <div key={currentIndex} className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
-              <p className="text-xs font-semibold text-gray-400">Question {currentIndex + 1} of {total}</p>
-              <p className="mt-1 text-sm font-medium text-gray-900 dark:text-white">{q.text}</p>
-              <div className="mt-3 space-y-2">
+            <div key={currentIndex} className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800 shadow-sm space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 dark:border-gray-700 pb-2.5">
+                <p className="text-xs font-bold text-gray-500 dark:text-gray-400">Question {currentIndex + 1} of {total}</p>
+                <div className="flex items-center gap-1.5">
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                      isMsq
+                        ? "bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300"
+                        : "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300"
+                    }`}
+                  >
+                    {isMsq ? "Multiple Select (Select all that apply)" : "Single Choice (MCQ)"}
+                  </span>
+                  {q.marks && (
+                    <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
+                      {q.marks} pt{q.marks > 1 ? "s" : ""}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <p className="mt-1 text-base font-semibold text-gray-900 dark:text-white leading-relaxed">{q.text}</p>
+              
+              <div className="mt-4 space-y-2.5">
                 {q.options.map((opt, oi) => {
-                  const picked = answers[currentIndex] === oi;
+                  const picked = isMsq
+                    ? Array.isArray(currentAnswer) && currentAnswer.includes(oi)
+                    : currentAnswer === oi;
+
                   return (
                     <label
                       key={oi}
-                      className={`flex cursor-pointer items-center gap-2.5 rounded-xl border px-3 py-2.5 text-sm transition ${
+                      onClick={(e) => {
+                        if (isMsq) {
+                          e.preventDefault();
+                          handleToggleMsq(oi);
+                        }
+                      }}
+                      className={`flex cursor-pointer items-center gap-3 rounded-xl border px-3.5 py-3 text-sm transition-all ${
                         picked
-                          ? "border-brand-500 bg-brand-50 text-brand-900 dark:bg-brand-900/20 dark:text-brand-200"
-                          : "border-gray-200 hover:border-gray-300 dark:border-gray-700 dark:hover:border-gray-600"
+                          ? "border-brand-500 bg-brand-50/70 text-brand-900 ring-1 ring-brand-500/30 dark:bg-brand-900/20 dark:text-brand-200"
+                          : "border-gray-200 hover:border-gray-300 dark:border-gray-700 dark:hover:border-gray-600 bg-gray-50/40 dark:bg-gray-800/40"
                       }`}
                     >
                       <input
-                        type="radio"
+                        type={isMsq ? "checkbox" : "radio"}
                         name={`q-${currentIndex}`}
                         checked={picked}
-                        onChange={() => { setAnswers((a) => ({ ...a, [currentIndex]: oi })); setWarning(null); }}
-                        className="accent-brand-600"
+                        onChange={() => {
+                          if (!isMsq) {
+                            setAnswers((a) => ({ ...a, [currentIndex]: oi }));
+                            setWarning(null);
+                          }
+                        }}
+                        className={`h-4 w-4 rounded ${isMsq ? "text-brand-600 rounded" : "accent-brand-600"}`}
                       />
-                      <span className="text-gray-700 dark:text-gray-200">{opt}</span>
+                      <span className="text-xs font-bold text-gray-400 w-4">
+                        {String.fromCharCode(65 + oi)}.
+                      </span>
+                      <span className="text-gray-800 dark:text-gray-200 font-medium flex-1">{opt}</span>
                     </label>
                   );
                 })}
               </div>
 
-              <div className="mt-5 flex items-center gap-2">
+              <div className="mt-6 pt-3 flex items-center gap-2 border-t border-gray-100 dark:border-gray-700">
                 <button
                   onClick={() => setCurrentIndex((i) => Math.max(0, i - 1))}
                   disabled={currentIndex === 0}
@@ -472,11 +615,11 @@ export default function CandidateQuiz() {
                 {isLast ? (
                   <button
                     onClick={() => {
-                      if (!answered) { setWarning("Pick an answer before submitting."); return; }
+                      if (!answered) { setWarning(isMsq ? "Select at least one answer before submitting." : "Pick an answer before submitting."); return; }
                       if (window.confirm("Submit your quiz? You cannot change your answers afterwards.")) doSubmit(false);
                     }}
                     disabled={submitting}
-                    className="flex-1 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50"
+                    className="flex-1 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50 shadow-sm"
                   >
                     {submitting ? "Submitting…" : "Submit quiz"}
                   </button>
@@ -484,7 +627,7 @@ export default function CandidateQuiz() {
                   <button
                     onClick={goNext}
                     disabled={!answered}
-                    className="flex-1 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50"
+                    className="flex-1 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50 shadow-sm"
                   >
                     Next question
                   </button>

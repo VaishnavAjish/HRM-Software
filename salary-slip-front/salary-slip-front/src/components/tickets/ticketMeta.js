@@ -53,12 +53,12 @@ export const PRIORITY_ORDER = ["low", "medium", "high", "urgent"];
 
 export function statusMeta(status) {
   const key = (status || "").toLowerCase().replace(/\s+/g, "_");
-  return STATUS_META[key] || { label: status || "Unknown", tone: "gray", badgeBg: "bg-gray-100 text-gray-700" };
+  return STATUS_META[key] || { label: status || "Unknown", tone: "gray", badgeBg: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300" };
 }
 
 export function priorityMeta(priority) {
   const key = (priority || "").toLowerCase();
-  return PRIORITY_META[key] || { label: priority || "—", tone: "gray", colorCls: "text-gray-500" };
+  return PRIORITY_META[key] || { label: priority || "—", tone: "gray", colorCls: "text-gray-500 dark:text-gray-400" };
 }
 
 export function slaMeta(slaStatus) {

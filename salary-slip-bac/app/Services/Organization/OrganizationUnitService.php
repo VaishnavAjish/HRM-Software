@@ -45,6 +45,26 @@ class OrganizationUnitService
         'shared_service_org',
     ];
 
+    /**
+     * `users` is shared by real employees AND by rows that only exist as
+     * paperwork — Trial Form submissions (`type = 'trial'`), Careers Portal
+     * Appointment records (`'appointment'`), agent logins (`'agent'`), and
+     * the special `'account-master'` row. None of these has a real
+     * designation/department assignment — but every legacy-department sync
+     * below used to scan `users` with no `type` filter at all, so a trial
+     * applicant who merely typed a department name got swept in as if they
+     * were a real employee: given a synthetic assignment with no real
+     * position, which then overwrote their OWN `users.designation` with
+     * null via syncLegacyFieldsForUser() — the trial form's Designation
+     * field silently going blank sometime after submission, whenever this
+     * sync next ran (e.g. an admin opening Designations/Org Chart). Same
+     * class of bug the other direction in syncPositionsFromLegacyDesignations():
+     * a trial applicant's typed designation could get created as a real
+     * "position" in the department, polluting the Designations page with
+     * entries no actual employee holds.
+     */
+    private const NON_EMPLOYEE_USER_TYPES = ['trial', 'appointment', 'agent', 'account-master'];
+
     public function units(array $filters, ?User $actor): array
     {
         $query = OrganizationUnit::query()
@@ -463,10 +483,17 @@ class OrganizationUnitService
             }
         }
 
-        $assignments = $this->syncAssignmentsFromLegacyDepartments($departments, $unitIdByDepartmentId, $actor);
-        $cleanup = $this->cleanupDuplicateGlobalDepartments($actor);
+        // Positions MUST be synced from real users.designation text before any
+        // assignment is created below — see syncAssignmentsFromLegacyDepartments()'s
+        // docblock for why running this after (the old order) was actively
+        // destroying designation text instead of just failing to use it.
         $positions = $this->syncPositionsFromLegacyDesignations();
+        $assignments = $this->syncAssignmentsFromLegacyDepartments($departments, $unitIdByDepartmentId, $actor);
+        $badAssignments = $this->removeAssignmentsForNonEmployeeUsers();
+        $cleanup = $this->cleanupDuplicateGlobalDepartments($actor);
+        $orphans = $this->closeOrphanedLegacyUnits($departments, $actor);
         $positionLinks = $this->linkAssignmentsToPositions();
+        $seeded = $this->seedDefaultPositionsForEmptyDepartments($actor);
 
         return [
             'total' => $departments->count(),
@@ -475,12 +502,15 @@ class OrganizationUnitService
             'skipped' => $skipped,
             'departmentsDiscovered' => $departmentsDiscovered,
             'duplicatesRemoved' => $cleanup['removed'],
+            'orphanedUnitsClosed' => $orphans['closed'],
             'assignmentsCreated' => $assignments['created'],
             'assignmentsSkipped' => $assignments['skipped'],
+            'nonEmployeeAssignmentsRemoved' => $badAssignments['removed'],
             'subDepartmentsLinked' => $subDepartmentsLinked,
             'positionsCreated' => $positions['created'],
             'positionsUpdated' => $positions['updated'],
             'assignmentsLinkedToPositions' => $positionLinks['linked'],
+            'defaultDesignationsSeeded' => $seeded['seeded'],
             'positionsDebug' => [
                 'departmentsConsidered' => $positions['departmentsConsidered'],
                 'departmentsWithLegacyLink' => $positions['departmentsWithLegacyLink'],
@@ -532,6 +562,7 @@ class OrganizationUnitService
             ->whereNotNull('designation')
             ->where('designation', '!=', '')
             ->where('is_deleted', '0')
+            ->where(fn ($q) => $q->whereNull('type')->orWhereNotIn('type', self::NON_EMPLOYEE_USER_TYPES))
             ->get();
 
         // groups: "{unitId}|||{designation}" -> count
@@ -843,12 +874,214 @@ class OrganizationUnitService
     }
 
     /**
+     * `departments` has no soft-delete column — deleting one from
+     * Access Control > Company & Unit hard-removes the row outright. But the
+     * matching `organization_units` row (created by the loop above, matched
+     * on legacy_department_id) previously only ever got created/updated,
+     * never removed — deleting the department out from under it left an
+     * orphaned unit sitting at status 'active' forever, which is exactly why
+     * a deleted department (and any sub-departments still parented under it)
+     * kept showing up on the Designations page. This closes any unit whose
+     * legacy_department_id no longer resolves to a real department, working
+     * leaf-to-root (closing a unit's children before the unit itself) so it
+     * never trips the "has active children" guard on a unit that's actually
+     * a whole orphaned sub-tree.
+     */
+    private function closeOrphanedLegacyUnits($departments, User $actor): array
+    {
+        $existingIds = $departments->pluck('id')->all();
+
+        $remaining = OrganizationUnit::query()
+            ->whereNotNull('legacy_department_id')
+            ->whereNotIn('legacy_department_id', $existingIds)
+            ->where('status', '!=', 'closed')
+            ->get()
+            ->keyBy('id');
+
+        $closed = 0;
+
+        while ($remaining->isNotEmpty()) {
+            $progressed = false;
+
+            foreach ($remaining as $unit) {
+                $hasActiveChild = OrganizationUnit::query()
+                    ->where('parent_id', $unit->id)
+                    ->where('status', '!=', 'closed')
+                    ->exists();
+
+                if ($hasActiveChild) {
+                    continue;
+                }
+
+                $before = $this->snapshot($unit);
+                $unit->status = 'closed';
+                $unit->save();
+                $this->audit($actor, 'ORGANIZATION_UNIT_STATUS_CHANGED', $before, $this->snapshot($unit));
+
+                $remaining->forget($unit->id);
+                $closed++;
+                $progressed = true;
+            }
+
+            // A real (non-orphaned) sub-department still parented under one
+            // of these blocks it from closing — leave it visible rather than
+            // force it, since that would silently orphan live data.
+            if (!$progressed) {
+                break;
+            }
+        }
+
+        return ['closed' => $closed];
+    }
+
+    /**
+     * Every department (and sub-department) should read as a real
+     * hierarchy from the moment it exists, not an empty list HR has to
+     * populate from scratch — so any department/sub-department that still
+     * has ZERO designations after real-employee data has already been
+     * synced above (`syncPositionsFromLegacyDesignations()`) gets two
+     * starter designations seeded: "Manager" at the top, and "Employee"
+     * reporting to it. Everything HR adds afterwards (via Add Designation)
+     * slots into this hierarchy under whichever of the two — or any later
+     * designation — makes sense via "Reports To".
+     *
+     * Gated strictly on zero existing positions, so this only ever seeds
+     * once per department: a department with any real designations already
+     * (from actual employee data, from a previous run of this seed, or
+     * added by hand) is left alone — it never re-appends a stray generic
+     * "Employee" onto a department that already has its own structure.
+     */
+    private function seedDefaultPositionsForEmptyDepartments(User $actor): array
+    {
+        $seeded = 0;
+
+        $emptyUnits = OrganizationUnit::query()
+            ->whereIn('type', ['department', 'sub_department'])
+            ->where('status', 'active')
+            ->whereDoesntHave('positions')
+            ->get();
+
+        foreach ($emptyUnits as $unit) {
+            try {
+                $manager = $this->createPosition($unit->id, [
+                    'title' => 'Manager',
+                    'code' => 'MANAGER',
+                    'approvedHeadcount' => 1,
+                    'status' => 'open',
+                ], $actor);
+
+                $this->createPosition($unit->id, [
+                    'title' => 'Employee',
+                    'code' => 'EMPLOYEE',
+                    'approvedHeadcount' => 1,
+                    'status' => 'open',
+                    'reportsToPositionId' => $manager->id,
+                ], $actor);
+
+                $seeded++;
+            } catch (OrganizationException $e) {
+                // A stray duplicate code or similar shouldn't abort seeding
+                // for every other department — skip and keep going.
+            }
+        }
+
+        return ['seeded' => $seeded];
+    }
+
+    /**
+     * Real employees (never Trial Form/Appointment/agent rows) who have a
+     * department on file but no designation — the visible symptom of the
+     * "designation disappears" bug fixed alongside this, and the direct
+     * answer to "which employee designation is now not showing": every row
+     * here needs its designation re-entered by hand (via Employee Master or
+     * re-assigning them to a designation here), since the original text was
+     * already overwritten before this fix and can't be recovered from data.
+     */
+    public function employeesMissingDesignation(?User $actor): array
+    {
+        $query = User::query()
+            ->where('is_deleted', '0')
+            ->where(fn ($q) => $q->whereNull('type')->orWhereNotIn('type', self::NON_EMPLOYEE_USER_TYPES))
+            ->whereNotNull('department')
+            ->where('department', '!=', '')
+            ->where(fn ($q) => $q->whereNull('designation')->orWhere('designation', ''));
+
+        if (!$this->hasGlobalCompanyScope($actor)) {
+            $query->whereIn('company_code', $this->authorizedCompanyCodes($actor));
+        }
+
+        return $query->orderBy('name')
+            ->limit(500)
+            ->get(['id', 'name', 'emp_code', 'department', 'company_code', 'unit'])
+            ->map(fn (User $u) => [
+                'id' => (int) $u->id,
+                'name' => $u->name,
+                'empCode' => $u->emp_code,
+                'department' => $u->department,
+                'companyCode' => $u->company_code,
+                'unit' => $u->unit,
+            ])
+            ->all();
+    }
+
+    /**
+     * Self-healing cleanup for assignments created by an older, unfiltered
+     * version of syncAssignmentsFromLegacyDepartments() — before it excluded
+     * NON_EMPLOYEE_USER_TYPES, a Trial Form/Appointment/agent row with a
+     * department typed in could get a real EmployeeOrganizationAssignment,
+     * which then wiped that same row's own users.designation via
+     * syncLegacyFieldsForUser() (positionId was never set on these synthetic
+     * assignments, so designation got recomputed to null). Removing the
+     * stray assignment can't restore the original designation text — that
+     * was already overwritten and is gone — but it stops these rows from
+     * continuing to show up as real employees on Designations/Hierarchy/Org
+     * Chart, and stops them re-triggering this same wipe on every sync.
+     */
+    private function removeAssignmentsForNonEmployeeUsers(): array
+    {
+        $badAssignments = EmployeeOrganizationAssignment::query()
+            ->whereHas('user', fn ($q) => $q->whereIn('type', self::NON_EMPLOYEE_USER_TYPES))
+            ->get();
+
+        $removed = 0;
+        foreach ($badAssignments as $assignment) {
+            $positionId = $assignment->position_id;
+            $assignment->delete();
+            $this->recalculatePositionHeadcount($positionId);
+            $removed++;
+        }
+
+        return ['removed' => $removed];
+    }
+
+    /**
      * Departments have no direct FK to their employees — the only link is
      * the same free-text (users.department, users.company_code) pair
      * DepartmentController::seedLegacy() grouped on to create the
      * departments in the first place. Reusing that exact key here (rather
      * than inventing a fuzzier match) means every user who produced a given
      * department row is guaranteed to match back to it.
+     *
+     * CRITICAL ordering note: creating an assignment with no positionId
+     * immediately overwrites that same user's users.designation with null
+     * (via createAssignment() -> syncLegacyFieldsForUser(), which recomputes
+     * designation from whatever position the NEW primary assignment points
+     * at). Every employee's very first sync — before they had any assignment
+     * yet — used to do exactly that: create a position-less assignment, wipe
+     * their real designation text, and nothing downstream could recover it
+     * because every later step (syncPositionsFromLegacyDesignations(),
+     * linkAssignmentsToPositions()) reads users.designation AFTER it had
+     * already been nulled here. This is what made designations "disappear" —
+     * for real employees on their first sync just as much as for Trial Form
+     * rows, not only the trial-specific gap fixed separately above.
+     *
+     * The fix: resolve the matching position (by unit + the user's CURRENT,
+     * not-yet-touched designation text) before creating anything, and pass
+     * it straight into createAssignment() — so the sync fills in the
+     * position instead of nulling it out. This only works because the
+     * caller now runs syncPositionsFromLegacyDesignations() first, so a
+     * position matching this user's real designation title already exists
+     * by the time this map is built.
      */
     private function syncAssignmentsFromLegacyDepartments($departments, array $unitIdByDepartmentId, User $actor): array
     {
@@ -861,14 +1094,21 @@ class OrganizationUnitService
             $unitIdByKey[$key] = $unitIdByDepartmentId[$department->id];
         }
 
+        $positionIdByUnitAndTitle = [];
+        OrganizationPosition::query()->select('id', 'organization_unit_id', 'title')->get()
+            ->each(function (OrganizationPosition $pos) use (&$positionIdByUnitAndTitle) {
+                $positionIdByUnitAndTitle[$pos->organization_unit_id.'|||'.trim((string) $pos->title)] = $pos->id;
+            });
+
         $created = 0;
         $skipped = 0;
 
         $users = User::query()
             ->where('is_deleted', '0')
+            ->where(fn ($q) => $q->whereNull('type')->orWhereNotIn('type', self::NON_EMPLOYEE_USER_TYPES))
             ->whereNotNull('department')
             ->where('department', '!=', '')
-            ->get(['id', 'department', 'company_code']);
+            ->get(['id', 'department', 'company_code', 'designation']);
 
         foreach ($users as $legacyUser) {
             $unitId = $unitIdByKey[$this->legacyDepartmentKey($legacyUser->department, $legacyUser->company_code)] ?? null;
@@ -888,10 +1128,16 @@ class OrganizationUnitService
                 continue;
             }
 
+            $designationTitle = trim((string) $legacyUser->designation);
+            $positionId = $designationTitle !== ''
+                ? ($positionIdByUnitAndTitle[$unitId.'|||'.$designationTitle] ?? null)
+                : null;
+
             try {
                 $this->createAssignment([
                     'userId' => $legacyUser->id,
                     'organizationUnitId' => $unitId,
+                    'positionId' => $positionId,
                     'assignmentType' => 'primary',
                     'isPrimary' => true,
                     'effectiveFrom' => now()->toDateString(),
@@ -921,6 +1167,25 @@ class OrganizationUnitService
         // Real position statuses are lowercase (open/filled/frozen/...) —
         // uppercasing before comparing meant this filter could never match
         // a real row except the 'ALL' bypass.
+        if (($status = strtolower((string) ($filters['status'] ?? ''))) !== '' && $status !== 'all') {
+            $query->where('status', $status);
+        }
+
+        return $query->get()->map(fn (OrganizationPosition $pos) => $this->presentPosition($pos))->all();
+    }
+
+    /**
+     * Designations created without any department/org unit — HR -> Organization
+     * -> Designations' standalone list, the counterpart of a Department that
+     * has no company (both are "global", nothing scoping them further).
+     */
+    public function globalPositions(array $filters, ?User $actor): array
+    {
+        $query = OrganizationPosition::query()
+            ->whereNull('organization_unit_id')
+            ->with(['reportsTo'])
+            ->orderBy('title');
+
         if (($status = strtolower((string) ($filters['status'] ?? ''))) !== '' && $status !== 'all') {
             $query->where('status', $status);
         }
@@ -962,10 +1227,12 @@ class OrganizationUnitService
         ];
     }
 
-    public function createPosition(int $unitId, array $data, User $actor): OrganizationPosition
+    public function createPosition(?int $unitId, array $data, User $actor): OrganizationPosition
     {
-        $unit = OrganizationUnit::query()->findOrFail($unitId);
-        $this->assertUnitVisible($unit, $actor);
+        if ($unitId !== null) {
+            $unit = OrganizationUnit::query()->findOrFail($unitId);
+            $this->assertUnitVisible($unit, $actor);
+        }
 
         $reportsToId = isset($data['reportsToPositionId']) && $data['reportsToPositionId'] !== '' ? (int) $data['reportsToPositionId'] : null;
 
@@ -1013,7 +1280,9 @@ class OrganizationUnitService
 
     public function updatePosition(OrganizationPosition $pos, array $data, User $actor): OrganizationPosition
     {
-        $this->assertUnitVisible($pos->organizationUnit, $actor);
+        if ($pos->organizationUnit) {
+            $this->assertUnitVisible($pos->organizationUnit, $actor);
+        }
         $before = $this->snapshotPosition($pos);
 
         if (array_key_exists('code', $data)) {
@@ -1078,7 +1347,9 @@ class OrganizationUnitService
 
     public function deletePosition(OrganizationPosition $pos, User $actor): void
     {
-        $this->assertUnitVisible($pos->organizationUnit, $actor);
+        if ($pos->organizationUnit) {
+            $this->assertUnitVisible($pos->organizationUnit, $actor);
+        }
 
         if ($pos->assignments()->where('is_active', true)->exists()) {
             throw new OrganizationException(
@@ -1097,7 +1368,9 @@ class OrganizationUnitService
 
     public function freezePosition(OrganizationPosition $pos, string $reason, User $actor): OrganizationPosition
     {
-        $this->assertUnitVisible($pos->organizationUnit, $actor);
+        if ($pos->organizationUnit) {
+            $this->assertUnitVisible($pos->organizationUnit, $actor);
+        }
 
         if ($pos->status === 'frozen') {
             throw new OrganizationException('POSITION_ALREADY_FROZEN', 'This position is already frozen.', 409);
@@ -1119,7 +1392,9 @@ class OrganizationUnitService
 
     public function releasePosition(OrganizationPosition $pos, User $actor): OrganizationPosition
     {
-        $this->assertUnitVisible($pos->organizationUnit, $actor);
+        if ($pos->organizationUnit) {
+            $this->assertUnitVisible($pos->organizationUnit, $actor);
+        }
 
         if ($pos->status !== 'frozen') {
             throw new OrganizationException('POSITION_NOT_FROZEN', 'This position is not frozen.', 409);
@@ -1391,7 +1666,7 @@ class OrganizationUnitService
         });
 
         // Update legacy compatibility fields
-        $this->updateLegacyFields($user, $unit, $positionId);
+        $this->syncLegacyFieldsForUser($user);
         $this->recalculatePositionHeadcount($positionId);
 
         $this->audit($actor, 'EMPLOYEE_ORGANIZATION_ASSIGNMENT_CREATED', null, $this->snapshotAssignment($assignment));
@@ -1500,7 +1775,7 @@ class OrganizationUnitService
         DB::transaction(fn () => $assignment->save());
 
         // Update legacy compatibility fields
-        $this->updateLegacyFields($assignment->user, $assignment->organizationUnit, $assignment->position_id);
+        $this->syncLegacyFieldsForUser($assignment->user);
         $this->recalculatePositionHeadcount($originalPositionId);
         if ($assignment->position_id !== $originalPositionId) {
             $this->recalculatePositionHeadcount($assignment->position_id);
@@ -1516,7 +1791,14 @@ class OrganizationUnitService
         $this->assertUnitVisible($assignment->organizationUnit, $actor);
         $snapshot = $this->snapshotAssignment($assignment);
         $positionId = $assignment->position_id;
+        $user = $assignment->user;
         DB::transaction(fn () => $assignment->delete());
+        // Previously skipped entirely — deleting an employee's (formerly
+        // primary) assignment left the Profile page and Employee Master
+        // table showing the now-deleted designation/department forever.
+        // This recomputes from whatever active primary assignment remains
+        // (or clears the fields if none do).
+        $this->syncLegacyFieldsForUser($user);
         $this->recalculatePositionHeadcount($positionId);
         $this->audit($actor, 'EMPLOYEE_ORGANIZATION_ASSIGNMENT_DELETED', $snapshot, null);
     }
@@ -1722,11 +2004,52 @@ class OrganizationUnitService
         return (int) $costCenter->id;
     }
 
-    private function updateLegacyFields(User $user, OrganizationUnit $unit, ?int $positionId): void
+    /**
+     * Recomputes `users.department`/`unit`/`designation` from the employee's
+     * current active PRIMARY organization assignment — still what the
+     * Employee Profile page and Employee Master table actually read, so
+     * they only stay accurate if this is kept in sync with every real
+     * change on `employee_organization_assignments`.
+     *
+     * Previously this pushed straight from whichever assignment had just
+     * been created/updated, unconditionally — so assigning someone to a
+     * SECONDARY or INACTIVE assignment (or flipping their primary one to
+     * inactive/non-primary) could clobber the legacy fields with the wrong
+     * designation, and deleting an assignment never resynced at all,
+     * leaving stale text behind forever. Recomputing from the DB's actual
+     * current primary assignment on every create/update/delete makes this
+     * correct regardless of which assignment triggered the call, and falls
+     * back to clearing the fields when no active primary assignment remains.
+     *
+     * Second guard (added after designations were found silently vanishing):
+     * a primary assignment created ahead of — or never linked to — its
+     * matching position must NOT blank out real designation text that's
+     * simply waiting to be matched. This is the actual "disappearing
+     * designation" bug: designation only gets overwritten when the primary
+     * assignment actually carries a linked position; department/unit still
+     * always follow the primary assignment's unit, and designation only
+     * clears to null when there is truly no active primary assignment left
+     * (a real "unassigned" state, not a "not linked yet" one).
+     */
+    private function syncLegacyFieldsForUser(User $user): void
     {
-        $user->department = $unit->name;
-        $user->unit = $unit->code;
-        $user->designation = $positionId ? OrganizationPosition::query()->find($positionId)?->title : null;
+        $primary = EmployeeOrganizationAssignment::query()
+            ->where('user_id', $user->id)
+            ->where('is_active', true)
+            ->where('is_primary', true)
+            ->with(['organizationUnit', 'position'])
+            ->latest('effective_from')
+            ->first();
+
+        $user->department = $primary?->organizationUnit?->name;
+        $user->unit = $primary?->organizationUnit?->code;
+
+        if (!$primary) {
+            $user->designation = null;
+        } elseif ($primary->position) {
+            $user->designation = $primary->position->title;
+        }
+
         $user->save();
     }
 
@@ -1748,10 +2071,11 @@ class OrganizationUnitService
         }
     }
 
-    private function assertPositionCodeFree(int $unitId, string $code, ?int $ignoreId): void
+    private function assertPositionCodeFree(?int $unitId, string $code, ?int $ignoreId): void
     {
         $exists = OrganizationPosition::query()
-            ->where('organization_unit_id', $unitId)
+            ->when($unitId !== null, fn ($query) => $query->where('organization_unit_id', $unitId))
+            ->when($unitId === null, fn ($query) => $query->whereNull('organization_unit_id'))
             ->where('code', $code)
             ->when($ignoreId, fn ($query) => $query->where('id', '!=', $ignoreId))
             ->exists();
@@ -1759,7 +2083,9 @@ class OrganizationUnitService
         if ($exists) {
             throw new OrganizationException(
                 'ORGANIZATION_POSITION_CODE_TAKEN',
-                'That unit already has a position with this code.',
+                $unitId === null
+                    ? 'A standalone designation with this code already exists.'
+                    : 'That unit already has a position with this code.',
                 422
             );
         }

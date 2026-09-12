@@ -309,6 +309,7 @@ function AppRoutes() {
         credential. Rendered outside AppLayout so there's no sidebar/header
         to navigate away with mid-assessment.
       */}
+      <Route path="/quiz/test/:quizId" element={<CandidateQuiz />} />
       <Route path="/quiz/:token" element={<CandidateQuiz />} />
       <Route path="/about-niss" element={<AboutNiss />} />
 

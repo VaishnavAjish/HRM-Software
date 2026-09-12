@@ -60,10 +60,12 @@ class SettingsController extends Controller
 
         $existing = Setting::where('group', $group)->pluck('value', 'key');
 
-        $data = collect(self::DEFAULTS)
-            ->filter(fn($v, $key) => str_starts_with($key, $group . '.') || str_starts_with($key, 'app.'))
-            ->map(fn($default, $key) => $existing->get($key, $default))
-            ->map(fn($value, $key) => ['key' => $key, 'value' => $value, 'group' => $group])
+        $defaults = collect(self::DEFAULTS)
+            ->filter(fn($v, $key) => str_starts_with($key, $group . '.') || str_starts_with($key, 'app.'));
+
+        $merged = $defaults->merge($existing);
+
+        $data = $merged->map(fn($value, $key) => ['key' => $key, 'value' => $value, 'group' => $group])
             ->values();
 
         return response()->json(['status' => true, 'data' => $data]);

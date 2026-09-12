@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import toast from "react-hot-toast";
+import { copyToClipboard } from "../../utils/clipboard";
 import {
   X, Send, Clock, MessageSquare, History, ShieldAlert, Loader2, Lock,
   User as UserIcon, Building2, Tag, AlertTriangle, Copy, Check,
@@ -120,7 +121,7 @@ export default function SuperAdminTicketDrawer({ ticketId, onClose, onRefresh })
 
   const copyTicketNumber = () => {
     if (!ticket?.ticket_number) return;
-    navigator.clipboard.writeText(ticket.ticket_number);
+    copyToClipboard(ticket.ticket_number);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -227,7 +228,7 @@ export default function SuperAdminTicketDrawer({ ticketId, onClose, onRefresh })
                     <button
                       onClick={copyTicketNumber}
                       title="Copy ticket number"
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50/80 px-2.5 py-0.5 font-mono text-xs font-bold text-brand-700 transition hover:bg-brand-100 dark:border-brand-900/50 dark:bg-brand-950/50 dark:text-brand-300 dark:hover:bg-brand-900/50"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50/80 px-2.5 py-0.5 font-mono text-xs font-bold text-brand-700 transition hover:bg-brand-100 dark:border-brand-800/80 dark:bg-brand-950/70 dark:text-brand-300 dark:hover:bg-brand-900/80"
                     >
                       {ticket.ticket_number}
                       {copied
