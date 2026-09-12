@@ -21,14 +21,6 @@ const labelClass = "mb-1 block text-xs font-medium text-gray-500 dark:text-gray-
 // work exactly as before underneath, this only stops them from rendering.
 const SHOW_DEPARTMENT_DESIGNATIONS = false;
 
-const POSITION_TYPES = [
-  { value: "executive", label: "Executive" },
-  { value: "manager", label: "Manager" },
-  { value: "staff", label: "Staff" },
-  { value: "intern", label: "Intern" },
-  { value: "contractor", label: "Contractor" },
-];
-
 const POSITION_STATUSES = [
   { value: "open", label: "Open" },
   { value: "filled", label: "Filled" },
@@ -258,14 +250,17 @@ function DepartmentCard({ dept, depth = 0, expanded, onToggle, positions, loadin
   );
 }
 
+// Turns a title into a stable, readable code (e.g. "Regional Sales Head" ->
+// "REGIONAL_SALES_HEAD") — codes are only ever used internally for
+// uniqueness, so nothing is lost by generating one instead of asking for it.
+function slugifyTitleToCode(title) {
+  return title.toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 60) || "DESIGNATION";
+}
+
 function DesignationDialog({ dept, editing, allPositions, busy, onSave, onClose }) {
   const isEdit = Boolean(editing);
   const [form, setForm] = useState({
     title: editing?.title ?? "",
-    code: editing?.code ?? "",
-    type: editing?.type ?? "staff",
-    approvedHeadcount: editing?.approvedHeadcount ?? 1,
-    budgetedHeadcount: editing?.budgetedHeadcount ?? editing?.approvedHeadcount ?? 1,
     status: editing?.status ?? "open",
     reportsToPositionId: editing?.reportsToPositionId ?? "",
   });
@@ -275,21 +270,7 @@ function DesignationDialog({ dept, editing, allPositions, busy, onSave, onClose 
     <Modal isOpen onClose={onClose} title={`${isEdit ? "Edit" : "Add"} Designation${dept ? ` — ${dept.name}` : " (Standalone)"}`} size="lg">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <label className="block sm:col-span-2"><span className={labelClass}>Title *</span>
-          <input className={inputClass} value={form.title} onChange={(e) => set({ title: e.target.value })} />
-        </label>
-        <label className="block"><span className={labelClass}>Code</span>
-          <input className={inputClass} value={form.code} onChange={(e) => set({ code: e.target.value })} placeholder="Auto-generated if empty" />
-        </label>
-        <label className="block"><span className={labelClass}>Type</span>
-          <select className={inputClass} value={form.type} onChange={(e) => set({ type: e.target.value })}>
-            {POSITION_TYPES.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-          </select>
-        </label>
-        <label className="block"><span className={labelClass}>Approved Headcount</span>
-          <input type="number" min="0" className={inputClass} value={form.approvedHeadcount} onChange={(e) => set({ approvedHeadcount: Number(e.target.value) })} />
-        </label>
-        <label className="block"><span className={labelClass}>Budgeted Headcount</span>
-          <input type="number" min="0" className={inputClass} value={form.budgetedHeadcount} onChange={(e) => set({ budgetedHeadcount: Number(e.target.value) })} />
+          <input className={inputClass} value={form.title} onChange={(e) => set({ title: e.target.value })} placeholder="Enter designation title" />
         </label>
         <label className="block"><span className={labelClass}>Reports To</span>
           <select className={inputClass} value={form.reportsToPositionId} onChange={(e) => set({ reportsToPositionId: e.target.value })}>
@@ -309,15 +290,18 @@ function DesignationDialog({ dept, editing, allPositions, busy, onSave, onClose 
         <Button variant="secondary" onClick={onClose} disabled={busy}>Cancel</Button>
         <Button
           disabled={busy || !form.title.trim()}
-          onClick={() => onSave({
-            title: form.title.trim(),
-            code: form.code || undefined,
-            type: form.type,
-            approvedHeadcount: form.approvedHeadcount,
-            budgetedHeadcount: form.budgetedHeadcount,
-            status: form.status,
-            reportsToPositionId: form.reportsToPositionId || null,
-          })}
+          onClick={() => {
+            const title = form.title.trim();
+            onSave({
+              title,
+              code: editing?.code || slugifyTitleToCode(title),
+              type: editing?.type ?? "staff",
+              approvedHeadcount: editing?.approvedHeadcount ?? 1,
+              budgetedHeadcount: editing?.budgetedHeadcount ?? 1,
+              status: form.status,
+              reportsToPositionId: form.reportsToPositionId || null,
+            });
+          }}
         >
           {busy && <Loader2 size={16} className="animate-spin" />}
           {isEdit ? "Save" : "Create"}

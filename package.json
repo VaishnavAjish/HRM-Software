@@ -3,12 +3,15 @@
   "version": "1.0.0",
   "description": "Root package.json to manage frontend and backend",
   "scripts": {
-    "dev:client": "cd salary-slip-front/salary-slip-front && npm run dev",
+    "dev:client": "npm --prefix salary-slip-front/salary-slip-front run dev",
     "dev:server": "cd salary-slip-bac && php artisan serve --host=0.0.0.0 --port=8000",
-    "dev": "npx concurrently \"npm run dev:server\" \"npm run dev:client\"",
-    "build:client": "cd salary-slip-front/salary-slip-front && npm run build",
+    "dev": "npx --yes concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "build:client": "npm --prefix salary-slip-front/salary-slip-front run build",
     "build:server": "cd salary-slip-bac && php artisan optimize:clear",
     "test:php": "cd salary-slip-bac && php vendor/bin/phpunit"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
   },
   "author": "",
   "license": "ISC"

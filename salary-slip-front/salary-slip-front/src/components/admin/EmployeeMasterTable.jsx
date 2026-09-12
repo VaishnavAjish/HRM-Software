@@ -117,6 +117,7 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
   const [search, setSearch] = useState("");
   const [stageFilter, setStageFilter] = useState("all");
   const [departmentFilter, setDepartmentFilter] = useState("");
+  const [genderFilter, setGenderFilter] = useState("");
   const [month, setMonth] = useState("");
   const [year, setYear] = useState("");
   const [page, setPage] = useState(1);
@@ -258,6 +259,20 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
         return false;
       }
 
+      if (genderFilter) {
+        const g = String(r.gender || "").trim();
+        const gLower = g.toLowerCase();
+        if (genderFilter === "blank") {
+          if (g !== "" && g !== "-" && gLower !== "unspecified" && gLower !== "null" && gLower !== "undefined") return false;
+        } else if (genderFilter === "Male") {
+          if (gLower !== "male" && gLower !== "m") return false;
+        } else if (genderFilter === "Female") {
+          if (gLower !== "female" && gLower !== "f") return false;
+        } else if (g !== genderFilter) {
+          return false;
+        }
+      }
+
       if (month || year) {
         const ref = referenceDate(r);
         const d = ref ? new Date(ref) : null;
@@ -274,7 +289,7 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
 
       return true;
     });
-  }, [rows, search, stageFilter, departmentFilter, month, year]);
+  }, [rows, search, stageFilter, departmentFilter, genderFilter, month, year]);
 
   const paginated = useMemo(() => {
     const start = (page - 1) * pageSize;
@@ -283,7 +298,7 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
 
 
   const clearFilters = () => {
-    setSearch(""); setStageFilter("all"); setDepartmentFilter(""); setMonth(""); setYear(""); setPage(1);
+    setSearch(""); setStageFilter("all"); setDepartmentFilter(""); setGenderFilter(""); setMonth(""); setYear(""); setPage(1);
   };
 
   const draftValue = (row, field) => {
@@ -470,6 +485,7 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
       "Emp Code": r.emp_code || "",
       "Punching No": r.punching_no || "",
       "Name": r.name || "",
+      "Gender": r.gender && r.gender !== "-" ? r.gender : "",
       "Email": r.email || "",
       "Mobile": r.mobile_number || "",
       "Stage": (STAGE_META[r.__stage] || STAGE_META.appointment).label,
@@ -535,6 +551,17 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
               ))}
             </select>
 
+            <select
+              value={genderFilter}
+              onChange={(e) => { setGenderFilter(e.target.value); setPage(1); }}
+              className="rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 px-2.5 py-1.5 text-xs text-gray-700 dark:text-gray-200"
+            >
+              <option value="">All Genders</option>
+              <option value="Male">Male</option>
+              <option value="Female">Female</option>
+              <option value="blank">Blank</option>
+            </select>
+
             <div className="h-5 w-px bg-gray-200 dark:bg-white/10 mx-1 hidden sm:block" />
 
             {[
@@ -557,7 +584,7 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
               </button>
             ))}
 
-            {(search || stageFilter !== "all" || departmentFilter || month || year) && (
+            {(search || stageFilter !== "all" || departmentFilter || genderFilter || month || year) && (
               <button
                 onClick={clearFilters}
                 className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-gray-500 hover:bg-gray-100 dark:text-slate-400 dark:hover:bg-white/5"
@@ -713,6 +740,12 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
                         </dd>
                       </div>
                       <div>
+                        <dt className="font-semibold text-gray-500 dark:text-gray-400">Gender</dt>
+                        <dd className="text-gray-700 dark:text-gray-200 break-words">
+                          {row.gender && row.gender !== "-" ? row.gender : ""}
+                        </dd>
+                      </div>
+                      <div>
                         <dt className="font-semibold text-gray-500 dark:text-gray-400">Company / Unit</dt>
                         <dd className="text-gray-700 dark:text-gray-200 break-words">
                           {getCompanyConfig(row.company_code)?.label || row.company_code || "—"}
@@ -733,6 +766,7 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
                     <th className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900/40 px-4 py-2.5 font-bold w-32">Emp Code</th>
                     <th className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900/40 px-4 py-2.5 font-bold w-32">Punching No</th>
                     <th className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900/40 px-4 py-2.5 font-bold w-48">Name</th>
+                    <th className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900/40 px-4 py-2.5 font-bold w-24">Gender</th>
                     <th className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900/40 px-4 py-2.5 font-bold w-28">Stage</th>
                     <th className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900/40 px-4 py-2.5 font-bold w-40">Department</th>
                     <th className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900/40 px-4 py-2.5 font-bold w-40">Company / Unit</th>
@@ -775,6 +809,9 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
                         <td className="px-4 py-1.5 border-b border-gray-100 dark:border-gray-700">
                           <div className="font-medium text-gray-900 dark:text-white">{row.name || "—"}</div>
                           <div className="text-xs text-gray-500 dark:text-gray-400">{row.email || "No email"}</div>
+                        </td>
+                        <td className="px-4 py-1.5 border-b border-gray-100 dark:border-gray-700 text-gray-600 dark:text-gray-300">
+                          {row.gender && row.gender !== "-" ? row.gender : ""}
                         </td>
                         <td className="px-4 py-1.5 border-b border-gray-100 dark:border-gray-700">
                           <Badge variant={meta.tone}>{meta.label}</Badge>
