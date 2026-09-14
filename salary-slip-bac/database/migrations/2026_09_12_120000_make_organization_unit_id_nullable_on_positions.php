@@ -1,7 +1,9 @@
 <?php
 
 use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Allows a Designation (organization_positions row) to exist without a
@@ -17,18 +19,48 @@ return new class extends Migration
 {
     public function up(): void
     {
-        DB::statement('ALTER TABLE organization_positions ALTER COLUMN organization_unit_id DROP NOT NULL');
-        DB::statement('ALTER TABLE organization_positions DROP CONSTRAINT IF EXISTS organization_positions_organization_unit_id_code_unique');
-        DB::statement('CREATE UNIQUE INDEX IF NOT EXISTS organization_positions_unit_code_unique ON organization_positions (organization_unit_id, code) WHERE organization_unit_id IS NOT NULL');
-        DB::statement('CREATE UNIQUE INDEX IF NOT EXISTS organization_positions_global_code_unique ON organization_positions (code) WHERE organization_unit_id IS NULL');
+        $driver = DB::connection()->getDriverName();
+
+        if ($driver === 'pgsql') {
+            DB::statement('ALTER TABLE organization_positions ALTER COLUMN organization_unit_id DROP NOT NULL');
+            DB::statement('ALTER TABLE organization_positions DROP CONSTRAINT IF EXISTS organization_positions_organization_unit_id_code_unique');
+            DB::statement('CREATE UNIQUE INDEX IF NOT EXISTS organization_positions_unit_code_unique ON organization_positions (organization_unit_id, code) WHERE organization_unit_id IS NOT NULL');
+            DB::statement('CREATE UNIQUE INDEX IF NOT EXISTS organization_positions_global_code_unique ON organization_positions (code) WHERE organization_unit_id IS NULL');
+        } elseif ($driver === 'sqlite') {
+            Schema::table('organization_positions', function (Blueprint $table) {
+                $table->unsignedBigInteger('organization_unit_id')->nullable()->change();
+            });
+            try {
+                DB::statement('DROP INDEX IF EXISTS organization_positions_organization_unit_id_code_unique');
+            } catch (\Throwable $e) {}
+            try {
+                DB::statement('CREATE UNIQUE INDEX IF NOT EXISTS organization_positions_unit_code_unique ON organization_positions (organization_unit_id, code) WHERE organization_unit_id IS NOT NULL');
+                DB::statement('CREATE UNIQUE INDEX IF NOT EXISTS organization_positions_global_code_unique ON organization_positions (code) WHERE organization_unit_id IS NULL');
+            } catch (\Throwable $e) {}
+        } else {
+            // MySQL / MariaDB
+            Schema::table('organization_positions', function (Blueprint $table) {
+                $table->unsignedBigInteger('organization_unit_id')->nullable()->change();
+            });
+        }
     }
 
     public function down(): void
     {
-        DB::statement('DROP INDEX IF EXISTS organization_positions_global_code_unique');
-        DB::statement('DROP INDEX IF EXISTS organization_positions_unit_code_unique');
-        DB::statement('DELETE FROM organization_positions WHERE organization_unit_id IS NULL');
-        DB::statement('ALTER TABLE organization_positions ALTER COLUMN organization_unit_id SET NOT NULL');
-        DB::statement('ALTER TABLE organization_positions ADD CONSTRAINT organization_positions_organization_unit_id_code_unique UNIQUE (organization_unit_id, code)');
+        $driver = DB::connection()->getDriverName();
+
+        if ($driver === 'pgsql') {
+            DB::statement('DROP INDEX IF EXISTS organization_positions_global_code_unique');
+            DB::statement('DROP INDEX IF EXISTS organization_positions_unit_code_unique');
+            DB::statement('DELETE FROM organization_positions WHERE organization_unit_id IS NULL');
+            DB::statement('ALTER TABLE organization_positions ALTER COLUMN organization_unit_id SET NOT NULL');
+            DB::statement('ALTER TABLE organization_positions ADD CONSTRAINT organization_positions_organization_unit_id_code_unique UNIQUE (organization_unit_id, code)');
+        } else {
+            DB::table('organization_positions')->whereNull('organization_unit_id')->delete();
+            Schema::table('organization_positions', function (Blueprint $table) {
+                $table->unsignedBigInteger('organization_unit_id')->nullable(false)->change();
+            });
+        }
     }
 };
+
