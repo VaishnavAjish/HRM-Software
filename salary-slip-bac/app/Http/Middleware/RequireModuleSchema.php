@@ -115,6 +115,37 @@ class RequireModuleSchema
             'organization_activity_logs',
             'reporting_relationships',
         ],
+        // Mediclaim module. All 26 tables ship together in one release, so a
+        // deployment stopped mid-migration must report "being set up" on
+        // every Mediclaim route rather than 500 on a missing relation.
+        'mediclaim' => [
+            'mediclaim_claim_number_counters',
+            'mediclaim_intimation_number_counters',
+            'mediclaim_policies',
+            'mediclaim_policy_versions',
+            'mediclaim_hospitals',
+            'mediclaim_hospital_contacts',
+            'mediclaim_policy_hospitals',
+            'mediclaim_rule_books',
+            'mediclaim_rule_book_acknowledgements',
+            'mediclaim_enrollments',
+            'mediclaim_members',
+            'mediclaim_member_change_requests',
+            'mediclaim_cards',
+            'mediclaim_intimations',
+            'mediclaim_claims',
+            'mediclaim_claim_expenses',
+            'mediclaim_claim_revisions',
+            'mediclaim_document_links',
+            'mediclaim_claim_assignments',
+            'mediclaim_claim_decisions',
+            'mediclaim_claim_events',
+            'mediclaim_settlements',
+            'mediclaim_reviewer_assignments',
+            'mediclaim_floater_overrides',
+            'mediclaim_notification_dedupe',
+            'mediclaim_admin_activity_logs',
+        ],
     ];
 
     public function handle(Request $request, Closure $next, string $module)

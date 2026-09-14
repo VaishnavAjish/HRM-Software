@@ -173,6 +173,9 @@ export default function Profile() {
         );
         const data = res?.data || res?.user || res;
         setProfile(data);
+        if (data && updateCurrentUser) {
+          updateCurrentUser(data);
+        }
         setForm({
           name: data.name || "",
           email: data.email || "",

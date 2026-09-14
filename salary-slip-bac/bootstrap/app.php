@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\EnsureFrontendUrlConfigured;
 use App\Http\Middleware\JwtMiddleware;
+use App\Http\Middleware\NormalizeMediclaimInputCase;
 use App\Http\Middleware\RequireModuleSchema;
 use App\Http\Middleware\RequirePermission;
 use App\Http\Middleware\RequireRoleManager;
@@ -33,6 +34,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'super.admin' => RequireSuperAdmin::class,
             'role.manager' => RequireRoleManager::class,
             'frontend.url' => EnsureFrontendUrlConfigured::class,
+            'mediclaim.normalize_case' => NormalizeMediclaimInputCase::class,
         ]);
 
         // Global security headers on every response

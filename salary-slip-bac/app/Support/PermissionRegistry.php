@@ -525,6 +525,34 @@ class PermissionRegistry
             'description' => 'Download generated Form 16 documents.',
             'implies' => ['document.file.download'],
         ],
+        'ui.tds.mediclaim' => [
+            'type' => self::TYPE_PAGE, 'label' => 'Mediclaim', 'order' => 30,
+            'parent' => 'ui.tds', 'route' => '/admin/tds/mediclaim',
+            'sensitivity' => self::SENSITIVITY_SENSITIVE,
+            'description' => 'Mediclaim administration workspace.',
+            /*
+             * ui.admin.mediclaim.view is the legacy code App.jsx's route
+             * guard and useNavItems.js's pagePermission map actually check
+             * (verified live in both files) — the same pattern ui.tds.form16
+             * follows for ui.admin.form16.view. Without it here the frontend
+             * route guard and nav have nothing to check, exactly as the
+             * plan's reconciliation #1 describes.
+             */
+            'implies' => ['ui.admin.mediclaim.view', 'mediclaim.claim.read', 'mediclaim.policy.read', 'mediclaim.enrollment.read'],
+            'scopes' => [self::SCOPE_COMPANY],
+        ],
+        'ui.tds.mediclaim.card_generate' => [
+            'type' => self::TYPE_ACTION, 'label' => 'Generate Card', 'order' => 10,
+            'parent' => 'ui.tds.mediclaim', 'sensitivity' => self::SENSITIVITY_SENSITIVE,
+            'description' => 'Generate or regenerate a member Mediclaim card.',
+            'implies' => ['mediclaim.card.create'],
+        ],
+        'ui.tds.mediclaim.reviewer_assignment' => [
+            'type' => self::TYPE_FEATURE, 'label' => 'Reviewer Assignments', 'order' => 20,
+            'parent' => 'ui.tds.mediclaim',
+            'description' => 'Manage per-stage Mediclaim reviewer assignments.',
+            'implies' => ['mediclaim.reviewer_assignment.read'],
+        ],
 
         /* ----------------------------------------------------------------- hr */
 
@@ -1067,6 +1095,30 @@ class PermissionRegistry
              * actually depends on, so that is what it implies.
              */
             'implies' => ['self.payslip.read'],
+        ],
+        'ui.portals.employee_mediclaim' => [
+            'type' => self::TYPE_PAGE, 'label' => 'My Mediclaim', 'order' => 25,
+            'parent' => 'ui.portals', 'route' => '/employee/tds/mediclaim',
+            'sensitivity' => self::SENSITIVITY_SENSITIVE,
+            'description' => 'Open the employee Mediclaim workspace.',
+            /*
+             * Mirrors ui.portals.employee_form16's fix exactly (reconciliation
+             * #2 — App.jsx registers this route with no requiredPermission
+             * prop, "matches Form16's existing convention", so access is
+             * resolved entirely through canRoute(), which reads
+             * user.authorization.routes['/employee/tds/mediclaim'] — built
+             * server-side from PermissionRegistry::routes(), i.e. this node's
+             * own key).
+             *
+             * self.mediclaim.coverage.read, not a dedicated page-view code:
+             * EmployeeMediclaimWorkspace.jsx's default tab calls
+             * MyCoverageController@show, which that code already gates, so
+             * it is the one capability every enrolled employee actually
+             * needs — the same reasoning that made employee_form16 imply
+             * self.payslip.read instead of the admin payroll.form16.read
+             * code (implying that emptied the page for all 341 employees).
+             */
+            'implies' => ['self.mediclaim.coverage.read'],
         ],
         'ui.portals.employee_tickets' => [
             'type' => self::TYPE_PAGE, 'label' => 'My Tickets', 'order' => 26,

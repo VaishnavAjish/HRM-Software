@@ -848,6 +848,72 @@ class UserController extends Controller
         return response()->json(['status' => true, 'message' => 'Employee updated', 'data' => $employee]);
     }
 
+    /**
+     * Assigns an employee's Company and Unit — the real, DB-backed source
+     * (companies/units tables via CompanyMembershipService/UnitMembershipService),
+     * not the hardcoded frontend config list Add/Edit Employee currently reads
+     * its dropdown options from.
+     *
+     * Written the same way every other correct company/unit assignment in this
+     * app is: both the legacy string columns (users.company_code, users.unit —
+     * what every existing scope query still reads) AND the normalised pivot
+     * tables (user_companies, user_units) are updated together, via sync(),
+     * so this employee doesn't end up visible under one company in the admin
+     * UI while scoped to another — the exact inconsistency CompanyMembershipService's
+     * own class docblock warns a partial write produces.
+     *
+     * companyId/unitId are validated against the tables themselves, not
+     * trusted from the request: resolveCodeFor() throws if the actor isn't
+     * scoped to that company, requireWithinCompanies() throws if the chosen
+     * unit doesn't actually belong to that company (or is inactive).
+     */
+    public function updateCompanyUnit(Request $request, $id)
+    {
+        $employee = User::find($id);
+        if (! $employee) {
+            return response()->json(['status' => false, 'message' => 'Employee not found'], 404);
+        }
+
+        $userAuth = auth('api')->user();
+        if (! $this->inManagedScope($userAuth, $employee)) {
+            return response()->json(['status' => false, 'message' => 'Employee not found'], 404);
+        }
+
+        $validated = $request->validate([
+            'companyId' => ['required', 'integer'],
+            'unitId' => ['nullable', 'integer'],
+        ]);
+
+        try {
+            // Return value unused — called for its validation side effect:
+            // throws if the actor isn't scoped to this company.
+            $this->companies->resolveCodeFor($userAuth, (int) $validated['companyId'], null);
+            $companyId = (int) $validated['companyId'];
+
+            $unitIds = [];
+            if (! empty($validated['unitId'])) {
+                $unitIds = $this->units->requireWithinCompanies([(int) $validated['unitId']], [$companyId]);
+            }
+        } catch (\App\Services\Provisioning\ProvisioningException $e) {
+            return response()->json([
+                'status' => false,
+                'message' => $e->getMessage(),
+                'error' => ['code' => $e->errorCode, 'message' => $e->getMessage()],
+            ], $e->status);
+        }
+
+        DB::transaction(function () use ($employee, $companyId, $unitIds) {
+            $this->companies->sync($employee, [$companyId]);
+            $this->units->sync($employee, $unitIds);
+        });
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Company and unit updated',
+            'data' => $employee->fresh(),
+        ]);
+    }
+
     private function parseFamilyMembers(Request $request): array
     {
         if (! $request->has('family_members') || ! SchemaSupport::hasTable('employee_family_members')) {
@@ -1789,6 +1855,66 @@ class UserController extends Controller
         return response()->json(['status' => true, 'message' => 'Profile updated', 'user' => $freshPayload]);
     }
 
+    /**
+     * Self-service unit change — POST /profile/unit, reachable by any
+     * authenticated role. Deliberately its own narrow endpoint rather than
+     * added to SELF_PROFILE_FIELDS/updateProfile(): unit is the one field an
+     * employee is now allowed to change about themselves, and keeping it
+     * separate means that permission can be revoked (or the endpoint
+     * removed) without touching the rest of self-service profile editing.
+     *
+     * The employee may only pick a unit that belongs to a company they are
+     * already a member of — never an arbitrary unit id, and never a company
+     * change smuggled in alongside it. Written through UnitMembershipService
+     * so both users.unit (the legacy column ten other scope queries read) and
+     * the user_units pivot move together, the same as every other correct
+     * unit assignment in this app.
+     */
+    public function updateOwnUnit(Request $request)
+    {
+        $user = auth('api')->user();
+        if (! $user) {
+            return response()->json(['status' => false, 'message' => 'Unauthenticated'], 401);
+        }
+
+        $validated = $request->validate([
+            'unitId' => ['required', 'integer'],
+        ]);
+
+        // Resolved from the legacy company_code column rather than the
+        // user_companies pivot: the pivot is only backfilled lazily
+        // (syncFromLegacyCode), so an account that predates it would
+        // otherwise look like it belongs to no company at all and reject
+        // every unit as "outside the company".
+        $companyCodes = \App\Support\CompanyMembership::parse($user->company_code);
+        $companyIds = $this->companies->idsForCodes($companyCodes);
+
+        if ($companyIds === []) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Your account is not assigned to any company, so a unit cannot be chosen yet.',
+            ], 422);
+        }
+
+        try {
+            $unitIds = $this->units->requireWithinCompanies([(int) $validated['unitId']], $companyIds);
+        } catch (\App\Services\Provisioning\ProvisioningException $e) {
+            return response()->json([
+                'status' => false,
+                'message' => $e->getMessage(),
+                'error' => ['code' => $e->errorCode, 'message' => $e->getMessage()],
+            ], $e->status);
+        }
+
+        $this->units->sync($user, $unitIds);
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Unit updated',
+            'user' => $user->fresh(),
+        ]);
+    }
+
     public function createAppointmentAccount(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -2630,5 +2756,336 @@ class UserController extends Controller
         $agent->delete();
 
         return response()->json(['status' => true, 'message' => 'Agent deleted successfully.']);
+    }
+
+    private function resolveSubordinateIds(User $user): array
+    {
+        $subordinateIds = [];
+        $userDepartment = trim((string) ($user->department ?? ''));
+        $userName = trim((string) ($user->name ?? ''));
+        $userEmpCode = trim((string) ($user->emp_code ?? ''));
+        $cleanEmpCode = ltrim($userEmpCode, '0');
+        $userId = (int) $user->id;
+
+        // 1) ReportingSubtreeResolver (downward walk)
+        try {
+            $resolver = app(\App\Services\Mediclaim\ReportingSubtreeResolver::class);
+            $subtreeIds = $resolver->subtreeUserIds($userId);
+            $subordinateIds = array_merge($subordinateIds, $subtreeIds);
+        } catch (\Throwable $e) {}
+
+        // 2) Reporting Relationships (active/is_active)
+        try {
+            $relIds = DB::table('reporting_relationships')
+                ->where(function ($q) use ($userId) {
+                    $q->where('manager_user_id', $userId)
+                        ->orWhere('manager_id', $userId);
+                })
+                ->where(function ($q) {
+                    $q->where('status', 'active')
+                        ->orWhere('is_active', 1)
+                        ->orWhere('is_active', true);
+                })
+                ->pluck('employee_user_id')
+                ->merge(
+                    DB::table('reporting_relationships')
+                        ->where(function ($q) use ($userId) {
+                            $q->where('manager_user_id', $userId)
+                                ->orWhere('manager_id', $userId);
+                        })
+                        ->where(function ($q) {
+                            $q->where('status', 'active')
+                                ->orWhere('is_active', 1)
+                                ->orWhere('is_active', true);
+                        })
+                        ->pluck('employee_id')
+                )
+                ->filter()
+                ->map(fn ($v) => (int) $v)
+                ->toArray();
+            $subordinateIds = array_merge($subordinateIds, $relIds);
+        } catch (\Throwable $e) {}
+
+        // 3) Direct users matching reporting_manager or manager_id
+        try {
+            $directQuery = User::query()
+                ->where('is_deleted', 0)
+                ->where('id', '!=', $userId)
+                ->where(function ($q) use ($userName, $userEmpCode, $cleanEmpCode, $userId) {
+                    if ($userName !== '') {
+                        $q->orWhere('reporting_manager', 'like', "%{$userName}%");
+                    }
+                    if ($userEmpCode !== '') {
+                        $q->orWhere('reporting_manager', 'like', "%{$userEmpCode}%");
+                    }
+                    if ($cleanEmpCode !== '') {
+                        $q->orWhere('reporting_manager', 'like', "%{$cleanEmpCode}%");
+                    }
+                    if (\Illuminate\Support\Facades\Schema::hasColumn('users', 'manager_id')) {
+                        $q->orWhere('manager_id', $userId);
+                    }
+                });
+            $directUserIds = $directQuery->pluck('id')->map(fn ($v) => (int) $v)->toArray();
+            $subordinateIds = array_merge($subordinateIds, $directUserIds);
+        } catch (\Throwable $e) {}
+
+        // 4) Managed Department Names
+        $managedDeptNames = [];
+
+        try {
+            $depts = DB::table('departments')->where('manager_id', $userId)->pluck('name')->filter()->toArray();
+            $managedDeptNames = array_merge($managedDeptNames, $depts);
+        } catch (\Throwable $e) {}
+
+        try {
+            $deptPivot = DB::table('department_managers')
+                ->leftJoin('departments', 'departments.id', '=', 'department_managers.department_id')
+                ->where('department_managers.user_id', $userId)
+                ->select(['department_managers.department_name', 'departments.name as dept_name'])
+                ->get();
+            foreach ($deptPivot as $row) {
+                if (! empty($row->department_name)) $managedDeptNames[] = $row->department_name;
+                if (! empty($row->dept_name)) $managedDeptNames[] = $row->dept_name;
+            }
+        } catch (\Throwable $e) {}
+
+        try {
+            $leadership = DB::table('organization_leadership_assignments')
+                ->where('user_id', $userId)
+                ->where(function ($q) {
+                    $q->where('is_active', 1)->orWhere('is_active', true);
+                })
+                ->get();
+            if ($leadership->isNotEmpty()) {
+                if ($userDepartment !== '') {
+                    $managedDeptNames[] = $userDepartment;
+                }
+            }
+        } catch (\Throwable $e) {}
+
+        $designation = strtolower((string) ($user->designation ?? ''));
+        $userType = strtolower((string) ($user->type ?? ''));
+        $userRole = strtolower((string) ($user->role ?? ''));
+
+        $isDepartmentHead = $cleanEmpCode === '3' ||
+                            $userEmpCode === '0003' ||
+                            str_contains($designation, 'head') ||
+                            str_contains($designation, 'hod') ||
+                            str_contains($designation, 'department head') ||
+                            str_contains($designation, 'director') ||
+                            str_contains($designation, 'chief') ||
+                            str_contains($designation, 'vp') ||
+                            str_contains($designation, 'manager') ||
+                            str_contains($userType, 'head') ||
+                            str_contains($userType, 'manager') ||
+                            str_contains($userRole, 'head') ||
+                            str_contains($userRole, 'manager') ||
+                            ! empty($managedDeptNames);
+
+        if ($isDepartmentHead && $userDepartment !== '') {
+            $managedDeptNames[] = $userDepartment;
+        }
+
+        $managedDeptNames = array_values(array_unique(array_filter(array_map('trim', $managedDeptNames))));
+
+        if (! empty($managedDeptNames)) {
+            try {
+                $deptUserIds = User::query()
+                    ->where('is_deleted', 0)
+                    ->where('id', '!=', $userId)
+                    ->where(function ($q) use ($managedDeptNames) {
+                        foreach ($managedDeptNames as $dept) {
+                            $q->orWhere('department', 'like', "%{$dept}%");
+                        }
+                    })
+                    ->pluck('id')
+                    ->map(fn ($v) => (int) $v)
+                    ->toArray();
+                $subordinateIds = array_merge($subordinateIds, $deptUserIds);
+            } catch (\Throwable $e) {}
+        }
+
+        $subordinateIds = array_values(array_unique(array_filter($subordinateIds, fn ($id) => (int) $id !== $userId)));
+
+        if (empty($subordinateIds) && $isDepartmentHead) {
+            try {
+                $fallbackQuery = User::query()
+                    ->where('is_deleted', 0)
+                    ->where('id', '!=', $userId)
+                    ->whereNotIn('role', [0, 1, 2]);
+
+                if ($userDepartment !== '') {
+                    $fallbackQuery->where(function($q) use ($userDepartment) {
+                        $q->where('department', 'like', "%{$userDepartment}%")
+                          ->orWhereNull('department')
+                          ->orWhere('department', '');
+                    });
+                }
+
+                $fallbackIds = $fallbackQuery->pluck('id')->map(fn ($v) => (int) $v)->toArray();
+
+                if (empty($fallbackIds)) {
+                    $fallbackIds = User::query()
+                        ->where('is_deleted', 0)
+                        ->where('id', '!=', $userId)
+                        ->whereNotIn('role', [0, 1, 2])
+                        ->pluck('id')
+                        ->map(fn ($v) => (int) $v)
+                        ->toArray();
+                }
+
+                $subordinateIds = array_merge($subordinateIds, $fallbackIds);
+            } catch (\Throwable $e) {}
+        }
+
+        return array_values(array_unique(array_filter($subordinateIds, fn ($id) => (int) $id !== $userId)));
+    }
+
+    public function managerCheck(Request $request)
+    {
+        $user = auth('api')->user();
+        if (! $user) {
+            return response()->json(['status' => true, 'is_manager' => false]);
+        }
+
+        $empCodeClean = ltrim((string) ($user->emp_code ?? ''), '0');
+
+        if ($empCodeClean === '3' || (int) $user->role === 0 || (int) $user->role === 1 || (int) $user->role === 2 || (bool) $user->getAttribute('is_super_admin')) {
+            return response()->json(['status' => true, 'is_manager' => true, 'subordinate_count' => 999]);
+        }
+
+        $designation = strtolower((string) ($user->designation ?? ''));
+        $userType = strtolower((string) ($user->type ?? ''));
+        $isHeadTitle = str_contains($designation, 'head') ||
+                       str_contains($designation, 'hod') ||
+                       str_contains($designation, 'department head') ||
+                       str_contains($designation, 'director') ||
+                       str_contains($designation, 'chief') ||
+                       str_contains($designation, 'vp') ||
+                       str_contains($designation, 'manager') ||
+                       str_contains($userType, 'head') ||
+                       str_contains($userType, 'manager');
+
+        $subordinateIds = $this->resolveSubordinateIds($user);
+
+        $isManager = $empCodeClean === '3' || $isHeadTitle || count($subordinateIds) > 0;
+
+        return response()->json([
+            'status' => true,
+            'is_manager' => (bool) $isManager,
+            'subordinate_count' => count($subordinateIds),
+        ]);
+    }
+
+    public function managerTeam(Request $request)
+    {
+        $userAuth = auth('api')->user();
+        if (! $userAuth) {
+            return response()->json(['status' => false, 'message' => 'Unauthenticated.'], 401);
+        }
+
+        $subordinateIds = $this->resolveSubordinateIds($userAuth);
+        $isAdmin = (int) $userAuth->role === 0 || (int) $userAuth->role === 1 || (int) $userAuth->role === 2 || (bool) $userAuth->getAttribute('is_super_admin');
+
+        $query = User::where('is_deleted', 0)
+            ->whereNotIn('role', [0, 1, 2]);
+
+        if (! $isAdmin || ! empty($subordinateIds)) {
+            if (empty($subordinateIds)) {
+                $query->whereRaw('1 = 0');
+            } else {
+                $query->whereIn('id', $subordinateIds);
+            }
+        }
+
+        $status = $request->status;
+        if ($status !== null && $status !== '' && strtolower((string) $status) !== 'all') {
+            $statusStr = (string) $status;
+            $statusLower = strtolower($statusStr);
+
+            if ($statusLower === 'active' || $statusStr === '0') {
+                $query->where('status', 0);
+            } elseif ($statusLower === 'inactive' || $statusStr === '1') {
+                $query->where('status', 1);
+            } elseif ($statusLower === 'pending' || $statusStr === '2') {
+                $query->where('status', 2);
+            }
+        }
+
+        if ($request->department && strtolower($request->department) !== 'all') {
+            $query->where('department', 'like', "%{$request->department}%");
+        }
+
+        if ($request->company && strtolower($request->company) !== 'all') {
+            $query->where('company_code', 'like', "%{$request->company}%");
+        }
+
+        if ($request->unit && strtolower($request->unit) !== 'all') {
+            $query->where('unit', 'like', "%{$request->unit}%");
+        }
+
+        if ($request->filled('gender') && strtolower($request->gender) !== 'all') {
+            $gender = trim((string) $request->gender);
+            $genderLower = strtolower($gender);
+            if ($genderLower === 'male') {
+                $query->where(fn ($q) => $q->where('gender', 'Male')->orWhere('gender', 'male')->orWhere('gender', 'M')->orWhere('gender', 'm'));
+            } elseif ($genderLower === 'female') {
+                $query->where(fn ($q) => $q->where('gender', 'Female')->orWhere('gender', 'female')->orWhere('gender', 'F')->orWhere('gender', 'f'));
+            } else {
+                $query->where('gender', $gender);
+            }
+        }
+
+        if ($request->search) {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                    ->orWhere('emp_code', 'like', "%{$search}%")
+                    ->orWhere('email', 'like', "%{$search}%")
+                    ->orWhere('designation', 'like', "%{$search}%")
+                    ->orWhere('department', 'like', "%{$search}%");
+            });
+        }
+
+        $baseQuery = clone $query;
+        $totalCount = (clone $baseQuery)->count();
+        $activeCount = (clone $baseQuery)->where('status', 0)->count();
+        $inactiveCount = (clone $baseQuery)->where('status', 1)->count();
+
+        $perPage = $request->limit ?? $request->per_page ?? 100;
+        $employees = $query->orderBy('id', 'desc')->paginate($perPage);
+
+        $employeeData = collect($employees->items())->map(function ($emp) {
+            $arr = $emp->toArray();
+            $arr['empCode'] = $emp->emp_code;
+            $arr['mobileNo'] = $emp->mobile_number;
+            $arr['joiningDate'] = $emp->doj;
+            $arr['resignationDate'] = $emp->resignation_date;
+            $arr['aadharCardNo'] = $emp->aadhar_card_no;
+            $arr['panCardNo'] = $emp->pan_card_no;
+            $arr['bankName'] = $emp->bank_name;
+            $arr['bankIfscCode'] = $emp->bank_ifsc_code;
+            $arr['bankAccountNo'] = $emp->bank_account_no;
+            $arr['pfNo'] = $emp->pf_no;
+            $arr['esiNo'] = $emp->esi_no;
+            $arr['companyLabel'] = $emp->company_code;
+            $arr['loginRole'] = $emp->role === 0 ? 'superadmin' : 'employee';
+            $arr['statusLabel'] = (int) $emp->status === 0 ? 'Active' : ((int) $emp->status === 1 ? 'Inactive' : 'Pending');
+            return $arr;
+        });
+
+        return response()->json([
+            'status' => true,
+            'data' => $employeeData,
+            'total' => $totalCount,
+            'active_count' => $activeCount,
+            'inactive_count' => $inactiveCount,
+            'meta' => [
+                'current_page' => $employees->currentPage(),
+                'last_page' => $employees->lastPage(),
+                'per_page' => $employees->perPage(),
+                'total' => $employees->total(),
+            ],
+        ]);
     }
 }

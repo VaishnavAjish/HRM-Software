@@ -32,3 +32,22 @@ Schedule::command('sanctum:prune-expired --hours=720')
     ->daily()
     ->withoutOverlapping()
     ->runInBackground();
+
+/*
+ * Mediclaim expiry reminders (policies, cards, covered-member eligibility).
+ * Once daily is enough — MediclaimNotifier dedupes each reminder per
+ * calendar day regardless, so a second run the same day is a safe no-op.
+ */
+Schedule::command('mediclaim:send-expiry-reminders')
+    ->dailyAt('07:30')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+/*
+ * Mediclaim overdue-review reminders — nudges whoever currently holds a
+ * claim that has sat too long at its review stage.
+ */
+Schedule::command('mediclaim:escalate-overdue-reviews')
+    ->dailyAt('08:00')
+    ->withoutOverlapping()
+    ->runInBackground();

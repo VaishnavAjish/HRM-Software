@@ -47,6 +47,18 @@ class DocumentService
      * Upload a new version of (owner, documentType), creating the logical
      * document on first use.
      *
+     * $scopeKey is an optional additional discriminator, folded into the
+     * (document_type, owner) identity used by reserveVersion() to find or
+     * create the logical Document row. Leave it null (the default) for the
+     * "one evolving document per employee" types this method has always
+     * served — a resume, a PAN card, an Aadhaar upload. Pass a non-null value
+     * only when the SAME employee genuinely needs multiple *independent*
+     * documents of the SAME type at once (e.g. one Mediclaim INSURANCE_CARD
+     * per covered family member, one MEDICLAIM_CLAIM_FORM or claim document
+     * per claim) — otherwise the second document silently becomes a new
+     * version of the first instead of a separate document. See
+     * reserveVersion() for how this is used.
+     *
      * @throws DocumentException
      */
     public function upload(
@@ -55,7 +67,8 @@ class DocumentService
         string $documentType,
         ?int $actorId = null,
         ?string $idempotencyKey = null,
-        ?string $description = null
+        ?string $description = null,
+        ?string $scopeKey = null
     ): DocumentVersion {
         if (!DocumentType::isValid($documentType)) {
             throw new DocumentException(DocumentException::TYPE_INVALID, 'Unknown document type.');
@@ -87,7 +100,7 @@ class DocumentService
         $originalName = $file->getClientOriginalName();
 
         [$document, $version] = $this->reserveVersion(
-            $owner, $documentType, $facts, $originalName, $actorId, $idempotencyKey, $description
+            $owner, $documentType, $facts, $originalName, $actorId, $idempotencyKey, $description, $scopeKey
         );
 
         try {
@@ -171,6 +184,19 @@ class DocumentService
      * Reserve the next version number under a row lock so two concurrent
      * replacements cannot both claim the same number. The unique index on
      * (document_id, version) is the backstop if a driver ignores the lock.
+     *
+     * $scopeKey null (the default): identity/lookup, creation, and object-key
+     * shape are all byte-for-byte identical to before $scopeKey existed — no
+     * behaviour change for any existing document_type/caller.
+     *
+     * $scopeKey non-null: the (document_type, owner) identity gains a third
+     * component, so a caller that needs multiple independent Document rows
+     * for the same (document_type, owner) gets one per distinct scope key
+     * instead of them collapsing into versions of a single row. The scope key
+     * is also folded into the object key (see below) — otherwise two such
+     * Document rows would each independently number their own versions from
+     * 1, and the object key (which does not otherwise embed the document's
+     * own id) could collide across them.
      */
     private function reserveVersion(
         User $owner,
@@ -179,20 +205,27 @@ class DocumentService
         string $originalName,
         ?int $actorId,
         ?string $idempotencyKey,
-        ?string $description
+        ?string $description,
+        ?string $scopeKey = null
     ): array {
-        return DB::transaction(function () use ($owner, $documentType, $facts, $originalName, $actorId, $idempotencyKey, $description) {
+        return DB::transaction(function () use ($owner, $documentType, $facts, $originalName, $actorId, $idempotencyKey, $description, $scopeKey) {
             // <EmployeeID>_<AadhaarNo> — either identifier alone is enough to
             // keep folders distinct, which matters for appointments that have
             // no emp_code assigned yet.
             $ownerRef = self::ownerFolderReference($owner);
 
-            $document = Document::where('document_type', $documentType)
-                ->where(function ($q) use ($owner, $ownerRef) {
-                    $owner->id ? $q->where('user_id', $owner->id) : $q->where('owner_ref', $ownerRef);
-                })
-                ->lockForUpdate()
-                ->first();
+            $document = $scopeKey !== null
+                ? Document::where('document_type', $documentType)
+                    ->where('user_id', $owner->id)
+                    ->where('scope_key', $scopeKey)
+                    ->lockForUpdate()
+                    ->first()
+                : Document::where('document_type', $documentType)
+                    ->where(function ($q) use ($owner, $ownerRef) {
+                        $owner->id ? $q->where('user_id', $owner->id) : $q->where('owner_ref', $ownerRef);
+                    })
+                    ->lockForUpdate()
+                    ->first();
 
             if (!$document) {
                 $document = Document::create([
@@ -202,6 +235,7 @@ class DocumentService
                     'owner_ref'         => $ownerRef,
                     'user_id'           => $owner->id,
                     'document_type'     => $documentType,
+                    'scope_key'         => $scopeKey,
                     'current_version'   => 0,
                     'status'            => Document::STATUS_ACTIVE,
                     'description'       => $description,
@@ -219,12 +253,17 @@ class DocumentService
             );
 
             // <aadhaar>/<appointmentId>/<type>/<file>. The id keeps records that
-            // share an Aadhaar number in separate folders.
+            // share an Aadhaar number in separate folders. When $scopeKey is
+            // set, it is additionally folded in as its own segment — without
+            // it, two distinct Document rows (same owner+type, different
+            // scope) each number their versions from 1 and could otherwise
+            // produce the same object key.
             $objectKey = ObjectKeyBuilder::appointmentKey(
                 $ownerRef,
                 $owner->id ?: 'PENDING',
                 $documentType,
-                $generatedName
+                $generatedName,
+                $scopeKey
             );
 
             $version = DocumentVersion::create([

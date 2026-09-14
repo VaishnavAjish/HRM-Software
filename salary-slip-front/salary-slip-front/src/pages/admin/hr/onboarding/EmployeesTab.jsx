@@ -106,14 +106,24 @@ export default function EmployeesTab({ initialFilter, onOpenEmployee }) {
       hideBelow: "sm",
       render: (j) => (
         <>
-          {j.role}
+          <span className="dark:text-white">{j.role}</span>
           <br />
           <small className="text-gray-400">{j.dept}</small>
         </>
       ),
     },
-    { key: "joiningDate", label: "Joining", hideBelow: "md" },
-    { key: "docStatus", label: "Document status", hideBelow: "md", render: (j) => docStatusLabel(j.progress) },
+    {
+      key: "joiningDate",
+      label: "Joining",
+      hideBelow: "md",
+      render: (j) => <span className="dark:text-white">{j.joiningDate}</span>,
+    },
+    {
+      key: "docStatus",
+      label: "Document status",
+      hideBelow: "md",
+      render: (j) => <span className="dark:text-white">{docStatusLabel(j.progress)}</span>,
+    },
     { key: "progress", label: "Progress", className: "w-32", render: (j) => <ProgressBar value={j.progress} /> },
     {
       key: "status",

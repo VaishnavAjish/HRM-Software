@@ -381,6 +381,18 @@ export function AuthProvider({ children }) {
       const apiUser =
         data?.login || data?.data || data?.user || data?.employee || data;
       let loggedInUser = buildAuthUser(apiUser, {}, data);
+
+      // Pre-fetch full profile details so completion fields (dob, address, bank, family_members, etc.) are present immediately upon login
+      try {
+        const profileRes = await authApi.getProfile(loggedInUser.accessToken, loggedInUser.tokenType);
+        const profileData = profileRes?.data || profileRes?.user || profileRes?.employee || profileRes;
+        if (profileData && typeof profileData === "object") {
+          loggedInUser = buildAuthUser(profileData, loggedInUser, data);
+        }
+      } catch (profileErr) {
+        console.warn("[AuthContext] Profile pre-fetch error during login:", profileErr);
+      }
+
       loggedInUser = await loadPermissionsForUser(loggedInUser);
 
       setUser(loggedInUser);
@@ -406,6 +418,17 @@ export function AuthProvider({ children }) {
       const apiUser =
         data?.login || data?.data || data?.user || data?.employee || data;
       let loggedInUser = buildAuthUser(apiUser, {}, data);
+
+      try {
+        const profileRes = await authApi.getProfile(loggedInUser.accessToken, loggedInUser.tokenType);
+        const profileData = profileRes?.data || profileRes?.user || profileRes?.employee || profileRes;
+        if (profileData && typeof profileData === "object") {
+          loggedInUser = buildAuthUser(profileData, loggedInUser, data);
+        }
+      } catch (profileErr) {
+        console.warn("[AuthContext] Profile pre-fetch error during OTP login:", profileErr);
+      }
+
       loggedInUser = await loadPermissionsForUser(loggedInUser);
 
       setUser(loggedInUser);

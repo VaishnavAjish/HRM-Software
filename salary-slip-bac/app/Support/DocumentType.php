@@ -51,8 +51,16 @@ class DocumentType
             'ITR'                 => 'ITR',
         ],
         'Medical' => [
-            'MEDICAL_CERTIFICATE' => 'Medical Certificate',
-            'INSURANCE_CARD'      => 'Insurance Card',
+            'MEDICAL_CERTIFICATE'  => 'Medical Certificate',
+            'INSURANCE_CARD'       => 'Insurance Card',
+            'MEDICLAIM_CLAIM_FORM' => 'Mediclaim Claim Form',
+            'HOSPITAL_BILL'        => 'Hospital Bill',
+            'DISCHARGE_SUMMARY'    => 'Discharge Summary',
+            'PRESCRIPTION'         => 'Doctor Prescription',
+            'MEDICAL_REPORT'       => 'Medical Report',
+            'MEDICINE_BILL'        => 'Medicine Bill',
+            'FIR_MLC'              => 'FIR / MLC Report',
+            'RULE_BOOK'            => 'Mediclaim Rule Book',
         ],
         'Others' => [
             'PHOTOGRAPH'          => 'Photograph',

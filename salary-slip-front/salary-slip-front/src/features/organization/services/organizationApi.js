@@ -31,6 +31,34 @@ function query(params = {}) {
 }
 
 export const organizationApi = {
+  /* ----------------------------------------------------------- authorities */
+
+  authorities(accessToken, tokenType = "Bearer") {
+    return apiRequest("/v1/admin/organization/authorities", { headers: headers(accessToken, tokenType) });
+  },
+
+  createAuthority(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest("/v1/admin/organization/authorities", {
+      method: "POST",
+      headers: headers(accessToken, tokenType),
+      body: JSON.stringify(payload),
+    });
+  },
+
+  updateAuthority(id, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/admin/organization/authorities/${id}`, {
+      method: "PUT",
+      headers: headers(accessToken, tokenType),
+      body: JSON.stringify(payload),
+    });
+  },
+
+  deleteAuthority(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/admin/organization/authorities/${id}`, {
+      method: "DELETE",
+      headers: headers(accessToken, tokenType),
+    });
+  },
   /* -------------------------------------------------------- enterprise master */
 
   enterpriseList(filters = {}, accessToken, tokenType = "Bearer") {

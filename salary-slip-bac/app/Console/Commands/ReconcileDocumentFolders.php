@@ -142,11 +142,21 @@ class ReconcileDocumentFolders extends Command
         $hasAadhaar = AadhaarReference::isValid($rawAadhaar);
 
         try {
+            // scope_key must be included here too: DocumentService folds it
+            // into the object key it actually writes (see
+            // ObjectKeyBuilder::appointmentKey()), so a scoped Mediclaim
+            // document (a card, a claim form, a claim upload — anything with
+            // a non-null scope_key) would otherwise always show as
+            // "migration_required" against an expected key missing that
+            // segment, and COPY_AND_VERIFY/FINALIZE would then move/delete a
+            // correctly-placed file onto a key that collides with a sibling
+            // document again — exactly the bug this scope_key exists to fix.
             $expectedKey = ObjectKeyBuilder::appointmentKey(
                 $reference,
                 $document->user_id,
                 (string) $document->document_type,
                 (string) $version->generated_file_name,
+                $document->scope_key,
             );
         } catch (Throwable $e) {
             return [

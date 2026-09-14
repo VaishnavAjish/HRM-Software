@@ -60,28 +60,14 @@ export function useAuthorization() {
    */
   const canRoute = useCallback((path) => {
     if (!path) return true;
+    // Standard employee portal routes are always permitted for employee users
+    if (path.startsWith("/employee")) return true;
 
     const code = user?.authorization?.routes?.[path];
 
     return code ? can(code) : true;
   }, [user, can]);
 
-  /*
-   * Why a resource is unavailable, not just that it is.
-   *
-   * Deny and Not Assigned both refuse access, but they mean different things to
-   * the person looking at the screen. Deny is a decision someone made about them
-   * — the page exists and is closed. Not Assigned is the absence of a decision,
-   * and showing a permanently dead entry for it is just clutter.
-   *
-   * "allow"      grant holds, and its whole chain holds
-   * "deny"       explicitly denied, or an ancestor is closing it
-   * "unassigned" nothing grants it and nothing denies it
-   *
-   * This never widens access: deny and unassigned are equally refused by
-   * can(), by the route guard, and by the API. It only decides how the refusal
-   * is presented.
-   */
   const accessState = useCallback((permissionCode) => {
     if (!permissionCode) return "allow";
     if (Number(user?.rawRole) === 0) return "allow";

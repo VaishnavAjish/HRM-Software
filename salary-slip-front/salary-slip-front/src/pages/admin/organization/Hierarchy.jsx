@@ -101,6 +101,35 @@ function layoutElements(nodes, edges, { direction = "TB", spacing = "balanced" }
   });
 }
 
+
+function isAuthForUnit(auth, unit) {
+  if (!auth || !Array.isArray(auth.childIds) || !unit) return false;
+  const uId = String(unit.id);
+  const targetTag = `unit_${uId}`;
+
+  return auth.childIds.some((cid) => {
+    const sCid = String(cid).trim();
+    return sCid === targetTag || sCid === uId;
+  });
+}
+
+function isAuthForCompany(auth, companyName) {
+  if (!auth || !Array.isArray(auth.childIds) || !companyName) return false;
+  const normCompName = normalizeCompName(companyName);
+  const targetTag = `comp_${normCompName.replace(/\s+/g, "_")}`;
+  const targetTagDash = `comp_${normCompName.toLowerCase().replace(/\s+/g, "-")}`;
+
+  return auth.childIds.some((cid) => {
+    const sCid = String(cid).trim();
+    return (
+      sCid === targetTag ||
+      sCid === targetTagDash ||
+      sCid === normCompName ||
+      sCid.toLowerCase() === normCompName.toLowerCase()
+    );
+  });
+}
+
 function initials(name) {
   if (!name) return "U";
   return String(name).split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2);
@@ -308,7 +337,10 @@ function ListTreeUnitRow({
   allUnits,
   assignments,
   companies,
+  authorities = [],
   isLocked,
+  onEditAuthority,
+  onDeleteAuthority,
   search,
   setRosterTarget,
   setDeptModal,
@@ -324,8 +356,66 @@ function ListTreeUnitRow({
 
   const compName = getCompanyName(unit, companies);
 
+  const matchingAuthorities = (authorities || []).filter((auth) => isAuthForUnit(auth, unit));
+
   return (
     <div className="border-b border-gray-100 dark:border-gray-800/60 transition-colors">
+      {/* AUTHORITIES SELECTED ABOVE THIS DEPARTMENT */}
+      {matchingAuthorities.map((auth) => {
+        const staffCount = assignments.filter((a) => String(a.organizationUnitId) === String(unit.id)).length;
+        return (
+          <div
+            key={`auth_unit_${auth.id}_${unit.id}`}
+            className="py-2.5 px-4 bg-purple-50/70 dark:bg-purple-950/40 border-b border-purple-100 dark:border-purple-900/40"
+          >
+            <div className="flex items-center justify-between rounded-xl border-2 border-purple-500 bg-white p-2.5 shadow-sm dark:border-purple-600 dark:bg-gray-900" style={{ marginLeft: `${depth * 24}px` }}>
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-purple-600 text-white font-bold shadow-xs">
+                  <Globe size={15} />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-extrabold uppercase tracking-wide text-purple-950 dark:text-purple-100 truncate">
+                      {auth.name}
+                    </span>
+                    <span className="rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-extrabold text-purple-700 dark:bg-purple-950 dark:text-purple-300">
+                      Authority
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-semibold text-purple-600 dark:text-purple-300 block">
+                    {auth.role || "Authority Parent"}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 shrink-0 text-xs font-bold text-purple-700 dark:text-purple-300">
+                <span className="flex items-center gap-1"><Users size={13} /> {staffCount} Staff</span>
+                {!isLocked && (
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => onEditAuthority && onEditAuthority(auth)}
+                      title="Edit Authority"
+                      className="rounded p-1 text-purple-600 hover:bg-purple-100 dark:text-purple-300 dark:hover:bg-purple-900/60"
+                    >
+                      <Edit2 size={13} />
+                    </button>
+                    <button
+                      onClick={() => onDeleteAuthority && onDeleteAuthority(auth)}
+                      title="Delete Authority"
+                      className="rounded p-1 text-red-500 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/60"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+
+          </div>
+        );
+      })}
+
       <div className={`flex items-center justify-between py-2.5 px-4 hover:bg-gray-50/80 dark:hover:bg-gray-800/40 ${
         depth === 0 ? "bg-white font-semibold dark:bg-gray-900" : depth === 1 ? "bg-gray-50/40 dark:bg-gray-900/60" : "bg-gray-100/30 dark:bg-gray-900/40"
       }`}>
@@ -349,11 +439,7 @@ function ListTreeUnitRow({
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold text-gray-900 dark:text-white truncate">{unit.name}</span>
               {unit.code && <span className="font-mono text-[10px] text-gray-400">#{unit.code}</span>}
-              {depth === 0 && (
-                <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[9px] font-extrabold text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-300">
-                  {compName}
-                </span>
-              )}
+
             </div>
           </div>
         </div>
@@ -405,7 +491,10 @@ function ListTreeUnitRow({
               allUnits={allUnits}
               assignments={assignments}
               companies={companies}
+              authorities={authorities}
               isLocked={isLocked}
+              onEditAuthority={onEditAuthority}
+              onDeleteAuthority={onDeleteAuthority}
               search={search}
               setRosterTarget={setRosterTarget}
               setDeptModal={setDeptModal}
@@ -446,8 +535,9 @@ function HierarchyCanvasInner() {
   // Authorities State for List View
   const [authorities, setAuthorities] = useState([]);
 
-  // Modal State for Add Authority
+  // Modal State for Add / Edit Authority
   const [authorityModalOpen, setAuthorityModalOpen] = useState(false);
+  const [editingAuthId, setEditingAuthId] = useState(null);
   const [newAuthName, setNewAuthName] = useState("");
   const [newAuthRole, setNewAuthRole] = useState("");
   const [selectedChildIds, setSelectedChildIds] = useState([]);
@@ -511,16 +601,18 @@ function HierarchyCanvasInner() {
         organizationApi.orgUnitPositions(u.id, {}, token, tokenType).catch(() => ({ data: [] }))
       );
 
-      const [posResults, assignRes, compRes, allCompaniesRes] = await Promise.all([
+      const [posResults, assignRes, compRes, allCompaniesRes, authRes] = await Promise.all([
         Promise.all(posPromises),
         organizationApi.orgUnitAssignments({}, token, tokenType).catch(() => ({ data: [] })),
         organizationApi.legalEntityProfileCompanies(token, tokenType).catch(() => ({ data: [] })),
         companyUnitApi.companies({}, token, tokenType).catch(() => ({ data: [] })),
+        organizationApi.authorities(token, tokenType).catch(() => ({ data: [] })),
       ]);
 
       const allPositions = posResults.flatMap((r) => r?.data ?? []);
       setPositions(allPositions);
       setAssignments(assignRes?.data ?? []);
+      setAuthorities(authRes?.data ?? []);
 
       // Merge & Normalize Companies (Silver Star & Nidhi Impex)
       const compList = [
@@ -581,21 +673,78 @@ function HierarchyCanvasInner() {
     };
   }, []);
 
-  // Handle Add Authority Save
-  const handleSaveAuthority = () => {
-    if (!newAuthName.trim()) return;
-    const authObj = {
-      id: `auth_${Date.now()}`,
-      name: newAuthName.trim().toUpperCase(),
-      role: newAuthRole.trim() || "Authority Parent",
-      childIds: selectedChildIds,
-    };
-    setAuthorities((prev) => [authObj, ...prev]);
-    toast.success(`Authority "${newAuthName}" added successfully`);
-    setAuthorityModalOpen(false);
+  // Handle Authority Add/Edit/Delete Handlers
+  const handleOpenAddAuthority = () => {
+    setEditingAuthId(null);
     setNewAuthName("");
     setNewAuthRole("");
     setSelectedChildIds([]);
+    setAuthorityModalOpen(true);
+  };
+
+  const handleEditAuthority = (auth) => {
+    setEditingAuthId(auth.id);
+    setNewAuthName(auth.name);
+    setNewAuthRole(auth.role || "");
+    setSelectedChildIds(auth.childIds || []);
+    setAuthorityModalOpen(true);
+  };
+
+  const handleDeleteAuthority = (auth) => {
+    setDeleteConfirm({
+      title: `Delete Authority "${auth.name}"?`,
+      message: `Are you sure you want to delete authority "${auth.name}"? This action cannot be undone.`,
+      action: async () => {
+        try {
+          await organizationApi.deleteAuthority(auth.id, token, tokenType);
+          setAuthorities((prev) => prev.filter((a) => a.id !== auth.id));
+          toast.success(`Authority "${auth.name}" deleted successfully`);
+        } catch (err) {
+          toast.error(err.message || "Failed to delete authority");
+        } finally {
+          setDeleteConfirm(null);
+        }
+      },
+    });
+  };
+
+  const handleSaveAuthority = async () => {
+    if (!newAuthName.trim()) return;
+    setBusy(true);
+    try {
+      const payload = {
+        name: newAuthName.trim().toUpperCase(),
+        role: newAuthRole.trim() || "Authority Parent",
+        childIds: selectedChildIds,
+      };
+
+      if (editingAuthId) {
+        const res = await organizationApi.updateAuthority(editingAuthId, payload, token, tokenType);
+        const updated = res?.data || { ...payload, id: editingAuthId };
+        setAuthorities((prev) =>
+          prev.map((a) => (a.id === editingAuthId ? updated : a))
+        );
+        toast.success(`Authority "${newAuthName}" updated successfully`);
+      } else {
+        const res = await organizationApi.createAuthority(payload, token, tokenType);
+        const created = res?.data;
+        if (created) {
+          setAuthorities((prev) => [created, ...prev]);
+        } else {
+          loadData();
+        }
+        toast.success(`Authority "${newAuthName}" added successfully`);
+      }
+      setAuthorityModalOpen(false);
+      setEditingAuthId(null);
+      setNewAuthName("");
+      setNewAuthRole("");
+      setSelectedChildIds([]);
+    } catch (err) {
+      toast.error(err.message || "Failed to save authority");
+    } finally {
+      setBusy(false);
+    }
   };
 
   // CRUD Handlers
@@ -1048,7 +1197,7 @@ function HierarchyCanvasInner() {
             {/* ADD AUTHORITY BUTTON (EXACT VIBRANT PURPLE PILL BACKGROUND MATCHING USER IMAGE REFERENCE) */}
             {!isLocked && (
               <button
-                onClick={() => setAuthorityModalOpen(true)}
+                onClick={handleOpenAddAuthority}
                 className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-extrabold bg-[#5850ec] hover:bg-[#4f46e5] text-white shadow-md transition-all duration-200 cursor-pointer active:scale-95"
               >
                 <Plus size={15} className="text-white" /> Add Authority
@@ -1072,91 +1221,54 @@ function HierarchyCanvasInner() {
             </Card>
           ) : (
             <>
-              {/* DISPLAY CREATED AUTHORITIES AS CONNECTED PARENT TREE NODES OUTSIDE THE LIST IN LIST VIEW ONLY */}
-              {authorities.map((auth) => {
-                const isAuthExpanded = expandedIds.has(auth.id);
+              {/* LIST OF COMPANY TREES WITH INLINE AUTHORITIES */}
+              {listCompaniesGroup.map((group) => {
+                const companyAuths = (authorities || []).filter((auth) => isAuthForCompany(auth, group.companyName));
 
                 return (
-                  <Card key={auth.id} padding={false} className="overflow-hidden border-2 border-purple-500 bg-white dark:border-purple-600 dark:bg-gray-900 shadow-md">
-                    {/* AUTHORITY PARENT NODE HEADER */}
-                    <div className="flex items-center justify-between border-b border-purple-200 bg-purple-50/80 px-4 py-3 dark:border-purple-900/60 dark:bg-purple-950/60">
-                      <div className="flex items-center gap-3">
-                        <button
-                          onClick={() => toggleExpand(auth.id)}
-                          className="p-1 rounded text-purple-600 hover:bg-purple-100 dark:text-purple-300 dark:hover:bg-purple-900/50"
-                        >
-                          {isAuthExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                        </button>
-                        <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-purple-600 text-white shadow-sm">
-                          <Globe size={18} />
-                        </div>
-                        <div>
-                          <h3 className="text-xs font-extrabold tracking-wide uppercase text-purple-950 dark:text-purple-100">{auth.name}</h3>
-                          <span className="text-[10px] font-semibold text-purple-600 dark:text-purple-300">
-                            {auth.role || "Authority Parent Root"}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3 text-xs font-semibold text-purple-700 dark:text-purple-300">
-                        <span>Connected: {auth.childIds.length} Child Units</span>
-                      </div>
-                    </div>
-
-                    {/* CONNECTED CHILD DEPARTMENTS / COMPANIES NESTED UNDER AUTHORITY PARENT NODE */}
-                    {isAuthExpanded && (
-                      <div className="divide-y divide-gray-100 dark:divide-gray-800/60">
-                        {listCompaniesGroup.map((group) => {
-                          const isCompSelected = auth.childIds.some((cid) => cid.toLowerCase().includes(group.companyName.toLowerCase().replace(/\s+/g, "_")) || cid.toLowerCase().includes(group.companyName.toLowerCase().replace(/\s+/g, "-")));
-                          const authChildUnits = group.units.filter((u) => isCompSelected || auth.childIds.includes(`unit_${u.id}`) || auth.childIds.includes(String(u.id)));
-
-                          if (authChildUnits.length === 0) return null;
-
-                          const authRootUnits = authChildUnits.filter((u) => {
-                            if (!u.parentId || String(u.parentId) === "0" || String(u.parentId) === "null") return true;
-                            return !authChildUnits.some((p) => String(p.id) === String(u.parentId));
-                          });
-
-                          return (
-                            <div key={`auth_${auth.id}_${group.companyName}`} className="pl-4 border-l-4 border-purple-500/40">
-                              <div className="flex items-center justify-between border-b border-indigo-100 bg-indigo-50/40 px-4 py-2 dark:border-indigo-900/40 dark:bg-indigo-950/30">
-                                <div className="flex items-center gap-2">
-                                  <Building2 size={14} className="text-indigo-600" />
-                                  <span className="text-xs font-bold text-gray-900 dark:text-white">{group.companyName}</span>
-                                </div>
-                                <span className="text-[11px] font-medium text-gray-500">{authChildUnits.length} Depts</span>
-                              </div>
-
-                              <div className="divide-y divide-gray-100 dark:divide-gray-800/60">
-                                {authRootUnits.map((rootUnit) => (
-                                  <ListTreeUnitRow
-                                    key={`auth_unit_${rootUnit.id}`}
-                                    unit={rootUnit}
-                                    depth={1}
-                                    allUnits={authChildUnits}
-                                    assignments={assignments}
-                                    companies={companies}
-                                    isLocked={isLocked}
-                                    search={search}
-                                    setRosterTarget={setRosterTarget}
-                                    setDeptModal={setDeptModal}
-                                    setMoveModal={setMoveModal}
-                                    handleDeleteDept={handleDeleteDept}
-                                    expandedIds={expandedIds}
-                                    toggleExpand={toggleExpand}
-                                  />
-                                ))}
-                              </div>
+                  <div key={group.companyName} className="space-y-2">
+                    {/* AUTHORITIES SELECTED ABOVE THIS COMPANY */}
+                    {companyAuths.map((auth) => (
+                      <div key={`auth_comp_${auth.id}_${group.companyName}`} className="rounded-2xl border-2 border-purple-500 bg-purple-50/90 dark:border-purple-600 dark:bg-purple-950/70 p-3 shadow-md">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-purple-600 text-white shadow-sm">
+                              <Globe size={18} />
                             </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </Card>
-                );
-              })}
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <h3 className="text-xs font-extrabold tracking-wide uppercase text-purple-950 dark:text-purple-100">{auth.name}</h3>
+                                <span className="rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-extrabold text-purple-700 dark:bg-purple-950 dark:text-purple-300">Authority</span>
+                              </div>
+                              <span className="text-[10px] font-semibold text-purple-600 dark:text-purple-300">{auth.role || "Authority Parent"}</span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3 shrink-0 text-xs font-bold text-purple-700 dark:text-purple-300">
+                            <span className="flex items-center gap-1"><Users size={13} /> {group.totalStaff} Staff</span>
+                            {!isLocked && (
+                              <div className="flex items-center gap-1">
+                                <button
+                                  onClick={() => handleEditAuthority(auth)}
+                                  title="Edit Authority"
+                                  className="rounded p-1 text-purple-600 hover:bg-purple-100 dark:text-purple-300 dark:hover:bg-purple-900/60"
+                                >
+                                  <Edit2 size={13} />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteAuthority(auth)}
+                                  title="Delete Authority"
+                                  className="rounded p-1 text-red-500 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/60"
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
 
-              {/* STANDARD LIST OF COMPANY TREES (NIDHI IMPEX & SILVER STAR) */}
-              {listCompaniesGroup.map((group) => (
+                      </div>
+                    ))}
+
                 <Card key={group.companyName} padding={false} className="overflow-hidden border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900 shadow-sm">
                   {/* COMPANY HEADER */}
                   <div className="flex items-center justify-between border-b border-indigo-100 bg-indigo-50/60 px-4 py-3 dark:border-indigo-900/40 dark:bg-indigo-950/40">
@@ -1167,7 +1279,7 @@ function HierarchyCanvasInner() {
                       <div>
                         <h3 className="text-sm font-extrabold text-gray-900 dark:text-white">{group.companyName}</h3>
                         <span className="text-[10px] font-semibold text-indigo-600 dark:text-indigo-400">
-                          Company Root Branch
+                          
                         </span>
                       </div>
                     </div>
@@ -1194,7 +1306,10 @@ function HierarchyCanvasInner() {
                           allUnits={group.units}
                           assignments={assignments}
                           companies={companies}
+                          authorities={authorities}
                           isLocked={isLocked}
+                          onEditAuthority={handleEditAuthority}
+                          onDeleteAuthority={handleDeleteAuthority}
                           search={search}
                           setRosterTarget={setRosterTarget}
                           setDeptModal={setDeptModal}
@@ -1207,7 +1322,9 @@ function HierarchyCanvasInner() {
                     </div>
                   )}
                 </Card>
-              ))}
+              </div>
+                  );
+                })}
             </>
           )}
         </div>
@@ -1290,11 +1407,12 @@ function HierarchyCanvasInner() {
           isOpen={true}
           onClose={() => {
             setAuthorityModalOpen(false);
+            setEditingAuthId(null);
             setNewAuthName("");
             setNewAuthRole("");
             setSelectedChildIds([]);
           }}
-          title="Add Organizational Authority"
+          title={editingAuthId ? "Edit Organizational Authority" : "Add Organizational Authority"}
           size="md"
         >
           <div className="space-y-4">
@@ -1326,73 +1444,88 @@ function HierarchyCanvasInner() {
                 Check the companies and departments that report under this Authority:
               </p>
 
-              <div className="max-h-[220px] overflow-y-auto space-y-2 rounded-xl border border-gray-200 bg-gray-50/50 p-3 dark:border-gray-800 dark:bg-gray-800/50">
-                {/* COMPANIES CHECKBOXES */}
-                <div className="border-b border-gray-200 pb-2 dark:border-gray-700">
-                  <span className="text-[10px] font-bold uppercase text-indigo-600 dark:text-indigo-400">Companies</span>
-                  <div className="mt-1.5 space-y-1.5">
-                    {["Nidhi Impex", "Silver Star"].map((cName) => {
-                      const compId = `comp_${cName.replace(/\s+/g, "_")}`;
-                      const isChecked = selectedChildIds.includes(compId);
+              <div className="max-h-[280px] overflow-y-auto space-y-3 rounded-xl border border-gray-200 bg-gray-50/50 p-3 dark:border-gray-800 dark:bg-gray-800/50">
+                {["Nidhi Impex", "Silver Star"].map((cName) => {
+                  const compId = `comp_${cName.replace(/\s+/g, "_")}`;
+                  const isCompChecked = selectedChildIds.includes(compId);
+                  const compDepts = orgUnits.filter(
+                    (u) => getCompanyName(u, companies).toLowerCase() === cName.toLowerCase()
+                  );
 
-                      return (
-                        <label key={compId} className="flex items-center gap-2 text-xs font-semibold text-gray-800 dark:text-gray-200 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={(e) => {
-                              if (e.target.checked) setSelectedChildIds((prev) => [...prev, compId]);
-                              else setSelectedChildIds((prev) => prev.filter((id) => id !== compId));
-                            }}
-                            className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
-                          />
-                          <Building2 size={14} className="text-indigo-600" />
-                          <span>{cName}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
+                  return (
+                    <div key={cName} className="rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-900 shadow-sm space-y-2">
+                      {/* COMPANY HEADER WITH CHECKBOX */}
+                      <label className="flex items-center gap-2 text-xs font-extrabold text-indigo-900 dark:text-indigo-200 cursor-pointer border-b border-indigo-100 dark:border-indigo-900/50 pb-2">
+                        <input
+                          type="checkbox"
+                          checked={isCompChecked}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedChildIds((prev) => [...prev, compId]);
+                            } else {
+                              setSelectedChildIds((prev) => prev.filter((id) => id !== compId));
+                            }
+                          }}
+                          className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                        />
+                        <Building2 size={16} className="text-indigo-600 dark:text-indigo-400" />
+                        <span>{cName}</span>
+                        <span className="text-[10px] font-medium text-gray-500 ml-auto">({compDepts.length} Departments)</span>
+                      </label>
 
-                {/* DEPARTMENTS CHECKBOXES */}
-                <div className="pt-1">
-                  <span className="text-[10px] font-bold uppercase text-brand-600 dark:text-brand-400">Departments</span>
-                  <div className="mt-1.5 space-y-1.5">
-                    {orgUnits.map((u) => {
-                      const uId = `unit_${u.id}`;
-                      const isChecked = selectedChildIds.includes(uId);
+                      {/* GROUPED DEPARTMENTS FOR THIS COMPANY */}
+                      {compDepts.length === 0 ? (
+                        <p className="text-[11px] text-gray-400 italic pl-6 py-1">No departments found for {cName}</p>
+                      ) : (
+                        <div className="pl-4 pt-1 space-y-1.5 border-l-2 border-indigo-100 dark:border-indigo-950 ml-2">
+                          {compDepts.map((u) => {
+                            const uId = `unit_${u.id}`;
+                            const isDeptChecked = selectedChildIds.includes(uId);
 
-                      return (
-                        <label key={uId} className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={(e) => {
-                              if (e.target.checked) setSelectedChildIds((prev) => [...prev, uId]);
-                              else setSelectedChildIds((prev) => prev.filter((id) => id !== uId));
-                            }}
-                            className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
-                          />
-                          <FolderTree size={14} className="text-brand-600" />
-                          <span>{u.name}</span>
-                          {u.code && <span className="font-mono text-[10px] text-gray-400">#{u.code}</span>}
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
+                            return (
+                              <label key={uId} className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300 cursor-pointer hover:text-purple-600 dark:hover:text-purple-400 transition-colors">
+                                <input
+                                  type="checkbox"
+                                  checked={isDeptChecked}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setSelectedChildIds((prev) => [...prev, uId]);
+                                    } else {
+                                      setSelectedChildIds((prev) => prev.filter((id) => id !== uId));
+                                    }
+                                  }}
+                                  className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                                />
+                                <FolderTree size={13} className="text-purple-500" />
+                                <span className="font-medium">{u.name}</span>
+                                {u.code && <span className="font-mono text-[10px] text-gray-400">#{u.code}</span>}
+                              </label>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
             <footer className="mt-6 flex justify-end gap-2 border-t pt-4 dark:border-gray-800">
-              <Button variant="secondary" onClick={() => setAuthorityModalOpen(false)}>Cancel</Button>
-              <Button
-                variant="brand"
+              <button
+                type="button"
+                onClick={() => setAuthorityModalOpen(false)}
+                className="px-4 py-2.5 rounded-xl text-xs font-bold text-gray-700 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 transition-all cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
                 onClick={handleSaveAuthority}
                 disabled={!newAuthName.trim()}
+                className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-xs font-extrabold bg-[#5850ec] hover:bg-[#4f46e5] disabled:bg-purple-300 disabled:cursor-not-allowed text-white shadow-md transition-all duration-200 cursor-pointer active:scale-95"
               >
-                Save Authority
-              </Button>
+                {editingAuthId ? "Update Authority" : "Save Authority"}
+              </button>
             </footer>
           </div>
         </Modal>

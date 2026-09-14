@@ -1,3 +1,6 @@
+import { useState, useEffect } from "react";
+import { salaryApi } from "../../utils/api";
+import { isEmployeeProfileComplete } from "../../utils/profileCompletion";
 import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";
 import { useModuleAvailability } from "../../hooks/useModuleAvailability";
@@ -33,6 +36,7 @@ function getAdminNav(companyId, user, isAllCompanies, isModuleAvailable = () => 
     trial_form: "recruitment.trial_form.read", employees: "ui.admin.employees.view",
     salary: "ui.admin.salary.view", attendance: "ui.admin.attendance.view",
     tds: "ui.admin.tds.view", form16: "ui.admin.form16.view",
+    mediclaim: "ui.admin.mediclaim.view",
   };
   const canPage = (legacyKey) => hasAccess(pagePermission[legacyKey] || legacyKey) || (!user?.authorization && hasAccess(legacyKey));
 
@@ -77,10 +81,11 @@ function getAdminNav(companyId, user, isAllCompanies, isModuleAvailable = () => 
   const tdsSubItems = [
     ...(canPage("tds") ? [{ to: "/admin/tds/calculation", label: "TDS Calculation" }] : []),
     ...(canPage("form16") ? [{ to: "/admin/form16", label: "Form 16" }] : []),
+    ...(canPage("mediclaim") && isModuleAvailable("mediclaim") ? [{ to: "/admin/tds/mediclaim", label: "Mediclaim" }] : []),
   ];
   if (tdsSubItems.length > 0) {
     nav.push({
-      label: "TDS",
+      label: "Statutory & Benefits",
       icon: Receipt,
       subItems: tdsSubItems
     });
@@ -178,14 +183,31 @@ function getAdminNav(companyId, user, isAllCompanies, isModuleAvailable = () => 
   return nav;
 }
 
-const employeeNav = [
-  { to: "/employee", label: "Dashboard", icon: LayoutDashboard, end: true },
-  { to: "/employee/payslips", label: "Payslips", icon: FileText },
-  { to: "/employee/form16", label: "Form 16", icon: Receipt },
-  { to: "/employee/tickets", label: "My Tickets", icon: Ticket },
-  { to: "/employee/profile", label: "Profile", icon: UserCircle },
-  { to: "/employee/appointment", label: "Appointment Form", icon: ClipboardList },
-];
+/**
+ * Employee nav is a function, not a static array, because the TDS group's
+ * Mediclaim entry is conditional on module availability — the same
+ * isModuleAvailable() the admin side already threads through getAdminNav.
+ * Form16 stays unconditional inside the group, matching its existing route
+ * convention (no permission prop, resolved via canRoute()).
+ */
+export function buildEmployeeNav(isModuleAvailable, isManager = false) {
+  return [
+    { to: "/employee", label: "Dashboard", icon: LayoutDashboard, end: true },
+    ...(isManager ? [{ to: "/employee/manager", label: "Manager", icon: Users }] : []),
+    { to: "/employee/payslips", label: "Payslips", icon: FileText },
+    {
+      label: "Statutory & Benefits",
+      icon: Receipt,
+      subItems: [
+        { to: "/employee/form16", label: "Form 16" },
+        ...(isModuleAvailable("mediclaim") ? [{ to: "/employee/tds/mediclaim", label: "Mediclaim" }] : []),
+      ],
+    },
+    { to: "/employee/tickets", label: "My Tickets", icon: Ticket },
+    { to: "/employee/profile", label: "Profile", icon: UserCircle },
+    { to: "/employee/appointment", label: "Appointment Form", icon: ClipboardList },
+  ];
+}
 
 const agentNav = [
   { to: "/agent", label: "Dashboard", icon: LayoutDashboard, end: true },
@@ -202,6 +224,27 @@ const agentNav = [
  */
 export function useNavItems() {
   const { user } = useAuth();
+  const [isManager, setIsManager] = useState(() => {
+    if (!user) return false;
+    const empCodeClean = String(user.empCode || user.emp_code || "").replace(/^0+/, "");
+    const designation = String(user.designation || "").toLowerCase();
+    const userType = String(user.type || "").toLowerCase();
+    const isHead = empCodeClean === "3" || designation.includes("head") || designation.includes("hod") || designation.includes("manager") || userType.includes("head") || userType.includes("manager");
+    if (user.role === "admin" || user.rawRole === 0 || user.is_manager || isHead) return true;
+    return false;
+  });
+
+  useEffect(() => {
+    if (user?.accessToken) {
+      salaryApi.checkManagerStatus(user.accessToken, user.tokenType || "Bearer")
+        .then(res => {
+          if (res?.is_manager) {
+            setIsManager(true);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [user?.accessToken, user?.tokenType]);
   const { companyId, isAllCompanies } = useCompany();
   const { isAvailable: isModuleAvailable } = useModuleAvailability();
   const { routeState } = useAuthorization();
@@ -244,10 +287,17 @@ export function useNavItems() {
      * rendered whatever the Permission Matrix said. Each page now declares its
      * route in PermissionRegistry, which is what makes the filter real.
      */
-    return employeeNav
-      // Same module probe the admin side applies: without the ticket tables the
-      // page behind this entry can only fail.
+    const empNav = buildEmployeeNav(isModuleAvailable, isManager)
       .filter(item => item.label !== "My Tickets" || isModuleAvailable("tickets"));
+
+    const isComplete = isEmployeeProfileComplete(user);
+
+    return empNav.map(item => {
+      if (item.to === "/employee/profile") {
+        return { ...item, disabled: false };
+      }
+      return { ...item, disabled: !isComplete };
+    });
   })();
 
   /*
@@ -278,9 +328,17 @@ export function useNavItems() {
 /** Pure navigation projection used by both the hook and regression tests. */
 export function decorateNavigation(nav, routeState) {
   const decorate = (item) => {
+    if (item.to === "/employee/profile" || item.to === "/admin/profile" || item.to?.endsWith("/profile")) {
+      return { ...item, disabled: false };
+    }
+
+    if (item.to?.startsWith("/employee")) {
+      return { ...item, disabled: Boolean(item.disabled) };
+    }
+
     const state = routeState(item.to);
 
-    return state === "unassigned" ? null : { ...item, disabled: state === "deny" };
+    return state === "unassigned" ? null : { ...item, disabled: item.disabled || state === "deny" };
   };
 
   return nav

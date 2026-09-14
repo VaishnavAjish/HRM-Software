@@ -25,7 +25,7 @@ export default function DataTable({ columns = [], rows = [], rowKey = (_, i) => 
               {columns.map((c) => (
                 <td
                   key={c.key}
-                  className={`px-3.5 py-2.5 align-middle ${c.hideBelow === "sm" ? "hidden sm:table-cell" : ""} ${c.hideBelow === "md" ? "hidden md:table-cell" : ""} ${c.className || ""}`}
+                  className={`px-3.5 py-2.5 align-middle dark:text-gray-200 ${c.hideBelow === "sm" ? "hidden sm:table-cell" : ""} ${c.hideBelow === "md" ? "hidden md:table-cell" : ""} ${c.className || ""}`}
                 >
                   {c.render ? c.render(row) : row[c.key]}
                 </td>

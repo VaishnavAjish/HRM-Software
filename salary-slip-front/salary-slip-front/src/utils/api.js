@@ -297,6 +297,27 @@ export function resolveWriteCompanyId(companyId, fallbackCompanyId) {
 }
 
 export const salaryApi = {
+  getManagerTeam(accessToken, tokenType = "Bearer", filters = {}) {
+    const params = new URLSearchParams();
+    Object.entries(filters || {}).forEach(([key, val]) => {
+      if (val !== undefined && val !== null && val !== "") {
+        params.set(key, val);
+      }
+    });
+    return apiRequest(`/v1/manager/team?${params.toString()}`, {
+      headers: accessToken
+        ? { Authorization: `${tokenType} ${accessToken}` }
+        : {},
+    });
+  },
+
+  checkManagerStatus(accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/manager/check`, {
+      headers: accessToken
+        ? { Authorization: `${tokenType} ${accessToken}` }
+        : {},
+    });
+  },
   getSlips(
     accessToken,
     tokenType = "Bearer",

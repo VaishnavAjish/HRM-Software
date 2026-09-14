@@ -42,6 +42,7 @@ const TrialForm = lazy(() => import("./pages/admin/TrialForm"));
 const Reports = lazy(() => import("./pages/admin/Reports"));
 const AdminForm16 = lazy(() => import("./pages/admin/Form16"));
 const TdsCalculation = lazy(() => import("./pages/admin/TdsCalculation"));
+const TdsMediclaim = lazy(() => import("./pages/admin/TdsMediclaim"));
 const AdminProfile = lazy(() => import("./pages/admin/AdminProfile"));
 const Settings = lazy(() => import("./pages/admin/Settings"));
 const PermissionMatrix = lazy(() => import("./features/permissionMatrix/pages/PermissionMatrixPage"));
@@ -57,9 +58,11 @@ const AdminTickets = lazy(() => import("./pages/admin/Tickets"));
 const SuperAdminTicketControlCenter = lazy(() => import("./pages/admin/SuperAdminTicketControlCenter"));
 
 // Employee pages
+const ManagerSection = lazy(() => import("./pages/employee/ManagerSection"));
 const EmployeeDashboard = lazy(() => import("./pages/employee/Dashboard"));
 const Payslips = lazy(() => import("./pages/employee/Payslips"));
 const EmployeeForm16 = lazy(() => import("./pages/employee/Form16"));
+const EmployeeMediclaim = lazy(() => import("./pages/employee/Mediclaim"));
 const Profile = lazy(() => import("./pages/employee/Profile"));
 const EmployeeAppointment = lazy(() => import("./pages/employee/EmployeeAppointment"));
 const RaiseTicket = lazy(() => import("./pages/employee/RaiseTicket"));
@@ -83,6 +86,7 @@ const HrSettings = lazy(() => import("./pages/admin/hr/HrSettings"));
 const TrainingQuizPage = lazy(() => import("./pages/admin/hr/TrainingQuizPage"));
 const CandidateQuiz = lazy(() => import("./pages/public/CandidateQuiz"));
 const AboutNiss = lazy(() => import("./pages/public/AboutNiss"));
+const MediclaimCardVerify = lazy(() => import("./pages/public/MediclaimCardVerify"));
 
 // Workforce Foundation (Domain 03)
 const WorkforceDashboard = lazy(() => import("./pages/admin/workforce/WorkforceDashboard"));
@@ -199,28 +203,30 @@ function ProtectedRoute({ children, requiredRole, requiredPermission }) {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
-  /*
-   * Where to send someone who may not be here.
-   *
-   * Landing on the path we are already refusing produces a redirect to itself:
-   * the guard denies, redirects, denies again, and React Router settles on
-   * rendering nothing. That is how a denied /employee turned into a blank page
-   * with a clean console — no error, because nothing threw.
-   *
-   * The portal home is the account's own tier, so it is normally reachable by
-   * definition. Returning null when it is not keeps the failure visible as a
-   * refusal rather than dressing it up as a loop.
-   */
-  const portalHome = user.role === "admin" ? "/admin" : (user.role === "agent" ? "/agent" : "/employee");
+  // All routes under the /employee portal (Dashboard, Payslips, TDS, Form 16, Mediclaim, Profile, Appointment Form, Tickets)
+  const isEmployeePortalRoute = location.pathname.startsWith("/employee");
+
+  if (isEmployeePortalRoute) {
+    // If profile completion is < 100% and attempting to access non-profile pages:
+    if (!isEmployeeProfileComplete(user) && location.pathname !== "/employee/profile") {
+      // Quietly redirect to Profile page (never show Access Denied error)
+      return <Navigate to="/employee/profile" replace />;
+    }
+
+    // Profile completion is 100% (or on Profile page): allow full access to all employee portal sections
+    return children;
+  }
+
+  const portalHome = user?.role === "admin" ? "/admin" : (user?.role === "agent" ? "/agent" : "/employee");
   const leaveFor = (path) =>
     path === location.pathname ? <AccessDenied user={user} /> : <Navigate to={path} replace />;
 
   const refuse = (reason, permission) => {
     if (import.meta.env.DEV) {
       console.debug("[route-guard]", {
-        user: user.empCode || user.id,
-        role: user.role,
-        authorizationStatus: user.authorizationStatus ?? null,
+        user: user?.empCode || user?.id,
+        role: user?.role,
+        authorizationStatus: user?.authorizationStatus ?? null,
         path: location.pathname,
         permission: permission ?? null,
         result: "DENIED",
@@ -231,36 +237,14 @@ function ProtectedRoute({ children, requiredRole, requiredPermission }) {
     return leaveFor(portalHome);
   };
 
-  if (requiredRole && user.role !== requiredRole) {
+  if (requiredRole && user?.role !== requiredRole) {
     return refuse("role mismatch", requiredRole);
   }
   if (requiredPermission && !can(requiredPermission)) {
     return refuse("permission denied", requiredPermission);
   }
-
-  /*
-   * Every registered page is guarded by the permission that governs its route,
-   * without each route having to declare it.
-   *
-   * Only a handful of routes carried requiredPermission, so the rest were
-   * reachable by typing the URL even when the Permission Matrix denied them —
-   * hiding a menu item is not a boundary. Resolving the path through the same
-   * registry the matrix edits closes that for every page at once, and for pages
-   * added later. Routes the registry does not describe are unaffected.
-   */
   if (!canRoute(location.pathname)) {
     return refuse("route permission denied", user?.authorization?.routes?.[location.pathname]);
-  }
-
-  /*
-   * Mandatory profile completion check for employees.
-   * If any required profile details are missing (PF and ESI are optional),
-   * block all other pages and redirect to /employee/profile until filled up.
-   */
-  if (user?.role === "employee" || (!user?.role && user?.rawRole !== 0 && user?.rawRole !== 1 && user?.rawRole !== 3)) {
-    if (!isEmployeeProfileComplete(user) && location.pathname !== "/employee/profile") {
-      return <Navigate to="/employee/profile" replace />;
-    }
   }
 
   return children;
@@ -312,6 +296,16 @@ function AppRoutes() {
       <Route path="/quiz/test/:quizId" element={<CandidateQuiz />} />
       <Route path="/quiz/:token" element={<CandidateQuiz />} />
       <Route path="/about-niss" element={<AboutNiss />} />
+
+      {/*
+        Mediclaim card QR verification. Public by necessity — scanned by
+        whoever is holding the physical/digital card (hospital staff,
+        security, the cardholder), none of whom have an HRMS login. The
+        per-card verifyToken in the URL is the credential; CardViewer.jsx's
+        QR encodes exactly this path. No AppLayout — nothing to navigate
+        away with on a phone screen mid-scan.
+      */}
+      <Route path="/mediclaim/verify/:token" element={<MediclaimCardVerify />} />
 
       {/* Public Careers Portal */}
       <Route
@@ -377,6 +371,14 @@ function AppRoutes() {
           element={
             <ProtectedRoute requiredRole="admin" requiredPermission="ui.admin.tds.view">
               <TdsCalculation />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="tds/mediclaim"
+          element={
+            <ProtectedRoute requiredRole="admin" requiredPermission="ui.admin.mediclaim.view">
+              <TdsMediclaim />
             </ProtectedRoute>
           }
         />
@@ -538,8 +540,10 @@ function AppRoutes() {
         }
       >
         <Route index element={<EmployeeDashboard />} />
+        <Route path="manager" element={<ManagerSection />} />
         <Route path="payslips" element={<Payslips />} />
         <Route path="form16" element={<EmployeeForm16 />} />
+        <Route path="tds/mediclaim" element={<EmployeeMediclaim />} />
         <Route path="profile" element={<Profile />} />
         <Route path="appointment" element={<EmployeeAppointment />} />
         {/* "new" before the list so it is not swallowed as a ticket id. */}

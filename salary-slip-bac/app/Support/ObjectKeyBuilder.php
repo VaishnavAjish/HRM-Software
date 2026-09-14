@@ -106,21 +106,40 @@ class ObjectKeyBuilder
      * The appointment id is the second segment specifically so two records that
      * share an Aadhaar number — which the backfill found 9 of — keep separate
      * folders instead of one appearing as a new version of the other.
+     *
+     * $scopeSegment is optional and, when null (the default — every existing
+     * caller), leaves the key shape above completely unchanged. When a caller
+     * passes a non-null value it is inserted as its own sanitised segment
+     * before the file name:
+     *
+     *   <AadhaarOrRef>/<AppointmentId>/<DocumentType>/<ScopeSegment>/<GeneratedFileName>
+     *
+     * This exists for DocumentService::reserveVersion()'s optional
+     * `scope_key`: two Document rows that share (document_type, owner) but
+     * have different scope keys each number their own versions from 1, so
+     * without a distinguishing segment here their generated file names (and
+     * therefore object keys) could otherwise collide.
      */
     public static function appointmentKey(
         string $aadhaarOrRef,
         $appointmentId,
         string $documentType,
-        string $fileName
+        string $fileName,
+        ?string $scopeSegment = null
     ): string {
-        $key = implode('/', [
+        $segments = [
             self::sanitiseSegment($aadhaarOrRef, 'aadhaar reference'),
             self::sanitiseSegment((string) $appointmentId, 'appointment id'),
             self::sanitiseSegment($documentType, 'document type'),
-            self::sanitiseSegment($fileName, 'file name'),
-        ]);
+        ];
 
-        return self::assertSafe($key);
+        if ($scopeSegment !== null && $scopeSegment !== '') {
+            $segments[] = self::sanitiseSegment($scopeSegment, 'scope reference');
+        }
+
+        $segments[] = self::sanitiseSegment($fileName, 'file name');
+
+        return self::assertSafe(implode('/', $segments));
     }
 
     public static function archiveKey(string $objectKey): string

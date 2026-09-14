@@ -18,7 +18,7 @@ class Document extends Model
 
     protected $fillable = [
         'organization_code', 'owner_type', 'owner_id', 'owner_ref', 'user_id',
-        'document_type', 'current_version', 'status', 'description',
+        'document_type', 'scope_key', 'current_version', 'status', 'description',
         'is_deleted', 'deleted_at', 'deleted_by', 'created_by', 'updated_by',
     ];
 

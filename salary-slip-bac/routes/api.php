@@ -24,21 +24,6 @@ use App\Http\Controllers\Admin\ShiftController;
 use App\Http\Controllers\Admin\UploadBatchController;
 use App\Http\Controllers\Admin\UserRoleController;
 use App\Http\Controllers\Api\ModuleAvailabilityController;
-
-// Lightweight Unauthenticated System Liveness Probe
-Route::get('health', function () {
-    return response()->json(['status' => 'ok', 'timestamp' => now()->toIso8601String()]);
-});
-
-// System Readiness Probe (Verifies DB connection status)
-Route::get('ready', function () {
-    try {
-        \Illuminate\Support\Facades\DB::connection()->getPdo();
-        return response()->json(['status' => 'ready', 'database' => 'connected', 'timestamp' => now()->toIso8601String()]);
-    } catch (\Throwable $e) {
-        return response()->json(['status' => 'unready', 'database' => 'disconnected'], 503);
-    }
-});
 use App\Http\Controllers\Api\V1\AadhaarExportController as V1AadhaarExportController;
 use App\Http\Controllers\Api\V1\Admin\CompanyUnitController as V1CompanyUnitController;
 use App\Http\Controllers\Api\V1\Admin\Organization\CalendarController as V1OrganizationCalendarController;
@@ -51,6 +36,7 @@ use App\Http\Controllers\Api\V1\Admin\Organization\LocationController as V1Organ
 use App\Http\Controllers\Api\V1\Admin\Organization\OrganizationCalendarAssignmentController as V1OrganizationCalendarAssignmentController;
 use App\Http\Controllers\Api\V1\Admin\Organization\OrganizationChangeManagementController as V1OrganizationChangeController;
 use App\Http\Controllers\Api\V1\Admin\Organization\OrganizationChartController as V1OrganizationChartController;
+use App\Http\Controllers\Api\V1\Admin\Organization\OrganizationAuthorityController as V1OrganizationAuthorityController;
 use App\Http\Controllers\Api\V1\Admin\Organization\OrganizationHierarchyController as V1OrganizationHierarchyController;
 use App\Http\Controllers\Api\V1\Admin\Organization\OrganizationLocationController as V1OrganizationOrgLocationController;
 use App\Http\Controllers\Api\V1\Admin\Organization\OrganizationUnitController as V1OrganizationUnitController;
@@ -78,6 +64,25 @@ use App\Models\User;
 use App\Support\AadhaarExportAccess;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+
+// Lightweight Unauthenticated System Liveness Probe
+Route::get('health', function () {
+    return response()->json(['status' => 'ok', 'timestamp' => now()->toIso8601String()]);
+});
+
+
+// System Readiness Probe (Verifies DB connection status)
+Route::get('ready', function () {
+    try {
+        \Illuminate\Support\Facades\DB::connection()->getPdo();
+        return response()->json(['status' => 'ready', 'database' => 'connected', 'timestamp' => now()->toIso8601String()]);
+    } catch (\Throwable $e) {
+        return response()->json(['status' => 'unready', 'database' => 'disconnected'], 503);
+    }
+});
+
+
+// Lightweight Unauthenticated System Liveness Probe
 
 Route::get('/user', function (Request $request) {
     return $request->user();
@@ -170,10 +175,15 @@ Route::middleware(['jwt.auth', 'role:admin'])->group(function () {
 Route::post('logout', [AuthController::class, 'logout'])->middleware('throttle:30,1');
 
 Route::middleware('jwt.auth')->group(function () {
+    Route::get('v1/manager/team', [UserController::class, 'managerTeam']);
+    Route::get('v1/manager/check', [UserController::class, 'managerCheck']);
     // Any authenticated role (admin, agent, employee)
     Route::get('profile', [AuthController::class, 'me'])->middleware(['throttle:30,1', 'permission:self.profile.read']);
     Route::post('change-password', [AuthController::class, 'changePassword'])->middleware(['throttle:10,1', 'permission:self.profile.update']);
     Route::post('profile-update', [UserController::class, 'updateProfile'])->middleware(['throttle:30,1', 'permission:self.profile.update']);
+    // Lets an employee change their own unit — validated against the units
+    // belonging to their own company, never an arbitrary company change.
+    Route::post('profile/unit', [UserController::class, 'updateOwnUnit'])->middleware(['throttle:30,1', 'permission:self.profile.update']);
     Route::get('my-permissions', [PermissionDimensionController::class, 'myPermissions'])->middleware(['throttle:60,1', 'permission:self.profile.read']);
 
     /*
@@ -572,15 +582,6 @@ Route::middleware('jwt.auth')->group(function () {
     // presigned credential.
     Route::group(['prefix' => 'v1/documents'], function () {
         Route::get('types', [V1DocumentController::class, 'types'])->middleware('permission:document.file.read');
-        Route::get('health', [V1DocumentController::class, 'health'])->middleware('permission:document.file.read');
-        Route::get('/', [V1DocumentController::class, 'index'])->middleware('permission:document.file.read');
-        Route::get('{id}', [V1DocumentController::class, 'show'])->whereNumber('id')->middleware('permission:document.file.read');
-        Route::get('{id}/versions', [V1DocumentController::class, 'versions'])->whereNumber('id')->middleware('permission:document.file.read');
-
-        Route::middleware('throttle:30,1')->group(function () {
-            Route::post('upload', [V1DocumentController::class, 'store'])->middleware('permission:document.file.upload');
-            Route::post('{id}/replace', [V1DocumentController::class, 'replace'])->whereNumber('id')->middleware('permission:document.file.update');
-        });
 
         Route::middleware('throttle:60,1')->group(function () {
             Route::post('{id}/view-url', [V1DocumentController::class, 'viewUrl'])->whereNumber('id')->middleware('permission:document.file.read');
@@ -1033,7 +1034,14 @@ Route::middleware('jwt.auth')->group(function () {
         Route::delete('financial-organizations/{id}/gl-mappings/{mappingId}', [V1OrganizationFinancialController::class, 'destroyGlMapping'])
             ->whereNumber('id')->whereNumber('mappingId')->middleware('permission:org.financial_gl.delete');
 
-        /* -------------------------------------------------- 02.06 hierarchies */
+                  /* -------------------------------------------------- 02.08 authorities */
+          Route::get('authorities', [V1OrganizationAuthorityController::class, 'index']);
+          Route::post('authorities', [V1OrganizationAuthorityController::class, 'store']);
+          Route::get('authorities/{id}', [V1OrganizationAuthorityController::class, 'show'])->whereNumber('id');
+          Route::put('authorities/{id}', [V1OrganizationAuthorityController::class, 'update'])->whereNumber('id');
+          Route::delete('authorities/{id}', [V1OrganizationAuthorityController::class, 'destroy'])->whereNumber('id');
+
+          /* -------------------------------------------------- 02.06 hierarchies */
         Route::get('hierarchies', [V1OrganizationHierarchyController::class, 'index'])
             ->middleware('permission:org.hierarchy.read');
         Route::post('hierarchies', [V1OrganizationHierarchyController::class, 'store'])
@@ -1332,6 +1340,7 @@ Route::middleware('jwt.auth')->group(function () {
             Route::get('import-columns', [UserController::class, 'importColumns'])->middleware('permission:hr.employee.import');
             Route::post('store', [UserController::class, 'store'])->middleware('permission:hr.employee.create');
             Route::put('edit/{id}', [UserController::class, 'update'])->middleware('permission:hr.employee.update');
+            Route::put('{id}/company-unit', [UserController::class, 'updateCompanyUnit'])->whereNumber('id')->middleware(['throttle:30,1', 'permission:hr.employee.update']);
             Route::get('delete/{id}', [UserController::class, 'destroy'])->middleware('permission:hr.employee.delete');
             Route::post('delete-multiple', [UserController::class, 'destroyMultiple'])->middleware('permission:hr.employee.delete');
             Route::post('import', [UserController::class, 'import'])->middleware(['throttle:20,1', 'permission:hr.employee.import']);
@@ -1650,5 +1659,4 @@ Route::group(['prefix' => 'candidate'], function () {
     });
 });
 
-
-
+require __DIR__.'/mediclaim.php';
