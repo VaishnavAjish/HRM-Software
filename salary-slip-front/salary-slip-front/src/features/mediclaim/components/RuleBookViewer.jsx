@@ -1,97 +1,152 @@
-import { useMemo, useState } from "react";
-import { BookOpen, Eye } from "lucide-react";
-import DocumentViewerModal from "../../../components/documents/DocumentViewerModal";
-import { DECLARATION_LANGUAGE_ORDER } from "../models/declarationText";
+import { useEffect, useMemo, useState } from "react";
+import { ArrowLeft, BookOpen, Languages } from "lucide-react";
 import { formatClaimDate } from "../utils/formatters";
 
-const LANGUAGE_LABEL = { en: "English", hi: "हिन्दी", gu: "ગુજરાતી" };
+function ruleText(item) {
+  return item.ruleText || item.rule_text || "";
+}
+
+function ruleBookLanguageId(ruleBook) {
+  return ruleBook.languageId ?? ruleBook.language_id ?? ruleBook.language?.id ?? null;
+}
+
+function languageName(ruleBook) {
+  return ruleBook.language?.name || "";
+}
+
+function languageNativeName(ruleBook) {
+  return ruleBook.language?.nativeName || ruleBook.language?.native_name || ruleBook.language?.name || "";
+}
 
 /**
- * Trilingual rule-book viewer — EN/HI/GU tabs, reusing
- * `DECLARATION_LANGUAGE_ORDER` for the language set/order rather than
- * inventing a second one, so the declaration step (F4) and this viewer
- * agree on language ordering everywhere in the feature.
+ * Read-only renderer for the Mediclaim rule book — a two-step flow, not a
+ * tab strip: pick a language first (only languages with a *published* rule
+ * book are offered), then the rule text for that language shows. Nothing
+ * shows by default, since the employee must make an active choice rather
+ * than being handed whatever language happened to be created first.
  *
- * `ruleBooks` comes from `useMediclaimLookups` (preloaded once per
- * workspace mount). Per the backend plan's B2 seed data, no rule-book row
- * is created at launch on purpose ("the PDF gets uploaded through the
- * admin UI post-launch") — the empty state below is the expected initial
- * state, not an error condition.
+ * `onLanguageSelected` (optional) fires once a language's content is being
+ * shown — the onboarding gate uses it to know the employee has actually
+ * opened the rule book before letting them acknowledge it.
  */
-export default function RuleBookViewer({ ruleBooks = [], loading = false, error = null }) {
-  const [language, setLanguage] = useState(DECLARATION_LANGUAGE_ORDER[0]);
-  const [viewerDoc, setViewerDoc] = useState(null);
-
+export default function RuleBookViewer({ ruleBooks = [], loading = false, error = null, onLanguageSelected }) {
   const published = useMemo(
     () => ruleBooks.filter((rb) => String(rb.status || "").toLowerCase() === "published"),
     [ruleBooks],
   );
 
-  const selected = useMemo(
-    () => published.find((rb) => (rb.language || rb.languageCode || rb.language_code) === language) || null,
-    [published, language],
-  );
+  const languages = useMemo(() => {
+    const seen = new Set();
+    const list = [];
+    published.forEach((rb) => {
+      const id = ruleBookLanguageId(rb);
+      if (id !== null && !seen.has(id)) {
+        seen.add(id);
+        list.push({ id, name: languageName(rb), nativeName: languageNativeName(rb) });
+      }
+    });
+    return list;
+  }, [published]);
 
-  if (loading) {
-    return <p className="py-10 text-center text-sm text-gray-400">Loading rule book…</p>;
+  const [languageId, setLanguageId] = useState(null);
+
+  const selectedLanguage = languages.find((l) => l.id === languageId) || null;
+  const selectedRuleBook = selectedLanguage ? published.find((rb) => ruleBookLanguageId(rb) === selectedLanguage.id) : null;
+
+  // Every hook above runs on every render regardless of loading/error/empty
+  // state — the early returns below must come after all hook calls, per the
+  // Rules of Hooks, so this can't be skipped only for the states where
+  // there's nothing to select yet.
+  useEffect(() => {
+    if (selectedRuleBook) onLanguageSelected?.();
+    // Intentionally keyed on the id below, not the object reference, so
+    // this doesn't re-fire on every unrelated reload() that returns a new
+    // (but equal) rule book row.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedRuleBook?.id, onLanguageSelected]);
+
+  if (loading) return <p className="py-10 text-center text-sm text-gray-400">Loading rule book…</p>;
+  if (error) return <p className="py-10 text-center text-sm text-red-500">{error}</p>;
+
+  if (languages.length === 0) {
+    return (
+      <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+        <div className="flex flex-col items-center gap-2 py-10 text-center">
+          <BookOpen size={32} className="text-gray-300 dark:text-gray-600" />
+          <p className="text-sm text-gray-500 dark:text-gray-400">No Mediclaim rule book has been published yet. Check back once HR publishes it.</p>
+        </div>
+      </div>
+    );
   }
 
-  if (error) {
-    return <p className="py-10 text-center text-sm text-red-500">{error}</p>;
+  if (!selectedRuleBook) {
+    return (
+      <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+        <div className="mb-4 flex items-center gap-2">
+          <Languages size={18} className="text-brand-600 dark:text-brand-400" />
+          <p className="font-semibold text-gray-900 dark:text-white">Choose a language to read the Mediclaim rule book</p>
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
+          {languages.map((lang) => (
+            <button
+              key={lang.id}
+              type="button"
+              onClick={() => setLanguageId(lang.id)}
+              className="flex flex-col items-center gap-1 rounded-lg border border-gray-200 p-3 text-center transition-colors hover:border-brand-400 hover:bg-brand-50 dark:border-gray-600 dark:hover:border-brand-500 dark:hover:bg-gray-700"
+            >
+              <span className="text-base font-semibold text-gray-900 dark:text-white">{lang.nativeName || lang.name}</span>
+              {lang.name && lang.nativeName && lang.nativeName !== lang.name && (
+                <span className="text-xs text-gray-500 dark:text-gray-400">{lang.name}</span>
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
   }
+
+  const items = selectedRuleBook.items || [];
+  const label = selectedLanguage.nativeName || selectedLanguage.name;
 
   return (
     <div className="space-y-4">
-      <div className="flex w-fit gap-1 rounded-xl bg-gray-100 p-1 dark:bg-gray-700/50">
-        {DECLARATION_LANGUAGE_ORDER.map((code) => (
-          <button
-            key={code}
-            onClick={() => setLanguage(code)}
-            className={`rounded-lg px-4 py-1.5 text-sm font-semibold transition-colors ${
-              language === code
-                ? "bg-white text-brand-600 shadow-sm dark:bg-gray-800 dark:text-brand-400"
-                : "text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-            }`}
-          >
-            {LANGUAGE_LABEL[code] || code}
-          </button>
-        ))}
-      </div>
+      <button
+        type="button"
+        onClick={() => setLanguageId(null)}
+        className="inline-flex items-center gap-1.5 text-sm font-semibold text-brand-600 hover:underline dark:text-brand-400"
+      >
+        <ArrowLeft size={14} /> Change language
+      </button>
 
       <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-        {published.length === 0 ? (
+        {items.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-10 text-center">
             <BookOpen size={32} className="text-gray-300 dark:text-gray-600" />
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              No Mediclaim rule book has been published yet. Check back once HR uploads it.
-            </p>
-          </div>
-        ) : !selected ? (
-          <div className="flex flex-col items-center gap-2 py-10 text-center">
-            <BookOpen size={32} className="text-gray-300 dark:text-gray-600" />
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              The rule book is not yet published in {LANGUAGE_LABEL[language] || language}.
-            </p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">The rule book has no rules published yet in {label}.</p>
           </div>
         ) : (
-          <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="space-y-4">
             <div>
-              <p className="font-semibold text-gray-900 dark:text-white">{selected.title || "Mediclaim Rule Book"}</p>
-              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                Effective from {formatClaimDate(selected.effectiveFrom || selected.effective_from)}
+              <p className="font-semibold text-gray-900 dark:text-white">
+                Mediclaim Rule Book — {label}
+                {selectedRuleBook.versionLabel || selectedRuleBook.version_label
+                  ? ` (${selectedRuleBook.versionLabel || selectedRuleBook.version_label})`
+                  : ""}
               </p>
+              {(selectedRuleBook.effectiveFrom || selectedRuleBook.effective_from) && (
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  Effective from {formatClaimDate(selectedRuleBook.effectiveFrom || selectedRuleBook.effective_from)}
+                </p>
+              )}
             </div>
-            <button
-              onClick={() => setViewerDoc(selected.document || selected)}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-4 py-2 text-xs font-semibold text-white hover:bg-brand-700"
-            >
-              <Eye size={14} /> View
-            </button>
+            <ol className="list-decimal space-y-2 pl-5 text-sm text-gray-700 dark:text-gray-200">
+              {items.map((item) => (
+                <li key={item.id} className="leading-relaxed">{ruleText(item)}</li>
+              ))}
+            </ol>
           </div>
         )}
       </div>
-
-      <DocumentViewerModal document={viewerDoc} open={Boolean(viewerDoc)} onClose={() => setViewerDoc(null)} />
     </div>
   );
 }

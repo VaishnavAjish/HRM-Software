@@ -35,36 +35,41 @@ const COLUMNS = [
  */
 export default function AuditHistoryTab() {
   const { user } = useAuth();
-  const [state, setState] = useState({ loading: true, rows: [], total: 0, error: null });
+  const accessToken = user?.accessToken;
+  const tokenType = user?.tokenType;
+  const [result, setResult] = useState({ key: null, rows: [], total: 0, error: null });
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const requestKey = JSON.stringify([accessToken ?? "", tokenType ?? "", page, search, from, to]);
 
   useEffect(() => {
-    if (!user?.accessToken) return undefined;
+    if (!accessToken) return undefined;
     let cancelled = false;
-    setState((prev) => ({ ...prev, loading: true, error: null }));
 
     mediclaimApi.audit(
       { page, perPage: PER_PAGE, search: search || undefined, from: from || undefined, to: to || undefined },
-      user.accessToken,
-      user.tokenType,
+      accessToken,
+      tokenType,
     )
       .then((res) => {
         if (cancelled) return;
         const payload = res?.data;
         const rows = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
         const total = payload?.total ?? rows.length;
-        setState({ loading: false, rows, total, error: null });
+        setResult({ key: requestKey, rows, total, error: null });
       })
       .catch((err) => {
         if (cancelled) return;
-        setState({ loading: false, rows: [], total: 0, error: err?.message || "Failed to load the audit history." });
+        setResult({ key: requestKey, rows: [], total: 0, error: err?.message || "Failed to load the audit history." });
       });
 
     return () => { cancelled = true; };
-  }, [user, page, search, from, to]);
+  }, [accessToken, tokenType, page, search, from, to, requestKey]);
+
+  const loading = result.key !== requestKey;
+  const state = { loading, rows: result.rows, total: result.total, error: loading ? null : result.error };
 
   return (
     <div className="space-y-4">

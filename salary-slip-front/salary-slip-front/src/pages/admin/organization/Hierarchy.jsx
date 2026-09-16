@@ -26,26 +26,19 @@ import {
   Filter,
   RefreshCw,
   Move,
-  UserPlus,
   Building2,
-  Briefcase,
   Users,
-  User,
   ChevronRight,
   ChevronDown,
   X,
   AlertTriangle,
   FolderTree,
-  Check,
-  Eye,
   Focus,
   ArrowLeft,
-  UserCheck,
   Globe,
   LayoutGrid,
   List as ListIcon,
   ShieldCheck,
-  Award,
 } from "lucide-react";
 
 import { useAuth } from "../../../context/AuthContext";
@@ -354,8 +347,6 @@ function ListTreeUnitRow({
   const deptAssignments = assignments.filter((a) => String(a.organizationUnitId) === String(unit.id));
   const hasChildren = childUnits.length > 0;
 
-  const compName = getCompanyName(unit, companies);
-
   const matchingAuthorities = (authorities || []).filter((auth) => isAuthForUnit(auth, unit));
 
   return (
@@ -522,13 +513,13 @@ function HierarchyCanvasInner() {
   // Active View Tab: DEFAULT TO LIST VIEW
   const [activeTab, setActiveTab] = useState("list");
 
-  const [loading, setLoading] = useState(true);
+  const [fetching, setFetching] = useState(true);
+  const loading = fetching && Boolean(token);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
 
   // Core Data
   const [orgUnits, setOrgUnits] = useState([]);
-  const [positions, setPositions] = useState([]);
   const [assignments, setAssignments] = useState([]);
   const [companies, setCompanies] = useState([]);
 
@@ -563,12 +554,6 @@ function HierarchyCanvasInner() {
     });
   }, []);
 
-  useEffect(() => {
-    if (orgUnits.length > 0) {
-      setExpandedIds(new Set(orgUnits.map((u) => String(u.id))));
-    }
-  }, [orgUnits]);
-
   // Focus Subtree Mode State
   const [focusedUnitId, setFocusedUnitId] = useState(null);
 
@@ -585,61 +570,62 @@ function HierarchyCanvasInner() {
   const containerRef = useRef(null);
 
   // Data Loader
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    if (!token) {
-      setLoading(false);
-      return;
-    }
-    try {
-      const unitsRes = await organizationApi.orgUnits({}, token, tokenType).catch(() => ({ data: [] }));
-      const units = unitsRes?.data ?? [];
-      setOrgUnits(units);
-
-      const posPromises = units.map((u) =>
-        organizationApi.orgUnitPositions(u.id, {}, token, tokenType).catch(() => ({ data: [] }))
-      );
-
-      const [posResults, assignRes, compRes, allCompaniesRes, authRes] = await Promise.all([
-        Promise.all(posPromises),
-        organizationApi.orgUnitAssignments({}, token, tokenType).catch(() => ({ data: [] })),
-        organizationApi.legalEntityProfileCompanies(token, tokenType).catch(() => ({ data: [] })),
-        companyUnitApi.companies({}, token, tokenType).catch(() => ({ data: [] })),
-        organizationApi.authorities(token, tokenType).catch(() => ({ data: [] })),
-      ]);
-
-      const allPositions = posResults.flatMap((r) => r?.data ?? []);
-      setPositions(allPositions);
-      setAssignments(assignRes?.data ?? []);
-      setAuthorities(authRes?.data ?? []);
-
-      // Merge & Normalize Companies (Silver Star & Nidhi Impex)
-      const compList = [
-        ...(compRes?.data ?? []),
-        ...(allCompaniesRes?.data ?? []),
-      ];
-      const uniqueComps = [];
-      const seenNames = new Set();
-      compList.forEach((c) => {
-        const rawName = typeof c === "string" ? c : c?.name || c?.code;
-        const normName = normalizeCompName(rawName);
-        if (normName && !seenNames.has(normName)) {
-          seenNames.add(normName);
-          uniqueComps.push({ id: normName.toLowerCase().replace(/\s+/g, "-"), name: normName, code: normName });
+  const loadData = useCallback(() => {
+    if (!token) return;
+    organizationApi.orgUnits({}, token, tokenType).catch(() => ({ data: [] }))
+      .then((unitsRes) => {
+        const units = unitsRes?.data ?? [];
+        setError(null);
+        setOrgUnits(units);
+        if (units.length > 0) {
+          setExpandedIds(new Set(units.map((u) => String(u.id))));
         }
+
+        return Promise.all([
+          organizationApi.orgUnitAssignments({}, token, tokenType).catch(() => ({ data: [] })),
+          organizationApi.legalEntityProfileCompanies(token, tokenType).catch(() => ({ data: [] })),
+          companyUnitApi.companies({}, token, tokenType).catch(() => ({ data: [] })),
+          organizationApi.authorities(token, tokenType).catch(() => ({ data: [] })),
+        ]);
+      })
+      .then(([assignRes, compRes, allCompaniesRes, authRes]) => {
+        setAssignments(assignRes?.data ?? []);
+        setAuthorities(authRes?.data ?? []);
+
+        // Merge & Normalize Companies (Silver Star & Nidhi Impex)
+        const compList = [
+          ...(compRes?.data ?? []),
+          ...(allCompaniesRes?.data ?? []),
+        ];
+        const uniqueComps = [];
+        const seenNames = new Set();
+        compList.forEach((c) => {
+          const rawName = typeof c === "string" ? c : c?.name || c?.code;
+          const normName = normalizeCompName(rawName);
+          if (normName && !seenNames.has(normName)) {
+            seenNames.add(normName);
+            uniqueComps.push({ id: normName.toLowerCase().replace(/\s+/g, "-"), name: normName, code: normName });
+          }
+        });
+
+        if (!seenNames.has("Nidhi Impex")) uniqueComps.push({ id: "nidhi-impex", name: "Nidhi Impex", code: "nidhi-impex" });
+        if (!seenNames.has("Silver Star")) uniqueComps.push({ id: "silver-star", name: "Silver Star", code: "silver-star" });
+
+        setCompanies(uniqueComps);
+      })
+      .catch((err) => {
+        setError(err.message || "Failed to load hierarchy data");
+      })
+      .finally(() => {
+        setFetching(false);
       });
-
-      if (!seenNames.has("Nidhi Impex")) uniqueComps.push({ id: "nidhi-impex", name: "Nidhi Impex", code: "nidhi-impex" });
-      if (!seenNames.has("Silver Star")) uniqueComps.push({ id: "silver-star", name: "Silver Star", code: "silver-star" });
-
-      setCompanies(uniqueComps);
-    } catch (err) {
-      setError(err.message || "Failed to load hierarchy data");
-    } finally {
-      setLoading(false);
-    }
   }, [token, tokenType]);
+
+  const reloadData = useCallback(() => {
+    setFetching(true);
+    setError(null);
+    loadData();
+  }, [loadData]);
 
   useEffect(() => {
     loadData();
@@ -731,7 +717,7 @@ function HierarchyCanvasInner() {
         if (created) {
           setAuthorities((prev) => [created, ...prev]);
         } else {
-          loadData();
+          reloadData();
         }
         toast.success(`Authority "${newAuthName}" added successfully`);
       }
@@ -768,7 +754,7 @@ function HierarchyCanvasInner() {
         toast.success("Department updated successfully");
       }
       setDeptModal(null);
-      loadData();
+      reloadData();
     } catch (err) {
       toast.error(err.message || "Failed to save department");
     } finally {
@@ -785,7 +771,7 @@ function HierarchyCanvasInner() {
       }, token, tokenType);
       toast.success("Department parent updated successfully");
       setMoveModal(null);
-      loadData();
+      reloadData();
     } catch (err) {
       toast.error(err.message || "Failed to move department");
     } finally {
@@ -793,7 +779,7 @@ function HierarchyCanvasInner() {
     }
   };
 
-  const handleDeleteDept = (unit) => {
+  const handleDeleteDept = useCallback((unit) => {
     setDeleteConfirm({
       title: `Delete Department "${unit.name}"?`,
       message: `Are you sure you want to delete department "${unit.name}"? This action cannot be undone and will update the organization hierarchy.`,
@@ -803,7 +789,7 @@ function HierarchyCanvasInner() {
           await organizationApi.deleteOrgUnit(unit.id, token, tokenType);
           toast.success(`Department "${unit.name}" deleted successfully`);
           setDeleteConfirm(null);
-          loadData();
+          reloadData();
         } catch (err) {
           toast.error(err.message || "Could not delete department");
         } finally {
@@ -811,7 +797,7 @@ function HierarchyCanvasInner() {
         }
       },
     });
-  };
+  }, [token, tokenType, reloadData]);
 
   const handleUnassignEmp = (assignment) => {
     setDeleteConfirm({
@@ -823,7 +809,7 @@ function HierarchyCanvasInner() {
           await organizationApi.deleteOrgUnitAssignment(assignment.id, token, tokenType);
           toast.success("Employee unassigned");
           setDeleteConfirm(null);
-          loadData();
+          reloadData();
         } catch (err) {
           toast.error(err.message || "Could not unassign employee");
         } finally {
@@ -986,17 +972,23 @@ function HierarchyCanvasInner() {
     });
 
     return { rawNodes: nodes, rawEdges: edges };
-  }, [orgUnits, assignments, companies, companyFilter, focusedUnitId, isLocked, search, getSubtreeUnitIds]);
+  }, [orgUnits, assignments, companies, companyFilter, focusedUnitId, isLocked, search, getSubtreeUnitIds, handleDeleteDept]);
 
   const layoutedNodes = useMemo(() => {
     return layoutElements(rawNodes, rawEdges, { direction: "TB", spacing });
   }, [rawNodes, rawEdges, spacing]);
 
   // Set Default Zoom to 100% (zoom: 1.0)
+  const fitKey = activeTab === "chart" && !loading && layoutedNodes.length > 0 ? layoutedNodes.length : null;
+  const [prevFitKey, setPrevFitKey] = useState(fitKey);
+  if (prevFitKey !== fitKey) {
+    setPrevFitKey(fitKey);
+    if (fitKey !== null) setZoomPct(100);
+  }
+
   useEffect(() => {
     if (activeTab === "chart" && !loading && layoutedNodes.length > 0) {
       fitView({ minZoom: 1.0, maxZoom: 1.0, duration: 300 });
-      setZoomPct(100);
     }
   }, [activeTab, loading, layoutedNodes.length, fitView]);
 
@@ -1204,7 +1196,7 @@ function HierarchyCanvasInner() {
               </button>
             )}
 
-            <Button variant="secondary" size="sm" onClick={loadData} title="Refresh Hierarchy" className="py-1.5">
+            <Button variant="secondary" size="sm" onClick={reloadData} title="Refresh Hierarchy" className="py-1.5">
               <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
             </Button>
           </div>
@@ -1357,7 +1349,7 @@ function HierarchyCanvasInner() {
             <div className="flex h-full flex-col items-center justify-center gap-2 text-red-500 p-6 text-center">
               <AlertTriangle size={24} />
               <p className="text-sm font-semibold">{error}</p>
-              <Button size="sm" onClick={loadData}>Retry</Button>
+              <Button size="sm" onClick={reloadData}>Retry</Button>
             </div>
           ) : layoutedNodes.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">

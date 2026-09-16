@@ -501,6 +501,14 @@ export const salaryApi = {
     });
   },
 
+  getDesignations(accessToken, tokenType = "Bearer") {
+    return apiRequest(`/designation/get`, {
+      headers: accessToken
+        ? { Authorization: `${tokenType} ${accessToken}` }
+        : {},
+    });
+  },
+
   storeDepartment(payload, accessToken, tokenType = "Bearer") {
     return apiRequest("/department/store", {
       method: "POST",

@@ -12,6 +12,8 @@ use Illuminate\Database\Eloquent\Model;
  */
 class PositionHistory extends Model
 {
+    protected $table = 'position_history';
+
     public const EVENT_TYPES = [
         'created', 'requested', 'approved', 'rejected', 'opened',
         'assigned', 'transferred', 'frozen', 'unfrozen',

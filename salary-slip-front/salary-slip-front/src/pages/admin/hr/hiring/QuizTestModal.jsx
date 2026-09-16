@@ -31,14 +31,17 @@ export default function QuizTestModal({ isOpen, onClose, quiz }) {
   }, [questions]);
 
   // Reset state when opening or switching quiz
-  useEffect(() => {
-    if (!isOpen || !quiz) return;
-    setTestState("intro");
-    setCurrentIndex(0);
-    setAnswers({});
-    setSecondsLeft((quiz.duration_minutes || 30) * 60);
-    setTimerActive(false);
-  }, [isOpen, quiz]);
+  const [resetInputs, setResetInputs] = useState({ isOpen: false, quiz: null });
+  if (resetInputs.isOpen !== isOpen || resetInputs.quiz !== quiz) {
+    setResetInputs({ isOpen, quiz });
+    if (isOpen && quiz) {
+      setTestState("intro");
+      setCurrentIndex(0);
+      setAnswers({});
+      setSecondsLeft((quiz.duration_minutes || 30) * 60);
+      setTimerActive(false);
+    }
+  }
 
   // Timer countdown in running mode
   useEffect(() => {

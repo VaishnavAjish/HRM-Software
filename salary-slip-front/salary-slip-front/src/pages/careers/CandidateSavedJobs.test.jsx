@@ -8,7 +8,7 @@ const authState = vi.hoisted(() => ({
   token: "candidate-token",
 }));
 
-vi.mock("../../context/CandidateAuthContext", () => ({
+vi.mock("../../context/candidate-auth-context", () => ({
   useCandidateAuth: () => authState,
 }));
 

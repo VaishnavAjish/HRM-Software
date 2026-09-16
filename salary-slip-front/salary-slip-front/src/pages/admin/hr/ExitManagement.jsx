@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import toast from "react-hot-toast";
-import { Plus, ArrowRight, RotateCcw, CalendarClock, Mail, UserX, Clock, FileCheck, CheckCircle2, ShieldAlert, Search, ChevronDown } from "lucide-react";
+import { Plus, ArrowRight, RotateCcw, CalendarClock, UserX, CheckCircle2, Search, ChevronDown } from "lucide-react";
 import Button from "../../../components/ui/Button";
 import Badge from "../../../components/ui/Badge";
 import Modal from "../../../components/ui/Modal";
@@ -104,8 +104,11 @@ function EmployeeCombobox({ employees, value, onChange }) {
 
 export default function ExitManagement() {
   const { user } = useAuth();
-  const { companyScope, scopeKey } = useCompany();
-  const [loading, setLoading] = useState(true);
+  const { companyScope } = useCompany();
+  const accessToken = user?.accessToken;
+  const tokenType = user?.tokenType;
+  const companyId = companyScope?.companyId;
+  const unit = companyScope?.unit;
   const [resignations, setResignations] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [statusFilter, setStatusFilter] = useState("");
@@ -113,24 +116,31 @@ export default function ExitManagement() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [actingId, setActingId] = useState(null);
-
-  const load = () =>
-    hrApi.getResignations(user?.accessToken, user?.tokenType, { ...companyScope, status: statusFilter || undefined, per_page: 100 })
-      .then((res) => { if (res.status) setResignations(res.data?.data || res.data || []); })
-      .catch((err) => toast.error(err.message || "Failed to load resignations"))
-      .finally(() => setLoading(false));
-
-  const reload = () => { setLoading(true); return load(); };
+  const [reloadCount, setReloadCount] = useState(0);
+  const requestKey = JSON.stringify([companyId, unit, statusFilter, reloadCount]);
+  const [loadedKey, setLoadedKey] = useState(null);
+  const loading = loadedKey !== requestKey;
 
   useEffect(() => {
-    if (!user?.accessToken) return;
-    reload();
-    salaryApi.getAllEmployees(user.accessToken, user.tokenType, { status: "Active", per_page: 5000 }, companyScope?.companyId)
-      .then((res) => setEmployees(res?.data?.users?.data ?? res?.data?.users ?? []))
-      .catch(() => {});
-  }, [user, scopeKey]);
+    if (!accessToken) return;
+    let cancelled = false;
+    hrApi.getResignations(accessToken, tokenType, { companyId, unit, status: statusFilter || undefined, per_page: 100 })
+      .then((res) => { if (!cancelled && res.status) setResignations(res.data?.data || res.data || []); })
+      .catch((err) => { if (!cancelled) toast.error(err.message || "Failed to load resignations"); })
+      .finally(() => { if (!cancelled) setLoadedKey(requestKey); });
+    return () => { cancelled = true; };
+  }, [accessToken, tokenType, companyId, unit, statusFilter, requestKey]);
 
-  useEffect(() => { if (user?.accessToken) reload(); }, [statusFilter]);
+  useEffect(() => {
+    if (!accessToken) return;
+    let cancelled = false;
+    salaryApi.getAllEmployees(accessToken, tokenType, { status: "Active", per_page: 5000 }, companyId)
+      .then((res) => { if (!cancelled) setEmployees(res?.data?.users?.data ?? res?.data?.users ?? []); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [accessToken, tokenType, companyId, unit]);
+
+  const reload = () => setReloadCount((count) => count + 1);
 
   const resignedUserIds = new Set(
     resignations.filter((r) => r.status !== "withdrawn").map((r) => r.user_id ?? r.user?.id)

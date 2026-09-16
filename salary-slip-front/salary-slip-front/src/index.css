@@ -151,7 +151,14 @@
 
 body {
   margin: 0;
-  font-family: "Inter", system-ui, sans-serif;
+  /* Indic-script families (see index.html's Noto <link>) listed explicitly
+     so the browser uses them for non-Latin text instead of falling back to
+     the OS's own substitution (e.g. Windows' "Nirmala UI", which has known
+     incomplete shaping for some Indic conjunct/vowel-sign combinations). */
+  font-family: "Inter", "Noto Sans Devanagari", "Noto Sans Bengali", "Noto Sans Gujarati",
+    "Noto Sans Tamil", "Noto Sans Telugu", "Noto Sans Kannada", "Noto Sans Malayalam",
+    "Noto Sans Oriya", "Noto Sans Gurmukhi", "Noto Sans Arabic", "Noto Nastaliq Urdu",
+    "Noto Sans Meetei Mayek", "Noto Sans Ol Chiki", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 

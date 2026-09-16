@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
@@ -17,7 +17,6 @@ import { SkeletonTable } from "../../../components/ui/Skeleton";
 import { useAuth } from "../../../context/AuthContext";
 import { useCompany } from "../../../context/CompanyContext";
 import { hrApi, salaryApi } from "../../../utils/api";
-import { downloadCSV } from "../../../utils/exportUtils";
 import { resolveCompanyScope } from "../../../config/companyConfig";
 
 // Validated categorical palette (dataviz skill: fixed hue order, adjacent-pair
@@ -62,17 +61,16 @@ function timeAgo(dateStr) {
   return `${Math.floor(diff / 86400)}d ago`;
 }
 
-function greeting() {
-  const h = new Date().getHours();
-  if (h < 12) return "Good morning";
-  if (h < 17) return "Good afternoon";
-  return "Good evening";
-}
-
 export default function HrDashboard() {
   const { user } = useAuth();
   const { companyScope } = useCompany();
-  const [loading, setLoading] = useState(true);
+  const accessToken = user?.accessToken;
+  const tokenType = user?.tokenType;
+  const scopeCompanyId = companyScope?.companyId;
+  const scopeUnit = companyScope?.unit;
+  const requestKey = JSON.stringify([scopeCompanyId, scopeUnit]);
+  const [loadedKey, setLoadedKey] = useState(null);
+  const loading = loadedKey !== requestKey;
   const [data, setData] = useState(null);
   const [assets, setAssets] = useState(null);
   const [performance, setPerformance] = useState(null);
@@ -82,33 +80,37 @@ export default function HrDashboard() {
   const [attendanceToday, setAttendanceToday] = useState(null);
   const [overviewTab, setOverviewTab] = useState("trend");
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
+  useEffect(() => {
+    if (!accessToken) return;
+    let cancelled = false;
+    const scope = { companyId: scopeCompanyId, unit: scopeUnit };
+    const run = async () => {
       const [dashRes, assetRes, perfRes] = await Promise.all([
-        hrApi.getDashboard(user?.accessToken, user?.tokenType, companyScope),
-        hrApi.getAssetDashboard(user?.accessToken, user?.tokenType, companyScope).catch(() => null),
-        hrApi.getPerformanceDashboard(user?.accessToken, user?.tokenType, {}).catch(() => null),
+        hrApi.getDashboard(accessToken, tokenType, scope),
+        hrApi.getAssetDashboard(accessToken, tokenType, scope).catch(() => null),
+        hrApi.getPerformanceDashboard(accessToken, tokenType, {}).catch(() => null),
       ]);
+      if (cancelled) return;
       if (dashRes.status) setData(dashRes.data);
       if (assetRes?.status) setAssets(assetRes.data);
       if (perfRes?.status) setPerformance(perfRes.data);
 
-      const { companyId, unit } = resolveCompanyScope(companyScope);
+      const { companyId, unit } = resolveCompanyScope(scope);
       const now = new Date();
 
       const [onboardingRes, reviewsRes, interviewsRes, attendanceRes] = await Promise.all([
-        hrApi.getOnboardingDashboard(user?.accessToken, user?.tokenType).catch(() => null),
+        hrApi.getOnboardingDashboard(accessToken, tokenType).catch(() => null),
         perfRes?.data?.cycle_id
-          ? hrApi.getPerformanceReviews(user?.accessToken, user?.tokenType, {
+          ? hrApi.getPerformanceReviews(accessToken, tokenType, {
               cycle_id: perfRes.data.cycle_id, review_type: "manager",
             }).catch(() => null)
           : Promise.resolve(null),
-        hrApi.getInterviews(user?.accessToken, user?.tokenType, { status: "scheduled", per_page: 20 }).catch(() => null),
-        salaryApi.getAttendanceGrid(user?.accessToken, user?.tokenType, {
+        hrApi.getInterviews(accessToken, tokenType, { status: "scheduled", per_page: 20 }).catch(() => null),
+        salaryApi.getAttendanceGrid(accessToken, tokenType, {
           companyId, unit, month: now.getMonth() + 1, year: now.getFullYear(),
         }).catch(() => null),
       ]);
+      if (cancelled) return;
 
       if (onboardingRes?.status) setOnboarding(onboardingRes.data);
 
@@ -136,22 +138,16 @@ export default function HrDashboard() {
         });
         setAttendanceToday({ ...counts, total: (employees || []).length });
       }
-    } catch (err) {
-      toast.error(err.message || "Failed to load HR dashboard");
-    } finally {
-      setLoading(false);
-    }
-  }, [user, companyScope]);
-
-  useEffect(() => { if (user?.accessToken) load(); }, [load]);
-
-  const exportSummary = () => {
-    const rows = Object.entries(cards).map(([key, value]) => ({
-      Metric: key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
-      Value: value,
-    }));
-    downloadCSV(rows, "hr-dashboard-summary");
-  };
+    };
+    run()
+      .catch((err) => {
+        if (!cancelled) toast.error(err.message || "Failed to load HR dashboard");
+      })
+      .finally(() => {
+        if (!cancelled) setLoadedKey(requestKey);
+      });
+    return () => { cancelled = true; };
+  }, [accessToken, tokenType, scopeCompanyId, scopeUnit, requestKey]);
 
   if (loading) {
     return (

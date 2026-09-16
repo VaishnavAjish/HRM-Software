@@ -71,7 +71,7 @@ class MediclaimIntimationTest extends TestCase
                 'planned_treatment' => 'Emergency appendectomy',
             ])
             ->assertStatus(422)
-            ->assertJsonValidationErrors(['emergency_explanation']);
+            ->assertJsonValidationErrors(['emergencyExplanation']);
     }
 
     #[Test]
@@ -101,6 +101,7 @@ class MediclaimIntimationTest extends TestCase
             ->postJson('/api/v1/mediclaim/me/intimations', [
                 'is_emergency' => false,
                 'planned_treatment' => 'Planned knee surgery',
+                'expected_admission_date' => now()->addWeek()->toDateString(),
             ])->assertCreated();
     }
 

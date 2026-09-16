@@ -47,29 +47,65 @@ export default function ReportsTab() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [reveal, setReveal] = useState(false);
-  const [state, setState] = useState({ loading: false, data: null, error: null, ranOnce: false });
   const [exporting, setExporting] = useState(false);
 
-  const runReport = () => {
-    if (!user?.accessToken) return;
-    setState({ loading: true, data: null, error: null, ranOnce: true });
-    mediclaimApi.reports(
-      { type: reportType, from: from || undefined, to: to || undefined, reveal: reveal || undefined },
-      user.accessToken,
-      user.tokenType,
-    )
-      .then((res) => {
-        setState({ loading: false, data: res?.data ?? null, error: null, ranOnce: true });
-      })
-      .catch((err) => {
-        setState({ loading: false, data: null, error: err?.message || "Failed to load this report.", ranOnce: true });
-      });
-  };
+  const accessToken = user?.accessToken;
+  const tokenType = user?.tokenType;
+  const [submitted, setSubmitted] = useState({ reportType, from, to, reveal, run: 0 });
+  const [authSeen, setAuthSeen] = useState({ accessToken, tokenType });
+  const [result, setResult] = useState({ key: null, data: null, error: null });
+
+  if (authSeen.accessToken !== accessToken || authSeen.tokenType !== tokenType) {
+    setAuthSeen({ accessToken, tokenType });
+    setSubmitted((prev) => ({ reportType, from, to, reveal, run: prev.run }));
+  }
+
+  const requestKey = JSON.stringify([
+    accessToken ?? "",
+    tokenType ?? "",
+    submitted.reportType,
+    submitted.from,
+    submitted.to,
+    submitted.reveal,
+    submitted.run,
+  ]);
 
   useEffect(() => {
-    runReport();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+    if (!accessToken) return undefined;
+    let cancelled = false;
+    mediclaimApi.reports(
+      {
+        type: submitted.reportType,
+        from: submitted.from || undefined,
+        to: submitted.to || undefined,
+        reveal: submitted.reveal || undefined,
+      },
+      accessToken,
+      tokenType,
+    )
+      .then((res) => {
+        if (cancelled) return;
+        setResult({ key: requestKey, data: res?.data ?? null, error: null });
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setResult({ key: requestKey, data: null, error: err?.message || "Failed to load this report." });
+      });
+    return () => { cancelled = true; };
+  }, [accessToken, tokenType, submitted, requestKey]);
+
+  const loading = Boolean(accessToken) && result.key !== requestKey;
+  const state = {
+    loading,
+    data: loading ? null : result.data,
+    error: loading ? null : result.error,
+    ranOnce: loading || result.key !== null,
+  };
+
+  const runReport = () => {
+    if (!accessToken) return;
+    setSubmitted((prev) => ({ reportType, from, to, reveal, run: prev.run + 1 }));
+  };
 
   const exportReport = async () => {
     if (!user?.accessToken) return;

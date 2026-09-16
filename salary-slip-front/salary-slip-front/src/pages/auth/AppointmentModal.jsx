@@ -10,6 +10,9 @@ import toast from "react-hot-toast";
 import ModernDatePicker from "../../components/ModernDatePicker";
 import PrintableForm from "../../components/forms/PrintableForm";
 import { authApi, salaryApi, appointmentV1Api, resolveWriteCompanyId } from "../../utils/api";
+import SearchableSelect from "../../components/ui/SearchableSelect";
+import { designationApi, workforceApi } from "../../features/workforce/services/workforceApi";
+import { organizationApi } from "../../features/organization/services/organizationApi";
 import { normalizeCompanyId, getCompanyUnits } from "../../config/companyConfig";
 import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";
@@ -20,6 +23,7 @@ import AppointmentDocumentsStep from "./AppointmentDocumentsStep";
 import { PHOTO_DOCUMENT_TYPE } from "./documentTypes";
 import { readAppointmentRouteState, STEP_DOCUMENTS } from "./appointmentRouteState";
 import { formatFullAadhaar, getAadhaarDisplayValue, normaliseAadhaar } from "../../utils/aadhaar";
+
 
 const DOC_FIELDS = [
   { key: "adhar_image", label: "Aadhar Card" },
@@ -122,6 +126,48 @@ const AppointmentModal = ({
   const { isAllCompanies } = useCompany();
   const { companyId } = useCompany();
   const [departmentsList, setDepartmentsList] = useState([]);
+    const [designationsList, setDesignationsList] = useState([]);
+
+  useEffect(() => {
+    if (!user?.accessToken) return undefined;
+    let cancelled = false;
+    async function fetchDesignations() {
+      try {
+        const salaryDesigFetcher = (typeof salaryApi !== "undefined" && salaryApi?.getDesignations)
+          ? salaryApi.getDesignations(user?.accessToken, user?.tokenType)
+          : Promise.resolve(null);
+
+        const posFetcher = (typeof organizationApi !== "undefined" && organizationApi?.globalPositions)
+          ? organizationApi.globalPositions({}, user?.accessToken, user?.tokenType)
+          : Promise.resolve(null);
+
+        const [sRes, posRes] = await Promise.all([
+          salaryDesigFetcher.catch(() => null),
+          posFetcher.catch(() => null),
+        ]);
+        const set = new Set();
+        if (sRes?.data && Array.isArray(sRes.data)) {
+          sRes.data.forEach((d) => {
+            const title = typeof d === "string" ? d : d.title || d.name || d.designation_name;
+            if (title) set.add(String(title).trim());
+          });
+        }
+        if (posRes?.data && Array.isArray(posRes.data)) {
+          posRes.data.forEach((p) => {
+            const title = typeof p === "string" ? p : p.title || p.name || p.code;
+            if (title) set.add(String(title).trim());
+          });
+        }
+        setDesignationsList(Array.from(set).sort());
+      } catch (err) {
+        console.error("Failed to fetch standalone DB designations:", err);
+      }
+    }
+    fetchDesignations();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.accessToken, user?.tokenType]);
   const [selectedCompanyId, setSelectedCompanyId] = useState(
     isAllCompanies ? "" : companyId,
   );
@@ -147,7 +193,6 @@ const AppointmentModal = ({
           tokenType,
           normalizeCompanyId(selectedCompanyId || companyId)
         );
-        if (cancelled) return;
         // Dedupe by name — the legacy departments table can carry more than
         // one row with the same name (e.g. a leftover global "IT" alongside
         // the real, company-scoped "IT"), and this dropdown only shows/sends
@@ -272,7 +317,6 @@ const AppointmentModal = ({
           accessToken,
           tokenType,
         );
-        if (cancelled) return;
 
         const record = res?.data?.appointment;
         if (!record?.id) throw new Error("Appointment not found.");
@@ -292,7 +336,6 @@ const AppointmentModal = ({
         // Documents only open once the record actually loaded.
         setStep(routeRequest.step === STEP_DOCUMENTS ? 2 : 1);
       } catch (err) {
-        if (cancelled) return;
 
         setRehydrateState("error");
         // Do not silently fall back to create mode â€” that is how duplicates get
@@ -866,7 +909,7 @@ const AppointmentModal = ({
         emp_code: raw.emp_code || "",
         joining_date: raw.joining_date || getTodayDate(),
         department: raw.department || "",
-        designation: raw.designation || "",
+        designation: raw.designation || raw.desig || raw.designation_name || initialData?.designation || "",
         manager_name: raw.manager_name || "",
         salary: String(raw.salary || ""),
         mobile_number: raw.mobile_number || "",
@@ -1181,6 +1224,8 @@ const AppointmentModal = ({
                     value={formData.designation}
                     onChange={handleChange}
                     error={errors.designation}
+                    type="searchable-select"
+                    options={designationsList}
                   />
                   <RowField
                     label="Manager Name"
@@ -1924,6 +1969,20 @@ const RowField = ({
           disabled={disabled}
           className={`w-full sm:flex-grow focus:outline-none transition-colors border rounded-lg px-3 py-2 bg-gray-50 text-sm h-10 ${error ? "border-red-500 bg-red-50" : "border-gray-300 focus:border-brand-500"} sm:border-t-0 sm:border-l-0 sm:border-r-0 sm:border-b sm:rounded-none sm:px-1 sm:h-5 sm:text-[13px] ${disabled ? "bg-gray-100 cursor-not-allowed text-gray-500" : "sm:bg-transparent"} sm:border-black`}
         />
+      ) : type === "searchable-select" ? (
+        <div className="w-full sm:flex-grow relative">
+          <SearchableSelect
+            id={`appt-${name}`}
+            name={name}
+            value={value}
+            onChange={onChange}
+            options={options}
+            disabled={disabled}
+            error={error}
+            placeholder={`SELECT ${label.toUpperCase()}`}
+            buttonClassName={`w-full focus:outline-none transition-colors border rounded-lg px-3 py-2 bg-white text-sm h-10 ${error ? "border-red-500 bg-red-50" : "border-gray-300 focus:border-brand-500"} sm:border-t-0 sm:border-l-0 sm:border-r-0 sm:border-b sm:rounded-none sm:px-2 sm:h-7 sm:py-0 sm:text-[13px] ${disabled ? "bg-gray-100 cursor-not-allowed text-gray-500" : "sm:bg-white"} sm:border-black font-semibold text-black flex items-center justify-between`}
+          />
+        </div>
       ) : type === "select" ? (
         <div className="w-full sm:flex-grow relative">
           <select

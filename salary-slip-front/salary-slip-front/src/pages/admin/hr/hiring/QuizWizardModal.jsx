@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import {
   CheckCircle2,
@@ -43,85 +43,95 @@ const EMPTY_FORM = {
   questions: [{ ...EMPTY_QUESTION, options: ["", "", "", ""], option_marks: [1, 0, 0, 0], correct_indices: [0] }],
 };
 
+const NO_REQUISITIONS = [];
+
+function buildWizardForm(editingQuiz, requisitions) {
+  if (editingQuiz) {
+    const rawQuestions = Array.isArray(editingQuiz.questions) && editingQuiz.questions.length > 0
+      ? editingQuiz.questions
+      : [{ ...EMPTY_QUESTION }];
+
+    const normalizedQuestions = rawQuestions.map((q) => {
+      const type = q.type || (Array.isArray(q.correct_indices) && q.correct_indices.length > 1 ? "msq" : "mcq");
+      const correctIndex = typeof q.correct_index === "number" ? q.correct_index : (q.correct_indices?.[0] ?? 0);
+      const correctIndices = Array.isArray(q.correct_indices) && q.correct_indices.length > 0
+        ? q.correct_indices
+        : [correctIndex];
+      const marks = Number(q.marks) || 1;
+      const opts = Array.isArray(q.options) && q.options.length >= 2
+        ? [...q.options]
+        : ["", "", "", ""];
+
+      // Normalize option_marks
+      let optMarks;
+      if (Array.isArray(q.option_marks) && q.option_marks.length === opts.length) {
+        optMarks = q.option_marks.map((m) => Number(m) || 0);
+      } else if (type === "msq") {
+        const count = correctIndices.length || 1;
+        const perOpt = Number((marks / count).toFixed(2));
+        optMarks = opts.map((_, oi) => (correctIndices.includes(oi) ? perOpt : 0));
+      } else {
+        optMarks = opts.map((_, oi) => (oi === correctIndex ? marks : 0));
+      }
+      
+      return {
+        text: q.text || "",
+        type,
+        marks,
+        options: opts,
+        option_marks: optMarks,
+        correct_index: correctIndex,
+        correct_indices: correctIndices,
+      };
+    });
+
+    const totalMarksSum = normalizedQuestions.reduce((acc, q) => acc + (Number(q.marks) || 1), 0);
+
+    return {
+      title: editingQuiz.title || "",
+      description: editingQuiz.description || "",
+      requisition_id: editingQuiz.requisition_id || "",
+      interview_id: editingQuiz.interview_id || "",
+      passing_score: editingQuiz.passing_score ?? 60,
+      total_marks_target: editingQuiz.total_marks_target || totalMarksSum || 10,
+      duration_minutes: editingQuiz.duration_minutes ?? 30,
+      max_violations: editingQuiz.max_violations ?? 3,
+      questions: normalizedQuestions,
+    };
+  }
+  return {
+    ...EMPTY_FORM,
+    requisition_id: requisitions[0]?.id || "",
+    questions: [{ ...EMPTY_QUESTION, options: ["", "", "", ""], option_marks: [1, 0, 0, 0], correct_indices: [0] }],
+  };
+}
+
 export default function QuizWizardModal({
   isOpen,
   onClose,
   onSave,
   editingQuiz = null,
   saving = false,
-  requisitions = [],
+  requisitions = NO_REQUISITIONS,
 }) {
   const [step, setStep] = useState(1); // 1: Details, 2: Questions (One-by-One)
   const [currentQIndex, setCurrentQIndex] = useState(0);
   const [form, setForm] = useState(EMPTY_FORM);
 
   // Initialize or reset form when modal opens or editingQuiz changes
-  useEffect(() => {
-    if (!isOpen) return;
-
-    if (editingQuiz) {
-      const rawQuestions = Array.isArray(editingQuiz.questions) && editingQuiz.questions.length > 0
-        ? editingQuiz.questions
-        : [{ ...EMPTY_QUESTION }];
-
-      const normalizedQuestions = rawQuestions.map((q) => {
-        const type = q.type || (Array.isArray(q.correct_indices) && q.correct_indices.length > 1 ? "msq" : "mcq");
-        const correctIndex = typeof q.correct_index === "number" ? q.correct_index : (q.correct_indices?.[0] ?? 0);
-        const correctIndices = Array.isArray(q.correct_indices) && q.correct_indices.length > 0
-          ? q.correct_indices
-          : [correctIndex];
-        const marks = Number(q.marks) || 1;
-        const opts = Array.isArray(q.options) && q.options.length >= 2
-          ? [...q.options]
-          : ["", "", "", ""];
-
-        // Normalize option_marks
-        let optMarks;
-        if (Array.isArray(q.option_marks) && q.option_marks.length === opts.length) {
-          optMarks = q.option_marks.map((m) => Number(m) || 0);
-        } else if (type === "msq") {
-          const count = correctIndices.length || 1;
-          const perOpt = Number((marks / count).toFixed(2));
-          optMarks = opts.map((_, oi) => (correctIndices.includes(oi) ? perOpt : 0));
-        } else {
-          optMarks = opts.map((_, oi) => (oi === correctIndex ? marks : 0));
-        }
-        
-        return {
-          text: q.text || "",
-          type,
-          marks,
-          options: opts,
-          option_marks: optMarks,
-          correct_index: correctIndex,
-          correct_indices: correctIndices,
-        };
-      });
-
-      const totalMarksSum = normalizedQuestions.reduce((acc, q) => acc + (Number(q.marks) || 1), 0);
-
-      setForm({
-        title: editingQuiz.title || "",
-        description: editingQuiz.description || "",
-        requisition_id: editingQuiz.requisition_id || "",
-        interview_id: editingQuiz.interview_id || "",
-        passing_score: editingQuiz.passing_score ?? 60,
-        total_marks_target: editingQuiz.total_marks_target || totalMarksSum || 10,
-        duration_minutes: editingQuiz.duration_minutes ?? 30,
-        max_violations: editingQuiz.max_violations ?? 3,
-        questions: normalizedQuestions,
-      });
-    } else {
-      setForm({
-        ...EMPTY_FORM,
-        requisition_id: requisitions[0]?.id || "",
-        questions: [{ ...EMPTY_QUESTION, options: ["", "", "", ""], option_marks: [1, 0, 0, 0], correct_indices: [0] }],
-      });
+  const [resetInputs, setResetInputs] = useState({ isOpen: false, editingQuiz: null, requisitions: null });
+  if (
+    resetInputs.isOpen !== isOpen
+    || resetInputs.editingQuiz !== editingQuiz
+    || resetInputs.requisitions !== requisitions
+  ) {
+    setResetInputs({ isOpen, editingQuiz, requisitions });
+    if (isOpen) {
+      setForm(buildWizardForm(editingQuiz, requisitions));
+      setStep(1);
+      setCurrentQIndex(0);
     }
-
-    setStep(1);
-    setCurrentQIndex(0);
-  }, [isOpen, editingQuiz, requisitions]);
+  }
 
   // Derived metrics
   const marksCovered = useMemo(() => {

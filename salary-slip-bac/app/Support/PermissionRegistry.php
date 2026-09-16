@@ -568,12 +568,6 @@ class PermissionRegistry
             'description' => 'Open the HR dashboard.',
             'implies' => ['hr.dashboard.read'],
         ],
-        'ui.hr.organization' => [
-            'type' => self::TYPE_PAGE, 'label' => 'Organization', 'order' => 15,
-            'parent' => 'ui.hr', 'route' => '/admin/hr/organization',
-            'description' => 'Open the HR organization workspace.',
-            'implies' => ['hr.dashboard.read'],
-        ],
         'ui.hr.hiring' => [
             'type' => self::TYPE_PAGE, 'label' => 'Hiring', 'order' => 20,
             'parent' => 'ui.hr', 'route' => '/admin/hr/hiring',
@@ -761,10 +755,6 @@ class PermissionRegistry
             'description' => 'Record interview feedback.',
             'implies' => ['hr.interview.feedback'],
             'api' => [
-                ['POST', '/api/hr/interviews/store'],
-                ['PUT', '/api/hr/interviews/update/{id}'],
-                ['DELETE', '/api/hr/interviews/delete/{id}'],
-                ['POST', '/api/hr/interviews/reschedule/{id}'],
                 ['POST', '/api/hr/interviews/feedback/{id}'],
             ],
         ],
@@ -846,6 +836,27 @@ class PermissionRegistry
             'parent' => 'ui.hr.organization',
             'description' => 'Read which employees are assigned to each unit.',
             'implies' => ['org.unit_assignment.read'],
+        ],
+        'ui.hr.organization.assignments.create' => [
+            'type' => self::TYPE_ACTION, 'label' => 'Assign Employee', 'order' => 10,
+            'parent' => 'ui.hr.organization.assignments', 'sensitivity' => self::SENSITIVITY_SENSITIVE,
+            'description' => 'Assign an employee to an organization unit.',
+            'implies' => ['org.unit_assignment.create'],
+            'api' => [['POST', '/api/v1/admin/organization/org-units/assignments']],
+        ],
+        'ui.hr.organization.assignments.update' => [
+            'type' => self::TYPE_ACTION, 'label' => 'Edit Assignment', 'order' => 20,
+            'parent' => 'ui.hr.organization.assignments', 'sensitivity' => self::SENSITIVITY_SENSITIVE,
+            'description' => 'Change an employee organization assignment.',
+            'implies' => ['org.unit_assignment.update'],
+            'api' => [['PUT', '/api/v1/admin/organization/org-units/assignments/{assignmentId}']],
+        ],
+        'ui.hr.organization.assignments.delete' => [
+            'type' => self::TYPE_ACTION, 'label' => 'Remove Assignment', 'order' => 30,
+            'parent' => 'ui.hr.organization.assignments', 'sensitivity' => self::SENSITIVITY_SENSITIVE,
+            'description' => 'Remove an employee organization assignment.',
+            'implies' => ['org.unit_assignment.delete'],
+            'api' => [['DELETE', '/api/v1/admin/organization/org-units/assignments/{assignmentId}']],
         ],
         'ui.hr.organization.promotions_transfers' => [
             'type' => self::TYPE_FEATURE, 'label' => 'Promotions & Transfers', 'order' => 60,
@@ -1500,6 +1511,27 @@ class PermissionRegistry
                 ['POST', '/api/v1/emergency-access/{id}/revoke'],
             ],
         ],
+        'ui.access_control.privileged_access' => [
+            'type' => self::TYPE_FEATURE, 'label' => 'Privileged Access Review', 'order' => 75,
+            'parent' => 'ui.access_control', 'sensitivity' => self::SENSITIVITY_CRITICAL,
+            'description' => 'Review break-glass, just-in-time and impersonation requests.',
+            'implies' => ['admin.privileged_access.read'],
+            'api' => [
+                ['GET', '/api/v1/authorization/privileged-access'],
+                ['GET', '/api/v1/authorization/privileged-access/stats'],
+                ['GET', '/api/v1/authorization/privileged-access/impersonation-sessions/{targetUserId}'],
+            ],
+        ],
+        'ui.access_control.privileged_access.approve' => [
+            'type' => self::TYPE_ACTION, 'label' => 'Approve Privileged Access', 'order' => 10,
+            'parent' => 'ui.access_control.privileged_access', 'sensitivity' => self::SENSITIVITY_CRITICAL,
+            'description' => 'Approve or reject a privileged access request.',
+            'implies' => ['admin.privileged_access.approve'],
+            'api' => [
+                ['POST', '/api/v1/authorization/privileged-access/{id}/approve'],
+                ['POST', '/api/v1/authorization/privileged-access/{id}/reject'],
+            ],
+        ],
 
         /* ------------------------------------------------------------ profile */
 
@@ -1549,6 +1581,46 @@ class PermissionRegistry
             'description' => 'Edit the statutory details of a company.',
             'implies' => ['org.master.update'],
             'api' => [['PATCH', '/api/v1/admin/organization/enterprise/{id}']],
+        ],
+        'ui.organization.enterprises' => [
+            'type' => self::TYPE_FEATURE, 'label' => 'Enterprises', 'order' => 15,
+            'parent' => 'ui.organization',
+            'description' => 'Read enterprise groups and their member companies.',
+            'implies' => ['org.enterprise.read'],
+            'api' => [
+                ['GET', '/api/v1/admin/organization/enterprises'],
+                ['GET', '/api/v1/admin/organization/enterprises/companies'],
+                ['GET', '/api/v1/admin/organization/enterprises/{id}'],
+                ['GET', '/api/v1/admin/organization/enterprises/{id}/history'],
+            ],
+        ],
+        'ui.organization.enterprises.create' => [
+            'type' => self::TYPE_ACTION, 'label' => 'Create Enterprise', 'order' => 10,
+            'parent' => 'ui.organization.enterprises', 'sensitivity' => self::SENSITIVITY_CRITICAL,
+            'description' => 'Create an enterprise group.',
+            'implies' => ['org.enterprise.create'],
+            'api' => [['POST', '/api/v1/admin/organization/enterprises']],
+        ],
+        'ui.organization.enterprises.update' => [
+            'type' => self::TYPE_ACTION, 'label' => 'Update Enterprise', 'order' => 20,
+            'parent' => 'ui.organization.enterprises', 'sensitivity' => self::SENSITIVITY_CRITICAL,
+            'description' => 'Edit an enterprise group.',
+            'implies' => ['org.enterprise.update'],
+            'api' => [['PUT', '/api/v1/admin/organization/enterprises/{id}']],
+        ],
+        'ui.organization.enterprises.status' => [
+            'type' => self::TYPE_ACTION, 'label' => 'Change Enterprise Status', 'order' => 30,
+            'parent' => 'ui.organization.enterprises', 'sensitivity' => self::SENSITIVITY_CRITICAL,
+            'description' => 'Activate or deactivate an enterprise group.',
+            'implies' => ['org.enterprise.status'],
+            'api' => [['PATCH', '/api/v1/admin/organization/enterprises/{id}/status']],
+        ],
+        'ui.organization.enterprises.delete' => [
+            'type' => self::TYPE_ACTION, 'label' => 'Delete Enterprise', 'order' => 40,
+            'parent' => 'ui.organization.enterprises', 'sensitivity' => self::SENSITIVITY_CRITICAL,
+            'description' => 'Delete an enterprise group.',
+            'implies' => ['org.enterprise.delete'],
+            'api' => [['DELETE', '/api/v1/admin/organization/enterprises/{id}']],
         ],
         'ui.organization.legal_entities' => [
             'type' => self::TYPE_PAGE, 'label' => 'Legal Entities', 'order' => 20,

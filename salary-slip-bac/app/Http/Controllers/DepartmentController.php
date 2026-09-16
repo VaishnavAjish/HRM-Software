@@ -76,6 +76,7 @@ class DepartmentController extends Controller
                 "department_id" => $department->id,
                 "user_id" => $data["manager_id"]
             ]);
+            User::where('id', $data['manager_id'])->update(['designation' => 'Manager']);
         }
 
         return response()->json([
@@ -289,6 +290,16 @@ class DepartmentController extends Controller
                     "user_id" => $userId,
                     "department_id" => $deptId
                 ]);
+                Department::where('id', $deptId)->update(['manager_id' => $userId]);
+            }
+
+            // Set Department Head's designation as Manager in users table if assigned, else clear if not managing any
+            if (!empty($departmentIds)) {
+                User::where('id', $userId)->update(['designation' => 'Manager']);
+            } else {
+                User::where('id', $userId)->where(function($q) {
+                    $q->where('designation', 'Manager')->orWhere('designation', 'manager');
+                })->update(['designation' => null]);
             }
         });
 
@@ -307,9 +318,21 @@ class DepartmentController extends Controller
 
         if ($request->filled("department_id")) {
             $query->where("department_id", $request->department_id);
+            Department::where("id", $request->department_id)->where("manager_id", $userId)->update(["manager_id" => null]);
+        } else {
+            Department::where("manager_id", $userId)->update(["manager_id" => null]);
         }
 
         $query->delete();
+
+        $stillManaging = DepartmentManager::where("user_id", $userId)->exists()
+            || Department::where("manager_id", $userId)->exists();
+
+        if (!$stillManaging) {
+            User::where("id", $userId)->where(function($q) {
+                $q->where('designation', 'Manager')->orWhere('designation', 'manager');
+            })->update(["designation" => null]);
+        }
 
         return response()->json([
             "status" => true,

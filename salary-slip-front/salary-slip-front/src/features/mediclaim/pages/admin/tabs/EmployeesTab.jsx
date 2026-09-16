@@ -1,12 +1,11 @@
 import { useEffect, useState } from "react";
-import { Plus, Users } from "lucide-react";
+import { Users, ShieldCheck, Clock, IdCard, Eye, Sparkles, Search, RotateCcw } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAuth } from "../../../../../context/AuthContext";
-import { useCompany } from "../../../../../context/CompanyContext";
-import { salaryApi } from "../../../../../utils/api";
 import Drawer from "../../../../../components/ui/Drawer";
 import Button from "../../../../../components/ui/Button";
 import Badge from "../../../../../components/ui/Badge";
+import DocumentViewerModal from "../../../../../components/documents/DocumentViewerModal";
 import { useMediclaimAuthorization } from "../../../hooks/useMediclaimAuthorization";
 import { mediclaimApi } from "../../../services/mediclaimApi";
 import ClaimsTable from "../../../components/ClaimsTable";
@@ -21,38 +20,81 @@ import { formatClaimDate } from "../../../utils/formatters";
 const inputClass =
   "w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500";
 
-const PER_PAGE = 15;
+const DEFAULT_PER_PAGE = 15;
 
 const EMPTY_FORM = {
-  employeeUserId: "",
   policyVersionId: "",
   status: "ACTIVE",
   effectiveFrom: "",
   effectiveTo: "",
 };
 
-function membersOf(enrollment) {
-  return enrollment?.members || enrollment?.coveredMembers || enrollment?.covered_members || [];
+const STATUS_TABS = [
+  { key: "all", label: "All" },
+  { key: "not_eligible", label: "Not Eligible" },
+  { key: "pending", label: "Pending" },
+  { key: "completed", label: "Completed" },
+];
+
+const STATUS_META = {
+  not_eligible: { label: "Not Eligible", variant: "gray" },
+  pending: { label: "Pending", variant: "yellow" },
+  completed: { label: "Completed", variant: "green" },
+};
+
+function memberName(member) {
+  return member?.fullName || member?.full_name || member?.name || "";
+}
+
+function StatusBadge({ status }) {
+  const meta = STATUS_META[status] || { label: status || "—", variant: "gray" };
+  return <Badge variant={meta.variant}>{meta.label}</Badge>;
 }
 
 /**
- * Company-wide enrollments (employee <-> policy version) list, with
- * drill-down into a member's covered-family list. There is no dedicated
- * "members for this enrollment" endpoint in the backend plan (B4's route
- * table has only `GET /me/members`, self-scoped) — covered members belong to
- * an enrollment via the `mediclaim_members.enrollment_id` FK (B1, table 11),
- * so the drill-down reads whatever the enrollment record itself returns
- * nested (`members`/`coveredMembers`), rather than inventing a second
- * network call to an endpoint that isn't in the plan.
+ * Company-wide Mediclaim status across every active employee — driven by
+ * `mediclaimApi.adminEmployees()` (`Admin\EmployeeController::index()`),
+ * which starts from the `users` table itself rather than only listing
+ * employees who already happen to have a `mediclaim_enrollments` row.
+ * Enrollment (and the employee's own "self" member + card) is now
+ * provisioned lazily the first time an eligible employee actually uses the
+ * self-service module, so most eligible-but-untouched employees have no
+ * enrollment at all yet — `mediclaimStatus` (not_eligible | pending |
+ * completed) is what actually drives this screen, not enrollment existence.
+ *
+ * Clicking a row opens the full employee detail — coverage window, every
+ * covered family member (including the auto-created "self" row), issued
+ * cards, and change-request history — via `adminEmployeeDetail()`.
  */
 export default function EmployeesTab() {
   const { user } = useAuth();
-  const { companyScope } = useCompany();
   const { can } = useMediclaimAuthorization();
 
-  const [state, setState] = useState({ loading: true, rows: [], total: 0, error: null });
+  const accessToken = user?.accessToken;
+  const tokenType = user?.tokenType;
+  const [result, setResult] = useState({ key: null, rows: [], total: 0, error: null, departments: [], statusCounts: {} });
   const [page, setPage] = useState(1);
-  const [selectedEnrollment, setSelectedEnrollment] = useState(null);
+  const [perPage, setPerPage] = useState(DEFAULT_PER_PAGE);
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [departmentFilter, setDepartmentFilter] = useState("");
+  const [reloadToken, setReloadToken] = useState(0);
+  const requestKey = JSON.stringify([
+    accessToken ?? "", tokenType ?? "", page, perPage, statusFilter, debouncedSearch, departmentFilter, reloadToken,
+  ]);
+
+  // Debounce the search box so typing doesn't fire a request per keystroke —
+  // the backend re-scans every company-scoped employee on each call (see
+  // `Admin\EmployeeController::index()`'s docblock on why status can't be
+  // pushed into SQL), so this matters more here than on a plain DB query.
+  useEffect(() => {
+    const handle = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(handle);
+  }, [search]);
+
+  const [detail, setDetail] = useState({ open: false, loading: false, data: null, error: null, employeeName: "" });
+  const [viewerDoc, setViewerDoc] = useState(null);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
@@ -60,46 +102,103 @@ export default function EmployeesTab() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
 
-  const [employees, setEmployees] = useState([]);
   const [policyVersionOptions, setPolicyVersionOptions] = useState([]);
+  const [bulkIssuing, setBulkIssuing] = useState(false);
 
-  const canCreate = can("mediclaim.enrollment.create");
+  const canIssue = can("mediclaim.enrollment.create");
   const canUpdate = can("mediclaim.enrollment.update");
 
-  const load = () => {
-    if (!user?.accessToken) return;
-    setState((prev) => ({ ...prev, loading: true, error: null }));
-    mediclaimApi.enrollments({ page, perPage: PER_PAGE }, user.accessToken, user.tokenType)
+  useEffect(() => {
+    if (!accessToken) return undefined;
+    let cancelled = false;
+    mediclaimApi.adminEmployees(
+      {
+        page,
+        perPage,
+        status: statusFilter === "all" ? undefined : statusFilter,
+        search: debouncedSearch || undefined,
+        department: departmentFilter || undefined,
+      },
+      accessToken,
+      tokenType,
+    )
       .then((res) => {
+        if (cancelled) return;
         const payload = res?.data;
         const rows = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
         const total = payload?.total ?? rows.length;
-        setState({ loading: false, rows, total, error: null });
+        const departments = Array.isArray(payload?.departments) ? payload.departments : [];
+        const statusCounts = payload?.statusCounts && typeof payload.statusCounts === "object" ? payload.statusCounts : {};
+        setResult({ key: requestKey, rows, total, error: null, departments, statusCounts });
       })
       .catch((err) => {
-        setState({ loading: false, rows: [], total: 0, error: err?.message || "Failed to load enrollments." });
+        if (cancelled) return;
+        setResult({ key: requestKey, rows: [], total: 0, error: err?.message || "Failed to load employees.", departments: [], statusCounts: {} });
       });
+    return () => { cancelled = true; };
+  }, [accessToken, tokenType, page, perPage, statusFilter, debouncedSearch, departmentFilter, requestKey]);
+
+  const loading = result.key !== requestKey;
+  const state = { loading, rows: result.rows, total: result.total, error: loading ? null : result.error };
+  const departmentOptions = result.departments;
+  const statusCounts = result.statusCounts;
+  const hasActiveFilters = statusFilter !== "all" || Boolean(search) || Boolean(departmentFilter);
+
+  const resetFilters = () => {
+    setStatusFilter("all");
+    setSearch("");
+    setDepartmentFilter("");
+    setPage(1);
   };
 
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, page]);
+  const load = () => setReloadToken((n) => n + 1);
 
-  const openCreate = () => {
-    setEditingId(null);
-    setForm(EMPTY_FORM);
+  const openDetail = (row) => {
+    setDetail({ open: true, loading: true, data: null, error: null, employeeName: row.name });
+    mediclaimApi.adminEmployeeDetail(row.id, user?.accessToken, user?.tokenType)
+      .then((res) => setDetail((prev) => ({ ...prev, loading: false, data: res?.data, error: null })))
+      .catch((err) => setDetail((prev) => ({ ...prev, loading: false, error: err?.message || "Failed to load employee details." })));
+  };
+
+  // Provisions coverage + a card for every eligible employee, company-wide,
+  // right now — rather than waiting for each one to individually open the
+  // module. Safe to run more than once: already-provisioned employees are
+  // cheap no-ops on the backend.
+  const runBulkIssue = async () => {
+    setBulkIssuing(true);
+    try {
+      const res = await mediclaimApi.bulkIssueEmployeeCards(user?.accessToken, user?.tokenType);
+      const summary = res?.data || {};
+      toast.success(
+        `Processed ${summary.processed ?? 0}: ${summary.issued ?? 0} issued now, `
+        + `${summary.alreadyIssued ?? 0} already had a card`
+        + (summary.failed ? `, ${summary.failed} failed (see Audit History)` : "")
+      );
+      load();
+    } catch (err) {
+      toast.error(err?.message || "Failed to issue Mediclaim cards.");
+    } finally {
+      setBulkIssuing(false);
+    }
+  };
+
+  // Enrollment is now provisioned automatically the first time an eligible
+  // employee opens the module (see `PolicyEligibilityService::
+  // resolveOrCreateEnrollment()`), so there's no "New Enrollment" creation
+  // flow here anymore — this drawer only ever edits an enrollment that
+  // already exists, opened from within the employee detail panel below.
+  const openEditEnrollment = (enrollment) => {
+    setEditingId(enrollment.id ?? enrollment.enrollmentId);
+    setForm({
+      policyVersionId: String(enrollment.policyVersionId ?? enrollment.policy_version_id ?? ""),
+      status: enrollment.status || "ACTIVE",
+      effectiveFrom: enrollment.effectiveFrom || enrollment.effective_from || "",
+      effectiveTo: enrollment.effectiveTo || enrollment.effective_to || "",
+    });
     setFormError(null);
     setDrawerOpen(true);
 
     if (user?.accessToken) {
-      salaryApi.getAllEmployees(user.accessToken, user.tokenType, { status: "Active", per_page: 200 }, companyScope?.companyId)
-        .then((res) => {
-          const rows = res?.data?.data || res?.data || [];
-          setEmployees(rows.map((r) => ({ id: r.id, name: r.name })));
-        })
-        .catch(() => setEmployees([]));
-
       mediclaimApi.policies({}, user.accessToken, user.tokenType)
         .then((res) => {
           const payload = res?.data;
@@ -116,24 +215,7 @@ export default function EmployeesTab() {
     }
   };
 
-  const openEdit = (row) => {
-    setEditingId(row.id ?? row.enrollmentId);
-    setForm({
-      employeeUserId: String(row.employeeUserId ?? row.employee_user_id ?? ""),
-      policyVersionId: String(row.policyVersionId ?? row.policy_version_id ?? ""),
-      status: row.status || "ACTIVE",
-      effectiveFrom: row.effectiveFrom || row.effective_from || "",
-      effectiveTo: row.effectiveTo || row.effective_to || "",
-    });
-    setFormError(null);
-    setDrawerOpen(true);
-  };
-
   const submit = async () => {
-    if (!editingId && !form.employeeUserId) {
-      setFormError("Select the employee to enroll.");
-      return;
-    }
     if (!form.policyVersionId) {
       setFormError("Select the policy version.");
       return;
@@ -143,21 +225,18 @@ export default function EmployeesTab() {
     setFormError(null);
     try {
       const payload = {
-        employeeUserId: form.employeeUserId || undefined,
         policyVersionId: form.policyVersionId,
         status: form.status,
         effectiveFrom: form.effectiveFrom || undefined,
         effectiveTo: form.effectiveTo || undefined,
       };
-      if (editingId) {
-        await mediclaimApi.updateEnrollment(editingId, payload, user?.accessToken, user?.tokenType);
-        toast.success("Enrollment updated");
-      } else {
-        await mediclaimApi.createEnrollment(payload, user?.accessToken, user?.tokenType);
-        toast.success("Enrollment created");
-      }
+      await mediclaimApi.updateEnrollment(editingId, payload, user?.accessToken, user?.tokenType);
+      toast.success("Enrollment updated");
       setDrawerOpen(false);
       load();
+      if (detail.open && detail.data?.employee?.id) {
+        openDetail({ id: detail.data.employee.id, name: detail.employeeName });
+      }
     } catch (err) {
       setFormError(err?.message || "Failed to save the enrollment.");
     } finally {
@@ -166,108 +245,142 @@ export default function EmployeesTab() {
   };
 
   const columns = [
-    { key: "employee", label: "Employee", render: (row) => row.employeeName || row.employee?.name || row.employee_snapshot?.name || "—" },
-    { key: "policy", label: "Policy", render: (row) => row.policyName || row.policy?.name || row.policyVersion?.policy?.name || row.policyCode || "—" },
-    { key: "status", label: "Status", render: (row) => <Badge variant={String(row.status || "").toLowerCase() === "active" ? "green" : "gray"}>{row.status || "—"}</Badge> },
-    { key: "effective", label: "Effective", render: (row) => `${formatClaimDate(row.effectiveFrom || row.effective_from)} – ${formatClaimDate(row.effectiveTo || row.effective_to) || "Ongoing"}` },
-    { key: "members", label: "Members", render: (row) => membersOf(row).length },
     {
-      key: "actions",
-      label: "",
-      headerClassName: "text-right",
-      className: "text-right",
-      render: (row) => canUpdate && (
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); openEdit(row); }}
-          className="text-xs font-semibold text-brand-600 hover:underline dark:text-brand-400"
-        >
-          Edit
-        </button>
+      key: "employee",
+      label: "Employee",
+      render: (row) => (
+        <div>
+          <p className="font-medium text-gray-900 dark:text-white">{row.name || "—"}</p>
+          <p className="text-xs text-gray-400">{row.empCode} {row.department ? `· ${row.department}` : ""}</p>
+        </div>
       ),
+    },
+    { key: "status", label: "Status", render: (row) => <StatusBadge status={row.mediclaimStatus} /> },
+    {
+      key: "eligibility",
+      label: "Eligibility",
+      render: (row) => row.eligibility?.eligible
+        ? <span className="text-xs text-gray-500 dark:text-gray-400">Since {formatClaimDate(row.eligibility?.eligible_from)}</span>
+        : <span className="text-xs text-amber-600 dark:text-amber-400">{row.eligibility?.days_remaining ?? 0} day(s) left</span>,
+    },
+    { key: "members", label: "Members", render: (row) => row.activeMembersCount ?? 0 },
+    {
+      key: "policy",
+      label: "Policy",
+      render: (row) => row.enrollment?.policyVersion?.policy?.name || row.enrollment?.policy_version?.policy?.name || "—",
     },
   ];
 
-  return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-gray-500 dark:text-gray-400">
-          Every employee enrolled in a Mediclaim policy version, company-wide. Click a row to view covered members.
-        </p>
-        {canCreate && (
-          <Button size="sm" icon={<Plus size={14} />} onClick={openCreate}>New Enrollment</Button>
+  const headerContent = (
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative w-full sm:w-64">
+          <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+            placeholder="Search name, code, email…"
+            className="w-full rounded-lg border border-gray-300 bg-white py-1.5 pl-8 pr-3 text-xs text-gray-900 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+          />
+        </div>
+
+        <select
+          value={departmentFilter}
+          onChange={(e) => { setDepartmentFilter(e.target.value); setPage(1); }}
+          className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2.5 py-1.5 text-xs text-gray-700 dark:text-gray-200"
+        >
+          <option value="">All Departments</option>
+          {departmentOptions.map((dept) => (
+            <option key={dept} value={dept}>{dept}</option>
+          ))}
+        </select>
+
+        <div className="mx-1 hidden h-5 w-px bg-gray-200 dark:bg-white/10 sm:block" />
+
+        <div className="flex w-fit gap-1 rounded-xl bg-gray-100 p-1 dark:bg-gray-700/50">
+          {STATUS_TABS.map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => { setStatusFilter(tab.key); setPage(1); }}
+              className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+                statusFilter === tab.key
+                  ? "bg-white text-brand-600 shadow-sm dark:bg-gray-800 dark:text-brand-400"
+                  : "text-gray-500 hover:text-gray-700 dark:text-gray-400"
+              }`}
+            >
+              {tab.label} ({statusCounts[tab.key] ?? 0})
+            </button>
+          ))}
+        </div>
+
+        {hasActiveFilters && (
+          <button
+            onClick={resetFilters}
+            className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-gray-500 hover:bg-gray-100 dark:text-slate-400 dark:hover:bg-white/5"
+          >
+            <RotateCcw size={12} /> Reset
+          </button>
         )}
       </div>
 
+      {canIssue && (
+        <Button
+          size="sm"
+          variant="secondary"
+          icon={<Sparkles size={14} />}
+          onClick={runBulkIssue}
+          disabled={bulkIssuing}
+        >
+          {bulkIssuing ? "Issuing…" : "Issue Mediclaim to All Eligible Employees"}
+        </Button>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="flex h-full min-h-0 flex-col">
       <ClaimsTable
         columns={columns}
         rows={state.rows}
         loading={state.loading}
         error={state.error}
-        emptyMessage="No employees are enrolled yet."
-        getRowKey={(row) => row.id ?? row.enrollmentId}
-        onRowClick={setSelectedEnrollment}
+        emptyMessage="No employees match this filter."
+        headerContent={headerContent}
+        getRowKey={(row) => row.id}
+        onRowClick={openDetail}
         page={page}
-        perPage={PER_PAGE}
+        perPage={perPage}
         total={state.total}
         onPageChange={setPage}
+        onPageSizeChange={(size) => { setPerPage(size); setPage(1); }}
+        fillHeight
       />
 
       <Drawer
-        isOpen={Boolean(selectedEnrollment)}
-        onClose={() => setSelectedEnrollment(null)}
-        title={selectedEnrollment?.employeeName || selectedEnrollment?.employee?.name || "Enrollment"}
-        subtitle="Covered family members"
-        size="md"
+        isOpen={detail.open}
+        onClose={() => setDetail({ open: false, loading: false, data: null, error: null, employeeName: "" })}
+        title={detail.employeeName || "Employee"}
+        subtitle="Mediclaim profile"
+        size="lg"
       >
-        {selectedEnrollment && (
-          <div className="space-y-3">
-            <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 text-xs dark:border-gray-700 dark:bg-gray-900/30">
-              <p className="text-gray-500 dark:text-gray-400">
-                Policy: <span className="font-medium text-gray-800 dark:text-gray-100">{selectedEnrollment.policyName || selectedEnrollment.policy?.name || selectedEnrollment.policyVersion?.policy?.name || selectedEnrollment.policy_version?.policy?.name || "—"}</span>
-              </p>
-              <p className="mt-1 text-gray-500 dark:text-gray-400">
-                Status: <Badge variant={String(selectedEnrollment.status || "").toLowerCase() === "active" ? "green" : "gray"}>{selectedEnrollment.status || "—"}</Badge>
-              </p>
-            </div>
-
-            {membersOf(selectedEnrollment).length === 0 ? (
-              <div className="flex flex-col items-center gap-2 py-10 text-center">
-                <Users size={28} className="text-gray-300 dark:text-gray-600" />
-                <p className="text-sm text-gray-500 dark:text-gray-400">No covered members recorded for this enrollment yet.</p>
-              </div>
-            ) : (
-              <div className="overflow-hidden rounded-xl border border-gray-100 dark:border-gray-700">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-gray-700/50 dark:text-gray-400">
-                    <tr>
-                      <th className="px-3 py-2 text-left">Name</th>
-                      <th className="px-3 py-2 text-left">Relationship</th>
-                      <th className="px-3 py-2 text-left">Date of Birth</th>
-                      <th className="px-3 py-2 text-left">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                    {membersOf(selectedEnrollment).map((member) => (
-                      <tr key={member.id}>
-                        <td className="px-3 py-2 font-medium text-gray-800 dark:text-gray-100">{member.fullName || member.full_name || member.name}</td>
-                        <td className="px-3 py-2 text-gray-600 dark:text-gray-300">{member.relationshipType || member.relationship_type}</td>
-                        <td className="px-3 py-2 text-gray-600 dark:text-gray-300">{formatClaimDate(member.dateOfBirth || member.date_of_birth)}</td>
-                        <td className="px-3 py-2"><Badge variant={member.status === "active" ? "green" : "gray"}>{member.status || "—"}</Badge></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
+        {detail.loading ? (
+          <p className="py-10 text-center text-sm text-gray-400">Loading…</p>
+        ) : detail.error ? (
+          <p className="py-10 text-center text-sm text-red-500">{detail.error}</p>
+        ) : detail.data ? (
+          <EmployeeDetailPanel
+            data={detail.data}
+            canUpdate={canUpdate}
+            onEditEnrollment={openEditEnrollment}
+            onViewDocument={setViewerDoc}
+          />
+        ) : null}
       </Drawer>
 
       <Drawer
         isOpen={drawerOpen}
         onClose={() => !saving && setDrawerOpen(false)}
-        title={editingId ? "Edit Enrollment" : "New Enrollment"}
+        title="Edit Enrollment"
         size="md"
         footer={
           <div className="flex justify-end gap-2">
@@ -277,14 +390,6 @@ export default function EmployeesTab() {
         }
       >
         <div className="space-y-4">
-          {!editingId && (
-            <Field label="Employee" required>
-              <select className={inputClass} value={form.employeeUserId} onChange={(e) => setForm((f) => ({ ...f, employeeUserId: e.target.value }))}>
-                <option value="">— Select employee —</option>
-                {employees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
-              </select>
-            </Field>
-          )}
           <Field label="Policy Version" required>
             <select className={inputClass} value={form.policyVersionId} onChange={(e) => setForm((f) => ({ ...f, policyVersionId: e.target.value }))}>
               <option value="">— Select policy version —</option>
@@ -308,6 +413,171 @@ export default function EmployeesTab() {
           {formError && <p className="text-xs text-red-500">{formError}</p>}
         </div>
       </Drawer>
+
+      <DocumentViewerModal document={viewerDoc} open={Boolean(viewerDoc)} onClose={() => setViewerDoc(null)} />
+    </div>
+  );
+}
+
+function EmployeeDetailPanel({ data, canUpdate, onEditEnrollment, onViewDocument }) {
+  const employee = data.employee || {};
+  const enrollment = data.enrollment;
+  const members = data.members || [];
+  const cards = data.cards || [];
+  const changeRequests = data.changeRequests || [];
+  const eligibility = employee.eligibility;
+
+  return (
+    <div className="space-y-5">
+      <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 text-xs dark:border-gray-700 dark:bg-gray-900/30">
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">{employee.name}</p>
+          <StatusBadge status={employee.mediclaimStatus} />
+        </div>
+        <div className="mt-2 grid grid-cols-2 gap-2 text-gray-500 dark:text-gray-400 sm:grid-cols-3">
+          <p>Code: <span className="text-gray-700 dark:text-gray-200">{employee.empCode || "—"}</span></p>
+          <p>Department: <span className="text-gray-700 dark:text-gray-200">{employee.department || "—"}</span></p>
+          <p>Designation: <span className="text-gray-700 dark:text-gray-200">{employee.designation || "—"}</span></p>
+          <p>Company: <span className="text-gray-700 dark:text-gray-200">{employee.companyCode || "—"}</span></p>
+          <p>Joined: <span className="text-gray-700 dark:text-gray-200">{formatClaimDate(employee.joiningDate) || "—"}</span></p>
+          <p>Mobile: <span className="text-gray-700 dark:text-gray-200">{employee.mobileNumber || "—"}</span></p>
+        </div>
+        {eligibility && !eligibility.eligible && (
+          <div className="mt-2 flex items-center gap-1.5 rounded-lg bg-amber-50 px-2 py-1.5 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400">
+            <Clock size={12} />
+            Becomes eligible in {eligibility.days_remaining} day(s), on {formatClaimDate(eligibility.eligible_from)}.
+          </div>
+        )}
+      </div>
+
+      <div>
+        <div className="mb-2 flex items-center justify-between">
+          <p className="flex items-center gap-1.5 text-sm font-semibold text-gray-700 dark:text-gray-200">
+            <ShieldCheck size={15} /> Coverage
+          </p>
+          {enrollment && canUpdate && (
+            <button
+              type="button"
+              onClick={() => onEditEnrollment(enrollment)}
+              className="text-xs font-semibold text-brand-600 hover:underline dark:text-brand-400"
+            >
+              Edit Enrollment
+            </button>
+          )}
+        </div>
+        {enrollment ? (
+          <div className="rounded-xl border border-gray-100 bg-white p-3 text-xs dark:border-gray-700 dark:bg-gray-800">
+            <p className="text-gray-500 dark:text-gray-400">
+              Policy: <span className="font-medium text-gray-800 dark:text-gray-100">
+                {enrollment.policyVersion?.policy?.name || enrollment.policy_version?.policy?.name || "—"}
+              </span>
+            </p>
+            <p className="mt-1 text-gray-500 dark:text-gray-400">
+              Status: <Badge variant={String(enrollment.status || "").toLowerCase() === "active" ? "green" : "gray"}>{enrollment.status || "—"}</Badge>
+              <span className="ml-3">Enrolled: {formatClaimDate(enrollment.enrolledAt || enrollment.enrolled_at)}</span>
+            </p>
+          </div>
+        ) : (
+          <p className="text-xs text-gray-400">No enrollment on file yet — coverage begins automatically once the employee opens the Mediclaim module.</p>
+        )}
+      </div>
+
+      <div>
+        <p className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-gray-700 dark:text-gray-200">
+          <Users size={15} /> Family Members ({members.length})
+        </p>
+        {members.length === 0 ? (
+          <p className="text-xs text-gray-400">No covered members recorded yet.</p>
+        ) : (
+          <div className="overflow-hidden rounded-xl border border-gray-100 dark:border-gray-700">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-gray-700/50 dark:text-gray-400">
+                <tr>
+                  <th className="px-3 py-2 text-left">Name</th>
+                  <th className="px-3 py-2 text-left">Relationship</th>
+                  <th className="px-3 py-2 text-left">Date of Birth</th>
+                  <th className="px-3 py-2 text-left">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                {members.map((member) => (
+                  <tr key={member.id}>
+                    <td className="px-3 py-2 font-medium text-gray-800 dark:text-gray-100">{memberName(member)}</td>
+                    <td className="px-3 py-2 text-gray-600 dark:text-gray-300">{member.relationshipType || member.relationship_type}</td>
+                    <td className="px-3 py-2 text-gray-600 dark:text-gray-300">{formatClaimDate(member.dateOfBirth || member.date_of_birth)}</td>
+                    <td className="px-3 py-2"><Badge variant={member.status === "active" ? "green" : "gray"}>{member.status || "—"}</Badge></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <div>
+        <p className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-gray-700 dark:text-gray-200">
+          <IdCard size={15} /> Mediclaim Cards ({cards.length})
+        </p>
+        {cards.length === 0 ? (
+          <p className="text-xs text-gray-400">No card issued yet. A card for the employee is generated automatically once they submit their family member details.</p>
+        ) : (
+          <div className="space-y-1.5">
+            {cards.map((card) => {
+              const member = members.find((m) => String(m.id) === String(card.memberId || card.member_id));
+              const documentId = card.documentId || card.document_id;
+              return (
+                <div key={card.id} className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2 text-xs dark:border-gray-700">
+                  <div>
+                    <p className="font-medium text-gray-800 dark:text-gray-100">
+                      {member ? memberName(member) : "—"} <span className="text-gray-400">· {card.cardNumber || card.card_number}</span>
+                    </p>
+                    <p className="text-gray-400">
+                      {formatClaimDate(card.validFrom || card.valid_from)} – {formatClaimDate(card.validTo || card.valid_to) || "Ongoing"}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant={card.status === "active" ? "green" : card.status === "revoked" ? "red" : "gray"}>{card.status || "—"}</Badge>
+                    {documentId && (
+                      <button
+                        type="button"
+                        title="View card PDF"
+                        onClick={() => onViewDocument({ documentId })}
+                        className="p-1 rounded text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+                      >
+                        <Eye size={13} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <div>
+        <p className="mb-2 text-sm font-semibold text-gray-700 dark:text-gray-200">Change Request History</p>
+        {changeRequests.length === 0 ? (
+          <p className="text-xs text-gray-400">No changes submitted yet.</p>
+        ) : (
+          <div className="space-y-1.5">
+            {changeRequests.map((request) => (
+              <div key={request.id} className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2 text-xs dark:border-gray-700">
+                <div>
+                  <p className="font-medium text-gray-800 dark:text-gray-100">
+                    {request.requestType || request.request_type} — {
+                      request.proposedValues?.full_name || request.proposed_values?.full_name
+                        || memberName(request.member) || "—"
+                    }
+                  </p>
+                  <p className="text-gray-400">{formatClaimDate(request.createdAt || request.created_at)}</p>
+                </div>
+                <Badge variant={request.status === "approved" ? "green" : request.status === "rejected" ? "red" : "yellow"}>{request.status || "—"}</Badge>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

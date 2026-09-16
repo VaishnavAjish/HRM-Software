@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { Plus, RefreshCw, Search, Loader2, Pencil, Trash2, Shield, GitBranch } from "lucide-react";
 import Badge from "../../../components/ui/Badge";
@@ -81,7 +81,6 @@ export default function HierarchyEdgesPage() {
     dialog?.id ? "Edge updated" : "Edge created",
   );
 
-  const companyOptions = useMemo(() => hierarchies.map((h) => ({ id: h.id, name: h.name })), [hierarchies]);
   const canManage = can("org.hierarchy_edge.create") || can("org.hierarchy_edge.update");
 
   return (

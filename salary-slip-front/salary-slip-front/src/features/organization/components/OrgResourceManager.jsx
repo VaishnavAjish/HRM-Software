@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { Plus, RefreshCw, Search, Loader2, Pencil, Trash2, Power, PowerOff, Shield } from "lucide-react";
-import Badge from "../../../components/ui/Badge";
 import Button from "../../../components/ui/Button";
 import Card from "../../../components/ui/Card";
 import Modal from "../../../components/ui/Modal";
@@ -33,14 +32,6 @@ const DEFAULT_STATUS_FILTERS = [
 // backend's rate limiter started returning 429 "Too Many Attempts".
 const identity = (item) => item;
 const denyAll = () => false;
-
-function slugify(value) {
-  return String(value)
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
 
 function Th({ children, className = "" }) {
   return <th scope="col" className={`px-4 py-3 whitespace-nowrap ${className}`}>{children}</th>;
@@ -133,7 +124,6 @@ export function OrgResourceManager({
   customModal,
   modalSize = "lg",
   customModalProps = {},
-  getFormValues = (state) => state,
   initialFormState = {},
   formStateToPayload = (state) => state,
   onSaveSuccess,
@@ -153,7 +143,6 @@ export function OrgResourceManager({
   const [busy, setBusy] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
-  const filterState = useMemo(() => ({}), []);
   const [search, setSearch] = useState("");
   const [status, setStatusFilter] = useState("ALL");
   const [kind, setKind] = useState("ALL");
@@ -209,7 +198,7 @@ export function OrgResourceManager({
     loadData();
 
     return () => { active = false; };
-  }, [token, tokenType, search, status, kind, companyFilter, customFilters, refreshKey, list, fetchCompanies, fetchOptions, fetchExtra, searchFilterKey, statusFilterKey, companyFilterKey, transformListItem]);
+  }, [token, tokenType, search, status, kind, companyFilter, customFilters, refreshKey, list, fetchCompanies, fetchOptions, fetchExtra, searchFilterKey, statusFilterKey, companyFilterKey, transformListItem, title]);
 
   const changeFilter = (setter) => (value) => {
     setLoading(true);
@@ -432,6 +421,7 @@ export function OrgResourceManager({
           })
         ) : (
           <DefaultModal
+            key={dialog.id ?? "new"}
             entity={dialog.id ? dialog : null}
             fields={formFields}
             companies={companyOptions}
@@ -443,7 +433,6 @@ export function OrgResourceManager({
             size={modalSize}
             lockedCompany={lockedCompanyLogic && companyOptions.length <= 1}
             initialFormState={initialFormState}
-            getFormValues={getFormValues}
             formStateToPayload={formStateToPayload}
           />
         )
@@ -464,22 +453,12 @@ function DefaultModal({
   size = "lg",
   lockedCompany = false,
   initialFormState = {},
-  getFormValues,
   formStateToPayload,
 }) {
-  const isEdit = Boolean(entity);
   const [formState, setFormState] = useState(() => ({
     ...initialFormState,
     ...(entity || {}),
   }));
-
-  useEffect(() => {
-    if (entity) {
-      setFormState({ ...initialFormState, ...entity });
-    } else {
-      setFormState(initialFormState);
-    }
-  }, [entity, initialFormState]);
 
   const handleChange = (fieldName) => (value) => {
     setFormState((prev) => ({ ...prev, [fieldName]: value }));

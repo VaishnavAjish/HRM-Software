@@ -20,14 +20,19 @@ const STATUS_TABS = [
   { key: "all", label: "All Requisitions" },
 ];
 
-export default function JobPortalTab({ departments = [], openRequisitionForm }) {
+export default function JobPortalTab({ departments = [], openRequisitionForm, refreshKey = 0 }) {
   const { user } = useAuth();
-  const { companyScope, scopeKey } = useCompany();
+  const { companyScope } = useCompany();
   const { can } = useAuthorization();
   const canPublish = can("ui.hr.hiring.job_portal.publish") || can("ui.hr.hiring.requisition_publish");
+  const accessToken = user?.accessToken;
+  const tokenType = user?.tokenType;
+  const companyId = companyScope?.companyId;
+  const unit = companyScope?.unit;
 
   const [status, setStatus] = useState("approved");
   const [search, setSearch] = useState("");
+  const [appliedSearch, setAppliedSearch] = useState("");
   const [departmentId, setDepartmentId] = useState("");
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(20);
@@ -35,34 +40,44 @@ export default function JobPortalTab({ departments = [], openRequisitionForm }) 
   const [rows, setRows] = useState([]);
   const [counts, setCounts] = useState({ approved: 0, published: 0, closed: 0 });
   const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(null);
+  const [reloadCount, setReloadCount] = useState(0);
+  const requestKey = JSON.stringify([companyId, unit, status, appliedSearch, departmentId, page, perPage, reloadCount, refreshKey]);
+  const [loadedKey, setLoadedKey] = useState(null);
+  const loading = loadedKey !== requestKey;
 
-  const load = () => {
-    if (!user?.accessToken) return;
-    setLoading(true);
-    hrApi.getJobPortalQueue(user.accessToken, user.tokenType, {
-      company_code: companyScope?.companyId,
-      unit: companyScope?.unit,
+  useEffect(() => {
+    if (!accessToken) return;
+    let cancelled = false;
+    hrApi.getJobPortalQueue(accessToken, tokenType, {
+      company_code: companyId,
+      unit,
       status,
-      search: search.trim() || undefined,
+      search: appliedSearch || undefined,
       department_id: departmentId || undefined,
       page,
       per_page: perPage,
     })
       .then((res) => {
-        if (res.status) {
+        if (!cancelled && res.status) {
           const payload = res.data || {};
           setRows(payload.data || []);
           setTotal(payload.total || 0);
           setCounts(res.counts || { approved: 0, published: 0, closed: 0 });
         }
       })
-      .catch((err) => toast.error(err.message || "Failed to load Job Portal queue"))
-      .finally(() => setLoading(false));
-  };
+      .catch((err) => { if (!cancelled) toast.error(err.message || "Failed to load Job Portal queue"); })
+      .finally(() => { if (!cancelled) setLoadedKey(requestKey); });
+    return () => { cancelled = true; };
+  }, [accessToken, tokenType, companyId, unit, status, appliedSearch, departmentId, page, perPage, requestKey]);
 
-  useEffect(load, [user, scopeKey, status, departmentId, page, perPage]);
+  const load = () => setReloadCount((count) => count + 1);
+
+  const applySearch = () => {
+    setAppliedSearch(search.trim());
+    setPage(1);
+    load();
+  };
 
   const handlePublish = async (id) => {
     if (!canPublish) {
@@ -198,7 +213,7 @@ export default function JobPortalTab({ departments = [], openRequisitionForm }) 
               placeholder="Search title..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && load()}
+              onKeyDown={(e) => e.key === "Enter" && applySearch()}
             />
           </div>
         </div>

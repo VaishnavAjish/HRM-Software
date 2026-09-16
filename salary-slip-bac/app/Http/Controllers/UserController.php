@@ -36,6 +36,12 @@ use RuntimeException;
 class UserController extends Controller
 {
     use ScopesCompany;
+
+    protected function globalCompanyScopeRoles(): array
+    {
+        return [0];
+    }
+
     /**
      * The shared provisioning core.
      *
@@ -140,7 +146,7 @@ class UserController extends Controller
         'aadhar_card_no', 'pan_card_no', 'bank_name', 'bank_ifsc_code',
         'bank_account_no', 'pf_no', 'esi_no',
         'gender', 'department', 'designation', 'joining_date',
-        'education', 'marital_status',
+        'education', 'marital_status', 'punching_no',
     ];
 
     /**
@@ -444,6 +450,12 @@ class UserController extends Controller
             return $employee->added_by === $userAuth->id;
         }
 
+        // Department Head check: allow managing subordinates under assigned department(s)
+        $subordinateIds = $this->resolveSubordinateIds($userAuth);
+        if (! empty($subordinateIds) && in_array($employee->id, $subordinateIds)) {
+            return true;
+        }
+
         return false;
     }
 
@@ -585,8 +597,23 @@ class UserController extends Controller
         // disclosed rather than the whole table.
         $disclosed = 0;
 
-        $rows = collect($employees->items())->map(function (User $employee) use ($userAuth, &$disclosed) {
+        $pageIds = collect($employees->items())->map(fn (User $employee) => (int) $employee->id)->all();
+        $deptHeadUserIds = $pageIds === [] ? [] : DB::table('departments')->whereIn('manager_id', $pageIds)->pluck('manager_id')
+            ->merge(DB::table('department_managers')->whereIn('user_id', $pageIds)->pluck('user_id'))
+            ->map(fn ($v) => (int) $v)
+            ->unique()
+            ->all();
+
+        $rows = collect($employees->items())->map(function (User $employee) use ($userAuth, $deptHeadUserIds, &$disclosed) {
             $data = $employee->attributesToArray();
+
+            if ($this->isDepartmentHead($employee)) {
+                $data['designation'] = 'Manager';
+            } else {
+                if (strtolower(trim((string) ($data['designation'] ?? ''))) === 'manager') {
+                    $data['designation'] = '';
+                }
+            }
 
             $full = AadhaarDisclosure::fullFor($employee, $userAuth);
 
@@ -640,8 +667,19 @@ class UserController extends Controller
         // Single-record details: disclose the full number to the owner or to any
         // actor allowed to reach the record. The scope checks above have already
         // turned an out-of-company request into a 404.
+        $isDeptHead = $this->isDepartmentHead($employee);
+
+        $empArr = $employee->toArray();
+        if ($isDeptHead) {
+            $empArr['designation'] = 'Manager';
+        } else {
+            if (strtolower(trim((string) ($empArr['designation'] ?? ''))) === 'manager') {
+                $empArr['designation'] = '';
+            }
+        }
+
         $payload = AadhaarDisclosure::attach(
-            $employee->toArray(),
+            $empArr,
             $employee,
             $userAuth,
             'EMPLOYEE_FULL_AADHAAR_VIEWED'
@@ -2758,45 +2796,253 @@ class UserController extends Controller
         return response()->json(['status' => true, 'message' => 'Agent deleted successfully.']);
     }
 
-    private function resolveSubordinateIds(User $user): array
+        private function isDepartmentHead(User $employee): bool
     {
-        $subordinateIds = [];
-        $userDepartment = trim((string) ($user->department ?? ''));
-        $userName = trim((string) ($user->name ?? ''));
-        $userEmpCode = trim((string) ($user->emp_code ?? ''));
-        $cleanEmpCode = ltrim($userEmpCode, '0');
-        $userId = (int) $user->id;
+        $userId = (int) $employee->id;
+        $empCode = trim((string) ($employee->emp_code ?? ''));
+        $cleanEmpCode = ltrim($empCode, '0');
+        $userEmail = trim((string) ($employee->email ?? ''));
+        $userName = trim((string) ($employee->name ?? ''));
 
-        // 1) ReportingSubtreeResolver (downward walk)
+        $numericUserIds = array_values(array_unique(array_filter([
+            $userId,
+            is_numeric($empCode) ? (int)$empCode : null,
+            is_numeric($cleanEmpCode) ? (int)$cleanEmpCode : null,
+        ], fn($v) => !is_null($v) && is_numeric($v))));
+
         try {
-            $resolver = app(\App\Services\Mediclaim\ReportingSubtreeResolver::class);
-            $subtreeIds = $resolver->subtreeUserIds($userId);
-            $subordinateIds = array_merge($subordinateIds, $subtreeIds);
+            $inDeptTable = DB::table('departments')
+                ->where(function ($q) use ($numericUserIds, $empCode, $cleanEmpCode, $userEmail, $userName) {
+                    if (! empty($numericUserIds)) {
+                        $q->orWhereIn('manager_id', $numericUserIds);
+                    }
+                    if (! empty($empCode)) {
+                        $q->orWhereRaw('CAST(manager_id AS text) = ?', [$empCode]);
+                    }
+                    if (! empty($cleanEmpCode)) {
+                        $q->orWhereRaw('CAST(manager_id AS text) = ?', [$cleanEmpCode]);
+                    }
+                    if (! empty($userEmail)) {
+                        $q->orWhereRaw('CAST(manager_id AS text) = ?', [$userEmail]);
+                    }
+                    if (! empty($userName)) {
+                        $q->orWhereRaw('CAST(manager_id AS text) = ?', [$userName]);
+                    }
+                })
+                ->exists();
+            if ($inDeptTable) return true;
         } catch (\Throwable $e) {}
 
-        // 2) Reporting Relationships (active/is_active)
+        try {
+            $inPivot = DB::table('department_managers')
+                ->where(function ($q) use ($numericUserIds, $empCode, $cleanEmpCode, $userEmail, $userName) {
+                    if (! empty($numericUserIds)) {
+                        $q->orWhereIn('user_id', $numericUserIds);
+                    }
+                    if (! empty($empCode)) {
+                        $q->orWhereRaw('CAST(user_id AS text) = ?', [$empCode]);
+                    }
+                    if (! empty($cleanEmpCode)) {
+                        $q->orWhereRaw('CAST(user_id AS text) = ?', [$cleanEmpCode]);
+                    }
+                    if (! empty($userEmail)) {
+                        $q->orWhereRaw('CAST(user_id AS text) = ?', [$userEmail]);
+                    }
+                    if (! empty($userName)) {
+                        $q->orWhereRaw('CAST(user_id AS text) = ?', [$userName]);
+                    }
+                })
+                ->exists();
+            if ($inPivot) return true;
+        } catch (\Throwable $e) {}
+
+        return false;
+    }
+
+    private function resolveSubordinateIds(User $user): array
+    {
+        $userId = (int) $user->id;
+        $userEmpCode = trim((string) ($user->emp_code ?? ''));
+        $cleanEmpCode = ltrim($userEmpCode, '0');
+        $userName = trim((string) ($user->name ?? ''));
+        $userEmail = trim((string) ($user->email ?? ''));
+
+        $numericUserIds = array_values(array_unique(array_filter([
+            $userId,
+            is_numeric($userEmpCode) ? (int)$userEmpCode : null,
+            is_numeric($cleanEmpCode) ? (int)$cleanEmpCode : null,
+        ], fn($v) => !is_null($v) && is_numeric($v))));
+
+        $managedDeptIds = [];
+        $managedDeptNames = [];
+
+        // 1. From departments table where manager_id matches Department Head assignment
+        try {
+            $depts = DB::table('departments')
+                ->where(function ($q) use ($numericUserIds, $userEmpCode, $cleanEmpCode, $userEmail, $userName) {
+                    if (! empty($numericUserIds)) {
+                        $q->orWhereIn('manager_id', $numericUserIds);
+                    }
+                    if (! empty($userEmpCode)) {
+                        $q->orWhereRaw('CAST(manager_id AS text) = ?', [$userEmpCode]);
+                    }
+                    if (! empty($cleanEmpCode)) {
+                        $q->orWhereRaw('CAST(manager_id AS text) = ?', [$cleanEmpCode]);
+                    }
+                    if (! empty($userEmail)) {
+                        $q->orWhereRaw('CAST(manager_id AS text) = ?', [$userEmail]);
+                    }
+                    if (! empty($userName)) {
+                        $q->orWhereRaw('CAST(manager_id AS text) = ?', [$userName]);
+                    }
+                })
+                ->get();
+            foreach ($depts as $d) {
+                if (! empty($d->id)) $managedDeptIds[] = (int) $d->id;
+                if (! empty($d->name)) $managedDeptNames[] = trim($d->name);
+            }
+        } catch (\Throwable $e) {}
+
+        // 2. From department_managers pivot table
+        try {
+            $pivotRows = DB::table('department_managers')
+                ->where(function ($q) use ($numericUserIds, $userEmpCode, $cleanEmpCode, $userEmail, $userName) {
+                    if (! empty($numericUserIds)) {
+                        $q->orWhereIn('user_id', $numericUserIds);
+                    }
+                    if (! empty($userEmpCode)) {
+                        $q->orWhereRaw('CAST(user_id AS text) = ?', [$userEmpCode]);
+                    }
+                    if (! empty($cleanEmpCode)) {
+                        $q->orWhereRaw('CAST(user_id AS text) = ?', [$cleanEmpCode]);
+                    }
+                    if (! empty($userEmail)) {
+                        $q->orWhereRaw('CAST(user_id AS text) = ?', [$userEmail]);
+                    }
+                    if (! empty($userName)) {
+                        $q->orWhereRaw('CAST(user_id AS text) = ?', [$userName]);
+                    }
+                })
+                ->get();
+            foreach ($pivotRows as $p) {
+                if (! empty($p->department_id)) $managedDeptIds[] = (int) $p->department_id;
+                if (! empty($p->department_name)) $managedDeptNames[] = trim($p->department_name);
+            }
+        } catch (\Throwable $e) {}
+
+        // 3. From organization_leadership_assignments
+        try {
+            $leadership = DB::table('organization_leadership_assignments')
+                ->where(function ($q) use ($numericUserIds, $userEmpCode, $cleanEmpCode, $userEmail, $userName) {
+                    if (! empty($numericUserIds)) {
+                        $q->orWhereIn('user_id', $numericUserIds);
+                    }
+                    if (! empty($userEmpCode)) {
+                        $q->orWhereRaw('CAST(user_id AS text) = ?', [$userEmpCode]);
+                    }
+                    if (! empty($cleanEmpCode)) {
+                        $q->orWhereRaw('CAST(user_id AS text) = ?', [$cleanEmpCode]);
+                    }
+                    if (! empty($userEmail)) {
+                        $q->orWhereRaw('CAST(user_id AS text) = ?', [$userEmail]);
+                    }
+                    if (! empty($userName)) {
+                        $q->orWhereRaw('CAST(user_id AS text) = ?', [$userName]);
+                    }
+                })
+                ->where(function ($q) {
+                    $q->where('is_active', 1)->orWhere('is_active', true);
+                })
+                ->get();
+            foreach ($leadership as $l) {
+                if (! empty($l->department_id)) $managedDeptIds[] = (int) $l->department_id;
+                if (! empty($l->department_name)) $managedDeptNames[] = trim($l->department_name);
+            }
+        } catch (\Throwable $e) {}
+
+        // 4. Look up department names for managedDeptIds
+        if (! empty($managedDeptIds)) {
+            try {
+                $deptNamesById = DB::table('departments')
+                    ->whereIn('id', array_unique($managedDeptIds))
+                    ->pluck('name')
+                    ->filter()
+                    ->toArray();
+                $managedDeptNames = array_merge($managedDeptNames, $deptNamesById);
+            } catch (\Throwable $e) {}
+        }
+
+        // NOTE: $user->department (personal profile department) is NOT included.
+        // Only departments where the user is assigned as Department Head are used.
+
+        $managedDeptNames = array_values(array_unique(array_filter(array_map('trim', $managedDeptNames))));
+
+        // Generate department search variations (e.g. Polish-07 (MFG), Polish-07, Polish 07, Polish07, Polish-7, Polish7)
+        $deptVariations = [];
+        foreach ($managedDeptNames as $deptName) {
+            $deptVariations[] = $deptName;
+            $cleanName = trim(preg_replace('/\s*\([^)]*\)/', '', $deptName));
+            if ($cleanName !== '' && $cleanName !== $deptName) {
+                $deptVariations[] = $cleanName;
+            }
+        }
+
+        $allDeptsToExpand = array_unique($deptVariations);
+        foreach ($allDeptsToExpand as $deptName) {
+            if (str_contains($deptName, '-')) {
+                $deptVariations[] = str_replace('-', ' ', $deptName);
+                $deptVariations[] = str_replace('-', '', $deptName);
+                $deptVariations[] = preg_replace('/-0+([1-9])/', '-$1', $deptName);
+                $deptVariations[] = preg_replace('/-0+([1-9])/', '$1', $deptName);
+                $deptVariations[] = preg_replace('/-0+([1-9])/', ' $1', $deptName);
+            }
+            if (str_contains($deptName, ' ')) {
+                $deptVariations[] = str_replace(' ', '-', $deptName);
+                $deptVariations[] = str_replace(' ', '', $deptName);
+            }
+        }
+        $deptVariations = array_values(array_unique(array_filter(array_map('trim', $deptVariations))));
+
+        $subordinateIds = [];
+
+        // Query employees in assigned departments
+        if (! empty($deptVariations) || ! empty($managedDeptIds)) {
+            try {
+                $deptQuery = User::query()
+                    ->where('is_deleted', 0)
+                    ->where('id', '!=', $userId)
+                    ->whereNotIn('role', [0, 1, 2])
+                    ->where(function ($q) use ($deptVariations, $managedDeptIds) {
+                        if (! empty($managedDeptIds) && \Illuminate\Support\Facades\Schema::hasColumn('users', 'department_id')) {
+                            $q->orWhereIn('department_id', $managedDeptIds);
+                        }
+                        foreach ($deptVariations as $dept) {
+                            $q->orWhere('department', 'like', "%{$dept}%");
+                        }
+                    });
+
+                $deptSubIds = $deptQuery->pluck('id')->map(fn ($v) => (int) $v)->toArray();
+                $subordinateIds = array_merge($subordinateIds, $deptSubIds);
+            } catch (\Throwable $e) {}
+        }
+
+        // Direct reporting relationships or reporting_manager text match
         try {
             $relIds = DB::table('reporting_relationships')
                 ->where(function ($q) use ($userId) {
-                    $q->where('manager_user_id', $userId)
-                        ->orWhere('manager_id', $userId);
+                    $q->where('manager_user_id', $userId)->orWhere('manager_id', $userId);
                 })
                 ->where(function ($q) {
-                    $q->where('status', 'active')
-                        ->orWhere('is_active', 1)
-                        ->orWhere('is_active', true);
+                    $q->where('status', 'active')->orWhere('is_active', 1)->orWhere('is_active', true);
                 })
                 ->pluck('employee_user_id')
                 ->merge(
                     DB::table('reporting_relationships')
                         ->where(function ($q) use ($userId) {
-                            $q->where('manager_user_id', $userId)
-                                ->orWhere('manager_id', $userId);
+                            $q->where('manager_user_id', $userId)->orWhere('manager_id', $userId);
                         })
                         ->where(function ($q) {
-                            $q->where('status', 'active')
-                                ->orWhere('is_active', 1)
-                                ->orWhere('is_active', true);
+                            $q->where('status', 'active')->orWhere('is_active', 1)->orWhere('is_active', true);
                         })
                         ->pluck('employee_id')
                 )
@@ -2806,7 +3052,6 @@ class UserController extends Controller
             $subordinateIds = array_merge($subordinateIds, $relIds);
         } catch (\Throwable $e) {}
 
-        // 3) Direct users matching reporting_manager or manager_id
         try {
             $directQuery = User::query()
                 ->where('is_deleted', 0)
@@ -2829,115 +3074,6 @@ class UserController extends Controller
             $subordinateIds = array_merge($subordinateIds, $directUserIds);
         } catch (\Throwable $e) {}
 
-        // 4) Managed Department Names
-        $managedDeptNames = [];
-
-        try {
-            $depts = DB::table('departments')->where('manager_id', $userId)->pluck('name')->filter()->toArray();
-            $managedDeptNames = array_merge($managedDeptNames, $depts);
-        } catch (\Throwable $e) {}
-
-        try {
-            $deptPivot = DB::table('department_managers')
-                ->leftJoin('departments', 'departments.id', '=', 'department_managers.department_id')
-                ->where('department_managers.user_id', $userId)
-                ->select(['department_managers.department_name', 'departments.name as dept_name'])
-                ->get();
-            foreach ($deptPivot as $row) {
-                if (! empty($row->department_name)) $managedDeptNames[] = $row->department_name;
-                if (! empty($row->dept_name)) $managedDeptNames[] = $row->dept_name;
-            }
-        } catch (\Throwable $e) {}
-
-        try {
-            $leadership = DB::table('organization_leadership_assignments')
-                ->where('user_id', $userId)
-                ->where(function ($q) {
-                    $q->where('is_active', 1)->orWhere('is_active', true);
-                })
-                ->get();
-            if ($leadership->isNotEmpty()) {
-                if ($userDepartment !== '') {
-                    $managedDeptNames[] = $userDepartment;
-                }
-            }
-        } catch (\Throwable $e) {}
-
-        $designation = strtolower((string) ($user->designation ?? ''));
-        $userType = strtolower((string) ($user->type ?? ''));
-        $userRole = strtolower((string) ($user->role ?? ''));
-
-        $isDepartmentHead = $cleanEmpCode === '3' ||
-                            $userEmpCode === '0003' ||
-                            str_contains($designation, 'head') ||
-                            str_contains($designation, 'hod') ||
-                            str_contains($designation, 'department head') ||
-                            str_contains($designation, 'director') ||
-                            str_contains($designation, 'chief') ||
-                            str_contains($designation, 'vp') ||
-                            str_contains($designation, 'manager') ||
-                            str_contains($userType, 'head') ||
-                            str_contains($userType, 'manager') ||
-                            str_contains($userRole, 'head') ||
-                            str_contains($userRole, 'manager') ||
-                            ! empty($managedDeptNames);
-
-        if ($isDepartmentHead && $userDepartment !== '') {
-            $managedDeptNames[] = $userDepartment;
-        }
-
-        $managedDeptNames = array_values(array_unique(array_filter(array_map('trim', $managedDeptNames))));
-
-        if (! empty($managedDeptNames)) {
-            try {
-                $deptUserIds = User::query()
-                    ->where('is_deleted', 0)
-                    ->where('id', '!=', $userId)
-                    ->where(function ($q) use ($managedDeptNames) {
-                        foreach ($managedDeptNames as $dept) {
-                            $q->orWhere('department', 'like', "%{$dept}%");
-                        }
-                    })
-                    ->pluck('id')
-                    ->map(fn ($v) => (int) $v)
-                    ->toArray();
-                $subordinateIds = array_merge($subordinateIds, $deptUserIds);
-            } catch (\Throwable $e) {}
-        }
-
-        $subordinateIds = array_values(array_unique(array_filter($subordinateIds, fn ($id) => (int) $id !== $userId)));
-
-        if (empty($subordinateIds) && $isDepartmentHead) {
-            try {
-                $fallbackQuery = User::query()
-                    ->where('is_deleted', 0)
-                    ->where('id', '!=', $userId)
-                    ->whereNotIn('role', [0, 1, 2]);
-
-                if ($userDepartment !== '') {
-                    $fallbackQuery->where(function($q) use ($userDepartment) {
-                        $q->where('department', 'like', "%{$userDepartment}%")
-                          ->orWhereNull('department')
-                          ->orWhere('department', '');
-                    });
-                }
-
-                $fallbackIds = $fallbackQuery->pluck('id')->map(fn ($v) => (int) $v)->toArray();
-
-                if (empty($fallbackIds)) {
-                    $fallbackIds = User::query()
-                        ->where('is_deleted', 0)
-                        ->where('id', '!=', $userId)
-                        ->whereNotIn('role', [0, 1, 2])
-                        ->pluck('id')
-                        ->map(fn ($v) => (int) $v)
-                        ->toArray();
-                }
-
-                $subordinateIds = array_merge($subordinateIds, $fallbackIds);
-            } catch (\Throwable $e) {}
-        }
-
         return array_values(array_unique(array_filter($subordinateIds, fn ($id) => (int) $id !== $userId)));
     }
 
@@ -2945,38 +3081,118 @@ class UserController extends Controller
     {
         $user = auth('api')->user();
         if (! $user) {
-            return response()->json(['status' => true, 'is_manager' => false]);
+            return response()->json(['status' => true, 'is_manager' => false, 'subordinate_count' => 0]);
         }
 
-        $empCodeClean = ltrim((string) ($user->emp_code ?? ''), '0');
+        $userId = (int) $user->id;
+        $empCode = trim((string) ($user->emp_code ?? ''));
+        $cleanEmpCode = ltrim($empCode, '0');
+        $userName = trim((string) ($user->name ?? ''));
+        $userEmail = trim((string) ($user->email ?? ''));
 
-        if ($empCodeClean === '3' || (int) $user->role === 0 || (int) $user->role === 1 || (int) $user->role === 2 || (bool) $user->getAttribute('is_super_admin')) {
-            return response()->json(['status' => true, 'is_manager' => true, 'subordinate_count' => 999]);
+        // Admins are managers
+        if ((int) $user->role === 0 || (int) $user->role === 1 || (int) $user->role === 2 || (bool) $user->getAttribute('is_super_admin')) {
+            $subordinateIds = $this->resolveSubordinateIds($user);
+            return response()->json(['status' => true, 'is_manager' => true, 'subordinate_count' => count($subordinateIds)]);
         }
 
-        $designation = strtolower((string) ($user->designation ?? ''));
-        $userType = strtolower((string) ($user->type ?? ''));
-        $isHeadTitle = str_contains($designation, 'head') ||
-                       str_contains($designation, 'hod') ||
-                       str_contains($designation, 'department head') ||
-                       str_contains($designation, 'director') ||
-                       str_contains($designation, 'chief') ||
-                       str_contains($designation, 'vp') ||
-                       str_contains($designation, 'manager') ||
-                       str_contains($userType, 'head') ||
-                       str_contains($userType, 'manager');
+        $numericUserIds = array_values(array_unique(array_filter([
+            $userId,
+            is_numeric($empCode) ? (int)$empCode : null,
+            is_numeric($cleanEmpCode) ? (int)$cleanEmpCode : null,
+        ], fn($v) => !is_null($v) && is_numeric($v))));
+
+        $isDeptHeadInDeptTable = false;
+        try {
+            $isDeptHeadInDeptTable = DB::table('departments')
+                ->where(function ($q) use ($numericUserIds, $empCode, $cleanEmpCode, $userEmail, $userName) {
+                    if (! empty($numericUserIds)) {
+                        $q->orWhereIn('manager_id', $numericUserIds);
+                    }
+                    if (! empty($empCode)) {
+                        $q->orWhereRaw('CAST(manager_id AS text) = ?', [$empCode]);
+                    }
+                    if (! empty($cleanEmpCode)) {
+                        $q->orWhereRaw('CAST(manager_id AS text) = ?', [$cleanEmpCode]);
+                    }
+                    if (! empty($userEmail)) {
+                        $q->orWhereRaw('CAST(manager_id AS text) = ?', [$userEmail]);
+                    }
+                    if (! empty($userName)) {
+                        $q->orWhereRaw('CAST(manager_id AS text) = ?', [$userName]);
+                    }
+                })
+                ->exists();
+        } catch (\Throwable $e) {}
+
+        $isDeptHeadInPivot = false;
+        try {
+            $isDeptHeadInPivot = DB::table('department_managers')
+                ->where(function ($q) use ($numericUserIds, $empCode, $cleanEmpCode, $userEmail, $userName) {
+                    if (! empty($numericUserIds)) {
+                        $q->orWhereIn('user_id', $numericUserIds);
+                    }
+                    if (! empty($empCode)) {
+                        $q->orWhereRaw('CAST(user_id AS text) = ?', [$empCode]);
+                    }
+                    if (! empty($cleanEmpCode)) {
+                        $q->orWhereRaw('CAST(user_id AS text) = ?', [$cleanEmpCode]);
+                    }
+                    if (! empty($userEmail)) {
+                        $q->orWhereRaw('CAST(user_id AS text) = ?', [$userEmail]);
+                    }
+                    if (! empty($userName)) {
+                        $q->orWhereRaw('CAST(user_id AS text) = ?', [$userName]);
+                    }
+                })
+                ->exists();
+        } catch (\Throwable $e) {}
+
+        $hasLeadershipAssignment = false;
+        try {
+            $hasLeadershipAssignment = DB::table('organization_leadership_assignments')
+                ->where(function ($q) use ($numericUserIds, $empCode, $cleanEmpCode, $userEmail, $userName) {
+                    if (! empty($numericUserIds)) {
+                        $q->orWhereIn('user_id', $numericUserIds);
+                    }
+                    if (! empty($empCode)) {
+                        $q->orWhereRaw('CAST(user_id AS text) = ?', [$empCode]);
+                    }
+                    if (! empty($cleanEmpCode)) {
+                        $q->orWhereRaw('CAST(user_id AS text) = ?', [$cleanEmpCode]);
+                    }
+                    if (! empty($userEmail)) {
+                        $q->orWhereRaw('CAST(user_id AS text) = ?', [$userEmail]);
+                    }
+                    if (! empty($userName)) {
+                        $q->orWhereRaw('CAST(user_id AS text) = ?', [$userName]);
+                    }
+                })
+                ->where(function ($q) {
+                    $q->where('is_active', 1)->orWhere('is_active', true);
+                })
+                ->exists();
+        } catch (\Throwable $e) {}
+
+        $isDeptHead = $isDeptHeadInDeptTable || $isDeptHeadInPivot || $hasLeadershipAssignment;
+
+        // If not currently assigned as Department Head in HR -> Organization -> Departments, return is_manager = false
+        if (! $isDeptHead) {
+            return response()->json([
+                'status' => true,
+                'is_manager' => false,
+                'subordinate_count' => 0,
+            ]);
+        }
 
         $subordinateIds = $this->resolveSubordinateIds($user);
 
-        $isManager = $empCodeClean === '3' || $isHeadTitle || count($subordinateIds) > 0;
-
         return response()->json([
             'status' => true,
-            'is_manager' => (bool) $isManager,
+            'is_manager' => true,
             'subordinate_count' => count($subordinateIds),
         ]);
     }
-
     public function managerTeam(Request $request)
     {
         $userAuth = auth('api')->user();
@@ -2990,11 +3206,22 @@ class UserController extends Controller
         $query = User::where('is_deleted', 0)
             ->whereNotIn('role', [0, 1, 2]);
 
-        if (! $isAdmin || ! empty($subordinateIds)) {
+        if (! $isAdmin) {
             if (empty($subordinateIds)) {
                 $query->whereRaw('1 = 0');
             } else {
                 $query->whereIn('id', $subordinateIds);
+            }
+        } else {
+            if (! empty($subordinateIds)) {
+                $query->whereIn('id', $subordinateIds);
+            } else {
+                $query->whereNotNull('emp_code')
+                    ->where('emp_code', '!=', '')
+                    ->where(function ($q) {
+                        $q->whereNull('type')
+                            ->orWhereNotIn('type', ['appointment', 'agent', 'pending_employee', 'trial', 'account-master']);
+                    });
             }
         }
 
@@ -3004,23 +3231,27 @@ class UserController extends Controller
             $statusLower = strtolower($statusStr);
 
             if ($statusLower === 'active' || $statusStr === '0') {
-                $query->where('status', 0);
+                $query->where(function ($q) {
+                    $q->where('status', 0)->orWhere('status', '0')->orWhere('status', 'ACTIVE')->orWhere('status', 'active');
+                });
             } elseif ($statusLower === 'inactive' || $statusStr === '1') {
-                $query->where('status', 1);
+                $query->where(function ($q) {
+                    $q->where('status', 1)->orWhere('status', '1')->orWhere('status', 'INACTIVE')->orWhere('status', 'inactive');
+                });
             } elseif ($statusLower === 'pending' || $statusStr === '2') {
                 $query->where('status', 2);
             }
         }
 
-        if ($request->department && strtolower($request->department) !== 'all') {
+        if ($request->filled('department') && strtolower($request->department) !== 'all') {
             $query->where('department', 'like', "%{$request->department}%");
         }
 
-        if ($request->company && strtolower($request->company) !== 'all') {
+        if ($request->filled('company') && strtolower($request->company) !== 'all') {
             $query->where('company_code', 'like', "%{$request->company}%");
         }
 
-        if ($request->unit && strtolower($request->unit) !== 'all') {
+        if ($request->filled('unit') && strtolower($request->unit) !== 'all') {
             $query->where('unit', 'like', "%{$request->unit}%");
         }
 
@@ -3036,7 +3267,7 @@ class UserController extends Controller
             }
         }
 
-        if ($request->search) {
+        if ($request->filled('search')) {
             $search = $request->search;
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
@@ -3049,11 +3280,15 @@ class UserController extends Controller
 
         $baseQuery = clone $query;
         $totalCount = (clone $baseQuery)->count();
-        $activeCount = (clone $baseQuery)->where('status', 0)->count();
-        $inactiveCount = (clone $baseQuery)->where('status', 1)->count();
+        $activeCount = (clone $baseQuery)->where(function ($q) {
+            $q->where('status', 0)->orWhere('status', '0')->orWhere('status', 'ACTIVE')->orWhere('status', 'active');
+        })->count();
+        $inactiveCount = (clone $baseQuery)->where(function ($q) {
+            $q->where('status', 1)->orWhere('status', '1')->orWhere('status', 'INACTIVE')->orWhere('status', 'inactive');
+        })->count();
 
-        $perPage = $request->limit ?? $request->per_page ?? 100;
-        $employees = $query->orderBy('id', 'desc')->paginate($perPage);
+        $perPage = $request->limit ?? $request->per_page ?? 1000;
+        $employees = $query->orderBy('name', 'asc')->paginate($perPage);
 
         $employeeData = collect($employees->items())->map(function ($emp) {
             $arr = $emp->toArray();
@@ -3070,22 +3305,22 @@ class UserController extends Controller
             $arr['esiNo'] = $emp->esi_no;
             $arr['companyLabel'] = $emp->company_code;
             $arr['loginRole'] = $emp->role === 0 ? 'superadmin' : 'employee';
-            $arr['statusLabel'] = (int) $emp->status === 0 ? 'Active' : ((int) $emp->status === 1 ? 'Inactive' : 'Pending');
+            $arr['statusLabel'] = ($emp->status === 0 || (string)$emp->status === '0' || strtolower((string)$emp->status) === 'active') ? 'Active' : 'Inactive';
             return $arr;
         });
 
         return response()->json([
             'status' => true,
+            'success' => true,
             'data' => $employeeData,
             'total' => $totalCount,
             'active_count' => $activeCount,
             'inactive_count' => $inactiveCount,
             'meta' => [
-                'current_page' => $employees->currentPage(),
-                'last_page' => $employees->lastPage(),
-                'per_page' => $employees->perPage(),
-                'total' => $employees->total(),
+                'total' => $totalCount,
+                'per_page' => $perPage,
             ],
         ]);
     }
+
 }

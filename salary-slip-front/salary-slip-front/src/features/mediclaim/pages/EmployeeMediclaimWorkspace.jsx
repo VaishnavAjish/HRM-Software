@@ -36,16 +36,43 @@ import PendingMyApprovalTab from "./employee/tabs/PendingMyApprovalTab";
 const TABS = [
   { key: "coverage", label: "My Coverage" },
   { key: "family", label: "Family Members" },
+  { key: "rulebook", label: "Rule Book" },
   { key: "cards", label: "Cards" },
   { key: "notify", label: "Notify Office" },
   { key: "submit", label: "Submit Claim" },
   { key: "claims", label: "My Claims" },
   { key: "hospitals", label: "Hospitals" },
-  { key: "rulebook", label: "Rule Book" },
   { key: "history", label: "History" },
   { key: "team", label: "Team Claims", permissions: ["mediclaim.team_claim.read"] },
   { key: "pending", label: "Pending My Approval", permissions: ["mediclaim.claim.manager.decide"] },
 ];
+
+// Until onboarding is complete, the tab bar is cut down to just these two
+// (rule book first) — no other tab shows at all. Same TABS entries, just a
+// fixed order/subset, so the tab bar renders exactly like any other tab
+// state instead of a separate full-page flow.
+//
+// Deliberately rule-book-then-family here even though `TABS` above lists
+// family before rule book once onboarding is complete: the employee must
+// read the rule book before the family-details form unlocks (see
+// `FamilyMembersTab.jsx`'s own gate), so the *required order* and the
+// *steady-state tab position* are two different, independently-set things —
+// don't "fix" this order to match `TABS`.
+const ONBOARDING_TAB_KEYS = ["rulebook", "family"];
+
+function WorkspaceHeader() {
+  return (
+    <div className="flex items-center gap-3">
+      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-600 shadow-sm shadow-brand-600/30">
+        <ShieldCheck size={18} className="text-white" />
+      </div>
+      <div>
+        <h1 className="text-lg font-bold text-gray-900 dark:text-white">Mediclaim</h1>
+        <p className="text-xs text-gray-400">Coverage, family members, cards, hospitals and claim history</p>
+      </div>
+    </div>
+  );
+}
 
 function WaitingPeriodLock({ eligibility }) {
   const days = eligibility?.days_remaining ?? eligibility?.daysRemaining ?? 0;
@@ -54,15 +81,7 @@ function WaitingPeriodLock({ eligibility }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-600 shadow-sm shadow-brand-600/30">
-          <ShieldCheck size={18} className="text-white" />
-        </div>
-        <div>
-          <h1 className="text-lg font-bold text-gray-900 dark:text-white">Mediclaim</h1>
-          <p className="text-xs text-gray-400">Coverage, family members, cards, hospitals and claim history</p>
-        </div>
-      </div>
+      <WorkspaceHeader />
 
       <div className="flex flex-col items-center gap-3 rounded-2xl border border-gray-100 bg-white px-6 py-16 text-center shadow-sm dark:border-gray-700 dark:bg-gray-800">
         <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400">
@@ -92,10 +111,22 @@ export default function EmployeeMediclaimWorkspace() {
   const lookups = useMediclaimLookups();
   const { can } = useMediclaimAuthorization();
 
-  const availableTabs = useMemo(
-    () => TABS.filter((item) => !item.permissions || item.permissions.some((p) => can(p))),
-    [can],
-  );
+  // `null` (the /me/coverage call failed) fails open — a transient error
+  // never locks anyone out — but `undefined` (the *first* load, still in
+  // flight) is handled separately below with its own loading state instead
+  // of folding into this "already onboarded" default: doing it here instead
+  // briefly rendered every tab and then yanked most of them away the moment
+  // the real answer arrived, which is the flash this whole gate exists to
+  // avoid in the first place.
+  const onboardingComplete = lookups.onboarding === null || Boolean(lookups.onboarding?.completed);
+
+  const availableTabs = useMemo(() => {
+    const permitted = TABS.filter((item) => !item.permissions || item.permissions.some((p) => can(p)));
+    if (onboardingComplete) return permitted;
+    return ONBOARDING_TAB_KEYS
+      .map((key) => permitted.find((item) => item.key === key))
+      .filter(Boolean);
+  }, [can, onboardingComplete]);
 
   const rawTab = searchParams.get("tab");
   const tab = availableTabs.some((item) => item.key === rawTab) ? rawTab : availableTabs[0]?.key;
@@ -119,25 +150,29 @@ export default function EmployeeMediclaimWorkspace() {
     });
   };
 
-  // `eligibility` is undefined while /me/coverage is still loading (don't
-  // flash the lock screen), null if the check itself failed (fail-open,
-  // same "unknown reads as available" convention `useModuleAvailability`
-  // already uses elsewhere) — only an explicit `eligible: false` locks.
+  // The very first /me/coverage response decides both the eligibility lock
+  // below and which tabs are even offered — render nothing dependent on
+  // either until it actually lands, rather than showing every tab and then
+  // pulling most of them away (or locking the whole screen) a moment later.
+  if (lookups.onboarding === undefined) {
+    return (
+      <div className="space-y-4">
+        <WorkspaceHeader />
+        <p className="py-16 text-center text-sm text-gray-400">Loading…</p>
+      </div>
+    );
+  }
+
+  // `eligibility` null if the check itself failed (fail-open, same "unknown
+  // reads as available" convention `useModuleAvailability` already uses
+  // elsewhere) — only an explicit `eligible: false` locks.
   if (lookups.eligibility && lookups.eligibility.eligible === false) {
     return <WaitingPeriodLock eligibility={lookups.eligibility} />;
   }
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-600 shadow-sm shadow-brand-600/30">
-          <ShieldCheck size={18} className="text-white" />
-        </div>
-        <div>
-          <h1 className="text-lg font-bold text-gray-900 dark:text-white">Mediclaim</h1>
-          <p className="text-xs text-gray-400">Coverage, family members, cards, hospitals and claim history</p>
-        </div>
-      </div>
+      <WorkspaceHeader />
 
       <div className="sticky top-0 z-30 -mx-4 md:-mx-6 border-b border-gray-200 bg-gray-50/95 px-4 backdrop-blur-sm dark:border-gray-700 dark:bg-gray-900/95 md:px-6">
         <div className="scrollbar-hide flex gap-1 overflow-x-auto">
@@ -159,13 +194,13 @@ export default function EmployeeMediclaimWorkspace() {
       </div>
 
       {tab === "coverage" && <MyCoverageTab />}
-      {tab === "family" && <FamilyMembersTab lookups={lookups} />}
+      {tab === "family" && <FamilyMembersTab lookups={lookups} onboarding={lookups.onboarding} />}
       {tab === "cards" && <CardsTab />}
       {tab === "notify" && <NotifyOfficeTab lookups={lookups} />}
       {tab === "submit" && <SubmitClaimTab lookups={lookups} />}
       {tab === "claims" && <MyClaimsTab />}
       {tab === "hospitals" && <HospitalsTab lookups={lookups} />}
-      {tab === "rulebook" && <RuleBookTab lookups={lookups} />}
+      {tab === "rulebook" && <RuleBookTab lookups={lookups} onboarding={lookups.onboarding} />}
       {tab === "history" && <HistoryTab />}
       {tab === "team" && <TeamClaimsTab />}
       {tab === "pending" && <PendingMyApprovalTab />}

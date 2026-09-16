@@ -54,6 +54,23 @@
     -->
     <link rel="preload" href="/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin />
 
+    <!--
+      Noto Sans per-script families for Indic-language content (the
+      Mediclaim rule book's language picker/rule text). Inter's @font-face
+      above declares an explicit unicode-range restricted to Latin, so the
+      browser correctly skips it for non-Latin text and falls back to
+      whatever the OS substitutes — on Windows that's "Nirmala UI", which
+      has known incomplete OpenType shaping for some conjunct/vowel-sign
+      combinations and renders a stray placeholder glyph instead. Listing
+      these Noto families explicitly in the font stack (see index.css) makes
+      the browser use them instead of relying on OS-level substitution.
+      Google's css2 API auto-subsets by unicode-range per family, so this
+      stylesheet is a few KB and the actual font binaries are fetched only
+      on pages that render that script's text — it does not block first
+      paint of the Inter-based Latin UI.
+    -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;700&family=Noto+Sans+Bengali:wght@400;700&family=Noto+Sans+Gujarati:wght@400;700&family=Noto+Sans+Tamil:wght@400;700&family=Noto+Sans+Telugu:wght@400;700&family=Noto+Sans+Kannada:wght@400;700&family=Noto+Sans+Malayalam:wght@400;700&family=Noto+Sans+Oriya:wght@400;700&family=Noto+Sans+Gurmukhi:wght@400;700&family=Noto+Sans+Arabic:wght@400;700&family=Noto+Nastaliq+Urdu&family=Noto+Sans+Meetei+Mayek&family=Noto+Sans+Ol+Chiki&display=swap" />
+
     <!-- Structured Data (JSON-LD) -->
     <script type="application/ld+json">
     {
@@ -95,8 +112,8 @@
       ]
     }
     </script>
-    <script type="module" crossorigin src="/assets/index-CwwwLXGN.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-DI52vUlK.css">
+    <script type="module" crossorigin src="/assets/index-CxEs27Jr.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-DNtpf5Z1.css">
   <link rel="manifest" href="/manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="/registerSW.js" defer></script></head>
   <body>
     <div id="root"></div>

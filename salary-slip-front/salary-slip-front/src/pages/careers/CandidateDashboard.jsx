@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { candidateApi } from "../../utils/api";
-import { useCandidateAuth } from "../../context/CandidateAuthContext";
+import { useCandidateAuth } from "../../context/candidate-auth-context";
 import { resolveJobBranding } from "../../config/careersTheme";
 import ResendVerificationButton from "../../components/careers/ResendVerificationButton";
 

@@ -1,8 +1,8 @@
 import { useState, useCallback, useEffect, useMemo } from "react";
 import toast from "react-hot-toast";
 import {
-  FileText, Plus, RefreshCw, Search, Loader2, Pencil, Trash2, Power, PowerOff, Shield,
-  Building2, MapPin, Users, CreditCard, FolderOpen,
+  FileText, Plus, RefreshCw, Search, Loader2, Pencil, Trash2, PowerOff, Shield,
+  MapPin, Users, CreditCard, FolderOpen,
 } from "lucide-react";
 import Badge from "../../../components/ui/Badge";
 import Button from "../../../components/ui/Button";
@@ -22,14 +22,6 @@ const STATUS_FILTERS = [
   { value: "true", label: "Active" },
   { value: "false", label: "Inactive" },
 ];
-
-function slugify(value) {
-  return String(value)
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
 
 function Th({ children, className = "" }) {
   return <th scope="col" className={`px-4 py-3 whitespace-nowrap ${className}`}>{children}</th>;
@@ -62,7 +54,6 @@ function LegalEntityProfileModal({ profile, companies, busy, onSave, onClose }) 
     effectiveFrom: profile?.effectiveFrom ?? "",
     effectiveTo: profile?.effectiveTo ?? "",
   });
-  const [codeTouched, setCodeTouched] = useState(isEdit);
 
   const lockedCompany = companies.length <= 1;
   const canSave = form.legalName.trim() && form.companyId;
@@ -108,7 +99,7 @@ function LegalEntityProfileModal({ profile, companies, busy, onSave, onClose }) 
   );
 }
 
-function RegistrationModal({ registration, profileId, busy, onSave, onClose }) {
+function RegistrationModal({ registration, busy, onSave, onClose }) {
   const isEdit = Boolean(registration);
   const [form, setForm] = useState({
     type: registration?.type ?? "",
@@ -140,7 +131,7 @@ function RegistrationModal({ registration, profileId, busy, onSave, onClose }) {
   );
 }
 
-function AddressModal({ address, profileId, busy, onSave, onClose }) {
+function AddressModal({ address, busy, onSave, onClose }) {
   const isEdit = Boolean(address);
   const [form, setForm] = useState({
     type: address?.type ?? "",
@@ -178,7 +169,7 @@ function AddressModal({ address, profileId, busy, onSave, onClose }) {
   );
 }
 
-function RepresentativeModal({ representative, profileId, busy, onSave, onClose }) {
+function RepresentativeModal({ representative, busy, onSave, onClose }) {
   const isEdit = Boolean(representative);
   const [form, setForm] = useState({
     name: representative?.name ?? "",
@@ -220,7 +211,7 @@ function RepresentativeModal({ representative, profileId, busy, onSave, onClose 
   );
 }
 
-function BankAccountModal({ account, profileId, busy, onSave, onClose }) {
+function BankAccountModal({ account, busy, onSave, onClose }) {
   const isEdit = Boolean(account);
   const [form, setForm] = useState({
     bankName: account?.bankName ?? "",
@@ -445,10 +436,10 @@ export default function LegalEntityProfiles() {
 
   function renderChildModal() {
     const { type, profileId, data } = dialog;
-    if (type === "registrations") return <RegistrationModal registration={data} profileId={profileId} busy={busy} onSave={(f) => saveChild(data ? () => organizationApi.updateLegalEntityRegistration(profileId, data.id, f, token, tokenType) : () => organizationApi.createLegalEntityRegistration(profileId, f, token, tokenType), "Registration saved")} onClose={() => setDialog(null)} />;
-    if (type === "addresses") return <AddressModal address={data} profileId={profileId} busy={busy} onSave={(f) => saveChild(data ? () => organizationApi.updateLegalEntityAddress(profileId, data.id, f, token, tokenType) : () => organizationApi.createLegalEntityAddress(profileId, f, token, tokenType), "Address saved")} onClose={() => setDialog(null)} />;
-    if (type === "representatives") return <RepresentativeModal representative={data} profileId={profileId} busy={busy} onSave={(f) => saveChild(data ? () => organizationApi.updateLegalEntityRepresentative(profileId, data.id, f, token, tokenType) : () => organizationApi.createLegalEntityRepresentative(profileId, f, token, tokenType), "Representative saved")} onClose={() => setDialog(null)} />;
-    if (type === "bankAccounts") return <BankAccountModal account={data} profileId={profileId} busy={busy} onSave={(f) => saveChild(data ? () => organizationApi.updateLegalEntityBankAccount(profileId, data.id, f, token, tokenType) : () => organizationApi.createLegalEntityBankAccount(profileId, f, token, tokenType), "Bank account saved")} onClose={() => setDialog(null)} />;
+    if (type === "registrations") return <RegistrationModal registration={data} busy={busy} onSave={(f) => saveChild(data ? () => organizationApi.updateLegalEntityRegistration(profileId, data.id, f, token, tokenType) : () => organizationApi.createLegalEntityRegistration(profileId, f, token, tokenType), "Registration saved")} onClose={() => setDialog(null)} />;
+    if (type === "addresses") return <AddressModal address={data} busy={busy} onSave={(f) => saveChild(data ? () => organizationApi.updateLegalEntityAddress(profileId, data.id, f, token, tokenType) : () => organizationApi.createLegalEntityAddress(profileId, f, token, tokenType), "Address saved")} onClose={() => setDialog(null)} />;
+    if (type === "representatives") return <RepresentativeModal representative={data} busy={busy} onSave={(f) => saveChild(data ? () => organizationApi.updateLegalEntityRepresentative(profileId, data.id, f, token, tokenType) : () => organizationApi.createLegalEntityRepresentative(profileId, f, token, tokenType), "Representative saved")} onClose={() => setDialog(null)} />;
+    if (type === "bankAccounts") return <BankAccountModal account={data} busy={busy} onSave={(f) => saveChild(data ? () => organizationApi.updateLegalEntityBankAccount(profileId, data.id, f, token, tokenType) : () => organizationApi.createLegalEntityBankAccount(profileId, f, token, tokenType), "Bank account saved")} onClose={() => setDialog(null)} />;
     return null;
   }
 

@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { Bookmark, MapPin, Briefcase, Trash2, ArrowRight, Sparkles } from "lucide-react";
 import toast from "react-hot-toast";
 import { candidateApi } from "../../utils/api";
-import { useCandidateAuth } from "../../context/CandidateAuthContext";
+import { useCandidateAuth } from "../../context/candidate-auth-context";
 import { resolveJobBranding, formatEmploymentType, formatExperience } from "../../config/careersTheme";
 
 export default function CandidateSavedJobs() {

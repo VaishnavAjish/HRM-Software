@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Bookmark } from "lucide-react";
 import toast from "react-hot-toast";
 import { candidateApi } from "../../utils/api";
-import { useCandidateAuth } from "../../context/CandidateAuthContext";
+import { useCandidateAuth } from "../../context/candidate-auth-context";
 
 /**
  * Self-contained save/unsave toggle. The caller only needs to know whether

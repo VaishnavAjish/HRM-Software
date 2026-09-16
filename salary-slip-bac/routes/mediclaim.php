@@ -2,13 +2,16 @@
 
 use App\Http\Controllers\Api\V1\Mediclaim\Admin\AuditController as AdminAuditController;
 use App\Http\Controllers\Api\V1\Mediclaim\Admin\ClaimController as AdminClaimController;
+use App\Http\Controllers\Api\V1\Mediclaim\Admin\EmployeeController as AdminEmployeeController;
 use App\Http\Controllers\Api\V1\Mediclaim\Admin\EnrollmentController as AdminEnrollmentController;
 use App\Http\Controllers\Api\V1\Mediclaim\Admin\HospitalController as AdminHospitalController;
+use App\Http\Controllers\Api\V1\Mediclaim\Admin\HospitalContactController as AdminHospitalContactController;
 use App\Http\Controllers\Api\V1\Mediclaim\Admin\MemberChangeRequestController as AdminMemberChangeRequestController;
 use App\Http\Controllers\Api\V1\Mediclaim\Admin\PolicyController as AdminPolicyController;
 use App\Http\Controllers\Api\V1\Mediclaim\Admin\ReportController as AdminReportController;
 use App\Http\Controllers\Api\V1\Mediclaim\Admin\ReviewerAssignmentController as AdminReviewerAssignmentController;
 use App\Http\Controllers\Api\V1\Mediclaim\Admin\RuleBookController as AdminRuleBookController;
+use App\Http\Controllers\Api\V1\Mediclaim\Admin\RuleBookLanguageController as AdminRuleBookLanguageController;
 use App\Http\Controllers\Api\V1\Mediclaim\Admin\SettlementController as AdminSettlementController;
 use App\Http\Controllers\Api\V1\Mediclaim\CardVerificationController;
 use App\Http\Controllers\Api\V1\Mediclaim\ClaimController;
@@ -60,6 +63,10 @@ Route::middleware('jwt.auth')->prefix('v1/mediclaim')->middleware(['module.schem
 
     Route::get('me/coverage', [MyCoverageController::class, 'show'])
         ->middleware('permission:self.mediclaim.coverage.read');
+    Route::post('me/rule-book-acknowledge', [MyCoverageController::class, 'acknowledgeRuleBook'])
+        ->middleware(['throttle:20,1', 'permission:self.mediclaim.onboarding.update']);
+    Route::post('me/onboarding-complete', [MyCoverageController::class, 'completeOnboarding'])
+        ->middleware(['throttle:20,1', 'permission:self.mediclaim.onboarding.update']);
 
     Route::get('me/members', [MyMembersController::class, 'index'])
         ->middleware('permission:self.mediclaim.member.read');
@@ -177,6 +184,21 @@ Route::middleware('jwt.auth')->prefix('v1/mediclaim')->middleware(['module.schem
         ->whereNumber('policy')->whereNumber('version')
         ->middleware('permission:mediclaim.policy.publish');
 
+    // Company-wide employee Mediclaim status (all active employees, not just
+    // the ones with an existing enrollment row — see EmployeeController's
+    // docblock). Reuses the enrollment read permission: this is the "who's
+    // enrolled/eligible" screen, same audience as the raw enrollments list.
+    Route::get('admin/employees', [AdminEmployeeController::class, 'index'])
+        ->middleware('permission:mediclaim.enrollment.read');
+    // Provisions every eligible employee's coverage + own card in one pass
+    // — "give the ₹3,00,000 floater to everyone" without waiting for each
+    // employee to individually open the module.
+    Route::post('admin/employees/bulk-issue-cards', [AdminEmployeeController::class, 'bulkIssue'])
+        ->middleware(['throttle:5,1', 'permission:mediclaim.enrollment.create']);
+    Route::get('admin/employees/{employee}', [AdminEmployeeController::class, 'show'])
+        ->whereNumber('employee')
+        ->middleware('permission:mediclaim.enrollment.read');
+
     Route::get('enrollments', [AdminEnrollmentController::class, 'index'])
         ->middleware('permission:mediclaim.enrollment.read');
     Route::post('enrollments', [AdminEnrollmentController::class, 'store'])
@@ -196,13 +218,52 @@ Route::middleware('jwt.auth')->prefix('v1/mediclaim')->middleware(['module.schem
         ->whereNumber('hospital')
         ->middleware('permission:mediclaim.hospital.delete');
 
+    // POST (not PUT) for update too, so an optional photo replacement can
+    // ride along as a normal multipart request — see HospitalContactController's
+    // own docblock.
+    Route::post('hospitals/{hospital}/contacts', [AdminHospitalContactController::class, 'store'])
+        ->whereNumber('hospital')
+        ->middleware(['throttle:20,1', 'permission:mediclaim.hospital.update']);
+    Route::post('hospitals/{hospital}/contacts/{contact}', [AdminHospitalContactController::class, 'update'])
+        ->whereNumber(['hospital', 'contact'])
+        ->middleware(['throttle:20,1', 'permission:mediclaim.hospital.update']);
+    Route::delete('hospitals/{hospital}/contacts/{contact}', [AdminHospitalContactController::class, 'destroy'])
+        ->whereNumber(['hospital', 'contact'])
+        ->middleware('permission:mediclaim.hospital.delete');
+
+    Route::get('rule-book-languages', [AdminRuleBookLanguageController::class, 'index'])
+        ->middleware('permission:mediclaim.rule_book.read');
+    Route::post('rule-book-languages', [AdminRuleBookLanguageController::class, 'store'])
+        ->middleware(['throttle:20,1', 'permission:mediclaim.rule_book.create']);
+    Route::put('rule-book-languages/{language}', [AdminRuleBookLanguageController::class, 'update'])
+        ->whereNumber('language')
+        ->middleware(['throttle:30,1', 'permission:mediclaim.rule_book.update']);
+    Route::delete('rule-book-languages/{language}', [AdminRuleBookLanguageController::class, 'destroy'])
+        ->whereNumber('language')
+        ->middleware(['throttle:20,1', 'permission:mediclaim.rule_book.delete']);
+
     Route::get('rule-books', [AdminRuleBookController::class, 'index'])
         ->middleware('permission:mediclaim.rule_book.read');
     Route::post('rule-books', [AdminRuleBookController::class, 'store'])
-        ->middleware(['throttle:10,1', 'permission:mediclaim.rule_book.create']);
+        ->middleware(['throttle:20,1', 'permission:mediclaim.rule_book.create']);
+    Route::put('rule-books/{ruleBook}', [AdminRuleBookController::class, 'update'])
+        ->whereNumber('ruleBook')
+        ->middleware(['throttle:30,1', 'permission:mediclaim.rule_book.update']);
     Route::post('rule-books/{ruleBook}/publish', [AdminRuleBookController::class, 'publish'])
         ->whereNumber('ruleBook')
         ->middleware('permission:mediclaim.rule_book.publish');
+    Route::post('rule-books/{ruleBook}/items', [AdminRuleBookController::class, 'addItem'])
+        ->whereNumber('ruleBook')
+        ->middleware(['throttle:60,1', 'permission:mediclaim.rule_book.update']);
+    Route::put('rule-books/{ruleBook}/items/{item}', [AdminRuleBookController::class, 'updateItem'])
+        ->whereNumber('ruleBook')->whereNumber('item')
+        ->middleware(['throttle:60,1', 'permission:mediclaim.rule_book.update']);
+    Route::delete('rule-books/{ruleBook}/items/{item}', [AdminRuleBookController::class, 'deleteItem'])
+        ->whereNumber('ruleBook')->whereNumber('item')
+        ->middleware(['throttle:60,1', 'permission:mediclaim.rule_book.update']);
+    Route::put('rule-books/{ruleBook}/items-reorder', [AdminRuleBookController::class, 'reorderItems'])
+        ->whereNumber('ruleBook')
+        ->middleware(['throttle:30,1', 'permission:mediclaim.rule_book.update']);
 
     Route::get('reviewer-assignments', [AdminReviewerAssignmentController::class, 'index'])
         ->middleware('permission:mediclaim.reviewer_assignment.read');

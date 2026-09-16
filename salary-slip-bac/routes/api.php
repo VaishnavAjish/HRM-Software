@@ -174,6 +174,10 @@ Route::middleware(['jwt.auth', 'role:admin'])->group(function () {
  */
 Route::post('logout', [AuthController::class, 'logout'])->middleware('throttle:30,1');
 
+
+
+
+
 Route::middleware('jwt.auth')->group(function () {
     Route::get('v1/manager/team', [UserController::class, 'managerTeam']);
     Route::get('v1/manager/check', [UserController::class, 'managerCheck']);
@@ -196,7 +200,7 @@ Route::middleware('jwt.auth')->group(function () {
      * agent who does the first must not be handed the second.
      */
     Route::get('v1/provisioning/company-options', [V1CompanyUnitController::class, 'assignableOptions'])
-        ->middleware(['throttle:60,1', 'permission:self.profile.read']);
+        ->middleware('throttle:60,1');
 
     /*
      * A schema probe, not configuration — and not admin-only.
@@ -233,12 +237,12 @@ Route::middleware('jwt.auth')->group(function () {
         // Requiring self.profile.read here is circular: the browser needs this
         // snapshot to learn which permissions the actor holds in the first
         // place. The outer jwt.auth group remains the security boundary.
-        Route::get('me', [V1AuthorizationController::class, 'me'])->middleware(['throttle:30,1', 'permission:self.profile.read']);
+        Route::get('me', [V1AuthorizationController::class, 'me'])->middleware('throttle:30,1');
         // Tightened: a single batch (max 25 codes) answers a whole screen, so
         // these do not need high per-minute ceilings. Neither persists a
         // decision-log row (audit=false in the controller).
-        Route::post('check', [V1AuthorizationController::class, 'check'])->middleware(['throttle:60,1', 'permission:self.profile.read']);
-        Route::post('check-batch', [V1AuthorizationController::class, 'checkBatch'])->middleware(['throttle:20,1', 'permission:self.profile.read']);
+        Route::post('check', [V1AuthorizationController::class, 'check'])->middleware('throttle:60,1');
+        Route::post('check-batch', [V1AuthorizationController::class, 'checkBatch'])->middleware('throttle:20,1');
 
         /*
          * Administration surface for the Permission Matrix screen.
@@ -443,7 +447,7 @@ Route::middleware('jwt.auth')->group(function () {
         Route::get('/', [V1AccessRequestController::class, 'index'])
             ->middleware('permission:admin.access_request.read');
         Route::post('/', [V1AccessRequestController::class, 'store'])
-            ->middleware(['throttle:20,1', 'permission:self.profile.read']);
+            ->middleware('throttle:20,1');
         Route::post('{id}/approve', [V1AccessRequestController::class, 'approve'])
             ->whereNumber('id')->middleware('permission:admin.access_request.approve');
         Route::post('{id}/reject', [V1AccessRequestController::class, 'reject'])
@@ -583,6 +587,18 @@ Route::middleware('jwt.auth')->group(function () {
     Route::group(['prefix' => 'v1/documents'], function () {
         Route::get('types', [V1DocumentController::class, 'types'])->middleware('permission:document.file.read');
 
+        // `store()`/`replace()` were already fully implemented on the
+        // controller (matching documentV1Api.upload()/.replace() on the
+        // frontend field-for-field) but had no route pointing at them —
+        // every caller (RuleBooksTab, EmployeeDocuments,
+        // AppointmentDocumentsStep) was 404ing. Added here rather than left
+        // for later since the controller logic was already correct.
+        Route::post('upload', [V1DocumentController::class, 'store'])
+            ->middleware(['throttle:30,1', 'permission:document.file.upload']);
+        Route::post('{id}/replace', [V1DocumentController::class, 'replace'])
+            ->whereNumber('id')
+            ->middleware(['throttle:30,1', 'permission:document.file.upload']);
+
         Route::middleware('throttle:60,1')->group(function () {
             Route::post('{id}/view-url', [V1DocumentController::class, 'viewUrl'])->whereNumber('id')->middleware('permission:document.file.read');
             Route::post('{id}/download-url', [V1DocumentController::class, 'downloadUrl'])->whereNumber('id')->middleware('permission:document.file.download');
@@ -665,6 +681,8 @@ Route::middleware('jwt.auth')->group(function () {
     // agent-portal nodes imply (see PermissionRegistry).
     Route::get('/department/get', [AdminController::class, 'getDepartment'])
         ->middleware(['throttle:60,1', 'permission:hr.department.read']);
+
+    Route::get('/designation/get', [AdminController::class, 'getDesignation']);
 
     /*
      * In-app notifications — the caller's own, whatever their role.
@@ -1390,7 +1408,7 @@ Route::middleware('jwt.auth')->group(function () {
                 Route::post('{id}/director/decision', [JobRequisitionController::class, 'directorDecision'])->middleware('permission:hr.requisition.director.decide');
                 Route::post('{id}/portal/publish', [JobRequisitionController::class, 'portalPublish'])->middleware('permission:hr.requisition.job_portal.publish');
                 Route::post('{id}/portal/unpublish', [JobRequisitionController::class, 'portalUnpublish'])->middleware('permission:hr.requisition.job_portal.publish');
-                Route::post('{id}/close', [JobRequisitionController::class, 'close'])->middleware('permission:hr.requisition.update');
+                Route::post('{id}/close', [JobRequisitionController::class, 'close'])->middleware('permission:hr.requisition.update,hr.requisition.job_portal.publish');
                 Route::post('approve/{id}', [JobRequisitionController::class, 'approve'])->middleware('permission:hr.requisition.approve');
                 Route::post('publish/{id}', [JobRequisitionController::class, 'publish'])->middleware('permission:hr.requisition.publish');
 Route::post('publish-indeed/{id}', [JobRequisitionController::class, 'publishToIndeed'])->middleware('permission:hr.requisition.publish');

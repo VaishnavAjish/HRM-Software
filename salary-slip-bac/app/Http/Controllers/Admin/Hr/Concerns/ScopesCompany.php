@@ -67,7 +67,7 @@ trait ScopesCompany
             return false;
         }
 
-        if (in_array((int) $userAuth->role, [0, 1], true)) {
+        if (in_array((int) $userAuth->role, $this->globalCompanyScopeRoles(), true)) {
             return true;
         }
 
@@ -76,16 +76,21 @@ trait ScopesCompany
         return (bool) array_intersect(['all', 'all-companies'], $tokens);
     }
 
+    protected function globalCompanyScopeRoles(): array
+    {
+        return [0, 1];
+    }
+
     protected function whereCompanyCodeMatches($query, array $codes)
     {
         return $query->where(function ($q) use ($codes) {
             foreach ($codes as $code) {
-                if ($code === 'all' || $code === 'all-companies') {
-                    $q->orWhereNotNull('company_code');
-                } else {
-                    $q->orWhere('company_code', $code)
-                      ->orWhere('company_code', 'like', "%{$code}%");
-                }
+                $literal = str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $code);
+
+                $q->orWhere('company_code', $code)
+                    ->orWhereRaw("company_code LIKE ? ESCAPE '!'", [$literal . ',%'])
+                    ->orWhereRaw("company_code LIKE ? ESCAPE '!'", ['%,' . $literal])
+                    ->orWhereRaw("company_code LIKE ? ESCAPE '!'", ['%,' . $literal . ',%']);
             }
         });
     }

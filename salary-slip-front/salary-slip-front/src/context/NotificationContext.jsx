@@ -1,13 +1,13 @@
-import { createContext, useContext, useEffect, useMemo, useState, useCallback, useRef } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import toast from "react-hot-toast";
 import { useAuth } from "./AuthContext";
 import { getSocket, subscribeSocketEvent, emitSocketEvent } from "../utils/socket";
 import { notificationApi } from "../utils/api";
+import { NotificationContext } from "./notification-context";
 
 /** How often the bell re-checks the server for new activity. */
 const POLL_MS = 30000;
 
-const NotificationContext = createContext(null);
 
 // No storage key for notifications: the server owns them now.
 const ANNOUNCEMENTS_STORAGE_KEY = "hrms_enterprise_announcements_v3";
@@ -77,6 +77,16 @@ const SEED_ANNOUNCEMENTS = [
   },
 ];
 
+function readStoredJson(key, fallback) {
+  try {
+    const saved = localStorage.getItem(key);
+    return saved ? JSON.parse(saved) : fallback;
+  } catch (err) {
+    console.error("Failed to load notifications state:", err);
+    return fallback;
+  }
+}
+
 export function NotificationProvider({ children }) {
   const { user } = useAuth();
   /*
@@ -87,9 +97,12 @@ export function NotificationProvider({ children }) {
    * now real: TicketNotifier writes a row per recipient, and this polls for it.
    */
   const [notifications, setNotifications] = useState([]);
-  const [announcements, setAnnouncements] = useState(SEED_ANNOUNCEMENTS);
-  const [groups, setGroups] = useState(INITIAL_GROUPS);
-  const [preferences, setPreferences] = useState(INITIAL_PREFERENCES);
+  // Announcements, groups and preferences come from localStorage on mount.
+  // Notifications are deliberately absent: the server owns them, and a
+  // cached copy would resurrect rows another device has already read.
+  const [announcements, setAnnouncements] = useState(() => readStoredJson(ANNOUNCEMENTS_STORAGE_KEY, SEED_ANNOUNCEMENTS));
+  const [groups, setGroups] = useState(() => readStoredJson(GROUPS_STORAGE_KEY, INITIAL_GROUPS));
+  const [preferences, setPreferences] = useState(() => readStoredJson(PREFS_STORAGE_KEY, INITIAL_PREFERENCES));
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   // Initialize Desktop Push & Web Audio Chime Player
@@ -101,28 +114,9 @@ export function NotificationProvider({ children }) {
     }
   }, [preferences.desktopEnabled]);
 
-  // Load state from localStorage on mount.
-  //
-  // Notifications are deliberately absent here: the server owns them, and a
-  // cached copy would resurrect rows another device has already read.
-  useEffect(() => {
-    try {
-      const savedAncs = localStorage.getItem(ANNOUNCEMENTS_STORAGE_KEY);
-      if (savedAncs) setAnnouncements(JSON.parse(savedAncs));
-
-      const savedGrps = localStorage.getItem(GROUPS_STORAGE_KEY);
-      if (savedGrps) setGroups(JSON.parse(savedGrps));
-
-      const savedPrefs = localStorage.getItem(PREFS_STORAGE_KEY);
-      if (savedPrefs) setPreferences(JSON.parse(savedPrefs));
-    } catch (err) {
-      console.error("Failed to load notifications state:", err);
-    }
-  }, []);
-
   // Web Audio Chime Sound Trigger
   const playNotificationChime = useCallback(() => {
-    if (!preferences.soundEnabled) return;
+    if (!preferences.soundEnabled) return false;
     try {
       const ctx = new (window.AudioContext || window.webkitAudioContext)();
       const osc = ctx.createOscillator();
@@ -138,21 +132,31 @@ export function NotificationProvider({ children }) {
       osc.connect(gain);
       gain.connect(ctx.destination);
 
+      osc.onended = () => {
+        ctx.close().catch(() => undefined);
+      };
       osc.start();
       osc.stop(ctx.currentTime + 0.35);
-    } catch (err) {}
+      return true;
+    } catch {
+      return false;
+    }
   }, [preferences.soundEnabled]);
 
   // Browser Desktop Push Trigger
   const triggerDesktopPush = useCallback((title, body) => {
-    if (!preferences.desktopEnabled) return;
-    if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
-      try {
-        new Notification(title, {
-          body,
-          icon: "/favicon.ico",
-        });
-      } catch (err) {}
+    if (!preferences.desktopEnabled) return false;
+    if (typeof window === "undefined" || !("Notification" in window) || Notification.permission !== "granted") {
+      return false;
+    }
+    try {
+      new Notification(title, {
+        body,
+        icon: "/favicon.ico",
+      });
+      return true;
+    } catch {
+      return false;
     }
   }, [preferences.desktopEnabled]);
 
@@ -487,12 +491,4 @@ export function NotificationProvider({ children }) {
       {children}
     </NotificationContext.Provider>
   );
-}
-
-export function useNotifications() {
-  const context = useContext(NotificationContext);
-  if (!context) {
-    throw new Error("useNotifications must be used within a NotificationProvider");
-  }
-  return context;
 }

@@ -15,27 +15,31 @@ import { getReviewStageMeta } from "../models/reviewStages";
  */
 export default function ClaimDecisionsList({ claimId }) {
   const { user } = useAuth();
-  const [state, setState] = useState({ loading: true, decisions: [], error: null });
+  const accessToken = user?.accessToken;
+  const tokenType = user?.tokenType;
+  const requestKey = `${claimId ?? ""}|${accessToken ?? ""}|${tokenType ?? ""}`;
+  const [result, setResult] = useState({ key: null, decisions: [], error: null });
 
   useEffect(() => {
-    if (!claimId || !user?.accessToken) return undefined;
+    if (!claimId || !accessToken) return undefined;
     let cancelled = false;
-    setState((prev) => ({ ...prev, loading: true, error: null }));
 
-    mediclaimApi.claimDecisions(claimId, user.accessToken, user.tokenType)
+    mediclaimApi.claimDecisions(claimId, accessToken, tokenType)
       .then((res) => {
         if (cancelled) return;
         const payload = res?.data;
         const decisions = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
-        setState({ loading: false, decisions, error: null });
+        setResult({ key: requestKey, decisions, error: null });
       })
       .catch((err) => {
         if (cancelled) return;
-        setState({ loading: false, decisions: [], error: err?.message || "Failed to load claim decisions." });
+        setResult({ key: requestKey, decisions: [], error: err?.message || "Failed to load claim decisions." });
       });
 
     return () => { cancelled = true; };
-  }, [claimId, user]);
+  }, [claimId, accessToken, tokenType, requestKey]);
+
+  const state = { loading: result.key !== requestKey, decisions: result.decisions, error: result.error };
 
   if (state.loading) {
     return <p className="py-6 text-center text-xs text-gray-400">Loading decisions…</p>;

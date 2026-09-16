@@ -29,11 +29,10 @@ import { formatClaimDate } from "../../features/mediclaim/utils/formatters";
  */
 export default function MediclaimCardVerify() {
   const { token } = useParams();
-  const [state, setState] = useState({ loading: true, card: null, invalid: false });
+  const [result, setResult] = useState({ token: null, card: null, invalid: false });
 
   useEffect(() => {
     let cancelled = false;
-    setState({ loading: true, card: null, invalid: false });
 
     mediclaimApi.verifyCard(token)
       .then((res) => {
@@ -44,18 +43,22 @@ export default function MediclaimCardVerify() {
         // case this endpoint's response isn't wrapped the same way.
         const payload = res?.data ?? res;
         if (payload?.valid) {
-          setState({ loading: false, card: payload, invalid: false });
+          setResult({ token, card: payload, invalid: false });
         } else {
-          setState({ loading: false, card: null, invalid: true });
+          setResult({ token, card: null, invalid: true });
         }
       })
       .catch(() => {
         if (cancelled) return;
-        setState({ loading: false, card: null, invalid: true });
+        setResult({ token, card: null, invalid: true });
       });
 
     return () => { cancelled = true; };
   }, [token]);
+
+  const state = result.token === token
+    ? { loading: false, card: result.card, invalid: result.invalid }
+    : { loading: true, card: null, invalid: false };
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 px-4 py-8 sm:py-12">

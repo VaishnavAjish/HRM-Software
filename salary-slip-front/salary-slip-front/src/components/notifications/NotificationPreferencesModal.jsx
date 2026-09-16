@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { Sliders, Bell, Mail, Smartphone, Check, Volume2 } from "lucide-react";
+import { Bell, Mail, Smartphone, Check, Volume2 } from "lucide-react";
 import Modal from "../ui/Modal";
 import Button from "../ui/Button";
-import { useNotifications } from "../../context/NotificationContext";
+import { useNotifications } from "../../context/notification-context";
 
 export default function NotificationPreferencesModal({ isOpen, onClose }) {
   const { preferences, savePreferences } = useNotifications();

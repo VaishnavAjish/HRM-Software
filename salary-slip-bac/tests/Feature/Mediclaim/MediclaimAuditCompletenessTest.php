@@ -36,6 +36,12 @@ class MediclaimAuditCompletenessTest extends TestCase
     public function submitting_a_claim_writes_a_claim_submitted_event(): void
     {
         $employee = $this->makeUser('Employee');
+        $manager = $this->makeUser('Manager', ['role' => 1]);
+        ReportingRelationship::create([
+            'employee_user_id' => $employee->id, 'manager_user_id' => $manager->id,
+            'relationship_type' => ReportingRelationship::TYPE_PRIMARY, 'status' => ReportingRelationship::STATUS_ACTIVE,
+            'effective_from' => now()->subDay()->toDateString(), 'effective_to' => null,
+        ]);
         $workflow = app(ClaimWorkflowService::class);
         $claim = $workflow->submit($workflow->createDraft($employee, []), $employee);
 

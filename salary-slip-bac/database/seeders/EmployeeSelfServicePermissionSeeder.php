@@ -39,6 +39,8 @@ class EmployeeSelfServicePermissionSeeder extends Seeder
         'ui.portals.employee_tickets.create',
         'ui.portals.employee_profile',
         'ui.portals.employee_appointment',
+        'ui.portals.employee_mediclaim',
+        'ui.portals.employee_security',
     ];
 
     /** Role codes that mean "an ordinary employee" across deployments. */

@@ -45,28 +45,38 @@ const EMPTY_FORM = {
  */
 export default function NotifyOfficeForm({ members = [], hospitals = [], lookupsLoading = false, lookupsError = null }) {
   const { user } = useAuth();
+  const accessToken = user?.accessToken;
+  const tokenType = user?.tokenType;
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
-  const [intimationsState, setIntimationsState] = useState({ loading: true, intimations: [], error: null });
-
-  const loadIntimations = () => {
-    if (!user?.accessToken) return;
-    setIntimationsState((prev) => ({ ...prev, loading: true, error: null }));
-    mediclaimApi.myIntimations({}, user.accessToken, user.tokenType)
-      .then((res) => {
-        const payload = res?.data;
-        const intimations = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
-        setIntimationsState({ loading: false, intimations, error: null });
-      })
-      .catch((err) => {
-        setIntimationsState({ loading: false, intimations: [], error: err?.message || "Failed to load past intimations." });
-      });
-  };
+  const [reloadToken, setReloadToken] = useState(0);
+  const requestKey = `${accessToken ?? ""}|${tokenType ?? ""}|${reloadToken}`;
+  const [intimationsResult, setIntimationsResult] = useState({ key: null, intimations: [], error: null });
 
   useEffect(() => {
-    loadIntimations();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+    if (!accessToken) return undefined;
+    let cancelled = false;
+    mediclaimApi.myIntimations({}, accessToken, tokenType)
+      .then((res) => {
+        if (cancelled) return;
+        const payload = res?.data;
+        const intimations = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
+        setIntimationsResult({ key: requestKey, intimations, error: null });
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setIntimationsResult({ key: requestKey, intimations: [], error: err?.message || "Failed to load past intimations." });
+      });
+    return () => { cancelled = true; };
+  }, [accessToken, tokenType, requestKey]);
+
+  const intimationsState = {
+    loading: intimationsResult.key !== requestKey,
+    intimations: intimationsResult.intimations,
+    error: intimationsResult.error,
+  };
+
+  const loadIntimations = () => setReloadToken((n) => n + 1);
 
   const patch = (fields) => setForm((f) => ({ ...f, ...fields }));
 

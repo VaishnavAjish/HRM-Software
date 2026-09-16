@@ -2,6 +2,8 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\User;
+use App\Services\Authorization\AuthorizationEngine;
 use App\Services\Authorization\SchemaSupport;
 use Closure;
 use Illuminate\Http\Request;
@@ -126,7 +128,9 @@ class RequireModuleSchema
             'mediclaim_hospitals',
             'mediclaim_hospital_contacts',
             'mediclaim_policy_hospitals',
+            'mediclaim_rule_book_languages',
             'mediclaim_rule_books',
+            'mediclaim_rule_book_items',
             'mediclaim_rule_book_acknowledgements',
             'mediclaim_enrollments',
             'mediclaim_members',
@@ -148,10 +152,19 @@ class RequireModuleSchema
         ],
     ];
 
+    private const ADMINISTRATIVE_MODULES = ['hr', 'organization', 'authorization'];
+
     public function handle(Request $request, Closure $next, string $module)
     {
         if (self::ready($module)) {
             return $next($request);
+        }
+
+        if (in_array($module, self::ADMINISTRATIVE_MODULES, true) && ! $this->mayLearnAboutModule(auth('api')->user())) {
+            return response()->json([
+                'success' => false,
+                'error' => ['code' => 'PERMISSION_DENIED', 'message' => 'You are not permitted to perform this action.'],
+            ], 403);
         }
 
         return response()->json([
@@ -162,6 +175,23 @@ class RequireModuleSchema
                 'module' => $module,
             ],
         ], 503);
+    }
+
+    private function mayLearnAboutModule(?User $actor): bool
+    {
+        if ($actor === null) {
+            return false;
+        }
+
+        if ($actor->isSuperAdmin() || in_array((int) $actor->role, [0, 1, 2], true)) {
+            return true;
+        }
+
+        try {
+            return app(AuthorizationEngine::class)->decide($actor, 'ui.portals.business', [], ['audit' => false])->allowed;
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     /**

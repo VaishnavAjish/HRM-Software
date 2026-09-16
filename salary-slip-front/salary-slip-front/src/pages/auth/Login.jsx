@@ -19,7 +19,6 @@ import {
   Phone,
   ShieldCheck,
   Building2,
-  Star,
   Sparkles,
 } from "lucide-react";
 import toast from "react-hot-toast";
@@ -249,7 +248,6 @@ export default function Login() {
   const [codeResolved, setCodeResolved] = useState(false);
 
   // Step 2 — Mobile OTP Verification
-  const [otpSent, setOtpSent] = useState(false);
   const [otp, setOtp] = useState(OTP_BLANK);
   const [devOtp, setDevOtp] = useState("");
   const [otpErr, setOtpErr] = useState("");
@@ -284,7 +282,6 @@ export default function Login() {
     setVerificationToken("");
     setCodeChecking(false);
     setCodeResolved(false);
-    setOtpSent(false);
     setOtp(OTP_BLANK);
     setDevOtp("");
     setOtpErr("");
@@ -386,7 +383,6 @@ export default function Login() {
           company_code: fCompanyId,
           unit: fUnit,
         });
-        setOtpSent(true);
         if (otpRes?.dev_otp) {
           setDevOtp(otpRes.dev_otp);
           toast.success(`OTP generated! Code: ${otpRes.dev_otp}`, { duration: 8000 });
@@ -395,7 +391,6 @@ export default function Login() {
         }
       } catch (otpError) {
         toast.error(otpError.message || "Failed to send OTP. You can retry on the next step.");
-        setOtpSent(false);
       } finally {
         setSendLoading(false);
       }
@@ -426,7 +421,6 @@ export default function Login() {
       setOtp(OTP_BLANK);
       setOtpVerifyLoading(false);
       setOtpAnim("idle");
-      setOtpSent(true);
       setOtpErr("");
       if (res?.dev_otp) {
         setDevOtp(res.dev_otp);
@@ -536,7 +530,6 @@ export default function Login() {
       setVerificationToken("");
       setCodeChecking(false);
       setCodeResolved(false);
-      setOtpSent(false);
       setOtp(OTP_BLANK);
       setDevOtp("");
       setOtpErr("");
@@ -954,7 +947,7 @@ export default function Login() {
                         Verify Mobile OTP
                       </h2>
                       <p className="text-xs sm:text-sm text-[#64748b] dark:text-slate-400 mt-1.5 max-w-xs mx-auto">
-                        We sent a 6-digit OTP to your registered mobile number: <span className="font-semibold text-slate-700 dark:text-slate-200">+91 {fMobileNum}</span>
+                        We sent a {OTP_LENGTH}-digit OTP to your registered mobile number: <span className="font-semibold text-slate-700 dark:text-slate-200">+91 {fMobileNum}</span>
                       </p>
                     </div>
 

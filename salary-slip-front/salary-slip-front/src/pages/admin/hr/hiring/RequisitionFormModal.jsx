@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { copyToClipboard } from "../../../../utils/clipboard";
 import { ClipboardCopy } from "lucide-react";
@@ -8,7 +8,7 @@ import RichTextEditor from "../../../../components/ui/RichTextEditor";
 import DatePicker from "../../../../components/ui/DatePicker";
 import { useAuth } from "../../../../context/AuthContext";
 import { useCompany } from "../../../../context/CompanyContext";
-import { hrApi, salaryApi } from "../../../../utils/api";
+import { hrApi, rbacApi, salaryApi } from "../../../../utils/api";
 
 const inputClass = "w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500";
 
@@ -115,16 +115,26 @@ function FormSection({ title, children }) {
   );
 }
 
-export default function RequisitionFormModal({ targetId, isOpen, onClose, onSuccess, initialDepartments, extraContent = null, extraFooter = null, titleOverride = null }) {
+export default function RequisitionFormModal(props) {
+  const sessionKey = props.isOpen ? String(props.targetId || "new") : "closed";
+  return <RequisitionFormModalSession key={sessionKey} {...props} />;
+}
+
+function RequisitionFormModalSession({ targetId, isOpen, onClose, onSuccess, initialDepartments, extraContent = null, extraFooter = null, titleOverride = null }) {
   const { user } = useAuth();
-  const { companyScope, scopeKey } = useCompany();
+  const { companyScope } = useCompany();
+  const accessToken = user?.accessToken;
+  const tokenType = user?.tokenType;
+  const companyId = companyScope?.companyId;
+  const editTargetId = isOpen && targetId && targetId !== "new" ? targetId : null;
 
   const [step, setStep] = useState(1);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
-  const [fetching, setFetching] = useState(false);
-  
+  const [editLoaded, setEditLoaded] = useState(false);
+  const fetching = Boolean(editTargetId) && !editLoaded;
+
   const [departments, setDepartments] = useState(initialDepartments || []);
   const [managers, setManagers] = useState([]);
   const [managersLoading, setManagersLoading] = useState(false);
@@ -132,71 +142,77 @@ export default function RequisitionFormModal({ targetId, isOpen, onClose, onSucc
   const managerSeq = useRef(0);
   const baselineRef = useRef(step2Snapshot(EMPTY_FORM));
   const [jdEdited, setJdEdited] = useState(false);
+  const [applyLink, setApplyLink] = useState("");
 
   const deptOptions = useMemo(() => departments.filter((d) => d.id != null), [departments]);
 
   // Load departments if we don't have them
   useEffect(() => {
     if (!initialDepartments || initialDepartments.length === 0) {
-      if (!user?.accessToken) return;
-      salaryApi.getDepartments(user.accessToken, user.tokenType, companyScope?.companyId).then(res => {
+      if (!accessToken) return;
+      salaryApi.getDepartments(accessToken, tokenType, companyId).then(res => {
         setDepartments(res.data || []);
       }).catch(err => {
         console.error("Failed to load departments in modal", err);
       });
     }
-  }, [initialDepartments, user, companyScope]);
+  }, [initialDepartments, accessToken, tokenType, companyId]);
+
+  useEffect(() => {
+    if (!isOpen || !accessToken) return;
+    let cancelled = false;
+    rbacApi.getSettings(accessToken, tokenType, "hr")
+      .then((res) => {
+        const row = (res.data || []).find((s) => s.key === "hr.google_form_url");
+        if (!cancelled && row?.value) setApplyLink(row.value);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [isOpen, accessToken, tokenType]);
+
+  const handleEditLoadFailed = useEffectEvent(() => {
+    toast.error("Failed to load requisition");
+    onClose();
+  });
 
   // Load editing requisition if provided
   useEffect(() => {
-    if (isOpen) {
-      if (targetId && targetId !== "new") {
-        setFetching(true);
-        hrApi.getRequisition(targetId, user?.accessToken, user?.tokenType).then(res => {
-          if (res.status && res.data) {
-            const r = res.data;
-            setEditing(r);
-            const f = {
-              department_id: r.department_id ?? "", department_manager_id: r.department_manager_id ?? "",
-              title: r.title || "", designation: r.designation || "", employment_type: r.employment_type || "full_time",
-              openings: r.openings || 1, priority: r.priority || "medium", min_experience: r.min_experience ?? "",
-              max_experience: r.max_experience ?? "", salary_min: r.salary_min ?? "", salary_max: r.salary_max ?? "",
-              description: r.description || "", requirements: r.requirements || "", target_closing_date: r.target_closing_date || "",
-            };
-            setForm(f);
-            baselineRef.current = step2Snapshot(f);
-            setJdEdited(false);
-            
-            managerSeq.current += 1;
-            setManagers([]);
-            setManagersLoading(false);
-            setManagersError(false);
-            
-            if (r.department_manager) {
-              setManagers([{ id: r.department_manager.id, name: r.department_manager.name, designation: r.department_manager.designation }]);
-            }
-            setStep(2);
-          }
-          setFetching(false);
-        }).catch(err => {
-          toast.error("Failed to load requisition");
-          setFetching(false);
-          onClose();
-        });
-      } else {
-        setEditing(null);
-        setForm(EMPTY_FORM);
-        baselineRef.current = step2Snapshot(EMPTY_FORM);
+    if (!editTargetId) return;
+    let cancelled = false;
+    hrApi.getRequisition(editTargetId, accessToken, tokenType).then(res => {
+      if (cancelled) return;
+      if (res.status && res.data) {
+        const r = res.data;
+        setEditing(r);
+        const f = {
+          department_id: r.department_id ?? "", department_manager_id: r.department_manager_id ?? "",
+          title: r.title || "", designation: r.designation || "", employment_type: r.employment_type || "full_time",
+          openings: r.openings || 1, priority: r.priority || "medium", min_experience: r.min_experience ?? "",
+          max_experience: r.max_experience ?? "", salary_min: r.salary_min ?? "", salary_max: r.salary_max ?? "",
+          description: r.description || "", requirements: r.requirements || "", target_closing_date: r.target_closing_date || "",
+        };
+        setForm(f);
+        baselineRef.current = step2Snapshot(f);
         setJdEdited(false);
-        
+
         managerSeq.current += 1;
         setManagers([]);
         setManagersLoading(false);
         setManagersError(false);
-        setStep(1);
+
+        if (r.department_manager) {
+          setManagers([{ id: r.department_manager.id, name: r.department_manager.name, designation: r.department_manager.designation }]);
+        }
+        setStep(2);
       }
-    }
-  }, [isOpen, targetId, user]);
+      setEditLoaded(true);
+    }).catch(() => {
+      if (cancelled) return;
+      setEditLoaded(true);
+      handleEditLoadFailed();
+    });
+    return () => { cancelled = true; };
+  }, [editTargetId, accessToken, tokenType]);
 
   const resetManagers = () => {
     managerSeq.current += 1;
@@ -233,8 +249,8 @@ export default function RequisitionFormModal({ targetId, isOpen, onClose, onSucc
   };
 
   const jdText = useMemo(() => {
-    return buildJdTemplate(form, "https://careers.yourcompany.com/apply");
-  }, [form]);
+    return buildJdTemplate(form, applyLink);
+  }, [form, applyLink]);
 
   // Inject styles directly to bypass aggressive browser caching for JD Preview & Rich Text Editor
   const injectedStyles = `

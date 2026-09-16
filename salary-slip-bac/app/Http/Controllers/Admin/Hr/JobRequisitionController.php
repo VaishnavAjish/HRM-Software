@@ -122,7 +122,7 @@ class JobRequisitionController extends Controller
             return response()->json(['status' => false, 'message' => 'Requisition not found'], 404);
         }
 
-        if (! in_array($requisition->status, ['draft', 'rejected', 'pending_approval', 'pending_hr_review', 'approved', 'posted'], true)) {
+        if (! in_array($requisition->status, ['draft', 'rejected', 'revision_requested', 'approved', 'posted'], true)) {
             throw ValidationException::withMessages([
                 'status' => 'This requisition cannot be edited in its current state.',
             ]);
@@ -343,7 +343,7 @@ class JobRequisitionController extends Controller
         $updated = $approvals->forwardToDirector(
             $requisition,
             auth('api')->user(),
-            (int) $data['director_id'],
+            isset($data['director_id']) ? (int) $data['director_id'] : null,
             $data['comment'] ?? null,
         );
         AuditLogger::log($request, 'FORWARD', 'JobRequisitionApproval', $requisition->toArray(), $updated->toArray());

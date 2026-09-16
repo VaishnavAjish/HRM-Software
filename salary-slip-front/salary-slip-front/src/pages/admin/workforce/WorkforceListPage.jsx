@@ -1,9 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import {
-  Plus, Search, Loader2, Pencil, Trash2, Eye, Filter, ChevronDown, ChevronUp,
-  Download, RefreshCw, Copy, Archive, RotateCcw
-} from "lucide-react";
+import { Plus, Loader2, Pencil, Trash2, Eye, Filter, ChevronUp, RotateCcw } from "lucide-react";
 import { useAuth } from "../../../context/AuthContext";
 import { useAuthorization } from "../../../hooks/useAuthorization";
 import Badge from "../../../components/ui/Badge";
@@ -12,7 +9,6 @@ import Card from "../../../components/ui/Card";
 import Modal from "../../../components/ui/Modal";
 import { SkeletonTable } from "../../../components/ui/Skeleton";
 import Pagination from "../../../components/ui/Pagination";
-import { workforceApi } from "../../../features/workforce/services/workforceApi";
 
 const inputClass =
   "w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500";
@@ -28,6 +24,9 @@ const STATUS_FILTERS = [
   { value: "ARCHIVED", label: "Archived" },
 ];
 
+const NO_FILTERS = {};
+const NO_ITEMS = [];
+
 function Th({ children, className = "" }) {
   return (
     <th scope="col" className={`px-4 py-3 whitespace-nowrap ${className}`}>{children}</th>
@@ -38,27 +37,24 @@ function Td({ children, className = "" }) {
   return <td className={`px-4 py-3 whitespace-nowrap ${className}`}>{children}</td>;
 }
 
-export function createWorkforceListPage({
+export default function WorkforceListPage({
   entityName,
   entityNamePlural,
   api,
   columns,
-  defaultFilters = {},
+  defaultFilters = NO_FILTERS,
   createModal,
   editModal,
   viewModal,
-  permissions = {},
-  customFilters = [],
-  customActions = [],
+  permissions = NO_FILTERS,
+  customFilters = NO_ITEMS,
+  customActions = NO_ITEMS,
 }) {
   const { user } = useAuth();
   const token = user?.accessToken;
   const tokenType = user?.tokenType || "Bearer";
   const { can } = useAuthorization();
 
-  const [data, setData] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [filters, setFilters] = useState({
@@ -66,9 +62,12 @@ export function createWorkforceListPage({
     status: "ALL",
     ...defaultFilters,
   });
+  const [reloadCount, setReloadCount] = useState(0);
+  const [result, setResult] = useState({ key: null, data: [], total: 0 });
   const [showFilters, setShowFilters] = useState(false);
-  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createDraft, setCreateDraft] = useState(null);
   const [editingItem, setEditingItem] = useState(null);
+  const [editDraft, setEditDraft] = useState(null);
   const [viewingItem, setViewingItem] = useState(null);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
@@ -78,40 +77,62 @@ export function createWorkforceListPage({
   const canDelete = permissions.delete ? can(permissions.delete) : true;
   const canView = permissions.read ? can(permissions.read) : true;
 
-  const load = useCallback(async () => {
-    if (!token) return;
-    setLoading(true);
-    try {
-      const params = {
-        page,
-        per_page: pageSize,
-        search: filters.search || undefined,
-        status: filters.status !== "ALL" ? filters.status : undefined,
-        ...Object.fromEntries(
-          Object.entries(filters).filter(([k, v]) => k !== "search" && k !== "status" && v && v !== "ALL")
-        ),
-      };
-      const res = await api.list(params, token, tokenType);
-      setData(res.data?.data || res.data || []);
-      setTotal(res.data?.total || res.data?.last_page ? res.data.total : (res.data?.data?.length || 0));
-    } catch (err) {
-      toast.error(err.message || `Could not load ${entityNamePlural}`);
-    } finally {
-      setLoading(false);
-    }
-  }, [api, token, tokenType, page, pageSize, filters]);
+  const requestKey = JSON.stringify([token, tokenType, page, pageSize, filters, reloadCount]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    if (!token) return undefined;
+    let cancelled = false;
+    const params = {
+      page,
+      per_page: pageSize,
+      search: filters.search || undefined,
+      status: filters.status !== "ALL" ? filters.status : undefined,
+      ...Object.fromEntries(
+        Object.entries(filters).filter(([k, v]) => k !== "search" && k !== "status" && v && v !== "ALL")
+      ),
+    };
+    api.list(params, token, tokenType)
+      .then((res) => {
+        if (cancelled) return;
+        setResult({
+          key: requestKey,
+          data: res.data?.data || res.data || [],
+          total: res.data?.total || res.data?.last_page ? res.data.total : (res.data?.data?.length || 0),
+        });
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        toast.error(err.message || `Could not load ${entityNamePlural}`);
+        setResult((prev) => ({ ...prev, key: requestKey }));
+      });
+    return () => { cancelled = true; };
+  }, [api, token, tokenType, page, pageSize, filters, requestKey, entityNamePlural]);
 
-  const handleCreate = async (formData) => {
+  const loading = result.key !== requestKey;
+  const data = result.data;
+  const total = result.total;
+
+  const reload = () => setReloadCount((count) => count + 1);
+
+  const openCreate = () => setCreateDraft(createModal.initialValues());
+
+  const openEdit = (row) => {
+    setEditingItem(row);
+    setEditDraft(editModal.initialValues(row));
+  };
+
+  const closeEdit = () => {
+    setEditingItem(null);
+    setEditDraft(null);
+  };
+
+  const handleCreate = async () => {
     setSaving(true);
     try {
-      await api.create(formData, token, tokenType);
+      await api.create(createModal.toPayload(createDraft), token, tokenType);
       toast.success(`${entityName} created`);
-      setShowCreateModal(false);
-      load();
+      setCreateDraft(null);
+      reload();
     } catch (err) {
       toast.error(err.message || `Could not create ${entityName}`);
     } finally {
@@ -119,13 +140,13 @@ export function createWorkforceListPage({
     }
   };
 
-  const handleUpdate = async (formData) => {
+  const handleUpdate = async () => {
     setSaving(true);
     try {
-      await api.update(editingItem.id, formData, token, tokenType);
+      await api.update(editingItem.id, editModal.toPayload(editDraft, editingItem), token, tokenType);
       toast.success(`${entityName} updated`);
-      setEditingItem(null);
-      load();
+      closeEdit();
+      reload();
     } catch (err) {
       toast.error(err.message || `Could not update ${entityName}`);
     } finally {
@@ -139,7 +160,7 @@ export function createWorkforceListPage({
     try {
       await api.delete(id, token, tokenType);
       toast.success(`${entityName} deleted`);
-      load();
+      reload();
     } catch (err) {
       toast.error(err.message || `Could not delete ${entityName}`);
     } finally {
@@ -157,9 +178,18 @@ export function createWorkforceListPage({
     setPage(1);
   };
 
-  const hasActiveFilters = Object.entries(filters).some(([k, v]) => 
+  const handlePageSizeChange = (size) => {
+    setPageSize(size);
+    setPage(1);
+  };
+
+  const hasActiveFilters = Object.entries(filters).some(([k, v]) =>
     k !== "status" && v && v !== "ALL" && v !== ""
   );
+
+  const CreateForm = createModal?.form;
+  const EditForm = editModal?.form;
+  const ViewContent = viewModal?.content;
 
   return (
     <div className="space-y-5">
@@ -170,8 +200,8 @@ export function createWorkforceListPage({
             Manage {entityNamePlural.toLowerCase()} across the organization
           </p>
         </div>
-        {canCreate && (
-          <Button onClick={() => setShowCreateModal(true)}>
+        {canCreate && createModal && (
+          <Button onClick={openCreate}>
             <Plus size={16} className="mr-2" /> Add {entityName}
           </Button>
         )}
@@ -233,8 +263,8 @@ export function createWorkforceListPage({
         {!loading && data.length === 0 && (
           <div className="p-10 text-center">
             <p className="text-sm text-gray-500 dark:text-gray-400">No {entityNamePlural.toLowerCase()} found.</p>
-            {canCreate && (
-              <Button className="mt-4" onClick={() => setShowCreateModal(true)}>
+            {canCreate && createModal && (
+              <Button className="mt-4" onClick={openCreate}>
                 <Plus size={16} className="mr-2" /> Create {entityName}
               </Button>
             )}
@@ -261,13 +291,13 @@ export function createWorkforceListPage({
                       ))}
                       <Td className="text-right">
                         <div className="flex items-center justify-end gap-1">
-                          {canView && viewModal && (
+                          {canView && ViewContent && (
                             <Button variant="ghost" size="sm" onClick={() => setViewingItem(row)} title="View">
                               <Eye size={14} />
                             </Button>
                           )}
-                          {canEdit && editModal && (
-                            <Button variant="ghost" size="sm" onClick={() => setEditingItem(row)} title="Edit">
+                          {canEdit && EditForm && (
+                            <Button variant="ghost" size="sm" onClick={() => openEdit(row)} title="Edit">
                               <Pencil size={14} />
                             </Button>
                           )}
@@ -304,12 +334,11 @@ export function createWorkforceListPage({
             </div>
             {total > pageSize && (
               <Pagination
-                currentPage={page}
-                totalPages={Math.ceil(total / pageSize)}
-                onPageChange={setPage}
+                current={page}
+                total={total}
                 pageSize={pageSize}
-                onPageSizeChange={setPageSize}
-                totalItems={total}
+                onChange={setPage}
+                onPageSizeChange={handlePageSizeChange}
               />
             )}
           </>
@@ -317,47 +346,47 @@ export function createWorkforceListPage({
       </Card>
 
       {/* Modals */}
-      {showCreateModal && createModal && (
+      {createDraft && CreateForm && (
         <Modal
           isOpen
-          onClose={() => setShowCreateModal(false)}
+          onClose={() => setCreateDraft(null)}
           title={`Add ${entityName}`}
           size="lg"
           footer={
             <div className="flex justify-end gap-2">
-              <Button variant="secondary" onClick={() => setShowCreateModal(false)}>Cancel</Button>
-              <Button disabled={saving} onClick={() => createModal.onSubmit(handleCreate)}>
+              <Button variant="secondary" onClick={() => setCreateDraft(null)}>Cancel</Button>
+              <Button disabled={saving} onClick={handleCreate}>
                 {saving && <Loader2 size={16} className="animate-spin mr-2" />}
                 Create
               </Button>
             </div>
           }
         >
-          {createModal.form}
+          <CreateForm value={createDraft} onChange={setCreateDraft} />
         </Modal>
       )}
 
-      {editingItem && editModal && (
+      {editingItem && editDraft && EditForm && (
         <Modal
           isOpen
-          onClose={() => setEditingItem(null)}
+          onClose={closeEdit}
           title={`Edit ${entityName}`}
           size="lg"
           footer={
             <div className="flex justify-end gap-2">
-              <Button variant="secondary" onClick={() => setEditingItem(null)}>Cancel</Button>
-              <Button disabled={saving} onClick={() => editModal.onSubmit(editingItem, handleUpdate)}>
+              <Button variant="secondary" onClick={closeEdit}>Cancel</Button>
+              <Button disabled={saving} onClick={handleUpdate}>
                 {saving && <Loader2 size={16} className="animate-spin mr-2" />}
                 Save
               </Button>
             </div>
           }
         >
-          {editModal.form(editingItem)}
+          <EditForm item={editingItem} value={editDraft} onChange={setEditDraft} />
         </Modal>
       )}
 
-      {viewingItem && viewModal && (
+      {viewingItem && ViewContent && (
         <Modal
           isOpen
           onClose={() => setViewingItem(null)}
@@ -369,7 +398,7 @@ export function createWorkforceListPage({
             </div>
           }
         >
-          {viewModal.content(viewingItem)}
+          <ViewContent item={viewingItem} />
         </Modal>
       )}
     </div>

@@ -43,51 +43,66 @@ const PER_PAGE = 15;
  */
 export default function HistoryTab() {
   const { user } = useAuth();
-  const [claimsState, setClaimsState] = useState({ loading: true, rows: [], total: 0, error: null });
+  const accessToken = user?.accessToken;
+  const tokenType = user?.tokenType;
+  const [claimsResult, setClaimsResult] = useState({ key: null, rows: [], total: 0, error: null });
   const [page, setPage] = useState(1);
   const [selectedClaimId, setSelectedClaimId] = useState(null);
-  const [intimationsState, setIntimationsState] = useState({ loading: true, intimations: [], error: null });
+  const [intimationsResult, setIntimationsResult] = useState({ key: null, intimations: [], error: null });
+  const intimationsKey = `${accessToken ?? ""}|${tokenType ?? ""}`;
+  const claimsKey = `${intimationsKey}|${page}`;
 
   useEffect(() => {
-    if (!user?.accessToken) return undefined;
+    if (!accessToken) return undefined;
     let cancelled = false;
-    setClaimsState((prev) => ({ ...prev, loading: true, error: null }));
 
-    mediclaimApi.myClaims({ status: HISTORY_STATUSES, page, perPage: PER_PAGE }, user.accessToken, user.tokenType)
+    mediclaimApi.myClaims({ status: HISTORY_STATUSES, page, perPage: PER_PAGE }, accessToken, tokenType)
       .then((res) => {
         if (cancelled) return;
         const payload = res?.data;
         const rows = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
         const total = payload?.total ?? rows.length;
-        setClaimsState({ loading: false, rows, total, error: null });
+        setClaimsResult({ key: claimsKey, rows, total, error: null });
       })
       .catch((err) => {
         if (cancelled) return;
-        setClaimsState({ loading: false, rows: [], total: 0, error: err?.message || "Failed to load claim history." });
+        setClaimsResult({ key: claimsKey, rows: [], total: 0, error: err?.message || "Failed to load claim history." });
       });
 
     return () => { cancelled = true; };
-  }, [user, page]);
+  }, [accessToken, tokenType, page, claimsKey]);
 
   useEffect(() => {
-    if (!user?.accessToken) return undefined;
+    if (!accessToken) return undefined;
     let cancelled = false;
-    setIntimationsState((prev) => ({ ...prev, loading: true, error: null }));
 
-    mediclaimApi.myIntimations({}, user.accessToken, user.tokenType)
+    mediclaimApi.myIntimations({}, accessToken, tokenType)
       .then((res) => {
         if (cancelled) return;
         const payload = res?.data;
         const intimations = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
-        setIntimationsState({ loading: false, intimations, error: null });
+        setIntimationsResult({ key: intimationsKey, intimations, error: null });
       })
       .catch((err) => {
         if (cancelled) return;
-        setIntimationsState({ loading: false, intimations: [], error: err?.message || "Failed to load past intimations." });
+        setIntimationsResult({ key: intimationsKey, intimations: [], error: err?.message || "Failed to load past intimations." });
       });
 
     return () => { cancelled = true; };
-  }, [user]);
+  }, [accessToken, tokenType, intimationsKey]);
+
+  const claimsLoading = claimsResult.key !== claimsKey;
+  const claimsState = {
+    loading: claimsLoading,
+    rows: claimsResult.rows,
+    total: claimsResult.total,
+    error: claimsLoading ? null : claimsResult.error,
+  };
+  const intimationsState = {
+    loading: intimationsResult.key !== intimationsKey,
+    intimations: intimationsResult.intimations,
+    error: intimationsResult.error,
+  };
 
   return (
     <div className="space-y-6">

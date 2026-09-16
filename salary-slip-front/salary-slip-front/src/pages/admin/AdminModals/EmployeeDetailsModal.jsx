@@ -81,6 +81,7 @@ export default function EmployeeDetailsModal({
   selected,
   viewLoading,
   openEdit,
+  hideEdit = false,
 }) {
   const [activeTab, setActiveTab] = useState("profile");
 
@@ -380,16 +381,18 @@ export default function EmployeeDetailsModal({
               Close
             </Button>
 
-            <Button
-              icon={<Edit2 size={14} />}
-              onClick={() => {
-                onClose();
-                openEdit(selected);
-              }}
-              disabled={viewLoading}
-            >
-              Edit
-            </Button>
+            {!hideEdit && openEdit && (
+              <Button
+                icon={<Edit2 size={14} />}
+                onClick={() => {
+                  onClose();
+                  openEdit(selected);
+                }}
+                disabled={viewLoading}
+              >
+                Edit
+              </Button>
+            )}
           </div>
         </div>
       </div>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
 } from "recharts";
@@ -26,23 +26,33 @@ const SOURCE_LABELS = {
 
 export default function RecruitmentDashboardTab({ onNavigate = () => {} }) {
   const { user } = useAuth();
-  const { companyScope, scopeKey } = useCompany();
+  const { companyScope } = useCompany();
+  const accessToken = user?.accessToken;
+  const tokenType = user?.tokenType;
+  const companyId = companyScope?.companyId;
+  const unit = companyScope?.unit;
 
   const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+  const [reloadCount, setReloadCount] = useState(0);
+  const requestKey = JSON.stringify([companyId, unit, reloadCount]);
+  const [result, setResult] = useState({ key: null, error: false });
+  const loading = result.key !== requestKey;
+  const error = !loading && result.error;
 
-  const load = useCallback(() => {
-    if (!user?.accessToken) return;
-    setLoading(true);
-    setError(false);
-    hrApi.getRecruitmentDashboard(user.accessToken, user.tokenType, { ...companyScope })
-      .then((res) => { if (res.status) setData(res.data); else setError(true); })
-      .catch(() => setError(true))
-      .finally(() => setLoading(false));
-  }, [user, scopeKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!accessToken) return;
+    let cancelled = false;
+    hrApi.getRecruitmentDashboard(accessToken, tokenType, { companyId, unit })
+      .then((res) => {
+        if (cancelled) return;
+        if (res.status) setData(res.data);
+        setResult({ key: requestKey, error: !res.status });
+      })
+      .catch(() => { if (!cancelled) setResult({ key: requestKey, error: true }); });
+    return () => { cancelled = true; };
+  }, [accessToken, tokenType, companyId, unit, requestKey]);
 
-  useEffect(() => { load(); }, [load]);
+  const load = () => setReloadCount((count) => count + 1);
 
   if (loading && !data) return <div className="p-6"><SkeletonTable rows={8} /></div>;
 

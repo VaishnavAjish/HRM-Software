@@ -73,28 +73,25 @@ export default function CandidateQuiz() {
 
   /* ------------------------------------------------------------ load */
 
-  const load = useCallback(async () => {
-    try {
-      let res;
-      if (isTestMode) {
-        res = await publicQuizApi.getTestQuiz(quizId);
-      } else {
-        res = await publicQuizApi.get(token);
-      }
+  const load = useCallback(() => {
+    const request = isTestMode ? publicQuizApi.getTestQuiz(quizId) : publicQuizApi.get(token);
 
-      if (!res.status) throw new Error(res.message || "This quiz link is not valid");
-      setState({ loading: false, error: null, data: res.data });
-      setViolations(res.data.violation_count || 0);
-      if (res.data.seconds_remaining != null) setSecondsLeft(res.data.seconds_remaining);
-      if (Array.isArray(res.data.answers)) {
-        const restored = {};
-        res.data.answers.forEach((v, i) => { if (v !== null && v !== undefined) restored[i] = v; });
-        setAnswers(restored);
-      }
-      if (res.data.result) setResult(res.data.result);
-    } catch (err) {
-      setState({ loading: false, error: err.message || "Could not load this quiz", data: null });
-    }
+    return request
+      .then((res) => {
+        if (!res.status) throw new Error(res.message || "This quiz link is not valid");
+        setState({ loading: false, error: null, data: res.data });
+        setViolations(res.data.violation_count || 0);
+        if (res.data.seconds_remaining != null) setSecondsLeft(res.data.seconds_remaining);
+        if (Array.isArray(res.data.answers)) {
+          const restored = {};
+          res.data.answers.forEach((v, i) => { if (v !== null && v !== undefined) restored[i] = v; });
+          setAnswers(restored);
+        }
+        if (res.data.result) setResult(res.data.result);
+      })
+      .catch((err) => {
+        setState({ loading: false, error: err.message || "Could not load this quiz", data: null });
+      });
   }, [token, quizId, isTestMode]);
 
   useEffect(() => { load(); }, [load]);
@@ -143,7 +140,9 @@ export default function CandidateQuiz() {
       if (res.status) {
         setResult(res.data);
         if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
-      } else if (!auto) {
+      } else if (auto) {
+        load();
+      } else {
         setWarning(res.message || "Could not submit");
       }
     } catch (err) {
@@ -249,10 +248,19 @@ export default function CandidateQuiz() {
 
   /* ------------------------------------------------------------ timer */
 
+  const autoSubmittedRef = useRef(false);
+
   useEffect(() => {
-    if (!running || secondsLeft == null) return undefined;
-    if (secondsLeft <= 0) { doSubmit(true); return undefined; }
-    const t = setTimeout(() => setSecondsLeft((s) => (s == null ? null : s - 1)), 1000);
+    if (!running || secondsLeft == null || autoSubmittedRef.current) return undefined;
+    const t = setTimeout(() => {
+      if (secondsLeft <= 1) {
+        autoSubmittedRef.current = true;
+        setSecondsLeft(0);
+        doSubmit(true);
+      } else {
+        setSecondsLeft((s) => (s == null ? null : s - 1));
+      }
+    }, secondsLeft <= 0 ? 0 : 1000);
     return () => clearTimeout(t);
   }, [running, secondsLeft, doSubmit]);
 
@@ -268,6 +276,7 @@ export default function CandidateQuiz() {
   /* ------------------------------------------------------------ start */
 
   const start = async () => {
+    autoSubmittedRef.current = false;
     try {
       if (shellRef.current?.requestFullscreen) {
         await shellRef.current.requestFullscreen().catch(() => {});

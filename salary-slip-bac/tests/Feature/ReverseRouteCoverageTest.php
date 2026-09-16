@@ -38,7 +38,6 @@ class ReverseRouteCoverageTest extends TestCase
         'admin.configuration.update',
         'admin.user.assign_permission',
         'document.file.restore',
-        'document.file.update',
         'hr.asset.update',
         'hr.candidate.delete',
         'hr.candidate.update',

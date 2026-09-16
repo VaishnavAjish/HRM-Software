@@ -31,6 +31,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (! app()->environment(['local', 'testing'])) {
+            return;
+        }
+
         if (! Schema::hasTable('permissions') || ! Schema::hasTable('roles') || ! Schema::hasTable('role_permissions')) {
             return;
         }

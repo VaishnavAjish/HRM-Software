@@ -949,34 +949,40 @@ export default function Appointments() {
   // Why the grid is empty, when it is empty because something failed.
   const [loadError, setLoadError] = useState(null);
   const [selected, setSelected] = useState(null);
-  const [v1Docs, setV1Docs] = useState([]);
-  const [v1DocsLoading, setV1DocsLoading] = useState(false);
-  const [photoUrlFromV1, setPhotoUrlFromV1] = useState(null);
+  const selectedId = selected?.id || null;
+  const selectedHasPhoto = Boolean(selected?.photo);
+  const v1DocsRequestKey = selectedId === null ? null : `${selectedId}|${selectedHasPhoto}`;
+  const [v1DocsResult, setV1DocsResult] = useState({ id: null, key: null, docs: [], photoUrl: null });
+  const v1DocsForSelected = selectedId !== null && v1DocsResult.id === selectedId;
+  const v1Docs = v1DocsForSelected ? v1DocsResult.docs : [];
+  const photoUrlFromV1 = v1DocsForSelected ? v1DocsResult.photoUrl : null;
+  const v1DocsLoading = v1DocsRequestKey !== null && v1DocsResult.key !== v1DocsRequestKey;
 
   useEffect(() => {
-    if (!selected?.id) {
-      setV1Docs([]);
-      setPhotoUrlFromV1(null);
-      return undefined;
-    }
+    if (selectedId === null) return undefined;
 
     let mounted = true;
-    setV1DocsLoading(true);
+    const requestKey = v1DocsRequestKey;
 
     (async () => {
       try {
-        const res = await appointmentV1Api.listDocuments(selected.id, user?.accessToken, user?.tokenType);
+        const res = await appointmentV1Api.listDocuments(selectedId, user?.accessToken, user?.tokenType);
         if (!mounted) return;
         const items = res?.data?.items || [];
-        setV1Docs(items);
+        setV1DocsResult((prev) => ({
+          id: selectedId,
+          key: null,
+          docs: items,
+          photoUrl: prev.id === selectedId ? prev.photoUrl : null,
+        }));
 
-        if (!selected.photo) {
+        if (!selectedHasPhoto) {
           const photoDoc = items.find((d) => d.documentType === "PHOTOGRAPH");
           if (photoDoc) {
             try {
               const photoRes = await documentV1Api.viewUrl(photoDoc.documentId, null, user?.accessToken, user?.tokenType);
               if (mounted && photoRes?.data?.url) {
-                setPhotoUrlFromV1(photoRes.data.url);
+                setV1DocsResult((prev) => ({ ...prev, photoUrl: photoRes.data.url }));
               }
             } catch (pErr) {
               console.warn("Could not fetch photo URL from V1 document:", pErr);
@@ -986,14 +992,20 @@ export default function Appointments() {
       } catch (err) {
         if (mounted) console.warn("Failed to load V1 documents for view modal:", err);
       } finally {
-        if (mounted) setV1DocsLoading(false);
+        if (mounted) {
+          setV1DocsResult((prev) => (
+            prev.id === selectedId
+              ? { ...prev, key: requestKey }
+              : { id: selectedId, key: requestKey, docs: [], photoUrl: null }
+          ));
+        }
       }
     })();
 
     return () => {
       mounted = false;
     };
-  }, [selected?.id, selected?.photo, user?.accessToken, user?.tokenType]);
+  }, [selectedId, selectedHasPhoto, v1DocsRequestKey, user?.accessToken, user?.tokenType]);
   const [gridLightbox, setGridLightbox] = useState(null);
   const [createAccountOpen, setCreateAccountOpen] = useState(false);
   const [addFormOpen, setAddFormOpen] = useState(false);
@@ -1160,7 +1172,7 @@ export default function Appointments() {
         matchesDepartment
       );
     });
-  }, [appointments, statusFilter, monthFilter, yearFilter, departmentFilter, isAgentUser]);
+  }, [appointments, statusFilter, monthFilter, yearFilter, departmentFilter, isAgentUser, user?.id]);
 
   const counts = useMemo(
     () => ({

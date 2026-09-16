@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\DocumentAuditLog;
 use App\Models\PermissionDimension;
 use App\Models\Role;
+use App\Models\EmployeeFamilyMember;
 use App\Models\User;
 use App\Support\AadhaarAccess;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -22,6 +23,13 @@ class EmployeeAadhaarDisclosureTest extends TestCase
     use RefreshDatabase;
 
     private int $seq = 0;
+
+    private function addFamilyMember(User $user): void
+    {
+        EmployeeFamilyMember::create([
+            'user_id' => $user->id, 'name' => 'Family Member', 'relation' => 'Spouse', 'mobile_number' => '9876500000',
+        ]);
+    }
 
     private function makeUser(int $role, string $aadhaar = '715115981345'): User
     {
@@ -279,6 +287,7 @@ class EmployeeAadhaarDisclosureTest extends TestCase
     public function test_a_self_profile_save_cannot_overwrite_the_stored_number(): void
     {
         $employee = $this->makeUser(3);
+        $this->addFamilyMember($employee);
 
         // Exactly what the profile form used to post: the displayed value.
         $this->withToken(auth('api')->login($employee))
@@ -295,6 +304,7 @@ class EmployeeAadhaarDisclosureTest extends TestCase
     public function test_a_self_profile_save_may_still_set_a_complete_number(): void
     {
         $employee = $this->makeUser(3, '');
+        $this->addFamilyMember($employee);
 
         $this->withToken(auth('api')->login($employee))
             ->postJson('/api/profile-update', ['aadhar_card_no' => '9999 8888 7777'])

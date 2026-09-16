@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { Menu, X, FileText, User, LogOut, Bookmark, CalendarClock, ChevronDown, Sparkles, Building2, ShieldCheck, ArrowUpRight } from "lucide-react";
-import { useCandidateAuth } from "../../context/CandidateAuthContext";
+import { useCandidateAuth } from "../../context/candidate-auth-context";
 
 const ACCOUNT_LINKS = [
   { to: "/careers/account/applications", label: "My Applications", icon: FileText, desc: "Track application progress" },
@@ -43,7 +43,11 @@ export default function CareersLayout() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  useEffect(() => setMenuOpen(false), [location.pathname]);
+  const [menuPath, setMenuPath] = useState(location.pathname);
+  if (menuPath !== location.pathname) {
+    setMenuPath(location.pathname);
+    setMenuOpen(false);
+  }
 
   useEffect(() => {
     if (!accountMenuOpen) return undefined;

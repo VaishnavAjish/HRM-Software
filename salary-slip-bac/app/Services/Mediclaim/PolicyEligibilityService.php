@@ -99,8 +99,15 @@ class PolicyEligibilityService
             $reasons[] = "This member's coverage had already ended by the treatment date.";
         }
 
+        // Floored to whole completed years — Carbon 3's diffInYears() returns
+        // a precise float (e.g. 18.997 the day before a 19th birthday), not
+        // a truncated int like older Carbon did. Left un-floored, a member
+        // reads as older than they actually are for almost their entire
+        // final eligible year, making them falsely ineligible from shortly
+        // after each birthday instead of only from their actual cutoff
+        // birthday.
         $ageYears = $member->date_of_birth
-            ? Carbon::parse($member->date_of_birth)->diffInYears($treatmentDate)
+            ? (int) floor(Carbon::parse($member->date_of_birth)->diffInYears($treatmentDate))
             : null;
 
         if ($member->relationship_type === 'child') {

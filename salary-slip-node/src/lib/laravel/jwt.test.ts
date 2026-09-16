@@ -41,15 +41,17 @@ const vectors = JSON.parse(
 
 const { jwt: v } = vectors;
 
+const atIssue = { secret: v.secret, now: (v.claims as { iat: number }).iat };
+
 describe('Reading tokens PHP issued', () => {
   it('verifies a real tymon token', () => {
-    const claims = verifyToken(v.valid, { secret: v.secret });
+    const claims = verifyToken(v.valid, atIssue);
     expect(claims.sub).toBe('4242');
     expect(subjectOf(claims)).toBe(4242);
   });
 
   it('carries every claim tymon emits', () => {
-    const claims = verifyToken(v.valid, { secret: v.secret });
+    const claims = verifyToken(v.valid, atIssue);
     for (const name of ['iss', 'iat', 'exp', 'nbf', 'jti', 'sub', 'prv']) {
       expect(claims[name], `missing ${name}`).toBeDefined();
     }
@@ -59,37 +61,44 @@ describe('Reading tokens PHP issued', () => {
     // A numeric sub would still verify, but would differ from every token in
     // circulation and break any string comparison against it.
     expect(typeof (v.claims as { sub: unknown }).sub).toBe('string');
-    expect(typeof verifyToken(v.valid, { secret: v.secret }).sub).toBe('string');
+    expect(typeof verifyToken(v.valid, atIssue).sub).toBe('string');
   });
 
   it('agrees on the prv provider hash', () => {
     // sha1('App\\Models\\User') — the model class, not the auth provider.
     expect(v.prv).toBe(PRV_APP_MODELS_USER);
-    expect(verifyToken(v.valid, { secret: v.secret }).prv).toBe(PRV_APP_MODELS_USER);
+    expect(verifyToken(v.valid, atIssue).prv).toBe(PRV_APP_MODELS_USER);
+  });
+
+  it('stops accepting the token once its exp has passed', () => {
+    const exp = (v.claims as { exp: number }).exp;
+    expect(verifyToken(v.valid, { secret: v.secret, now: exp - 1 }).sub).toBe('4242');
+    expect(() => verifyToken(v.valid, { secret: v.secret, now: exp + 1 })).toThrow(
+      TokenExpiredException,
+    );
   });
 });
 
 describe('Rejecting what PHP would reject', () => {
   it('rejects an expired token distinguishably', () => {
+    expect(() => verifyToken(v.expired, atIssue)).toThrow(TokenExpiredException);
     expect(() => verifyToken(v.expired, { secret: v.secret })).toThrow(TokenExpiredException);
   });
 
   it('rejects a tampered signature', () => {
-    expect(() => verifyToken(v.wrongSignature, { secret: v.secret })).toThrow(
-      TokenInvalidException,
-    );
+    expect(() => verifyToken(v.wrongSignature, atIssue)).toThrow(TokenInvalidException);
   });
 
   it('rejects a token missing a required claim', () => {
     // config/jwt.php required_claims includes jti; the signature here is
     // valid, so only the claim check can catch it.
-    expect(() => verifyToken(v.missingRequiredClaim, { secret: v.secret })).toThrow(
+    expect(() => verifyToken(v.missingRequiredClaim, atIssue)).toThrow(
       /Missing required claim: jti/,
     );
   });
 
   it('rejects a token signed with a different secret', () => {
-    expect(() => verifyToken(v.valid, { secret: 'some-other-secret' })).toThrow(
+    expect(() => verifyToken(v.valid, { ...atIssue, secret: 'some-other-secret' })).toThrow(
       TokenInvalidException,
     );
   });
@@ -100,11 +109,11 @@ describe('Rejecting what PHP would reject', () => {
     const forged = `${b64({ typ: 'JWT', alg: 'none' })}.${b64(v.claims)}.`;
 
     // Pinning algorithms is what stops this; without it the token chooses.
-    expect(() => verifyToken(forged, { secret: v.secret })).toThrow(TokenInvalidException);
+    expect(() => verifyToken(forged, atIssue)).toThrow(TokenInvalidException);
   });
 
   it.each(['', 'not.a.token', 'a.b'])('rejects malformed input %j', (bad) => {
-    expect(() => verifyToken(bad, { secret: v.secret })).toThrow(TokenInvalidException);
+    expect(() => verifyToken(bad, atIssue)).toThrow(TokenInvalidException);
   });
 });
 

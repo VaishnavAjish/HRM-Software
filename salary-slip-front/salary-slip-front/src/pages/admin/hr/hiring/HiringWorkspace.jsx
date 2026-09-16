@@ -44,6 +44,10 @@ export default function HiringWorkspace() {
   const [editModalTargetId, setEditModalTargetId] = useState(null);
   const [modalTitleOverride, setModalTitleOverride] = useState(null);
   const [modalExtraFooter, setModalExtraFooter] = useState(null);
+  const [requisitionsVersion, setRequisitionsVersion] = useState(0);
+  const accessToken = user?.accessToken;
+  const tokenType = user?.tokenType;
+  const companyId = companyScope?.companyId;
 
   const openRequisitionForm = (id = null, title = null, footer = null) => {
     if (id === false) {
@@ -94,17 +98,17 @@ export default function HiringWorkspace() {
   const [people, setPeople] = useState([]);
 
   useEffect(() => {
-    if (!user?.accessToken) return;
-    salaryApi.getDepartments(user.accessToken, user.tokenType, companyScope?.companyId)
+    if (!accessToken) return;
+    salaryApi.getDepartments(accessToken, tokenType, companyId)
       .then((res) => res.status && setDepartments(res.data?.data || res.data || []))
       .catch(() => {});
-    salaryApi.getAllEmployees(user.accessToken, user.tokenType, { status: "Active", per_page: 200 }, companyScope?.companyId)
+    salaryApi.getAllEmployees(accessToken, tokenType, { status: "Active", per_page: 200 }, companyId)
       .then((res) => {
         const rows = res?.data?.data || res?.data || [];
         setPeople(rows.map((r) => ({ id: r.id, name: r.name })));
       })
       .catch(() => {});
-  }, [user, scopeKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [accessToken, tokenType, companyId, scopeKey]);
 
   return (
     <div className="space-y-4">
@@ -128,14 +132,14 @@ export default function HiringWorkspace() {
       </div>
 
       {tab === "dashboard" && <RecruitmentDashboardTab onNavigate={selectTab} />}
-      {tab === "requisitions" && <RequisitionsTab departments={departments} people={people} openRequisitionForm={openRequisitionForm} />}
+      {tab === "requisitions" && <RequisitionsTab departments={departments} people={people} openRequisitionForm={openRequisitionForm} refreshKey={requisitionsVersion} />}
       {tab === "candidates" && <CandidatePipeline departments={departments} people={people} />}
       {tab === "assessment" && <AssessmentTab />}
       {tab === "interview" && <InterviewManagement departments={departments} people={people} />}
       {tab === "offer" && <OfferManagement />}
-      {tab === "hr-manager" && <HRManagerTab departments={departments} people={people} openRequisitionForm={openRequisitionForm} isHrManagerView={true} />}
-      {tab === "director" && <ApprovalReviewTab kind="director" departments={departments} people={people} openRequisitionForm={openRequisitionForm} />}
-      {tab === "job-portal" && <JobPortalTab departments={departments} openRequisitionForm={openRequisitionForm} />}
+      {tab === "hr-manager" && <HRManagerTab departments={departments} people={people} openRequisitionForm={openRequisitionForm} isHrManagerView={true} refreshKey={requisitionsVersion} />}
+      {tab === "director" && <ApprovalReviewTab kind="director" departments={departments} refreshKey={requisitionsVersion} />}
+      {tab === "job-portal" && <JobPortalTab departments={departments} openRequisitionForm={openRequisitionForm} refreshKey={requisitionsVersion} />}
 
       <RequisitionFormModal
         isOpen={Boolean(editModalTargetId)}
@@ -147,7 +151,7 @@ export default function HiringWorkspace() {
           setModalTitleOverride(null);
           setModalExtraFooter(null);
         }}
-        onSuccess={() => { /* Tabs should poll or reload on focus, or we can add a global event */ }}
+        onSuccess={() => setRequisitionsVersion((version) => version + 1)}
         initialDepartments={departments}
       />
     </div>

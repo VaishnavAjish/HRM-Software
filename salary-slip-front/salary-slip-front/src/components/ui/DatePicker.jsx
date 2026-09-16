@@ -89,7 +89,7 @@ function formatDisplay(parsed, withTime) {
  * ("YYYY-MM-DD" or "YYYY-MM-DDTHH:mm"), so every call site just swaps the
  * `<input>` tag for this component with no other changes.
  */
-export default function DatePicker({ value, onChange, withTime = false, placeholder, min, required, className = "" }) {
+export default function DatePicker({ value, onChange, withTime = false, placeholder, min, className = "" }) {
   const [open, setOpen] = useState(false);
   const parsed = useMemo(() => parseValue(value), [value]);
   const minParsed = useMemo(() => parseValue(min), [min]);

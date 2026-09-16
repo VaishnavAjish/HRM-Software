@@ -4,11 +4,17 @@ import { Check, FileSpreadsheet, X, Upload, FileText } from "lucide-react";
 import ModernDatePicker from "../../components/ModernDatePicker";
 import toast from "react-hot-toast";
 import { authApi, salaryApi, resolveWriteCompanyId } from "../../utils/api";
+import SearchableSelect from "../../components/ui/SearchableSelect";
+import { designationApi, workforceApi } from "../../features/workforce/services/workforceApi";
+import { organizationApi } from "../../features/organization/services/organizationApi";
 import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";
 import { useProvisioningOptions } from "../../hooks/useProvisioningOptions";
 import usePhotoCapture from "../../hooks/usePhotoCapture";
 import { normaliseAadhaar, formatFullAadhaar } from "../../utils/aadhaar";
+import { firstPresent } from "../../components/forms/trial-form-helpers";
+
+
 
 const getTodayDate = () => {
   const d = new Date();
@@ -201,6 +207,48 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess, isView
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const [departmentsList, setDepartmentsList] = useState([]);
+    const [designationsList, setDesignationsList] = useState([]);
+
+  useEffect(() => {
+    if (!user?.accessToken) return undefined;
+    let cancelled = false;
+    async function fetchDesignations() {
+      try {
+        const salaryDesigFetcher = (typeof salaryApi !== "undefined" && salaryApi?.getDesignations)
+          ? salaryApi.getDesignations(user?.accessToken, user?.tokenType)
+          : Promise.resolve(null);
+
+        const posFetcher = (typeof organizationApi !== "undefined" && organizationApi?.globalPositions)
+          ? organizationApi.globalPositions({}, user?.accessToken, user?.tokenType)
+          : Promise.resolve(null);
+
+        const [sRes, posRes] = await Promise.all([
+          salaryDesigFetcher.catch(() => null),
+          posFetcher.catch(() => null),
+        ]);
+        const set = new Set();
+        if (sRes?.data && Array.isArray(sRes.data)) {
+          sRes.data.forEach((d) => {
+            const title = typeof d === "string" ? d : d.title || d.name || d.designation_name;
+            if (title) set.add(String(title).trim());
+          });
+        }
+        if (posRes?.data && Array.isArray(posRes.data)) {
+          posRes.data.forEach((p) => {
+            const title = typeof p === "string" ? p : p.title || p.name || p.code;
+            if (title) set.add(String(title).trim());
+          });
+        }
+        setDesignationsList(Array.from(set).sort());
+      } catch (err) {
+        console.error("Failed to fetch standalone DB designations:", err);
+      }
+    }
+    fetchDesignations();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.accessToken, user?.tokenType]);
 
   useEffect(() => {
     let cancelled = false;
@@ -318,7 +366,7 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess, isView
         form_no: raw.form_no || "",
         trial_date: raw.trial_date || getTodayDate(),
         department: raw.department || initialData.department || "",
-        designation: raw.designation || initialData.designation || "",
+        designation: firstPresent(raw.designation, raw.desig, raw.designation_name, initialData?.designation) || "",
         name: raw.name || "",
         address: raw.address || "",
         mobile_number: raw.mobile_number || "",
@@ -649,14 +697,20 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess, isView
                   })),
                 ]}
               />
-              <HalfField
-                label="Designation"
-                name="designation"
-                value={formData.designation}
-                onChange={handleChange}
-                error={errors.designation}
-                disabled={isViewMode}
-              />
+              <div className="flex flex-col gap-1">
+                <label htmlFor="trial-designation" className="text-[11px] font-bold uppercase tracking-wide text-gray-500">
+                  Designation
+                </label>
+                <SearchableSelect
+                  id="trial-designation"
+                  name="designation"
+                  value={formData.designation}
+                  onChange={handleChange}
+                  options={designationsList}
+                  error={errors.designation}
+                  disabled={isViewMode}
+                />
+              </div>
               <FullField
                 label="Name of Employee"
                 name="name"

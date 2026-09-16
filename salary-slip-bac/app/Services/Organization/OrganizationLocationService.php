@@ -180,7 +180,7 @@ class OrganizationLocationService
             );
         }
 
-        $this->assertCodeFree($enterpriseId, $companyId, trim((string) ($data['code'] ?: $data['name'])), null);
+        $this->assertCodeFree($enterpriseId, $companyId, trim((string) (($data['code'] ?? '') ?: $data['name'])), null);
         $this->resolveParent($enterpriseId, $companyId, $parentId, null);
         $this->resolveZoneRegionTerritory($companyId, $zoneId, $regionId, $territoryId);
 
@@ -190,7 +190,7 @@ class OrganizationLocationService
                 'company_id' => $companyId,
                 'location_type_id' => $locationTypeId,
                 'parent_id' => $parentId,
-                'code' => trim((string) ($data['code'] ?: $data['name'])),
+                'code' => trim((string) (($data['code'] ?? '') ?: $data['name'])),
                 'name' => trim((string) $data['name']),
                 'kind' => $data['kind'] ?? 'branch',
                 'status' => $data['status'] ?? 'active',

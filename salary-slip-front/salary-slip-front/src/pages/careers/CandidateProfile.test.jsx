@@ -17,7 +17,7 @@ const authState = vi.hoisted(() => ({
   setCandidate: vi.fn(),
 }));
 
-vi.mock("../../context/CandidateAuthContext", () => ({
+vi.mock("../../context/candidate-auth-context", () => ({
   useCandidateAuth: () => authState,
 }));
 

@@ -8,6 +8,9 @@ import {
   Layers, TableProperties, HardDrive, Download, ChevronLeft, ChevronRight,
 } from "lucide-react";
 import Button from "../../components/ui/Button";
+import SearchableSelect from "../../components/ui/SearchableSelect";
+import { designationApi } from "../../features/workforce/services/workforceApi";
+import { organizationApi } from "../../features/organization/services/organizationApi";
 import { salaryApi, authApi } from "../../utils/api";
 import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";
@@ -325,6 +328,7 @@ export default function AddEmployeePage() {
   const [saveLoading, setSaveLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [departmentsList, setDepartmentsList] = useState([]);
+  const [designationsList, setDesignationsList] = useState([]);
   const [isDeptModalOpen, setIsDeptModalOpen] = useState(false);
   const [newDeptName, setNewDeptName] = useState("");
   const [stepIndex, setStepIndex] = useState(0);
@@ -709,7 +713,16 @@ export default function AddEmployeePage() {
                       </div>
                     </div>
 
-                    {input({ label: "Designation", key: "designation", placeholder: "e.g. Senior Executive" })}
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Designation</label>
+                      <SearchableSelect
+                        value={form.designation || ""}
+                        onChange={(val) => setForm((prev) => ({ ...prev, designation: typeof val === "object" && val?.target ? val.target.value : val }))}
+                        options={designationsList}
+                        placeholder="Select designation"
+                        buttonClassName="w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3.5 py-2.5 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium text-left"
+                      />
+                    </div>
 
                     {form.loginRole !== "agent" && (
                       <div>

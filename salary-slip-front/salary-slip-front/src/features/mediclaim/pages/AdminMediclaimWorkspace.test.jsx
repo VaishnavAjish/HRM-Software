@@ -21,9 +21,7 @@ vi.mock("./admin/tabs/PendingReviewsTab", () => ({ default: () => <div>Pending R
 vi.mock("./admin/tabs/PoliciesTab", () => ({ default: () => <div>Policies Content</div> }));
 vi.mock("./admin/tabs/HospitalsTab", () => ({ default: () => <div>Hospitals Content</div> }));
 vi.mock("./admin/tabs/RuleBooksTab", () => ({ default: () => <div>Rule Books Content</div> }));
-vi.mock("./admin/tabs/ReviewersTab", () => ({ default: () => <div>Reviewers Content</div> }));
 vi.mock("./admin/tabs/ReportsTab", () => ({ default: () => <div>Reports Content</div> }));
-vi.mock("./admin/tabs/AuditHistoryTab", () => ({ default: () => <div>Audit History Content</div> }));
 
 import AdminMediclaimWorkspace from "./AdminMediclaimWorkspace";
 
@@ -58,7 +56,7 @@ describe("AdminMediclaimWorkspace tab gating", () => {
     setup();
 
     expect(screen.getAllByRole("button").map((button) => button.textContent)).toEqual([
-      "Dashboard", "Employees", "Claims", "Hospitals", "Rule Books",
+      "Dashboard", "Rule Books", "Employees", "Claims", "Hospitals",
     ]);
   });
 
@@ -66,15 +64,13 @@ describe("AdminMediclaimWorkspace tab gating", () => {
     state.allowed = new Set([
       "mediclaim.claim.coordinator.decide",
       "mediclaim.policy.read",
-      "mediclaim.reviewer_assignment.read",
       "mediclaim.report.read",
-      "mediclaim.audit.read",
     ]);
     setup();
 
     expect(screen.getAllByRole("button").map((button) => button.textContent)).toEqual([
-      "Dashboard", "Employees", "Claims", "Pending Reviews", "Policies",
-      "Hospitals", "Rule Books", "Reviewers", "Reports", "Audit History",
+      "Dashboard", "Rule Books", "Employees", "Claims", "Pending Reviews",
+      "Policies", "Hospitals", "Reports",
     ]);
   });
 
@@ -85,28 +81,26 @@ describe("AdminMediclaimWorkspace tab gating", () => {
     expect(screen.getByRole("button", { name: "Pending Reviews" })).toBeInTheDocument();
   });
 
-  it("gates Policies/Reviewers/Reports/Audit independently of Pending Reviews", () => {
+  it("gates Policies/Reports independently of Pending Reviews", () => {
     state.allowed = new Set(["mediclaim.policy.read"]);
     setup();
 
     expect(screen.getByRole("button", { name: "Policies" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Pending Reviews" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Reviewers" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Reports" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Audit History" })).not.toBeInTheDocument();
   });
 
   it("supports direct links, tab URL updates, and browser navigation", async () => {
-    state.allowed = new Set(["mediclaim.report.read", "mediclaim.audit.read"]);
-    const router = setup("/admin/tds/mediclaim?tab=audit");
+    state.allowed = new Set(["mediclaim.policy.read", "mediclaim.report.read"]);
+    const router = setup("/admin/tds/mediclaim?tab=policies");
 
-    expect(screen.getByText("Audit History Content")).toBeInTheDocument();
+    expect(screen.getByText("Policies Content")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Reports" }));
     await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("?tab=reports"));
     expect(screen.getByText("Reports Content")).toBeInTheDocument();
 
     await router.navigate(-1);
-    await waitFor(() => expect(screen.getByText("Audit History Content")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Policies Content")).toBeInTheDocument());
   });
 
   it("falls back safely to the first available tab when a direct-linked tab is not permitted", async () => {
@@ -125,7 +119,7 @@ describe("AdminMediclaimWorkspace accessibility & responsiveness", () => {
 
     const buttons = screen.getAllByRole("button");
     expect(buttons.map((b) => b.textContent)).toEqual([
-      "Dashboard", "Employees", "Claims", "Policies", "Hospitals", "Rule Books",
+      "Dashboard", "Rule Books", "Employees", "Claims", "Policies", "Hospitals",
     ]);
 
     await user.tab();

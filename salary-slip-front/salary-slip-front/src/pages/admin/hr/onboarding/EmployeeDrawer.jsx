@@ -1,5 +1,4 @@
 import { useEffect, useState, useMemo } from "react";
-import toast from "react-hot-toast";
 import {
   ShieldCheck,
   Mail,
@@ -135,17 +134,29 @@ function AtsBreakdown({ candidate }) {
  *  Overview tab's joining lists. */
 export default function EmployeeDrawer({ employee, onClose }) {
   const { user } = useAuth();
+  const employeeId = employee?.id;
+  const accessToken = user?.accessToken;
+  const tokenType = user?.tokenType;
   const [activeTab, setActiveTab] = useState("onboarding");
   const [docs, setDocs] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [docsLoadedFor, setDocsLoadedFor] = useState(null);
   const [docRules, setDocRules] = useState(DEFAULT_DOC_RULES);
   const [candidateDetails, setCandidateDetails] = useState(null);
-  const [loadingCandidate, setLoadingCandidate] = useState(false);
+  const [candidateLoadedFor, setCandidateLoadedFor] = useState(null);
 
-  useEffect(() => {
+  const [shownEmployeeId, setShownEmployeeId] = useState(employeeId);
+  if (shownEmployeeId !== employeeId) {
+    setShownEmployeeId(employeeId);
     setActiveTab("onboarding");
     setCandidateDetails(null);
-  }, [employee?.id]);
+    setCandidateLoadedFor(null);
+    setDocs([]);
+    setDocsLoadedFor(null);
+  }
+
+  const hasRequestContext = Boolean(employeeId && accessToken);
+  const loading = hasRequestContext && docsLoadedFor !== employeeId;
+  const loadingCandidate = hasRequestContext && activeTab === "user_details" && candidateLoadedFor !== employeeId;
 
   useEffect(() => {
     if (!user?.accessToken) return;
@@ -166,23 +177,22 @@ export default function EmployeeDrawer({ employee, onClose }) {
   }, [user]);
 
   useEffect(() => {
-    if (!employee?.id || !user?.accessToken) return;
+    if (!employeeId || !accessToken) return;
     let ignore = false;
-    hrApi.getCandidateDocuments(employee.id, user.accessToken, user.tokenType)
+    hrApi.getCandidateDocuments(employeeId, accessToken, tokenType)
       .then((res) => { if (!ignore && res.status) setDocs(res.data || []); })
       .catch(() => {})
-      .finally(() => { if (!ignore) setLoading(false); });
+      .finally(() => { if (!ignore) setDocsLoadedFor(employeeId); });
 
     return () => {
       ignore = true;
     };
-  }, [employee?.id, user]);
+  }, [employeeId, accessToken, tokenType]);
 
   useEffect(() => {
-    if (!employee?.id || !user?.accessToken || activeTab !== "user_details") return;
+    if (!employeeId || !accessToken || activeTab !== "user_details") return;
     let ignore = false;
-    setLoadingCandidate(true);
-    hrApi.getCandidate(employee.id, user.accessToken, user.tokenType)
+    hrApi.getCandidate(employeeId, accessToken, tokenType)
       .then((res) => {
         if (!ignore && res.status) {
           setCandidateDetails(res.data || null);
@@ -190,13 +200,13 @@ export default function EmployeeDrawer({ employee, onClose }) {
       })
       .catch(() => {})
       .finally(() => {
-        if (!ignore) setLoadingCandidate(false);
+        if (!ignore) setCandidateLoadedFor(employeeId);
       });
 
     return () => {
       ignore = true;
     };
-  }, [employee?.id, user, activeTab]);
+  }, [employeeId, accessToken, tokenType, activeTab]);
 
   const docsByType = useMemo(() => {
     const map = {};

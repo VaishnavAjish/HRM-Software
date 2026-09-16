@@ -38,7 +38,7 @@ describe("DesignationsPage", () => {
 
   it("mounts without throwing (no missing useNavigate import)", async () => {
     render(<DesignationsPage />);
-    expect(await screen.findByText(/no designations found/i)).toBeInTheDocument();
+    expect(await screen.findByText(/no designations found/i)).toBeTruthy();
   });
 
   it("creates a designation with the values typed into the create form", async () => {
@@ -70,5 +70,17 @@ describe("DesignationsPage", () => {
 
     await waitFor(() => expect(designationApi.update).toHaveBeenCalledTimes(1));
     expect(designationApi.update.mock.calls[0][1]).toMatchObject({ title: "Senior Marketing Lead" });
+  });
+
+  it("opens the view modal with the row's details instead of crashing on an undefined item", async () => {
+    apiState.rows = [{ id: 1, code: "mkt-lead", title: "Marketing Lead", status: "active", departmentName: "Marketing" }];
+    const user = userEvent.setup();
+    render(<DesignationsPage />);
+
+    await screen.findByText("Marketing Lead");
+    await user.click(screen.getByTitle("View"));
+
+    expect(await screen.findByText("View Designation")).toBeTruthy();
+    expect(screen.getAllByText("Marketing").length).toBeGreaterThan(1);
   });
 });

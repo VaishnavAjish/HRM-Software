@@ -116,31 +116,41 @@ const inputClass = "w-full rounded-lg border border-gray-300 dark:border-gray-60
  */
 export default function FamilyMemberManager({ members = [], loading = false, error = null, onChanged }) {
   const { user } = useAuth();
-  const [requestsState, setRequestsState] = useState({ loading: true, requests: [], error: null });
+  const accessToken = user?.accessToken;
+  const tokenType = user?.tokenType;
+  const [reloadToken, setReloadToken] = useState(0);
+  const requestKey = `${accessToken ?? ""}|${tokenType ?? ""}|${reloadToken}`;
+  const [requestsResult, setRequestsResult] = useState({ key: null, requests: [], error: null });
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
 
   const ruleWarning = eligibilityWarning(form, members);
 
-  const loadRequests = () => {
-    if (!user?.accessToken) return;
-    setRequestsState((prev) => ({ ...prev, loading: true, error: null }));
-    mediclaimApi.memberChangeRequests({}, user.accessToken, user.tokenType)
+  useEffect(() => {
+    if (!accessToken) return undefined;
+    let cancelled = false;
+    mediclaimApi.memberChangeRequests({}, accessToken, tokenType)
       .then((res) => {
+        if (cancelled) return;
         const payload = res?.data;
         const requests = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
-        setRequestsState({ loading: false, requests, error: null });
+        setRequestsResult({ key: requestKey, requests, error: null });
       })
       .catch((err) => {
-        setRequestsState({ loading: false, requests: [], error: err?.message || "Failed to load change requests." });
+        if (cancelled) return;
+        setRequestsResult({ key: requestKey, requests: [], error: err?.message || "Failed to load change requests." });
       });
+    return () => { cancelled = true; };
+  }, [accessToken, tokenType, requestKey]);
+
+  const requestsState = {
+    loading: requestsResult.key !== requestKey,
+    requests: requestsResult.requests,
+    error: requestsResult.error,
   };
 
-  useEffect(() => {
-    loadRequests();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  const loadRequests = () => setReloadToken((n) => n + 1);
 
   const openRequest = (requestType = REQUEST_TYPE.ADD, member = null) => {
     setForm({

@@ -140,7 +140,7 @@ class RegistryApiContractTest extends TestCase
 
             $implied = PermissionRegistry::impliedCodes($code);
 
-            if (! in_array($enforced, $implied, true)) {
+            if (array_intersect(array_map('trim', explode(',', $enforced)), $implied) === []) {
                 $mismatched[] = "{$code} -> {$verb} {$path} enforces {$enforced}, implies ".implode('/', $implied);
             }
         }

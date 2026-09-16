@@ -5,7 +5,6 @@ import {
   Bell,
   CheckCheck,
   Search,
-  Filter,
   Megaphone,
   Trash2,
   ExternalLink,
@@ -17,7 +16,6 @@ import {
   Award,
   Sparkles,
   Sliders,
-  Users,
   ShieldAlert,
   CheckCircle2,
   AlertTriangle,
@@ -25,12 +23,10 @@ import {
   Pin,
   Volume2,
   VolumeX,
-  CheckSquare,
   ShieldCheck,
-  FileSpreadsheet,
   Eye
 } from "lucide-react";
-import { useNotifications } from "../../context/NotificationContext";
+import { useNotifications } from "../../context/notification-context";
 import { useAuth } from "../../context/AuthContext";
 import AnnouncementsModal from "./AnnouncementsModal";
 import EmployeeGroupsModal from "./EmployeeGroupsModal";
@@ -77,7 +73,7 @@ export default function NotificationDrawer() {
     savePreferences,
   } = useNotifications();
 
-  const [activeTab, setActiveTab] = useState("feed"); // "feed" | "announcements"
+  const [activeTab] = useState("feed"); // "feed" | "announcements"
   const [filterCategory, setFilterCategory] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
   const [pageLimit, setPageLimit] = useState(15);

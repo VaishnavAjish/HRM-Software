@@ -4,9 +4,7 @@ import {
   GitBranch,
   Coins,
   FileText,
-  Users,
   BarChart2,
-  Calendar,
   ArrowRightLeft,
 } from "lucide-react";
 import { organizationApi } from "../services/organizationApi";
@@ -25,10 +23,6 @@ function optionalNumber(value) {
 
 function toUpperCase(value) {
   return value?.toUpperCase();
-}
-
-function booleanTransform(value) {
-  return value === "true" || value === true;
 }
 
 function formatType(type) {
@@ -66,41 +60,8 @@ function renderEdgeType(i) {
   return formatType(i.edgeType);
 }
 
-function renderRelType(i) {
-  return i.relationshipType ? i.relationshipType.charAt(0).toUpperCase() + i.relationshipType.slice(1) : "";
-}
-
-function renderLeadershipType(i) {
-  return i.leadershipType ? i.leadershipType.charAt(0).toUpperCase() + i.leadershipType.slice(1) : "";
-}
-
-function renderChangeType(i) {
-  return i.changeType ? i.changeType.charAt(0).toUpperCase() + i.changeType.slice(1) : "";
-}
-
-function renderChangeStatus(i) {
-  const status = i.status || "";
-  return status.charAt(0).toUpperCase() + status.slice(1);
-}
-
-function renderCalendarKind(i) {
-  return i.calendarKind ? i.calendarKind.replace(/_/g, " ") : "";
-}
-
-function renderScopeType(i) {
-  return i.scopeType ? i.scopeType.charAt(0).toUpperCase() + i.scopeType.slice(1) : "";
-}
-
-function renderPercentage(i) {
-  return `${i.percentage || 0}%`;
-}
-
 function renderActiveYesNo(i) {
   return i.isActive ? "Yes" : "No";
-}
-
-function renderItemType(i) {
-  return i.itemType ? i.itemType.replace(/_/g, " ") : "";
 }
 
 const ENT_TYPES = [
@@ -109,12 +70,6 @@ const ENT_TYPES = [
   { value: "holding", label: "Holding" },
   { value: "parent", label: "Parent" },
   { value: "subsidiary", label: "Subsidiary" },
-];
-
-const ENT_STATUSES = [
-  { value: "active", label: "Active" },
-  { value: "inactive", label: "Inactive" },
-  { value: "closed", label: "Closed" },
 ];
 
 const UNIT_TYPES = [
@@ -222,68 +177,6 @@ const EDGE_TYPES = [
   { value: "dotted_line", label: "Dotted Line" },
   { value: "matrix", label: "Matrix" },
   { value: "cross_functional", label: "Cross Functional" },
-];
-
-const REL_TYPES = [
-  { value: "primary", label: "Primary" },
-  { value: "secondary", label: "Secondary" },
-  { value: "functional", label: "Functional" },
-  { value: "project", label: "Project" },
-  { value: "matrix", label: "Matrix" },
-];
-
-const LEADERSHIP_TYPES = [
-  { value: "head", label: "Head" },
-  { value: "manager", label: "Manager" },
-  { value: "lead", label: "Lead" },
-  { value: "coordinator", label: "Coordinator" },
-];
-
-const CHANGE_TYPES = [
-  { value: "restructure", label: "Restructure" },
-  { value: "merger", label: "Merger" },
-  { value: "acquisition", label: "Acquisition" },
-  { value: "divestiture", label: "Divestiture" },
-  { value: "reorganization", label: "Reorganization" },
-  { value: "relocation", label: "Relocation" },
-  { value: "other", label: "Other" },
-];
-
-const CHANGE_STATUSES = [
-  { value: "draft", label: "Draft" },
-  { value: "submitted", label: "Submitted" },
-  { value: "approved", label: "Approved" },
-  { value: "rejected", label: "Rejected" },
-  { value: "scheduled", label: "Scheduled" },
-  { value: "applied", label: "Applied" },
-  { value: "cancelled", label: "Cancelled" },
-];
-
-const CALENDAR_KINDS = [
-  { value: "working_day", label: "Working Day" },
-  { value: "financial", label: "Financial" },
-  { value: "payroll", label: "Payroll" },
-];
-
-const CALENDAR_SCOPES = [
-  { value: "enterprise", label: "Enterprise" },
-  { value: "company", label: "Company" },
-  { value: "country", label: "Country" },
-  { value: "location", label: "Location" },
-  { value: "department", label: "Department" },
-];
-
-const CHANGE_ITEM_TYPES = [
-  { value: "create_unit", label: "Create Unit" },
-  { value: "update_unit", label: "Update Unit" },
-  { value: "delete_unit", label: "Delete Unit" },
-  { value: "move_unit", label: "Move Unit" },
-  { value: "create_position", label: "Create Position" },
-  { value: "update_position", label: "Update Position" },
-  { value: "delete_position", label: "Delete Position" },
-  { value: "assign_employee", label: "Assign Employee" },
-  { value: "update_assignment", label: "Update Assignment" },
-  { value: "remove_assignment", label: "Remove Assignment" },
 ];
 
 export const resourceConfigs = {

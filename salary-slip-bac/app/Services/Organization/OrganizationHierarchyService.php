@@ -120,13 +120,13 @@ class OrganizationHierarchyService
             $this->assertCompanyVisible($company, $actor);
         }
 
-        $this->assertCodeFree($enterpriseId, $companyId, trim((string) ($data['code'] ?: $data['name'])), null);
+        $this->assertCodeFree($enterpriseId, $companyId, trim((string) (($data['code'] ?? '') ?: $data['name'])), null);
 
         $hierarchy = DB::transaction(function () use ($data, $enterpriseId, $companyId, $actor) {
             return OrganizationHierarchy::query()->create([
                 'enterprise_id' => $enterpriseId,
                 'company_id' => $companyId,
-                'code' => trim((string) ($data['code'] ?: $data['name'])),
+                'code' => trim((string) (($data['code'] ?? '') ?: $data['name'])),
                 'name' => trim((string) $data['name']),
                 'type' => $data['type'] ?? 'functional',
                 'status' => $data['status'] ?? 'draft',

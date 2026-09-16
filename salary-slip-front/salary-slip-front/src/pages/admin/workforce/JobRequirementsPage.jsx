@@ -1,13 +1,8 @@
-import { useState } from "react";
-import { FolderKanban, Building2, Users, Award, BarChart2, Layers, Briefcase, ClipboardList, ListTodo, FileText, Plus, Search, Loader2, Pencil, Trash2, Eye, Filter, ChevronDown, ChevronUp, Archive, RotateCcw } from "lucide-react";
-import { useParams, useNavigate } from "react-router-dom";
-import { createWorkforceListPage } from "./WorkforceListPage";
-import { jobRequirementApi } from "../../../features/workforce/services/workforceApi";
-import { useAuth } from "../../../context/AuthContext";
-import { useAuthorization } from "../../../hooks/useAuthorization";
-import Card from "../../../components/ui/Card";
-import Button from "../../../components/ui/Button";
-import Modal from "../../../components/ui/Modal";
+import { useMemo } from "react";
+import { useParams } from "react-router-dom";
+import WorkforceListPage from "./WorkforceListPage";
+import { bindJobScopedApi, jobRequirementApi } from "../../../features/workforce/services/workforceApi";
+import { parseJsonText, toJsonText } from "../../../features/workforce/utils/jsonField";
 import Badge from "../../../components/ui/Badge";
 
 const inputClass =
@@ -34,89 +29,70 @@ const CATEGORY_OPTIONS = [
   { value: "maximum", label: "Maximum" },
 ];
 
-function JobRequirementColumns() {
-  return [
-    { key: "type", label: "Type", render: (row) => <Badge>{row.type}</Badge> },
-    { key: "category", label: "Category", render: (row) => <Badge variant="secondary">{row.category}</Badge> },
-    { key: "requirement", label: "Requirement", render: (row) => row.requirement.length > 60 ? row.requirement.substring(0, 60) + "..." : row.requirement },
-    { key: "details", label: "Details", render: (row) => row.details ? <pre className="text-xs bg-gray-100 dark:bg-gray-800 p-2 rounded max-h-20 overflow-auto">{JSON.stringify(row.details, null, 2)}</pre> : "—" },
-    { key: "effectiveFrom", label: "Effective From", render: (row) => row.effectiveFrom || "—" },
-    { key: "effectiveTo", label: "Effective To", render: (row) => row.effectiveTo || "—" },
-    { key: "createdAt", label: "Created", render: (row) => row.createdAt ? new Date(row.createdAt).toLocaleDateString() : "—" },
-  ];
-}
+const COLUMNS = [
+  { key: "type", label: "Type", render: (row) => <Badge>{row.type}</Badge> },
+  { key: "category", label: "Category", render: (row) => <Badge variant="secondary">{row.category}</Badge> },
+  { key: "requirement", label: "Requirement", render: (row) => row.requirement.length > 60 ? row.requirement.substring(0, 60) + "..." : row.requirement },
+  { key: "details", label: "Details", render: (row) => row.details ? <pre className="text-xs bg-gray-100 dark:bg-gray-800 p-2 rounded max-h-20 overflow-auto">{JSON.stringify(row.details, null, 2)}</pre> : "—" },
+  { key: "effectiveFrom", label: "Effective From", render: (row) => row.effectiveFrom || "—" },
+  { key: "effectiveTo", label: "Effective To", render: (row) => row.effectiveTo || "—" },
+  { key: "createdAt", label: "Created", render: (row) => row.createdAt ? new Date(row.createdAt).toLocaleDateString() : "—" },
+];
 
-function JobRequirementCreateForm({ onSubmit }) {
-  const [form, setForm] = useState({
+const PERMISSIONS = {
+  read: "workforce.job_requirement.read",
+  create: "workforce.job_requirement.create",
+  update: "workforce.job_requirement.update",
+  delete: "workforce.job_requirement.delete",
+};
+
+function emptyJobRequirementForm() {
+  return {
     type: "education",
     requirement: "",
     category: "mandatory",
-    details: null,
+    details: "",
     effectiveFrom: "",
     effectiveTo: "",
-  });
-
-  const handleChange = (field) => (e) => setForm(prev => ({ ...prev, [field]: e.target.value }));
-  const handleSelectChange = (field) => (e) => setForm(prev => ({ ...prev, [field]: e.target.value }));
-
-  return (
-    <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2">
-      <label className="block">
-        <span className={labelClass}>Type *</span>
-        <select className={selectClass} value={form.type} onChange={handleSelectChange("type")} required>
-          {TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
-      </label>
-      <label className="block">
-        <span className={labelClass}>Category</span>
-        <select className={selectClass} value={form.category} onChange={handleSelectChange("category")}>
-          {CATEGORY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
-      </label>
-      <label className="block sm:col-span-2">
-        <span className={labelClass}>Requirement *</span>
-        <textarea className={inputClass} value={form.requirement} onChange={handleChange("requirement")} rows={3} required />
-      </label>
-      <label className="block sm:col-span-2">
-        <span className={labelClass}>Details (JSON)</span>
-        <textarea className={inputClass} value={form.details ? JSON.stringify(form.details, null, 2) : ""} onChange={(e) => { try { setForm(prev => ({ ...prev, details: JSON.parse(e.target.value) }); } catch { setForm(prev => ({ ...prev, details: null }); } }} rows={4} fontFamily="monospace" textXs />
-      </label>
-      <label className="block">
-        <span className={labelClass}>Effective From</span>
-        <input type="date" className={inputClass} value={form.effectiveFrom} onChange={handleChange("effectiveFrom")} />
-      </label>
-      <label className="block">
-        <span className={labelClass}>Effective To</span>
-        <input type="date" className={inputClass} value={form.effectiveTo} onChange={handleChange("effectiveTo")} />
-      </label>
-    </form>
-  );
+  };
 }
 
-function JobRequirementEditForm({ item, onSubmit }) {
-  const [form, setForm] = useState({
+function toJobRequirementForm(item) {
+  return {
     type: item.type ?? "education",
     requirement: item.requirement ?? "",
     category: item.category ?? "mandatory",
-    details: item.details ?? null,
+    details: toJsonText(item.details),
     effectiveFrom: item.effectiveFrom ?? "",
     effectiveTo: item.effectiveTo ?? "",
-  });
+  };
+}
 
-  const handleChange = (field) => (e) => setForm(prev => ({ ...prev, [field]: e.target.value }));
-  const handleSelectChange = (field) => (e) => setForm(prev => ({ ...prev, [field]: e.target.value }));
+function toJobRequirementPayload(form) {
+  return {
+    type: form.type,
+    requirement: form.requirement,
+    category: form.category,
+    details: parseJsonText(form.details),
+    effectiveFrom: form.effectiveFrom || null,
+    effectiveTo: form.effectiveTo || null,
+  };
+}
+
+function JobRequirementForm({ value: form, onChange }) {
+  const handleChange = (field) => (e) => onChange(prev => ({ ...prev, [field]: e.target.value }));
 
   return (
-    <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2">
+    <form onSubmit={(e) => e.preventDefault()} className="grid gap-4 sm:grid-cols-2">
       <label className="block">
         <span className={labelClass}>Type *</span>
-        <select className={selectClass} value={form.type} onChange={handleSelectChange("type")} required>
+        <select className={selectClass} value={form.type} onChange={handleChange("type")} required>
           {TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
       </label>
       <label className="block">
         <span className={labelClass}>Category</span>
-        <select className={selectClass} value={form.category} onChange={handleSelectChange("category")}>
+        <select className={selectClass} value={form.category} onChange={handleChange("category")}>
           {CATEGORY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
       </label>
@@ -126,7 +102,7 @@ function JobRequirementEditForm({ item, onSubmit }) {
       </label>
       <label className="block sm:col-span-2">
         <span className={labelClass}>Details (JSON)</span>
-        <textarea className={inputClass} value={form.details ? JSON.stringify(form.details, null, 2) : ""} onChange={(e) => { try { setForm(prev => ({ ...prev, details: JSON.parse(e.target.value) }); } catch { setForm(prev => ({ ...prev, details: null }); } }} rows={4} fontFamily="monospace" textXs />
+        <textarea className={`${inputClass} font-mono text-xs`} value={form.details} onChange={handleChange("details")} rows={4} />
       </label>
       <label className="block">
         <span className={labelClass}>Effective From</span>
@@ -156,34 +132,36 @@ function JobRequirementViewContent({ item }) {
   );
 }
 
+const CREATE_MODAL = {
+  form: JobRequirementForm,
+  initialValues: emptyJobRequirementForm,
+  toPayload: toJobRequirementPayload,
+};
+
+const EDIT_MODAL = {
+  form: JobRequirementForm,
+  initialValues: toJobRequirementForm,
+  toPayload: toJobRequirementPayload,
+};
+
+const VIEW_MODAL = {
+  content: JobRequirementViewContent,
+};
+
 export default function JobRequirementsPage() {
   const { jobId } = useParams();
-  const { can } = useAuthorization();
-  const navigate = useNavigate();
+  const api = useMemo(() => bindJobScopedApi(jobRequirementApi, jobId), [jobId]);
 
-  const ListPage = createWorkforceListPage({
-    entityName: "Job Requirement",
-    entityNamePlural: "Job Requirements",
-    api: jobRequirementApi,
-    columns: JobRequirementColumns(),
-    permissions: {
-      read: "workforce.job_requirement.read",
-      create: "workforce.job_requirement.create",
-      update: "workforce.job_requirement.update",
-      delete: "workforce.job_requirement.delete",
-    },
-    createModal: {
-      form: <JobRequirementCreateForm />,
-      onSubmit: (handler) => handler({ type: form.type, requirement: form.requirement, category: form.category, details: form.details, effectiveFrom: form.effectiveFrom || null, effectiveTo: form.effectiveTo || null }),
-    },
-    editModal: {
-      form: JobRequirementEditForm,
-      onSubmit: (item, handler) => handler({ type: form.type, requirement: form.requirement, category: form.category, details: form.details, effectiveFrom: form.effectiveFrom || null, effectiveTo: form.effectiveTo || null }),
-    },
-    viewModal: {
-      content: JobRequirementViewContent,
-    },
-  });
-
-  return ListPage;
+  return (
+    <WorkforceListPage
+      entityName="Job Requirement"
+      entityNamePlural="Job Requirements"
+      api={api}
+      columns={COLUMNS}
+      permissions={PERMISSIONS}
+      createModal={CREATE_MODAL}
+      editModal={EDIT_MODAL}
+      viewModal={VIEW_MODAL}
+    />
+  );
 }

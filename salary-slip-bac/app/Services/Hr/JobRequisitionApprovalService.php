@@ -39,11 +39,13 @@ class JobRequisitionApprovalService
 
         if ($companyCodes !== []) {
             $query->where(function ($q) use ($companyCodes) {
-                foreach ($companyCodes as $companyCode) {
-                    $q->orWhereRaw("(',' || COALESCE(company_code, '') || ',') LIKE ?", ['%,' . $companyCode . ',%']);
+                foreach ([...$companyCodes, 'all', 'all-companies'] as $companyCode) {
+                    $literal = str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $companyCode);
+                    $q->orWhere('company_code', $companyCode)
+                        ->orWhereRaw("company_code LIKE ? ESCAPE '!'", [$literal . ',%'])
+                        ->orWhereRaw("company_code LIKE ? ESCAPE '!'", ['%,' . $literal])
+                        ->orWhereRaw("company_code LIKE ? ESCAPE '!'", ['%,' . $literal . ',%']);
                 }
-                $q->orWhereRaw("(',' || COALESCE(company_code, '') || ',') LIKE ?", ['%,all,%'])
-                    ->orWhereRaw("(',' || COALESCE(company_code, '') || ',') LIKE ?", ['%,all-companies,%']);
             });
         }
 
@@ -164,6 +166,7 @@ class JobRequisitionApprovalService
 
             $director = $directorId ? $this->qualifiedApprover($locked, $directorId, 'hr.requisition.director.decide', 'director_id') : null;
             $cycle = JobRequisitionApprovalCycle::query()->lockForUpdate()->findOrFail($locked->current_approval_cycle_id);
+            $this->assertIndependentReviewer($locked, $cycle, $actor, JobRequisitionApprovalStep::TYPE_DIRECTOR);
 
             $hrStep = $cycle->steps()
                 ->where('step_type', JobRequisitionApprovalStep::TYPE_HR_MANAGER)
@@ -232,6 +235,7 @@ class JobRequisitionApprovalService
             }
 
             $cycle = JobRequisitionApprovalCycle::query()->lockForUpdate()->findOrFail($locked->current_approval_cycle_id);
+            $this->assertIndependentReviewer($locked, $cycle, $actor, JobRequisitionApprovalStep::TYPE_DIRECTOR);
 
             $hrStep = $cycle->steps()
                 ->where('step_type', JobRequisitionApprovalStep::TYPE_HR_MANAGER)
@@ -284,6 +288,7 @@ class JobRequisitionApprovalService
             }
 
             $cycle = JobRequisitionApprovalCycle::query()->lockForUpdate()->findOrFail($locked->current_approval_cycle_id);
+            $this->assertIndependentReviewer($locked, $cycle, $actor, JobRequisitionApprovalStep::TYPE_HR_MANAGER);
             $directorStep = $cycle->steps()
                 ->where('step_type', JobRequisitionApprovalStep::TYPE_DIRECTOR)
                 ->where('status', JobRequisitionApprovalStep::STATUS_PENDING)
@@ -360,6 +365,7 @@ class JobRequisitionApprovalService
             }
 
             $cycle = JobRequisitionApprovalCycle::query()->lockForUpdate()->findOrFail($locked->current_approval_cycle_id);
+            $this->assertIndependentReviewer($locked, $cycle, $actor, JobRequisitionApprovalStep::TYPE_DIRECTOR);
 
             $hrStep = $cycle->steps()
                 ->where('step_type', JobRequisitionApprovalStep::TYPE_HR_MANAGER)
@@ -506,6 +512,25 @@ class JobRequisitionApprovalService
 
             return $this->freshWorkflow($locked);
         });
+    }
+
+    private function assertIndependentReviewer(JobRequisition $requisition, JobRequisitionApprovalCycle $cycle, User $actor, string $otherStepType): void
+    {
+        $actorId = (int) $actor->id;
+
+        if (in_array($actorId, [(int) $requisition->requested_by, (int) $cycle->submitted_by], true)) {
+            throw ValidationException::withMessages(['reviewer' => 'The requester cannot review their own requisition.']);
+        }
+
+        $decidedOtherStep = $cycle->steps()
+            ->where('step_type', $otherStepType)
+            ->where('status', JobRequisitionApprovalStep::STATUS_APPROVED)
+            ->where('decided_by', $actorId)
+            ->exists();
+
+        if ($decidedOtherStep) {
+            throw ValidationException::withMessages(['reviewer' => 'The same person cannot decide both review steps.']);
+        }
     }
 
     private function assertDepartmentHeadOwnership(JobRequisition $requisition, User $actor): void

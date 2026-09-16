@@ -173,7 +173,7 @@ export default function AttendanceView() {
       let workHours = "—";
       let breakTime = "—";
       let overtime = "0.0 hrs";
-      let remarks = "—";
+      let remarks;
 
       if (dayStatus === "present") {
         remarks = "Present";

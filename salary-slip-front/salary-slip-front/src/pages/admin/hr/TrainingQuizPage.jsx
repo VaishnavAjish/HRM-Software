@@ -23,7 +23,11 @@ import QuizTestModal from "./hiring/QuizTestModal";
 
 export default function TrainingQuizPage() {
   const { user } = useAuth();
-  const [loading, setLoading] = useState(true);
+  const accessToken = user?.accessToken;
+  const tokenType = user?.tokenType;
+  const [reloadCount, setReloadCount] = useState(0);
+  const [loadedCount, setLoadedCount] = useState(null);
+  const loading = loadedCount !== reloadCount;
   const [quizzes, setQuizzes] = useState([]);
   const [requisitions, setRequisitions] = useState([]);
 
@@ -40,34 +44,38 @@ export default function TrainingQuizPage() {
   };
 
   // Fetch initial data
-  const fetchData = async () => {
-    if (!user?.accessToken) return;
-    setLoading(true);
-    try {
+  useEffect(() => {
+    if (!accessToken) return;
+    let cancelled = false;
+    const run = async () => {
       // Get Quizzes
-      const quizRes = await hrApi.getQuizzes(user.accessToken, user.tokenType);
+      const quizRes = await hrApi.getQuizzes(accessToken, tokenType);
+      if (cancelled) return;
       if (quizRes.status) {
         setQuizzes(quizRes.data?.data || quizRes.data || []);
       }
 
       // Get Open Requisitions (approved or posted)
-      const reqRes = await hrApi.getRequisitions(user.accessToken, user.tokenType, {
+      const reqRes = await hrApi.getRequisitions(accessToken, tokenType, {
         status: "approved,posted,published",
         per_page: 100,
       }).catch(() => ({ status: false }));
+      if (cancelled) return;
       if (reqRes.status) {
         setRequisitions(reqRes.data?.data || reqRes.data || []);
       }
-    } catch (err) {
-      toast.error(err.message || "Failed to load page data.");
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
+    run()
+      .catch((err) => {
+        if (!cancelled) toast.error(err.message || "Failed to load page data.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoadedCount(reloadCount);
+      });
+    return () => { cancelled = true; };
+  }, [accessToken, tokenType, reloadCount]);
 
-  useEffect(() => {
-    fetchData();
-  }, [user]);
+  const fetchData = () => setReloadCount((count) => count + 1);
 
   // Handlers
   const handleOpenCreate = () => {

@@ -21,6 +21,8 @@ class MediclaimEnrollment extends Model
         'status',
         'enrolled_at',
         'terminated_at',
+        'rule_book_acknowledged_at',
+        'onboarding_completed_at',
     ];
 
     protected function casts(): array
@@ -28,6 +30,8 @@ class MediclaimEnrollment extends Model
         return [
             'enrolled_at' => 'date',
             'terminated_at' => 'date',
+            'rule_book_acknowledged_at' => 'datetime',
+            'onboarding_completed_at' => 'datetime',
         ];
     }
 

@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { Megaphone, Paperclip, Send, Calendar, ShieldAlert, Users, X } from "lucide-react";
+import { Paperclip, Send, X } from "lucide-react";
 import toast from "react-hot-toast";
 import Modal from "../ui/Modal";
 import Button from "../ui/Button";
-import { useNotifications } from "../../context/NotificationContext";
+import { useNotifications } from "../../context/notification-context";
 
 const inputClass =
   "w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3.5 py-2.5 text-xs font-semibold text-gray-900 dark:text-white placeholder-gray-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none transition-all";
@@ -22,7 +22,6 @@ export default function AnnouncementsModal({ isOpen, onClose }) {
   const [targetGroup, setTargetGroup] = useState("All");
   const [scheduleMode, setScheduleMode] = useState("now");
   const [scheduleDate, setScheduleDate] = useState("");
-  const [expiryDate, setExpiryDate] = useState("");
   const [attachments, setAttachments] = useState([]);
 
   const handleFileAttach = (e) => {
@@ -57,7 +56,7 @@ export default function AnnouncementsModal({ isOpen, onClose }) {
       pinned: priority === "Important" || priority === "Critical",
       scheduleMode,
       scheduleDate: scheduleMode === "later" ? scheduleDate : null,
-      expiryDate: expiryDate || null,
+      expiryDate: null,
       attachments,
     });
 

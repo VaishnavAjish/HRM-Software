@@ -1,0 +1,33 @@
+{
+  "generatedAt": "2026-09-15T15:05:00+05:30",
+  "head": "ec8d26e5",
+  "committed": false,
+  "verdict": "NOT PRODUCTION READY",
+  "modules": {
+    "salary-slip-front": {
+      "eslint": { "command": "npx eslint .", "exit": 0, "before": { "errors": 775, "warnings": 21, "briefReported": { "errors": 792, "warnings": 21 } }, "after": { "errors": 0, "warnings": 0, "files": 467 }, "status": "PASS" },
+      "build": { "command": "VITE_ENV=PROD npx vite build --outDir <scratchpad>", "exit": 0, "status": "PASS" },
+      "vitest": { "command": "npx vitest run", "before": "hung (did not complete)", "after": { "tests": 642, "passed": 542, "failed": 100, "durationSeconds": 26 }, "regressionsVsHeadOutsideMediclaim": 0, "status": "FAIL (pre-existing failures)" }
+    },
+    "NISS HRMS": {
+      "nodeTest": { "command": "node --test", "before": { "failedAtHead": 1 }, "afterFix": { "tests": 12, "passed": 12, "failed": 0 }, "final": "NOT RUNNABLE — folder deleted from disk at ~14:43 by an external action", "status": "BLOCKED" },
+      "productionHttpsPolicy": { "status": "FIXED IN CODE, FILE NOW DELETED FROM DISK" },
+      "moduleTypelessWarning": { "status": "ACCEPTED_RISK" }
+    },
+    "salary-slip-bac": {
+      "phpunit": { "command": "php vendor/bin/phpunit", "database": "niss_hrms_test", "before": { "tests": 1143, "failures": 79, "errors": 4, "briefReported": { "tests": 1143, "failures": 13 }, "failingAtHead": 77, "introducedByUncommittedWork": 6 }, "after": { "tests": 1145, "failures": 1, "errors": 0, "remaining": ["ReverseRouteCoverageTest::no_new_business_code_lacks_a_canonical_owner (157 unowned permission codes, DEFERRED_WITH_REASON)"] }, "status": "FAIL (1 deferred)" },
+      "migrationStatus": { "command": "php artisan migrate:status (niss_hrms, read-only)", "ran": 246, "pending": 1, "pendingName": "2026_09_15_000038_grant_document_view_permission_to_employee_role (created during this session by another actor)" },
+      "staticAnalysis": { "status": "NOT CONFIGURED (laravel/pint installed, no PHPStan/Larastan/Psalm)" }
+    },
+    "salary-slip-node": {
+      "tsc": { "command": "npx tsc -p tsconfig.json --noEmit", "exit": 0, "before": 0, "after": 0, "status": "PASS" },
+      "prismaValidate": { "command": "npx prisma validate", "exit": 0, "status": "PASS" },
+      "vitest": { "command": "npx vitest run", "exit": 0, "before": { "passed": 643, "failed": 6, "skipped": 7 }, "after": { "passed": 650, "failed": 0, "skipped": 7 }, "status": "PASS" },
+      "lint": { "status": "NOT CONFIGURED" }
+    }
+  },
+  "security": {
+    "secretsInAddedLines": 0,
+    "liveDatabaseOwnerActionRequired": "All active roles hold 55 mediclaim.* grants from migration 2026_09_15_000031"
+  }
+}

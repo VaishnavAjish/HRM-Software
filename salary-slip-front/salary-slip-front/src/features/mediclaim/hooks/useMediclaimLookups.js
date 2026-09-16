@@ -28,8 +28,11 @@ export function useMediclaimLookups() {
   const { user } = useAuth();
   const token = user?.accessToken;
   const tokenType = user?.tokenType || "Bearer";
+  const requestKey = `${token ?? ""}|${tokenType}`;
 
+  const [reloading, setReloading] = useState(false);
   const [state, setState] = useState({
+    key: null,
     hospitals: [],
     ruleBooks: [],
     members: [],
@@ -37,14 +40,14 @@ export function useMediclaimLookups() {
     // applies) vs an object — the workspace shell treats "undefined" as
     // "still loading, don't flash the lock screen or the tabs yet."
     eligibility: undefined,
-    loading: true,
+    // Same undefined-while-loading / null-on-failure fail-open convention
+    // as `eligibility` — see `EmployeeMediclaimWorkspace.jsx`'s onboarding
+    // gate, which only locks once this resolves to an explicit "not done."
+    onboarding: undefined,
     error: null,
   });
 
-  const load = useCallback(async () => {
-    if (!token) return;
-    setState((prev) => ({ ...prev, loading: true, error: null }));
-
+  const fetchLookups = useCallback(async () => {
     const [hospitalsResult, ruleBooksResult, membersResult, coverageResult] = await Promise.allSettled([
       mediclaimApi.hospitals({}, token, tokenType),
       mediclaimApi.ruleBooks({}, token, tokenType),
@@ -57,21 +60,48 @@ export function useMediclaimLookups() {
 
     const coverage = coverageResult.status === "fulfilled" ? coverageResult.value?.data : null;
 
-    setState({
+    return {
       hospitals: unwrapList(hospitalsResult),
       ruleBooks: unwrapList(ruleBooksResult),
       members: unwrapList(membersResult),
       eligibility: coverage?.eligibility ?? null,
-      loading: false,
+      onboarding: coverage?.onboarding ?? null,
       error: firstRejection ? (firstRejection.reason?.message || "Some Mediclaim data could not be loaded.") : null,
-    });
+    };
   }, [token, tokenType]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    if (!token) return undefined;
+    let cancelled = false;
+    fetchLookups().then((next) => {
+      if (!cancelled) setState({ key: requestKey, ...next });
+    });
+    return () => { cancelled = true; };
+  }, [token, requestKey, fetchLookups]);
 
-  return { ...state, reload: load };
+  const reload = useCallback(async () => {
+    if (!token) return;
+    setReloading(true);
+    try {
+      const next = await fetchLookups();
+      setState({ key: requestKey, ...next });
+    } finally {
+      setReloading(false);
+    }
+  }, [token, requestKey, fetchLookups]);
+
+  const loading = reloading || state.key !== requestKey;
+
+  return {
+    hospitals: state.hospitals,
+    ruleBooks: state.ruleBooks,
+    members: state.members,
+    eligibility: state.eligibility,
+    onboarding: state.onboarding,
+    loading,
+    error: loading ? null : state.error,
+    reload,
+  };
 }
 
 export default useMediclaimLookups;

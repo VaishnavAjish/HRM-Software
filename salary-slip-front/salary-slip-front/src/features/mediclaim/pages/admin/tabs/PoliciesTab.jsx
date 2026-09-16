@@ -41,9 +41,14 @@ export default function PoliciesTab() {
   const { companyScope } = useCompany();
   const { can } = useMediclaimAuthorization();
 
-  const [state, setState] = useState({ loading: true, rows: [], total: 0, error: null });
+  const accessToken = user?.accessToken;
+  const tokenType = user?.tokenType;
+  const [result, setResult] = useState({ key: null, rows: [], total: 0, error: null });
   const [page, setPage] = useState(1);
   const [selectedPolicy, setSelectedPolicy] = useState(null);
+  const [reloadToken, setReloadToken] = useState(0);
+  const [syncedRows, setSyncedRows] = useState(result.rows);
+  const requestKey = `${accessToken ?? ""}|${tokenType ?? ""}|${page}|${reloadToken}`;
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
@@ -56,29 +61,36 @@ export default function PoliciesTab() {
   const canUpdate = can("mediclaim.policy.update");
   const canPublish = can("mediclaim.policy.publish");
 
-  const load = () => {
-    if (!user?.accessToken) return;
-    setState((prev) => ({ ...prev, loading: true, error: null }));
-    mediclaimApi.policies({ page, perPage: PER_PAGE }, user.accessToken, user.tokenType)
+  useEffect(() => {
+    if (!accessToken) return undefined;
+    let cancelled = false;
+    mediclaimApi.policies({ page, perPage: PER_PAGE }, accessToken, tokenType)
       .then((res) => {
+        if (cancelled) return;
         const payload = res?.data;
         const rows = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
         const total = payload?.total ?? rows.length;
-        setState({ loading: false, rows, total, error: null });
-        if (selectedPolicy) {
-          const refreshed = rows.find((r) => (r.id ?? r.policyId) === (selectedPolicy.id ?? selectedPolicy.policyId));
-          if (refreshed) setSelectedPolicy(refreshed);
-        }
+        setResult({ key: requestKey, rows, total, error: null });
       })
       .catch((err) => {
-        setState({ loading: false, rows: [], total: 0, error: err?.message || "Failed to load policies." });
+        if (cancelled) return;
+        setResult({ key: requestKey, rows: [], total: 0, error: err?.message || "Failed to load policies." });
       });
-  };
+    return () => { cancelled = true; };
+  }, [accessToken, tokenType, page, requestKey]);
 
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, page]);
+  if (syncedRows !== result.rows) {
+    setSyncedRows(result.rows);
+    if (selectedPolicy) {
+      const refreshed = result.rows.find((r) => (r.id ?? r.policyId) === (selectedPolicy.id ?? selectedPolicy.policyId));
+      if (refreshed) setSelectedPolicy(refreshed);
+    }
+  }
+
+  const loading = result.key !== requestKey;
+  const state = { loading, rows: result.rows, total: result.total, error: loading ? null : result.error };
+
+  const load = () => setReloadToken((n) => n + 1);
 
   const openCreate = () => {
     setEditingId(null);

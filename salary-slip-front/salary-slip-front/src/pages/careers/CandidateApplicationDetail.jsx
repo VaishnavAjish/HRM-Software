@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { candidateApi } from "../../utils/api";
-import { useCandidateAuth } from "../../context/CandidateAuthContext";
+import { useCandidateAuth } from "../../context/candidate-auth-context";
 import { copyToClipboard } from "../../utils/clipboard";
 import OfferLetterCard from "../../components/careers/OfferLetterCard";
 import OnboardingDetailsForm from "../../components/careers/OnboardingDetailsForm";

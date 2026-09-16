@@ -15,6 +15,7 @@ const pageTitles = {
   "/admin/attendance": "View Attendance",
   "/admin/attendance/shift": "Shift",
   "/admin/tds/calculation": "TDS Calculation",
+  "/admin/tds/mediclaim": "Mediclaim Administration",
   "/admin/form16": "Form 16",
   "/admin/reports": "Reports",
   "/admin/settings": "Settings",
@@ -31,8 +32,10 @@ const pageTitles = {
   "/admin/tickets/control-center": "Ticket Control Center",
   "/admin/profile": "Profile",
   "/employee": "Dashboard",
+  "/employee/manager": "Department",
   "/employee/payslips": "Payslips",
   "/employee/form16": "Form 16",
+  "/employee/tds/mediclaim": "Mediclaim",
   "/employee/profile": "Profile",
   "/employee/appointment": "Appointment Form",
   "/agent": "Dashboard",
@@ -79,10 +82,11 @@ export default function AppLayout() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  // Close mobile drawer on route change
-  useEffect(() => {
+  const [drawerPath, setDrawerPath] = useState(location.pathname);
+  if (drawerPath !== location.pathname) {
+    setDrawerPath(location.pathname);
     setSidebarOpen(false);
-  }, [location.pathname]);
+  }
 
   useEffect(() => {
     localStorage.setItem("salaryms_sidebar_collapsed", String(isCollapsed));

@@ -40,6 +40,8 @@ const TREATMENT_TYPES = [
 
 const EDITABLE_STATUSES = [CLAIM_STATUS.DRAFT, CLAIM_STATUS.RETURNED_FOR_CORRECTION];
 
+const NO_DOCUMENTS = [];
+
 const DEFAULT_FORM_DATA = {
   memberId: "",
   relationshipType: "",
@@ -212,8 +214,10 @@ export default function SubmitClaimTab({ lookups }) {
 
   const [formData, setFormData] = useState(DEFAULT_FORM_DATA);
   const [stepErrors, setStepErrors] = useState({});
-  const [uploadedDocs, setUploadedDocs] = useState([]);
+  const [docsResult, setDocsResult] = useState({ claimId: null, docs: NO_DOCUMENTS });
   const hydratedFor = useRef(null);
+  const accessToken = user?.accessToken;
+  const tokenType = user?.tokenType;
 
   useEffect(() => {
     if (!wizard.claim) return;
@@ -224,22 +228,24 @@ export default function SubmitClaimTab({ lookups }) {
   }, [wizard.claim, wizard.claimId]);
 
   const loadDocuments = useCallback(() => {
-    if (!wizard.claimId || !user?.accessToken) {
-      setUploadedDocs([]);
-      return;
-    }
-    mediclaimApi.claimDocuments(wizard.claimId, user.accessToken, user.tokenType)
+    if (!wizard.claimId || !accessToken) return;
+    const requestedClaimId = String(wizard.claimId);
+    mediclaimApi.claimDocuments(wizard.claimId, accessToken, tokenType)
       .then((res) => {
         const payload = res?.data;
         const docs = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
-        setUploadedDocs(docs);
+        setDocsResult({ claimId: requestedClaimId, docs });
       })
-      .catch(() => setUploadedDocs([]));
-  }, [wizard.claimId, user]);
+      .catch(() => setDocsResult({ claimId: requestedClaimId, docs: NO_DOCUMENTS }));
+  }, [wizard.claimId, accessToken, tokenType]);
 
   useEffect(() => {
     loadDocuments();
   }, [loadDocuments]);
+
+  const uploadedDocs = wizard.claimId && accessToken && docsResult.claimId === String(wizard.claimId)
+    ? docsResult.docs
+    : NO_DOCUMENTS;
 
   const updateField = (patch) => setFormData((f) => ({ ...f, ...patch }));
 

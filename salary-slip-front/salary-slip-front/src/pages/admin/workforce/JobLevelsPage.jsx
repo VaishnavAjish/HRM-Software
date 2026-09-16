@@ -1,12 +1,5 @@
-import { useState } from "react";
-import { Award, Building2, Users, FileText, BarChart2, Layers, Briefcase, ClipboardList, ListTodo, FolderKanban } from "lucide-react";
-import { createWorkforceListPage } from "./WorkforceListPage";
+import WorkforceListPage from "./WorkforceListPage";
 import { jobLevelApi } from "../../../features/workforce/services/workforceApi";
-import { useAuth } from "../../../context/AuthContext";
-import { useAuthorization } from "../../../hooks/useAuthorization";
-import Card from "../../../components/ui/Card";
-import Button from "../../../components/ui/Button";
-import Modal from "../../../components/ui/Modal";
 import Badge from "../../../components/ui/Badge";
 
 const inputClass =
@@ -30,20 +23,25 @@ const CAREER_STAGE_OPTIONS = [
   { value: "executive", label: "Executive" },
 ];
 
-function JobLevelColumns() {
-  return [
-    { key: "code", label: "Code" },
-    { key: "name", label: "Name" },
-    { key: "rank", label: "Rank", render: (row) => row.rank },
-    { key: "careerStage", label: "Career Stage", render: (row) => row.careerStage ? <Badge>{row.careerStage}</Badge> : "—" },
-    { key: "status", label: "Status", render: (row) => <Badge status={row.status} /> },
-    { key: "gradeCount", label: "Grades", render: (row) => row.gradeCount ?? 0 },
-    { key: "createdAt", label: "Created", render: (row) => row.createdAt ? new Date(row.createdAt).toLocaleDateString() : "—" },
-  ];
-}
+const COLUMNS = [
+  { key: "code", label: "Code" },
+  { key: "name", label: "Name" },
+  { key: "rank", label: "Rank", render: (row) => row.rank },
+  { key: "careerStage", label: "Career Stage", render: (row) => row.careerStage ? <Badge>{row.careerStage}</Badge> : "—" },
+  { key: "status", label: "Status", render: (row) => <Badge status={row.status} /> },
+  { key: "gradeCount", label: "Grades", render: (row) => row.gradeCount ?? 0 },
+  { key: "createdAt", label: "Created", render: (row) => row.createdAt ? new Date(row.createdAt).toLocaleDateString() : "—" },
+];
 
-function JobLevelCreateForm({ onSubmit }) {
-  const [form, setForm] = useState({
+const PERMISSIONS = {
+  read: "workforce.job_level.read",
+  create: "workforce.job_level.create",
+  update: "workforce.job_level.update",
+  delete: "workforce.job_level.delete",
+};
+
+function emptyJobLevelForm() {
+  return {
     enterpriseId: "",
     companyId: "",
     code: "",
@@ -54,13 +52,45 @@ function JobLevelCreateForm({ onSubmit }) {
     status: "active",
     effectiveFrom: "",
     effectiveTo: "",
-  });
+  };
+}
 
-  const handleChange = (field) => (e) => setForm(prev => ({ ...prev, [field]: e.target.value }));
-  const handleSelectChange = (field) => (e) => setForm(prev => ({ ...prev, [field]: e.target.value }));
+function toJobLevelForm(item) {
+  return {
+    enterpriseId: item.enterpriseId ?? "",
+    companyId: item.companyId ?? "",
+    code: item.code ?? "",
+    name: item.name ?? "",
+    rank: item.rank ?? 0,
+    description: item.description ?? "",
+    careerStage: item.careerStage ?? "",
+    status: item.status ?? "active",
+    effectiveFrom: item.effectiveFrom ?? "",
+    effectiveTo: item.effectiveTo ?? "",
+  };
+}
+
+function toJobLevelPayload(form) {
+  return {
+    enterpriseId: Number(form.enterpriseId) || null,
+    companyId: Number(form.companyId),
+    code: form.code || undefined,
+    name: form.name,
+    rank: Number(form.rank),
+    description: form.description || null,
+    careerStage: form.careerStage || null,
+    status: form.status,
+    effectiveFrom: form.effectiveFrom || null,
+    effectiveTo: form.effectiveTo || null,
+  };
+}
+
+function JobLevelCreateForm({ value: form, onChange }) {
+  const handleChange = (field) => (e) => onChange(prev => ({ ...prev, [field]: e.target.value }));
+  const handleSelectChange = (field) => (e) => onChange(prev => ({ ...prev, [field]: e.target.value }));
 
   return (
-    <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2">
+    <form onSubmit={(e) => e.preventDefault()} className="grid gap-4 sm:grid-cols-2">
       <label className="block">
         <span className={labelClass}>Enterprise</span>
         <select className={selectClass} value={form.enterpriseId} onChange={handleSelectChange("enterpriseId")}>
@@ -114,25 +144,12 @@ function JobLevelCreateForm({ onSubmit }) {
   );
 }
 
-function JobLevelEditForm({ item, onSubmit }) {
-  const [form, setForm] = useState({
-    enterpriseId: item.enterpriseId ?? "",
-    companyId: item.companyId ?? "",
-    code: item.code ?? "",
-    name: item.name ?? "",
-    rank: item.rank ?? 0,
-    description: item.description ?? "",
-    careerStage: item.careerStage ?? "",
-    status: item.status ?? "active",
-    effectiveFrom: item.effectiveFrom ?? "",
-    effectiveTo: item.effectiveTo ?? "",
-  });
-
-  const handleChange = (field) => (e) => setForm(prev => ({ ...prev, [field]: e.target.value }));
-  const handleSelectChange = (field) => (e) => setForm(prev => ({ ...prev, [field]: e.target.value }));
+function JobLevelEditForm({ value: form, onChange }) {
+  const handleChange = (field) => (e) => onChange(prev => ({ ...prev, [field]: e.target.value }));
+  const handleSelectChange = (field) => (e) => onChange(prev => ({ ...prev, [field]: e.target.value }));
 
   return (
-    <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2">
+    <form onSubmit={(e) => e.preventDefault()} className="grid gap-4 sm:grid-cols-2">
       <label className="block">
         <span className={labelClass}>Enterprise</span>
         <select className={selectClass} value={form.enterpriseId} onChange={handleSelectChange("enterpriseId")}>
@@ -207,33 +224,33 @@ function JobLevelViewContent({ item }) {
   );
 }
 
+const CREATE_MODAL = {
+  form: JobLevelCreateForm,
+  initialValues: emptyJobLevelForm,
+  toPayload: toJobLevelPayload,
+};
+
+const EDIT_MODAL = {
+  form: JobLevelEditForm,
+  initialValues: toJobLevelForm,
+  toPayload: toJobLevelPayload,
+};
+
+const VIEW_MODAL = {
+  content: JobLevelViewContent,
+};
+
 export default function JobLevelsPage() {
-  const { can } = useAuthorization();
-  const navigate = useNavigate();
-
-  const ListPage = createWorkforceListPage({
-    entityName: "Job Level",
-    entityNamePlural: "Job Levels",
-    api: jobLevelApi,
-    columns: JobLevelColumns(),
-    permissions: {
-      read: "workforce.job_level.read",
-      create: "workforce.job_level.create",
-      update: "workforce.job_level.update",
-      delete: "workforce.job_level.delete",
-    },
-    createModal: {
-      form: <JobLevelCreateForm />,
-      onSubmit: (handler) => handler({ enterpriseId: Number(form.enterpriseId) || null, companyId: Number(form.companyId), code: form.code || undefined, name: form.name, rank: Number(form.rank), description: form.description || null, careerStage: form.careerStage || null, status: form.status, effectiveFrom: form.effectiveFrom || null, effectiveTo: form.effectiveTo || null }),
-    },
-    editModal: {
-      form: JobLevelEditForm,
-      onSubmit: (item, handler) => handler({ enterpriseId: Number(form.enterpriseId) || null, companyId: Number(form.companyId), code: form.code || undefined, name: form.name, rank: Number(form.rank), description: form.description || null, careerStage: form.careerStage || null, status: form.status, effectiveFrom: form.effectiveFrom || null, effectiveTo: form.effectiveTo || null }),
-    },
-    viewModal: {
-      content: JobLevelViewContent,
-    },
-  });
-
-  return ListPage;
+  return (
+    <WorkforceListPage
+      entityName="Job Level"
+      entityNamePlural="Job Levels"
+      api={jobLevelApi}
+      columns={COLUMNS}
+      permissions={PERMISSIONS}
+      createModal={CREATE_MODAL}
+      editModal={EDIT_MODAL}
+      viewModal={VIEW_MODAL}
+    />
+  );
 }

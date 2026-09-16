@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { createWorkforceListPage } from "./WorkforceListPage";
+import WorkforceListPage from "./WorkforceListPage";
 import { designationApi } from "../../../features/workforce/services/workforceApi";
 import { departmentApi } from "../../../utils/api";
 import { useAuth } from "../../../context/AuthContext";
@@ -34,24 +34,28 @@ const STATUS_OPTIONS = [
   { value: "inactive", label: "Inactive" },
 ];
 
-function DesignationColumns() {
-  return [
-    { key: "code", label: "Code" },
-    { key: "title", label: "Title" },
-    { key: "jobFamilyName", label: "Family", render: (row) => row.jobFamilyName || "—" },
-    { key: "jobFunctionName", label: "Function", render: (row) => row.jobFunctionName || "—" },
-    { key: "jobLevelName", label: "Level", render: (row) => row.jobLevelName || "—" },
-    { key: "jobGradeName", label: "Grade", render: (row) => row.jobGradeName || "—" },
-    { key: "departmentName", label: "Department", render: (row) => row.departmentName || "—" },
-    { key: "status", label: "Status", render: (row) => <Badge status={row.status} /> },
-    { key: "jobCount", label: "Jobs", render: (row) => row.jobCount ?? 0 },
-    { key: "createdAt", label: "Created", render: (row) => row.createdAt ? new Date(row.createdAt).toLocaleDateString() : "—" },
-  ];
-}
+const COLUMNS = [
+  { key: "code", label: "Code" },
+  { key: "title", label: "Title" },
+  { key: "jobFamilyName", label: "Family", render: (row) => row.jobFamilyName || "—" },
+  { key: "jobFunctionName", label: "Function", render: (row) => row.jobFunctionName || "—" },
+  { key: "jobLevelName", label: "Level", render: (row) => row.jobLevelName || "—" },
+  { key: "jobGradeName", label: "Grade", render: (row) => row.jobGradeName || "—" },
+  { key: "departmentName", label: "Department", render: (row) => row.departmentName || "—" },
+  { key: "status", label: "Status", render: (row) => <Badge status={row.status} /> },
+  { key: "jobCount", label: "Jobs", render: (row) => row.jobCount ?? 0 },
+  { key: "createdAt", label: "Created", render: (row) => row.createdAt ? new Date(row.createdAt).toLocaleDateString() : "—" },
+];
 
-function DesignationCreateForm({ onChange }) {
-  const departments = useDepartmentOptions();
-  const [form, setForm] = useState({
+const PERMISSIONS = {
+  read: "workforce.designation.read",
+  create: "workforce.designation.create",
+  update: "workforce.designation.update",
+  delete: "workforce.designation.delete",
+};
+
+function emptyDesignationForm() {
+  return {
     enterpriseId: "",
     companyId: "",
     jobFamilyId: "",
@@ -65,16 +69,32 @@ function DesignationCreateForm({ onChange }) {
     status: "active",
     effectiveFrom: "",
     effectiveTo: "",
-  });
+  };
+}
 
-  // Save happens from the modal's own footer button (WorkforceListPage), not
-  // from a submit button inside this form, so the current values are pushed
-  // up to the page-level state on every change rather than read via a submit
-  // event.
-  useEffect(() => { onChange(form); }, [form, onChange]);
+function toDesignationForm(item) {
+  return {
+    enterpriseId: item.enterpriseId ?? "",
+    companyId: item.companyId ?? "",
+    jobFamilyId: item.jobFamilyId ?? "",
+    jobFunctionId: item.jobFunctionId ?? "",
+    jobLevelId: item.jobLevelId ?? "",
+    jobGradeId: item.jobGradeId ?? "",
+    departmentId: item.departmentId ?? "",
+    code: item.code ?? "",
+    title: item.title ?? "",
+    description: item.description ?? "",
+    status: item.status ?? "active",
+    effectiveFrom: item.effectiveFrom ?? "",
+    effectiveTo: item.effectiveTo ?? "",
+  };
+}
 
-  const handleChange = (field) => (e) => setForm(prev => ({ ...prev, [field]: e.target.value }));
-  const handleSelectChange = (field) => (e) => setForm(prev => ({ ...prev, [field]: e.target.value }));
+function DesignationCreateForm({ value: form, onChange }) {
+  const departments = useDepartmentOptions();
+
+  const handleChange = (field) => (e) => onChange(prev => ({ ...prev, [field]: e.target.value }));
+  const handleSelectChange = (field) => (e) => onChange(prev => ({ ...prev, [field]: e.target.value }));
 
   return (
     <form onSubmit={(e) => e.preventDefault()} className="grid gap-4 sm:grid-cols-2">
@@ -151,28 +171,11 @@ function DesignationCreateForm({ onChange }) {
   );
 }
 
-function DesignationEditForm({ item, onChange }) {
+function DesignationEditForm({ value: form, onChange }) {
   const departments = useDepartmentOptions();
-  const [form, setForm] = useState({
-    enterpriseId: item.enterpriseId ?? "",
-    companyId: item.companyId ?? "",
-    jobFamilyId: item.jobFamilyId ?? "",
-    jobFunctionId: item.jobFunctionId ?? "",
-    jobLevelId: item.jobLevelId ?? "",
-    jobGradeId: item.jobGradeId ?? "",
-    departmentId: item.departmentId ?? "",
-    code: item.code ?? "",
-    title: item.title ?? "",
-    description: item.description ?? "",
-    status: item.status ?? "active",
-    effectiveFrom: item.effectiveFrom ?? "",
-    effectiveTo: item.effectiveTo ?? "",
-  });
 
-  useEffect(() => { onChange(form); }, [form, onChange]);
-
-  const handleChange = (field) => (e) => setForm(prev => ({ ...prev, [field]: e.target.value }));
-  const handleSelectChange = (field) => (e) => setForm(prev => ({ ...prev, [field]: e.target.value }));
+  const handleChange = (field) => (e) => onChange(prev => ({ ...prev, [field]: e.target.value }));
+  const handleSelectChange = (field) => (e) => onChange(prev => ({ ...prev, [field]: e.target.value }));
 
   return (
     <form onSubmit={(e) => e.preventDefault()} className="grid gap-4 sm:grid-cols-2">
@@ -291,37 +294,33 @@ function toDesignationPayload(form) {
   };
 }
 
+const CREATE_MODAL = {
+  form: DesignationCreateForm,
+  initialValues: emptyDesignationForm,
+  toPayload: toDesignationPayload,
+};
+
+const EDIT_MODAL = {
+  form: DesignationEditForm,
+  initialValues: toDesignationForm,
+  toPayload: toDesignationPayload,
+};
+
+const VIEW_MODAL = {
+  content: DesignationViewContent,
+};
+
 export default function DesignationsPage() {
-  // The create/edit forms own their own field state (for responsive typing)
-  // and mirror it up here on every change, since the modal's Save button
-  // lives in WorkforceListPage and calls onSubmit(handler) / onSubmit(item,
-  // handler) directly rather than triggering this form's submit event.
-  const [createForm, setCreateForm] = useState(null);
-  const [editForm, setEditForm] = useState(null);
-
-  const ListPage = createWorkforceListPage({
-    entityName: "Designation",
-    entityNamePlural: "Designations",
-    api: designationApi,
-    columns: DesignationColumns(),
-    permissions: {
-      read: "workforce.designation.read",
-      create: "workforce.designation.create",
-      update: "workforce.designation.update",
-      delete: "workforce.designation.delete",
-    },
-    createModal: {
-      form: <DesignationCreateForm onChange={setCreateForm} />,
-      onSubmit: (handler) => createForm && handler(toDesignationPayload(createForm)),
-    },
-    editModal: {
-      form: (item) => <DesignationEditForm item={item} onChange={setEditForm} />,
-      onSubmit: (item, handler) => handler(toDesignationPayload(editForm || item)),
-    },
-    viewModal: {
-      content: DesignationViewContent,
-    },
-  });
-
-  return ListPage;
+  return (
+    <WorkforceListPage
+      entityName="Designation"
+      entityNamePlural="Designations"
+      api={designationApi}
+      columns={COLUMNS}
+      permissions={PERMISSIONS}
+      createModal={CREATE_MODAL}
+      editModal={EDIT_MODAL}
+      viewModal={VIEW_MODAL}
+    />
+  );
 }

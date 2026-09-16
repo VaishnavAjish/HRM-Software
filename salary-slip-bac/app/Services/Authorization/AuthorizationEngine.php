@@ -592,6 +592,17 @@ class AuthorizationEngine
             'employee' => Str::startsWith($permissionCode, ['self.', 'payroll.payslip.read', 'hr.profile.']),
             default => false,
         };
+
+        if (! $allowed && $role === 'employee' && (\Illuminate\Support\Str::startsWith($permissionCode, 'hr.employee.') || \Illuminate\Support\Str::startsWith($permissionCode, 'v1.manager.'))) {
+            $isDeptHead = \Illuminate\Support\Facades\DB::table('departments')
+                ->where('manager_id', $actor->id)
+                ->orWhereRaw('CAST(manager_id AS text) = ?', [(string) $actor->id])
+                ->exists();
+            if ($isDeptHead) {
+                $allowed = true;
+            }
+        }
+
         if ($allowed && ! $this->scopes->tenantMatches($actor->company_code, $this->scopes->tenant($resource), false)) {
             $allowed = false;
         }

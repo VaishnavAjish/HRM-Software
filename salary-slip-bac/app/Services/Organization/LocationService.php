@@ -142,7 +142,7 @@ class LocationService
         }
 
         $name = trim((string) $data['name']);
-        $code = trim((string) ($data['code'] ?: $name));
+        $code = trim((string) (($data['code'] ?? '') ?: $name));
         $parentId = isset($data['parentId']) && $data['parentId'] !== '' ? (int) $data['parentId'] : null;
 
         $this->assertCodeFree($company->id, $code, null);

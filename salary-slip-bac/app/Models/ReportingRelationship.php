@@ -52,6 +52,18 @@ class ReportingRelationship extends Model
      */
     private function syncMirrors(): void
     {
+        if ($this->exists) {
+            $this->propagateChange('employee_id', 'employee_user_id');
+            $this->propagateChange('manager_id', 'manager_user_id');
+            $this->propagateChange('notes', 'reason');
+
+            if ($this->isDirty('is_active') && ! $this->isDirty('status')) {
+                $this->status = $this->is_active ? self::STATUS_ACTIVE : self::STATUS_ENDED;
+            } elseif ($this->isDirty('status') && ! $this->isDirty('is_active')) {
+                $this->is_active = $this->status === self::STATUS_ACTIVE;
+            }
+        }
+
         if ($this->employee_id === null && $this->employee_user_id !== null) {
             $this->employee_id = $this->employee_user_id;
         }
@@ -78,6 +90,15 @@ class ReportingRelationship extends Model
         }
         if ($this->reason === null && $this->notes !== null) {
             $this->reason = $this->notes;
+        }
+    }
+
+    private function propagateChange(string $column, string $mirror): void
+    {
+        if ($this->isDirty($column) && ! $this->isDirty($mirror)) {
+            $this->{$mirror} = $this->{$column};
+        } elseif ($this->isDirty($mirror) && ! $this->isDirty($column)) {
+            $this->{$column} = $this->{$mirror};
         }
     }
 

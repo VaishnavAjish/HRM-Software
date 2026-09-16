@@ -226,8 +226,8 @@ export function buildPayslipData({ emp = {}, payslip = {}, companyId } = {}) {
     educationAllowance,
     medicalAllowance,
     mobileAllowance,
-    perfo = 0,
-    other = 0,
+    perfo,
+    other,
     owa = 0,
     ppa = 0,
     pda = 0,
@@ -288,7 +288,7 @@ export function buildPayslipData({ emp = {}, payslip = {}, companyId } = {}) {
     other = 0;
   }
 
-  let computedGrossSalary = 0;
+  let computedGrossSalary;
   if (resolvedCompanyId === "nidhi-impex") {
     computedGrossSalary =
       basicSalary + dailyAllowance + hra + wa + conveyanceAllowance +
@@ -364,8 +364,8 @@ export function buildPayslipData({ emp = {}, payslip = {}, companyId } = {}) {
     unallocatedDeductions = Math.max(0, deductionTotal);
   }
 
-  let earningRows = [];
-  let deductionRows = [];
+  let earningRows;
+  let deductionRows;
 
   if (resolvedCompanyId === "nidhi-impex") {
     earningRows = [

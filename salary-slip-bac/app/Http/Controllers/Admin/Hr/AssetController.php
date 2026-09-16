@@ -14,6 +14,11 @@ class AssetController extends Controller
     use AuthorizesEmployeeTarget;
     use ScopesCompany;
 
+    protected function globalCompanyScopeRoles(): array
+    {
+        return [0];
+    }
+
     public function index(Request $request)
     {
         // Constrained to the identity columns the UI renders. The unconstrained

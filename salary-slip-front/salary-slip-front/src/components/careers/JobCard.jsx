@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { MapPin, ArrowRight, Clock, Briefcase, Sparkles, Building } from "lucide-react";
 import {
@@ -11,8 +12,9 @@ import SaveJobButton from "./SaveJobButton";
 export default function JobCard({ job, initiallySaved = false }) {
   const branding = resolveJobBranding(job);
   const postedAgo = formatPostedAgo(job.posted_at);
+  const [mountedAt] = useState(() => Date.now());
 
-  const isRecent = job.posted_at && (Date.now() - new Date(job.posted_at).getTime()) < (7 * 86400000);
+  const isRecent = job.posted_at && (mountedAt - new Date(job.posted_at).getTime()) < (7 * 86400000);
 
   return (
     <div

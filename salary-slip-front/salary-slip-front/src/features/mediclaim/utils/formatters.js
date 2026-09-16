@@ -1,3 +1,5 @@
+import { baseUrl } from "../../../utils/url";
+
 /**
  * Formatting helpers for Mediclaim views, matching the codebase's existing
  * date/currency conventions (see `src/components/tickets/ticketMeta.js`'s
@@ -29,4 +31,19 @@ export function formatMaskedCardNumber(cardNumber) {
   const raw = String(cardNumber || "").replace(/\s+/g, "");
   if (!raw) return "—";
   return `XXXX-${raw.slice(-4)}`;
+}
+
+/**
+ * Hospital contact photos are stored the same way employee photos are — a
+ * server-relative path under the `public` disk — so this mirrors
+ * `src/pages/admin/AdminModals/employee-helpers.js`'s `getEmployeePhotoUrl`
+ * exactly rather than importing an employee-specific helper into this
+ * feature.
+ */
+export function getHospitalContactPhotoUrl(photo) {
+  if (!photo) return "";
+  const value = String(photo).trim();
+  if (!value) return "";
+  if (/^(https?:)?\/\//i.test(value) || value.startsWith("data:")) return value;
+  return `${baseUrl}/storage/${value.replace(/^\/+/, "")}`;
 }

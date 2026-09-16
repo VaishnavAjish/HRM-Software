@@ -17,27 +17,31 @@ import { formatClaimDate } from "../utils/formatters";
  */
 export default function ClaimTimeline({ claimId }) {
   const { user } = useAuth();
-  const [state, setState] = useState({ loading: true, events: [], error: null });
+  const accessToken = user?.accessToken;
+  const tokenType = user?.tokenType;
+  const requestKey = `${claimId ?? ""}|${accessToken ?? ""}|${tokenType ?? ""}`;
+  const [result, setResult] = useState({ key: null, events: [], error: null });
 
   useEffect(() => {
-    if (!claimId || !user?.accessToken) return undefined;
+    if (!claimId || !accessToken) return undefined;
     let cancelled = false;
-    setState((prev) => ({ ...prev, loading: true, error: null }));
 
-    mediclaimApi.claimTimeline(claimId, user.accessToken, user.tokenType)
+    mediclaimApi.claimTimeline(claimId, accessToken, tokenType)
       .then((res) => {
         if (cancelled) return;
         const payload = res?.data;
         const events = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
-        setState({ loading: false, events, error: null });
+        setResult({ key: requestKey, events, error: null });
       })
       .catch((err) => {
         if (cancelled) return;
-        setState({ loading: false, events: [], error: err?.message || "Failed to load claim timeline." });
+        setResult({ key: requestKey, events: [], error: err?.message || "Failed to load claim timeline." });
       });
 
     return () => { cancelled = true; };
-  }, [claimId, user]);
+  }, [claimId, accessToken, tokenType, requestKey]);
+
+  const state = { loading: result.key !== requestKey, events: result.events, error: result.error };
 
   if (state.loading) {
     return <p className="py-6 text-center text-xs text-gray-400">Loading timeline…</p>;

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import {
   DndContext,
@@ -70,8 +70,12 @@ export default function CandidatePipeline({ people = [] }) {
    *  "compact" is a denser single-line list, both opt-in. */
   const [view]                                = useState("list");
 
+  const accessToken = user?.accessToken;
+  const tokenType   = user?.tokenType;
+  const companyId   = companyScope?.companyId;
+  const unit        = companyScope?.unit;
+
   const [columns,        setColumns]        = useState({});
-  const [loading,        setLoading]         = useState(true);
   const [requisitions,   setRequisitions]    = useState([]);
   const [activeCard,     setActiveCard]      = useState(null); // dragging ghost
   const [detailCandidate, setDetailCandidate] = useState(null); // drawer target
@@ -91,34 +95,46 @@ export default function CandidatePipeline({ people = [] }) {
   const [listTotal,      setListTotal]      = useState(0);
   const [listPage,       setListPage]       = useState(1);
   const [listPerPage,    setListPerPage]    = useState(20);
-  const [listLoading,    setListLoading]    = useState(true);
 
-  useEffect(() => { setListPage(1); }, [debouncedSearch, stageFilter, requisitionFilter, scopeKey]);
+  const listFilterKey = JSON.stringify([debouncedSearch, stageFilter, requisitionFilter, scopeKey]);
+  const [pageFilterKey, setPageFilterKey] = useState(listFilterKey);
+  if (pageFilterKey !== listFilterKey) {
+    setPageFilterKey(listFilterKey);
+    setListPage(1);
+  }
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
   /* ── board data loading (only while Board view is active) ── */
-  const load = useCallback(() =>
-    hrApi
-      .getPipeline(user?.accessToken, user?.tokenType, { ...companyScope, requisition_id: requisitionFilter || undefined })
-      .then((res) => { if (res.status) setColumns(res.data || {}); })
-      .catch((err) => toast.error(err.message || "Failed to load pipeline"))
-      .finally(() => setLoading(false)),
-  [user, companyScope, requisitionFilter]);
+  const [boardReloadCount, setBoardReloadCount] = useState(0);
+  const boardRequestKey = JSON.stringify([companyId, unit, requisitionFilter, boardReloadCount]);
+  const [boardLoadedKey, setBoardLoadedKey] = useState(null);
+  const loading = boardLoadedKey !== boardRequestKey;
 
   useEffect(() => {
-    if (!user?.accessToken || view !== "board") return;
-    setLoading(true);
-    load();
-  }, [user, scopeKey, view, requisitionFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!accessToken || view !== "board") return;
+    let cancelled = false;
+    hrApi
+      .getPipeline(accessToken, tokenType, { companyId, unit, requisition_id: requisitionFilter || undefined })
+      .then((res) => { if (!cancelled && res.status) setColumns(res.data || {}); })
+      .catch((err) => { if (!cancelled) toast.error(err.message || "Failed to load pipeline"); })
+      .finally(() => { if (!cancelled) setBoardLoadedKey(boardRequestKey); });
+    return () => { cancelled = true; };
+  }, [accessToken, tokenType, companyId, unit, view, requisitionFilter, boardRequestKey]);
 
   /* ── list data loading (only while List view is active) ── */
-  const loadList = useCallback(() => {
-    if (!user?.accessToken) return;
-    setListLoading(true);
+  const [listReloadCount, setListReloadCount] = useState(0);
+  const listRequestKey = JSON.stringify([companyId, unit, listPage, listPerPage, debouncedSearch, stageFilter, requisitionFilter, listReloadCount]);
+  const [listLoadedKey, setListLoadedKey] = useState(null);
+  const listLoading = listLoadedKey !== listRequestKey;
+
+  useEffect(() => {
+    if (view !== "list" || !accessToken) return;
+    let cancelled = false;
     hrApi
-      .getCandidates(user.accessToken, user.tokenType, {
-        ...companyScope,
+      .getCandidates(accessToken, tokenType, {
+        companyId,
+        unit,
         page: listPage,
         per_page: listPerPage,
         search: debouncedSearch || undefined,
@@ -130,29 +146,26 @@ export default function CandidatePipeline({ people = [] }) {
         requisition_id: requisitionFilter || undefined,
       })
       .then((res) => {
-        if (!res.status) return;
+        if (cancelled || !res.status) return;
         const payload = res.data;
         setListCandidates(payload?.data || []);
         setListTotal(payload?.total ?? (payload?.data?.length || 0));
       })
-      .catch((err) => toast.error(err.message || "Failed to load candidates"))
-      .finally(() => setListLoading(false));
-  }, [user, companyScope, listPage, listPerPage, debouncedSearch, stageFilter, requisitionFilter]);
-
-  useEffect(() => {
-    if (view === "list") loadList();
-  }, [view, loadList]);
+      .catch((err) => { if (!cancelled) toast.error(err.message || "Failed to load candidates"); })
+      .finally(() => { if (!cancelled) setListLoadedKey(listRequestKey); });
+    return () => { cancelled = true; };
+  }, [view, accessToken, tokenType, companyId, unit, listPage, listPerPage, debouncedSearch, stageFilter, requisitionFilter, listRequestKey]);
 
   const [quizzes, setQuizzes] = useState([]);
 
   /* ── requisitions (needed by both views' filters) ── */
   useEffect(() => {
-    if (!user?.accessToken) return;
+    if (!accessToken) return;
     hrApi
-      .getRequisitions(user.accessToken, user.tokenType, { ...companyScope, status: "approved,posted", per_page: 100 })
+      .getRequisitions(accessToken, tokenType, { companyId, unit, status: "approved,posted", per_page: 100 })
       .then((res) => res.status && setRequisitions(res.data?.data || res.data || []))
       .catch(() => {});
-  }, [user, scopeKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [accessToken, tokenType, companyId, unit]);
 
   /* ── quizzes (for assigning quizzes to candidates) ── */
   useEffect(() => {
@@ -164,8 +177,8 @@ export default function CandidatePipeline({ people = [] }) {
   }, [user]);
 
   const reload = () => {
-    if (view === "board") { setLoading(true); load(); }
-    else { loadList(); }
+    if (view === "board") setBoardReloadCount((count) => count + 1);
+    else setListReloadCount((count) => count + 1);
   };
 
   /* ── derived list of all candidates (board drag ghost lookup) ── */

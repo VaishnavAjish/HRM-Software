@@ -27,29 +27,36 @@ const COLUMNS = [
  */
 export default function PendingMyApprovalTab() {
   const { user } = useAuth();
-  const [state, setState] = useState({ loading: true, rows: [], total: 0, error: null });
+  const accessToken = user?.accessToken;
+  const tokenType = user?.tokenType;
+  const [result, setResult] = useState({ key: null, rows: [], total: 0, error: null });
   const [page, setPage] = useState(1);
   const [selectedClaim, setSelectedClaim] = useState(null);
+  const [reloadToken, setReloadToken] = useState(0);
+  const requestKey = `${accessToken ?? ""}|${tokenType ?? ""}|${page}|${reloadToken}`;
 
-  const loadPending = () => {
-    if (!user?.accessToken) return;
-    setState((prev) => ({ ...prev, loading: true, error: null }));
-    mediclaimApi.teamPendingApprovals({ page, perPage: PER_PAGE }, user.accessToken, user.tokenType)
+  useEffect(() => {
+    if (!accessToken) return undefined;
+    let cancelled = false;
+    mediclaimApi.teamPendingApprovals({ page, perPage: PER_PAGE }, accessToken, tokenType)
       .then((res) => {
+        if (cancelled) return;
         const payload = res?.data;
         const rows = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
         const total = payload?.total ?? rows.length;
-        setState({ loading: false, rows, total, error: null });
+        setResult({ key: requestKey, rows, total, error: null });
       })
       .catch((err) => {
-        setState({ loading: false, rows: [], total: 0, error: err?.message || "Failed to load pending approvals." });
+        if (cancelled) return;
+        setResult({ key: requestKey, rows: [], total: 0, error: err?.message || "Failed to load pending approvals." });
       });
-  };
+    return () => { cancelled = true; };
+  }, [accessToken, tokenType, page, requestKey]);
 
-  useEffect(() => {
-    loadPending();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, page]);
+  const loading = result.key !== requestKey;
+  const state = { loading, rows: result.rows, total: result.total, error: loading ? null : result.error };
+
+  const loadPending = () => setReloadToken((n) => n + 1);
 
   const handleDecided = () => {
     setSelectedClaim(null);

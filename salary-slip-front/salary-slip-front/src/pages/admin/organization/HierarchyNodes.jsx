@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { Plus, RefreshCw, Search, Loader2, Pencil, Trash2, Shield, Folder, GitBranch } from "lucide-react";
+import { Plus, RefreshCw, Search, Loader2, Pencil, Trash2, Shield, Folder } from "lucide-react";
 import Badge from "../../../components/ui/Badge";
 import Button from "../../../components/ui/Button";
 import Card from "../../../components/ui/Card";
@@ -40,7 +40,7 @@ function Th({ children, className = "" }) {
   return <th scope="col" className={`px-4 py-3 whitespace-nowrap ${className}`}>{children}</th>;
 }
 
-function NodeFormFields({ node, hierarchyId, busy, onSave, onClose }) {
+function NodeFormFields({ node, busy, onSave, onClose }) {
   const isEdit = Boolean(node);
   const [form, setForm] = useState({
     nodeType: node?.nodeType ?? "department",
@@ -129,7 +129,6 @@ export default function HierarchyNodesPage() {
     dialog?.id ? "Node updated" : "Node created",
   );
 
-  const companyOptions = useMemo(() => hierarchies.map((h) => ({ id: h.id, name: h.name })), [hierarchies]);
   const canManage = can("org.hierarchy_node.create") || can("org.hierarchy_node.update");
 
   return (
@@ -257,7 +256,7 @@ export default function HierarchyNodesPage() {
 
       {dialog && (
         <Modal isOpen onClose={() => setDialog(null)} title={dialog?.id ? "Edit Node" : "Add Node"} size="lg">
-          <NodeFormFields node={dialog.id ? { ...dialog } : null} hierarchyId={hierarchyId} busy={busy} onSave={save} onClose={() => setDialog(null)} />
+          <NodeFormFields node={dialog.id ? { ...dialog } : null} busy={busy} onSave={save} onClose={() => setDialog(null)} />
         </Modal>
       )}
     </div>

@@ -1,7 +1,6 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { candidateApi } from "../utils/api";
-
-const CandidateAuthContext = createContext(null);
+import { CandidateAuthContext } from "./candidate-auth-context";
 
 const TOKEN_KEY = "candidate_token";
 
@@ -90,12 +89,4 @@ export function CandidateAuthProvider({ children }) {
       {children}
     </CandidateAuthContext.Provider>
   );
-}
-
-export function useCandidateAuth() {
-  const context = useContext(CandidateAuthContext);
-  if (!context) {
-    throw new Error("useCandidateAuth must be used within a CandidateAuthProvider");
-  }
-  return context;
 }

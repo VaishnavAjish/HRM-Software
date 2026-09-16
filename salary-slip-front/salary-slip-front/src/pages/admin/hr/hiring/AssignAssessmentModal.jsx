@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { copyToClipboard } from "../../../../utils/clipboard";
 import { Check, ChevronLeft, Clock, FileQuestion, Target, User, Mail, Briefcase, Building2, MapPin } from "lucide-react";
@@ -85,9 +85,22 @@ export default function AssignAssessmentModal({ candidate, quizzes, token, token
     return true;
   };
 
+  const loadPreview = (attemptId) => {
+    if (!sendImmediately) return;
+    setPreviewLoading(true);
+    setPreviewError(null);
+    hrApi.previewQuizEmail(attemptId, { subject_override: subject, personal_message: personalMessage }, token, tokenType)
+      .then((res) => {
+        if (!res.status) throw new Error(res.message);
+        setPreview(res.data);
+      })
+      .catch((err) => setPreviewError(err.message || "Couldn't load the email preview."))
+      .finally(() => setPreviewLoading(false));
+  };
+
   const goToStep3 = async () => {
     if (!validateStep2()) return;
-    if (attempt) { setStep(3); return; } // already created — going back and forward again
+    if (attempt) { setStep(3); loadPreview(attempt.id); return; } // already created — going back and forward again
     setCreating(true);
     try {
       const res = await hrApi.assignQuiz(
@@ -104,28 +117,13 @@ export default function AssignAssessmentModal({ candidate, quizzes, token, token
       if (!res.status) throw new Error(res.message);
       setAttempt(res.data);
       setStep(3);
+      if (res.data) loadPreview(res.data.id);
     } catch (err) {
       toast.error(err.message || "We couldn't assign the assessment. Please try again.");
     } finally {
       setCreating(false);
     }
   };
-
-  useEffect(() => {
-    if (step !== 3 || !attempt || !sendImmediately) return;
-    setPreviewLoading(true);
-    setPreviewError(null);
-    hrApi.previewQuizEmail(attempt.id, { subject_override: subject, personal_message: personalMessage }, token, tokenType)
-      .then((res) => {
-        if (!res.status) throw new Error(res.message);
-        setPreview(res.data);
-      })
-      .catch((err) => setPreviewError(err.message || "Couldn't load the email preview."))
-      .finally(() => setPreviewLoading(false));
-    // Only re-fetch when we actually land on step 3 for this attempt — not on
-    // every keystroke in subject/personalMessage, which would spam the API.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, attempt?.id]);
 
   const finish = async () => {
     if (!attempt) return;

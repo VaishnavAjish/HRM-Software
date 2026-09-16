@@ -118,29 +118,30 @@ class EmployeeListScopeTest extends TestCase
         $this->assertSame('Ichapur', $rows[0]['unit']);
     }
 
-    /**
-     * A comma-separated company_code currently matches nothing.
-     *
-     * index() compares with where('company_code', $userAuth->company_code) — an
-     * exact string match — so an admin holding 'nidhi-impex,silver-star' is
-     * compared against that whole string and matches no employee. Such an admin
-     * sees an empty employee list, with HTTP 200 and total 0 rather than an
-     * error, so it presents as "there are no employees".
-     *
-     * An earlier revision of index() handled this by splitting the value and
-     * using whereIn; that revision has since been rolled back.
-     */
-    public function test_a_multi_company_admin_currently_sees_nothing(): void
+    public function test_a_multi_company_admin_sees_exactly_the_companies_they_hold(): void
     {
         $this->employee('nidhi-impex');
         $this->employee('silver-star');
         $this->employee('third-co');
+        $this->employee('silver-star', 'Daduk');
 
         $response = $this->listFor($this->admin(2, 'nidhi-impex,silver-star'))->assertOk();
+        $codes = array_column($this->rows($response), 'company_code');
+        sort($codes);
 
-        // Documented as-is. Change this assertion only alongside a fix.
-        $this->assertCount(0, $this->rows($response));
-        $this->assertSame(0, $response->json('data.users.total'));
+        $this->assertSame(['nidhi-impex', 'silver-star'], $codes);
+        $this->assertSame(2, $response->json('data.users.total'));
+    }
+
+    public function test_a_company_code_that_is_a_prefix_of_another_does_not_match_it(): void
+    {
+        $this->employee('silver-star');
+        $this->employee('silver-star-exports');
+        $this->employee('nidhi-impex,silver-star-exports');
+
+        $rows = $this->rows($this->listFor($this->admin(2, 'silver-star'))->assertOk());
+
+        $this->assertSame(['silver-star'], array_column($rows, 'company_code'));
     }
 
     public function test_an_admin_with_no_company_sees_nothing(): void

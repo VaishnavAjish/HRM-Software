@@ -11,6 +11,11 @@ class SalariesSlipController extends Controller
 {
     use ScopesCompany;
 
+    protected function globalCompanyScopeRoles(): array
+    {
+        return [0];
+    }
+
     private function canManageOrViewAllSalaries($user): bool
     {
         if (!$user) {

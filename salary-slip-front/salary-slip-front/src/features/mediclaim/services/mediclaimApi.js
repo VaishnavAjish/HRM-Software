@@ -45,6 +45,22 @@ export const mediclaimApi = {
     return apiRequest(`${BASE}/me/coverage`, { headers: headers(accessToken, tokenType) });
   },
 
+  // The two steps of the new-employee onboarding gate (read the rule book,
+  // then add family members) — see RuleBookTab.jsx / FamilyMembersTab.jsx.
+  acknowledgeRuleBook(accessToken, tokenType = "Bearer") {
+    return apiRequest(`${BASE}/me/rule-book-acknowledge`, {
+      method: "POST",
+      headers: headers(accessToken, tokenType),
+    });
+  },
+
+  completeOnboarding(accessToken, tokenType = "Bearer") {
+    return apiRequest(`${BASE}/me/onboarding-complete`, {
+      method: "POST",
+      headers: headers(accessToken, tokenType),
+    });
+  },
+
   myMembers(accessToken, tokenType = "Bearer") {
     return apiRequest(`${BASE}/me/members`, { headers: headers(accessToken, tokenType) });
   },
@@ -243,6 +259,30 @@ export const mediclaimApi = {
     });
   },
 
+  /* ----------------------------------------------------------------------- admin: employees */
+
+  // Company-wide Mediclaim status across every active employee (not just
+  // the ones with an existing enrollment row — see the backend
+  // `Admin\EmployeeController` docblock). Each row carries a computed
+  // `mediclaimStatus`: not_eligible | pending | completed.
+  adminEmployees(filters = {}, accessToken, tokenType = "Bearer") {
+    return apiRequest(`${BASE}/admin/employees${query(filters)}`, { headers: headers(accessToken, tokenType) });
+  },
+
+  adminEmployeeDetail(employeeId, accessToken, tokenType = "Bearer") {
+    return apiRequest(`${BASE}/admin/employees/${employeeId}`, { headers: headers(accessToken, tokenType) });
+  },
+
+  // Provisions coverage + issues a card for every eligible employee,
+  // company-wide, in one pass — returns a {processed, issued, alreadyIssued,
+  // notEligible, failed} summary.
+  bulkIssueEmployeeCards(accessToken, tokenType = "Bearer") {
+    return apiRequest(`${BASE}/admin/employees/bulk-issue-cards`, {
+      method: "POST",
+      headers: headers(accessToken, tokenType),
+    });
+  },
+
   /* ----------------------------------------------------------------------- admin: enrollments */
 
   enrollments(filters = {}, accessToken, tokenType = "Bearer") {
@@ -299,6 +339,77 @@ export const mediclaimApi = {
     });
   },
 
+  // The hospital's "concern person" — name/designation/phone/email/photo.
+  // FormData throughout (even without a photo) so create and update share
+  // one shape and a later-added photo never needs a second code path.
+  createHospitalContact(hospitalId, { name, designation, phone, email, availability, photo } = {}, accessToken, tokenType = "Bearer") {
+    const formData = new FormData();
+    formData.append("name", name);
+    if (designation) formData.append("designation", designation);
+    formData.append("phone", phone);
+    if (email) formData.append("email", email);
+    if (availability) formData.append("availability", availability);
+    if (photo) formData.append("photo", photo);
+
+    return apiRequest(`${BASE}/hospitals/${hospitalId}/contacts`, {
+      method: "POST",
+      headers: headers(accessToken, tokenType),
+      body: formData,
+    });
+  },
+
+  updateHospitalContact(hospitalId, contactId, { name, designation, phone, email, availability, photo } = {}, accessToken, tokenType = "Bearer") {
+    const formData = new FormData();
+    if (name !== undefined) formData.append("name", name);
+    if (designation !== undefined) formData.append("designation", designation || "");
+    if (phone !== undefined) formData.append("phone", phone);
+    if (email !== undefined) formData.append("email", email || "");
+    if (availability !== undefined) formData.append("availability", availability || "");
+    if (photo) formData.append("photo", photo);
+
+    return apiRequest(`${BASE}/hospitals/${hospitalId}/contacts/${contactId}`, {
+      method: "POST",
+      headers: headers(accessToken, tokenType),
+      body: formData,
+    });
+  },
+
+  deleteHospitalContact(hospitalId, contactId, accessToken, tokenType = "Bearer") {
+    return apiRequest(`${BASE}/hospitals/${hospitalId}/contacts/${contactId}`, {
+      method: "DELETE",
+      headers: headers(accessToken, tokenType),
+    });
+  },
+
+  /* ------------------------------------------------------------------- admin: rule book languages */
+
+  ruleBookLanguages(filters = {}, accessToken, tokenType = "Bearer") {
+    return apiRequest(`${BASE}/rule-book-languages${query(filters)}`, { headers: headers(accessToken, tokenType) });
+  },
+
+  createRuleBookLanguage(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`${BASE}/rule-book-languages`, {
+      method: "POST",
+      headers: headers(accessToken, tokenType),
+      body: JSON.stringify(payload),
+    });
+  },
+
+  updateRuleBookLanguage(id, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`${BASE}/rule-book-languages/${id}`, {
+      method: "PUT",
+      headers: headers(accessToken, tokenType),
+      body: JSON.stringify(payload),
+    });
+  },
+
+  deleteRuleBookLanguage(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`${BASE}/rule-book-languages/${id}`, {
+      method: "DELETE",
+      headers: headers(accessToken, tokenType),
+    });
+  },
+
   /* ------------------------------------------------------------------------ admin: rule books */
 
   ruleBooks(filters = {}, accessToken, tokenType = "Bearer") {
@@ -329,6 +440,39 @@ export const mediclaimApi = {
     return apiRequest(`${BASE}/rule-books/${id}/publish`, {
       method: "POST",
       headers: headers(accessToken, tokenType),
+    });
+  },
+
+  // Rule books hold their content as individual rule-text rows (added one
+  // at a time) instead of an uploaded PDF — these four manage that list.
+  addRuleBookItem(ruleBookId, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`${BASE}/rule-books/${ruleBookId}/items`, {
+      method: "POST",
+      headers: headers(accessToken, tokenType),
+      body: JSON.stringify(payload),
+    });
+  },
+
+  updateRuleBookItem(ruleBookId, itemId, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`${BASE}/rule-books/${ruleBookId}/items/${itemId}`, {
+      method: "PUT",
+      headers: headers(accessToken, tokenType),
+      body: JSON.stringify(payload),
+    });
+  },
+
+  deleteRuleBookItem(ruleBookId, itemId, accessToken, tokenType = "Bearer") {
+    return apiRequest(`${BASE}/rule-books/${ruleBookId}/items/${itemId}`, {
+      method: "DELETE",
+      headers: headers(accessToken, tokenType),
+    });
+  },
+
+  reorderRuleBookItems(ruleBookId, itemIds, accessToken, tokenType = "Bearer") {
+    return apiRequest(`${BASE}/rule-books/${ruleBookId}/items-reorder`, {
+      method: "PUT",
+      headers: headers(accessToken, tokenType),
+      body: JSON.stringify({ itemIds }),
     });
   },
 

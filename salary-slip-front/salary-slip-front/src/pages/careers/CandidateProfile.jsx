@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { User, Briefcase, GraduationCap, X, Plus, CheckCircle2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { candidateApi } from "../../utils/api";
-import { useCandidateAuth } from "../../context/CandidateAuthContext";
+import { useCandidateAuth } from "../../context/candidate-auth-context";
 import CandidateExperienceManager from "../../components/careers/CandidateExperienceManager";
 import CandidateEducationManager from "../../components/careers/CandidateEducationManager";
 import { profileCompletion } from "../../utils/candidateProfile";

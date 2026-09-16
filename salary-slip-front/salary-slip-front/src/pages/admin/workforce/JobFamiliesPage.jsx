@@ -1,12 +1,5 @@
-import { useState } from "react";
-import { Users, Building2, FileText, Award, BarChart2, Layers, Briefcase, ClipboardList, ListTodo, FolderKanban } from "lucide-react";
-import { createWorkforceListPage } from "./WorkforceListPage";
+import WorkforceListPage from "./WorkforceListPage";
 import { jobFamilyApi } from "../../../features/workforce/services/workforceApi";
-import { useAuth } from "../../../context/AuthContext";
-import { useAuthorization } from "../../../hooks/useAuthorization";
-import Card from "../../../components/ui/Card";
-import Button from "../../../components/ui/Button";
-import Modal from "../../../components/ui/Modal";
 import Badge from "../../../components/ui/Badge";
 
 const inputClass =
@@ -20,20 +13,25 @@ const STATUS_OPTIONS = [
   { value: "inactive", label: "Inactive" },
 ];
 
-function JobFamilyColumns() {
-  return [
-    { key: "code", label: "Code" },
-    { key: "name", label: "Name" },
-    { key: "jobFunctionName", label: "Function", render: (row) => row.jobFunctionName || "—" },
-    { key: "description", label: "Description", render: (row) => row.description ? (row.description.length > 50 ? row.description.substring(0, 50) + "..." : row.description) : "—" },
-    { key: "status", label: "Status", render: (row) => <Badge status={row.status} /> },
-    { key: "jobCount", label: "Jobs", render: (row) => row.jobCount ?? 0 },
-    { key: "createdAt", label: "Created", render: (row) => row.createdAt ? new Date(row.createdAt).toLocaleDateString() : "—" },
-  ];
-}
+const COLUMNS = [
+  { key: "code", label: "Code" },
+  { key: "name", label: "Name" },
+  { key: "jobFunctionName", label: "Function", render: (row) => row.jobFunctionName || "—" },
+  { key: "description", label: "Description", render: (row) => row.description ? (row.description.length > 50 ? row.description.substring(0, 50) + "..." : row.description) : "—" },
+  { key: "status", label: "Status", render: (row) => <Badge status={row.status} /> },
+  { key: "jobCount", label: "Jobs", render: (row) => row.jobCount ?? 0 },
+  { key: "createdAt", label: "Created", render: (row) => row.createdAt ? new Date(row.createdAt).toLocaleDateString() : "—" },
+];
 
-function JobFamilyCreateForm({ onSubmit }) {
-  const [form, setForm] = useState({
+const PERMISSIONS = {
+  read: "workforce.job_family.read",
+  create: "workforce.job_family.create",
+  update: "workforce.job_family.update",
+  delete: "workforce.job_family.delete",
+};
+
+function emptyJobFamilyForm() {
+  return {
     enterpriseId: "",
     companyId: "",
     jobFunctionId: "",
@@ -43,13 +41,43 @@ function JobFamilyCreateForm({ onSubmit }) {
     status: "active",
     effectiveFrom: "",
     effectiveTo: "",
-  });
+  };
+}
 
-  const handleChange = (field) => (e) => setForm(prev => ({ ...prev, [field]: e.target.value }));
-  const handleSelectChange = (field) => (e) => setForm(prev => ({ ...prev, [field]: e.target.value }));
+function toJobFamilyForm(item) {
+  return {
+    enterpriseId: item.enterpriseId ?? "",
+    companyId: item.companyId ?? "",
+    jobFunctionId: item.jobFunctionId ?? "",
+    code: item.code ?? "",
+    name: item.name ?? "",
+    description: item.description ?? "",
+    status: item.status ?? "active",
+    effectiveFrom: item.effectiveFrom ?? "",
+    effectiveTo: item.effectiveTo ?? "",
+  };
+}
+
+function toJobFamilyPayload(form) {
+  return {
+    enterpriseId: Number(form.enterpriseId) || null,
+    companyId: Number(form.companyId),
+    jobFunctionId: Number(form.jobFunctionId) || null,
+    code: form.code || undefined,
+    name: form.name,
+    description: form.description || null,
+    status: form.status,
+    effectiveFrom: form.effectiveFrom || null,
+    effectiveTo: form.effectiveTo || null,
+  };
+}
+
+function JobFamilyCreateForm({ value: form, onChange }) {
+  const handleChange = (field) => (e) => onChange(prev => ({ ...prev, [field]: e.target.value }));
+  const handleSelectChange = (field) => (e) => onChange(prev => ({ ...prev, [field]: e.target.value }));
 
   return (
-    <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2">
+    <form onSubmit={(e) => e.preventDefault()} className="grid gap-4 sm:grid-cols-2">
       <label className="block">
         <span className={labelClass}>Enterprise</span>
         <select className={selectClass} value={form.enterpriseId} onChange={handleSelectChange("enterpriseId")}>
@@ -98,24 +126,12 @@ function JobFamilyCreateForm({ onSubmit }) {
   );
 }
 
-function JobFamilyEditForm({ item, onSubmit }) {
-  const [form, setForm] = useState({
-    enterpriseId: item.enterpriseId ?? "",
-    companyId: item.companyId ?? "",
-    jobFunctionId: item.jobFunctionId ?? "",
-    code: item.code ?? "",
-    name: item.name ?? "",
-    description: item.description ?? "",
-    status: item.status ?? "active",
-    effectiveFrom: item.effectiveFrom ?? "",
-    effectiveTo: item.effectiveTo ?? "",
-  });
-
-  const handleChange = (field) => (e) => setForm(prev => ({ ...prev, [field]: e.target.value }));
-  const handleSelectChange = (field) => (e) => setForm(prev => ({ ...prev, [field]: e.target.value }));
+function JobFamilyEditForm({ value: form, onChange }) {
+  const handleChange = (field) => (e) => onChange(prev => ({ ...prev, [field]: e.target.value }));
+  const handleSelectChange = (field) => (e) => onChange(prev => ({ ...prev, [field]: e.target.value }));
 
   return (
-    <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2">
+    <form onSubmit={(e) => e.preventDefault()} className="grid gap-4 sm:grid-cols-2">
       <label className="block">
         <span className={labelClass}>Enterprise</span>
         <select className={selectClass} value={form.enterpriseId} onChange={handleSelectChange("enterpriseId")}>
@@ -184,33 +200,33 @@ function JobFamilyViewContent({ item }) {
   );
 }
 
+const CREATE_MODAL = {
+  form: JobFamilyCreateForm,
+  initialValues: emptyJobFamilyForm,
+  toPayload: toJobFamilyPayload,
+};
+
+const EDIT_MODAL = {
+  form: JobFamilyEditForm,
+  initialValues: toJobFamilyForm,
+  toPayload: toJobFamilyPayload,
+};
+
+const VIEW_MODAL = {
+  content: JobFamilyViewContent,
+};
+
 export default function JobFamiliesPage() {
-  const { can } = useAuthorization();
-  const navigate = useNavigate();
-
-  const ListPage = createWorkforceListPage({
-    entityName: "Job Family",
-    entityNamePlural: "Job Families",
-    api: jobFamilyApi,
-    columns: JobFamilyColumns(),
-    permissions: {
-      read: "workforce.job_family.read",
-      create: "workforce.job_family.create",
-      update: "workforce.job_family.update",
-      delete: "workforce.job_family.delete",
-    },
-    createModal: {
-      form: <JobFamilyCreateForm />,
-      onSubmit: (handler) => handler({ enterpriseId: Number(form.enterpriseId) || null, companyId: Number(form.companyId), jobFunctionId: Number(form.jobFunctionId) || null, code: form.code || undefined, name: form.name, description: form.description || null, status: form.status, effectiveFrom: form.effectiveFrom || null, effectiveTo: form.effectiveTo || null }),
-    },
-    editModal: {
-      form: JobFamilyEditForm,
-      onSubmit: (item, handler) => handler({ enterpriseId: Number(form.enterpriseId) || null, companyId: Number(form.companyId), jobFunctionId: Number(form.jobFunctionId) || null, code: form.code || undefined, name: form.name, description: form.description || null, status: form.status, effectiveFrom: form.effectiveFrom || null, effectiveTo: form.effectiveTo || null }),
-    },
-    viewModal: {
-      content: JobFamilyViewContent,
-    },
-  });
-
-  return ListPage;
+  return (
+    <WorkforceListPage
+      entityName="Job Family"
+      entityNamePlural="Job Families"
+      api={jobFamilyApi}
+      columns={COLUMNS}
+      permissions={PERMISSIONS}
+      createModal={CREATE_MODAL}
+      editModal={EDIT_MODAL}
+      viewModal={VIEW_MODAL}
+    />
+  );
 }

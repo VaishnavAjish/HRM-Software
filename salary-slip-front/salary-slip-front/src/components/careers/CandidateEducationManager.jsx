@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { GraduationCap, Plus, Pencil, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { candidateApi } from "../../utils/api";
-import { useCandidateAuth } from "../../context/CandidateAuthContext";
+import { useCandidateAuth } from "../../context/candidate-auth-context";
 
 const EMPTY_FORM = { institution: "", degree: "", field_of_study: "", start_year: "", end_year: "", grade: "", description: "" };
 

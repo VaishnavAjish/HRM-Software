@@ -1,13 +1,8 @@
-import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { FileText, Building2, Users, Award, BarChart2, Layers, Briefcase, ClipboardList, ListTodo, FolderKanban, Plus, Search, Loader2, Pencil, Trash2, Eye, Filter, ChevronDown, ChevronUp, Copy, Archive, RotateCcw } from "lucide-react";
-import { createWorkforceListPage } from "./WorkforceListPage";
+import { Building2, Award, ClipboardList, ListTodo, FolderKanban, Copy } from "lucide-react";
+import WorkforceListPage from "./WorkforceListPage";
 import { jobApi } from "../../../features/workforce/services/workforceApi";
-import { useAuth } from "../../../context/AuthContext";
-import { useAuthorization } from "../../../hooks/useAuthorization";
-import Card from "../../../components/ui/Card";
-import Button from "../../../components/ui/Button";
-import Modal from "../../../components/ui/Modal";
+import { parseJsonText, toJsonText } from "../../../features/workforce/utils/jsonField";
 import Badge from "../../../components/ui/Badge";
 
 const inputClass =
@@ -38,23 +33,28 @@ const REMOTE_ELIGIBILITY_OPTIONS = [
   { value: "conditional", label: "Conditional" },
 ];
 
-function JobColumns() {
-  return [
-    { key: "code", label: "Code" },
-    { key: "formalTitle", label: "Formal Title" },
-    { key: "displayTitle", label: "Display Title", render: (row) => row.displayTitle || "—" },
-    { key: "jobFamilyName", label: "Family", render: (row) => row.jobFamilyName || "—" },
-    { key: "jobFunctionName", label: "Function", render: (row) => row.jobFunctionName || "—" },
-    { key: "jobLevelName", label: "Level", render: (row) => row.jobLevelName || "—" },
-    { key: "jobGradeName", label: "Grade", render: (row) => row.jobGradeName || "—" },
-    { key: "status", label: "Status", render: (row) => <Badge status={row.status} /> },
-    { key: "positionCount", label: "Positions", render: (row) => row.positionCount ?? 0 },
-    { key: "createdAt", label: "Created", render: (row) => row.createdAt ? new Date(row.createdAt).toLocaleDateString() : "—" },
-  ];
-}
+const COLUMNS = [
+  { key: "code", label: "Code" },
+  { key: "formalTitle", label: "Formal Title" },
+  { key: "displayTitle", label: "Display Title", render: (row) => row.displayTitle || "—" },
+  { key: "jobFamilyName", label: "Family", render: (row) => row.jobFamilyName || "—" },
+  { key: "jobFunctionName", label: "Function", render: (row) => row.jobFunctionName || "—" },
+  { key: "jobLevelName", label: "Level", render: (row) => row.jobLevelName || "—" },
+  { key: "jobGradeName", label: "Grade", render: (row) => row.jobGradeName || "—" },
+  { key: "status", label: "Status", render: (row) => <Badge status={row.status} /> },
+  { key: "positionCount", label: "Positions", render: (row) => row.positionCount ?? 0 },
+  { key: "createdAt", label: "Created", render: (row) => row.createdAt ? new Date(row.createdAt).toLocaleDateString() : "—" },
+];
 
-function JobCreateForm({ onSubmit }) {
-  const [form, setForm] = useState({
+const PERMISSIONS = {
+  read: "workforce.job.read",
+  create: "workforce.job.create",
+  update: "workforce.job.update",
+  delete: "workforce.job.delete",
+};
+
+function emptyJobForm() {
+  return {
     enterpriseId: "",
     companyId: "",
     jobFamilyId: "",
@@ -68,24 +68,82 @@ function JobCreateForm({ onSubmit }) {
     displayTitle: "",
     internalTitle: "",
     externalTitle: "",
-    localizedTitles: null,
+    localizedTitles: "",
     summary: "",
     purpose: "",
     status: "draft",
     employmentType: "",
     isRemoteEligible: false,
     remoteEligibilityType: "",
-    remoteConditions: null,
+    remoteConditions: "",
     effectiveFrom: "",
     effectiveTo: "",
-  });
+  };
+}
 
-  const handleChange = (field) => (e) => setForm(prev => ({ ...prev, [field]: e.target.value }));
-  const handleSelectChange = (field) => (e) => setForm(prev => ({ ...prev, [field]: e.target.value }));
-  const handleCheckboxChange = (field) => (e) => setForm(prev => ({ ...prev, [field]: e.target.checked }));
+function toJobForm(item) {
+  return {
+    enterpriseId: item.enterpriseId ?? "",
+    companyId: item.companyId ?? "",
+    jobFamilyId: item.jobFamilyId ?? "",
+    jobFunctionId: item.jobFunctionId ?? "",
+    jobCategoryId: item.jobCategoryId ?? "",
+    jobLevelId: item.jobLevelId ?? "",
+    jobGradeId: item.jobGradeId ?? "",
+    designationId: item.designationId ?? "",
+    code: item.code ?? "",
+    formalTitle: item.formalTitle ?? "",
+    displayTitle: item.displayTitle ?? "",
+    internalTitle: item.internalTitle ?? "",
+    externalTitle: item.externalTitle ?? "",
+    localizedTitles: toJsonText(item.localizedTitles),
+    summary: item.summary ?? "",
+    purpose: item.purpose ?? "",
+    status: item.status ?? "draft",
+    employmentType: item.employmentType ?? "",
+    isRemoteEligible: item.isRemoteEligible ?? false,
+    remoteEligibilityType: item.remoteEligibilityType ?? "",
+    remoteConditions: toJsonText(item.remoteConditions),
+    effectiveFrom: item.effectiveFrom ?? "",
+    effectiveTo: item.effectiveTo ?? "",
+  };
+}
+
+function toJobPayload(form) {
+  return {
+    enterpriseId: Number(form.enterpriseId) || null,
+    companyId: Number(form.companyId),
+    jobFamilyId: Number(form.jobFamilyId) || null,
+    jobFunctionId: Number(form.jobFunctionId) || null,
+    jobCategoryId: Number(form.jobCategoryId) || null,
+    jobLevelId: Number(form.jobLevelId) || null,
+    jobGradeId: Number(form.jobGradeId) || null,
+    designationId: Number(form.designationId) || null,
+    code: form.code || undefined,
+    formalTitle: form.formalTitle,
+    displayTitle: form.displayTitle || null,
+    internalTitle: form.internalTitle || null,
+    externalTitle: form.externalTitle || null,
+    localizedTitles: parseJsonText(form.localizedTitles),
+    summary: form.summary || null,
+    purpose: form.purpose || null,
+    status: form.status,
+    employmentType: form.employmentType || null,
+    isRemoteEligible: form.isRemoteEligible,
+    remoteEligibilityType: form.remoteEligibilityType || null,
+    remoteConditions: parseJsonText(form.remoteConditions),
+    effectiveFrom: form.effectiveFrom || null,
+    effectiveTo: form.effectiveTo || null,
+  };
+}
+
+function JobCreateForm({ value: form, onChange }) {
+  const handleChange = (field) => (e) => onChange(prev => ({ ...prev, [field]: e.target.value }));
+  const handleSelectChange = (field) => (e) => onChange(prev => ({ ...prev, [field]: e.target.value }));
+  const handleCheckboxChange = (field) => (e) => onChange(prev => ({ ...prev, [field]: e.target.checked }));
 
   return (
-    <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2">
+    <form onSubmit={(e) => e.preventDefault()} className="grid gap-4 sm:grid-cols-2">
       <label className="block">
         <span className={labelClass}>Enterprise</span>
         <select className={selectClass} value={form.enterpriseId} onChange={handleSelectChange("enterpriseId")}>
@@ -156,7 +214,7 @@ function JobCreateForm({ onSubmit }) {
       </label>
       <label className="block sm:col-span-2">
         <span className={labelClass}>Localized Titles (JSON)</span>
-        <textarea className={`${inputClass} font-mono text-xs`} value={form.localizedTitles ? JSON.stringify(form.localizedTitles, null, 2) : ""} onChange={(e) => { try { setForm(prev => ({ ...prev, localizedTitles: JSON.parse(e.target.value) })); } catch { setForm(prev => ({ ...prev, localizedTitles: null })); } }} rows={3} />
+        <textarea className={`${inputClass} font-mono text-xs`} value={form.localizedTitles} onChange={handleChange("localizedTitles")} rows={3} />
       </label>
       <label className="block sm:col-span-2">
         <span className={labelClass}>Summary</span>
@@ -195,7 +253,7 @@ function JobCreateForm({ onSubmit }) {
       </label>
       <label className="block sm:col-span-2">
         <span className={labelClass}>Remote Conditions (JSON)</span>
-        <textarea className={`${inputClass} font-mono text-xs`} value={form.remoteConditions ? JSON.stringify(form.remoteConditions, null, 2) : ""} onChange={(e) => { try { setForm(prev => ({ ...prev, remoteConditions: JSON.parse(e.target.value) })); } catch { setForm(prev => ({ ...prev, remoteConditions: null })); } }} rows={3} />
+        <textarea className={`${inputClass} font-mono text-xs`} value={form.remoteConditions} onChange={handleChange("remoteConditions")} rows={3} />
       </label>
       <label className="block">
         <span className={labelClass}>Effective From</span>
@@ -209,39 +267,13 @@ function JobCreateForm({ onSubmit }) {
   );
 }
 
-function JobEditForm({ item, onSubmit }) {
-  const [form, setForm] = useState({
-    enterpriseId: item.enterpriseId ?? "",
-    companyId: item.companyId ?? "",
-    jobFamilyId: item.jobFamilyId ?? "",
-    jobFunctionId: item.jobFunctionId ?? "",
-    jobCategoryId: item.jobCategoryId ?? "",
-    jobLevelId: item.jobLevelId ?? "",
-    jobGradeId: item.jobGradeId ?? "",
-    designationId: item.designationId ?? "",
-    code: item.code ?? "",
-    formalTitle: item.formalTitle ?? "",
-    displayTitle: item.displayTitle ?? "",
-    internalTitle: item.internalTitle ?? "",
-    externalTitle: item.externalTitle ?? "",
-    localizedTitles: item.localizedTitles ?? null,
-    summary: item.summary ?? "",
-    purpose: item.purpose ?? "",
-    status: item.status ?? "draft",
-    employmentType: item.employmentType ?? "",
-    isRemoteEligible: item.isRemoteEligible ?? false,
-    remoteEligibilityType: item.remoteEligibilityType ?? "",
-    remoteConditions: item.remoteConditions ?? null,
-    effectiveFrom: item.effectiveFrom ?? "",
-    effectiveTo: item.effectiveTo ?? "",
-  });
-
-  const handleChange = (field) => (e) => setForm(prev => ({ ...prev, [field]: e.target.value }));
-  const handleSelectChange = (field) => (e) => setForm(prev => ({ ...prev, [field]: e.target.value }));
-  const handleCheckboxChange = (field) => (e) => setForm(prev => ({ ...prev, [field]: e.target.checked }));
+function JobEditForm({ value: form, onChange }) {
+  const handleChange = (field) => (e) => onChange(prev => ({ ...prev, [field]: e.target.value }));
+  const handleSelectChange = (field) => (e) => onChange(prev => ({ ...prev, [field]: e.target.value }));
+  const handleCheckboxChange = (field) => (e) => onChange(prev => ({ ...prev, [field]: e.target.checked }));
 
   return (
-    <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2">
+    <form onSubmit={(e) => e.preventDefault()} className="grid gap-4 sm:grid-cols-2">
       <label className="block">
         <span className={labelClass}>Enterprise</span>
         <select className={selectClass} value={form.enterpriseId} onChange={handleSelectChange("enterpriseId")}>
@@ -312,6 +344,13 @@ function JobEditForm({ item, onSubmit }) {
       </label>
       <label className="block sm:col-span-2">
         <span className={labelClass}>Localized Titles (JSON)</span>
+        <textarea className={`${inputClass} font-mono text-xs`} value={form.localizedTitles} onChange={handleChange("localizedTitles")} rows={3} />
+      </label>
+      <label className="block sm:col-span-2">
+        <span className={labelClass}>Summary</span>
+        <textarea className={inputClass} value={form.summary} onChange={handleChange("summary")} rows={3} />
+      </label>
+      <label className="block sm:col-span-2">
         <span className={labelClass}>Purpose</span>
         <textarea className={inputClass} value={form.purpose} onChange={handleChange("purpose")} rows={3} />
       </label>
@@ -344,7 +383,7 @@ function JobEditForm({ item, onSubmit }) {
       </label>
       <label className="block sm:col-span-2">
         <span className={labelClass}>Remote Conditions (JSON)</span>
-        <textarea className={`${inputClass} font-mono text-xs`} value={form.remoteConditions ? JSON.stringify(form.remoteConditions, null, 2) : ""} onChange={(e) => { try { setForm(prev => ({ ...prev, remoteConditions: JSON.parse(e.target.value) })); } catch { setForm(prev => ({ ...prev, remoteConditions: null })); } }} rows={3} />
+        <textarea className={`${inputClass} font-mono text-xs`} value={form.remoteConditions} onChange={handleChange("remoteConditions")} rows={3} />
       </label>
       <label className="block">
         <span className={labelClass}>Effective From</span>
@@ -387,71 +426,75 @@ function JobViewContent({ item }) {
   );
 }
 
+const CREATE_MODAL = {
+  form: JobCreateForm,
+  initialValues: emptyJobForm,
+  toPayload: toJobPayload,
+};
+
+const EDIT_MODAL = {
+  form: JobEditForm,
+  initialValues: toJobForm,
+  toPayload: toJobPayload,
+};
+
+const VIEW_MODAL = {
+  content: JobViewContent,
+};
+
 export default function JobsPage() {
-  const { can } = useAuthorization();
   const navigate = useNavigate();
 
-  const ListPage = createWorkforceListPage({
-    entityName: "Job",
-    entityNamePlural: "Jobs",
-    api: jobApi,
-    columns: JobColumns(),
-    permissions: {
-      read: "workforce.job.read",
-      create: "workforce.job.create",
-      update: "workforce.job.update",
-      delete: "workforce.job.delete",
+  const customActions = [
+    {
+      key: "descriptions",
+      icon: ClipboardList,
+      title: "Descriptions",
+      onClick: (row) => navigate(`/admin/workforce/jobs/${row.id}/descriptions`),
     },
-    customActions: [
-      {
-        key: "descriptions",
-        icon: ClipboardList,
-        title: "Descriptions",
-        onClick: (row) => navigate(`/admin/workforce/jobs/${row.id}/descriptions`),
-      },
-      {
-        key: "responsibilities",
-        icon: ListTodo,
-        title: "Responsibilities",
-        onClick: (row) => navigate(`/admin/workforce/jobs/${row.id}/responsibilities`),
-      },
-      {
-        key: "requirements",
-        icon: FolderKanban,
-        title: "Requirements",
-        onClick: (row) => navigate(`/admin/workforce/jobs/${row.id}/requirements`),
-      },
-      {
-        key: "evaluations",
-        icon: Award,
-        title: "Evaluations",
-        onClick: (row) => navigate(`/admin/workforce/jobs/${row.id}/evaluations`),
-      },
-      {
-        key: "classification",
-        icon: Building2,
-        title: "Classification",
-        onClick: (row) => navigate(`/admin/workforce/jobs/${row.id}/classification`),
-      },
-      {
-        key: "clone",
-        icon: Copy,
-        title: "Clone",
-        onClick: (row) => navigate(`/admin/workforce/jobs/${row.id}/clone`),
-      },
-    ],
-    createModal: {
-      form: <JobCreateForm />,
-      onSubmit: (handler) => handler({ enterpriseId: Number(form.enterpriseId) || null, companyId: Number(form.companyId), jobFamilyId: Number(form.jobFamilyId) || null, jobFunctionId: Number(form.jobFunctionId) || null, jobCategoryId: Number(form.jobCategoryId) || null, jobLevelId: Number(form.jobLevelId) || null, jobGradeId: Number(form.jobGradeId) || null, designationId: Number(form.designationId) || null, code: form.code || undefined, formalTitle: form.formalTitle, displayTitle: form.displayTitle || null, internalTitle: form.internalTitle || null, externalTitle: form.externalTitle || null, localizedTitles: form.localizedTitles, summary: form.summary || null, purpose: form.purpose || null, status: form.status, employmentType: form.employmentType || null, isRemoteEligible: form.isRemoteEligible, remoteEligibilityType: form.remoteEligibilityType || null, remoteConditions: form.remoteConditions, effectiveFrom: form.effectiveFrom || null, effectiveTo: form.effectiveTo || null }),
+    {
+      key: "responsibilities",
+      icon: ListTodo,
+      title: "Responsibilities",
+      onClick: (row) => navigate(`/admin/workforce/jobs/${row.id}/responsibilities`),
     },
-    editModal: {
-      form: JobEditForm,
-      onSubmit: (item, handler) => handler({ enterpriseId: Number(form.enterpriseId) || null, companyId: Number(form.companyId), jobFamilyId: Number(form.jobFamilyId) || null, jobFunctionId: Number(form.jobFunctionId) || null, jobCategoryId: Number(form.jobCategoryId) || null, jobLevelId: Number(form.jobLevelId) || null, jobGradeId: Number(form.jobGradeId) || null, designationId: Number(form.designationId) || null, code: form.code || undefined, formalTitle: form.formalTitle, displayTitle: form.displayTitle || null, internalTitle: form.internalTitle || null, externalTitle: form.externalTitle || null, localizedTitles: form.localizedTitles, summary: form.summary || null, purpose: form.purpose || null, status: form.status, employmentType: form.employmentType || null, isRemoteEligible: form.isRemoteEligible, remoteEligibilityType: form.remoteEligibilityType || null, remoteConditions: form.remoteConditions, effectiveFrom: form.effectiveFrom || null, effectiveTo: form.effectiveTo || null }),
+    {
+      key: "requirements",
+      icon: FolderKanban,
+      title: "Requirements",
+      onClick: (row) => navigate(`/admin/workforce/jobs/${row.id}/requirements`),
     },
-    viewModal: {
-      content: JobViewContent,
+    {
+      key: "evaluations",
+      icon: Award,
+      title: "Evaluations",
+      onClick: (row) => navigate(`/admin/workforce/jobs/${row.id}/evaluations`),
     },
-  });
+    {
+      key: "classification",
+      icon: Building2,
+      title: "Classification",
+      onClick: (row) => navigate(`/admin/workforce/jobs/${row.id}/classification`),
+    },
+    {
+      key: "clone",
+      icon: Copy,
+      title: "Clone",
+      onClick: (row) => navigate(`/admin/workforce/jobs/${row.id}/clone`),
+    },
+  ];
 
-  return ListPage;
+  return (
+    <WorkforceListPage
+      entityName="Job"
+      entityNamePlural="Jobs"
+      api={jobApi}
+      columns={COLUMNS}
+      permissions={PERMISSIONS}
+      customActions={customActions}
+      createModal={CREATE_MODAL}
+      editModal={EDIT_MODAL}
+      viewModal={VIEW_MODAL}
+    />
+  );
 }

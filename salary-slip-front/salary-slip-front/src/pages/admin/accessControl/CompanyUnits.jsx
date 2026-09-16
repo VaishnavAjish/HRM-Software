@@ -321,6 +321,7 @@ function DepartmentModal({ department, presetParentId, companies, units, departm
 const USER_SEARCH_MIN_CHARS = 2;
 
 function AssignManagerModal({ managerData, initialDepartmentIds, allDepartments, eligibleUsers, token, tokenType, busy, onSave, onClose }) {
+  const [warningState, setWarningState] = useState(null);
   const isEdit = Boolean(managerData?.id);
   const [selectedUserId, setSelectedUserId] = useState(managerData?.id ? String(managerData.id) : "");
   const [selectedDeptIds, setSelectedDeptIds] = useState(
@@ -406,13 +407,48 @@ function AssignManagerModal({ managerData, initialDepartmentIds, allDepartments,
     setSelectedDeptIds((prev) => Array.from(new Set([...prev, ...allFilteredIds])));
   };
 
+  const isSameDepartment = (empDept, targetDeptName) => {
+    if (!empDept || !targetDeptName) return true;
+    const clean = (str) => String(str).toLowerCase().replace(/[^a-z0-9]/g, "");
+    return clean(empDept) === clean(targetDeptName);
+  };
+
+  const handleSaveClick = () => {
+    const payload = {
+      user_id: Number(selectedUserId),
+      department_ids: selectedDeptIds,
+    };
+
+    const selectedUser = (searchedUsers || eligibleUsers || []).find(
+      (u) => String(u.id) === String(selectedUserId)
+    ) || (managerData?.id === Number(selectedUserId) ? managerData : null);
+
+    const empDept = selectedUser?.department || selectedUser?.department_name || "";
+
+    const targetDepts = allDepartments.filter((d) => selectedDeptIds.includes(d.id));
+    const mismatchedDepts = targetDepts.filter(
+      (d) => !isSameDepartment(empDept, d.name)
+    );
+
+    if (empDept && mismatchedDepts.length > 0) {
+      setWarningState({
+        user: selectedUser,
+        empDept: empDept,
+        mismatchedDepts: mismatchedDepts,
+      });
+    } else {
+      onSave(payload);
+    }
+  };
+
   const deselectAll = () => {
     const allFilteredIds = new Set(filteredDepts.map((d) => d.id));
     setSelectedDeptIds((prev) => prev.filter((id) => !allFilteredIds.has(id)));
   };
 
   return (
-    <Modal
+    <>
+      <Modal
       isOpen
       onClose={onClose}
       title={isEdit ? `Edit Manager Departments: ${managerData.name}` : "Assign Department Manager"}
@@ -425,12 +461,7 @@ function AssignManagerModal({ managerData, initialDepartmentIds, allDepartments,
             <Button variant="secondary" onClick={onClose}>Cancel</Button>
             <Button
               disabled={busy || !selectedUserId || selectedDeptIds.length === 0}
-              onClick={() =>
-                onSave({
-                  user_id: Number(selectedUserId),
-                  department_ids: selectedDeptIds,
-                })
-              }
+              onClick={handleSaveClick}
             >
               {busy && <Loader2 size={16} className="animate-spin" />}
               Save Assignments
@@ -565,6 +596,60 @@ function AssignManagerModal({ managerData, initialDepartmentIds, allDepartments,
         </div>
       </div>
     </Modal>
+
+      {warningState && (
+        <Modal
+          isOpen
+          onClose={() => setWarningState(null)}
+          title="Department Mismatch Alert"
+          footer={
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" onClick={() => setWarningState(null)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  const payload = {
+                    user_id: Number(selectedUserId),
+                    department_ids: selectedDeptIds,
+                  };
+                  setWarningState(null);
+                  onSave(payload);
+                }}
+              >
+                Proceed & Assign
+              </Button>
+            </div>
+          }
+        >
+          <div className="space-y-4 py-1">
+            <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/40 dark:bg-amber-950/30">
+              <AlertTriangle className="h-6 w-6 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+              <div className="space-y-1.5 text-sm text-amber-900 dark:text-amber-200">
+                <p className="font-semibold text-base text-amber-950 dark:text-amber-100">
+                  Department Mismatch Warning
+                </p>
+                <p>
+                  Employee <strong>{warningState.user?.name || "Selected Employee"}</strong> belongs to department <strong>"{warningState.empDept}"</strong> in their employee details.
+                </p>
+                <p className="pt-1">
+                  However, you are assigning them as the Department Head of a different department:
+                </p>
+                <ul className="list-disc pl-5 font-bold text-amber-950 dark:text-amber-100">
+                  {warningState.mismatchedDepts.map((d) => (
+                    <li key={d.id}>{d.name}</li>
+                  ))}
+                </ul>
+                <p className="pt-2 text-xs opacity-90">
+                  Are you sure you want to proceed with assigning this employee as Department Head for a different department?
+                </p>
+              </div>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </>
+
   );
 }
 
@@ -1271,7 +1356,7 @@ export default function CompanyUnits({ initialTab = "companies", hideTabs = fals
                           if (d.orgUnitId) {
                             try {
                               await organizationApi.deleteOrgUnit(d.orgUnitId, token, tokenType);
-                            } catch (e) {
+                            } catch {
                               // ignore if it fails or already deleted
                             }
                           }

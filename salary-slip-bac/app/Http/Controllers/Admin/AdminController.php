@@ -764,6 +764,54 @@ class AdminController extends Controller
         return response()->json(['status' => true, 'data' => array_values($merged)]);
     }
 
+    public function getDesignation(Request $request)
+    {
+        $titles = collect();
+
+        // 1. Standalone Designations table (where department_id is null)
+        if (\Illuminate\Support\Facades\Schema::hasTable('designations')) {
+            $dbDesigs = \Illuminate\Support\Facades\DB::table('designations')
+                ->where(function ($q) {
+                    $q->whereNull('department_id')->orWhere('department_id', 0);
+                })
+                ->get();
+            foreach ($dbDesigs as $d) {
+                $t = $d->title ?? $d->name ?? $d->designation_name ?? null;
+                if ($t && trim((string) $t) !== '') {
+                    $titles->push(trim((string) $t));
+                }
+            }
+        }
+
+        // 2. Standalone Organization Positions (where organization_unit_id is null)
+        if (\Illuminate\Support\Facades\Schema::hasTable('organization_positions')) {
+            $dbPos = \Illuminate\Support\Facades\DB::table('organization_positions')
+                ->whereNull('organization_unit_id')
+                ->get();
+            foreach ($dbPos as $p) {
+                $t = $p->title ?? $p->name ?? $p->position_name ?? null;
+                if ($t && trim((string) $t) !== '') {
+                    $titles->push(trim((string) $t));
+                }
+            }
+        }
+
+        $unique = $titles->unique(function ($item) {
+            return strtolower(trim($item));
+        })->sort()->values();
+
+        $merged = $unique->map(function ($name, $index) {
+            return [
+                'id' => $index + 1,
+                'name' => $name,
+                'title' => $name,
+                'designation_name' => $name,
+            ];
+        })->all();
+
+        return response()->json(['status' => true, 'data' => $merged]);
+    }
+
     /**
      * The company set to scope the department in-use names to.
      *
@@ -801,7 +849,12 @@ class AdminController extends Controller
     {
         $query->where(function ($q) use ($codes) {
             foreach ($codes as $code) {
-                $q->orWhereRaw("(',' || COALESCE(company_code, '') || ',') LIKE ?", ['%,' . $code . ',%']);
+                $literal = str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $code);
+
+                $q->orWhere('company_code', $code)
+                    ->orWhereRaw("company_code LIKE ? ESCAPE '!'", [$literal . ',%'])
+                    ->orWhereRaw("company_code LIKE ? ESCAPE '!'", ['%,' . $literal])
+                    ->orWhereRaw("company_code LIKE ? ESCAPE '!'", ['%,' . $literal . ',%']);
             }
         });
     }

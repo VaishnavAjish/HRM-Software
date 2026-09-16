@@ -165,13 +165,13 @@ class OrganizationChangeManagementService
             $this->assertCompanyVisible($company, $actor);
         }
 
-        $this->assertCodeFree($enterpriseId, $companyId, trim((string) ($data['code'] ?: $data['name'])), null);
+        $this->assertCodeFree($enterpriseId, $companyId, trim((string) (($data['code'] ?? '') ?: $data['name'])), null);
 
         $request = DB::transaction(function () use ($data, $enterpriseId, $companyId, $actor) {
             return OrganizationChangeRequest::query()->create([
                 'enterprise_id' => $enterpriseId,
                 'company_id' => $companyId,
-                'code' => trim((string) ($data['code'] ?: $data['name'])),
+                'code' => trim((string) (($data['code'] ?? '') ?: $data['name'])),
                 'name' => trim((string) $data['name']),
                 'description' => $this->blankToNull($data['description'] ?? null),
                 'change_type' => $data['changeType'] ?? 'effective_dated_change',

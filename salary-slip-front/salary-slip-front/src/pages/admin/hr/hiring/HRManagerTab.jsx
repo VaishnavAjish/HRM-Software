@@ -1,21 +1,17 @@
-/* eslint-disable react-hooks/set-state-in-effect */
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import {
   Plus, Send, Pencil, Trash2, Copy, Archive, Eye,
-  Columns3, ChevronDown, ClipboardCopy, RotateCcw, Link2, Check,
+  Columns3, ChevronDown, RotateCcw,
 } from "lucide-react";
 import Button from "../../../../components/ui/Button";
 import Badge from "../../../../components/ui/Badge";
 import Modal from "../../../../components/ui/Modal";
 import Pagination from "../../../../components/ui/Pagination";
 import { SkeletonTable } from "../../../../components/ui/Skeleton";
-import RichTextEditor from "../../../../components/ui/RichTextEditor";
-import DatePicker from "../../../../components/ui/DatePicker";
 import { useAuth } from "../../../../context/AuthContext";
 import { useCompany } from "../../../../context/CompanyContext";
-import { hrApi, rbacApi } from "../../../../utils/api";
+import { hrApi } from "../../../../utils/api";
 import { downloadExcel, downloadCSV } from "../../../../utils/exportUtils";
 import useHrFilters from "./useHrFilters";
 import HiringFilterBar from "./HiringFilterBar";
@@ -40,80 +36,6 @@ const PRIORITY_OPTIONS = [
   { value: "low", label: "Low" }, { value: "medium", label: "Medium" },
   { value: "high", label: "High" }, { value: "urgent", label: "Urgent" },
 ];
-const EMPLOYMENT_TYPE_LABEL = {
-  full_time: "Full Time", part_time: "Part Time", contract: "Contract", intern: "Intern",
-};
-const PRIORITY_LABEL = { low: "Low", medium: "Medium", high: "High", urgent: "Urgent" };
-
-function escapeHtml(s) {
-  return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-}
-
-// Description/Requirements come from RichTextEditor as HTML now, but older
-// requisitions saved before that change hold plain text — detect which and
-// only escape+linebreak the plain case, so old data still renders sanely
-// instead of showing literal tags or one unbroken paragraph.
-function richFieldToHtml(value) {
-  const v = (value || "").trim();
-  if (!v) return "";
-  if (/<[a-z][\s\S]*>/i.test(v)) return v;
-  return v.split(/\n+/).map((line) => `<p>${escapeHtml(line)}</p>`).join("");
-}
-
-/** Plain-text rendering of the JD, for the "Copy" button — job boards and
- *  email don't render the preview's HTML, so what gets copied should be
- *  readable as plain text, bullets and all. */
-function htmlToPlainText(html) {
-  const div = document.createElement("div");
-  div.innerHTML = html || "";
-  div.querySelectorAll("li").forEach((li) => { li.textContent = `- ${li.textContent}`; });
-  div.querySelectorAll("h1, h2, p, li, br").forEach((el) => el.after("\n"));
-  return (div.textContent || "").replace(/\n{3,}/g, "\n\n").trim();
-}
-
-// Pure client-side formatting from whatever's on the form right now — no
-// backend call, nothing persisted. Just a proper-looking JD a recruiter can
-// keep editing here and copy out for posting elsewhere. Description/
-// Requirements arrive already formatted (bold/bullets) from RichTextEditor;
-// this just wraps them with real headings instead of plain text lines.
-function buildJdTemplate(f, applyLink) {
-  const metaBits = [
-    f.designation || null,
-    EMPLOYMENT_TYPE_LABEL[f.employment_type] || null,
-    f.openings ? `${f.openings} opening${Number(f.openings) === 1 ? "" : "s"}` : null,
-  ].filter(Boolean);
-
-  const salaryLine = f.salary_min || f.salary_max
-    ? `₹${Number(f.salary_min || 0).toLocaleString("en-IN")} – ₹${Number(f.salary_max || 0).toLocaleString("en-IN")} per annum`
-    : "Not disclosed";
-
-  return `
-    <h1>${escapeHtml(f.title || "Untitled Role")}</h1>
-    ${metaBits.length ? `<p class="jd-meta">${escapeHtml(metaBits.join(" · "))}</p>` : ""}
-
-    <h2>About the Role</h2>
-    ${richFieldToHtml(f.description) || "<p>—</p>"}
-
-    <h2>Key Requirements</h2>
-    ${richFieldToHtml(f.requirements) || "<p>—</p>"}
-    ${(f.min_experience || f.max_experience)
-      ? `<p><strong>Experience:</strong> ${escapeHtml(f.min_experience || "0")}–${escapeHtml(f.max_experience || f.min_experience || "0")} years</p>`
-      : ""}
-
-    <h2>Compensation &amp; Logistics</h2>
-    <ul>
-      <li><strong>Salary:</strong> ${salaryLine}</li>
-      <li><strong>Employment Type:</strong> ${escapeHtml(EMPLOYMENT_TYPE_LABEL[f.employment_type] || "—")}</li>
-      ${f.target_closing_date ? `<li><strong>Target Closing Date:</strong> ${escapeHtml(f.target_closing_date)}</li>` : ""}
-      <li><strong>Priority:</strong> ${escapeHtml(PRIORITY_LABEL[f.priority] || "—")}</li>
-    </ul>
-
-    ${applyLink ? `
-    <h2>How to Apply</h2>
-    <p>Interested candidates can apply here: <a href="${escapeHtml(applyLink)}" target="_blank" rel="noopener noreferrer">${escapeHtml(applyLink)}</a></p>
-    ` : ""}
-  `.trim();
-}
 const STATUS_VARIANT = {
   draft: "gray", pending_approval: "yellow", approved: "blue",
   rejected: "red", posted: "green", on_hold: "yellow", closed: "gray", cancelled: "red",
@@ -136,20 +58,6 @@ const ALL_COLUMNS = [
 ];
 const VISIBLE_COLS_KEY = "hr_req_visible_columns_v2";
 
-const EMPTY_FORM = {
-  department_id: "", department_manager_id: "",
-  title: "", designation: "", employment_type: "full_time", openings: 1,
-  priority: "medium", min_experience: "", max_experience: "", salary_min: "",
-  salary_max: "", description: "", requirements: "", target_closing_date: "",
-};
-
-const STEP2_FIELDS = [
-  "title", "designation", "employment_type", "openings", "priority",
-  "target_closing_date", "min_experience", "max_experience", "salary_min",
-  "salary_max", "description", "requirements",
-];
-const step2Snapshot = (f) => JSON.stringify(STEP2_FIELDS.map((k) => f[k] ?? ""));
-
 const personName = (...values) => values.find((value) => value && typeof value === "object")?.name || "—";
 
 function approvalProgress(requisition) {
@@ -160,145 +68,30 @@ function approvalProgress(requisition) {
   return `HM ${shortStatus(hiringManager?.status)} · Director ${shortStatus(director?.status)}`;
 }
 
-export default function HRManagerTab({ departments = [], people = [], openRequisitionForm, isHrManagerView = false }) {
+export default function HRManagerTab({ departments = [], people = [], openRequisitionForm, isHrManagerView = false, refreshKey = 0 }) {
   const { user } = useAuth();
   const { companyScope, scopeKey } = useCompany();
   const hr = useHrFilters("requisitions");
   const { can } = useAuthorization();
 
-  const [loading, setLoading] = useState(true);
+  const accessToken = user?.accessToken;
+  const tokenType = user?.tokenType;
+  const companyId = companyScope?.companyId;
+  const unit = companyScope?.unit;
+
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(0);
-  
-
-
   const [page, setPage] = useState(1);
   const [forwardModalOpen, setForwardModalOpen] = useState(false);
   const [returnDeptHeadModalOpen, setReturnDeptHeadModalOpen] = useState(false);
   const [reviewComment, setReviewComment] = useState("");
   const [directorId, setDirectorId] = useState("");
-  const [eligibleDirectors, setEligibleDirectors] = useState([]);
-  const [directorsLoading, setDirectorsLoading] = useState(false);
   const [reviewReqId, setReviewReqId] = useState(null);
   const [reviewReqStatus, setReviewReqStatus] = useState(null);
   const [reviewReqTitle, setReviewReqTitle] = useState("");
   const [perPage, setPerPage] = useState(25);
 
-  const [modalOpen, setModalOpen] = useState(false);
-  const [step, setStep] = useState(1);
-  const [editing, setEditing] = useState(null);
-  const [form, setForm] = useState(EMPTY_FORM);
-  const [saving, setSaving] = useState(false);
   const [drawerTarget, setDrawerTarget] = useState(null);
-  const [reviewReq, setReviewReq] = useState(null);
-  const [submitTarget, setSubmitTarget] = useState(null);
-  const [approvalOptions, setApprovalOptions] = useState({ hrManagers: [] });
-  const [approversLoading, setApproversLoading] = useState(false);
-  const [submittingApproval, setSubmittingApproval] = useState(false);
-
-  const [managers, setManagers] = useState([]);
-  const [managersLoading, setManagersLoading] = useState(false);
-  const [managersError, setManagersError] = useState(false);
-  const managerSeq = useRef(0);
-  const baselineRef = useRef(step2Snapshot(EMPTY_FORM));
-
-  const deptOptions = useMemo(() => departments.filter((d) => d.id != null), [departments]);
-
-  const resetManagers = () => {
-    managerSeq.current += 1;
-    setManagers([]);
-    setManagersLoading(false);
-    setManagersError(false);
-  };
-
-  const loadManagers = (deptId, keepManagerId = "") => {
-    const seq = ++managerSeq.current;
-    setManagersLoading(true);
-    setManagersError(false);
-    setManagers([]);
-    hrApi.getDepartmentManagers(deptId, user?.accessToken, user?.tokenType, { ...companyScope })
-      .then((res) => {
-        if (seq !== managerSeq.current) return;
-        const list = res.data || [];
-        setManagers(list);
-        setForm((f) => {
-          if (keepManagerId && list.some((m) => String(m.id) === String(keepManagerId))) return f;
-          return { ...f, department_manager_id: list.length === 1 ? String(list[0].id) : "" };
-        });
-      })
-      .catch(() => { if (seq === managerSeq.current) setManagersError(true); })
-      .finally(() => { if (seq === managerSeq.current) setManagersLoading(false); });
-  };
-
-  const onDepartmentChange = (value) => {
-    setForm((f) => ({ ...f, department_id: value, department_manager_id: "" }));
-    if (value) loadManagers(value);
-    else resetManagers();
-  };
-
-  const goToStep1 = () => {
-    setStep(1);
-    if (form.department_id) loadManagers(form.department_id, form.department_manager_id);
-  };
-
-  const canGoNext = Boolean(form.department_id && form.department_manager_id) && !managersLoading;
-
-  const selectedDeptName =
-    deptOptions.find((d) => String(d.id) === String(form.department_id))?.name
-    || editing?.department?.name || "Not set";
-  const selectedManagerName =
-    managers.find((m) => String(m.id) === String(form.department_manager_id))?.name
-    || (form.department_manager_id && editing?.department_manager?.name) || "Not set";
-
-  const requestClose = () => {
-    if (step2Snapshot(form) !== baselineRef.current
-      && !window.confirm("Discard this requisition?\n\nYour unsaved changes will be lost.")) return;
-    setModalOpen(false);
-  };
-
-  // Live JD preview: regenerated from the form on every change until the
-  // recruiter edits it directly, at which point their wording wins until
-  // they explicitly ask to rebuild it.
-  const [jdText, setJdText] = useState(() => buildJdTemplate(EMPTY_FORM, ""));
-    const [jdEdited, setJdEdited] = useState(false);
-
-
-
-  // One shared "how to apply" link embedded into every generated JD — the
-  // same Google Form every requisition's candidates apply through, per the
-  // candidate-intake design. Stored server-side (Settings, group "hr") so
-  // every recruiter sees the same value, not just localStorage on one machine.
-  const [applyLink, setApplyLink] = useState("");
-  const [applyLinkDraft, setApplyLinkDraft] = useState("");
-  const [applyLinkSaving, setApplyLinkSaving] = useState(false);
-  useEffect(() => {
-    if (!user?.accessToken) return;
-    rbacApi.getSettings(user.accessToken, user.tokenType, "hr")
-      .then((res) => {
-        const row = (res.data || []).find((s) => s.key === "hr.google_form_url");
-        if (row?.value) { setApplyLink(row.value); setApplyLinkDraft(row.value); }
-      })
-      .catch(() => {}); // no admin.configuration.read permission, or module not migrated — JD just omits the link
-  }, [user]);
-
-  const saveApplyLink = async () => {
-    setApplyLinkSaving(true);
-    try {
-      const res = await rbacApi.updateSettings(
-        [{ key: "hr.google_form_url", value: applyLinkDraft.trim() }],
-        user?.accessToken, user?.tokenType, "hr",
-      );
-      if (res.status) { setApplyLink(applyLinkDraft.trim()); toast.success("Application link saved"); }
-    } catch (err) {
-      toast.error(err.message || "Failed to save application link");
-    } finally {
-      setApplyLinkSaving(false);
-    }
-  };
-
-  useEffect(() => {
-    if (!jdEdited) setJdText(buildJdTemplate(form, applyLink));
-  }, [form, jdEdited, applyLink]);
 
   const [visibleCols, setVisibleCols] = useState(() => {
     try { return JSON.parse(localStorage.getItem(VISIBLE_COLS_KEY)) || ALL_COLUMNS.map((c) => c.key); }
@@ -313,28 +106,44 @@ export default function HRManagerTab({ departments = [], people = [], openRequis
   };
   const isVisible = (key) => visibleCols.includes(key);
 
-  const load = () => {
-    setLoading(true);
-    hrApi.getRequisitions(user?.accessToken, user?.tokenType, {
-      ...companyScope,
+  const searchFilter = hr.debouncedSearch;
+  const departmentFilter = hr.filters.departmentId;
+  const statusFilter = hr.filters.status;
+
+  const pageFilterKey = JSON.stringify([searchFilter, departmentFilter, statusFilter, scopeKey]);
+  const [appliedPageFilterKey, setAppliedPageFilterKey] = useState(pageFilterKey);
+  if (appliedPageFilterKey !== pageFilterKey) {
+    setAppliedPageFilterKey(pageFilterKey);
+    setPage(1);
+  }
+
+  const [reloadCount, setReloadCount] = useState(0);
+  const requestKey = JSON.stringify([companyId, unit, page, perPage, searchFilter, departmentFilter, statusFilter, reloadCount, refreshKey]);
+  const [loadedKey, setLoadedKey] = useState(null);
+  const loading = loadedKey !== requestKey;
+
+  useEffect(() => {
+    if (!accessToken) return;
+    let cancelled = false;
+    hrApi.getRequisitions(accessToken, tokenType, {
+      companyId, unit,
       page, per_page: perPage,
-      search: hr.debouncedSearch || undefined,
-      department_id: hr.filters.departmentId || undefined,
-      status: hr.filters.status || undefined,
+      search: searchFilter || undefined,
+      department_id: departmentFilter || undefined,
+      status: statusFilter || undefined,
     })
       .then((res) => {
-        if (!res.status) return;
+        if (cancelled || !res.status) return;
         const payload = res.data;
         setRows(payload?.data || []);
         setTotal(payload?.total ?? (payload?.data?.length || 0));
       })
-      .catch((err) => toast.error(err.message || "Failed to load requisitions"))
-      .finally(() => setLoading(false));
-  };
+      .catch((err) => { if (!cancelled) toast.error(err.message || "Failed to load requisitions"); })
+      .finally(() => { if (!cancelled) setLoadedKey(requestKey); });
+    return () => { cancelled = true; };
+  }, [accessToken, tokenType, companyId, unit, page, perPage, searchFilter, departmentFilter, statusFilter, requestKey]);
 
-  useEffect(() => { setPage(1); }, [hr.debouncedSearch, hr.filters.departmentId, hr.filters.status, scopeKey]);
-  useEffect(() => { if (user?.accessToken) load(); }, [user, scopeKey, page, perPage, hr.debouncedSearch, hr.filters.departmentId, hr.filters.status]); // eslint-disable-line react-hooks/exhaustive-deps
-
+  const load = () => setReloadCount((count) => count + 1);
   // hiringManager / priority / date / sort have no server-side filter on this
   // endpoint — applied to the current page only, a known limit at very large
   // scale rather than a fabricated "it filters everything" claim.
@@ -370,8 +179,6 @@ export default function HRManagerTab({ departments = [], people = [], openRequis
       if (res.status) { toast.success("Requisition deleted"); load(); }
     } catch (err) { toast.error(err.message || "Failed to delete"); }
   };
-
-  const [hrManagerId, setHrManagerId] = useState("");
 
   const openSubmitForApproval = async (r) => {
     setReviewReqId(r.id);
@@ -758,26 +565,3 @@ export default function HRManagerTab({ departments = [], people = [], openRequis
     </div>
   );
 }
-
-function Field({ label, required, full, children }) {
-  return (
-    <div className={full ? "sm:col-span-2" : ""}>
-      <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">
-        {label}{required && <span className="text-red-500"> *</span>}
-      </label>
-      {children}
-    </div>
-  );
-}
-
-function FormSection({ title, children }) {
-  return (
-    <div>
-      <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-2 pb-1.5 border-b border-gray-100 dark:border-gray-700">
-        {title}
-      </p>
-      {children}
-    </div>
-  );
-}
-

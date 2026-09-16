@@ -45,7 +45,11 @@ export default function ReviewersTab() {
   const { companyScope } = useCompany();
   const { can } = useMediclaimAuthorization();
 
-  const [state, setState] = useState({ loading: true, rows: [], error: null });
+  const accessToken = user?.accessToken;
+  const tokenType = user?.tokenType;
+  const [reloadToken, setReloadToken] = useState(0);
+  const requestKey = `${accessToken ?? ""}|${tokenType ?? ""}|${reloadToken}`;
+  const [result, setResult] = useState({ key: null, rows: [], error: null });
   const [employees, setEmployees] = useState([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
@@ -56,24 +60,26 @@ export default function ReviewersTab() {
 
   const canAssign = can("mediclaim.reviewer_assignment.assign");
 
-  const load = () => {
-    if (!user?.accessToken) return;
-    setState((prev) => ({ ...prev, loading: true, error: null }));
-    mediclaimApi.reviewerAssignments({}, user.accessToken, user.tokenType)
+  useEffect(() => {
+    if (!accessToken) return undefined;
+    let cancelled = false;
+    mediclaimApi.reviewerAssignments({}, accessToken, tokenType)
       .then((res) => {
+        if (cancelled) return;
         const payload = res?.data;
         const rows = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
-        setState({ loading: false, rows, error: null });
+        setResult({ key: requestKey, rows, error: null });
       })
       .catch((err) => {
-        setState({ loading: false, rows: [], error: err?.message || "Failed to load reviewer assignments." });
+        if (cancelled) return;
+        setResult({ key: requestKey, rows: [], error: err?.message || "Failed to load reviewer assignments." });
       });
-  };
+    return () => { cancelled = true; };
+  }, [accessToken, tokenType, requestKey]);
 
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  const state = { loading: result.key !== requestKey, rows: result.rows, error: result.error };
+
+  const load = () => setReloadToken((n) => n + 1);
 
   const openCreate = () => {
     setEditingId(null);

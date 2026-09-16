@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
-import { CheckCircle2, Clock3, Eye, Search, Send, RotateCcw, Edit2 } from "lucide-react";
+import { CheckCircle2, Clock3, Eye, Search, Send, RotateCcw } from "lucide-react";
 import toast from "react-hot-toast";
 import DOMPurify from "dompurify";
 import Badge from "../../../../components/ui/Badge";
@@ -22,17 +21,19 @@ const FILTERS = [
 ];
 
 const date = (value) => value ? new Date(value).toLocaleString() : "—";
-const money = (value) => value == null || value === "" ? "—" : `₹${Number(value).toLocaleString("en-IN")}`;
 const person = (value) => value?.name || "—";
 
-export default function ApprovalReviewTab({ kind, departments = [], people = [], openRequisitionForm }) {
+export default function ApprovalReviewTab({ kind, departments = [], refreshKey = 0 }) {
   const { user } = useAuth();
-  const { companyScope, scopeKey } = useCompany();
+  const { companyScope } = useCompany();
   const { can } = useAuthorization();
   const isDirector = kind === "director";
   const label = isDirector ? "Director" : "HR Manager";
+  const accessToken = user?.accessToken;
+  const tokenType = user?.tokenType;
+  const companyId = companyScope?.companyId;
+  const unit = companyScope?.unit;
 
-    const [searchParams, setSearchParams] = useSearchParams();
   const decidePermission = isDirector
     ? "ui.hr.hiring.director_review.decide"
     : "ui.hr.hiring.hr_manager_review.decide";
@@ -45,16 +46,16 @@ export default function ApprovalReviewTab({ kind, departments = [], people = [],
   const [rows, setRows] = useState([]);
   const [counts, setCounts] = useState({ awaiting: 0, approved: 0 });
   const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [selected, setSelected] = useState(null);
   const [history, setHistory] = useState([]);
+  const [reloadCount, setReloadCount] = useState(0);
+  const requestKey = JSON.stringify([isDirector, companyId, unit, filter, debouncedSearch, page, perPage, reloadCount, refreshKey]);
+  const [result, setResult] = useState({ key: null, error: "" });
+  const loading = result.key !== requestKey;
+  const error = loading ? "" : result.error;
 
   // HR Manager Action Modals
   const [forwardModalOpen, setForwardModalOpen] = useState(false);
-  const [directorId, setDirectorId] = useState("");
-  const [eligibleDirectors, setEligibleDirectors] = useState([]);
-  const [directorsLoading, setDirectorsLoading] = useState(false);
 
   const [returnDeptHeadModalOpen, setReturnDeptHeadModalOpen] = useState(false);
   const [returnDirectorModalOpen, setReturnDirectorModalOpen] = useState(false);
@@ -70,30 +71,33 @@ export default function ApprovalReviewTab({ kind, departments = [], people = [],
     return () => clearTimeout(timer);
   }, [search]);
 
-  const load = () => {
-    if (!user?.accessToken) return;
-    setLoading(true);
-    setError("");
+  useEffect(() => {
+    if (!accessToken) return;
+    let cancelled = false;
     const apiKind = isDirector ? "director" : "hr-manager";
-    hrApi.getRequisitionApprovalQueue(apiKind, user.accessToken, user.tokenType, {
-      company_code: companyScope?.companyId,
-      unit: companyScope?.unit,
+    hrApi.getRequisitionApprovalQueue(apiKind, accessToken, tokenType, {
+      company_code: companyId,
+      unit,
       status: filter,
       search: debouncedSearch || undefined,
       page,
       per_page: perPage,
     })
       .then((response) => {
+        if (cancelled) return;
         const payload = response?.data || {};
         setRows(payload.data || []);
         setTotal(payload.total || 0);
         setCounts(response?.counts || { awaiting: 0, approved: 0 });
+        setResult({ key: requestKey, error: "" });
       })
-      .catch((requestError) => setError(requestError.message || "Unable to load approval queue."))
-      .finally(() => setLoading(false));
-  };
+      .catch((requestError) => {
+        if (!cancelled) setResult({ key: requestKey, error: requestError.message || "Unable to load approval queue." });
+      });
+    return () => { cancelled = true; };
+  }, [accessToken, tokenType, isDirector, companyId, unit, filter, debouncedSearch, page, perPage, requestKey]);
 
-  useEffect(load, [user, kind, scopeKey, filter, debouncedSearch, page, perPage]);
+  const load = () => setReloadCount((count) => count + 1);
 
   const openDetails = async (step) => {
     setSelected(step);
@@ -108,31 +112,13 @@ export default function ApprovalReviewTab({ kind, departments = [], people = [],
     }
   };
 
-  const openForwardModal = async () => {
+  const openForwardModal = () => {
     const req = selected?.cycle?.requisition;
     if (!req) return;
-    setDirectorId("");
-    setEligibleDirectors([]);
-    setDirectorsLoading(true);
     setForwardModalOpen(true);
-    try {
-      const res = await hrApi.getRequisitionApprovalOptions(req.id, user.accessToken, user.tokenType, {
-        company_code: companyScope?.companyId,
-        unit: companyScope?.unit,
-        type: "director",
-      });
-      if (res.status) {
-        setEligibleDirectors(res.data?.directors || res.data?.approvers || []);
-      }
-    } catch (err) {
-      toast.error(err.message || "Failed to load eligible Directors");
-    } finally {
-      setDirectorsLoading(false);
-    }
   };
 
   const handleForwardToDirector = async () => {
-    
     const req = selected?.cycle?.requisition;
     if (!req) return;
     setSaving(true);
@@ -229,9 +215,7 @@ export default function ApprovalReviewTab({ kind, departments = [], people = [],
     }
   };
 
-  const snapshot = selected?.cycle?.snapshot || {};
   const requisition = selected?.cycle?.requisition;
-  const requisitionData = snapshot.requisition || requisition || {};
   const isPending = selected?.status === "PENDING";
   const reqStatus = requisition?.status;
 

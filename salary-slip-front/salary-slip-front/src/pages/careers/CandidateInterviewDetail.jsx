@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ArrowLeft, CalendarClock, Video, Phone, MapPin, AlertCircle, ExternalLink, CalendarPlus } from "lucide-react";
 import { candidateApi } from "../../utils/api";
-import { useCandidateAuth } from "../../context/CandidateAuthContext";
+import { useCandidateAuth } from "../../context/candidate-auth-context";
 
 const MODE_ICON = { video: Video, phone: Phone, onsite: MapPin };
 const MODE_LABEL = { video: "Video Call", phone: "Phone Call", onsite: "On-site" };

@@ -33,28 +33,32 @@ const DASHBOARD_FETCH_LIMIT = 200;
  */
 export default function DashboardTab({ onNavigate }) {
   const { user } = useAuth();
-  const [state, setState] = useState({ loading: true, rows: [], total: 0, error: null });
+  const accessToken = user?.accessToken;
+  const tokenType = user?.tokenType;
+  const requestKey = `${accessToken ?? ""}|${tokenType ?? ""}`;
+  const [result, setResult] = useState({ key: null, rows: [], total: 0, error: null });
 
   useEffect(() => {
-    if (!user?.accessToken) return undefined;
+    if (!accessToken) return undefined;
     let cancelled = false;
-    setState((prev) => ({ ...prev, loading: true, error: null }));
 
-    mediclaimApi.adminClaims({ page: 1, perPage: DASHBOARD_FETCH_LIMIT }, user.accessToken, user.tokenType)
+    mediclaimApi.adminClaims({ page: 1, perPage: DASHBOARD_FETCH_LIMIT }, accessToken, tokenType)
       .then((res) => {
         if (cancelled) return;
         const payload = res?.data;
         const rows = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
         const total = payload?.total ?? rows.length;
-        setState({ loading: false, rows, total, error: null });
+        setResult({ key: requestKey, rows, total, error: null });
       })
       .catch((err) => {
         if (cancelled) return;
-        setState({ loading: false, rows: [], total: 0, error: err?.message || "Failed to load claims for the dashboard." });
+        setResult({ key: requestKey, rows: [], total: 0, error: err?.message || "Failed to load claims for the dashboard." });
       });
 
     return () => { cancelled = true; };
-  }, [user]);
+  }, [accessToken, tokenType, requestKey]);
+
+  const state = { loading: result.key !== requestKey, rows: result.rows, total: result.total, error: result.error };
 
   const statusCounts = useMemo(() => {
     const counts = {};

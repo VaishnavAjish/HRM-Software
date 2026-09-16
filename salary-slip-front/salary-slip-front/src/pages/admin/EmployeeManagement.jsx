@@ -202,6 +202,15 @@ function mapEmployee(item) {
   };
 }
 
+function mergeDistinctSorted(existing, values) {
+  const set = new Set(existing);
+  values.forEach((value) => {
+    if (value && String(value).trim()) set.add(String(value).trim());
+  });
+  if (set.size === existing.length) return existing;
+  return Array.from(set).sort();
+}
+
 export default function EmployeeManagement() {
   const { user: currentUser } = useAuth();
   const { activeUnit, companyId, companyScope, scopeKey } =
@@ -278,13 +287,17 @@ export default function EmployeeManagement() {
   const [selectedGender, setSelectedGender] = useState("");
 
   const [departmentsList, setDepartmentsList] = useState([]);
-  const [allDepartments, setAllDepartments] = useState([]);
+  const [seenDepartments, setSeenDepartments] = useState([]);
   const [allUnits, setAllUnits] = useState([]);
+  const allDepartments = useMemo(
+    () => mergeDistinctSorted(seenDepartments, departmentsList),
+    [seenDepartments, departmentsList],
+  );
 
   useEffect(() => {
     let active = true;
     salaryApi
-      .getDepartments(currentUser?.accessToken, currentUser?.tokenType, companyScope?.companyId || companyScope)
+      .getDepartments(currentUser?.accessToken, currentUser?.tokenType, companyId)
       .then((res) => {
         if (!active) return;
         const list = res?.data || res || [];
@@ -292,33 +305,13 @@ export default function EmployeeManagement() {
           .map((d) => (typeof d === "string" ? d : d.name || d.department))
           .filter(Boolean);
         setDepartmentsList(names);
+        setSeenDepartments((prev) => mergeDistinctSorted(prev, names));
       })
       .catch(() => {});
     return () => {
       active = false;
     };
-  }, [currentUser?.accessToken, currentUser?.tokenType, scopeKey]);
-
-  useEffect(() => {
-    setAllDepartments((prev) => {
-      const set = new Set(prev);
-      departmentsList.forEach((d) => {
-        if (d && String(d).trim()) set.add(String(d).trim());
-      });
-      employees.forEach((e) => {
-        if (e.department && String(e.department).trim()) set.add(String(e.department).trim());
-      });
-      return Array.from(set).sort();
-    });
-
-    setAllUnits((prev) => {
-      const set = new Set(prev);
-      employees.forEach((e) => {
-        if (e.unit && String(e.unit).trim()) set.add(String(e.unit).trim());
-      });
-      return Array.from(set).sort();
-    });
-  }, [employees, departmentsList]);
+  }, [currentUser?.accessToken, currentUser?.tokenType, companyId]);
 
   const mergedFilters = useMemo(() => {
     const filters = { ...apiFilter };
@@ -406,8 +399,8 @@ export default function EmployeeManagement() {
           currentUser?.tokenType,
           apiPage,
           perPage,
-          mergedFilters,
-          companyScope,
+          JSON.parse(mergedFiltersKey),
+          { companyId, unit: activeUnit },
         );
 
         if (cancelled) return;
@@ -417,6 +410,8 @@ export default function EmployeeManagement() {
         const list = (pagination?.data ?? []).map(mapEmployee);
 
         setEmployees(list);
+        setSeenDepartments((prev) => mergeDistinctSorted(prev, list.map((e) => e.department)));
+        setAllUnits((prev) => mergeDistinctSorted(prev, list.map((e) => e.unit)));
         setTotalRecords(pagination?.total ?? list.length);
         setPerPage(pagination?.per_page ?? 15);
         setActiveCount(responseData?.active_users ?? 0);
@@ -443,7 +438,8 @@ export default function EmployeeManagement() {
     perPage,
     mergedFiltersKey,
     refreshKey,
-    scopeKey,
+    companyId,
+    activeUnit,
     currentUser?.accessToken,
     currentUser?.tokenType,
   ]);

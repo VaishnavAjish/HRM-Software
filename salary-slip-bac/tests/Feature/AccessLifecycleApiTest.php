@@ -243,6 +243,11 @@ class AccessLifecycleApiTest extends TestCase
             'reason' => 'Covering while I am on leave next week.',
         ])->assertCreated()->json('data.id');
 
+        $this->assertDatabaseHas('authorization_delegations', ['id' => $id, 'status' => 'PENDING']);
+
+        $this->grantViaRole($this->requester, ['self.profile.read']);
+        $this->asRequester()->postJson("/api/v1/delegations/{$id}/accept")->assertOk();
+
         $this->assertDatabaseHas('authorization_delegations', ['id' => $id, 'status' => 'ACTIVE']);
 
         $this->asAdmin()->postJson("/api/v1/delegations/{$id}/revoke", [

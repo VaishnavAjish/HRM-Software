@@ -1,12 +1,5 @@
-import { useState } from "react";
-import { Layers, Building2, Users, FileText, Award, BarChart2, Briefcase, ClipboardList, ListTodo, FolderKanban } from "lucide-react";
-import { createWorkforceListPage } from "./WorkforceListPage";
+import WorkforceListPage from "./WorkforceListPage";
 import { jobCategoryApi } from "../../../features/workforce/services/workforceApi";
-import { useAuth } from "../../../context/AuthContext";
-import { useAuthorization } from "../../../hooks/useAuthorization";
-import Card from "../../../components/ui/Card";
-import Button from "../../../components/ui/Button";
-import Modal from "../../../components/ui/Modal";
 import Badge from "../../../components/ui/Badge";
 
 const inputClass =
@@ -20,19 +13,24 @@ const STATUS_OPTIONS = [
   { value: "inactive", label: "Inactive" },
 ];
 
-function JobCategoryColumns() {
-  return [
-    { key: "code", label: "Code" },
-    { key: "name", label: "Name" },
-    { key: "description", label: "Description", render: (row) => row.description ? (row.description.length > 50 ? row.description.substring(0, 50) + "..." : row.description) : "—" },
-    { key: "status", label: "Status", render: (row) => <Badge status={row.status} /> },
-    { key: "jobCount", label: "Jobs", render: (row) => row.jobCount ?? 0 },
-    { key: "createdAt", label: "Created", render: (row) => row.createdAt ? new Date(row.createdAt).toLocaleDateString() : "—" },
-  ];
-}
+const COLUMNS = [
+  { key: "code", label: "Code" },
+  { key: "name", label: "Name" },
+  { key: "description", label: "Description", render: (row) => row.description ? (row.description.length > 50 ? row.description.substring(0, 50) + "..." : row.description) : "—" },
+  { key: "status", label: "Status", render: (row) => <Badge status={row.status} /> },
+  { key: "jobCount", label: "Jobs", render: (row) => row.jobCount ?? 0 },
+  { key: "createdAt", label: "Created", render: (row) => row.createdAt ? new Date(row.createdAt).toLocaleDateString() : "—" },
+];
 
-function JobCategoryCreateForm({ onSubmit }) {
-  const [form, setForm] = useState({
+const PERMISSIONS = {
+  read: "workforce.job_category.read",
+  create: "workforce.job_category.create",
+  update: "workforce.job_category.update",
+  delete: "workforce.job_category.delete",
+};
+
+function emptyJobCategoryForm() {
+  return {
     enterpriseId: "",
     companyId: "",
     code: "",
@@ -42,13 +40,43 @@ function JobCategoryCreateForm({ onSubmit }) {
     sortOrder: 0,
     effectiveFrom: "",
     effectiveTo: "",
-  });
+  };
+}
 
-  const handleChange = (field) => (e) => setForm(prev => ({ ...prev, [field]: e.target.value }));
-  const handleSelectChange = (field) => (e) => setForm(prev => ({ ...prev, [field]: e.target.value }));
+function toJobCategoryForm(item) {
+  return {
+    enterpriseId: item.enterpriseId ?? "",
+    companyId: item.companyId ?? "",
+    code: item.code ?? "",
+    name: item.name ?? "",
+    description: item.description ?? "",
+    status: item.status ?? "active",
+    sortOrder: item.sortOrder ?? 0,
+    effectiveFrom: item.effectiveFrom ?? "",
+    effectiveTo: item.effectiveTo ?? "",
+  };
+}
+
+function toJobCategoryPayload(form) {
+  return {
+    enterpriseId: Number(form.enterpriseId) || null,
+    companyId: Number(form.companyId),
+    code: form.code || undefined,
+    name: form.name,
+    description: form.description || null,
+    status: form.status,
+    sortOrder: Number(form.sortOrder),
+    effectiveFrom: form.effectiveFrom || null,
+    effectiveTo: form.effectiveTo || null,
+  };
+}
+
+function JobCategoryCreateForm({ value: form, onChange }) {
+  const handleChange = (field) => (e) => onChange(prev => ({ ...prev, [field]: e.target.value }));
+  const handleSelectChange = (field) => (e) => onChange(prev => ({ ...prev, [field]: e.target.value }));
 
   return (
-    <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2">
+    <form onSubmit={(e) => e.preventDefault()} className="grid gap-4 sm:grid-cols-2">
       <label className="block">
         <span className={labelClass}>Enterprise</span>
         <select className={selectClass} value={form.enterpriseId} onChange={handleSelectChange("enterpriseId")}>
@@ -95,24 +123,12 @@ function JobCategoryCreateForm({ onSubmit }) {
   );
 }
 
-function JobCategoryEditForm({ item, onSubmit }) {
-  const [form, setForm] = useState({
-    enterpriseId: item.enterpriseId ?? "",
-    companyId: item.companyId ?? "",
-    code: item.code ?? "",
-    name: item.name ?? "",
-    description: item.description ?? "",
-    status: item.status ?? "active",
-    sortOrder: item.sortOrder ?? 0,
-    effectiveFrom: item.effectiveFrom ?? "",
-    effectiveTo: item.effectiveTo ?? "",
-  });
-
-  const handleChange = (field) => (e) => setForm(prev => ({ ...prev, [field]: e.target.value }));
-  const handleSelectChange = (field) => (e) => setForm(prev => ({ ...prev, [field]: e.target.value }));
+function JobCategoryEditForm({ value: form, onChange }) {
+  const handleChange = (field) => (e) => onChange(prev => ({ ...prev, [field]: e.target.value }));
+  const handleSelectChange = (field) => (e) => onChange(prev => ({ ...prev, [field]: e.target.value }));
 
   return (
-    <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2">
+    <form onSubmit={(e) => e.preventDefault()} className="grid gap-4 sm:grid-cols-2">
       <label className="block">
         <span className={labelClass}>Enterprise</span>
         <select className={selectClass} value={form.enterpriseId} onChange={handleSelectChange("enterpriseId")}>
@@ -179,33 +195,33 @@ function JobCategoryViewContent({ item }) {
   );
 }
 
+const CREATE_MODAL = {
+  form: JobCategoryCreateForm,
+  initialValues: emptyJobCategoryForm,
+  toPayload: toJobCategoryPayload,
+};
+
+const EDIT_MODAL = {
+  form: JobCategoryEditForm,
+  initialValues: toJobCategoryForm,
+  toPayload: toJobCategoryPayload,
+};
+
+const VIEW_MODAL = {
+  content: JobCategoryViewContent,
+};
+
 export default function JobCategoriesPage() {
-  const { can } = useAuthorization();
-  const navigate = useNavigate();
-
-  const ListPage = createWorkforceListPage({
-    entityName: "Job Category",
-    entityNamePlural: "Job Categories",
-    api: jobCategoryApi,
-    columns: JobCategoryColumns(),
-    permissions: {
-      read: "workforce.job_category.read",
-      create: "workforce.job_category.create",
-      update: "workforce.job_category.update",
-      delete: "workforce.job_category.delete",
-    },
-    createModal: {
-      form: <JobCategoryCreateForm />,
-      onSubmit: (handler) => handler({ enterpriseId: Number(form.enterpriseId) || null, companyId: Number(form.companyId), code: form.code || undefined, name: form.name, description: form.description || null, status: form.status, sortOrder: Number(form.sortOrder), effectiveFrom: form.effectiveFrom || null, effectiveTo: form.effectiveTo || null }),
-    },
-    editModal: {
-      form: JobCategoryEditForm,
-      onSubmit: (item, handler) => handler({ enterpriseId: Number(form.enterpriseId) || null, companyId: Number(form.companyId), code: form.code || undefined, name: form.name, description: form.description || null, status: form.status, sortOrder: Number(form.sortOrder), effectiveFrom: form.effectiveFrom || null, effectiveTo: form.effectiveTo || null }),
-    },
-    viewModal: {
-      content: JobCategoryViewContent,
-    },
-  });
-
-  return ListPage;
+  return (
+    <WorkforceListPage
+      entityName="Job Category"
+      entityNamePlural="Job Categories"
+      api={jobCategoryApi}
+      columns={COLUMNS}
+      permissions={PERMISSIONS}
+      createModal={CREATE_MODAL}
+      editModal={EDIT_MODAL}
+      viewModal={VIEW_MODAL}
+    />
+  );
 }

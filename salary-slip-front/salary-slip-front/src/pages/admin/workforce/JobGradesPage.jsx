@@ -1,13 +1,6 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { BarChart2, Building2, Users, FileText, Award, Layers, Briefcase, ClipboardList, ListTodo, FolderKanban } from "lucide-react";
-import { createWorkforceListPage } from "./WorkforceListPage";
+import WorkforceListPage from "./WorkforceListPage";
 import { jobGradeApi } from "../../../features/workforce/services/workforceApi";
-import { useAuth } from "../../../context/AuthContext";
-import { useAuthorization } from "../../../hooks/useAuthorization";
-import Card from "../../../components/ui/Card";
-import Button from "../../../components/ui/Button";
-import Modal from "../../../components/ui/Modal";
+import { parseJsonText, toJsonText } from "../../../features/workforce/utils/jsonField";
 import Badge from "../../../components/ui/Badge";
 
 const inputClass =
@@ -21,22 +14,27 @@ const STATUS_OPTIONS = [
   { value: "inactive", label: "Inactive" },
 ];
 
-function JobGradeColumns() {
-  return [
-    { key: "code", label: "Code" },
-    { key: "name", label: "Name" },
-    { key: "jobLevelName", label: "Level", render: (row) => row.jobLevelName || "—" },
-    { key: "currency", label: "Currency", render: (row) => row.currency },
-    { key: "minSalary", label: "Min Salary", render: (row) => row.minSalary ? `��${row.minSalary.toLocaleString()}` : "—" },
-    { key: "midSalary", label: "Mid Salary", render: (row) => row.midSalary ? `��${row.midSalary.toLocaleString()}` : "—" },
-    { key: "maxSalary", label: "Max Salary", render: (row) => row.maxSalary ? `��${row.maxSalary.toLocaleString()}` : "—" },
-    { key: "status", label: "Status", render: (row) => <Badge status={row.status} /> },
-    { key: "createdAt", label: "Created", render: (row) => row.createdAt ? new Date(row.createdAt).toLocaleDateString() : "—" },
-  ];
-}
+const COLUMNS = [
+  { key: "code", label: "Code" },
+  { key: "name", label: "Name" },
+  { key: "jobLevelName", label: "Level", render: (row) => row.jobLevelName || "—" },
+  { key: "currency", label: "Currency", render: (row) => row.currency },
+  { key: "minSalary", label: "Min Salary", render: (row) => row.minSalary ? `₹${row.minSalary.toLocaleString()}` : "—" },
+  { key: "midSalary", label: "Mid Salary", render: (row) => row.midSalary ? `₹${row.midSalary.toLocaleString()}` : "—" },
+  { key: "maxSalary", label: "Max Salary", render: (row) => row.maxSalary ? `₹${row.maxSalary.toLocaleString()}` : "—" },
+  { key: "status", label: "Status", render: (row) => <Badge status={row.status} /> },
+  { key: "createdAt", label: "Created", render: (row) => row.createdAt ? new Date(row.createdAt).toLocaleDateString() : "—" },
+];
 
-function JobGradeCreateForm({ onSubmit }) {
-  const [form, setForm] = useState({
+const PERMISSIONS = {
+  read: "workforce.job_grade.read",
+  create: "workforce.job_grade.create",
+  update: "workforce.job_grade.update",
+  delete: "workforce.job_grade.delete",
+};
+
+function emptyJobGradeForm() {
+  return {
     enterpriseId: "",
     companyId: "",
     jobLevelId: "",
@@ -47,17 +45,57 @@ function JobGradeCreateForm({ onSubmit }) {
     minSalary: "",
     midSalary: "",
     maxSalary: "",
-    eligibilityRules: null,
+    eligibilityRules: "",
     status: "active",
     effectiveFrom: "",
     effectiveTo: "",
-  });
+  };
+}
 
-  const handleChange = (field) => (e) => setForm(prev => ({ ...prev, [field]: e.target.value }));
-  const handleSelectChange = (field) => (e) => setForm(prev => ({ ...prev, [field]: e.target.value }));
+function toJobGradeForm(item) {
+  return {
+    enterpriseId: item.enterpriseId ?? "",
+    companyId: item.companyId ?? "",
+    jobLevelId: item.jobLevelId ?? "",
+    code: item.code ?? "",
+    name: item.name ?? "",
+    description: item.description ?? "",
+    currency: item.currency ?? "INR",
+    minSalary: item.minSalary ?? "",
+    midSalary: item.midSalary ?? "",
+    maxSalary: item.maxSalary ?? "",
+    eligibilityRules: toJsonText(item.eligibilityRules),
+    status: item.status ?? "active",
+    effectiveFrom: item.effectiveFrom ?? "",
+    effectiveTo: item.effectiveTo ?? "",
+  };
+}
+
+function toJobGradePayload(form) {
+  return {
+    enterpriseId: Number(form.enterpriseId) || null,
+    companyId: Number(form.companyId),
+    jobLevelId: Number(form.jobLevelId) || null,
+    code: form.code || undefined,
+    name: form.name,
+    description: form.description || null,
+    currency: form.currency,
+    minSalary: form.minSalary ? Number(form.minSalary) : null,
+    midSalary: form.midSalary ? Number(form.midSalary) : null,
+    maxSalary: form.maxSalary ? Number(form.maxSalary) : null,
+    eligibilityRules: parseJsonText(form.eligibilityRules),
+    status: form.status,
+    effectiveFrom: form.effectiveFrom || null,
+    effectiveTo: form.effectiveTo || null,
+  };
+}
+
+function JobGradeCreateForm({ value: form, onChange }) {
+  const handleChange = (field) => (e) => onChange(prev => ({ ...prev, [field]: e.target.value }));
+  const handleSelectChange = (field) => (e) => onChange(prev => ({ ...prev, [field]: e.target.value }));
 
   return (
-    <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2">
+    <form onSubmit={(e) => e.preventDefault()} className="grid gap-4 sm:grid-cols-2">
       <label className="block">
         <span className={labelClass}>Enterprise</span>
         <select className={selectClass} value={form.enterpriseId} onChange={handleSelectChange("enterpriseId")}>
@@ -106,7 +144,7 @@ function JobGradeCreateForm({ onSubmit }) {
       </label>
       <label className="block sm:col-span-2">
         <span className={labelClass}>Eligibility Rules (JSON)</span>
-        <textarea className={`${inputClass} font-mono text-xs`} value={form.eligibilityRules ? JSON.stringify(form.eligibilityRules, null, 2) : ""} onChange={(e) => { try { setForm(prev => ({ ...prev, eligibilityRules: JSON.parse(e.target.value) })); } catch { setForm(prev => ({ ...prev, eligibilityRules: null })); } }} rows={4} />
+        <textarea className={`${inputClass} font-mono text-xs`} value={form.eligibilityRules} onChange={handleChange("eligibilityRules")} rows={4} />
       </label>
       <label className="block">
         <span className={labelClass}>Status</span>
@@ -126,29 +164,12 @@ function JobGradeCreateForm({ onSubmit }) {
   );
 }
 
-function JobGradeEditForm({ item, onSubmit }) {
-  const [form, setForm] = useState({
-    enterpriseId: item.enterpriseId ?? "",
-    companyId: item.companyId ?? "",
-    jobLevelId: item.jobLevelId ?? "",
-    code: item.code ?? "",
-    name: item.name ?? "",
-    description: item.description ?? "",
-    currency: item.currency ?? "INR",
-    minSalary: item.minSalary ?? "",
-    midSalary: item.midSalary ?? "",
-    maxSalary: item.maxSalary ?? "",
-    eligibilityRules: item.eligibilityRules ?? null,
-    status: item.status ?? "active",
-    effectiveFrom: item.effectiveFrom ?? "",
-    effectiveTo: item.effectiveTo ?? "",
-  });
-
-  const handleChange = (field) => (e) => setForm(prev => ({ ...prev, [field]: e.target.value }));
-  const handleSelectChange = (field) => (e) => setForm(prev => ({ ...prev, [field]: e.target.value }));
+function JobGradeEditForm({ value: form, onChange }) {
+  const handleChange = (field) => (e) => onChange(prev => ({ ...prev, [field]: e.target.value }));
+  const handleSelectChange = (field) => (e) => onChange(prev => ({ ...prev, [field]: e.target.value }));
 
   return (
-    <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2">
+    <form onSubmit={(e) => e.preventDefault()} className="grid gap-4 sm:grid-cols-2">
       <label className="block">
         <span className={labelClass}>Enterprise</span>
         <select className={selectClass} value={form.enterpriseId} onChange={handleSelectChange("enterpriseId")}>
@@ -197,7 +218,7 @@ function JobGradeEditForm({ item, onSubmit }) {
       </label>
       <label className="block sm:col-span-2">
         <span className={labelClass}>Eligibility Rules (JSON)</span>
-        <textarea className={`${inputClass} font-mono text-xs`} value={form.eligibilityRules ? JSON.stringify(form.eligibilityRules, null, 2) : ""} onChange={(e) => { try { setForm(prev => ({ ...prev, eligibilityRules: JSON.parse(e.target.value) })); } catch { setForm(prev => ({ ...prev, eligibilityRules: null })); } }} rows={4} />
+        <textarea className={`${inputClass} font-mono text-xs`} value={form.eligibilityRules} onChange={handleChange("eligibilityRules")} rows={4} />
       </label>
       <label className="block">
         <span className={labelClass}>Status</span>
@@ -225,9 +246,9 @@ function JobGradeViewContent({ item }) {
         <div><dt className="text-sm text-gray-500 dark:text-gray-400">Name</dt><dd>{item.name}</dd></div>
         <div><dt className="text-sm text-gray-500 dark:text-gray-400">Level</dt><dd>{item.jobLevelName || "—"}</dd></div>
         <div><dt className="text-sm text-gray-500 dark:text-gray-400">Currency</dt><dd>{item.currency}</dd></div>
-        <div><dt className="text-sm text-gray-500 dark:text-gray-400">Min Salary</dt><dd>{item.minSalary ? `��${item.minSalary.toLocaleString()}` : "—"}</dd></div>
-        <div><dt className="text-sm text-gray-500 dark:text-gray-400">Mid Salary</dt><dd>{item.midSalary ? `��${item.midSalary.toLocaleString()}` : "—"}</dd></div>
-        <div><dt className="text-sm text-gray-500 dark:text-gray-400">Max Salary</dt><dd>{item.maxSalary ? `��${item.maxSalary.toLocaleString()}` : "—"}</dd></div>
+        <div><dt className="text-sm text-gray-500 dark:text-gray-400">Min Salary</dt><dd>{item.minSalary ? `₹${item.minSalary.toLocaleString()}` : "—"}</dd></div>
+        <div><dt className="text-sm text-gray-500 dark:text-gray-400">Mid Salary</dt><dd>{item.midSalary ? `₹${item.midSalary.toLocaleString()}` : "—"}</dd></div>
+        <div><dt className="text-sm text-gray-500 dark:text-gray-400">Max Salary</dt><dd>{item.maxSalary ? `₹${item.maxSalary.toLocaleString()}` : "—"}</dd></div>
         <div><dt className="text-sm text-gray-500 dark:text-gray-400">Enterprise</dt><dd>{item.enterpriseName || "—"}</dd></div>
         <div><dt className="text-sm text-gray-500 dark:text-gray-400">Company</dt><dd>{item.companyName || "—"}</dd></div>
         <div><dt className="text-sm text-gray-500 dark:text-gray-400">Status</dt><dd><Badge status={item.status} /></dd></div>
@@ -241,33 +262,33 @@ function JobGradeViewContent({ item }) {
   );
 }
 
+const CREATE_MODAL = {
+  form: JobGradeCreateForm,
+  initialValues: emptyJobGradeForm,
+  toPayload: toJobGradePayload,
+};
+
+const EDIT_MODAL = {
+  form: JobGradeEditForm,
+  initialValues: toJobGradeForm,
+  toPayload: toJobGradePayload,
+};
+
+const VIEW_MODAL = {
+  content: JobGradeViewContent,
+};
+
 export default function JobGradesPage() {
-  const { can } = useAuthorization();
-  const navigate = useNavigate();
-
-  const ListPage = createWorkforceListPage({
-    entityName: "Job Grade",
-    entityNamePlural: "Job Grades",
-    api: jobGradeApi,
-    columns: JobGradeColumns(),
-    permissions: {
-      read: "workforce.job_grade.read",
-      create: "workforce.job_grade.create",
-      update: "workforce.job_grade.update",
-      delete: "workforce.job_grade.delete",
-    },
-    createModal: {
-      form: <JobGradeCreateForm />,
-      onSubmit: (handler) => handler({ enterpriseId: Number(form.enterpriseId) || null, companyId: Number(form.companyId), jobLevelId: Number(form.jobLevelId) || null, code: form.code || undefined, name: form.name, description: form.description || null, currency: form.currency, minSalary: form.minSalary ? Number(form.minSalary) : null, midSalary: form.midSalary ? Number(form.midSalary) : null, maxSalary: form.maxSalary ? Number(form.maxSalary) : null, eligibilityRules: form.eligibilityRules, status: form.status, effectiveFrom: form.effectiveFrom || null, effectiveTo: form.effectiveTo || null }),
-    },
-    editModal: {
-      form: JobGradeEditForm,
-      onSubmit: (item, handler) => handler({ enterpriseId: Number(form.enterpriseId) || null, companyId: Number(form.companyId), jobLevelId: Number(form.jobLevelId) || null, code: form.code || undefined, name: form.name, description: form.description || null, currency: form.currency, minSalary: form.minSalary ? Number(form.minSalary) : null, midSalary: form.midSalary ? Number(form.midSalary) : null, maxSalary: form.maxSalary ? Number(form.maxSalary) : null, eligibilityRules: form.eligibilityRules, status: form.status, effectiveFrom: form.effectiveFrom || null, effectiveTo: form.effectiveTo || null }),
-    },
-    viewModal: {
-      content: JobGradeViewContent,
-    },
-  });
-
-  return ListPage;
+  return (
+    <WorkforceListPage
+      entityName="Job Grade"
+      entityNamePlural="Job Grades"
+      api={jobGradeApi}
+      columns={COLUMNS}
+      permissions={PERMISSIONS}
+      createModal={CREATE_MODAL}
+      editModal={EDIT_MODAL}
+      viewModal={VIEW_MODAL}
+    />
+  );
 }

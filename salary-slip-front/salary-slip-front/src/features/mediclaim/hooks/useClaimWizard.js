@@ -43,10 +43,24 @@ export function useClaimWizard() {
     : routeState.step;
 
   const [claim, setClaim] = useState(null);
-  const [loading, setLoading] = useState(Boolean(routeClaimId));
+  const [settledFor, setSettledFor] = useState(null);
+  const [reloading, setReloading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const loadedFor = useRef(null);
+  const [loadInputs, setLoadInputs] = useState({ routeClaimId, token });
+
+  if (loadInputs.routeClaimId !== routeClaimId || loadInputs.token !== token) {
+    setLoadInputs({ routeClaimId, token });
+    if (!routeClaimId || !token) {
+      setSettledFor(null);
+      if (!routeClaimId) setClaim(null);
+    } else if (settledFor !== String(routeClaimId)) {
+      setError(null);
+    }
+  }
+
+  const loading = reloading || (Boolean(routeClaimId) && settledFor !== String(routeClaimId));
 
   // Correct the URL itself when the guard above overrode the requested step,
   // so the address bar never lies about which step is actually showing.
@@ -63,29 +77,27 @@ export function useClaimWizard() {
   useEffect(() => {
     if (!routeClaimId || !token) {
       loadedFor.current = null;
-      if (!routeClaimId) setClaim(null);
       return undefined;
     }
     if (loadedFor.current === String(routeClaimId)) return undefined;
 
     let cancelled = false;
-    setLoading(true);
-    setError(null);
+    const requestedClaimId = String(routeClaimId);
 
     mediclaimApi.getClaim(routeClaimId, token, tokenType)
       .then((res) => {
         if (cancelled) return;
         const record = res?.data ?? null;
         if (!record) throw new Error("Claim not found.");
-        loadedFor.current = String(routeClaimId);
+        loadedFor.current = requestedClaimId;
         setClaim(record);
+        setError(null);
+        setSettledFor(requestedClaimId);
       })
       .catch((err) => {
         if (cancelled) return;
         setError(err?.message || "This claim could not be loaded.");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
+        setSettledFor(requestedClaimId);
       });
 
     return () => { cancelled = true; };
@@ -124,7 +136,10 @@ export function useClaimWizard() {
       const record = res?.data ?? null;
       const newId = record?.id ?? record?.claimId ?? routeClaimId;
       setClaim(record);
-      if (newId) loadedFor.current = String(newId);
+      if (newId) {
+        loadedFor.current = String(newId);
+        setSettledFor(String(newId));
+      }
       const targetStep = nextStep && isValidWizardStep(nextStep) ? nextStep : step;
       writeClaimWizardRouteState(setSearchParams, { claimId: newId, step: targetStep });
       return record;
@@ -160,7 +175,7 @@ export function useClaimWizard() {
 
   const reload = useCallback(async () => {
     if (!routeClaimId || !token) return null;
-    setLoading(true);
+    setReloading(true);
     setError(null);
     try {
       const res = await mediclaimApi.getClaim(routeClaimId, token, tokenType);
@@ -171,12 +186,13 @@ export function useClaimWizard() {
       setError(err?.message || "Failed to reload this claim.");
       return null;
     } finally {
-      setLoading(false);
+      setReloading(false);
     }
   }, [routeClaimId, token, tokenType]);
 
   const startNewClaim = useCallback(() => {
     loadedFor.current = null;
+    setSettledFor(null);
     setClaim(null);
     setError(null);
     writeClaimWizardRouteState(setSearchParams, { claimId: null, step: null });

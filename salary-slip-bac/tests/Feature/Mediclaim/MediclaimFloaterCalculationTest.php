@@ -44,12 +44,12 @@ class MediclaimFloaterCalculationTest extends TestCase
 
         $workflow = app(ClaimWorkflowService::class);
 
-        $claim1 = $this->walkToDirectorStage($employee, $manager, $reviewer, $workflow);
+        $claim1 = $this->walkToDirectorStage($employee, $manager, $reviewer, $workflow, 250000.0);
         $decided1 = $workflow->directorFinalApproval($claim1, $director, 'approved', 250000.0);
         $this->assertSame(MediclaimClaim::STATUS_SETTLEMENT_PENDING, $decided1->status);
         $this->assertSame('250000.00', (string) $decided1->total_approved_amount);
 
-        $claim2 = $this->walkToDirectorStage($employee, $manager, $reviewer, $workflow);
+        $claim2 = $this->walkToDirectorStage($employee, $manager, $reviewer, $workflow, 100000.0);
 
         $this->expectException(ValidationException::class);
         $workflow->directorFinalApproval($claim2, $director, 'approved', 100000.0);
@@ -67,10 +67,10 @@ class MediclaimFloaterCalculationTest extends TestCase
 
         $workflow = app(ClaimWorkflowService::class);
 
-        $claim1 = $this->walkToDirectorStage($employee, $manager, $reviewer, $workflow);
+        $claim1 = $this->walkToDirectorStage($employee, $manager, $reviewer, $workflow, 250000.0);
         $workflow->directorFinalApproval($claim1, $director, 'approved', 250000.0);
 
-        $claim2 = $this->walkToDirectorStage($employee, $manager, $reviewer, $workflow);
+        $claim2 = $this->walkToDirectorStage($employee, $manager, $reviewer, $workflow, 100000.0);
 
         $override = new MediclaimFloaterOverride([
             'override_amount' => 100000,
@@ -93,9 +93,11 @@ class MediclaimFloaterCalculationTest extends TestCase
         $this->assertNotEmpty($persisted->reason);
     }
 
-    private function walkToDirectorStage(User $employee, User $manager, User $reviewer, ClaimWorkflowService $workflow): MediclaimClaim
+    private function walkToDirectorStage(User $employee, User $manager, User $reviewer, ClaimWorkflowService $workflow, float $claimedAmount): MediclaimClaim
     {
-        $claim = $workflow->submit($workflow->createDraft($employee, []), $employee);
+        $claim = $workflow->submit($workflow->createDraft($employee, [
+            'expenses' => [['category' => 'consultation', 'claimed_amount' => $claimedAmount]],
+        ]), $employee);
         $workflow->acknowledgeConfidentiality($claim, $manager);
         $claim = $workflow->managerDecision($claim->fresh(), $manager, 'approve');
         $claim = $workflow->coordinatorVerify($claim->fresh(), $reviewer, 'verified');

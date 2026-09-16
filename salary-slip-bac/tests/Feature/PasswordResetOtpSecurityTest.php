@@ -2,25 +2,40 @@
 
 namespace Tests\Feature;
 
-use App\Mail\PortalOtpMail;
 use App\Models\User;
+use App\Services\Sms\Fast2SmsService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
 class PasswordResetOtpSecurityTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function employee(): User
+    private array $smsSends = [];
+
+    private function employee(?string $mobile = '9812345670'): User
     {
         return User::create([
             'name' => 'Reset Target', 'email' => 'reset-target@test.local',
             'password' => 'OldPassword123', 'role' => 3, 'company_code' => 'nidhi-impex',
+            'mobile_number' => $mobile,
             'status' => 0, 'is_deleted' => 0,
         ]);
+    }
+
+    private function fakeSms(bool $delivered = true): void
+    {
+        $this->smsSends = [];
+
+        $this->mock(Fast2SmsService::class, function ($mock) use ($delivered) {
+            $mock->shouldReceive('sendOtp')->andReturnUsing(function ($mobile, $otp) use ($delivered) {
+                $this->smsSends[] = ['mobile' => $mobile, 'otp' => $otp];
+
+                return $delivered;
+            });
+        });
     }
 
     private function challenge(User $user, string $otp, array $overrides = []): void
@@ -87,7 +102,7 @@ class PasswordResetOtpSecurityTest extends TestCase
 
     public function test_an_unknown_address_is_indistinguishable_from_a_known_one(): void
     {
-        Mail::fake();
+        $this->fakeSms();
         $user = $this->employee();
 
         $known = $this->requestOtp($user->email);
@@ -106,18 +121,32 @@ class PasswordResetOtpSecurityTest extends TestCase
         );
     }
 
-    public function test_no_mail_is_sent_for_an_unknown_address(): void
+    public function test_no_otp_is_sent_for_an_unknown_address(): void
     {
-        Mail::fake();
+        $this->fakeSms();
 
         $this->requestOtp('definitely-not-registered@test.local')->assertOk();
 
-        Mail::assertNothingSent();
+        $this->assertSame([], $this->smsSends);
+    }
+
+    public function test_an_account_without_a_mobile_on_file_is_indistinguishable_and_never_uses_a_caller_supplied_number(): void
+    {
+        $this->fakeSms();
+        $user = $this->employee(null);
+
+        $withoutMobile = $this->send(['type' => 1, 'email' => $user->email, 'mobile_number' => '9000000001']);
+        $unknown = $this->requestOtp('definitely-not-registered@test.local');
+
+        $withoutMobile->assertOk();
+        $this->assertSame($unknown->json(), $withoutMobile->json());
+        $this->assertSame([], $this->smsSends, 'The OTP must never go to a number the caller supplied.');
+        $this->assertNull($user->fresh()->otp);
     }
 
     public function test_an_unknown_address_creates_no_challenge(): void
     {
-        Mail::fake();
+        $this->fakeSms();
 
         $this->requestOtp('definitely-not-registered@test.local')->assertOk();
 
@@ -135,31 +164,34 @@ class PasswordResetOtpSecurityTest extends TestCase
 
     public function test_a_delivery_failure_does_not_report_success(): void
     {
+        config(['auth.otp_dev_fallback' => false]);
+        $this->fakeSms(delivered: false);
         $user = $this->employee();
-
-        Mail::shouldReceive('to')->andThrow(new \RuntimeException('535 auth failed for admin@niss.pro'));
 
         $response = $this->requestOtp($user->email);
 
         $response->assertStatus(500);
-        $this->assertStringNotContainsString('535', (string) $response->json('message'));
-        $this->assertStringNotContainsString('admin@niss.pro', (string) $response->json('message'));
-        $this->assertNull($user->fresh()->otp, 'No challenge should exist if the mail never went out.');
+        $response->assertJsonMissingPath('dev_otp');
+        $this->assertStringNotContainsString($user->mobile_number, (string) $response->getContent());
+        $this->assertNull($user->fresh()->otp, 'No challenge should exist if the SMS never went out.');
     }
 
-    public function test_requesting_a_reset_sends_the_otp_mailable(): void
+    public function test_requesting_a_reset_sends_the_otp_to_the_mobile_on_file(): void
     {
-        Mail::fake();
+        $this->fakeSms();
         $user = $this->employee();
 
-        $this->requestOtp($user->email)->assertOk();
+        $this->requestOtp($user->email)->assertOk()->assertJsonMissingPath('dev_otp');
 
-        Mail::assertSent(PortalOtpMail::class, fn ($mail) => $mail->hasTo($user->email));
+        $this->assertCount(1, $this->smsSends);
+        $this->assertSame('9812345670', $this->smsSends[0]['mobile']);
+        $this->assertMatchesRegularExpression('/^\d{6}$/', $this->smsSends[0]['otp']);
+        $this->assertTrue(Hash::check($this->smsSends[0]['otp'], json_decode($user->fresh()->otp, true)['hash']));
     }
 
-    public function test_the_otp_is_never_written_to_the_log(): void
+    public function test_the_otp_and_mobile_number_are_never_written_to_the_log(): void
     {
-        Mail::fake();
+        $this->fakeSms();
         $user = $this->employee();
 
         $lines = [];
@@ -178,12 +210,13 @@ class PasswordResetOtpSecurityTest extends TestCase
                 $line,
                 'A six-digit code must never reach the log: ' . $line
             );
+            $this->assertStringNotContainsString($user->mobile_number, $line, 'The mobile number must not reach the log.');
         }
     }
 
     public function test_the_otp_is_stored_only_as_a_hash(): void
     {
-        Mail::fake();
+        $this->fakeSms();
         $user = $this->employee();
 
         $this->requestOtp($user->email)->assertOk();
@@ -233,14 +266,14 @@ class PasswordResetOtpSecurityTest extends TestCase
 
         $this->verifyOtp($user->email, '123456')
             ->assertOk()
-            ->assertJsonPath('message', 'OTP verified');
+            ->assertJsonPath('message', 'OTP verified successfully');
 
         $this->assertTrue(json_decode($user->fresh()->otp, true)['verified']);
     }
 
     public function test_requesting_a_new_otp_invalidates_the_previous_one(): void
     {
-        Mail::fake();
+        $this->fakeSms();
         $user = $this->employee();
         $this->challenge($user, '111111');
 
@@ -248,7 +281,7 @@ class PasswordResetOtpSecurityTest extends TestCase
 
         $this->verifyOtp($user->email, '111111')
             ->assertStatus(422)
-            ->assertJsonPath('message', 'Invalid OTP');
+            ->assertJsonPath('message', 'Incorrect OTP. Please try again.');
     }
 
     public function test_the_challenge_is_cleared_once_the_password_is_set(): void

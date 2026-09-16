@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Eye, QrCode, BadgeCheck } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
+import toast from "react-hot-toast";
 import Modal from "../../../components/ui/Modal";
 import Badge from "../../../components/ui/Badge";
 import { SkeletonTable } from "../../../components/ui/Skeleton";
@@ -24,34 +25,49 @@ const STATUS_VARIANT = { active: "green", expired: "gray", revoked: "red", super
  */
 export default function CardViewer() {
   const { user } = useAuth();
-  const [state, setState] = useState({ loading: true, cards: [], error: null });
+  const accessToken = user?.accessToken;
+  const tokenType = user?.tokenType;
+  const requestKey = `${accessToken ?? ""}|${tokenType ?? ""}`;
+  const [result, setResult] = useState({ key: null, cards: [], error: null });
   const [viewerDoc, setViewerDoc] = useState(null);
   const [qrTarget, setQrTarget] = useState(null);
 
   useEffect(() => {
-    if (!user?.accessToken) return undefined;
+    if (!accessToken) return undefined;
     let cancelled = false;
-    setState((prev) => ({ ...prev, loading: true, error: null }));
 
-    mediclaimApi.myCards(user.accessToken, user.tokenType)
+    mediclaimApi.myCards(accessToken, tokenType)
       .then((res) => {
         if (cancelled) return;
         const payload = res?.data;
         const cards = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
-        setState({ loading: false, cards, error: null });
+        setResult({ key: requestKey, cards, error: null });
       })
       .catch((err) => {
         if (cancelled) return;
-        setState({ loading: false, cards: [], error: err?.message || "Failed to load Mediclaim cards." });
+        setResult({ key: requestKey, cards: [], error: err?.message || "Failed to load Mediclaim cards." });
       });
 
     return () => { cancelled = true; };
-  }, [user]);
+  }, [accessToken, tokenType, requestKey]);
+
+  const state = { loading: result.key !== requestKey, cards: result.cards, error: result.error };
 
   const openDocument = (card) => {
-    const doc = card.document || card.cardDocument || card.card_document || (card.documentId ? card : null);
-    if (!doc) return;
-    setViewerDoc(doc);
+    // `GET /me/cards` returns raw MediclaimCard rows — the real column is
+    // `document_id` (snake_case), never a nested `document`/`cardDocument`
+    // object or a camelCased `documentId`. Missing that fallback made this
+    // button a silent no-op for every card.
+    const documentId = card.document?.documentId ?? card.document?.id
+      ?? card.cardDocument?.documentId ?? card.card_document?.documentId
+      ?? card.documentId ?? card.document_id;
+
+    if (!documentId) {
+      toast.error("This card's PDF hasn't been generated yet.");
+      return;
+    }
+
+    setViewerDoc({ documentId });
   };
 
   return (

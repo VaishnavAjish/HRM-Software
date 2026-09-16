@@ -3,52 +3,25 @@ import toast from "react-hot-toast";
 import {
   Plus,
   Trophy,
-  TrendingDown,
   Star,
   ArrowUpCircle,
   GraduationCap,
   Target,
-  Medal,
   Users,
   Search,
-  Filter,
   Download,
   RefreshCw,
-  SlidersHorizontal,
-  ChevronRight,
   X,
-  CheckCircle2,
-  AlertTriangle,
   Sparkles,
   Clock,
-  FileText,
-  Brain,
   Award,
-  TrendingUp,
   BarChart3,
   PieChart as PieIcon,
-  BookOpen,
   ShieldAlert,
   Edit3,
-  MoreHorizontal,
-  ChevronDown,
-  Check,
   Settings as SettingsIcon,
-  Zap,
-  Building2,
   UserCheck,
-  HeartHandshake,
-  Layers,
-  MessageSquare,
-  Calendar,
-  Send,
-  Trash2,
-  Eye,
-  Sliders,
-  DollarSign,
-  ArrowUpRight,
-  ShieldCheck,
-  UserPlus
+  Eye
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -57,12 +30,7 @@ import {
   XAxis,
   YAxis,
   CartesianGrid,
-  Tooltip,
-  PieChart,
-  Pie,
-  Cell,
-  LineChart,
-  Line
+  Tooltip
 } from "recharts";
 import Button from "../../../components/ui/Button";
 import Badge from "../../../components/ui/Badge";
@@ -98,10 +66,30 @@ const RATING_COLORS = {
   1: { label: "Needs Improvement", color: "rose", bg: "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20" }
 };
 
+const KPI_TEMPLATES = [
+  { id: 1, name: "Sprint Feature Delivery", dept: "Engineering", weight: 30, target: "100%" },
+  { id: 2, name: "Code Quality & PR Reviews", dept: "Engineering", weight: 20, target: ">95% pass" },
+  { id: 3, name: "Quarterly Revenue Goal", dept: "Sales", weight: 40, target: "$150k" },
+  { id: 4, name: "Customer NPS Score", dept: "Support", weight: 25, target: "NPS > 75" },
+  { id: 5, name: "Talent Acquisition Time-to-Fill", dept: "HR", weight: 25, target: "< 25 days" }
+];
+
+function fetchCycleData(accessToken, tokenType, id) {
+  return Promise.all([
+    hrApi.getPerformanceDashboard(accessToken, tokenType, { cycle_id: id }),
+    hrApi.getPerformanceGoals(accessToken, tokenType, { cycle_id: id }),
+    hrApi.getPerformanceReviews(accessToken, tokenType, { cycle_id: id }),
+  ]);
+}
+
 export default function PerformanceMatrix() {
   const { user } = useAuth();
-  const { companyScope, scopeKey } = useCompany();
-  
+  const { companyScope } = useCompany();
+  const accessToken = user?.accessToken;
+  const tokenType = user?.tokenType;
+  const companyId = companyScope?.companyId;
+  const unit = companyScope?.unit;
+
   // Primary Tabs
   const [tab, setTab] = useState("overview");
 
@@ -112,7 +100,9 @@ export default function PerformanceMatrix() {
   const [goals, setGoals] = useState([]);
   const [reviews, setReviews] = useState([]);
   const [employees, setEmployees] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [cyclesSettled, setCyclesSettled] = useState(false);
+  const [loadedCycleId, setLoadedCycleId] = useState(null);
+  const loading = !cyclesSettled || (Boolean(cycleId) && loadedCycleId !== cycleId);
 
   // Filters State
   const [searchQuery, setSearchQuery] = useState("");
@@ -134,63 +124,57 @@ export default function PerformanceMatrix() {
   const [pipModalOpen, setPipModalOpen] = useState(false);
   const [pipForm, setPipForm] = useState({ user_id: "", issue: "", mentor: "", target_date: "" });
 
-  // Custom KPI Templates State
-  const [kpiTemplates, setKpiTemplates] = useState([
-    { id: 1, name: "Sprint Feature Delivery", dept: "Engineering", weight: 30, target: "100%" },
-    { id: 2, name: "Code Quality & PR Reviews", dept: "Engineering", weight: 20, target: ">95% pass" },
-    { id: 3, name: "Quarterly Revenue Goal", dept: "Sales", weight: 40, target: "$150k" },
-    { id: 4, name: "Customer NPS Score", dept: "Support", weight: 25, target: "NPS > 75" },
-    { id: 5, name: "Talent Acquisition Time-to-Fill", dept: "HR", weight: 25, target: "< 25 days" }
-  ]);
-
   // Load Cycles and Employees
   useEffect(() => {
-    if (!user?.accessToken) return;
-    hrApi.getPerformanceCycles(user.accessToken, user.tokenType).then(async (res) => {
-      if (!res.status) return;
+    if (!accessToken) return;
+    let cancelled = false;
+    hrApi.getPerformanceCycles(accessToken, tokenType).then(async (res) => {
+      if (cancelled || !res.status) return;
       let list = res.data || [];
       if (list.length === 0) {
         const year = new Date().getFullYear();
         const created = await hrApi.storePerformanceCycle(
           { name: `Performance ${year}`, period_start: `${year}-01-01`, period_end: `${year}-12-31`, type: "annual" },
-          user.accessToken, user.tokenType
+          accessToken, tokenType
         ).catch(() => null);
         if (created?.status) list = [created.data];
       }
+      if (cancelled) return;
       setCycles(list);
-      if (list.length && !cycleId) setCycleId(list[0].id);
-    }).catch(() => {});
+      if (list.length) setCycleId((current) => current || list[0].id);
+    }).catch(() => {}).finally(() => {
+      if (!cancelled) setCyclesSettled(true);
+    });
 
-    salaryApi.getAllEmployees(user.accessToken, user.tokenType, { status: "Active", per_page: 100 }, companyScope)
-      .then((res) => setEmployees(res?.data?.users?.data ?? res?.data?.users ?? []))
+    salaryApi.getAllEmployees(accessToken, tokenType, { status: "Active", per_page: 100 }, { companyId, unit })
+      .then((res) => { if (!cancelled) setEmployees(res?.data?.users?.data ?? res?.data?.users ?? []); })
       .catch(() => {});
-  }, [user, scopeKey]);
-
-  // Fetch Cycle Data
-  const requestCycleData = async (id) => {
-    try {
-      const [dashRes, goalsRes, reviewsRes] = await Promise.all([
-        hrApi.getPerformanceDashboard(user.accessToken, user.tokenType, { cycle_id: id }),
-        hrApi.getPerformanceGoals(user.accessToken, user.tokenType, { cycle_id: id }),
-        hrApi.getPerformanceReviews(user.accessToken, user.tokenType, { cycle_id: id }),
-      ]);
-      if (dashRes.status) setDashboard(dashRes.data);
-      if (goalsRes.status) setGoals(goalsRes.data || []);
-      if (reviewsRes.status) setReviews(reviewsRes.data || []);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadCycleData = (id) =>
-    requestCycleData(id).catch((err) => toast.error(err.message || "Failed to load performance data"));
+    return () => { cancelled = true; };
+  }, [accessToken, tokenType, companyId, unit]);
 
   useEffect(() => {
-    if (cycleId) {
-      setLoading(true);
-      loadCycleData(cycleId);
-    }
-  }, [cycleId]);
+    if (!cycleId || !accessToken) return;
+    let cancelled = false;
+    fetchCycleData(accessToken, tokenType, cycleId)
+      .then(([dashRes, goalsRes, reviewsRes]) => {
+        if (cancelled) return;
+        if (dashRes.status) setDashboard(dashRes.data);
+        if (goalsRes.status) setGoals(goalsRes.data || []);
+        if (reviewsRes.status) setReviews(reviewsRes.data || []);
+      })
+      .catch((err) => { if (!cancelled) toast.error(err.message || "Failed to load performance data"); })
+      .finally(() => { if (!cancelled) setLoadedCycleId(cycleId); });
+    return () => { cancelled = true; };
+  }, [accessToken, tokenType, cycleId]);
+
+  const loadCycleData = (id) =>
+    fetchCycleData(accessToken, tokenType, id)
+      .then(([dashRes, goalsRes, reviewsRes]) => {
+        if (dashRes.status) setDashboard(dashRes.data);
+        if (goalsRes.status) setGoals(goalsRes.data || []);
+        if (reviewsRes.status) setReviews(reviewsRes.data || []);
+      })
+      .catch((err) => toast.error(err.message || "Failed to load performance data"));
 
   // Actions
   const saveCycle = async () => {
@@ -529,7 +513,6 @@ export default function PerformanceMatrix() {
           trend={totalEmployeesCount > 0 ? `${Math.round((evaluatedCount/totalEmployeesCount)*100)}%` : "0%"}
           trendUp={evaluatedCount > 0}
           icon={<UserCheck size={18} className="text-emerald-500" />}
-          tone="emerald"
         />
         <SummaryCard
           title="Pending"
@@ -537,7 +520,6 @@ export default function PerformanceMatrix() {
           trend={pendingCount === 0 ? "Complete" : `${pendingCount} remaining`}
           trendUp={pendingCount === 0}
           icon={<Clock size={18} className="text-amber-500" />}
-          tone="amber"
         />
         <SummaryCard
           title="Avg Rating"
@@ -545,7 +527,6 @@ export default function PerformanceMatrix() {
           trend={ratedReviewsList.length > 0 ? `${ratedReviewsList.length} reviews` : "No reviews"}
           trendUp={Number(avgRating) >= 3.5}
           icon={<Star size={18} className="text-indigo-500" />}
-          tone="indigo"
         />
         <SummaryCard
           title="Top Talent"
@@ -553,7 +534,6 @@ export default function PerformanceMatrix() {
           trend={totalEmployeesCount > 0 ? `${Math.round((topPerformersCount/totalEmployeesCount)*100)}% total` : "0%"}
           trendUp={topPerformersCount > 0}
           icon={<Trophy size={18} className="text-purple-500" />}
-          tone="purple"
         />
         <SummaryCard
           title="Promotion Ready"
@@ -561,7 +541,6 @@ export default function PerformanceMatrix() {
           trend="Eligible"
           trendUp={promoEligibleCount > 0}
           icon={<ArrowUpCircle size={18} className="text-blue-500" />}
-          tone="blue"
         />
         <SummaryCard
           title="On PIP"
@@ -569,7 +548,6 @@ export default function PerformanceMatrix() {
           trend={pipCount > 0 ? "Requires action" : "Zero risk"}
           trendUp={pipCount === 0}
           icon={<ShieldAlert size={18} className="text-rose-500" />}
-          tone="rose"
         />
         <SummaryCard
           title="Avg KPI Score"
@@ -577,7 +555,6 @@ export default function PerformanceMatrix() {
           trend={goals.length > 0 ? `${goals.length} goals` : "No goals"}
           trendUp={avgKpiScore >= 75}
           icon={<Target size={18} className="text-teal-500" />}
-          tone="teal"
         />
         <SummaryCard
           title="OKR Complete"
@@ -585,7 +562,6 @@ export default function PerformanceMatrix() {
           trend="Tracked"
           trendUp={avgOkrScore >= 70}
           icon={<BarChart3 size={18} className="text-cyan-500" />}
-          tone="cyan"
         />
         <SummaryCard
           title="Training Req."
@@ -593,7 +569,6 @@ export default function PerformanceMatrix() {
           trend={trainingRequiredCount > 0 ? "Action needed" : "Clean"}
           trendUp={trainingRequiredCount === 0}
           icon={<GraduationCap size={18} className="text-amber-600" />}
-          tone="amber"
         />
       </div>
 
@@ -933,7 +908,7 @@ export default function PerformanceMatrix() {
                 </div>
 
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {kpiTemplates.map((tpl) => (
+                  {KPI_TEMPLATES.map((tpl) => (
                     <div key={tpl.id} className="rounded-2xl border border-gray-100 bg-gray-50/50 p-4 dark:border-gray-800 dark:bg-gray-800/40">
                       <div className="flex items-center justify-between">
                         <Badge variant="purple">{tpl.dept}</Badge>
@@ -1544,7 +1519,7 @@ export default function PerformanceMatrix() {
 }
 
 // Subcomponents
-function SummaryCard({ title, value, trend, trendUp, icon, tone }) {
+function SummaryCard({ title, value, trend, trendUp, icon }) {
   return (
     <div className="group rounded-3xl border border-gray-200/80 bg-white p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md dark:border-gray-800 dark:bg-gray-900">
       <div className="flex items-center justify-between">

@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
-import { ChevronDown, ChevronRight, LogOut, UserCircle, LifeBuoy, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { ChevronDown, UserCircle, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useNavItems, dashboardPathFor } from "./useNavItems";
 import { prefetchRoute } from "../../utils/routePrefetch";
@@ -33,7 +33,7 @@ function isItemActive(item, pathname) {
 const PINNED_KEY = "hrms_sidebar_pinned_v2";
 
 export default function EnterpriseNav({ onFlyoutChange }) {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const location = useLocation();
   const nav = useNavItems();
 
@@ -44,7 +44,13 @@ export default function EnterpriseNav({ onFlyoutChange }) {
     return stored === null ? true : stored === "true";
   });
   const [isHovered, setIsHovered] = useState(false);
-  const [openMenus, setOpenMenus] = useState([]);
+  const [openMenus, setOpenMenus] = useState(() => {
+    const activeParent = nav.find(
+      (item) => item.subItems && isItemActive(item, location.pathname)
+    );
+    return activeParent ? [activeParent.label] : [];
+  });
+  const [menuSyncPath, setMenuSyncPath] = useState(location.pathname);
   const hoverTimerRef = useRef(null);
 
   // The sidebar is visually expanded when pinned OR hovered
@@ -56,14 +62,15 @@ export default function EnterpriseNav({ onFlyoutChange }) {
   }, [isPinned]);
 
   // Sync active section ONLY when location.pathname changes
-  useEffect(() => {
+  if (menuSyncPath !== location.pathname) {
+    setMenuSyncPath(location.pathname);
     const activeParent = nav.find(
       (item) => item.subItems && isItemActive(item, location.pathname)
     );
     if (activeParent) {
       setOpenMenus((prev) => (prev.includes(activeParent.label) ? prev : [activeParent.label]));
     }
-  }, [location.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
+  }
 
   useEffect(() => {
     if (onFlyoutChange) {

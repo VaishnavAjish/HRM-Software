@@ -3,6 +3,7 @@ import { Search, MapPin, Phone, Mail, Copy, Navigation, ShieldCheck, CircleDolla
 import toast from "react-hot-toast";
 import Badge from "../../../components/ui/Badge";
 import { SkeletonTable } from "../../../components/ui/Skeleton";
+import { getHospitalContactPhotoUrl } from "../utils/formatters";
 
 const smallInputClass = "rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2.5 py-1.5 text-sm text-gray-900 dark:text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500";
 
@@ -11,10 +12,27 @@ const smallInputClass = "rounded-lg border border-gray-300 dark:border-gray-600 
  * preloads once per workspace mount — this component takes them as props
  * rather than fetching its own copy, so switching tabs never re-fetches.
  *
- * Contact rows (`hospital.contacts`) are seeded empty per the backend
- * plan's B2 seed data ("HR enters those" post-launch) — every contact
- * action degrades to a plain "No contact on file yet" line instead of
- * crashing or rendering broken call/email/copy/directions controls.
+ * Always excludes `status !== 'active'` hospitals regardless of the other
+ * filters — a hospital is never hard-deleted (see the backend
+ * `HospitalController` docblock), only status-flipped to `inactive`, and
+ * this is the directory an employee actually browses to decide where to go
+ * for treatment, so a retired hospital must never show up here as a live
+ * option — unlike the admin's own raw management table, which deliberately
+ * still lists inactive rows for reference/reactivation.
+ *
+ * Contact rows (`hospital.contacts`) are no longer necessarily empty — HR
+ * can add a named "concern person" with a phone number and photo through
+ * the admin Hospitals tab; a card with no contacts yet still degrades to a
+ * plain "No contact on file yet" line.
+ *
+ * Each card also embeds a small Google Maps iframe (`?q=…&output=embed` —
+ * no API key required), preferring the hospital's `latitude`/`longitude`
+ * when the admin has set them and falling back to geocoding the free-text
+ * address otherwise. Clicking the hospital's location line or the
+ * "Directions" link opens `hospital.googleMapsUrl` verbatim when the admin
+ * has pasted one (a share link straight from the Maps app/site — exact by
+ * definition), falling back to the same lat/lng-or-address resolution the
+ * embed uses.
  */
 export default function HospitalDirectory({ hospitals = [], loading = false, error = null }) {
   const [search, setSearch] = useState("");
@@ -24,6 +42,15 @@ export default function HospitalDirectory({ hospitals = [], loading = false, err
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
     return hospitals.filter((h) => {
+      // Inactive is the "deleted" state (hospitals are never hard-deleted —
+      // see the backend HospitalController's docblock — so retired ones
+      // stay in the data for old claims/cards to resolve). This directory
+      // is what an employee actually browses to decide where to go for
+      // treatment, so a retired hospital must never appear here regardless
+      // of any other filter, unlike the admin's own raw management table
+      // which still shows inactive rows on purpose.
+      const status = String(h.status || "").toLowerCase();
+      if (status && status !== "active") return false;
       if (networkOnly && !(h.isNetworkHospital ?? h.is_network_hospital)) return false;
       if (cashlessOnly && !(h.cashlessAvailable ?? h.cashless_available)) return false;
       if (!term) return true;
@@ -88,14 +115,46 @@ function HospitalCard({ hospital, onCopy }) {
   const cashless = hospital.cashlessAvailable ?? hospital.cashless_available;
   const address = [hospital.address, hospital.city, hospital.state, hospital.pincode || hospital.pinCode].filter(Boolean).join(", ");
 
+  const latitude = hospital.latitude ?? hospital.lat;
+  const longitude = hospital.longitude ?? hospital.lng;
+  const hasCoordinates = latitude !== null && latitude !== undefined && longitude !== null && longitude !== undefined && latitude !== "" && longitude !== "";
+  // Plain `?q=`-based embed — no Maps Embed API key required. Coordinates
+  // pin the exact spot the admin set; the address string is a best-effort
+  // fallback (Google geocodes it) for a hospital nobody has pinned yet. A
+  // pasted `googleMapsUrl` isn't used here — a share link (e.g.
+  // `maps.app.goo.gl/…`) isn't embeddable via `output=embed`.
+  const mapQuery = hasCoordinates ? `${latitude},${longitude}` : address;
+  const mapEmbedSrc = mapQuery ? `https://www.google.com/maps?q=${encodeURIComponent(mapQuery)}&z=16&output=embed` : null;
+
+  // What actually opens when the employee clicks the hospital's location.
+  // The admin's pasted link — copied straight from the Maps app/site — wins
+  // whenever it's set, since it's exactly the page the admin themselves
+  // looked at; coordinates/address are only the fallback for a hospital
+  // nobody has linked yet.
+  const googleMapsUrl = hospital.googleMapsUrl || hospital.google_maps_url;
+  const directionsHref = googleMapsUrl
+    || (mapQuery ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(mapQuery)}` : null);
+
   return (
     <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
       <div className="flex items-start justify-between gap-2">
         <div>
           <p className="font-semibold text-gray-900 dark:text-white">{hospital.name}</p>
-          <p className="mt-0.5 flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
-            <MapPin size={12} /> {address || "—"}
-          </p>
+          {directionsHref ? (
+            <a
+              href={directionsHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Open this hospital's location"
+              className="mt-0.5 flex items-center gap-1 text-xs text-brand-600 hover:underline dark:text-brand-400"
+            >
+              <MapPin size={12} /> {address || "View location"}
+            </a>
+          ) : (
+            <p className="mt-0.5 flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
+              <MapPin size={12} /> {address || "—"}
+            </p>
+          )}
         </div>
         <div className="flex flex-col items-end gap-1">
           {isNetwork && (
@@ -126,41 +185,74 @@ function HospitalCard({ hospital, onCopy }) {
           <p className="text-xs text-gray-400">No contact on file yet.</p>
         ) : (
           <div className="space-y-2">
-            {contacts.map((contact) => (
-              <div key={contact.id} className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                <div>
-                  <p className="font-medium text-gray-700 dark:text-gray-200">{contact.designation || "Contact"}</p>
-                  <p className="text-gray-500 dark:text-gray-400">{contact.phone || contact.email || "—"}</p>
-                </div>
-                <div className="flex items-center gap-1">
-                  {contact.phone && (
-                    <>
-                      <a title="Call" href={`tel:${contact.phone}`} className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700">
-                        <Phone size={13} />
+            {contacts.map((contact) => {
+              const photoUrl = getHospitalContactPhotoUrl(contact.photo);
+              return (
+                <div key={contact.id} className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <div className="flex items-center gap-2">
+                    {photoUrl ? (
+                      <img
+                        src={photoUrl}
+                        alt={contact.name || "Contact"}
+                        className="h-8 w-8 rounded-full object-cover"
+                        onError={(e) => { e.currentTarget.style.display = "none"; }}
+                      />
+                    ) : (
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-100 text-[10px] font-semibold text-gray-500 dark:bg-gray-700 dark:text-gray-300">
+                        {(contact.name || contact.designation || "?").charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                    <div>
+                      <p className="font-medium text-gray-700 dark:text-gray-200">{contact.name || contact.designation || "Contact"}</p>
+                      <p className="text-gray-500 dark:text-gray-400">
+                        {contact.designation && contact.name ? `${contact.designation} · ` : ""}
+                        {contact.phone || contact.email || "—"}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {contact.phone && (
+                      <>
+                        <a title="Call" href={`tel:${contact.phone}`} className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700">
+                          <Phone size={13} />
+                        </a>
+                        <button title="Copy phone" onClick={() => onCopy(contact.phone, "Phone number")} className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700">
+                          <Copy size={13} />
+                        </button>
+                      </>
+                    )}
+                    {contact.email && (
+                      <a title="Email" href={`mailto:${contact.email}`} className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700">
+                        <Mail size={13} />
                       </a>
-                      <button title="Copy phone" onClick={() => onCopy(contact.phone, "Phone number")} className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700">
-                        <Copy size={13} />
-                      </button>
-                    </>
-                  )}
-                  {contact.email && (
-                    <a title="Email" href={`mailto:${contact.email}`} className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700">
-                      <Mail size={13} />
-                    </a>
-                  )}
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
-        {address && (
+
+        {mapEmbedSrc && (
+          <div className="mt-3 overflow-hidden rounded-lg border border-gray-100 dark:border-gray-700">
+            <iframe
+              title={`${hospital.name} location`}
+              src={mapEmbedSrc}
+              className="h-32 w-full border-0"
+              loading="lazy"
+              referrerPolicy="no-referrer-when-downgrade"
+            />
+          </div>
+        )}
+
+        {directionsHref && (
           <a
-            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`}
+            href={directionsHref}
             target="_blank"
             rel="noopener noreferrer"
             className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-brand-600 hover:underline dark:text-brand-400"
           >
-            <Navigation size={12} /> Directions
+            <Navigation size={12} /> Directions{(googleMapsUrl || hasCoordinates) ? "" : " (approximate)"}
           </a>
         )}
       </div>

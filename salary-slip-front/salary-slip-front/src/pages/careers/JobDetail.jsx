@@ -9,7 +9,7 @@ import toast from "react-hot-toast";
 import { copyToClipboard } from "../../utils/clipboard";
 import DOMPurify from "dompurify";
 import { publicJobApi, candidateApi } from "../../utils/api";
-import { useCandidateAuth } from "../../context/CandidateAuthContext";
+import { useCandidateAuth } from "../../context/candidate-auth-context";
 import { resolveJobBranding, formatEmploymentType, formatExperience } from "../../config/careersTheme";
 import SaveJobButton from "../../components/careers/SaveJobButton";
 import ResendVerificationButton from "../../components/careers/ResendVerificationButton";

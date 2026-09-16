@@ -1,35 +1,21 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import {
+  ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+  Legend, PieChart, Pie, Cell,
+} from "recharts";
+import {
+  Users, Briefcase, Target, TrendingUp, CheckCircle2, UserCheck, CalendarClock,
+  Send, UserPlus, AlertTriangle, AlertCircle, Info, Calendar, CalendarCheck,
+  FileText, RefreshCw, Download,
+} from "lucide-react";
 import { useAuth } from "../../../context/AuthContext";
-import { useCompany } from "../../../context/CompanyContext";
 import { hrApi } from "../../../utils/api";
-import { useAuthorization } from "../../../hooks/useAuthorization";
 import { downloadCSV } from "../../../utils/exportUtils";
-import { StatCard } from "../../../components/ui/Card";
-import { SkeletonTable } from "../../../components/ui/Skeleton";
 import Badge from "../../../components/ui/Badge";
 import Button from "../../../components/ui/Button";
 import Card from "../../../components/ui/Card";
-import Modal from "../../../components/ui/Modal";
 
 const DEPT_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#9b59b6", "#e74c3c"];
-const DEPT_OTHER_COLOR = "#94a3b8";
-const MAX_DEPT_SLICES = 6;
-
-const STAGE_ORDER = ['applied', 'screening', 'shortlisted', 'assessment', 'interview', 'selected', 'offer_sent', 'offer_accepted', 'rejected', 'on_hold'];
-const STAGE_LABELS = {
-  applied: "Applied", screening: "Screening", shortlisted: "Shortlisted",
-  assessment: "Assessment", interview: "Interview", selected: "Selected",
-  offer_sent: "Offer Sent", offer_accepted: "Offer Accepted", rejected: "Rejected", on_hold: "On Hold",
-};
-
-const ACTIVITY_META = {
-  candidate: { icon: 'Users', color: "#6366f1" },
-  interview: { icon: 'CalendarClock', color: "#0ea5e9" },
-  offer: { icon: 'FileText', color: "#22c55e" },
-  requisition_approval: { icon: 'Briefcase', color: "#f59e0b" },
-  offer_approval: { icon: 'FileText', color: "#22c55e" },
-  interview_feedback: { icon: 'MessageSquare', color: "#0ea5e9" },
-};
 
 const TONES = {
   blue: "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20",
@@ -62,27 +48,7 @@ const CARD_GROUPS = [
   { key: 'joining_rate', label: 'Joining Rate %', tone: 'green', icon: 'TrendingUp' },
 ];
 
-function timeAgo(dateStr) {
-  if (!dateStr) return "";
-  const diff = Math.max(0, (Date.now() - new Date(dateStr).getTime()) / 1000);
-  if (diff < 60) return "just now";
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return `${Math.floor(diff / 86400)}d ago`;
-}
-
-function formatMonth(monthStr) {
-  if (!monthStr) return "";
-  const [y, m] = monthStr.split("-").map(Number);
-  return new Date(y, (m || 1) - 1, 1).toLocaleString('en-US', { month: 'short', year: 'numeric' });
-}
-
-function formatCurrency(value) {
-  if (value === undefined || value === null) return "—";
-  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(value);
-}
-
-function KpiCard({ key, label, value, tone, icon: Icon }) {
+function KpiCard({ label, value, tone, icon }) {
   const IconComp = Icons[icon] || Users;
   return (
     <div className={`rounded-2xl border border-slate-200 dark:border-slate-700 p-4 ${TONES[tone]} shadow-sm`}>
@@ -100,42 +66,40 @@ function KpiCard({ key, label, value, tone, icon: Icon }) {
 }
 
 const Icons = {
-  Users, Briefcase, Target, TrendingUp, TrendingDown, Clock, CheckCircle2, XCircle,
-  BarChart3, DollarSign, UserCheck, PackageSearch, Award, Flag, Search,
-CalendarClock, Send, UserPlus, AlertTriangle, Star, Eye, ExternalLink,
-  Calendar, CalendarCheck,
+  Users, Briefcase, Target, TrendingUp, CheckCircle2, UserCheck, CalendarClock,
+  Send, UserPlus, AlertTriangle, Calendar, CalendarCheck, FileText,
 };
 
 export default function RecruitmentDashboard() {
   const { user } = useAuth();
-  const { companyScope } = useCompany();
-  const { can } = useAuthorization();
+  const accessToken = user?.accessToken;
+  const tokenType = user?.tokenType;
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
-  const [activeTab, setActiveTab] = useState("overview");
-  const [refreshKey, setRefreshKey] = useState(0);
+  const [activeTab] = useState("overview");
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await hrApi.getDashboard(user?.accessToken, user?.tokenType, {});
-      if (res.status) setData(res.data);
-      else console.error(res.message || "Failed to load recruitment dashboard");
-    } catch (err) {
-      console.error(err.message || "Failed to load recruitment dashboard");
-    } finally {
-      setLoading(false);
-    }
-  }, [user, companyScope]);
+  const load = useCallback(() => {
+    return hrApi.getDashboard(accessToken, tokenType, {})
+      .then((res) => {
+        if (res.status) setData(res.data);
+        else console.error(res.message || "Failed to load recruitment dashboard");
+      })
+      .catch((err) => {
+        console.error(err.message || "Failed to load recruitment dashboard");
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }, [accessToken, tokenType]);
 
   const reload = useCallback(() => {
-    setRefreshKey(k => k + 1);
+    setLoading(true);
     load();
   }, [load]);
 
   useEffect(() => {
-    if (user?.accessToken) load();
-  }, [load, user]);
+    if (accessToken) load();
+  }, [load, accessToken]);
 
   if (loading) {
     return (
@@ -153,6 +117,14 @@ export default function RecruitmentDashboard() {
   }
 
   const cards = data?.cards || {};
+
+  const exportSummary = () => {
+    const rows = CARD_GROUPS.map(({ key, label }) => ({
+      Metric: label,
+      Value: cards[key] ?? "",
+    }));
+    downloadCSV(rows, "recruitment-dashboard-summary");
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-slate-900">

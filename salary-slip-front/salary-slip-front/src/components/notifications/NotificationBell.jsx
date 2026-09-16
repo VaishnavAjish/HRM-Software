@@ -1,5 +1,5 @@
 import { Bell } from "lucide-react";
-import { useNotifications } from "../../context/NotificationContext";
+import { useNotifications } from "../../context/notification-context";
 
 export default function NotificationBell() {
   const { unreadCount, drawerOpen, setDrawerOpen } = useNotifications();

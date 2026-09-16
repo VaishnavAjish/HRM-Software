@@ -88,7 +88,7 @@ class RecruitmentDashboardTest extends TestCase
 
         $req = $this->requisition();
         $candidate = $this->candidate($req);
-        Offer::create(['candidate_id' => $candidate->id, 'requisition_id' => $req->id, 'designation' => 'SSE', 'status' => 'sent']);
+        Offer::create(['candidate_id' => $candidate->id, 'requisition_id' => $req->id, 'designation' => 'SSE', 'ctc_annual' => 1200000, 'status' => 'sent']);
         Interview::create(['candidate_id' => $candidate->id, 'requisition_id' => $req->id, 'round_name' => 'HR', 'scheduled_at' => now()->addDay(), 'status' => 'scheduled']);
 
         $token->getJson('/api/hr/recruitment-dashboard')->assertOk();

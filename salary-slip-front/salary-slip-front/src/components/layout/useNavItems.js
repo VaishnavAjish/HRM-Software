@@ -193,7 +193,7 @@ function getAdminNav(companyId, user, isAllCompanies, isModuleAvailable = () => 
 export function buildEmployeeNav(isModuleAvailable, isManager = false) {
   return [
     { to: "/employee", label: "Dashboard", icon: LayoutDashboard, end: true },
-    ...(isManager ? [{ to: "/employee/manager", label: "Manager", icon: Users }] : []),
+    ...(isManager ? [{ to: "/employee/manager", label: "Department", icon: Users }] : []),
     { to: "/employee/payslips", label: "Payslips", icon: FileText },
     {
       label: "Statutory & Benefits",
@@ -224,27 +224,26 @@ const agentNav = [
  */
 export function useNavItems() {
   const { user } = useAuth();
-  const [isManager, setIsManager] = useState(() => {
-    if (!user) return false;
-    const empCodeClean = String(user.empCode || user.emp_code || "").replace(/^0+/, "");
-    const designation = String(user.designation || "").toLowerCase();
-    const userType = String(user.type || "").toLowerCase();
-    const isHead = empCodeClean === "3" || designation.includes("head") || designation.includes("hod") || designation.includes("manager") || userType.includes("head") || userType.includes("manager");
-    if (user.role === "admin" || user.rawRole === 0 || user.is_manager || isHead) return true;
-    return false;
-  });
+  const [isManager, setIsManager] = useState(false);
 
   useEffect(() => {
+    if (user?.role === "admin") {
+      setIsManager(true);
+      return;
+    }
     if (user?.accessToken) {
       salaryApi.checkManagerStatus(user.accessToken, user.tokenType || "Bearer")
         .then(res => {
-          if (res?.is_manager) {
-            setIsManager(true);
-          }
+          setIsManager(Boolean(res?.is_manager));
         })
-        .catch(() => {});
+        .catch(() => {
+          setIsManager(false);
+        });
+    } else {
+      setIsManager(false);
     }
-  }, [user?.accessToken, user?.tokenType]);
+  }, [user?.accessToken, user?.tokenType, user?.role]);
+
   const { companyId, isAllCompanies } = useCompany();
   const { isAvailable: isModuleAvailable } = useModuleAvailability();
   const { routeState } = useAuthorization();

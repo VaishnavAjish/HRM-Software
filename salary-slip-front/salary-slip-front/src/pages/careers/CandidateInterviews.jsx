@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { CalendarClock, Video, Phone, MapPin, ChevronRight } from "lucide-react";
 import toast from "react-hot-toast";
 import { candidateApi } from "../../utils/api";
-import { useCandidateAuth } from "../../context/CandidateAuthContext";
+import { useCandidateAuth } from "../../context/candidate-auth-context";
 
 const MODE_ICON = { video: Video, phone: Phone, onsite: MapPin };
 

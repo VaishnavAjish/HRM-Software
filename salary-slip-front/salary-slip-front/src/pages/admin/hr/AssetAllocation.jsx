@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import { QRCodeSVG } from "qrcode.react";
@@ -39,7 +39,10 @@ export default function AssetAllocation() {
   const { user } = useAuth();
   const { companyScope, scopeKey } = useCompany();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [loading, setLoading] = useState(true);
+  const accessToken = user?.accessToken;
+  const tokenType = user?.tokenType;
+  const companyId = companyScope?.companyId;
+  const unit = companyScope?.unit;
   const [assets, setAssets] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -68,41 +71,53 @@ export default function AssetAllocation() {
     const t = setTimeout(() => setDebouncedSearch(search), 400);
     return () => clearTimeout(t);
   }, [search]);
-  useEffect(() => { setPage(1); }, [debouncedSearch, category, status, scopeKey]);
+  const filterKey = JSON.stringify([debouncedSearch, category, status, scopeKey]);
+  const [pageFilterKey, setPageFilterKey] = useState(filterKey);
+  if (pageFilterKey !== filterKey) {
+    setPageFilterKey(filterKey);
+    setPage(1);
+  }
 
-  const loadAssets = useCallback(() => {
-    setLoading(true);
-    return hrApi.getAssets(user?.accessToken, user?.tokenType, {
-      ...companyScope, page, per_page: perPage,
+  const [reloadCount, setReloadCount] = useState(0);
+  const assetsRequestKey = JSON.stringify([companyId, unit, page, perPage, debouncedSearch, category, status, reloadCount]);
+  const [assetsLoadedKey, setAssetsLoadedKey] = useState(null);
+  const loading = assetsLoadedKey !== assetsRequestKey;
+
+  useEffect(() => {
+    if (!accessToken) return;
+    let cancelled = false;
+    hrApi.getAssets(accessToken, tokenType, {
+      companyId, unit, page, per_page: perPage,
       search: debouncedSearch || undefined, category: category || undefined, status: status || undefined,
     })
       .then((res) => {
-        if (!res.status) return;
+        if (cancelled || !res.status) return;
         const payload = res.data;
         setAssets(payload?.data || []);
         setTotal(payload?.total ?? (payload?.data?.length || 0));
       })
-      .catch((err) => toast.error(err.message || "Failed to load assets"))
-      .finally(() => setLoading(false));
-  }, [user, companyScope, page, perPage, debouncedSearch, category, status]);
-
-  const loadDashboard = useCallback(() => {
-    hrApi.getAssetDashboard(user?.accessToken, user?.tokenType, companyScope)
-      .then((res) => { if (res.status) setDashboard(res.data || {}); })
-      .catch(() => {});
-  }, [user, companyScope]);
-
-  useEffect(() => { if (user?.accessToken) loadAssets(); }, [loadAssets]);
-  useEffect(() => { if (user?.accessToken) loadDashboard(); }, [loadDashboard]);
+      .catch((err) => { if (!cancelled) toast.error(err.message || "Failed to load assets"); })
+      .finally(() => { if (!cancelled) setAssetsLoadedKey(assetsRequestKey); });
+    return () => { cancelled = true; };
+  }, [accessToken, tokenType, companyId, unit, page, perPage, debouncedSearch, category, status, assetsRequestKey]);
 
   useEffect(() => {
-    if (!user?.accessToken) return;
-    salaryApi.getAllEmployees(user.accessToken, user.tokenType, { status: "Active", per_page: 100 }, companyScope?.companyId)
+    if (!accessToken) return;
+    let cancelled = false;
+    hrApi.getAssetDashboard(accessToken, tokenType, { companyId, unit })
+      .then((res) => { if (!cancelled && res.status) setDashboard(res.data || {}); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [accessToken, tokenType, companyId, unit, reloadCount]);
+
+  useEffect(() => {
+    if (!accessToken) return;
+    salaryApi.getAllEmployees(accessToken, tokenType, { status: "Active", per_page: 100 }, companyId)
       .then((res) => setEmployees(res?.data?.users?.data ?? res?.data?.users ?? []))
       .catch(() => {});
-  }, [user, scopeKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [accessToken, tokenType, companyId, unit]);
 
-  const reload = () => { loadAssets(); loadDashboard(); };
+  const reload = () => setReloadCount((count) => count + 1);
 
   const openAdd = () => { setEditingId(null); setForm(EMPTY_FORM); setModalOpen(true); };
   const openEdit = (asset) => {

@@ -20,6 +20,9 @@ import {
 } from "lucide-react";
 import Button from "../../../components/ui/Button";
 import { salaryApi } from "../../../utils/api";
+import SearchableSelect from "../../../components/ui/SearchableSelect";
+import { designationApi } from "../../../features/workforce/services/workforceApi";
+import { organizationApi } from "../../../features/organization/services/organizationApi";
 import { useAuth } from "../../../context/AuthContext";
 import { useCompany } from "../../../context/CompanyContext";
 import { COMPANY_OPTIONS } from "../../../config/companyConfig";
@@ -104,6 +107,7 @@ export default function AddEditEmployeeModal({
   const { user } = useAuth();
   const { isAllCompanies } = useCompany();
   const isOpen = modal === "add" || modal === "edit";
+  const [designationsList, setDesignationsList] = useState([]);
   const [activeSection, setActiveSection] = useState(SECTIONS[0].key);
   const contentRef = useRef(null);
   const sectionRefs = useRef({});
@@ -125,8 +129,42 @@ export default function AddEditEmployeeModal({
       }
     };
 
+    const fetchDesignations = async () => {
+      try {
+        const salaryDesigFetcher = (typeof salaryApi !== "undefined" && salaryApi?.getDesignations)
+          ? salaryApi.getDesignations(user?.accessToken, user?.tokenType)
+          : Promise.resolve(null);
+
+        const posFetcher = (typeof organizationApi !== "undefined" && organizationApi?.globalPositions)
+          ? organizationApi.globalPositions({}, user?.accessToken, user?.tokenType)
+          : Promise.resolve(null);
+
+        const [sRes, posRes] = await Promise.all([
+          salaryDesigFetcher.catch(() => null),
+          posFetcher.catch(() => null),
+        ]);
+        const set = new Set();
+        if (sRes?.data && Array.isArray(sRes.data)) {
+          sRes.data.forEach((d) => {
+            const title = typeof d === "string" ? d : d.title || d.name || d.designation_name;
+            if (title) set.add(String(title).trim());
+          });
+        }
+        if (posRes?.data && Array.isArray(posRes.data)) {
+          posRes.data.forEach((p) => {
+            const title = typeof p === "string" ? p : p.title || p.name || p.code;
+            if (title) set.add(String(title).trim());
+          });
+        }
+        setDesignationsList(Array.from(set).sort());
+      } catch (err) {
+        console.error("Failed to fetch designations:", err);
+      }
+    };
+
     if (modal) {
       fetchDepartments();
+      fetchDesignations();
     }
   }, [modal, user, setDepartmentsList]);
 
@@ -209,7 +247,7 @@ export default function AddEditEmployeeModal({
         ? e.target.value.replace(/\D/g, "")
         : e.target.value;
     setForm((prev) => {
-      const list = [...(prev.familyDetails || [])];
+      const list = [];
       list[index] = { ...list[index], [key]: value };
       return { ...prev, familyDetails: list };
     });
@@ -514,11 +552,16 @@ export default function AddEditEmployeeModal({
                   </div>
                 </div>
 
-                {input({
-                  label: "Designation",
-                  key: "designation",
-                  placeholder: "e.g. Senior Executive",
-                })}
+                <div>
+                  <Label>Designation</Label>
+                  <SearchableSelect
+                    value={form.designation || ""}
+                    onChange={(val) => setForm((prev) => ({ ...prev, designation: typeof val === "object" && val?.target ? val.target.value : val }))}
+                    options={designationsList}
+                    placeholder="Select designation"
+                    buttonClassName="w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3.5 py-2.5 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium text-left"
+                  />
+                </div>
 
                 {form.loginRole !== "agent" && (
                   <div>

@@ -67,6 +67,27 @@ function blobToDataUrl(blob) {
   });
 }
 
+async function fetchImageAsDataUrl(src) {
+  const response = await fetch(src, { mode: "cors" });
+  if (!response.ok) throw new Error(`Image request failed with status ${response.status}`);
+  return blobToDataUrl(await response.blob());
+}
+
+async function drawImageAsDataUrl(src) {
+  const image = new Image();
+  image.crossOrigin = "anonymous";
+  await new Promise((resolve, reject) => {
+    image.onload = resolve;
+    image.onerror = reject;
+    image.src = src;
+  });
+  const offscreen = document.createElement("canvas");
+  offscreen.width = image.naturalWidth || 1;
+  offscreen.height = image.naturalHeight || 1;
+  offscreen.getContext("2d").drawImage(image, 0, 0);
+  return offscreen.toDataURL("image/png");
+}
+
 async function convertImagesToBase64(clone) {
   const imgs = Array.from(clone.querySelectorAll("img"));
 
@@ -75,31 +96,11 @@ async function convertImagesToBase64(clone) {
       const src = img.getAttribute("src");
       if (!src || src.startsWith("data:")) return;
 
-      try {
-        const response = await fetch(src, { mode: "cors" });
-        if (!response.ok) throw new Error("fetch failed");
-        const blob = await response.blob();
-        img.src = await blobToDataUrl(blob);
-        return;
-      } catch {
-      }
+      const inlined = await fetchImageAsDataUrl(src)
+        .catch(() => drawImageAsDataUrl(src))
+        .catch(() => null);
 
-      try {
-        const offscreen = document.createElement("canvas");
-        const ctx = offscreen.getContext("2d");
-        const image = new Image();
-        image.crossOrigin = "anonymous";
-        await new Promise((resolve, reject) => {
-          image.onload = resolve;
-          image.onerror = reject;
-          image.src = src;
-        });
-        offscreen.width = image.naturalWidth || 1;
-        offscreen.height = image.naturalHeight || 1;
-        ctx.drawImage(image, 0, 0);
-        img.src = offscreen.toDataURL("image/png");
-      } catch {
-      }
+      if (inlined) img.src = inlined;
     }),
   );
 }

@@ -18,6 +18,13 @@ vi.mock("../services/mediclaimApi", () => ({
     hospitals: vi.fn().mockResolvedValue({ data: { data: [] } }),
     ruleBooks: vi.fn().mockResolvedValue({ data: { data: [] } }),
     myMembers: vi.fn().mockResolvedValue({ data: { data: [] } }),
+    // Already past the onboarding gate by default, so every existing test
+    // below keeps exercising tab-permission gating unchanged; the gate
+    // itself is covered separately in the "onboarding gate" describe block
+    // further down this file, which overrides this per-test.
+    myCoverage: vi.fn().mockResolvedValue({
+      data: { eligibility: { eligible: true }, onboarding: { ruleBookAcknowledged: true, completed: true } },
+    }),
   },
 }));
 
@@ -37,6 +44,7 @@ vi.mock("./employee/tabs/HistoryTab", () => ({ default: () => <div>History Conte
 vi.mock("./employee/tabs/TeamClaimsTab", () => ({ default: () => <div>Team Content</div> }));
 vi.mock("./employee/tabs/PendingMyApprovalTab", () => ({ default: () => <div>Pending Content</div> }));
 
+import { mediclaimApi } from "../services/mediclaimApi";
 import EmployeeMediclaimWorkspace from "./EmployeeMediclaimWorkspace";
 
 function LocationProbe() {
@@ -44,7 +52,7 @@ function LocationProbe() {
   return <output data-testid="location">{location.search}</output>;
 }
 
-function setup(initial = "/employee/tds/mediclaim") {
+function renderWorkspace(initial = "/employee/tds/mediclaim") {
   const router = createMemoryRouter([{
     path: "/employee/tds/mediclaim",
     element: <><EmployeeMediclaimWorkspace /><LocationProbe /></>,
@@ -53,56 +61,77 @@ function setup(initial = "/employee/tds/mediclaim") {
   return router;
 }
 
+// Waits out the workspace's own loading state before handing control back,
+// so every test below sees the *settled* tab bar rather than racing it —
+// this is what actually exercises the fix for the "shows every tab, then
+// yanks most of them away a second later" bug: the workspace renders
+// nothing tab-shaped until /me/coverage resolves, so there is nothing to
+// wait for except this one screen.
+async function setup(initial = "/employee/tds/mediclaim") {
+  const router = renderWorkspace(initial);
+  await waitFor(() => expect(screen.queryByText("Loading…")).not.toBeInTheDocument());
+  return router;
+}
+
 beforeEach(() => {
   state.allowed = new Set();
 });
 
+describe("EmployeeMediclaimWorkspace loading state", () => {
+  it("shows a loading placeholder, not any tab, while /me/coverage is still in flight", () => {
+    renderWorkspace();
+
+    expect(screen.getByText("Loading…")).toBeInTheDocument();
+    expect(screen.queryAllByRole("button")).toHaveLength(0);
+  });
+});
+
 describe("EmployeeMediclaimWorkspace tab gating", () => {
-  it("shows the nine unconditional tabs with no manager permissions granted", () => {
-    setup();
+  it("shows the nine unconditional tabs with no manager permissions granted", async () => {
+    await setup();
 
     expect(screen.getAllByRole("button").map((button) => button.textContent)).toEqual([
-      "My Coverage", "Family Members", "Cards", "Notify Office", "Submit Claim",
-      "My Claims", "Hospitals", "Rule Book", "History",
+      "My Coverage", "Family Members", "Rule Book", "Cards", "Notify Office", "Submit Claim",
+      "My Claims", "Hospitals", "History",
     ]);
   });
 
-  it("hides Team Claims and Pending My Approval without their permissions", () => {
-    setup();
+  it("hides Team Claims and Pending My Approval without their permissions", async () => {
+    await setup();
 
     expect(screen.queryByRole("button", { name: "Team Claims" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Pending My Approval" })).not.toBeInTheDocument();
   });
 
-  it("shows Team Claims only with mediclaim.team_claim.read", () => {
+  it("shows Team Claims only with mediclaim.team_claim.read", async () => {
     state.allowed = new Set(["mediclaim.team_claim.read"]);
-    setup();
+    await setup();
 
     expect(screen.getByRole("button", { name: "Team Claims" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Pending My Approval" })).not.toBeInTheDocument();
   });
 
-  it("shows Pending My Approval only with mediclaim.claim.manager.decide", () => {
+  it("shows Pending My Approval only with mediclaim.claim.manager.decide", async () => {
     state.allowed = new Set(["mediclaim.claim.manager.decide"]);
-    setup();
+    await setup();
 
     expect(screen.getByRole("button", { name: "Pending My Approval" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Team Claims" })).not.toBeInTheDocument();
   });
 
-  it("shows both manager tabs together once both permissions are granted, appended after the unconditional nine", () => {
+  it("shows both manager tabs together once both permissions are granted, appended after the unconditional nine", async () => {
     state.allowed = new Set(["mediclaim.team_claim.read", "mediclaim.claim.manager.decide"]);
-    setup();
+    await setup();
 
     expect(screen.getAllByRole("button").map((button) => button.textContent)).toEqual([
-      "My Coverage", "Family Members", "Cards", "Notify Office", "Submit Claim",
-      "My Claims", "Hospitals", "Rule Book", "History", "Team Claims", "Pending My Approval",
+      "My Coverage", "Family Members", "Rule Book", "Cards", "Notify Office", "Submit Claim",
+      "My Claims", "Hospitals", "History", "Team Claims", "Pending My Approval",
     ]);
   });
 
   it("supports direct links, tab URL updates, and browser navigation", async () => {
     state.allowed = new Set(["mediclaim.team_claim.read", "mediclaim.claim.manager.decide"]);
-    const router = setup("/employee/tds/mediclaim?tab=pending");
+    const router = await setup("/employee/tds/mediclaim?tab=pending");
 
     expect(screen.getByText("Pending Content")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Team Claims" }));
@@ -114,17 +143,38 @@ describe("EmployeeMediclaimWorkspace tab gating", () => {
   });
 
   it("falls back safely to My Coverage when a direct-linked manager tab is not permitted", async () => {
-    setup("/employee/tds/mediclaim?tab=pending");
+    await setup("/employee/tds/mediclaim?tab=pending");
 
     expect(screen.getByText("Coverage Content")).toBeInTheDocument();
     await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("?tab=coverage"));
   });
 });
 
+describe("EmployeeMediclaimWorkspace onboarding gate", () => {
+  it("cuts the tab bar down to just Rule Book and Family Members, rule book first, until onboarding is complete", async () => {
+    mediclaimApi.myCoverage.mockResolvedValueOnce({
+      data: { eligibility: { eligible: true }, onboarding: { ruleBookAcknowledged: false, completed: false } },
+    });
+    await setup();
+
+    expect(screen.getAllByRole("button").map((button) => button.textContent)).toEqual(["Rule Book", "Family Members"]);
+  });
+
+  it("defaults to the Rule Book tab while gated, not My Coverage", async () => {
+    mediclaimApi.myCoverage.mockResolvedValueOnce({
+      data: { eligibility: { eligible: true }, onboarding: { ruleBookAcknowledged: false, completed: false } },
+    });
+    await setup();
+
+    expect(screen.getByText("RuleBook Content")).toBeInTheDocument();
+    expect(screen.queryByText("Coverage Content")).not.toBeInTheDocument();
+  });
+});
+
 describe("EmployeeMediclaimWorkspace accessibility & responsiveness", () => {
   it("lets keyboard Tab traverse the tab bar in visible order", async () => {
     const user = userEvent.setup();
-    setup();
+    await setup();
 
     const buttons = screen.getAllByRole("button");
     await user.tab();
@@ -135,8 +185,8 @@ describe("EmployeeMediclaimWorkspace accessibility & responsiveness", () => {
     }
   });
 
-  it("keeps the tab bar horizontally scrollable instead of wrapping at narrow widths", () => {
-    setup();
+  it("keeps the tab bar horizontally scrollable instead of wrapping at narrow widths", async () => {
+    await setup();
 
     const tabBar = screen.getByRole("button", { name: "My Coverage" }).parentElement;
     expect(tabBar.className).toMatch(/overflow-x-auto/);

@@ -36,7 +36,7 @@ class JobRequisitionApprovalWorkflowTest extends TestCase
         $this->director = $this->makeUser('Director');
 
         $this->grant($this->requester, ['hr.requisition.read', 'hr.requisition.submit', 'hr.requisition.withdraw', 'hr.requisition.update', 'hr.requisition.publish']);
-        $this->grant($this->hiringManager, ['hr.requisition.read', 'hr.requisition.hiring_manager.read', 'hr.requisition.hiring_manager.decide', 'hr.requisition.approve']);
+        $this->grant($this->hiringManager, ['hr.requisition.read', 'hr.requisition.hr_manager.read', 'hr.requisition.hr_manager.decide', 'hr.requisition.approve']);
         $this->grant($this->director, ['hr.requisition.read', 'hr.requisition.director.read', 'hr.requisition.director.decide', 'hr.requisition.approve']);
     }
 
@@ -45,33 +45,30 @@ class JobRequisitionApprovalWorkflowTest extends TestCase
     {
         $unqualified = $this->makeUser('Unqualified');
         $foreign = $this->makeUser('Foreign', ['company_code' => 'beta']);
-        $this->grant($foreign, ['hr.requisition.hiring_manager.decide', 'hr.requisition.director.decide']);
+        $this->grant($foreign, ['hr.requisition.hr_manager.decide', 'hr.requisition.director.decide']);
         $inactive = $this->makeUser('Inactive', ['status' => 'DISABLED']);
-        $this->grant($inactive, ['hr.requisition.hiring_manager.decide', 'hr.requisition.director.decide']);
+        $this->grant($inactive, ['hr.requisition.hr_manager.decide', 'hr.requisition.director.decide']);
         $requisition = $this->requisition();
 
-        $this->assertContains($this->hiringManager->id, User::query()->visible()->pluck('id')->all());
-        $decision = app(AuthorizationEngine::class)->decide(
-            $this->hiringManager,
-            'hr.requisition.hiring_manager.decide',
-            ['company_code' => 'alpha'],
-            ['audit' => false],
-        );
-        $this->assertTrue($decision->allowed, $decision->reasonCode);
-
-        $data = $this->actingAsUser($this->requester)
+        $hrManagers = $this->actingAsUser($this->requester)
             ->getJson("/api/hr/requisitions/approval-options?requisition_id={$requisition->id}")
             ->assertOk()
-            ->json('data');
+            ->json('data.hrManagers');
+        $directors = $this->actingAsUser($this->requester)
+            ->getJson("/api/hr/requisitions/approval-options?requisition_id={$requisition->id}&type=director")
+            ->assertOk()
+            ->json('data.directors');
 
-        $hiringManagerIds = array_column($data['hiringManagers'], 'id');
-        $directorIds = array_column($data['directors'], 'id');
-        $this->assertContains($this->hiringManager->id, $hiringManagerIds, json_encode($data));
+        $hrManagerIds = array_column($hrManagers, 'id');
+        $directorIds = array_column($directors, 'id');
+        $this->assertContains($this->hiringManager->id, $hrManagerIds, json_encode($hrManagers));
         $this->assertContains($this->director->id, $directorIds);
-        $this->assertNotContains($this->requester->id, $hiringManagerIds);
-        $this->assertNotContains($unqualified->id, $hiringManagerIds);
-        $this->assertNotContains($foreign->id, $hiringManagerIds);
-        $this->assertNotContains($inactive->id, $hiringManagerIds);
+        $this->assertNotContains($this->requester->id, $hrManagerIds);
+        $this->assertNotContains($this->requester->id, $directorIds);
+        $this->assertNotContains($unqualified->id, $hrManagerIds);
+        $this->assertNotContains($foreign->id, $hrManagerIds);
+        $this->assertNotContains($foreign->id, $directorIds);
+        $this->assertNotContains($inactive->id, $hrManagerIds);
     }
 
     #[Test]
@@ -79,13 +76,14 @@ class JobRequisitionApprovalWorkflowTest extends TestCase
     {
         $requisition = $this->requisition();
 
-        $this->submit($requisition)->assertOk()->assertJsonPath('data.status', 'pending_approval');
+        $this->submit($requisition)->assertOk()->assertJsonPath('data.status', 'pending_hr_review');
 
         $fresh = $requisition->fresh();
         $cycle = JobRequisitionApprovalCycle::findOrFail($fresh->current_approval_cycle_id);
         $steps = $cycle->steps()->orderBy('step_order')->get();
         $this->assertSame(1, $cycle->cycle_number);
         $this->assertSame('Original title', $cycle->snapshot['requisition']['title']);
+        $this->assertSame(JobRequisitionApprovalStep::TYPE_HR_MANAGER, $steps[0]->step_type);
         $this->assertSame(JobRequisitionApprovalStep::STATUS_PENDING, $steps[0]->status);
         $this->assertSame(JobRequisitionApprovalStep::STATUS_WAITING, $steps[1]->status);
 
@@ -100,7 +98,7 @@ class JobRequisitionApprovalWorkflowTest extends TestCase
     }
 
     #[Test]
-    public function hiring_manager_then_director_approval_is_enforced_and_final_approval_fields_are_preserved(): void
+    public function hr_manager_then_director_approval_is_enforced_and_final_approval_fields_are_preserved(): void
     {
         $requisition = $this->requisition();
         $this->submit($requisition)->assertOk();
@@ -109,11 +107,12 @@ class JobRequisitionApprovalWorkflowTest extends TestCase
             ->postJson("/api/hr/requisitions/{$requisition->id}/director/decision", ['decision' => 'approved'])
             ->assertStatus(422);
 
-        $this->actingAsUser($this->hiringManager)
-            ->postJson("/api/hr/requisitions/{$requisition->id}/hiring-manager/decision", [
-                'decision' => 'approved',
-                'comment' => 'Headcount and scope reviewed.',
-            ])->assertOk()->assertJsonPath('data.status', 'pending_approval');
+        $this->forward($requisition)
+            ->assertOk()->assertJsonPath('data.status', 'pending_director_review');
+
+        $this->actingAsUser($this->requester)
+            ->putJson("/api/hr/requisitions/update/{$requisition->id}", ['title' => 'Changed during director review'])
+            ->assertStatus(422);
 
         $this->actingAsUser($this->director)
             ->postJson("/api/hr/requisitions/{$requisition->id}/director/decision", [
@@ -128,37 +127,35 @@ class JobRequisitionApprovalWorkflowTest extends TestCase
     }
 
     #[Test]
-    public function rejection_requires_a_comment_skips_later_steps_and_resubmission_keeps_history(): void
+    public function returning_requires_a_comment_and_resubmission_keeps_history(): void
     {
         $requisition = $this->requisition();
         $this->submit($requisition)->assertOk();
 
         $this->actingAsUser($this->hiringManager)
-            ->postJson("/api/hr/requisitions/{$requisition->id}/hiring-manager/decision", ['decision' => 'rejected', 'comment' => 'No'])
+            ->postJson("/api/hr/requisitions/{$requisition->id}/hr-manager/return-to-department-head", ['comment' => 'No'])
             ->assertStatus(422)
             ->assertJsonValidationErrors(['comment']);
 
         $this->actingAsUser($this->hiringManager)
-            ->postJson("/api/hr/requisitions/{$requisition->id}/hiring-manager/decision", [
-                'decision' => 'rejected',
+            ->postJson("/api/hr/requisitions/{$requisition->id}/hr-manager/return-to-department-head", [
                 'comment' => 'Role scope needs revision.',
-            ])->assertOk()->assertJsonPath('data.status', 'rejected');
+            ])->assertOk()->assertJsonPath('data.status', 'revision_requested');
 
         $firstCycle = $requisition->fresh()->currentApprovalCycle;
-        $this->assertSame(JobRequisitionApprovalCycle::STATUS_REJECTED, $firstCycle->status);
         $this->assertSame(
-            JobRequisitionApprovalStep::STATUS_SKIPPED,
-            $firstCycle->steps()->where('step_type', JobRequisitionApprovalStep::TYPE_DIRECTOR)->value('status'),
+            JobRequisitionApprovalStep::STATUS_RETURNED,
+            $firstCycle->steps()->where('step_type', JobRequisitionApprovalStep::TYPE_HR_MANAGER)->value('status'),
         );
 
         $this->actingAsUser($this->requester)
             ->putJson("/api/hr/requisitions/update/{$requisition->id}", ['title' => 'Revised title'])
             ->assertOk();
-        $this->submit($requisition->fresh())->assertOk();
+        $this->submit($requisition->fresh())->assertOk()->assertJsonPath('data.status', 'pending_hr_review');
 
         $this->assertSame(2, $requisition->approvalCycles()->count());
         $this->assertSame([1, 2], $requisition->approvalCycles()->reorder('cycle_number')->pluck('cycle_number')->all());
-        $this->assertSame('Original title', $firstCycle->snapshot['requisition']['title']);
+        $this->assertSame('Original title', $firstCycle->fresh()->snapshot['requisition']['title']);
         $this->assertSame('Revised title', $requisition->fresh()->currentApprovalCycle->snapshot['requisition']['title']);
     }
 
@@ -166,30 +163,43 @@ class JobRequisitionApprovalWorkflowTest extends TestCase
     public function self_approval_same_reviewer_and_legacy_stage_bypass_are_rejected(): void
     {
         $requisition = $this->requisition();
-        $this->grant($this->requester, ['hr.requisition.hiring_manager.decide']);
+        $this->grant($this->requester, ['hr.requisition.hr_manager.decide', 'hr.requisition.director.decide']);
+        $this->grant($this->hiringManager, ['hr.requisition.director.decide']);
 
         $this->actingAsUser($this->requester)
-            ->postJson("/api/hr/requisitions/{$requisition->id}/submit", [
-                'hiring_manager_id' => $this->requester->id,
-                'director_id' => $this->director->id,
-            ])->assertStatus(422);
-
-        $this->actingAsUser($this->requester)
-            ->postJson("/api/hr/requisitions/{$requisition->id}/submit", [
-                'hiring_manager_id' => $this->hiringManager->id,
-                'director_id' => $this->hiringManager->id,
-            ])->assertStatus(422);
-
-        $this->submit($requisition)->assertOk();
-        $this->actingAsUser($this->director)
-            ->postJson("/api/hr/requisitions/approve/{$requisition->id}")
+            ->postJson("/api/hr/requisitions/{$requisition->id}/submit", ['hr_manager_id' => $this->requester->id])
             ->assertStatus(422);
-        $this->assertSame('pending_approval', $requisition->fresh()->status);
+
+        $this->actingAsUser($this->requester)
+            ->postJson("/api/hr/requisitions/{$requisition->id}/submit")
+            ->assertOk()->assertJsonPath('data.status', 'pending_hr_review');
+
+        $this->actingAsUser($this->requester)
+            ->postJson("/api/hr/requisitions/{$requisition->id}/hr-manager/forward", ['comment' => 'Approving my own request.'])
+            ->assertStatus(422);
 
         $this->actingAsUser($this->hiringManager)
+            ->postJson("/api/hr/requisitions/{$requisition->id}/hr-manager/forward", ['director_id' => $this->hiringManager->id])
+            ->assertStatus(422);
+
+        $this->actingAsUser($this->hiringManager)
+            ->postJson("/api/hr/requisitions/{$requisition->id}/hr-manager/forward", ['comment' => 'Reviewed.'])
+            ->assertOk()->assertJsonPath('data.status', 'pending_director_review');
+
+        $this->actingAsUser($this->hiringManager)
+            ->postJson("/api/hr/requisitions/{$requisition->id}/director/decision", ['decision' => 'approved'])
+            ->assertStatus(422);
+
+        $this->actingAsUser($this->requester)
+            ->postJson("/api/hr/requisitions/{$requisition->id}/director/decision", ['decision' => 'approved'])
+            ->assertStatus(422);
+
+        $this->actingAsUser($this->director)
             ->postJson("/api/hr/requisitions/approve/{$requisition->id}")
-            ->assertOk();
-        $this->assertSame('pending_approval', $requisition->fresh()->status);
+            ->assertStatus(410);
+
+        $this->assertSame('pending_director_review', $requisition->fresh()->status);
+        $this->assertNull($requisition->fresh()->approved_by);
     }
 
     #[Test]
@@ -222,16 +232,19 @@ class JobRequisitionApprovalWorkflowTest extends TestCase
             ->assertStatus(422);
 
         $this->actingAsUser($this->requester)
+            ->putJson("/api/hr/requisitions/update/{$legacy->id}", ['title' => 'Edited while legacy pending'])
+            ->assertStatus(422);
+
+        $this->actingAsUser($this->requester)
             ->postJson("/api/hr/requisitions/{$legacy->id}/withdraw")
             ->assertOk()
             ->assertJsonPath('data.status', 'draft');
 
         $this->submit($legacy->fresh())
             ->assertOk()
-            ->assertJsonPath('data.status', 'pending_approval');
+            ->assertJsonPath('data.status', 'pending_hr_review');
         $this->assertNotNull($legacy->fresh()->current_approval_cycle_id);
     }
-
     #[Test]
     public function legacy_approve_roles_receive_the_new_review_permissions_idempotently(): void
     {
@@ -285,8 +298,16 @@ class JobRequisitionApprovalWorkflowTest extends TestCase
     {
         return $this->actingAsUser($this->requester)
             ->postJson("/api/hr/requisitions/{$requisition->id}/submit", [
-                'hiring_manager_id' => $this->hiringManager->id,
+                'hr_manager_id' => $this->hiringManager->id,
+            ]);
+    }
+
+    private function forward(JobRequisition $requisition)
+    {
+        return $this->actingAsUser($this->hiringManager)
+            ->postJson("/api/hr/requisitions/{$requisition->id}/hr-manager/forward", [
                 'director_id' => $this->director->id,
+                'comment' => 'Headcount and scope reviewed.',
             ]);
     }
 

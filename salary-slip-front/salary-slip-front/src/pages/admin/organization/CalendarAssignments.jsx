@@ -1,12 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import {
-  Plus, RefreshCw, Search, Loader2, Pencil, Trash2, Power, PowerOff, Shield,
-  Calendar, Users, Building2, MapPin, CalendarDays, CalendarCheck,
+  RefreshCw, Search, Loader2, Pencil, Power, PowerOff, Shield, Calendar,
 } from "lucide-react";
 import Badge from "../../../components/ui/Badge";
 import Button from "../../../components/ui/Button";
 import Card from "../../../components/ui/Card";
+import Modal from "../../../components/ui/Modal";
 import { SkeletonTable } from "../../../components/ui/Skeleton";
 import { useAuth } from "../../../context/AuthContext";
 import { useAuthorization } from "../../../hooks/useAuthorization";
@@ -14,7 +14,6 @@ import { organizationApi } from "../../../features/organization/services/organiz
 
 const inputClass =
   "w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500";
-const labelClass = "mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400";
 
 const STATUS_FILTERS = [
   { value: "ALL", label: "All" },
@@ -47,7 +46,6 @@ export default function CalendarAssignmentsPage() {
   const tokenType = user?.tokenType || "Bearer";
 
   const [assignments, setAssignments] = useState([]);
-  const [dialog, setDialog] = useState(null);
   const [activeAssignment, setActiveAssignment] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -67,7 +65,7 @@ export default function CalendarAssignmentsPage() {
     if (!token) return;
     let active = true;
     organizationApi.calendarAssignments(
-      { search, scope_type: setScopeType === "ALL" ? undefined : setScopeType, calendar_kind: setCalendarKind === "ALL" ? undefined : setCalendarKind, status },
+      { search, scope_type: scopeType === "ALL" ? undefined : scopeType, calendar_kind: calendarKind === "ALL" ? undefined : calendarKind, status },
       token, tokenType,
     ).then((res) => {
       if (!active) return;
@@ -83,14 +81,6 @@ export default function CalendarAssignmentsPage() {
     try { await work(); toast.success(message); after(); reload(); } catch (err) { toast.error(err.message || "That did not work"); } finally { setBusy(false); }
   };
 
-  const saveAssignment = (payload) => run(
-    () => dialog?.id
-      ? organizationApi.updateCalendarAssignment(dialog.id, payload, token, tokenType)
-      : organizationApi.createCalendarAssignment(payload, token, tokenType),
-    dialog?.id ? "Assignment updated" : "Assignment created",
-  );
-
-  const companyOptions = useMemo(() => [], []);
   const canManage = can("org.calendar_assignment.create") || can("org.calendar_assignment.update");
 
   // Resolve and Preview
@@ -98,7 +88,7 @@ export default function CalendarAssignmentsPage() {
     setBusy(true);
     try {
       const res = await organizationApi.resolveCalendarAssignment(payload, token, tokenType);
-      toast.info(res?.data ? `Resolution: ${res.data.calendarName}` : "No resolution found");
+      toast(res?.data ? `Resolution: ${res.data.calendarName}` : "No resolution found");
     } catch (err) {
       toast.error(err.message || "Could not resolve calendar");
     } finally { setBusy(false); }
@@ -108,7 +98,7 @@ export default function CalendarAssignmentsPage() {
     setBusy(true);
     try {
       const res = await organizationApi.previewCalendarAssignment(payload, token, tokenType);
-      toast.info(res?.data ? `Preview: ${res.data.length} calendars found` : "No preview data");
+      toast(res?.data ? `Preview: ${res.data.length} calendars found` : "No preview data");
     } catch (err) {
       toast.error(err.message || "Could not preview calendar");
     } finally { setBusy(false); }
@@ -118,7 +108,7 @@ export default function CalendarAssignmentsPage() {
     <div className="min-w-0 max-w-full space-y-5">
       <div>
         <h1 className="flex items-center gap-2 text-xl font-bold text-gray-900 dark:text-white">
-          <Calendar days={20} /> Calendar Assignments
+          <Calendar size={20} /> Calendar Assignments
         </h1>
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
           Assigns calendars to scopes (enterprise → company → country → location → department) with priority and effective dating.
@@ -141,8 +131,8 @@ export default function CalendarAssignmentsPage() {
           <select
             aria-label="Filter by scope"
             className={`${inputClass} w-36`}
-            value={setScopeType === "ALL" ? "" : setScopeType}
-            onChange={(e) => setScopeType(e.target.value)}
+            value={scopeType}
+            onChange={(e) => changeFilter(setScopeType)(e.target.value)}
           >
             <option value="ALL">All Scopes</option>
             {CALENDAR_SCOPES.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
@@ -151,8 +141,8 @@ export default function CalendarAssignmentsPage() {
           <select
             aria-label="Filter by kind"
             className={`${inputClass} w-36`}
-            value={setCalendarKind === "ALL" ? "" : setCalendarKind}
-            onChange={(e) => setCalendarKind(e.target.value)}
+            value={calendarKind}
+            onChange={(e) => changeFilter(setCalendarKind)(e.target.value)}
           >
             <option value="ALL">All Kinds</option>
             {CALENDAR_KINDS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
@@ -171,10 +161,7 @@ export default function CalendarAssignmentsPage() {
 
           <div className="ml-auto flex items-center gap-2">
             <Button variant="secondary" onClick={reload}><RefreshCw size={16} /> Refresh</Button>
-            {can("org.calendar_assignment.create") && (
-              <Button onClick={() => setDialog({})}><Plus size={16} /> Add Assignment</Button>
-            )}
-            <Button onClick={previewCalendar} disabled={busy}>
+            <Button onClick={() => previewCalendar({})} disabled={busy}>
               {busy && <Loader2 size={16} className="animate-spin" />}
               Preview
             </Button>

@@ -1,14 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Search, Briefcase, ChevronDown, AlertCircle, FileText, Send, CalendarClock,
-  Bookmark, ShieldCheck, Sparkles, MapPin, Building2, Gem, Layers,
-  HeartHandshake, Trophy, ArrowRight, X, LayoutGrid, List
+  Bookmark, ShieldCheck, Sparkles, Building2, Gem, Layers,
+  HeartHandshake, Trophy, X, LayoutGrid, List
 } from "lucide-react";
 import { publicJobApi, candidateApi } from "../../utils/api";
 import { COMPANY_OPTIONS } from "../../config/companyConfig";
 import JobCard from "../../components/careers/JobCard";
-import { useCandidateAuth } from "../../context/CandidateAuthContext";
+import { useCandidateAuth } from "../../context/candidate-auth-context";
 
 const EMPLOYMENT_TYPES = [
   { value: "", label: "All Employment Types" },
@@ -67,27 +67,57 @@ export default function CareersList() {
     });
   }, [isAuthenticated, token]);
 
-  const loadJobs = () => {
-    setLoading(true);
-    setLoadError(false);
+  const jobsRequestSeqRef = useRef(0);
+
+  const fetchJobs = useCallback((params) => {
+    const seq = ++jobsRequestSeqRef.current;
+    const isLatest = () => seq === jobsRequestSeqRef.current;
     publicJobApi
       .getJobs({
-        search: search.trim() || undefined,
-        employment_type: employmentType || undefined,
-        company_code: companyCode || undefined,
+        search: params.search.trim() || undefined,
+        employment_type: params.employmentType || undefined,
+        company_code: params.companyCode || undefined,
       })
       .then((res) => {
+        if (!isLatest()) return;
         if (res.status) {
           setJobs(res.data?.data || res.data || []);
         } else {
           setLoadError(true);
         }
       })
-      .catch(() => setLoadError(true))
-      .finally(() => setLoading(false));
+      .catch(() => {
+        if (isLatest()) setLoadError(true);
+      })
+      .finally(() => {
+        if (isLatest()) setLoading(false);
+      });
+  }, []);
+
+  useEffect(() => {
+    fetchJobs({ search: "", employmentType: "", companyCode: "" });
+  }, [fetchJobs]);
+
+  const loadJobs = (overrides = {}) => {
+    setLoading(true);
+    setLoadError(false);
+    fetchJobs({ search, employmentType, companyCode, ...overrides });
   };
 
-  useEffect(loadJobs, [employmentType, companyCode]); // eslint-disable-line react-hooks/exhaustive-deps
+  const changeCompanyCode = (value) => {
+    setCompanyCode(value);
+    loadJobs({ companyCode: value });
+  };
+
+  const changeEmploymentType = (value) => {
+    setEmploymentType(value);
+    loadJobs({ employmentType: value });
+  };
+
+  const clearSearch = () => {
+    setSearch("");
+    loadJobs({ search: "" });
+  };
 
   const departmentOptions = useMemo(() => {
     const seen = new Map();
@@ -126,9 +156,7 @@ export default function CareersList() {
     setCompanyCode("");
     setDepartmentId("");
     setSelectedTag("All");
-    publicJobApi.getJobs({}).then((res) => {
-      if (res.status) setJobs(res.data?.data || res.data || []);
-    });
+    loadJobs({ search: "", employmentType: "", companyCode: "" });
   };
 
   const handleSearchSubmit = (e) => {
@@ -183,7 +211,7 @@ export default function CareersList() {
               {search && (
                 <button
                   type="button"
-                  onClick={() => { setSearch(""); loadJobs(); }}
+                  onClick={clearSearch}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1"
                 >
                   <X size={14} />
@@ -336,7 +364,7 @@ export default function CareersList() {
             <div className="relative">
               <select
                 value={companyCode}
-                onChange={(e) => setCompanyCode(e.target.value)}
+                onChange={(e) => changeCompanyCode(e.target.value)}
                 className="appearance-none rounded-xl border border-gray-200 bg-white py-2 pl-3.5 pr-8 text-xs font-semibold text-gray-700 shadow-sm outline-none transition-colors hover:border-gray-300 focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
               >
                 <option value="">All Companies</option>
@@ -369,7 +397,7 @@ export default function CareersList() {
             <div className="relative">
               <select
                 value={employmentType}
-                onChange={(e) => setEmploymentType(e.target.value)}
+                onChange={(e) => changeEmploymentType(e.target.value)}
                 className="appearance-none rounded-xl border border-gray-200 bg-white py-2 pl-3.5 pr-8 text-xs font-semibold text-gray-700 shadow-sm outline-none transition-colors hover:border-gray-300 focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
               >
                 {EMPLOYMENT_TYPES.map((t) => (
@@ -410,13 +438,13 @@ export default function CareersList() {
             {search && (
               <span className="inline-flex items-center gap-1 rounded-lg bg-brand-50 px-2.5 py-1 text-xs font-bold text-brand-700 border border-brand-200">
                 Keyword: "{search}"
-                <button onClick={() => { setSearch(""); loadJobs(); }}><X size={12} /></button>
+                <button onClick={clearSearch}><X size={12} /></button>
               </span>
             )}
             {companyCode && (
               <span className="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-2.5 py-1 text-xs font-bold text-indigo-700 border border-indigo-200">
                 {COMPANY_OPTIONS.find((c) => c.id === companyCode)?.label || companyCode}
-                <button onClick={() => setCompanyCode("")}><X size={12} /></button>
+                <button onClick={() => changeCompanyCode("")}><X size={12} /></button>
               </span>
             )}
             {departmentId && (
@@ -428,7 +456,7 @@ export default function CareersList() {
             {employmentType && (
               <span className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700 border border-blue-200">
                 {EMPLOYMENT_TYPES.find((t) => t.value === employmentType)?.label}
-                <button onClick={() => setEmploymentType("")}><X size={12} /></button>
+                <button onClick={() => changeEmploymentType("")}><X size={12} /></button>
               </span>
             )}
             {selectedTag && selectedTag !== "All" && (
@@ -460,7 +488,7 @@ export default function CareersList() {
               <h3 className="mt-4 text-base font-bold text-gray-900">Unable to load job positions</h3>
               <p className="mx-auto mt-1 max-w-sm text-xs text-gray-500">There was an issue fetching active positions. Please retry.</p>
               <button
-                onClick={loadJobs}
+                onClick={() => loadJobs()}
                 className="mt-5 inline-flex rounded-xl bg-brand-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-brand-700 shadow-md shadow-brand-500/20"
               >
                 Reload Openings

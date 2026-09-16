@@ -32,6 +32,9 @@ import { useAuth } from "../../context/AuthContext"; // Corrected import path
 import { authApi, salaryApi } from "../../utils/api";
 import { getAadhaarDisplayValue, hasStoredAadhaar, buildSafeAadhaarUpdate } from "../../utils/aadhaar";
 import toast from "react-hot-toast";
+import SearchableSelect from "../../components/ui/SearchableSelect";
+import { designationApi } from "../../features/workforce/services/workforceApi";
+import { organizationApi } from "../../features/organization/services/organizationApi";
 import usePhotoCapture from "../../hooks/usePhotoCapture";
 
 // Kept in sync with the backend's relation whitelist in
@@ -118,6 +121,7 @@ export default function Profile() {
     department: profile?.department || "",
     designation: profile?.designation || "",
     joining_date: profile?.joining_date || "",
+    punching_no: profile?.punching_no || profile?.punching_code || profile?.punch_code || "",
     aadhar_card_no: getAadhaarDisplayValue(profile),
   };
 
@@ -146,11 +150,13 @@ export default function Profile() {
     joining_date: "",
     education: "",
     marital_status: "",
+    punching_no: "",
   });
 
-  const [familyDetails, setFamilyDetails] = useState([{ ...BLANK_FAMILY_MEMBER }]);
+  const [familyDetails, setFamilyDetails] = useState([]);
 
   const [departmentsList, setDepartmentsList] = useState([]);
+  const [designationsList, setDesignationsList] = useState([]);
 
   useEffect(() => {
     async function fetchDepartments() {
@@ -162,6 +168,42 @@ export default function Profile() {
       }
     }
     if (user?.accessToken) fetchDepartments();
+  }, [user]);
+
+  useEffect(() => {
+    async function fetchDesignations() {
+      try {
+        const salaryDesigFetcher = (typeof salaryApi !== "undefined" && salaryApi?.getDesignations)
+          ? salaryApi.getDesignations(user?.accessToken, user?.tokenType)
+          : Promise.resolve(null);
+
+        const posFetcher = (typeof organizationApi !== "undefined" && organizationApi?.globalPositions)
+          ? organizationApi.globalPositions({}, user?.accessToken, user?.tokenType)
+          : Promise.resolve(null);
+
+        const [sRes, posRes] = await Promise.all([
+          salaryDesigFetcher.catch(() => null),
+          posFetcher.catch(() => null),
+        ]);
+        const set = new Set();
+        if (sRes?.data && Array.isArray(sRes.data)) {
+          sRes.data.forEach((d) => {
+            const title = typeof d === "string" ? d : d.title || d.name || d.designation_name;
+            if (title) set.add(String(title).trim());
+          });
+        }
+        if (posRes?.data && Array.isArray(posRes.data)) {
+          posRes.data.forEach((p) => {
+            const title = typeof p === "string" ? p : p.title || p.name || p.code;
+            if (title) set.add(String(title).trim());
+          });
+        }
+        setDesignationsList(Array.from(set).sort());
+      } catch (err) {
+        console.error("Failed to fetch standalone DB designations:", err);
+      }
+    }
+    fetchDesignations();
   }, [user]);
 
   useEffect(() => {
@@ -199,6 +241,7 @@ export default function Profile() {
           joining_date: data.joining_date || "",
           education: data.education || "",
           marital_status: data.marital_status || "",
+          punching_no: data.punching_no || data.punching_code || data.punch_code || "",
         });
         setFamilyDetails(familyFromProfile(data));
       } catch (err) {
@@ -209,7 +252,7 @@ export default function Profile() {
     }
 
     if (user?.accessToken) fetchProfile();
-  }, [user]);
+  }, [user?.accessToken, user?.tokenType, updateCurrentUser]);
 
   const [photoFile, setPhotoFile] = useState(null);
   const [photoPreview, setPhotoPreview] = useState("");
@@ -248,6 +291,22 @@ export default function Profile() {
   };
 
   const handleSave = async () => {
+    const selectedDesig = (form.designation || "").trim();
+    const isValidDesig = designationsList.some(
+      (opt) => String(opt).trim().toUpperCase() === selectedDesig.toUpperCase()
+    );
+
+    if (!selectedDesig || !isValidDesig) {
+      toast.error("Please select a valid designation from the dropdown before saving.");
+      setActiveStep(1);
+      return;
+    }
+    const punchingCode = (form.punching_no || "").trim();
+    if (!punchingCode) {
+      toast.error("Punching Code is mandatory.");
+      setActiveStep(1);
+      return;
+    }
     if (form.pan_card_no && !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/i.test(form.pan_card_no)) {
       toast.error("Invalid PAN Card format. (e.g., ABCDE1234F)");
       setActiveStep(3);
@@ -332,6 +391,7 @@ export default function Profile() {
         joining_date: form.joining_date,
         education: form.education,
         marital_status: form.marital_status,
+        punching_no: form.punching_no,
         family_members: cleanFamily,
       };
       if (photoFile) payload.photo = photoFile;
@@ -369,6 +429,7 @@ export default function Profile() {
         joining_date: form.joining_date,
         education: form.education,
         marital_status: form.marital_status,
+        punching_no: form.punching_no,
         photo: updatedPhoto || prev?.photo,
         family_members: cleanFamily,
       }));
@@ -529,7 +590,7 @@ export default function Profile() {
   const completionFields = [
     "name", "email", "phone", "dob", "address", "city", "district", "state", "pin",
     "aadhar_card_no", "pan_card_no", "bank_name", "bank_ifsc_code", "bank_account_no",
-    "gender"
+    "gender", "punching_no"
   ];
 
   const calculateCompletion = () => {
@@ -633,6 +694,7 @@ export default function Profile() {
                   joining_date: profile?.joining_date || "",
                   education: profile?.education || "",
                   marital_status: profile?.marital_status || "",
+                  punching_no: profile?.punching_no || profile?.punching_code || profile?.punch_code || "",
                 });
                 setFamilyDetails(familyFromProfile(profile));
                 setEditing(true);
@@ -725,19 +787,34 @@ export default function Profile() {
           </div>
         </div>
 
-        {/* Emp code badge */}
-        <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-4 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center flex-shrink-0">
-            <Hash size={18} className="text-purple-600" />
+        {/* Emp code & Punching code badge */}
+        <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-4 space-y-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center flex-shrink-0">
+              <Hash size={18} className="text-purple-600" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs text-gray-400 font-medium">Employee Code</p>
+              <p className="text-base font-bold text-gray-900 dark:text-white font-mono truncate">
+                {emp.emp_code || "—"}
+              </p>
+            </div>
+            <div className="ml-auto flex-shrink-0">
+              <Award size={20} className="text-yellow-400" />
+            </div>
           </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-xs text-gray-400 font-medium">Employee Code</p>
-            <p className="text-base font-bold text-gray-900 dark:text-white font-mono truncate">
-              {emp.emp_code}
-            </p>
-          </div>
-          <div className="ml-auto flex-shrink-0">
-            <Award size={20} className="text-yellow-400" />
+          <div className="pt-2 border-t border-gray-100 dark:border-gray-700 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-teal-100 dark:bg-teal-900/30 flex items-center justify-center flex-shrink-0">
+              <Hash size={18} className="text-teal-600" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs text-gray-400 font-medium">
+                Punching Code <span className="text-red-500 font-bold">*</span>
+              </p>
+              <p className="text-base font-bold text-gray-900 dark:text-white font-mono truncate">
+                {emp.punching_no || "—"}
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -828,6 +905,22 @@ export default function Profile() {
             </h3>
           </div>
           <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+            <InfoRow
+              icon={Hash}
+              iconBg="bg-teal-50 dark:bg-teal-900/20"
+              iconColor="text-teal-600"
+              label="Punching Code *"
+              value={emp.punching_no || "—"}
+              editing={editing}
+              editNode={
+                <input
+                  value={form.punching_no}
+                  onChange={(e) => set("punching_no", e.target.value)}
+                  placeholder="Enter Punching Code (Mandatory)"
+                  className="mt-0.5 w-full text-sm bg-transparent border-b border-brand-400 text-gray-900 dark:text-white focus:outline-none py-0.5 font-semibold"
+                />
+              }
+            />
             <InfoRow
               icon={Hash}
               iconBg="bg-brand-50 dark:bg-brand-900/20"
@@ -940,10 +1033,12 @@ export default function Profile() {
               value={emp.designation || "—"}
               editing={editing}
               editNode={
-                <input
+                <SearchableSelect
                   value={form.designation}
-                  onChange={(e) => set("designation", e.target.value)}
-                  className="mt-0.5 w-full text-sm bg-transparent border-b border-brand-400 text-gray-900 dark:text-white focus:outline-none py-0.5"
+                  onChange={(e) => set("designation", typeof e === "object" && e?.target ? e.target.value : e)}
+                  options={designationsList}
+                  placeholder="Select or search designation"
+                  buttonClassName="mt-0.5 w-full text-sm bg-transparent border-b border-brand-400 text-gray-900 dark:text-white focus:outline-none py-0.5 font-semibold text-left"
                 />
               }
             />

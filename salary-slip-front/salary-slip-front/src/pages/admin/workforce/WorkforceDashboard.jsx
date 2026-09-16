@@ -1,11 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
-import { LayoutDashboard, Briefcase, Building2, Layers, Award, Users, FileText, ListTodo, ClipboardList, BarChart2, FolderKanban } from "lucide-react";
-import { Link, useNavigate } from "react-router-dom";
-import { useAuth } from "../../../context/AuthContext";
+import { Briefcase, Building2, Layers, Award, Users, FileText, ListTodo, ClipboardList, BarChart2, FolderKanban } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { useAuthorization } from "../../../hooks/useAuthorization";
 import Card from "../../../components/ui/Card";
 import Button from "../../../components/ui/Button";
-import { useSearchParams } from "react-router-dom";
 
 const STAT_CARDS = [
   { title: "Job Functions", icon: Building2, path: "/admin/workforce/job-functions", permission: "workforce.job_function.read", color: "bg-blue-500", description: "Functional classification (HR, Finance, IT, etc.)" },
@@ -23,16 +20,9 @@ const STAT_CARDS = [
 ];
 
 export default function WorkforceDashboard() {
-  const { user } = useAuth();
   const { can } = useAuthorization();
-  const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
-  const [visibleCards, setVisibleCards] = useState(STAT_CARDS);
-
-  useEffect(() => {
-    const filtered = STAT_CARDS.filter(card => can(card.permission));
-    setVisibleCards(filtered);
-  }, [can]);
+  const visibleCards = STAT_CARDS.filter(card => can(card.permission));
 
   if (visibleCards.length === 0) {
     return (

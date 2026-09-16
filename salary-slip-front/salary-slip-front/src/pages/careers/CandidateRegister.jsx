@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { User, Mail, Lock, Phone, ArrowRight } from "lucide-react";
 import toast from "react-hot-toast";
-import { useCandidateAuth } from "../../context/CandidateAuthContext";
+import { useCandidateAuth } from "../../context/candidate-auth-context";
 
 export default function CandidateRegister() {
   const navigate = useNavigate();

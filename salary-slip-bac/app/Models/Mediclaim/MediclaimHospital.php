@@ -21,6 +21,9 @@ class MediclaimHospital extends Model
         'city',
         'state',
         'pincode',
+        'latitude',
+        'longitude',
+        'google_maps_url',
         'specialties',
         'is_cashless',
         'active_from',
@@ -35,6 +38,8 @@ class MediclaimHospital extends Model
         return [
             'specialties' => 'array',
             'is_cashless' => 'boolean',
+            'latitude' => 'decimal:7',
+            'longitude' => 'decimal:7',
             'active_from' => 'date',
             'active_to' => 'date',
         ];

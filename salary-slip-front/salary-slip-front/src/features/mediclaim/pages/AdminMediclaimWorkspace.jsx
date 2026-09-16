@@ -1,6 +1,5 @@
 import { useEffect, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
-import { ShieldCheck } from "lucide-react";
 import { useMediclaimAuthorization } from "../hooks/useMediclaimAuthorization";
 import DashboardTab from "./admin/tabs/DashboardTab";
 import EmployeesTab from "./admin/tabs/EmployeesTab";
@@ -9,9 +8,7 @@ import PendingReviewsTab from "./admin/tabs/PendingReviewsTab";
 import PoliciesTab from "./admin/tabs/PoliciesTab";
 import HospitalsTab from "./admin/tabs/HospitalsTab";
 import RuleBooksTab from "./admin/tabs/RuleBooksTab";
-import ReviewersTab from "./admin/tabs/ReviewersTab";
 import ReportsTab from "./admin/tabs/ReportsTab";
-import AuditHistoryTab from "./admin/tabs/AuditHistoryTab";
 
 /**
  * Admin/HR Mediclaim workspace shell (F6) — same `HiringWorkspace.jsx`-style
@@ -30,6 +27,7 @@ import AuditHistoryTab from "./admin/tabs/AuditHistoryTab";
  */
 const TABS = [
   { key: "dashboard", label: "Dashboard" },
+  { key: "rulebooks", label: "Rule Books" },
   { key: "employees", label: "Employees" },
   { key: "claims", label: "Claims" },
   {
@@ -45,10 +43,7 @@ const TABS = [
   },
   { key: "policies", label: "Policies", permissions: ["mediclaim.policy.read"] },
   { key: "hospitals", label: "Hospitals" },
-  { key: "rulebooks", label: "Rule Books" },
-  { key: "reviewers", label: "Reviewers", permissions: ["mediclaim.reviewer_assignment.read"] },
   { key: "reports", label: "Reports", permissions: ["mediclaim.report.read"] },
-  { key: "audit", label: "Audit History", permissions: ["mediclaim.audit.read"] },
 ];
 
 export default function AdminMediclaimWorkspace() {
@@ -82,21 +77,19 @@ export default function AdminMediclaimWorkspace() {
     });
   };
 
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-600 shadow-sm shadow-brand-600/30">
-          <ShieldCheck size={18} className="text-white" />
-        </div>
-        <div>
-          <h1 className="text-lg font-bold text-gray-900 dark:text-white">Mediclaim Administration</h1>
-          <p className="text-xs text-gray-400">
-            Company-wide enrollments, claims, reviews, policies, hospitals, rule books, reviewers, reports and audit
-          </p>
-        </div>
-      </div>
+  // Employees is the one tab built to fill the page like `AddEmployeePage.jsx`
+  // (`EmployeesTab.jsx`'s own root + `ClaimsTable`'s `fillHeight` prop) —
+  // this needs a real bounded height to flex against, all the way up from
+  // `AppLayout.jsx`'s `h-full` Outlet slot. Every other tab here still relies
+  // on the normal page-level scroll (`<main>` in AppLayout), so the
+  // full-height/overflow-hidden treatment is applied only while that tab is
+  // selected — switching tabs never risks clipping content nobody has
+  // verified fits in a fixed box.
+  const isFullHeightTab = tab === "employees";
 
-      <div className="sticky top-0 z-30 -mx-4 md:-mx-6 border-b border-gray-200 bg-gray-50/95 px-4 backdrop-blur-sm dark:border-gray-700 dark:bg-gray-900/95 md:px-6">
+  return (
+    <div className={`flex h-full min-h-0 flex-col gap-4 ${isFullHeightTab ? "overflow-hidden" : ""}`}>
+      <div className="sticky top-0 z-30 -mx-4 md:-mx-6 shrink-0 border-b border-gray-200 bg-gray-50/95 px-4 backdrop-blur-sm dark:border-gray-700 dark:bg-gray-900/95 md:px-6">
         <div className="scrollbar-hide flex gap-1 overflow-x-auto">
           {availableTabs.map((t) => (
             <button
@@ -115,16 +108,16 @@ export default function AdminMediclaimWorkspace() {
         </div>
       </div>
 
-      {tab === "dashboard" && <DashboardTab onNavigate={selectTab} />}
-      {tab === "employees" && <EmployeesTab />}
-      {tab === "claims" && <ClaimsTab />}
-      {tab === "pending-reviews" && <PendingReviewsTab />}
-      {tab === "policies" && <PoliciesTab />}
-      {tab === "hospitals" && <HospitalsTab />}
-      {tab === "rulebooks" && <RuleBooksTab />}
-      {tab === "reviewers" && <ReviewersTab />}
-      {tab === "reports" && <ReportsTab />}
-      {tab === "audit" && <AuditHistoryTab />}
+      <div className={isFullHeightTab ? "flex-1 min-h-0 flex flex-col overflow-hidden" : ""}>
+        {tab === "dashboard" && <DashboardTab onNavigate={selectTab} />}
+        {tab === "employees" && <EmployeesTab />}
+        {tab === "claims" && <ClaimsTab />}
+        {tab === "pending-reviews" && <PendingReviewsTab />}
+        {tab === "policies" && <PoliciesTab />}
+        {tab === "hospitals" && <HospitalsTab />}
+        {tab === "rulebooks" && <RuleBooksTab />}
+        {tab === "reports" && <ReportsTab />}
+      </div>
     </div>
   );
 }

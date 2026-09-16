@@ -163,7 +163,7 @@ class FinancialOrganizationService
             }
         }
 
-        $this->assertCodeFree($enterpriseId, $companyId, trim((string) ($data['code'] ?: $data['name'])), null);
+        $this->assertCodeFree($enterpriseId, $companyId, trim((string) (($data['code'] ?? '') ?: $data['name'])), null);
         $this->resolveParent($enterpriseId, $companyId, $parentId, null);
 
         $org = DB::transaction(function () use ($data, $enterpriseId, $companyId, $parentId, $actor) {
@@ -171,7 +171,7 @@ class FinancialOrganizationService
                 'enterprise_id' => $enterpriseId,
                 'company_id' => $companyId,
                 'parent_id' => $parentId,
-                'code' => trim((string) ($data['code'] ?: $data['name'])),
+                'code' => trim((string) (($data['code'] ?? '') ?: $data['name'])),
                 'name' => trim((string) $data['name']),
                 'type' => $data['type'] ?? 'cost_center',
                 'status' => $data['status'] ?? 'active',
@@ -494,13 +494,13 @@ class FinancialOrganizationService
             }
         }
 
-        $this->assertCodeFree($enterpriseId, $companyId, trim((string) ($data['code'] ?: $data['name'])), null);
+        $this->assertCodeFree($enterpriseId, $companyId, trim((string) (($data['code'] ?? '') ?: $data['name'])), null);
 
         $rule = DB::transaction(function () use ($data, $enterpriseId, $companyId, $sourceOrgId, $actor) {
             return FinancialAllocationRule::query()->create([
                 'enterprise_id' => $enterpriseId,
                 'company_id' => $companyId,
-                'code' => trim((string) ($data['code'] ?: $data['name'])),
+                'code' => trim((string) (($data['code'] ?? '') ?: $data['name'])),
                 'name' => trim((string) $data['name']),
                 'description' => $this->blankToNull($data['description'] ?? null),
                 'status' => $data['status'] ?? 'draft',

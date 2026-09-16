@@ -117,7 +117,9 @@ class AssetCrossCompanyApiTest extends TestCase
         $this->as($this->companyAActor)->deleteJson("/api/hr/assets/delete/{$this->assetA->id}")
             ->assertOk();
 
-        $this->assertDatabaseMissing('assets', ['id' => $this->assetA->id]);
+        $this->assertSoftDeleted('assets', ['id' => $this->assetA->id]);
+        $this->as($this->companyAActor)->getJson("/api/hr/assets/show/{$this->assetA->id}")
+            ->assertStatus(404);
     }
 
     #[Test]

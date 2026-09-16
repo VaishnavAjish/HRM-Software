@@ -79,8 +79,11 @@ function InfoTile({ icon: Icon, label, value, mono = false, upper = false, bold 
 
 export default function DocumentsTab() {
   const { user } = useAuth();
+  const accessToken = user?.accessToken;
+  const tokenType = user?.tokenType;
   const [employees, setEmployees] = useState([]);
-  const [employeesLoading, setEmployeesLoading] = useState(true);
+  const [employeesLoaded, setEmployeesLoaded] = useState(false);
+  const employeesLoading = !employeesLoaded;
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState(null);
 
@@ -90,7 +93,9 @@ export default function DocumentsTab() {
 
   const [candidateDetails, setCandidateDetails] = useState(null);
   const [docs, setDocs] = useState([]);
-  const [docsLoading, setDocsLoading] = useState(false);
+  const [docsLoadedFor, setDocsLoadedFor] = useState(null);
+  const [docsReloading, setDocsReloading] = useState(false);
+  const docsLoading = (Boolean(selectedId && accessToken) && docsLoadedFor !== selectedId) || docsReloading;
   const [activeDoc, setActiveDoc] = useState(null);
   const [remarks, setRemarks] = useState("");
   const [rejectingOnboarding, setRejectingOnboarding] = useState(false);
@@ -119,46 +124,47 @@ export default function DocumentsTab() {
 
   // Load candidates across all onboarding stages
   useEffect(() => {
+    if (!accessToken) return;
     let ignore = false;
-    if (!user?.accessToken) return;
-    Promise.resolve().then(() => {
-      if (!ignore) setEmployeesLoading(true);
-    });
-    hrApi.getCandidates(user.accessToken, user.tokenType, { per_page: 100, stage: "offer_accepted,onboarding,hired" })
+    hrApi.getCandidates(accessToken, tokenType, { per_page: 100, stage: "offer_accepted,onboarding,hired" })
       .then((res) => {
         let rows = [];
         if (res.status) {
           rows = res.data?.data || res.data || [];
         }
         if (rows.length === 0) {
-          return hrApi.getCandidates(user.accessToken, user.tokenType, { per_page: 100 });
+          return hrApi.getCandidates(accessToken, tokenType, { per_page: 100 });
         }
         return { status: true, data: rows };
       })
       .then((res) => {
+        if (ignore) return;
         if (res && res.status) {
           const rows = res.data?.data || res.data || [];
           setEmployees(rows);
-          if (rows.length && !selectedId) setSelectedId(rows[0].id);
+          if (rows.length) setSelectedId((current) => current || rows[0].id);
         }
       })
       .catch((err) => {
         console.error("Failed to load candidates for documents", err);
       })
-      .finally(() => setEmployeesLoading(false));
-  }, [user]);
+      .finally(() => {
+        if (!ignore) setEmployeesLoaded(true);
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [accessToken, tokenType]);
 
   // Load selected candidate details & documents
   useEffect(() => {
+    if (!selectedId || !accessToken) return;
     let ignore = false;
-    if (!selectedId || !user?.accessToken) return;
-    Promise.resolve().then(() => {
-      if (!ignore) setDocsLoading(true);
-    });
 
     Promise.all([
-      hrApi.getCandidate(selectedId, user.accessToken, user.tokenType),
-      hrApi.getCandidateDocuments(selectedId, user.accessToken, user.tokenType)
+      hrApi.getCandidate(selectedId, accessToken, tokenType),
+      hrApi.getCandidateDocuments(selectedId, accessToken, tokenType)
     ])
       .then(([candRes, docsRes]) => {
         if (ignore) return;
@@ -169,21 +175,21 @@ export default function DocumentsTab() {
         if (!ignore) toast.error(err.message || "Failed to load candidate documents");
       })
       .finally(() => {
-        if (!ignore) setDocsLoading(false);
+        if (!ignore) setDocsLoadedFor(selectedId);
       });
 
     return () => {
       ignore = true;
     };
-  }, [selectedId, user]);
+  }, [selectedId, accessToken, tokenType]);
 
   const loadDocs = () => {
-    if (!selectedId || !user?.accessToken) return;
-    setDocsLoading(true);
-    hrApi.getCandidateDocuments(selectedId, user.accessToken, user.tokenType)
+    if (!selectedId || !accessToken) return;
+    setDocsReloading(true);
+    hrApi.getCandidateDocuments(selectedId, accessToken, tokenType)
       .then((res) => { if (res.status) setDocs(res.data || []); })
       .catch((err) => toast.error(err.message || "Failed to load documents"))
-      .finally(() => setDocsLoading(false));
+      .finally(() => setDocsReloading(false));
   };
 
   const filteredEmployees = useMemo(() => {

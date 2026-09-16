@@ -36,8 +36,8 @@ class MediclaimCardQrPrivacyTest extends TestCase
         $response = $this->getJson("/api/v1/mediclaim/cards/verify/{$token}")
             ->assertOk()
             ->assertJsonPath('success', true)
-            ->assertJsonPath('data.valid', true)
-            ->assertHeader('Cache-Control', 'no-store');
+            ->assertJsonPath('data.valid', true);
+        $this->assertCacheControlForbidsStorage($response);
 
         $data = $response->json('data');
 
@@ -60,13 +60,13 @@ class MediclaimCardQrPrivacyTest extends TestCase
     #[Test]
     public function an_unknown_token_returns_a_generic_404(): void
     {
-        $this->getJson('/api/v1/mediclaim/cards/verify/this-token-never-existed')
+        $response = $this->getJson('/api/v1/mediclaim/cards/verify/this-token-never-existed')
             ->assertStatus(404)
             ->assertExactJson([
                 'success' => false,
                 'error' => ['code' => 'NOT_FOUND', 'message' => 'This card could not be verified.'],
-            ])
-            ->assertHeader('Cache-Control', 'no-store');
+            ]);
+        $this->assertCacheControlForbidsStorage($response);
     }
 
     #[Test]
@@ -133,5 +133,12 @@ class MediclaimCardQrPrivacyTest extends TestCase
             'status' => 0,
             'is_deleted' => 0,
         ]);
+    }
+
+    private function assertCacheControlForbidsStorage($response): void
+    {
+        $directives = array_map('trim', explode(',', strtolower((string) $response->headers->get('Cache-Control'))));
+        $this->assertContains('no-store', $directives);
+        $this->assertNotContains('public', $directives);
     }
 }

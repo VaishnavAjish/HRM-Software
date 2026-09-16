@@ -512,11 +512,34 @@ export function AuthProvider({ children }) {
 
   const updateCurrentUser = useCallback(
     (updates) => {
-      if (user) {
-        const updated = { ...user, ...updates };
-        setUser(updated);
-        saveUserToStorage(updated);
-      }
+      if (!user) return;
+
+      const updated = { ...user, ...updates };
+
+      // Bail out on a no-op merge. Every field `updates` touches already
+      // matches `user` — skip the state write instead of producing a new
+      // reference anyway. Profile.jsx calls this from inside a `[user]`-keyed
+      // effect after re-fetching the profile it was just given at login, so
+      // an unconditional new `user` reference here retriggers that same
+      // effect, which calls this again, forever: fetch -> updateCurrentUser
+      // -> new user -> effect refires -> fetch -> ... — a whole-app render
+      // loop, not just this one screen, since every `useAuth()` consumer
+      // re-renders on every cycle. A profile fetch re-parses nested fields
+      // (family_members, address, bank details, ...) into fresh array/object
+      // references every time even when the content didn't change, so a
+      // plain `===`/`Object.is` per key isn't enough — those need a
+      // structural comparison, not just the primitive fields.
+      const unchanged = Object.keys(updates).every((key) => {
+        const before = user[key];
+        const after = updated[key];
+        if (before === after) return true;
+        if (before === null || after === null || typeof before !== "object" || typeof after !== "object") return false;
+        return JSON.stringify(before) === JSON.stringify(after);
+      });
+      if (unchanged) return;
+
+      setUser(updated);
+      saveUserToStorage(updated);
     },
     [user],
   );

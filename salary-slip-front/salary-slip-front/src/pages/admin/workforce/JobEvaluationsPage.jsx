@@ -1,13 +1,11 @@
-import { useState } from "react";
-import { Award, Building2, Users, BarChart2, Layers, Briefcase, ClipboardList, ListTodo, FolderKanban, FileText, Plus, Search, Loader2, Pencil, Trash2, Eye, Filter, ChevronDown, ChevronUp, Archive, RotateCcw, CheckCircle, XCircle } from "lucide-react";
+import { useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { createWorkforceListPage } from "./WorkforceListPage";
-import { jobEvaluationApi } from "../../../features/workforce/services/workforceApi";
+import toast from "react-hot-toast";
+import { CheckCircle, XCircle } from "lucide-react";
+import WorkforceListPage from "./WorkforceListPage";
+import { bindJobScopedApi, jobEvaluationApi } from "../../../features/workforce/services/workforceApi";
 import { useAuth } from "../../../context/AuthContext";
 import { useAuthorization } from "../../../hooks/useAuthorization";
-import Card from "../../../components/ui/Card";
-import Button from "../../../components/ui/Button";
-import Modal from "../../../components/ui/Modal";
 import Badge from "../../../components/ui/Badge";
 
 const inputClass =
@@ -34,21 +32,30 @@ const FACTORS = [
   { key: "risk", label: "Risk" },
 ];
 
-function JobEvaluationColumns() {
-  return [
-    { key: "reviewDate", label: "Review Date", render: (row) => row.reviewDate || "—" },
-    { key: "status", label: "Status", render: (row) => <Badge status={row.status} /> },
-    { key: "totalScore", label: "Total Score", render: (row) => row.totalScore !== null ? row.totalScore.toFixed(2) : "—" },
-    { key: "evaluatorName", label: "Evaluator", render: (row) => row.evaluatorName || "—" },
-    { key: "result", label: "Result", render: (row) => row.result || "—" },
-    { key: "approvedByName", label: "Approved By", render: (row) => row.approvedByName || "—" },
-    { key: "approvedAt", label: "Approved At", render: (row) => row.approvedAt ? new Date(row.approvedAt).toLocaleString() : "—" },
-    { key: "createdAt", label: "Created", render: (row) => row.createdAt ? new Date(row.createdAt).toLocaleDateString() : "—" },
-  ];
+function formatScore(score) {
+  return score !== null && score !== undefined ? Number(score).toFixed(2) : "—";
 }
 
-function JobEvaluationCreateForm({ onSubmit }) {
-  const [form, setForm] = useState({
+const COLUMNS = [
+  { key: "reviewDate", label: "Review Date", render: (row) => row.reviewDate || "—" },
+  { key: "status", label: "Status", render: (row) => <Badge status={row.status} /> },
+  { key: "totalScore", label: "Total Score", render: (row) => formatScore(row.totalScore) },
+  { key: "evaluatorName", label: "Evaluator", render: (row) => row.evaluatorName || "—" },
+  { key: "result", label: "Result", render: (row) => row.result || "—" },
+  { key: "approvedByName", label: "Approved By", render: (row) => row.approvedByName || "—" },
+  { key: "approvedAt", label: "Approved At", render: (row) => row.approvedAt ? new Date(row.approvedAt).toLocaleString() : "—" },
+  { key: "createdAt", label: "Created", render: (row) => row.createdAt ? new Date(row.createdAt).toLocaleDateString() : "—" },
+];
+
+const PERMISSIONS = {
+  read: "workforce.job_evaluation.read",
+  create: "workforce.job_evaluation.create",
+  update: "workforce.job_evaluation.update",
+  delete: "workforce.job_evaluation.delete",
+};
+
+function emptyJobEvaluationForm() {
+  return {
     evaluatorId: "",
     factorScores: {},
     result: "",
@@ -58,77 +65,11 @@ function JobEvaluationCreateForm({ onSubmit }) {
     approvedBy: "",
     effectiveFrom: "",
     effectiveTo: "",
-  });
-
-  const handleChange = (field) => (e) => setForm(prev => ({ ...prev, [field]: e.target.value }));
-  const handleSelectChange = (field) => (e) => setForm(prev => ({ ...prev, [field]: e.target.value }));
-  const handleFactorChange = (factor) => (e) => setForm(prev => ({ ...prev, factorScores: { ...prev.factorScores, [factor]: Number(e.target.value) } }));
-
-  return (
-    <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2">
-      <label className="block">
-        <span className={labelClass}>Evaluator</span>
-        <select className={selectClass} value={form.evaluatorId} onChange={handleSelectChange("evaluatorId")}>
-          <option value="">Current User</option>
-        </select>
-      </label>
-      <label className="block">
-        <span className={labelClass}>Review Date</span>
-        <input type="date" className={inputClass} value={form.reviewDate} onChange={handleChange("reviewDate")} />
-      </label>
-      <label className="block">
-        <span className={labelClass}>Status</span>
-        <select className={selectClass} value={form.status} onChange={handleSelectChange("status")}>
-          {STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
-      </label>
-      <label className="block sm:col-span-2">
-        <span className={labelClass}>Factor Scores (1-5)</span>
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-          {FACTORS.map(factor => (
-            <label key={factor.key} className="block">
-              <span className="text-xs text-gray-500 dark:text-gray-400">{factor.label}</span>
-              <input
-                type="number"
-                className={inputClass}
-                value={form.factorScores[factor.key] || ""}
-                onChange={handleFactorChange(factor.key)}
-                min="1"
-                max="5"
-                step="1"
-              />
-            </label>
-          ))}
-        </div>
-      </label>
-      <label className="block sm:col-span-2">
-        <span className={labelClass}>Result</span>
-        <input type="text" className={inputClass} value={form.result} onChange={handleChange("result")} placeholder="e.g., Grade recommendation" />
-      </label>
-      <label className="block sm:col-span-2">
-        <span className={labelClass}>Notes</span>
-        <textarea className={inputClass} value={form.notes} onChange={handleChange("notes")} rows={3} />
-      </label>
-      <label className="block">
-        <span className={labelClass}>Approved By</span>
-        <select className={selectClass} value={form.approvedBy} onChange={handleSelectChange("approvedBy")}>
-          <option value="">None</option>
-        </select>
-      </label>
-      <label className="block">
-        <span className={labelClass}>Effective From</span>
-        <input type="date" className={inputClass} value={form.effectiveFrom} onChange={handleChange("effectiveFrom")} />
-      </label>
-      <label className="block">
-        <span className={labelClass}>Effective To</span>
-        <input type="date" className={inputClass} value={form.effectiveTo} onChange={handleChange("effectiveTo")} />
-      </label>
-    </form>
-  );
+  };
 }
 
-function JobEvaluationEditForm({ item, onSubmit }) {
-  const [form, setForm] = useState({
+function toJobEvaluationForm(item) {
+  return {
     evaluatorId: item.evaluatorId ?? "",
     factorScores: item.factorScores ?? {},
     result: item.result ?? "",
@@ -138,17 +79,32 @@ function JobEvaluationEditForm({ item, onSubmit }) {
     approvedBy: item.approvedBy ?? "",
     effectiveFrom: item.effectiveFrom ?? "",
     effectiveTo: item.effectiveTo ?? "",
-  });
+  };
+}
 
-  const handleChange = (field) => (e) => setForm(prev => ({ ...prev, [field]: e.target.value }));
-  const handleSelectChange = (field) => (e) => setForm(prev => ({ ...prev, [field]: e.target.value }));
-  const handleFactorChange = (factor) => (e) => setForm(prev => ({ ...prev, factorScores: { ...prev.factorScores, [factor]: Number(e.target.value) } }));
+function toJobEvaluationPayload(form) {
+  return {
+    evaluatorId: form.evaluatorId ? Number(form.evaluatorId) : null,
+    factorScores: form.factorScores,
+    result: form.result || null,
+    notes: form.notes || null,
+    reviewDate: form.reviewDate || null,
+    status: form.status,
+    approvedBy: form.approvedBy ? Number(form.approvedBy) : null,
+    effectiveFrom: form.effectiveFrom || null,
+    effectiveTo: form.effectiveTo || null,
+  };
+}
+
+function JobEvaluationForm({ value: form, onChange, resultPlaceholder }) {
+  const handleChange = (field) => (e) => onChange(prev => ({ ...prev, [field]: e.target.value }));
+  const handleFactorChange = (factor) => (e) => onChange(prev => ({ ...prev, factorScores: { ...prev.factorScores, [factor]: Number(e.target.value) } }));
 
   return (
-    <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2">
+    <form onSubmit={(e) => e.preventDefault()} className="grid gap-4 sm:grid-cols-2">
       <label className="block">
         <span className={labelClass}>Evaluator</span>
-        <select className={selectClass} value={form.evaluatorId} onChange={handleSelectChange("evaluatorId")}>
+        <select className={selectClass} value={form.evaluatorId} onChange={handleChange("evaluatorId")}>
           <option value="">Current User</option>
         </select>
       </label>
@@ -158,7 +114,7 @@ function JobEvaluationEditForm({ item, onSubmit }) {
       </label>
       <label className="block">
         <span className={labelClass}>Status</span>
-        <select className={selectClass} value={form.status} onChange={handleSelectChange("status")}>
+        <select className={selectClass} value={form.status} onChange={handleChange("status")}>
           {STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
       </label>
@@ -183,7 +139,7 @@ function JobEvaluationEditForm({ item, onSubmit }) {
       </label>
       <label className="block sm:col-span-2">
         <span className={labelClass}>Result</span>
-        <input type="text" className={inputClass} value={form.result} onChange={handleChange("result")} />
+        <input type="text" className={inputClass} value={form.result} onChange={handleChange("result")} placeholder={resultPlaceholder} />
       </label>
       <label className="block sm:col-span-2">
         <span className={labelClass}>Notes</span>
@@ -191,7 +147,7 @@ function JobEvaluationEditForm({ item, onSubmit }) {
       </label>
       <label className="block">
         <span className={labelClass}>Approved By</span>
-        <select className={selectClass} value={form.approvedBy} onChange={handleSelectChange("approvedBy")}>
+        <select className={selectClass} value={form.approvedBy} onChange={handleChange("approvedBy")}>
           <option value="">None</option>
         </select>
       </label>
@@ -207,13 +163,17 @@ function JobEvaluationEditForm({ item, onSubmit }) {
   );
 }
 
+function JobEvaluationCreateForm(props) {
+  return <JobEvaluationForm {...props} resultPlaceholder="e.g., Grade recommendation" />;
+}
+
 function JobEvaluationViewContent({ item }) {
   return (
     <div className="space-y-4">
       <dl className="grid gap-4 sm:grid-cols-2">
         <div><dt className="text-sm text-gray-500 dark:text-gray-400">Review Date</dt><dd>{item.reviewDate || "—"}</dd></div>
         <div><dt className="text-sm text-gray-500 dark:text-gray-400">Status</dt><dd><Badge status={item.status} /></dd></div>
-        <div><dt className="text-sm text-gray-500 dark:text-gray-400">Total Score</dt><dd>{item.totalScore !== null ? item.totalScore.toFixed(2) : "—"}</dd></div>
+        <div><dt className="text-sm text-gray-500 dark:text-gray-400">Total Score</dt><dd>{formatScore(item.totalScore)}</dd></div>
         <div><dt className="text-sm text-gray-500 dark:text-gray-400">Evaluator</dt><dd>{item.evaluatorName || "—"}</dd></div>
         <div className="sm:col-span-2"><dt className="text-sm text-gray-500 dark:text-gray-400">Factor Scores</dt><dd className="mt-1">
           <div className="grid gap-1 sm:grid-cols-2 lg:grid-cols-4">
@@ -237,84 +197,96 @@ function JobEvaluationViewContent({ item }) {
   );
 }
 
+const CREATE_MODAL = {
+  form: JobEvaluationCreateForm,
+  initialValues: emptyJobEvaluationForm,
+  toPayload: toJobEvaluationPayload,
+};
+
+const EDIT_MODAL = {
+  form: JobEvaluationForm,
+  initialValues: toJobEvaluationForm,
+  toPayload: toJobEvaluationPayload,
+};
+
+const VIEW_MODAL = {
+  content: JobEvaluationViewContent,
+};
+
 export default function JobEvaluationsPage() {
   const { jobId } = useParams();
+  const { user } = useAuth();
+  const token = user?.accessToken;
+  const tokenType = user?.tokenType || "Bearer";
   const { can } = useAuthorization();
   const navigate = useNavigate();
+  const api = useMemo(() => bindJobScopedApi(jobEvaluationApi, jobId), [jobId]);
 
-  const ListPage = createWorkforceListPage({
-    entityName: "Job Evaluation",
-    entityNamePlural: "Job Evaluations",
-    api: jobEvaluationApi,
-    columns: JobEvaluationColumns(),
-    permissions: {
-      read: "workforce.job_evaluation.read",
-      create: "workforce.job_evaluation.create",
-      update: "workforce.job_evaluation.update",
-      delete: "workforce.job_evaluation.delete",
-    },
-    customActions: [
-      {
-        key: "submit",
-        icon: CheckCircle,
-        title: "Submit for Approval",
-        onClick: async (row) => {
-          if (row.status !== "draft") return;
-          try {
-            await jobEvaluationApi.submit(jobId, row.id, (await import("../../../context/AuthContext")).useAuth.getState().user?.accessToken);
-            toast.success("Evaluation submitted");
-            navigate(0);
-          } catch (err) {
-            toast.error(err.message || "Could not submit");
-          }
-        },
-        disabled: (row) => row.status !== "draft",
-      },
-      {
-        key: "approve",
-        icon: CheckCircle,
-        title: "Approve",
-        onClick: async (row) => {
-          if (row.status !== "submitted") return;
-          try {
-            await jobEvaluationApi.approve(jobId, row.id, (await import("../../../context/AuthContext")).useAuth.getState().user?.accessToken);
-            toast.success("Evaluation approved");
-            navigate(0);
-          } catch (err) {
-            toast.error(err.message || "Could not approve");
-          }
-        },
-        disabled: (row) => row.status !== "submitted",
-      },
-      {
-        key: "reject",
-        icon: XCircle,
-        title: "Reject",
-        onClick: async (row) => {
-          if (row.status !== "submitted") return;
-          try {
-            await jobEvaluationApi.reject(jobId, row.id, (await import("../../../context/AuthContext")).useAuth.getState().user?.accessToken);
-            toast.success("Evaluation rejected");
-            navigate(0);
-          } catch (err) {
-            toast.error(err.message || "Could not reject");
-          }
-        },
-        disabled: (row) => row.status !== "submitted",
-      },
-    ],
-    createModal: {
-      form: <JobEvaluationCreateForm />,
-      onSubmit: (handler) => handler({ evaluatorId: form.evaluatorId ? Number(form.evaluatorId) : null, factorScores: form.factorScores, result: form.result || null, notes: form.notes || null, reviewDate: form.reviewDate || null, status: form.status, approvedBy: form.approvedBy ? Number(form.approvedBy) : null, effectiveFrom: form.effectiveFrom || null, effectiveTo: form.effectiveTo || null }),
-    },
-    editModal: {
-      form: JobEvaluationEditForm,
-      onSubmit: (item, handler) => handler({ evaluatorId: form.evaluatorId ? Number(form.evaluatorId) : null, factorScores: form.factorScores, result: form.result || null, notes: form.notes || null, reviewDate: form.reviewDate || null, status: form.status, approvedBy: form.approvedBy ? Number(form.approvedBy) : null, effectiveFrom: form.effectiveFrom || null, effectiveTo: form.effectiveTo || null }),
-    },
-    viewModal: {
-      content: JobEvaluationViewContent,
-    },
-  });
+  const canSubmit = can("workforce.job_evaluation.update");
+  const canApprove = can("workforce.job_evaluation.approve");
 
-  return ListPage;
+  const customActions = [
+    {
+      key: "submit",
+      icon: CheckCircle,
+      title: "Submit for Approval",
+      onClick: async (row) => {
+        if (row.status !== "draft") return;
+        try {
+          await jobEvaluationApi.submit(jobId, row.id, token, tokenType);
+          toast.success("Evaluation submitted");
+          navigate(0);
+        } catch (err) {
+          toast.error(err.message || "Could not submit");
+        }
+      },
+      disabled: (row) => !canSubmit || row.status !== "draft",
+    },
+    {
+      key: "approve",
+      icon: CheckCircle,
+      title: "Approve",
+      onClick: async (row) => {
+        if (row.status !== "submitted") return;
+        try {
+          await jobEvaluationApi.approve(jobId, row.id, token, tokenType);
+          toast.success("Evaluation approved");
+          navigate(0);
+        } catch (err) {
+          toast.error(err.message || "Could not approve");
+        }
+      },
+      disabled: (row) => !canApprove || row.status !== "submitted",
+    },
+    {
+      key: "reject",
+      icon: XCircle,
+      title: "Reject",
+      onClick: async (row) => {
+        if (row.status !== "submitted") return;
+        try {
+          await jobEvaluationApi.reject(jobId, row.id, token, tokenType);
+          toast.success("Evaluation rejected");
+          navigate(0);
+        } catch (err) {
+          toast.error(err.message || "Could not reject");
+        }
+      },
+      disabled: (row) => !canApprove || row.status !== "submitted",
+    },
+  ];
+
+  return (
+    <WorkforceListPage
+      entityName="Job Evaluation"
+      entityNamePlural="Job Evaluations"
+      api={api}
+      columns={COLUMNS}
+      permissions={PERMISSIONS}
+      customActions={customActions}
+      createModal={CREATE_MODAL}
+      editModal={EDIT_MODAL}
+      viewModal={VIEW_MODAL}
+    />
+  );
 }

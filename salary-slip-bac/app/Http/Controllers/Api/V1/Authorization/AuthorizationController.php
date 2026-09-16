@@ -283,7 +283,7 @@ class AuthorizationController extends Controller
     {
         $tier = (int) $actor->role;
 
-        $hasAdminRole = $actor->roles()->where(function ($q) {
+        $hasAdminRole = SchemaSupport::hasColumn('roles', 'code') && $actor->roles()->where(function ($q) {
             $q->whereIn('code', ['admin', 'super_admin', 'super_administrator', 'tenant_administrator', 'hr_manager', 'hr', 'hr_admin', 'hr_administrator'])
               ->orWhere('code', 'like', '%admin%')
               ->orWhere('code', 'like', '%hr%');

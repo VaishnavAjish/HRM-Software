@@ -10,6 +10,8 @@ import ClaimSummaryCard from "./ClaimSummaryCard";
 import ClaimTimeline from "./ClaimTimeline";
 import ClaimDecisionsList from "./ClaimDecisionsList";
 
+const EMPTY_RESULT = { key: null, claim: null, documents: [], error: null };
+
 /**
  * A single claim's read-only detail: summary + expense breakdown + document
  * list + timeline. This is a pure "click a row, see details" component,
@@ -26,48 +28,46 @@ import ClaimDecisionsList from "./ClaimDecisionsList";
  */
 export default function ClaimDetailDrawer({ isOpen, onClose, claimId, footer, title }) {
   const { user } = useAuth();
-  const [claim, setClaim] = useState(null);
-  const [documents, setDocuments] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const accessToken = user?.accessToken;
+  const tokenType = user?.tokenType;
+  const requestKey = isOpen && claimId && accessToken ? `${claimId}|${accessToken}|${tokenType ?? ""}` : null;
+  const [result, setResult] = useState(EMPTY_RESULT);
   const [viewerDoc, setViewerDoc] = useState(null);
+  const [wasOpen, setWasOpen] = useState(isOpen);
+
+  if (wasOpen !== isOpen) {
+    setWasOpen(isOpen);
+    if (!isOpen) {
+      setResult(EMPTY_RESULT);
+      setViewerDoc(null);
+    }
+  }
 
   useEffect(() => {
-    if (!isOpen || !claimId || !user?.accessToken) return undefined;
+    if (!requestKey) return undefined;
     let cancelled = false;
-    setLoading(true);
-    setError(null);
 
     Promise.all([
-      mediclaimApi.getClaim(claimId, user.accessToken, user.tokenType),
-      mediclaimApi.claimDocuments(claimId, user.accessToken, user.tokenType).catch(() => null),
+      mediclaimApi.getClaim(claimId, accessToken, tokenType),
+      mediclaimApi.claimDocuments(claimId, accessToken, tokenType).catch(() => null),
     ])
       .then(([claimRes, documentsRes]) => {
         if (cancelled) return;
-        setClaim(claimRes?.data ?? null);
         const docsPayload = documentsRes?.data;
         const docs = Array.isArray(docsPayload?.data) ? docsPayload.data : Array.isArray(docsPayload) ? docsPayload : [];
-        setDocuments(docs);
+        setResult({ key: requestKey, claim: claimRes?.data ?? null, documents: docs, error: null });
       })
       .catch((err) => {
         if (cancelled) return;
-        setError(err?.message || "Failed to load claim details.");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
+        setResult((prev) => ({ ...prev, key: requestKey, error: err?.message || "Failed to load claim details." }));
       });
 
     return () => { cancelled = true; };
-  }, [isOpen, claimId, user]);
+  }, [requestKey, claimId, accessToken, tokenType]);
 
-  useEffect(() => {
-    if (!isOpen) {
-      setClaim(null);
-      setDocuments([]);
-      setError(null);
-      setViewerDoc(null);
-    }
-  }, [isOpen]);
+  const { claim, documents } = result;
+  const loading = requestKey !== null && result.key !== requestKey;
+  const error = loading ? null : result.error;
 
   const expenses = claim?.expenses || claim?.expenseLines || claim?.expense_lines || [];
 

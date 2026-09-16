@@ -18,25 +18,29 @@ function memberName(member) {
  */
 export default function MyCoverageTab() {
   const { user } = useAuth();
-  const [state, setState] = useState({ loading: true, coverage: null, error: null });
+  const accessToken = user?.accessToken;
+  const tokenType = user?.tokenType;
+  const requestKey = `${accessToken ?? ""}|${tokenType ?? ""}`;
+  const [result, setResult] = useState({ key: null, coverage: null, error: null });
 
   useEffect(() => {
-    if (!user?.accessToken) return undefined;
+    if (!accessToken) return undefined;
     let cancelled = false;
-    setState((prev) => ({ ...prev, loading: true, error: null }));
 
-    mediclaimApi.myCoverage(user.accessToken, user.tokenType)
+    mediclaimApi.myCoverage(accessToken, tokenType)
       .then((res) => {
         if (cancelled) return;
-        setState({ loading: false, coverage: res?.data ?? null, error: null });
+        setResult({ key: requestKey, coverage: res?.data ?? null, error: null });
       })
       .catch((err) => {
         if (cancelled) return;
-        setState({ loading: false, coverage: null, error: err?.message || "Failed to load your coverage." });
+        setResult({ key: requestKey, coverage: null, error: err?.message || "Failed to load your coverage." });
       });
 
     return () => { cancelled = true; };
-  }, [user]);
+  }, [accessToken, tokenType, requestKey]);
+
+  const state = { loading: result.key !== requestKey, coverage: result.coverage, error: result.error };
 
   if (state.loading) {
     return <p className="py-10 text-center text-sm text-gray-400">Loading your coverage…</p>;

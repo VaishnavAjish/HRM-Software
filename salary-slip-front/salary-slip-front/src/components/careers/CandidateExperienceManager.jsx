@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Briefcase, Plus, Pencil, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { candidateApi } from "../../utils/api";
-import { useCandidateAuth } from "../../context/CandidateAuthContext";
+import { useCandidateAuth } from "../../context/candidate-auth-context";
 
 const EMPTY_FORM = { company: "", designation: "", location: "", start_date: "", end_date: "", is_current: false, description: "" };
 

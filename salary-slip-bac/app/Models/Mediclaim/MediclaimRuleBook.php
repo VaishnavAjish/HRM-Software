@@ -6,10 +6,12 @@ use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * mediclaim_rule_books — draft/published/archived rule-book metadata. The
- * actual trilingual (EN/HI/GU) PDF files are uploaded through the existing
- * DocumentService and joined in via `mediclaim_document_links`
- * (documentLinks(), morphMany), never stored directly on this row.
+ * mediclaim_rule_books — one row per (company, language) rule-book version,
+ * draft/published/archived. The actual rule text lives in child
+ * `mediclaim_rule_book_items` rows (items(), hasMany, ordered by
+ * sort_order), not as an uploaded PDF. `language_id` points at
+ * `mediclaim_rule_book_languages`, a full CRUD resource HR manages
+ * separately (not a fixed EN/HI/GU triplet).
  */
 class MediclaimRuleBook extends Model
 {
@@ -17,6 +19,7 @@ class MediclaimRuleBook extends Model
 
     protected $fillable = [
         'company_code',
+        'language_id',
         'version_label',
         'status',
         'effective_from',
@@ -38,6 +41,16 @@ class MediclaimRuleBook extends Model
     public function documentLinks()
     {
         return $this->morphMany(MediclaimDocumentLink::class, 'linkable');
+    }
+
+    public function language()
+    {
+        return $this->belongsTo(MediclaimRuleBookLanguage::class, 'language_id');
+    }
+
+    public function items()
+    {
+        return $this->hasMany(MediclaimRuleBookItem::class, 'rule_book_id')->orderBy('sort_order');
     }
 
     public function acknowledgedBy()

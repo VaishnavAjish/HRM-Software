@@ -104,7 +104,7 @@ class LegalEntityService
         }
 
         $name = trim((string) $data['name']);
-        $code = trim((string) ($data['code'] ?: $name));
+        $code = trim((string) (($data['code'] ?? '') ?: $name));
 
         $this->assertCodeFree($company->id, $code, null);
 

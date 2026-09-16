@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { Users, Plus, Trash2, ShieldCheck, UserCheck } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 import Modal from "../ui/Modal";
 import Button from "../ui/Button";
 import Badge from "../ui/Badge";
-import { useNotifications } from "../../context/NotificationContext";
+import { useNotifications } from "../../context/notification-context";
 
 const inputClass =
   "w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3.5 py-2.5 text-xs font-semibold text-gray-900 dark:text-white placeholder-gray-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none transition-all";

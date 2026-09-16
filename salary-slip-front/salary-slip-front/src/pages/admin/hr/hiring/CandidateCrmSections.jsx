@@ -75,7 +75,9 @@ export default function CandidateCrmSections({ candidate, loading }) {
       .catch(() => {});
   }, [user?.accessToken, user?.tokenType]);
 
-  useEffect(() => {
+  const [prefillInputs, setPrefillInputs] = useState({ type: commDraft.type, mailTemplates, candidate });
+  if (prefillInputs.type !== commDraft.type || prefillInputs.mailTemplates !== mailTemplates || prefillInputs.candidate !== candidate) {
+    setPrefillInputs({ type: commDraft.type, mailTemplates, candidate });
     if (commDraft.type === "email" && !commDraft.body && mailTemplates.length > 0) {
       const msgTpl = mailTemplates.find(t => t.id === "message");
       if (msgTpl) {
@@ -84,7 +86,7 @@ export default function CandidateCrmSections({ candidate, loading }) {
         setCommDraft(d => ({ ...d, body: text, subject: msgTpl.name || "Update regarding your application" }));
       }
     }
-  }, [commDraft.type, mailTemplates, candidate]);
+  }
 
   const canDocs = can("hr.candidate.update");
   const [docs, setDocs] = useState([]);
@@ -92,10 +94,12 @@ export default function CandidateCrmSections({ candidate, loading }) {
   const [docDraft, setDocDraft] = useState({ type: "resume", notes: "", file: null });
   const [uploadKey, setUploadKey] = useState(0);
 
+  const accessToken = user?.accessToken;
+  const tokenType = user?.tokenType;
+
   useEffect(() => {
-    if (!candidateId || !user?.accessToken) return;
+    if (!candidateId || !accessToken) return;
     let alive = true;
-    const { accessToken, tokenType } = user;
 
     // Each section loads independently — one failing (e.g. no permission for
     // notes) must not stop the others from rendering, but the failure still
@@ -117,7 +121,7 @@ export default function CandidateCrmSections({ candidate, loading }) {
       .catch((err) => alive && toast.error(err.message || "Failed to load documents"));
 
     return () => { alive = false; };
-  }, [candidateId, user?.accessToken]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [candidateId, accessToken, tokenType]);
 
   /* ── tags ── */
   const toggleTag = async (tagId) => {

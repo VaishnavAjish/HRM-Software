@@ -134,14 +134,14 @@ class PortalCapabilityTest extends TestCase
         $this->assertSame('employee', $this->snapshotFor($this->userWith($role, 'Q-3'))['portal']);
     }
 
-    public function test_the_agent_capability_wins_over_the_business_one(): void
+    public function test_the_business_capability_wins_over_the_agent_one(): void
     {
         $role = $this->roleWith('field_agent', 'Field Agent', [
             'ui.portals', 'ui.portals.agent',
             'ui.portals.business',
         ]);
 
-        $this->assertSame('agent', $this->snapshotFor($this->userWith($role, 'Q-4'))['portal']);
+        $this->assertSame('admin', $this->snapshotFor($this->userWith($role, 'Q-4'))['portal']);
     }
 
     public function test_an_unconfigured_role_keeps_the_previous_behaviour(): void

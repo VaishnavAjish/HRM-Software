@@ -23,6 +23,9 @@ class AuthController extends Controller
     private const OTP_LOGIN_ACCEPTED =
         'If this mobile number is registered, an OTP has been sent.';
 
+    private const RESET_OTP_ACCEPTED =
+        'If this account is registered with a mobile number, an OTP has been sent to it.';
+
     private const OTP_LOGIN_TTL_MINUTES = 5;
 
     private const OTP_LOGIN_MAX_ATTEMPTS = 5;
@@ -786,8 +789,14 @@ class AuthController extends Controller
     private function sendPasswordResetOtp(Request $request)
     {
         $emp = null;
-        if ($request->filled('emp_code') && $request->filled('verification_token')) {
+        $identityVerifiedFlow = $request->filled('emp_code') && $request->filled('verification_token');
+
+        if ($identityVerifiedFlow) {
             $emp = $this->findVerifiedEmployee($request);
+
+            if (! $emp) {
+                return response()->json(['status' => false, 'message' => 'Verification session expired or employee not found. Please try Step 1 again.'], 422);
+            }
         }
 
         if (! $emp && $request->filled('mobile')) {
@@ -801,23 +810,25 @@ class AuthController extends Controller
             $emp = $this->findUserByEmail($request);
         }
 
-        if (! $emp) {
+        $mobileOnFile = $emp ? self::normaliseMobile((string) ($emp->mobile_number ?? '')) : '';
+
+        if (! $emp || strlen($mobileOnFile) !== 10) {
+            if ($emp && $identityVerifiedFlow) {
+                return response()->json(['status' => false, 'message' => 'No mobile number on file. Contact your administrator.'], 422);
+            }
+
+            if ($emp) {
+                Log::warning('Password reset requested for an account with no usable mobile number', ['user_id' => $emp->id]);
+            }
+
             usleep(random_int(180_000, 320_000));
-            return response()->json(['status' => false, 'message' => 'Verification session expired or employee not found. Please try Step 1 again.'], 422);
-        }
 
-        $mobileOnFile = self::normaliseMobile((string) ($emp->mobile_number ?? $request->mobile_number ?? $request->mobile ?? ''));
-
-        if (strlen($mobileOnFile) !== 10) {
-            return response()->json(['status' => false, 'message' => 'No mobile number on file. Contact your administrator.'], 422);
+            return response()->json(['status' => true, 'success' => true, 'message' => self::RESET_OTP_ACCEPTED]);
         }
 
         $otp = (string) random_int(100000, 999999); // 6-digit OTP
 
-        Log::info('Password reset mobile OTP delivery initiated', [
-            'user_id' => $emp->id,
-            'mobile' => $mobileOnFile,
-        ]);
+        Log::info('Password reset mobile OTP delivery initiated', ['user_id' => $emp->id]);
 
         $delivered = app(Fast2SmsService::class)->sendOtp($mobileOnFile, $otp);
 
@@ -832,7 +843,7 @@ class AuthController extends Controller
         // actually delivering it would let anyone who can reach this endpoint
         // read a code intended for the employee's phone.
         if (! $delivered && ! config('auth.otp_dev_fallback', false)) {
-            return response()->json(['status' => false, 'message' => 'Unable to send the OTP right now. Please verify your mobile number or contact support.'], 422);
+            return response()->json(['status' => false, 'success' => false, 'message' => 'Unable to send the OTP right now. Please try again.'], 500);
         }
 
         $emp->otp = json_encode([
@@ -846,12 +857,10 @@ class AuthController extends Controller
         $payload = [
             'status' => true,
             'success' => true,
-            'message' => 'OTP sent to your registered mobile number.',
+            'message' => self::RESET_OTP_ACCEPTED,
         ];
 
-        if ($delivered) {
-            $payload['channel'] = 'sms';
-        } else {
+        if (! $delivered) {
             Log::warning('Password reset OTP dev fallback used — code returned to caller', ['user_id' => $emp->id]);
             $payload['dev_otp'] = $otp;
         }

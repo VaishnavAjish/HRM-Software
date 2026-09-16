@@ -9,7 +9,7 @@
 import { getEmployeePhotoUrl } from "../../pages/admin/AdminModals/employee-helpers";
 
 export function firstPresent(...values) {
-  return values.find((value) => value !== undefined && value !== null) ?? "";
+  return values.find((value) => value !== undefined && value !== null && value !== "") ?? "";
 }
 
 export function normalizeTrialForm(item, index) {
@@ -29,7 +29,7 @@ export function normalizeTrialForm(item, index) {
     fromNo: firstPresent(item.form_no, item.fromNo),
     date: firstPresent(item.trial_date, item.date, item.created_at),
     department: firstPresent(item.department, item.dept),
-    designation: firstPresent(item.designation, item.desig),
+    designation: firstPresent(item.designation, item.desig, item.designation_name),
     name: firstPresent(item.name, item.employee_name),
     address: item.address || "-",
     mobileNo1: firstPresent(item.mobile_number, item.mobileNo1),

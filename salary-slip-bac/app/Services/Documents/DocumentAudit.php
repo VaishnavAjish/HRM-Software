@@ -5,6 +5,7 @@ namespace App\Services\Documents;
 use App\Models\Document;
 use App\Models\DocumentAuditLog;
 use App\Models\DocumentVersion;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Request as RequestFacade;
 
 /**
@@ -87,7 +88,7 @@ class DocumentAudit
         ?string $permissionResult = null
     ): ?DocumentAuditLog {
         try {
-            return self::record($action, $document, $version, $metadata, $permission, $permissionResult);
+            return DB::transaction(fn () => self::record($action, $document, $version, $metadata, $permission, $permissionResult));
         } catch (\Throwable $e) {
             report($e);
 

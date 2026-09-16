@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import {
-  Plus, RefreshCw, Search, Loader2, Pencil, Trash2, Power, PowerOff, Shield,
+  RefreshCw, Search, Loader2, Power, Shield,
   Building2, Clock, Check, X, AlertCircle, Eye, Calendar, Users,
 } from "lucide-react";
 import Badge from "../../../components/ui/Badge";
@@ -15,7 +15,6 @@ import { organizationApi } from "../../../features/organization/services/organiz
 
 const inputClass =
   "w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500";
-const labelClass = "mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400";
 
 const STATUS_FILTERS = [
   { value: "ALL", label: "All" },
@@ -38,19 +37,6 @@ const CHANGE_TYPES = [
   { value: "other", label: "Other" },
 ];
 
-const CHANGE_ITEM_TYPES = [
-  { value: "create_unit", label: "Create Unit" },
-  { value: "update_unit", label: "Update Unit" },
-  { value: "delete_unit", label: "Delete Unit" },
-  { value: "move_unit", label: "Move Unit" },
-  { value: "create_position", label: "Create Position" },
-  { value: "update_position", label: "Update Position" },
-  { value: "delete_position", label: "Delete Position" },
-  { value: "assign_employee", label: "Assign Employee" },
-  { value: "update_assignment", label: "Update Assignment" },
-  { value: "remove_assignment", label: "Remove Assignment" },
-];
-
 function Th({ children, className = "" }) {
   return <th scope="col" className={`px-4 py-3 whitespace-nowrap ${className}`}>{children}</th>;
 }
@@ -62,7 +48,6 @@ export default function ChangeManagementPage() {
   const tokenType = user?.tokenType || "Bearer";
 
   const [changes, setChanges] = useState([]);
-  const [dialog, setDialog] = useState(null);
   const [activeChange, setActiveChange] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -84,7 +69,7 @@ export default function ChangeManagementPage() {
     if (!token) return;
     let active = true;
     organizationApi.orgChanges(
-      { search, status, change_type: setChangeType === "ALL" ? undefined : setChangeType },
+      { search, status, change_type: changeType === "ALL" ? undefined : changeType },
       token, tokenType,
     ).then((res) => {
       if (!active) return;
@@ -100,20 +85,7 @@ export default function ChangeManagementPage() {
     try { await work(); toast.success(message); after(); reload(); } catch (err) { toast.error(err.message || "That did not work"); } finally { setBusy(false); }
   };
 
-  const saveChange = (payload) => run(
-    () => dialog?.id
-      ? organizationApi.updateOrgChange(dialog.id, payload, token, tokenType)
-      : organizationApi.createOrgChange(payload, token, tokenType),
-    dialog?.id ? "Change updated" : "Change created",
-  );
-
-  const companyOptions = useMemo(() => [], []);
   const canManage = can("org.change.create") || can("org.change.update");
-
-  const handleStatusToggle = (change) => run(
-    () => organizationApi.approveOrgChange(change.id, null, token, tokenType), // simplified - would need comments
-    "Change status updated",
-  );
 
   const canApprove = can("org.change.approve");
   const canReject = can("org.change.reject");
@@ -171,8 +143,8 @@ export default function ChangeManagementPage() {
           <select
             aria-label="Filter by change type"
             className={`${inputClass} w-36`}
-            value={changeType === "ALL" ? "" : changeType}
-            onChange={(e) => setChangeType(e.target.value)}
+            value={changeType}
+            onChange={(e) => changeFilter(setChangeType)(e.target.value)}
           >
             <option value="ALL">All Types</option>
             {CHANGE_TYPES.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
@@ -180,9 +152,6 @@ export default function ChangeManagementPage() {
 
           <div className="ml-auto flex items-center gap-2">
             <Button variant="secondary" onClick={reload}><RefreshCw size={16} /> Refresh</Button>
-            {can("org.change.create") && (
-              <Button onClick={() => setDialog({})}><Plus size={16} /> Add Change</Button>
-            )}
           </div>
         </div>
       </Card>
@@ -232,7 +201,7 @@ export default function ChangeManagementPage() {
                         )}
                         {canApprove && change.status !== "approved" && change.status !== "rejected" && (
                           <Button
-                            size="sm" variant="ghost"
+                            size="sm" variant="ghost" disabled={busy}
                             onClick={() => run(() => organizationApi.approveOrgChange(change.id, null, token, tokenType), "Change approved")}
                           >
                             <Check size={14} /> Approve
@@ -240,7 +209,7 @@ export default function ChangeManagementPage() {
                         )}
                         {canReject && change.status !== "approved" && change.status !== "rejected" && (
                           <Button
-                            size="sm" variant="ghost"
+                            size="sm" variant="ghost" disabled={busy}
                             onClick={() => run(() => organizationApi.rejectOrgChange(change.id, "User rejected", token, tokenType), "Change rejected")}
                           >
                             <X size={14} /> Reject
@@ -248,7 +217,7 @@ export default function ChangeManagementPage() {
                         )}
                         {change.status === "draft" && (
                           <Button
-                            size="sm" variant="ghost"
+                            size="sm" variant="ghost" disabled={busy}
                             onClick={() => run(() => organizationApi.submitOrgChange(change.id, token, tokenType), "Change submitted")}
                           >
                             <Clock size={14} /> Submit
@@ -256,7 +225,7 @@ export default function ChangeManagementPage() {
                         )}
                         {change.status === "submitted" && (
                           <Button
-                            size="sm" variant="ghost"
+                            size="sm" variant="ghost" disabled={busy}
                             onClick={() => run(() => organizationApi.scheduleOrgChange(change.id, new Date().toISOString().split("T")[0], token, tokenType), "Change scheduled")}
                           >
                             <Calendar size={14} /> Schedule
@@ -264,7 +233,7 @@ export default function ChangeManagementPage() {
                         )}
                         {change.status === "scheduled" && (
                           <Button
-                            size="sm" variant="ghost"
+                            size="sm" variant="ghost" disabled={busy}
                             onClick={() => run(() => organizationApi.applyOrgChange(change.id, token, tokenType), "Change applied")}
                           >
                             <Power size={14} /> Apply
@@ -272,7 +241,7 @@ export default function ChangeManagementPage() {
                         )}
                         {change.status !== "cancelled" && (
                           <Button
-                            size="sm" variant="ghost"
+                            size="sm" variant="ghost" disabled={busy}
                             onClick={() => run(() => organizationApi.cancelOrgChange(change.id, token, tokenType), "Change cancelled")}
                           >
                             <AlertCircle size={14} /> Cancel

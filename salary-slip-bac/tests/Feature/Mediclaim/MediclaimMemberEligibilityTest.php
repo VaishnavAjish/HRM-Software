@@ -47,7 +47,7 @@ class MediclaimMemberEligibilityTest extends TestCase
     #[Test]
     public function a_third_active_child_change_request_is_rejected(): void
     {
-        [$employee, $hr, $enrollment, $version] = $this->policyAndEnrollment();
+        [$employee, , $enrollment] = $this->policyAndEnrollment();
 
         MediclaimMember::create([
             'enrollment_id' => $enrollment->id, 'employee_user_id' => $employee->id,
@@ -61,18 +61,18 @@ class MediclaimMemberEligibilityTest extends TestCase
         ]);
 
         $this->grant($employee, ['self.mediclaim.member_change_request.create']);
-        $this->grant($hr, ['mediclaim.member_change_request.decide']);
 
-        $created = $this->actingAsUser($employee)
+        // Self-service change requests are applied immediately (no HR
+        // approval wait — see MediclaimMemberService::submitAndAutoApply()),
+        // so the max-2-children guard now rejects a third child on this
+        // very first request rather than on a separate HR decision call.
+        $this->actingAsUser($employee)
             ->postJson('/api/v1/mediclaim/me/member-change-requests', [
                 'request_type' => 'add',
                 'enrollment_id' => $enrollment->id,
                 'proposed_values' => ['full_name' => 'Child Three', 'relationship_type' => 'child', 'date_of_birth' => '2019-01-01'],
                 'effective_from' => '2024-01-01',
-            ])->assertCreated()->json('data');
-
-        $this->actingAsUser($hr)
-            ->postJson("/api/v1/mediclaim/member-change-requests/{$created['id']}/decision", ['decision' => 'approve'])
+            ])
             ->assertStatus(422)
             ->assertJsonValidationErrors(['relationship_type']);
 

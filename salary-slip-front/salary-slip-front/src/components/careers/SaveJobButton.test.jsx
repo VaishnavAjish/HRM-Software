@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const authState = vi.hoisted(() => ({ isAuthenticated: true, token: "candidate-token" }));
 
-vi.mock("../../context/CandidateAuthContext", () => ({
+vi.mock("../../context/candidate-auth-context", () => ({
   useCandidateAuth: () => authState,
 }));
 

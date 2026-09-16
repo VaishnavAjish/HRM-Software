@@ -1,20 +1,19 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import {
-  Users, Plus, RefreshCw, Search, Loader2, Pencil, Trash2, Power, PowerOff, Shield,
-  Building2, Mail, Flag, Calendar,
+  Users, RefreshCw, Search, Loader2, Power, PowerOff, Shield,
 } from "lucide-react";
 import Badge from "../../../components/ui/Badge";
 import Button from "../../../components/ui/Button";
 import Card from "../../../components/ui/Card";
 import { SkeletonTable } from "../../../components/ui/Skeleton";
+import UserPicker from "../../../components/authorization/UserPicker";
 import { useAuth } from "../../../context/AuthContext";
 import { useAuthorization } from "../../../hooks/useAuthorization";
 import { organizationApi } from "../../../features/organization/services/organizationApi";
 
 const inputClass =
   "w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500";
-const labelClass = "mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400";
 
 const STATUS_FILTERS = [
   { value: "ALL", label: "All" },
@@ -30,13 +29,6 @@ const REL_TYPES = [
   { value: "matrix", label: "Matrix" },
 ];
 
-const LEADERSHIP_TYPES = [
-  { value: "head", label: "Head" },
-  { value: "manager", label: "Manager" },
-  { value: "lead", label: "Lead" },
-  { value: "coordinator", label: "Coordinator" },
-];
-
 function Th({ children, className = "" }) {
   return <th scope="col" className={`px-4 py-3 whitespace-nowrap ${className}`}>{children}</th>;
 }
@@ -49,8 +41,6 @@ export default function ReportingStructurePage() {
 
   const [relationships, setRelationships] = useState([]);
   const [leadershipAssignments, setLeadershipAssignments] = useState([]);
-  const [employees, setEmployees] = useState([]);
-  const [companies, setCompanies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -58,7 +48,6 @@ export default function ReportingStructurePage() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("ALL");
   const [relType, setRelType] = useState("ALL");
-  const [dialog, setDialog] = useState(null);
   const [chainEmployeeId, setChainEmployeeId] = useState("");
 
   const reload = useCallback(() => {
@@ -70,15 +59,15 @@ export default function ReportingStructurePage() {
     if (!token) return;
     let active = true;
     Promise.all([
-      organizationApi.reportingRelationships({ search, status, relationship_type: setRelType === "ALL" ? undefined : setRelType }, token, tokenType),
-      organizationApi.legalEntityProfileCompanies(token, tokenType).catch(() => ({ data: [] })),
-    ]).then(([rels, companiesRes]) => {
+      organizationApi.reportingRelationships({ search, status, relationship_type: relType === "ALL" ? undefined : relType }, token, tokenType),
+      organizationApi.leadershipAssignments({}, token, tokenType).catch(() => ({ data: [] })),
+    ]).then(([rels, leadershipRes]) => {
       if (!active) return;
       setRelationships(rels?.data ?? []);
-      setCompanies(companiesRes?.data ?? []);
+      setLeadershipAssignments(leadershipRes?.data ?? []);
     }).catch((err) => toast.error(err.message || "Could not load reporting relationships")).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [token, tokenType, search, status, setRelType, refreshKey]);
+  }, [token, tokenType, search, status, relType, refreshKey]);
 
   const changeFilter = (setter) => (value) => { setLoading(true); setter(value); };
 
@@ -87,27 +76,19 @@ export default function ReportingStructurePage() {
     try { await work(); toast.success(message); after(); reload(); } catch (err) { toast.error(err.message || "That did not work"); } finally { setBusy(false); }
   };
 
-  const saveRelationship = (payload) => run(
-    () => dialog?.id
-      ? organizationApi.updateReportingRelationship(dialog.id, payload, token, tokenType)
-      : organizationApi.createReportingRelationship(payload, token, tokenType),
-    dialog?.id ? "Relationship updated" : "Relationship created",
-  );
-
-  const companyOptions = useMemo(() => companies.map((c) => ({ id: c.id, name: c.name })), [companies]);
   const canManage = can("org.reporting.create") || can("org.reporting.update");
 
   // Chain loading
-  const fetchChain = useCallback(async () => {
-    if (!chainEmployeeId) return;
+  const fetchChain = useCallback(async (employeeId) => {
+    if (!employeeId) return;
     setBusy(true);
     try {
-      const res = await organizationApi.reportingChain(chainEmployeeId, undefined, token, tokenType);
-      toast.info(res?.data ? `Chain loaded: ${res.data.length} relationships` : "No chain data");
+      const res = await organizationApi.reportingChain(employeeId, undefined, token, tokenType);
+      toast(res?.data ? `Chain loaded: ${res.data.length} relationships` : "No chain data");
     } catch (err) {
       toast.error(err.message || "Could not load reporting chain");
     } finally { setBusy(false); }
-  }, [chainEmployeeId, token, tokenType]);
+  }, [token, tokenType]);
 
   return (
     <div className="min-w-0 max-w-full space-y-5">
@@ -147,8 +128,8 @@ export default function ReportingStructurePage() {
           <select
             aria-label="Filter by relationship type"
             className={`${inputClass} w-40`}
-            value={relType === "ALL" ? "" : relType}
-            onChange={(e) => setRelType(e.target.value)}
+            value={relType}
+            onChange={(e) => changeFilter(setRelType)(e.target.value)}
           >
             <option value="ALL">All Types</option>
             {REL_TYPES.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
@@ -156,9 +137,6 @@ export default function ReportingStructurePage() {
 
           <div className="ml-auto flex items-center gap-2">
             <Button variant="secondary" onClick={reload}><RefreshCw size={16} /> Refresh</Button>
-            {can("org.reporting.create") && (
-              <Button onClick={() => setDialog({})}><Plus size={16} /> Add Relationship</Button>
-            )}
           </div>
         </div>
       </Card>
@@ -204,9 +182,6 @@ export default function ReportingStructurePage() {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex justify-end gap-1">
-                        {can("org.reporting.update") && (
-                          <Button size="sm" variant="ghost" onClick={() => setDialog(rel)}><Pencil size={14} /></Button>
-                        )}
                         {can("org.reporting.status") && (
                           <Button
                             size="sm" variant="ghost"
@@ -238,19 +213,17 @@ export default function ReportingStructurePage() {
           <h3 className="font-semibold text-gray-900 dark:text-white mb-3">Reporting Chain</h3>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <div>
-              <label className="block text-sm text-gray-500 dark:text-gray-400">Employee *</label>
-              <select
-                className={inputClass}
-                onChange={(e) => { setChainEmployeeId(e.target.value); fetchChain(); }}
-              >
-                <option value="">Select employee</option>
-                {employees.map((e) => (
-                  <option key={e.id} value={e.id}>{e.name} ({e.empCode || ""})</option>
-                ))}
-              </select>
+              <UserPicker
+                label="Employee"
+                required
+                value={chainEmployeeId}
+                onChange={(id) => { setChainEmployeeId(id || ""); fetchChain(id); }}
+                token={token}
+                tokenType={tokenType}
+              />
             </div>
             <div>
-              <Button onClick={fetchChain} disabled={busy}>
+              <Button onClick={() => fetchChain(chainEmployeeId)} disabled={busy || !chainEmployeeId}>
                 {busy && <Loader2 size={16} className="animate-spin" />}
                 {busy ? "Loading…" : "Load Chain"}
               </Button>
@@ -276,12 +249,11 @@ export default function ReportingStructurePage() {
                 <Th>Scope</Th>
                 <Th>Effective From</Th>
                 <Th>Is Active</Th>
-                <Th className="text-right">Actions</Th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-700/60">
               {leadershipAssignments.length === 0 && (
-                <tr><td colSpan={6} className="p-10 text-center text-gray-500 dark:text-gray-400">
+                <tr><td colSpan={5} className="p-10 text-center text-gray-500 dark:text-gray-400">
                   No leadership assignments found.
                 </td></tr>
               )}
@@ -299,13 +271,6 @@ export default function ReportingStructurePage() {
                     ) : (
                       <Badge variant="red">Inactive</Badge>
                     )}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex justify-end gap-1">
-                      {can("org.reporting_leadership.update") && (
-                        <Button size="sm" variant="ghost" onClick={() => setDialog(la)}><Pencil size={14} /></Button>
-                      )}
-                    </div>
                   </td>
                 </tr>
               ))}

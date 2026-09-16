@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import toast from "react-hot-toast";
-import { Zap, AlertCircle, Users, Award, BookOpen, Clock, HelpCircle, CheckCircle, ShieldAlert, Calendar, Mail, MessageSquare, ChevronDown, ChevronUp } from "lucide-react";
+import { Zap, AlertCircle, Users, Award, BookOpen, Clock, HelpCircle, CheckCircle, ShieldAlert, Calendar, Mail, ChevronDown, ChevronUp } from "lucide-react";
 import Modal from "../../../../components/ui/Modal";
 import Button from "../../../../components/ui/Button";
 import DatePicker from "../../../../components/ui/DatePicker";
@@ -121,6 +121,8 @@ export default function BulkAssignAtsModal({
     setLoading(true);
     let successCount = 0;
     let skipCount = 0;
+    let failCount = 0;
+    let stageMoveFailCount = 0;
 
     for (const candidate of eligibleCandidates) {
       try {
@@ -142,23 +144,30 @@ export default function BulkAssignAtsModal({
           successCount++;
           // Ensure stage is marked as assessment
           try {
-            await hrApi.moveCandidateStage(
+            const moveRes = await hrApi.moveCandidateStage(
               candidate.id,
               { to_stage: "assessment", notes: `Assigned quiz: ${activeQuiz.title}` },
               token,
               tokenType
             );
-          } catch (_) {}
+            if (!moveRes?.status) stageMoveFailCount++;
+          } catch {
+            stageMoveFailCount++;
+          }
         } else {
           const msg = res.message || "";
           if (msg.toLowerCase().includes("already") || msg.toLowerCase().includes("open attempt")) {
             skipCount++;
+          } else {
+            failCount++;
           }
         }
       } catch (err) {
         const msg = err?.message || "";
         if (msg.toLowerCase().includes("already") || msg.toLowerCase().includes("open attempt")) {
           skipCount++;
+        } else {
+          failCount++;
         }
       }
     }
@@ -166,17 +175,26 @@ export default function BulkAssignAtsModal({
     setLoading(false);
 
     if (successCount > 0) {
+      const movedCount = successCount - stageMoveFailCount;
       toast.success(
-        `Assigned "${activeQuiz.title}" and moved ${successCount} candidate${successCount > 1 ? "s" : ""} to Assessment!${
+        `Assigned "${activeQuiz.title}" to ${successCount} candidate${successCount > 1 ? "s" : ""}${
+          movedCount > 0 ? ` and moved ${movedCount} to Assessment` : ""
+        }!${
           alreadyAssignedCandidates.length > 0 || skipCount > 0
             ? ` (${alreadyAssignedCandidates.length + skipCount} already had quiz & skipped)`
             : ""
         }`
       );
+      if (stageMoveFailCount > 0) {
+        toast.error(`${stageMoveFailCount} assigned candidate${stageMoveFailCount > 1 ? "s" : ""} could not be moved to the Assessment stage. Move them manually.`);
+      }
+      if (failCount > 0) {
+        toast.error(`Failed to assign the quiz to ${failCount} candidate${failCount > 1 ? "s" : ""}.`);
+      }
       onAssigned?.();
       onClose();
-    } else if (skipCount > 0 || alreadyAssignedCandidates.length > 0) {
-      toast.info(`All matching candidates already have this quiz assigned.`);
+    } else if (failCount === 0 && (skipCount > 0 || alreadyAssignedCandidates.length > 0)) {
+      toast(`All matching candidates already have this quiz assigned.`);
       onClose();
     } else {
       toast.error(`Failed to assign quiz to selected candidates.`);

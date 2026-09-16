@@ -2,41 +2,43 @@
 
 namespace App\Http\Controllers\Api\V1\Mediclaim\Admin;
 
-use App\Exceptions\DocumentException;
-use App\Http\Controllers\Admin\Hr\Concerns\ScopesCompany;
 use App\Http\Controllers\Api\V1\Mediclaim\Concerns\RespondsWithEnvelope;
+use App\Http\Controllers\Api\V1\Mediclaim\Concerns\ScopesCompanyOrAllCompanies;
 use App\Http\Controllers\Controller;
-use App\Models\Mediclaim\MediclaimDocumentLink;
 use App\Models\Mediclaim\MediclaimRuleBook;
-use App\Services\Documents\DocumentService;
+use App\Models\Mediclaim\MediclaimRuleBookLanguage;
 use App\Support\MediclaimActivityLogSupport;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 /**
- * `GET,POST /rule-books`, `POST /rule-books/{id}/publish`.
+ * `GET,POST /rule-books`, `PUT /rule-books/{id}`, `POST /rule-books/{id}/publish`,
+ * `POST,PUT,DELETE /rule-books/{id}/items[/{item}]`, `PUT /rule-books/{id}/items-reorder`.
  *
- * `store()` uploads the trilingual rule-book PDF via the existing
- * `DocumentService` (the `RULE_BOOK` slug added to `DocumentType` in B2) and
- * links it via `mediclaim_document_links` — this is a plain document upload
- * of an admin-prepared file, not PDF *generation*, so it is in scope here
- * (B6 is only the card/claim-form PDF *rendering*). Per B2's own note, the
- * actual PDF is never committed to source control or embedded here — this
- * endpoint just accepts whatever file the admin screen uploads post-launch.
+ * A rule book belongs to one language (`mediclaim_rule_book_languages`,
+ * managed separately via `RuleBookLanguageController`) and is filled with
+ * individual rule text entries added one at a time — never a PDF upload.
+ * At most one rule book exists per language (enforced in `store()`).
  */
 class RuleBookController extends Controller
 {
-    use ScopesCompany;
+    use ScopesCompanyOrAllCompanies;
     use RespondsWithEnvelope;
 
     public function index(Request $request): JsonResponse
     {
-        $query = MediclaimRuleBook::query()->with(['documentLinks.document.currentVersionRecord', 'publishedBy:id,name,email']);
-        $this->applyCompanyScope($query, $request);
+        $query = MediclaimRuleBook::query()->with(['language', 'items', 'publishedBy:id,name,email']);
+        $this->applyCompanyOrAllCompaniesScope($query, $request);
 
         if ($request->filled('status')) {
             $query->whereIn('status', explode(',', (string) $request->query('status')));
+        }
+
+        if ($request->filled('language_id')) {
+            $query->where('language_id', (int) $request->query('language_id'));
         }
 
         return $this->ok($query->orderByDesc('id')->get());
@@ -46,53 +48,59 @@ class RuleBookController extends Controller
     {
         $data = $request->validate([
             'company_code' => ['required', 'string', 'max:60'],
-            'version_label' => ['required', 'string', 'max:100'],
+            'language_id' => [
+                'required', 'integer',
+                Rule::exists('mediclaim_rule_book_languages', 'id')->where('company_code', $request->input('company_code')),
+            ],
+            'version_label' => ['sometimes', 'nullable', 'string', 'max:100'],
             'effective_from' => ['sometimes', 'nullable', 'date'],
             'effective_to' => ['sometimes', 'nullable', 'date', 'after_or_equal:effective_from'],
-            'file' => ['required', 'file'],
         ]);
+
+        if (MediclaimRuleBook::where('language_id', $data['language_id'])->exists()) {
+            throw ValidationException::withMessages(['language_id' => 'A rule book already exists for this language.']);
+        }
 
         $actor = auth('api')->user();
 
-        try {
-            $ruleBook = DB::transaction(function () use ($data, $actor) {
-                $ruleBook = MediclaimRuleBook::create([
-                    'company_code' => $data['company_code'],
-                    'version_label' => $data['version_label'],
-                    'status' => 'draft',
-                    'effective_from' => $data['effective_from'] ?? null,
-                    'effective_to' => $data['effective_to'] ?? null,
-                    'created_by' => $actor->id,
-                ]);
+        $ruleBook = MediclaimRuleBook::create([
+            'company_code' => $data['company_code'],
+            'language_id' => $data['language_id'],
+            'version_label' => $data['version_label'] ?? null,
+            'status' => 'draft',
+            'effective_from' => $data['effective_from'] ?? null,
+            'effective_to' => $data['effective_to'] ?? null,
+            'created_by' => $actor->id,
+        ]);
 
-                MediclaimActivityLogSupport::log($actor, 'RULE_BOOK_CREATED', 'mediclaim_rule_book', $ruleBook->id, null, $ruleBook->toArray(), 'Rule book created.', $ruleBook->company_code);
+        MediclaimActivityLogSupport::log($actor, 'RULE_BOOK_CREATED', 'mediclaim_rule_book', $ruleBook->id, null, $ruleBook->toArray(), 'Rule book created.', $ruleBook->company_code);
 
-                return $ruleBook;
-            });
+        return $this->ok($ruleBook->fresh(['language', 'items']), 201);
+    }
 
-            $version = DocumentService::make()->upload(
-                $request->file('file'),
-                $actor,
-                'RULE_BOOK',
-                $actor->id,
-                $request->header('Idempotency-Key')
-            );
+    public function update(Request $request, int $ruleBook): JsonResponse
+    {
+        $model = $this->scoped($request, $ruleBook);
 
-            MediclaimDocumentLink::create([
-                'document_id' => $version->document_id,
-                'linkable_type' => MediclaimRuleBook::class,
-                'linkable_id' => $ruleBook->id,
-                'document_role' => 'RULE_BOOK',
-                'created_by' => $actor->id,
-            ]);
-
-            return $this->ok($ruleBook->fresh(['documentLinks.document.currentVersionRecord']), 201);
-        } catch (DocumentException $e) {
-            return response()->json([
-                'success' => false,
-                'error' => ['code' => $e->errorCode, 'message' => $e->getMessage()],
-            ], $e->status);
+        if (! $model) {
+            return $this->missing('Rule book not found.');
         }
+
+        $data = $request->validate([
+            'version_label' => ['sometimes', 'nullable', 'string', 'max:100'],
+            'effective_from' => ['sometimes', 'nullable', 'date'],
+            'effective_to' => ['sometimes', 'nullable', 'date', 'after_or_equal:effective_from'],
+        ]);
+
+        $actor = auth('api')->user();
+        $before = $model->toArray();
+
+        $model->fill($data);
+        $model->save();
+
+        MediclaimActivityLogSupport::log($actor, 'RULE_BOOK_UPDATED', 'mediclaim_rule_book', $model->id, $before, $model->fresh()->toArray(), 'Rule book updated.', $model->company_code);
+
+        return $this->ok($model->fresh(['language', 'items']));
     }
 
     public function publish(Request $request, int $ruleBook): JsonResponse
@@ -101,6 +109,10 @@ class RuleBookController extends Controller
 
         if (! $model) {
             return $this->missing('Rule book not found.');
+        }
+
+        if ($model->items()->count() === 0) {
+            throw ValidationException::withMessages(['items' => 'Add at least one rule before publishing.']);
         }
 
         $actor = auth('api')->user();
@@ -113,7 +125,120 @@ class RuleBookController extends Controller
 
         MediclaimActivityLogSupport::log($actor, 'RULE_BOOK_PUBLISHED', 'mediclaim_rule_book', $model->id, $before, $model->fresh()->toArray(), 'Rule book published.', $model->company_code);
 
-        return $this->ok($model->fresh(['documentLinks.document.currentVersionRecord']));
+        return $this->ok($model->fresh(['language', 'items']));
+    }
+
+    public function addItem(Request $request, int $ruleBook): JsonResponse
+    {
+        $model = $this->scoped($request, $ruleBook);
+
+        if (! $model) {
+            return $this->missing('Rule book not found.');
+        }
+
+        $data = $request->validate([
+            'rule_text' => ['required', 'string', 'max:2000'],
+        ]);
+
+        $actor = auth('api')->user();
+        $nextOrder = (int) ($model->items()->max('sort_order') ?? 0) + 1;
+
+        $item = $model->items()->create([
+            'rule_text' => trim($data['rule_text']),
+            'sort_order' => $nextOrder,
+            'created_by' => $actor->id,
+            'updated_by' => $actor->id,
+        ]);
+
+        MediclaimActivityLogSupport::log($actor, 'RULE_BOOK_ITEM_ADDED', 'mediclaim_rule_book', $model->id, null, $item->toArray(), 'Rule added.', $model->company_code);
+
+        return $this->ok($model->fresh(['language', 'items']), 201);
+    }
+
+    public function updateItem(Request $request, int $ruleBook, int $item): JsonResponse
+    {
+        $model = $this->scoped($request, $ruleBook);
+
+        if (! $model) {
+            return $this->missing('Rule book not found.');
+        }
+
+        $row = $model->items()->where('id', $item)->first();
+
+        if (! $row) {
+            return $this->missing('Rule not found.');
+        }
+
+        $data = $request->validate([
+            'rule_text' => ['required', 'string', 'max:2000'],
+        ]);
+
+        $actor = auth('api')->user();
+        $before = $row->toArray();
+
+        $row->rule_text = trim($data['rule_text']);
+        $row->updated_by = $actor->id;
+        $row->save();
+
+        MediclaimActivityLogSupport::log($actor, 'RULE_BOOK_ITEM_UPDATED', 'mediclaim_rule_book', $model->id, $before, $row->fresh()->toArray(), 'Rule updated.', $model->company_code);
+
+        return $this->ok($model->fresh(['language', 'items']));
+    }
+
+    public function deleteItem(Request $request, int $ruleBook, int $item): JsonResponse
+    {
+        $model = $this->scoped($request, $ruleBook);
+
+        if (! $model) {
+            return $this->missing('Rule book not found.');
+        }
+
+        $row = $model->items()->where('id', $item)->first();
+
+        if (! $row) {
+            return $this->missing('Rule not found.');
+        }
+
+        $actor = auth('api')->user();
+        $before = $row->toArray();
+        $row->delete();
+
+        MediclaimActivityLogSupport::log($actor, 'RULE_BOOK_ITEM_DELETED', 'mediclaim_rule_book', $model->id, $before, null, 'Rule removed.', $model->company_code);
+
+        return $this->ok($model->fresh(['language', 'items']));
+    }
+
+    public function reorderItems(Request $request, int $ruleBook): JsonResponse
+    {
+        $model = $this->scoped($request, $ruleBook);
+
+        if (! $model) {
+            return $this->missing('Rule book not found.');
+        }
+
+        $data = $request->validate([
+            'item_ids' => ['required', 'array', 'min:1'],
+            'item_ids.*' => ['integer'],
+        ]);
+
+        $submitted = $data['item_ids'];
+        $validIds = $model->items()->pluck('id')->all();
+
+        sort($submitted);
+        $sortedValid = $validIds;
+        sort($sortedValid);
+
+        if ($submitted !== $sortedValid) {
+            throw ValidationException::withMessages(['item_ids' => 'The rule list does not match the current rules for this rule book.']);
+        }
+
+        DB::transaction(function () use ($data) {
+            foreach ($data['item_ids'] as $index => $id) {
+                DB::table('mediclaim_rule_book_items')->where('id', $id)->update(['sort_order' => $index + 1, 'updated_at' => now()]);
+            }
+        });
+
+        return $this->ok($model->fresh(['language', 'items']));
     }
 
     private function scoped(Request $request, int $id): ?MediclaimRuleBook
