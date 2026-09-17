@@ -51,3 +51,13 @@ Schedule::command('mediclaim:escalate-overdue-reviews')
     ->dailyAt('08:00')
     ->withoutOverlapping()
     ->runInBackground();
+
+/*
+ * Mediclaim missing-document reminders — daily, for as long as a submitted
+ * claim still has a required document outstanding (documents are uploaded
+ * separately from the claim itself, within 7 days of discharge).
+ */
+Schedule::command('mediclaim:remind-missing-documents')
+    ->dailyAt('08:15')
+    ->withoutOverlapping()
+    ->runInBackground();

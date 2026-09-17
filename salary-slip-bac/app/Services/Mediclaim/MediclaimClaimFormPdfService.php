@@ -5,6 +5,7 @@ namespace App\Services\Mediclaim;
 use App\Models\Document;
 use App\Models\Mediclaim\MediclaimClaim;
 use App\Models\Mediclaim\MediclaimClaimAssignment;
+use App\Models\Mediclaim\MediclaimClaimExpense;
 use App\Models\Mediclaim\MediclaimClaimDecision;
 use App\Models\Mediclaim\MediclaimDocumentLink;
 use App\Models\User;
@@ -195,7 +196,7 @@ class MediclaimClaimFormPdfService
     private function buildExpenseRows(MediclaimClaim $claim): array
     {
         return $claim->expenses->map(fn ($expense) => [
-            'category' => ucfirst((string) $expense->category),
+            'category' => MediclaimClaimExpense::CATEGORY_LABELS[$expense->category] ?? ucfirst((string) $expense->category),
             'description' => $expense->description,
             'claimed' => IndianCurrencyFormatter::format($expense->claimed_amount),
             'approved' => IndianCurrencyFormatter::format($expense->approved_amount),

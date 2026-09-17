@@ -31,6 +31,8 @@ import {
 import { useAuth } from "../../context/AuthContext"; // Corrected import path
 import { authApi, salaryApi } from "../../utils/api";
 import { getAadhaarDisplayValue, hasStoredAadhaar, buildSafeAadhaarUpdate } from "../../utils/aadhaar";
+import { getProfileCompletionPercentage } from "../../utils/profileCompletion";
+import { isPhotoDeletedOrDummy, clearPhotoDeletedFlag } from "../../utils/photoStatus";
 import toast from "react-hot-toast";
 import SearchableSelect from "../../components/ui/SearchableSelect";
 import { designationApi } from "../../features/workforce/services/workforceApi";
@@ -443,6 +445,11 @@ export default function Profile() {
         });
       }
 
+      if (photoFile || photoPreview || updatedPhoto) {
+        clearPhotoDeletedFlag(user);
+        clearPhotoDeletedFlag(profile);
+        clearPhotoDeletedFlag(emp);
+      }
       if (photoFile) clearPendingPhoto();
       toast.success("Profile updated successfully");
 
@@ -586,39 +593,46 @@ export default function Profile() {
         </div>
       </div>
     );  // Calculate Profile Completion Percentage
-  // Required employee profile fields (PF and ESI are explicitly OPTIONAL)
-  const completionFields = [
-    "name", "email", "phone", "dob", "address", "city", "district", "state", "pin",
-    "aadhar_card_no", "pan_card_no", "bank_name", "bank_ifsc_code", "bank_account_no",
-    "gender", "punching_no"
-  ];
-
-  const calculateCompletion = () => {
-    let filled = 0;
-    const source = editing ? form : { ...emp, phone: emp.mobile_number || emp.mobile_no || emp.phone };
-    completionFields.forEach(field => {
-      if (source[field] && String(source[field]).trim() !== "") {
-        filled++;
-      }
-    });
-    // Family details count as one more required item: at least one row with
-    // both a name and a relation.
-    const familySource = editing ? familyDetails : (profile?.family_members || []);
-    const hasFamily = (familySource || []).some(
-      (m) => String(m.name || "").trim() && String(m.relation || "").trim()
-    );
-    return Math.round(((filled + (hasFamily ? 1 : 0)) / (completionFields.length + 1)) * 100);
-  };
-  const completionPercentage = calculateCompletion();
+  // Profile completion percentage (PF and ESI numbers are explicitly OPTIONAL)
+  const hasDummyPhoto = isPhotoDeletedOrDummy(user) || isPhotoDeletedOrDummy(profile) || isPhotoDeletedOrDummy(emp);
+  const completionPercentage = editing
+    ? getProfileCompletionPercentage({ ...emp, ...form, familyDetails })
+    : getProfileCompletionPercentage({ ...emp, familyDetails: profile?.family_members });
 
   return (
     <div className="space-y-4">
-      {completionPercentage < 100 && (
+      {hasDummyPhoto ? (
+        <div className="bg-red-50 dark:bg-red-950/50 border-2 border-red-500 text-red-900 dark:text-red-100 p-4 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-lg animate-bounce-short">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-red-100 dark:bg-red-900/60 flex items-center justify-center text-red-600 dark:text-red-400 shrink-0 font-bold">
+              <AlertCircle size={22} />
+            </div>
+            <div>
+              <p className="text-base font-extrabold text-red-700 dark:text-red-300">
+                Dummy photo detected please upload your original photo
+              </p>
+              <p className="text-xs text-red-600 dark:text-red-400 mt-0.5">
+                Your profile and all portal pages are locked until a valid original photo is uploaded.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              if (!editing) setEditing(true);
+              requestCapture();
+            }}
+            className="w-full sm:w-auto px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-extrabold text-xs rounded-xl shadow-md transition-transform hover:scale-105 shrink-0 flex items-center justify-center gap-1.5"
+          >
+            <Camera size={16} /> Upload Photo Now
+          </button>
+        </div>
+      ) : completionPercentage < 100 && (
         <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 px-4 py-3 rounded-xl flex items-center justify-between shadow-sm">
           <div className="flex items-center gap-2">
             <AlertCircle className="text-amber-500 shrink-0" size={20} />
             <p className="text-sm font-semibold">
-              Notice: Portal pages are locked until your full profile details — including at least one Family Details entry — are completed and saved. (PF and ESI numbers are optional).
+              Notice: Portal pages are locked until your full profile details are completed and saved.
             </p>
           </div>
         </div>
@@ -735,7 +749,7 @@ export default function Profile() {
             <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
               <div className="relative">
                 <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-3xl bg-gradient-to-br from-brand-500 to-indigo-600 border-[4px] sm:border-[6px] border-white dark:border-gray-800 flex items-center justify-center text-white text-3xl sm:text-4xl font-bold shadow-2xl shadow-brand-500/20 overflow-hidden">
-                  {photoPreview || emp.photo ? (
+                  {(photoPreview || emp.photo) && !hasDummyPhoto ? (
                     <img
                       src={photoPreview || getEmployeePhotoUrl(emp.photo)}
                       alt="Employee Photo"

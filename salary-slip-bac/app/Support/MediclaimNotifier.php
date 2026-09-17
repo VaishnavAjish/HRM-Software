@@ -113,10 +113,9 @@ use Throwable;
  *                                                  all (no TODO(B7) existed
  *                                                  at either call site).
  *
- * `missingDocuments()` is implemented per the plan's method list but has no
- * caller yet: no B4 controller currently runs a document-completeness check
- * that would trigger it. It is ready for a future coordinator "request
- * missing documents" action to call directly.
+ * `missingDocuments()` is called daily by `mediclaim:remind-missing-documents`
+ * (routes/console.php) for every submitted claim still missing a required
+ * document, per `MediclaimDocumentRequirement::resolveRequiredTypesFor()`.
  */
 class MediclaimNotifier
 {
@@ -484,14 +483,24 @@ class MediclaimNotifier
     }
 
     /**
-     * Not currently wired to a caller (see class docblock) — provisioned for
-     * a future document-completeness check. Deliberately takes only the
-     * missing document *count*'s context via a generic description, never
-     * the actual document type names (never disclosed in a notification).
+     * Cron: `mediclaim:remind-missing-documents`'s daily sweep — one of
+     * these per claim per calendar day, for as long as the claim keeps
+     * having a required document outstanding (a fresh dedupe key every day
+     * is exactly what makes this a *daily* reminder rather than a one-shot
+     * one, unlike every other dedupe'd method here). Deliberately takes
+     * only the missing document *count*'s context via a generic
+     * description, never the actual document type names (never disclosed
+     * in a notification).
      */
     public static function missingDocuments(MediclaimClaim $claim, array $missingDocumentTypes = [], ?User $actor = null): void
     {
         self::guard(function () use ($claim, $actor) {
+            $dedupeKey = sprintf('missing_documents:%d:%s', $claim->id, now()->toDateString());
+
+            if (! self::dedupeOnce($dedupeKey, 'missing_documents')) {
+                return;
+            }
+
             $employee = $claim->employee;
 
             if (! $employee) {
@@ -504,9 +513,15 @@ class MediclaimNotifier
                 return;
             }
 
+            $overdue = $claim->documents_due_at && now()->greaterThan($claim->documents_due_at);
+
             self::write($recipients, [
-                'title' => "Documents needed for your Mediclaim claim {$claim->claim_number}",
-                'description' => 'One or more required documents are still missing on your claim.',
+                'title' => $overdue
+                    ? "Overdue: documents still missing for your Mediclaim claim {$claim->claim_number}"
+                    : "Documents needed for your Mediclaim claim {$claim->claim_number}",
+                'description' => $overdue
+                    ? 'The 1-week window to upload your required documents has passed. Upload them as soon as possible.'
+                    : 'One or more required documents are still missing on your claim.',
                 'priority' => 'Urgent',
                 'triggered_by' => $actor?->name,
                 'action_label' => 'Upload Documents',

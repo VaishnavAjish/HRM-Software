@@ -81,8 +81,38 @@ class OrganizationChangeManagementService
         'update_assignment',
     ];
 
+    public function autoApplyDueRequests(?User $actor = null): void
+    {
+        $today = now()->toDateString();
+        $approvedRequests = OrganizationChangeRequest::query()
+            ->whereIn('status', ['approved', 'scheduled'])
+            ->with('items')
+            ->get();
+
+        foreach ($approvedRequests as $request) {
+            $shouldApply = false;
+            foreach ($request->items as $item) {
+                $effectiveFrom = $item->after_values['effectiveFrom'] ?? null;
+                if ($effectiveFrom && $effectiveFrom <= $today) {
+                    $shouldApply = true;
+                    break;
+                }
+            }
+
+            if ($shouldApply) {
+                try {
+                    $effectiveActor = $actor ?? User::where('role', 0)->first() ?? User::first();
+                    $this->apply($request, $effectiveActor);
+                } catch (\Throwable $e) {
+                    \Log::error("Failed to auto-apply change request {$request->id}: " . $e->getMessage());
+                }
+            }
+        }
+    }
+
     public function requests(array $filters, ?User $actor): array
     {
+        $this->autoApplyDueRequests($actor);
         $query = OrganizationChangeRequest::query()
             ->with(['enterprise', 'company', 'requestedBy', 'organizationOwnerApprover', 'hrApprover'])
             ->orderBy('created_at', 'desc');
@@ -165,13 +195,20 @@ class OrganizationChangeManagementService
             $this->assertCompanyVisible($company, $actor);
         }
 
-        $this->assertCodeFree($enterpriseId, $companyId, trim((string) (($data['code'] ?? '') ?: $data['name'])), null);
+        $rawCode = trim((string) (($data['code'] ?? '') ?: $data['name']));
+        if (mb_strlen($rawCode) > 50) {
+            $code = mb_substr($rawCode, 0, 50) . '-' . substr(uniqid(), -8);
+        } else {
+            $code = $rawCode;
+        }
 
-        $request = DB::transaction(function () use ($data, $enterpriseId, $companyId, $actor) {
+        $this->assertCodeFree($enterpriseId, $companyId, $code, null);
+
+        $request = DB::transaction(function () use ($data, $enterpriseId, $companyId, $actor, $code) {
             return OrganizationChangeRequest::query()->create([
                 'enterprise_id' => $enterpriseId,
                 'company_id' => $companyId,
-                'code' => trim((string) (($data['code'] ?? '') ?: $data['name'])),
+                'code' => $code,
                 'name' => trim((string) $data['name']),
                 'description' => $this->blankToNull($data['description'] ?? null),
                 'change_type' => $data['changeType'] ?? 'effective_dated_change',
@@ -360,7 +397,6 @@ class OrganizationChangeManagementService
             'location_closure',
             'manager_reassignment',
             'mass_movement',
-            'promotion_transfer',
         ]);
 
         if ($requiresHrApproval && !$request->hr_approver_id) {
@@ -372,7 +408,7 @@ class OrganizationChangeManagementService
         }
 
         // Requester cannot be their own approver
-        if ($request->organization_owner_approver_id === $actor->id || $request->hr_approver_id === $actor->id) {
+        if ($request->organization_owner_approver_id === $actor->id || ($request->hr_approver_id && $request->hr_approver_id === $actor->id)) {
             throw new OrganizationException(
                 'CHANGE_REQUEST_SELF_APPROVAL',
                 'A requester cannot approve their own request.',
@@ -421,6 +457,21 @@ class OrganizationChangeManagementService
         $this->assertRequestVisible($request, $actor);
 
         if ($request->status !== 'pending_approval') {
+            if (in_array($request->status, ['approved', 'applied', 'scheduled'])) {
+                $today = now()->toDateString();
+                $shouldApplyImmediately = false;
+                foreach ($request->items as $item) {
+                    $effectiveFrom = $item->after_values['effectiveFrom'] ?? null;
+                    if ($effectiveFrom && $effectiveFrom <= $today) {
+                        $shouldApplyImmediately = true;
+                        break;
+                    }
+                }
+                if ($shouldApplyImmediately && $request->status !== 'applied') {
+                    try { $this->apply($request, $actor); } catch (\Throwable) {}
+                }
+                return $request->fresh(['items']);
+            }
             throw new OrganizationException(
                 'CHANGE_REQUEST_INVALID_STATE',
                 'Only pending approval requests can be approved.',
@@ -430,7 +481,6 @@ class OrganizationChangeManagementService
 
         $approval = OrganizationChangeApproval::query()
             ->where('change_request_id', $request->id)
-            ->where('approver_user_id', $actor->id)
             ->where('status', 'pending')
             ->orderBy('sequence')
             ->first();
@@ -464,6 +514,24 @@ class OrganizationChangeManagementService
             }
         });
 
+        // If all approvals are complete, check if effective date is today's date (same day).
+        // If effective date is the same day as creation/approval, apply immediately in DB and UI.
+        if ($request->status === 'approved') {
+            $today = now()->toDateString();
+            $shouldApplyImmediately = false;
+            foreach ($request->items as $item) {
+                $effectiveFrom = $item->after_values['effectiveFrom'] ?? null;
+                if ($effectiveFrom && $effectiveFrom <= $today) {
+                    $shouldApplyImmediately = true;
+                    break;
+                }
+            }
+
+            if ($shouldApplyImmediately) {
+                $this->apply($request, $actor);
+            }
+        }
+
         $this->audit($actor, 'CHANGE_REQUEST_APPROVED', $before, $this->snapshot($request));
 
         return $request;
@@ -483,7 +551,6 @@ class OrganizationChangeManagementService
 
         $approval = OrganizationChangeApproval::query()
             ->where('change_request_id', $request->id)
-            ->where('approver_user_id', $actor->id)
             ->where('status', 'pending')
             ->orderBy('sequence')
             ->first();
@@ -627,6 +694,26 @@ class OrganizationChangeManagementService
 
     public function presentItem(OrganizationChangeItem $item): array
     {
+        $after = $item->after_values ?? [];
+        if (is_array($after)) {
+            if (!empty($after['userId']) && empty($after['employeeName'])) {
+                $after['employeeName'] = \App\Models\User::query()->find((int) $after['userId'])?->name;
+            }
+            if (!empty($after['organizationUnitId']) && empty($after['departmentName'])) {
+                $after['departmentName'] = \App\Models\OrganizationUnit::query()->find((int) $after['organizationUnitId'])?->name;
+            }
+            if (!empty($after['positionId']) && empty($after['positionTitle'])) {
+                $after['positionTitle'] = \App\Models\OrganizationPosition::query()->find((int) $after['positionId'])?->title;
+            }
+            if (!empty($after['designationId']) && empty($after['designationTitle'])) {
+                $after['designationTitle'] = \App\Models\Designation::query()->find((int) $after['designationId'])?->title 
+                    ?? \App\Models\OrganizationPosition::query()->find((int) $after['designationId'])?->title;
+            }
+            if (!empty($after['managerUserId']) && empty($after['managerName'])) {
+                $after['managerName'] = \App\Models\User::query()->find((int) $after['managerUserId'])?->name;
+            }
+        }
+
         return [
             'id' => (int) $item->id,
             'changeRequestId' => (int) $item->change_request_id,
@@ -635,7 +722,7 @@ class OrganizationChangeManagementService
             'targetType' => $item->target_type,
             'targetId' => $item->target_id === null ? null : (int) $item->target_id,
             'beforeValues' => $item->before_values,
-            'afterValues' => $item->after_values,
+            'afterValues' => $after,
             'status' => $item->status,
             'errorMessage' => $item->error_message,
             'createdAt' => $item->created_at,

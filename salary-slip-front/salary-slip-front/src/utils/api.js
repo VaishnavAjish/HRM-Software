@@ -3,7 +3,6 @@ import {
   resolveCompanyIds,
   resolveCompanyScope,
 } from "../config/companyConfig";
-import { Capacitor, CapacitorHttp } from '@capacitor/core';
 
 // Two response shapes exist across the API: the original `{ message }` /
 // `{ error: "string" }`, and the newer v1 document/appointment endpoints'
@@ -119,54 +118,6 @@ export async function apiRequest(path, options = {}) {
   }
 
   const isFormData = options.body instanceof FormData;
-
-  // Use CapacitorHttp for native builds to bypass CORS issues.
-  const platform = Capacitor.getPlatform();
-  const useNativeHttp = platform === 'android' || platform === 'ios';
-
-  if (useNativeHttp) {
-    const url = `${baseUrl}/api${path}`;
-    if (import.meta.env.DEV) {
-      console.log(`[API] Native Request (${platform}): ${options.method || "GET"} ${url}`);
-    }
-
-    try {
-      const response = await CapacitorHttp.request({
-        url,
-        method: options.method || "GET",
-        headers: {
-          ...(isFormData ? {} : { "Content-Type": "application/json" }),
-          Accept: "application/json",
-          ...options.headers,
-        },
-        data: options.body, // CapacitorHttp uses 'data' for body
-      });
-
-      const data = response.data;
-      if (response.status < 200 || response.status >= 300 || data?.success === false || data?.status === false) {
-        const message = extractErrorMessage(data);
-        const error = new Error(message);
-        error.status = response.status;
-        error.data = data;
-        if (response.status === 401 && options.headers?.Authorization) {
-          window.dispatchEvent(new CustomEvent("auth:unauthorized", { detail: { status: response.status, data, message, url } }));
-        }
-        throw error;
-      }
-
-      if (cacheKey) {
-        apiCache.set(cacheKey, { data, timestamp: Date.now() });
-      }
-
-      return data;
-    } catch (err) {
-      if (err instanceof Error && !err.status) {
-        // Network error
-        console.error("[API] Native Request Failed:", err);
-      }
-      throw err;
-    }
-  }
 
   const headers = isFormData
     ? { Accept: "application/json", ...options.headers }

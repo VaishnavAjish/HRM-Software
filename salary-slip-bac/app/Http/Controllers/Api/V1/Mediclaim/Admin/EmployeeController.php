@@ -227,7 +227,7 @@ class EmployeeController extends Controller
             ->where(function ($q) {
                 $q->whereNull('type')->orWhereNotIn('type', ['appointment', 'agent', 'pending_employee']);
             })
-            ->select(['id', 'name', 'email', 'emp_code', 'company_code', 'unit', 'department', 'designation', 'joining_date', 'dob', 'gender', 'mobile_number']);
+            ->select(['id', 'name', 'email', 'emp_code', 'company_code', 'unit', 'department', 'designation', 'joining_date', 'dob', 'gender', 'mobile_number', 'photo']);
 
         $this->applyCompanyScope($query, $request);
 
@@ -280,6 +280,7 @@ class EmployeeController extends Controller
                 'dob' => optional($user->dob)->toDateString() ?? $user->dob,
                 'gender' => $user->gender,
                 'mobileNumber' => $user->mobile_number,
+                'photo' => $user->photo,
                 'eligibility' => $eligibility,
                 'enrollment' => $enrollments->get($user->id),
                 'activeMembersCount' => (int) ($memberCounts->get($user->id) ?? 0),

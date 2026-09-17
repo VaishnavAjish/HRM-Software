@@ -1,23 +1,22 @@
-import { WIZARD_STEP } from "../models/wizardSteps";
 import { INITIAL_SYMPTOM } from "../models/initialSymptoms";
 import { REVIEW_STAGE } from "../models/reviewStages";
 
 /**
- * Per-step validators for the claim submission wizard (F4 — SubmitClaimTab),
- * and a shared validator for stage review decisions (F5 — review panels).
+ * Per-section validators for the "New Claim Request" popup
+ * (`NewClaimRequestModal.jsx`, one flat form — no step wizard), and a
+ * shared validator for stage review decisions (F5 — review panels).
  *
  * Every validator returns `{ valid, errors }` where `errors` is a
- * field-keyed map of human-readable messages, so a step component can spread
- * it directly onto its form fields. These are UX-layer checks only — the
+ * field-keyed map of human-readable messages, so a form component can spread
+ * it directly onto its fields. These are UX-layer checks only — the
  * backend re-validates and is authoritative (see the workflow plan's
  * `ClaimWorkflowService`), so a validator here being slightly more lenient
  * than the server is safe; being stricter than the server is not, and was
  * avoided by keeping every rule traceable to a concrete field on the paper
  * claim form.
  *
- * The wizard's field lists here are reasonable given the plan's field
- * inventory (Sections A-G of the paper form) — the actual step UI, and any
- * field-name adjustments it needs, lands in F4.
+ * The field lists here are reasonable given the plan's field inventory
+ * (Sections A-G of the paper form).
  */
 
 function ok() {
@@ -160,20 +159,6 @@ export function validateDeclarationStep(data = {}) {
   }
 
   return fromErrors(errors);
-}
-
-export const STEP_VALIDATORS = {
-  [WIZARD_STEP.PATIENT]: validatePatientStep,
-  [WIZARD_STEP.MEDICAL_HISTORY]: validateMedicalHistoryStep,
-  [WIZARD_STEP.TREATMENT]: validateTreatmentStep,
-  [WIZARD_STEP.EXPENSES]: validateExpensesStep,
-  [WIZARD_STEP.DOCUMENTS]: validateDocumentsStep,
-  [WIZARD_STEP.DECLARATION]: validateDeclarationStep,
-};
-
-export function validateWizardStep(step, data, extra) {
-  const validator = STEP_VALIDATORS[step];
-  return validator ? validator(data, extra) : ok();
 }
 
 const MIN_REMARKS_LENGTH = 5;

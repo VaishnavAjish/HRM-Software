@@ -68,7 +68,7 @@ class OrganizationChangeManagementController extends Controller
             'currentAssignmentId' => ['sometimes', 'nullable', 'integer', 'exists:employee_organization_assignments,id'],
             'organizationUnitId' => ['required', 'integer', 'exists:organization_units,id'],
             'positionId' => ['required', 'integer', 'exists:organization_positions,id'],
-            'designationId' => ['required', 'integer', 'exists:designations,id'],
+            'designationId' => ['sometimes', 'nullable', 'integer'],
             'managerUserId' => ['required', 'integer', 'exists:users,id'],
             'locationId' => ['sometimes', 'nullable', 'integer', 'exists:locations,id'],
             'costCenterId' => ['sometimes', 'nullable', 'integer', 'exists:financial_organizations,id'],

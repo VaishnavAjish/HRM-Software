@@ -5,9 +5,9 @@ import { DECLARATION_TEXT, DECLARATION_LANGUAGE_ORDER, DECLARATION_VERSION } fro
  * requirement is that the employee sees and acknowledges all three, not
  * that they pick one and skip the other two. A single acknowledgement
  * checkbox gates Submit; `DECLARATION_VERSION` is recorded against the
- * claim by the caller (`SubmitClaimTab`) the moment `accepted` flips true,
- * so a later wording change never silently reinterprets an already-recorded
- * consent.
+ * claim by the caller (`NewClaimRequestModal`) the moment `accepted` flips
+ * true, so a later wording change never silently reinterprets an
+ * already-recorded consent.
  */
 export default function DeclarationPanel({ accepted, onAcceptedChange, readOnly = false }) {
   return (

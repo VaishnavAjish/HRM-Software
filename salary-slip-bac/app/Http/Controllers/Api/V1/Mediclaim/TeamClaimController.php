@@ -51,9 +51,16 @@ class TeamClaimController extends Controller
         $actor = auth('api')->user();
 
         $query = MediclaimClaim::query()
-            ->where('assigned_manager_id', $actor->id)
             ->where('status', MediclaimClaim::STATUS_MANAGER_REVIEW)
             ->with(['employee:id,name,email,emp_code,designation', 'hospital', 'expenses']);
+
+        // A super admin isn't necessarily anyone's real assigned_manager_id
+        // — same bypass as MediclaimClaim::scopeAwaitingReviewBy(), so this
+        // endpoint (backing the employee-side "Pending My Approval" tab too)
+        // is consistent with the admin Pending Reviews tab's visibility.
+        if (! $actor->isSuperAdmin()) {
+            $query->where('assigned_manager_id', $actor->id);
+        }
 
         return $this->ok($query->orderBy('submitted_at')->paginate(min((int) $request->query('per_page', 25), 100)));
     }

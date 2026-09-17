@@ -82,7 +82,9 @@ export default function EmployeeDetailsModal({
   viewLoading,
   openEdit,
   hideEdit = false,
+  allowedTabs,
 }) {
+  const visibleTabs = allowedTabs ? TABS.filter((t) => allowedTabs.includes(t.key)) : TABS;
   const [activeTab, setActiveTab] = useState("profile");
 
   // Each open starts on the Profile tab. Assigned during render — the supported
@@ -210,7 +212,7 @@ export default function EmployeeDetailsModal({
 
             {/* Tabs — 2×2 grid on mobile, horizontal strip on sm+ */}
             <div className="mt-5 sm:hidden grid grid-cols-2 gap-2">
-              {TABS.map(({ key, label, icon: Icon }) => (
+              {visibleTabs.map(({ key, label, icon: Icon }) => (
                 <button
                   key={key}
                   type="button"
@@ -227,7 +229,7 @@ export default function EmployeeDetailsModal({
               ))}
             </div>
             <div className="mt-5 hidden sm:flex gap-5 overflow-x-auto scrollbar-hide whitespace-nowrap border-b border-gray-200 dark:border-white/10">
-              {TABS.map(({ key, label, icon: Icon }) => (
+              {visibleTabs.map(({ key, label, icon: Icon }) => (
                 <button
                   key={key}
                   type="button"
@@ -295,8 +297,9 @@ export default function EmployeeDetailsModal({
                     <Field label="Employee ID" value={selected.empCode} />
                     <Field label="Department" value={selected.department} />
                     <Field label="Designation" value={selected.designation} />
+                    <Field label="Position / Role" value={selected.positionTitle || selected.position || roleLabel} />
+                    <Field label="Reporting Manager" value={selected.managerName || selected.manager_name || "-"} />
                     <Field label="Working Unit" value={selected.unit} />
-                    <Field label="Role" value={roleLabel} />
                     <Field label="Status" value={selected.status} />
                   </Section>
 

@@ -1,14 +1,15 @@
 import { useEffect, useState } from "react";
-import { Users, ShieldCheck, Clock, IdCard, Eye, Sparkles, Search, RotateCcw } from "lucide-react";
+import { Users, ShieldCheck, Clock, IdCard, Sparkles, Search, RotateCcw } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAuth } from "../../../../../context/AuthContext";
 import Drawer from "../../../../../components/ui/Drawer";
 import Button from "../../../../../components/ui/Button";
 import Badge from "../../../../../components/ui/Badge";
-import DocumentViewerModal from "../../../../../components/documents/DocumentViewerModal";
 import { useMediclaimAuthorization } from "../../../hooks/useMediclaimAuthorization";
 import { mediclaimApi } from "../../../services/mediclaimApi";
 import ClaimsTable from "../../../components/ClaimsTable";
+import MediclaimIdCard from "../../../components/MediclaimIdCard";
+import { getEmployeePhotoUrl } from "../../../../../pages/admin/AdminModals/employee-helpers";
 import { formatClaimDate } from "../../../utils/formatters";
 
 // NOTE: this is the Mediclaim admin workspace's Employees tab
@@ -94,7 +95,6 @@ export default function EmployeesTab() {
   }, [search]);
 
   const [detail, setDetail] = useState({ open: false, loading: false, data: null, error: null, employeeName: "" });
-  const [viewerDoc, setViewerDoc] = useState(null);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
@@ -372,7 +372,6 @@ export default function EmployeesTab() {
             data={detail.data}
             canUpdate={canUpdate}
             onEditEnrollment={openEditEnrollment}
-            onViewDocument={setViewerDoc}
           />
         ) : null}
       </Drawer>
@@ -413,13 +412,11 @@ export default function EmployeesTab() {
           {formError && <p className="text-xs text-red-500">{formError}</p>}
         </div>
       </Drawer>
-
-      <DocumentViewerModal document={viewerDoc} open={Boolean(viewerDoc)} onClose={() => setViewerDoc(null)} />
     </div>
   );
 }
 
-function EmployeeDetailPanel({ data, canUpdate, onEditEnrollment, onViewDocument }) {
+function EmployeeDetailPanel({ data, canUpdate, onEditEnrollment }) {
   const employee = data.employee || {};
   const enrollment = data.enrollment;
   const members = data.members || [];
@@ -521,34 +518,20 @@ function EmployeeDetailPanel({ data, canUpdate, onEditEnrollment, onViewDocument
         {cards.length === 0 ? (
           <p className="text-xs text-gray-400">No card issued yet. A card for the employee is generated automatically once they submit their family member details.</p>
         ) : (
-          <div className="space-y-1.5">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {cards.map((card) => {
               const member = members.find((m) => String(m.id) === String(card.memberId || card.member_id));
-              const documentId = card.documentId || card.document_id;
+              const relationship = member?.relationshipType || member?.relationship_type || "";
+              const isSelf = String(relationship).toLowerCase() === "self";
               return (
-                <div key={card.id} className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2 text-xs dark:border-gray-700">
-                  <div>
-                    <p className="font-medium text-gray-800 dark:text-gray-100">
-                      {member ? memberName(member) : "—"} <span className="text-gray-400">· {card.cardNumber || card.card_number}</span>
-                    </p>
-                    <p className="text-gray-400">
-                      {formatClaimDate(card.validFrom || card.valid_from)} – {formatClaimDate(card.validTo || card.valid_to) || "Ongoing"}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Badge variant={card.status === "active" ? "green" : card.status === "revoked" ? "red" : "gray"}>{card.status || "—"}</Badge>
-                    {documentId && (
-                      <button
-                        type="button"
-                        title="View card PDF"
-                        onClick={() => onViewDocument({ documentId })}
-                        className="p-1 rounded text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"
-                      >
-                        <Eye size={13} />
-                      </button>
-                    )}
-                  </div>
-                </div>
+                <MediclaimIdCard
+                  key={card.id}
+                  card={card}
+                  name={member ? memberName(member) : "—"}
+                  relationship={relationship}
+                  photoUrl={isSelf ? getEmployeePhotoUrl(employee.photo) : ""}
+                  employeeCode={isSelf ? employee.empCode : null}
+                />
               );
             })}
           </div>

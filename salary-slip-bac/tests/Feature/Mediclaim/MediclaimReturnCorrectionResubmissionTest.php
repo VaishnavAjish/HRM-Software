@@ -55,8 +55,8 @@ class MediclaimReturnCorrectionResubmissionTest extends TestCase
         $workflow = app(ClaimWorkflowService::class);
         $claim = $workflow->createDraft($employee, [
             'expenses' => [
-                ['category' => 'consultation', 'claimed_amount' => 1500],
-                ['category' => 'medicine', 'claimed_amount' => 800],
+                ['category' => 'CONSULTATION_FEES', 'claimed_amount' => 1500],
+                ['category' => 'MEDICINES', 'claimed_amount' => 800],
             ],
         ]);
         $originalExpenseIds = $claim->expenses()->pluck('id')->sort()->values()->all();

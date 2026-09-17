@@ -9,12 +9,14 @@ use App\Models\Document;
 use App\Models\DocumentVersion;
 use App\Models\Mediclaim\MediclaimClaim;
 use App\Models\Mediclaim\MediclaimDocumentLink;
+use App\Models\Mediclaim\MediclaimDocumentRequirement;
 use App\Models\User;
 use App\Services\Documents\DocumentAuthorizer;
 use App\Services\Documents\DocumentService;
 use App\Support\DocumentType;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -70,8 +72,22 @@ class ClaimDocumentController extends Controller
             return $this->missing('Claim not found.');
         }
 
+        $documentType = (string) $request->input('document_type');
+        // HR-configured per-type limit (`Admin\DocumentRequirementController`)
+        // when one exists for this exact type; the same 5120 KB default every
+        // other document upload in this app already uses otherwise (see
+        // `HospitalContactController::contactRules()`'s photo rule). Guarded
+        // by `Schema::hasTable()` — this table is deliberately NOT part of
+        // `RequireModuleSchema`'s blocking check (see that controller's own
+        // docblock), so a not-yet-migrated deployment must still let claim
+        // document uploads through at the plain default limit rather than
+        // 500 on a missing table.
+        $maxKb = (Schema::hasTable('mediclaim_document_requirements')
+            ? MediclaimDocumentRequirement::query()->where('document_type', $documentType)->value('max_file_size_kb')
+            : null) ?? 5120;
+
         $data = $request->validate([
-            'file' => ['required', 'file'],
+            'file' => ['required', 'file', "max:{$maxKb}"],
             'document_type' => ['required', 'string'],
             'document_role' => ['sometimes', 'nullable', 'string', 'max:60'],
         ]);

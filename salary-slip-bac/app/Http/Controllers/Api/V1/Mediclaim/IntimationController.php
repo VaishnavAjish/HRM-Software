@@ -60,9 +60,17 @@ class IntimationController extends Controller
             throw ValidationException::withMessages(['emergencyExplanation' => 'An explanation is required for an emergency notification.']);
         }
 
+        $isNonNetwork = (bool) ($request->input('isNonNetworkHospital') ?? $request->input('is_non_network_hospital') ?? false);
+        $nonNetworkName = $request->input('nonNetworkHospitalName') ?? $request->input('non_network_hospital_name');
+        $nonNetworkReason = $request->input('nonNetworkReason') ?? $request->input('non_network_reason');
+        $hospitalId = $request->input('hospitalId') ?? $request->input('hospital_id');
+
         $data = [
             'member_id' => $request->input('memberId') ?? $request->input('member_id'),
-            'hospital_id' => $request->input('hospitalId') ?? $request->input('hospital_id'),
+            'hospital_id' => $isNonNetwork ? null : $hospitalId,
+            'is_non_network_hospital' => $isNonNetwork,
+            'non_network_hospital_name' => $isNonNetwork ? $nonNetworkName : null,
+            'non_network_reason' => $isNonNetwork ? $nonNetworkReason : null,
             'treating_doctor' => $request->input('treatingDoctor') ?? $request->input('treating_doctor'),
             'planned_treatment' => $request->input('plannedTreatment') ?? $request->input('planned_treatment'),
             'estimated_amount' => $request->input('estimatedAmount') ?? $request->input('estimated_amount'),
@@ -77,6 +85,16 @@ class IntimationController extends Controller
         }
         if (! $data['planned_treatment']) {
             throw ValidationException::withMessages(['plannedTreatment' => 'Describe the planned treatment.']);
+        }
+        if ($isNonNetwork) {
+            if (! trim((string) $nonNetworkName)) {
+                throw ValidationException::withMessages(['nonNetworkHospitalName' => 'Hospital name is required.']);
+            }
+            if (! trim((string) $nonNetworkReason)) {
+                throw ValidationException::withMessages(['nonNetworkReason' => 'Explain why a non-network hospital is being used.']);
+            }
+        } elseif (! $hospitalId) {
+            throw ValidationException::withMessages(['hospitalId' => 'Select the hospital.']);
         }
 
         $actor = auth('api')->user();

@@ -1,92 +1,68 @@
-/**
- * Evaluates whether an employee's profile details are complete.
- * 
- * PF number (pf_no) and ESI number (esi_no) are explicitly OPTIONAL.
- * HR-managed fields (department, designation, joining_date) are also excluded.
- * 
- * Required employee fields:
- * - Full Name
- * - Phone / Mobile number or Email
- * - Date of Birth (dob)
- * - Address (or city/district)
- * - Gender
- * - Aadhaar Card Number
- * - PAN Card Number
- * - Bank Name
- * - Bank Account Number
- * - Bank IFSC Code
- * - At least one Family Details entry (name + relation)
- */
-export function isEmployeeProfileComplete(u) {
-  if (!u) return true;
+import { isPhotoDeletedOrDummy } from "./photoStatus";
 
+/**
+ * Calculates profile completion percentage score (0 - 100%) for an employee record based on required core profile fields.
+ */
+export function getProfileCompletionPercentage(u) {
+  if (!u) return 0;
   const target = u.employee || u.user || u.profile || u;
 
-  // Only enforce profile completion for Employee portal users
-  const isEmp = target.role === "employee" || (!target.role && target.rawRole !== 0 && target.rawRole !== 1 && target.rawRole !== 3);
-  if (!isEmp) return true;
+  const checks = [
+    Boolean(target.name || target.displayName),
+    Boolean(
+      (target.phone && String(target.phone).trim()) ||
+      (target.mobile_number && String(target.mobile_number).trim()) ||
+      (target.mobileNo && String(target.mobileNo).trim()) ||
+      (target.email && String(target.email).trim())
+    ),
+    Boolean(target.dob && String(target.dob).trim() && String(target.dob) !== "-"),
+    Boolean(
+      (target.address && String(target.address).trim() && String(target.address) !== "-") ||
+      (target.city && String(target.city).trim() && String(target.city) !== "-") ||
+      (target.district && String(target.district).trim() && String(target.district) !== "-")
+    ),
+    Boolean(target.gender && String(target.gender).trim() && String(target.gender) !== "-"),
+    Boolean(
+      target.hasAadhaar ||
+      target.has_aadhaar ||
+      (target.aadharCardNo && String(target.aadharCardNo).trim() && String(target.aadharCardNo) !== "-") ||
+      (target.aadhar_card_no && String(target.aadhar_card_no).trim() && String(target.aadhar_card_no) !== "-") ||
+      (target.aadhaar_card_no && String(target.aadhaar_card_no).trim() && String(target.aadhaar_card_no) !== "-")
+    ),
+    Boolean(
+      (target.panCardNo && String(target.panCardNo).trim() && String(target.panCardNo) !== "-") ||
+      (target.pan_card_no && String(target.pan_card_no).trim() && String(target.pan_card_no) !== "-") ||
+      (target.pan_no && String(target.pan_no).trim() && String(target.pan_no) !== "-")
+    ),
+    Boolean(
+      (target.bankName && String(target.bankName).trim() && String(target.bankName) !== "-") ||
+      (target.bank_name && String(target.bank_name).trim() && String(target.bank_name) !== "-")
+    ),
+    Boolean(
+      (target.bankAccountNo && String(target.bankAccountNo).trim() && String(target.bankAccountNo) !== "-") ||
+      (target.bank_account_no && String(target.bank_account_no).trim() && String(target.bank_account_no) !== "-") ||
+      (target.account_no && String(target.account_no).trim() && String(target.account_no) !== "-")
+    ),
+    Boolean(
+      (target.bankIfscCode && String(target.bankIfscCode).trim() && String(target.bankIfscCode) !== "-") ||
+      (target.bank_ifsc_code && String(target.bank_ifsc_code).trim() && String(target.bank_ifsc_code) !== "-") ||
+      (target.ifsc_code && String(target.ifsc_code).trim() && String(target.ifsc_code) !== "-")
+    ),
+  ];
 
-  const hasName = Boolean(target.name && String(target.name).trim());
-  const hasContact = Boolean(
-    (target.phone && String(target.phone).trim()) ||
-    (target.mobile_number && String(target.mobile_number).trim()) ||
-    (target.email && String(target.email).trim())
-  );
-  const hasDob = Boolean(target.dob && String(target.dob).trim());
-  const hasAddress = Boolean(
-    (target.address && String(target.address).trim()) ||
-    (target.city && String(target.city).trim()) ||
-    (target.district && String(target.district).trim())
-  );
-  const hasGender = Boolean(target.gender && String(target.gender).trim());
+  const filled = checks.filter(Boolean).length;
+  let pct = Math.round((filled / checks.length) * 100);
 
-  const hasAadhaar = Boolean(
-    target.has_aadhaar ||
-    (target.aadhar_card_no && String(target.aadhar_card_no).trim()) ||
-    (target.aadhaar_card_no && String(target.aadhaar_card_no).trim()) ||
-    (target.adhar_card_no && String(target.adhar_card_no).trim()) ||
-    (target.adhar_no && String(target.adhar_no).trim())
-  );
-
-  const hasPan = Boolean(
-    (target.pan_card_no && String(target.pan_card_no).trim()) ||
-    (target.pan_no && String(target.pan_no).trim())
-  );
-
-  const hasBankName = Boolean(target.bank_name && String(target.bank_name).trim());
-  const hasBankAccount = Boolean(
-    (target.bank_account_no && String(target.bank_account_no).trim()) ||
-    (target.account_no && String(target.account_no).trim())
-  );
-  const hasBankIfsc = Boolean(
-    (target.bank_ifsc_code && String(target.bank_ifsc_code).trim()) ||
-    (target.ifsc_code && String(target.ifsc_code).trim())
-  );
-
-  let familyMembers = target.family_members;
-  if (typeof familyMembers === "string") {
-    try {
-      familyMembers = JSON.parse(familyMembers);
-    } catch {
-      familyMembers = [];
-    }
+  // If photo is flagged as deleted or dummy photo detected, cap/deduct profile completion score
+  if (isPhotoDeletedOrDummy(u)) {
+    pct = Math.min(pct, 90);
   }
 
-  const hasFamily = Array.isArray(familyMembers) && familyMembers.some(
-    (m) => m && String(m.name || "").trim() && String(m.relation || "").trim()
-  );
+  return pct;
+}
 
-  return (
-    hasName &&
-    hasContact &&
-    hasDob &&
-    hasAddress &&
-    hasGender &&
-    hasAadhaar &&
-    hasPan &&
-    hasBankName &&
-    hasBankAccount &&
-    hasBankIfsc &&
-    hasFamily
-  );
+export function isEmployeeProfileComplete(u) {
+  if (!u) return false;
+  if (isPhotoDeletedOrDummy(u)) return false;
+  return getProfileCompletionPercentage(u) === 100;
 }

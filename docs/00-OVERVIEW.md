@@ -13,7 +13,7 @@ rest are standalone drops that have not been developed since they were added.
 
 | # | Project                  | Directory                                | Tech Stack                         | Port | Database   | Status                          |
 | - | ------------------------ | ---------------------------------------- | ---------------------------------- | ---- | ---------- | ------------------------------- |
-| 1 | Salary Slip Frontend     | `salary-slip-front/salary-slip-front/` | React 19, Vite 7, Capacitor 8, PWA | 5175 | -          | **Active**                |
+| 1 | Salary Slip Frontend     | `salary-slip-front/salary-slip-front/` | React 19, Vite 7, PWA              | 5175 | -          | **Active**                |
 | 2 | Salary Slip Backend      | `salary-slip-bac/`                     | Laravel 11, PHP 8.2                | 8000 | PostgreSQL | **Active**                |
 | 3 | Salary Slip Node API     | `salary-slip-node/`                    | Fastify 5, Prisma 6, TypeScript    | 8001 | PostgreSQL | **Active (in migration)** |
 | 4 | HRFlow Pro Frontend      | `client/`                              | React 18, TypeScript, Vite 5       | 5173 | -          | Dormant                         |
@@ -57,9 +57,9 @@ the nested directory.
 - **PDF/Print**: html2canvas, jsPDF 4, jspdf-autotable, react-to-print
 - **Excel**: xlsx (SheetJS)
 - **Drag & drop**: @dnd-kit/core, @dnd-kit/sortable
-- **Camera**: @capacitor/camera (employee photo capture)
+- **Camera**: Browser MediaDevices / HTML Capture (employee photo capture)
 - **QR**: qrcode.react
-- **Mobile**: Capacitor 8 Android
+- **Mobile**: Responsive Web / PWA
 - **PWA**: vite-plugin-pwa with Workbox service worker
 - **Testing**: Vitest
 
@@ -174,9 +174,9 @@ consumed from here. See `03-ENTERPRISE-RBAC.md`.
 ## Live Product Architecture
 
 ```
-  React SPA (:5175)          PWA + Capacitor Android
+  React SPA (:5175) / PWA
         |
-        | JWT / fetch (CapacitorHttp on native)
+        | JWT / fetch
         v
   Laravel /api (:8000)  <--- salary-slip-node (Fastify) parity-tested
         |                    replacement, not yet fronting traffic

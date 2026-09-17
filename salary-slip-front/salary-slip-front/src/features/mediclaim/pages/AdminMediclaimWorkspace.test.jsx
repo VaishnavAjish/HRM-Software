@@ -18,9 +18,7 @@ vi.mock("./admin/tabs/DashboardTab", () => ({ default: () => <div>Dashboard Cont
 vi.mock("./admin/tabs/EmployeesTab", () => ({ default: () => <div>Employees Content</div> }));
 vi.mock("./admin/tabs/ClaimsTab", () => ({ default: () => <div>Claims Content</div> }));
 vi.mock("./admin/tabs/PendingReviewsTab", () => ({ default: () => <div>Pending Reviews Content</div> }));
-vi.mock("./admin/tabs/PoliciesTab", () => ({ default: () => <div>Policies Content</div> }));
-vi.mock("./admin/tabs/HospitalsTab", () => ({ default: () => <div>Hospitals Content</div> }));
-vi.mock("./admin/tabs/RuleBooksTab", () => ({ default: () => <div>Rule Books Content</div> }));
+vi.mock("./admin/tabs/SettingsTab", () => ({ default: () => <div>Settings Content</div> }));
 vi.mock("./admin/tabs/ReportsTab", () => ({ default: () => <div>Reports Content</div> }));
 
 import AdminMediclaimWorkspace from "./AdminMediclaimWorkspace";
@@ -31,6 +29,7 @@ const STAGE_DECIDE_CODES = [
   "mediclaim.claim.committee.decide",
   "mediclaim.claim.hr_verification.decide",
   "mediclaim.claim.director.decide",
+  "mediclaim.settlement.create",
 ];
 
 function LocationProbe() {
@@ -52,25 +51,23 @@ beforeEach(() => {
 });
 
 describe("AdminMediclaimWorkspace tab gating", () => {
-  it("shows only the five unconditional tabs when no permission is granted", () => {
+  it("shows only the four unconditional tabs when no permission is granted", () => {
     setup();
 
     expect(screen.getAllByRole("button").map((button) => button.textContent)).toEqual([
-      "Dashboard", "Rule Books", "Employees", "Claims", "Hospitals",
+      "Dashboard", "Employees", "Claims", "Settings",
     ]);
   });
 
   it("shows every tab once every gating permission is granted", () => {
     state.allowed = new Set([
       "mediclaim.claim.coordinator.decide",
-      "mediclaim.policy.read",
       "mediclaim.report.read",
     ]);
     setup();
 
     expect(screen.getAllByRole("button").map((button) => button.textContent)).toEqual([
-      "Dashboard", "Rule Books", "Employees", "Claims", "Pending Reviews",
-      "Policies", "Hospitals", "Reports",
+      "Dashboard", "Employees", "Claims", "Pending Reviews", "Settings", "Reports",
     ]);
   });
 
@@ -81,26 +78,25 @@ describe("AdminMediclaimWorkspace tab gating", () => {
     expect(screen.getByRole("button", { name: "Pending Reviews" })).toBeInTheDocument();
   });
 
-  it("gates Policies/Reports independently of Pending Reviews", () => {
-    state.allowed = new Set(["mediclaim.policy.read"]);
+  it("gates Reports independently of Pending Reviews", () => {
+    state.allowed = new Set(["mediclaim.report.read"]);
     setup();
 
-    expect(screen.getByRole("button", { name: "Policies" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reports" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Pending Reviews" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Reports" })).not.toBeInTheDocument();
   });
 
   it("supports direct links, tab URL updates, and browser navigation", async () => {
-    state.allowed = new Set(["mediclaim.policy.read", "mediclaim.report.read"]);
-    const router = setup("/admin/tds/mediclaim?tab=policies");
+    state.allowed = new Set(["mediclaim.claim.coordinator.decide", "mediclaim.report.read"]);
+    const router = setup("/admin/tds/mediclaim?tab=pending-reviews");
 
-    expect(screen.getByText("Policies Content")).toBeInTheDocument();
+    expect(screen.getByText("Pending Reviews Content")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Reports" }));
     await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("?tab=reports"));
     expect(screen.getByText("Reports Content")).toBeInTheDocument();
 
     await router.navigate(-1);
-    await waitFor(() => expect(screen.getByText("Policies Content")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Pending Reviews Content")).toBeInTheDocument());
   });
 
   it("falls back safely to the first available tab when a direct-linked tab is not permitted", async () => {
@@ -113,13 +109,13 @@ describe("AdminMediclaimWorkspace tab gating", () => {
 
 describe("AdminMediclaimWorkspace accessibility & responsiveness", () => {
   it("lets keyboard Tab traverse the tab bar in visible order", async () => {
-    state.allowed = new Set(["mediclaim.policy.read"]);
+    state.allowed = new Set(["mediclaim.report.read"]);
     const user = userEvent.setup();
     setup();
 
     const buttons = screen.getAllByRole("button");
     expect(buttons.map((b) => b.textContent)).toEqual([
-      "Dashboard", "Rule Books", "Employees", "Claims", "Policies", "Hospitals",
+      "Dashboard", "Employees", "Claims", "Settings", "Reports",
     ]);
 
     await user.tab();

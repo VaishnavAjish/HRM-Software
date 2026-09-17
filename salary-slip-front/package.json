@@ -7,19 +7,9 @@
     "dev": "vite",
     "build": "cross-env VITE_ENV=PROD vite build",
     "lint": "eslint .",
-    "preview": "vite preview",
-    "mobile:sync": "npx cap sync",
-    "mobile:build": "cross-env VITE_ENV=DEV vite build && npx cap sync",
-    "mobile:run:android": "npm run mobile:build && npx cap run android",
-    "mobile:build:local": "npm run mobile:build",
-    "mobile:run:android:local": "npm run mobile:run:android",
-    "mobile:build:prod": "npm run build && npx cap sync",
-    "mobile:run:android:prod": "npm run mobile:build:prod && npx cap run android"
+    "preview": "vite preview"
   },
   "dependencies": {
-    "@capacitor/android": "^8.4.2",
-    "@capacitor/cli": "^8.4.2",
-    "@capacitor/core": "^8.4.2",
     "@headlessui/react": "^2.2.10",
     "ag-grid-community": "^35.2.1",
     "ag-grid-react": "^35.2.1",

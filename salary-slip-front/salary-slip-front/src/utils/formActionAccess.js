@@ -52,6 +52,10 @@ export function mediclaimActionAccess(can) {
     committeeDecide: can("mediclaim.claim.committee.decide"),
     hrVerificationDecide: can("mediclaim.claim.hr_verification.decide"),
     directorDecide: can("mediclaim.claim.director.decide"),
+    settlementCreate: can("mediclaim.settlement.create"),
+
+    // Claim administration
+    claimDelete: can("mediclaim.claim.delete"),
 
     // Team claims (manager, read-only)
     teamClaimRead: can("mediclaim.team_claim.read"),

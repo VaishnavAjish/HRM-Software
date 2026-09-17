@@ -18,12 +18,17 @@ import { getCompanyConfig } from "../../config/companyConfig";
 // appointment form" is literally that form, not a lookalike.
 import AppointmentModal from "../../pages/auth/AppointmentModal";
 import TrialFormModal from "../../pages/auth/TrialFormModal";
+import EmployeeDetailsModal from "../../pages/admin/AdminModals/EmployeeDetailsModal";
+import AddEditEmployeeModal from "../../pages/admin/AdminModals/AddEditEmployeeModal";
 import {
   buildSafeAadhaarUpdate,
   getAadhaarDisplayValue,
   hasStoredAadhaar,
 } from "../../utils/aadhaar";
 import { getEmployeePhotoUrl } from "../../pages/admin/AdminModals/employee-helpers";
+import { getProfileCompletionPercentage } from "../../utils/profileCompletion";
+import { isPhotoDeletedOrDummy, markPhotoAsDeleted } from "../../utils/photoStatus";
+import { AlertCircle } from "lucide-react";
 
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
@@ -60,30 +65,63 @@ function isResigned(row) {
 // Rows come from four different endpoints (trial, appointment, pending,
 // employee) but all of them carry the same raw `photo` field, so one
 // resolver/fallback works across every stage.
-function EmployeePhoto({ row, size = 36, onClick }) {
-  const src = getEmployeePhotoUrl(row?.photo);
+function EmployeePhoto({ row, size = 40, onClick }) {
+  const isDummy = row ? isPhotoDeletedOrDummy(row) : false;
+  const pct = row ? getProfileCompletionPercentage(row) : 0;
+  const barColorText =
+    isDummy ? "text-red-600" : pct === 100 ? "text-emerald-500" : pct >= 75 ? "text-brand-500" : pct >= 50 ? "text-amber-500" : "text-red-500";
+  const badgeBg =
+    isDummy
+      ? "bg-red-600 text-white border-white dark:border-gray-800"
+      : pct === 100
+      ? "bg-emerald-600 text-white border-white dark:border-gray-800"
+      : pct >= 75
+      ? "bg-brand-600 text-white border-white dark:border-gray-800"
+      : pct >= 50
+      ? "bg-amber-500 text-white border-white dark:border-gray-800"
+      : "bg-red-500 text-white border-white dark:border-gray-800";
+
+  const strokeDasharray = 106.81;
+  const strokeDashoffset = strokeDasharray - (pct / 100) * strokeDasharray;
+  const src = !isDummy ? getEmployeePhotoUrl(row?.photo) : "";
   const initial = (row?.name || "?").trim().charAt(0).toUpperCase() || "?";
   const Wrapper = onClick ? "button" : "div";
 
   return (
-    <Wrapper
-      {...(onClick ? { type: "button", onClick } : {})}
-      className={`group relative flex flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-brand-100 text-xs font-bold text-brand-600 dark:bg-brand-900/30 dark:text-brand-300 transition-all duration-200 ${
-        onClick ? "cursor-pointer hover:scale-110 hover:ring-2 hover:ring-brand-500/60 hover:shadow-md active:scale-95" : ""
-      }`}
-      style={{ height: size, width: size }}
-      title={onClick ? `Click to view ${row?.name || "employee"}'s photo` : undefined}
-    >
-      <span>{initial}</span>
-      {src && (
-        <img
-          src={src}
-          alt={row?.name ? `${row.name} photo` : "Employee photo"}
-          className="absolute inset-0 h-full w-full rounded-full object-cover transition-transform duration-200 group-hover:scale-105"
-          onError={(e) => { e.currentTarget.style.display = "none"; }}
-        />
+    <div className="relative flex items-center justify-center shrink-0" style={{ height: size, width: size }} title={row ? (isDummy ? "Dummy photo detected (Profile Locked)" : `Profile ${pct}% complete`) : undefined}>
+      {Boolean(row) && (
+        <svg className="absolute inset-0 h-full w-full -rotate-90 transform" viewBox="0 0 40 40">
+          <circle cx="20" cy="20" r="17" className="text-gray-200 dark:text-gray-700" strokeWidth="2.5" stroke="currentColor" fill="transparent" />
+          <circle cx="20" cy="20" r="17" className={`${barColorText} transition-all duration-500`} strokeWidth="2.5" strokeDasharray={strokeDasharray} strokeDashoffset={strokeDashoffset} strokeLinecap="round" stroke="currentColor" fill="transparent" />
+        </svg>
       )}
-    </Wrapper>
+      <Wrapper
+        {...(onClick ? { type: "button", onClick } : {})}
+        className={`group relative flex flex-shrink-0 items-center justify-center overflow-hidden rounded-full ${
+          isDummy ? "bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-300" : "bg-brand-100 text-brand-600 dark:bg-brand-900/30 dark:text-brand-300"
+        } text-xs font-bold transition-all duration-200 ${
+          onClick ? "cursor-pointer hover:scale-110 active:scale-95" : ""
+        }`}
+        style={{ height: size - 12, width: size - 12 }}
+      >
+        <span>{isDummy ? "!" : initial}</span>
+        {src && (
+          <img
+            src={src}
+            alt={row?.name ? `${row.name} photo` : "Employee photo"}
+            className="absolute inset-0 h-full w-full rounded-full object-cover transition-transform duration-200 group-hover:scale-105"
+            onError={(e) => { e.currentTarget.style.display = "none"; }}
+          />
+        )}
+      </Wrapper>
+      {Boolean(row) && (
+        <span
+          className={`absolute -bottom-0.5 left-1/2 -translate-x-1/2 px-1 py-0.5 rounded-full text-[9px] font-extrabold leading-none border shadow-md whitespace-nowrap z-10 ${badgeBg}`}
+        >
+          {isDummy ? "Locked" : `${pct}%`}
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -118,6 +156,7 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
   const [stageFilter, setStageFilter] = useState("all");
   const [departmentFilter, setDepartmentFilter] = useState("");
   const [genderFilter, setGenderFilter] = useState("");
+  const [completionFilter, setCompletionFilter] = useState("");
   const [month, setMonth] = useState("");
   const [year, setYear] = useState("");
   const [page, setPage] = useState(1);
@@ -152,8 +191,36 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
   const [trialModalRow, setTrialModalRow] = useState(null);
   const [trialModalMode, setTrialModalMode] = useState(null); // 'view' or 'edit'
   const [editEmployeeRow, setEditEmployeeRow] = useState(null);
+  const [editModal, setEditModal] = useState(null);
+  const [showPassword, setShowPassword] = useState(false);
   const [editForm, setEditForm] = useState({});
   const [editSaving, setEditSaving] = useState(false);
+
+  const handleDeletePhoto = async (targetRow) => {
+    if (!targetRow) return;
+    const empName = targetRow.name || targetRow.displayName || "this employee";
+    if (!window.confirm(`Are you sure you want to delete the profile picture for ${empName}?\n\nThis will mark dummy photo detected and lock their profile until an original photo is uploaded.`)) {
+      return;
+    }
+
+    try {
+      markPhotoAsDeleted(targetRow);
+      if (targetRow.id) {
+        await salaryApi.editEmployee(targetRow.id, { photo: null, photo_rejected: true, is_photo_dummy: true }).catch(() => {});
+      }
+      toast.success("Profile photo deleted. Employee profile is now locked.");
+      setRows((prev) =>
+        prev.map((r) =>
+          r.id === targetRow.id || (targetRow.emp_code && r.emp_code === targetRow.emp_code)
+            ? { ...r, photo: null, photo_rejected: true, is_photo_dummy: true }
+            : r
+        )
+      );
+      setPhotoModalRow(null);
+    } catch (err) {
+      toast.error("Failed to delete profile photo.");
+    }
+  };
 
   // UserController::index() paginates (`limit` query param, defaulting to
   // 15, becomes the page size — it does not raise or remove the cap). A
@@ -273,6 +340,12 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
         }
       }
 
+      if (completionFilter) {
+        const pct = getProfileCompletionPercentage(r);
+        if (completionFilter === "complete" && pct !== 100) return false;
+        if (completionFilter === "incomplete" && pct >= 100) return false;
+      }
+
       if (month || year) {
         const ref = referenceDate(r);
         const d = ref ? new Date(ref) : null;
@@ -289,7 +362,7 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
 
       return true;
     });
-  }, [rows, search, stageFilter, departmentFilter, genderFilter, month, year]);
+  }, [rows, search, stageFilter, departmentFilter, genderFilter, completionFilter, month, year]);
 
   const paginated = useMemo(() => {
     const start = (page - 1) * pageSize;
@@ -413,39 +486,72 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
     if (row.__stage === "trial") {
       setTrialModalRow(row);
       setTrialModalMode("edit");
-    }
-    else if (row.__stage === "appointment") setAppointmentModalRow(row);
-    else {
+    } else if (row.__stage === "appointment") {
+      setAppointmentModalRow(row);
+    } else {
+      const isAct = String(row.status) === "0" || row.status === 0;
+      const isPend = String(row.status) === "2" || row.status === 2;
+      const roleVal = String(row.role);
+      const loginRole =
+        roleVal === "0"
+          ? "superadmin"
+          : roleVal === "1"
+          ? "master"
+          : roleVal === "2"
+          ? "manager"
+          : roleVal === "4" || row.type === "agent"
+          ? "agent"
+          : "employee";
+
       setEditForm({
-        name: row.name || "", email: row.email || "", mobile_number: row.mobile_number || "",
-        department: row.department || "", designation: row.designation || "",
-        dob: row.dob || "", gender: row.gender || "", address: row.address || "",
-        city: row.city || "", district: row.district || "", state: row.state || "", pin: row.pin || "",
-        // Prefilled with the complete stored number, grouped. Normalised again on
-        // save so the grouping never reaches the column.
-        aadhar_card_no: getAadhaarDisplayValue(row), pan_card_no: row.pan_card_no || "",
-        bank_name: row.bank_name || "", bank_ifsc_code: row.bank_ifsc_code || "",
-        bank_account_no: row.bank_account_no || "",
-        joining_date: row.joining_date || "", salary: row.salary || "",
+        id: row.id,
+        name: row.name || "",
+        empCode: String(row.emp_code || ""),
+        email: row.email || "",
+        companyId: row.company_code || "",
+        unit: row.unit || "",
+        status: isAct ? "Active" : isPend ? "Pending" : "Inactive",
+        loginRole: loginRole,
+        department: row.department || "",
+        designation: row.designation || "",
+        accountName: row.account_name || "",
+        accountNo: row.account_no || "",
+        mobileNo: row.mobile_number || row.mobileNo || "",
+        dob: row.dob || "",
+        address: row.address || "",
+        gender: row.gender || "",
+        city: row.city || "",
+        pin: row.pin || "",
+        district: row.district || "",
+        state: row.state || "",
+        pfNo: row.pf_no || row.pfNo || "",
+        esiNo: row.esi_no || row.esiNo || "",
+        bankName: row.bank_name || row.bankName || "",
+        bankIfscCode: row.bank_ifsc_code || row.bankIfscCode || "",
+        bankAccountNo: row.bank_account_no || row.bankAccountNo || "",
+        aadharCardNo: getAadhaarDisplayValue(row),
+        panCardNo: row.pan_card_no || row.panCardNo || "",
+        joiningDate: row.joining_date || row.joiningDate || "",
+        resignationDate: row.resignation_date || row.resignationDate || "",
+        salary: row.salary || "",
+        password: "",
+        familyMembers: row.family_members || [],
       });
       setEditEmployeeRow(row);
+      setEditModal("edit");
     }
   };
 
   const updateEditForm = (field) => (e) =>
     setEditForm((prev) => ({ ...prev, [field]: e.target.value }));
 
-  const handleEditSave = async (e) => {
-    e.preventDefault();
-    if (!editEmployeeRow) return;
+  const handleEditSave = async () => {
+    if (!editEmployeeRow && !editForm.id) return;
+    const targetId = editForm.id || editEmployeeRow?.id;
 
-    // Decide what the Aadhaar field is allowed to do before anything is sent. A
-    // cleared or partly-deleted field must not overwrite the stored number — that
-    // is what detached records from their S3 document folders — and "-" (what a
-    // record with no number renders as) must not be stored either.
     const aadhaar = buildSafeAadhaarUpdate({
-      enteredValue: editForm.aadhar_card_no,
-      hasStored: hasStoredAadhaar(editEmployeeRow),
+      enteredValue: editForm.aadharCardNo || editForm.aadhar_card_no,
+      hasStored: hasStoredAadhaar(editEmployeeRow || editForm),
     });
 
     if (aadhaar.error) {
@@ -453,19 +559,52 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
       return;
     }
 
-    const payload = { ...editForm, ...(aadhaar.include && { aadhar_card_no: aadhaar.value }) };
+    const payload = {
+      name: editForm.name,
+      emp_code: editForm.empCode,
+      email: editForm.email,
+      company_code: editForm.companyId,
+      unit: editForm.unit,
+      status: editForm.status === "Active" ? "0" : editForm.status === "Pending" ? "2" : "1",
+      role: editForm.loginRole === "superadmin" ? "0" : editForm.loginRole === "master" ? "1" : editForm.loginRole === "manager" ? "2" : "3",
+      department: editForm.department,
+      designation: editForm.designation,
+      mobile_number: editForm.mobileNo,
+      dob: editForm.dob,
+      address: editForm.address,
+      city: editForm.city,
+      district: editForm.district,
+      state: editForm.state,
+      pin: editForm.pin,
+      pf_no: editForm.pfNo,
+      esi_no: editForm.esiNo,
+      bank_name: editForm.bankName,
+      bank_ifsc_code: editForm.bankIfscCode,
+      bank_account_no: editForm.bankAccountNo,
+      pan_card_no: editForm.panCardNo,
+      joining_date: editForm.joiningDate,
+      resignation_date: editForm.resignationDate,
+      salary: editForm.salary,
+      family_members: editForm.familyMembers || [],
+      ...(aadhaar.include && { aadhar_card_no: aadhaar.value }),
+    };
 
-    // Absent, not empty. An empty value would overwrite the stored number.
-    if (!aadhaar.include) delete payload.aadhar_card_no;
+    if (editForm.password) {
+      payload.password = editForm.password;
+    }
 
     setEditSaving(true);
     try {
       await salaryApi.editEmployee(
-        editEmployeeRow.id, payload, user?.accessToken, user?.tokenType,
-        { companyId: editEmployeeRow.company_code || companyId },
+        targetId,
+        payload,
+        user?.accessToken,
+        user?.tokenType,
+        { companyId: editForm.companyId || companyId }
       );
-      toast.success("Employee updated");
+      toast.success("Employee updated successfully");
       setEditEmployeeRow(null);
+      setEditModal(null);
       await fetchAll();
     } catch (err) {
       toast.error(err.message || "Failed to update employee");
@@ -762,7 +901,7 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
               <table className="w-full text-sm table-fixed border-separate border-spacing-0">
                 <thead className="text-left text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
                   <tr>
-                    <th className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900/40 px-4 py-2.5 font-bold w-14">Photo</th>
+                    <th className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900/40 px-4 py-2.5 font-bold w-20">Profile</th>
                     <th className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900/40 px-4 py-2.5 font-bold w-32">Emp Code</th>
                     <th className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900/40 px-4 py-2.5 font-bold w-32">Punching No</th>
                     <th className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900/40 px-4 py-2.5 font-bold w-48">Name</th>
@@ -844,35 +983,35 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
                           </Badge>
                         </td>
                         <td className="px-4 py-1.5 border-b border-gray-100 dark:border-gray-700">
-                          <div className="flex justify-end gap-1">
+                          <div className="flex justify-end items-center gap-1.5">
                             <button
                               onClick={() => openView(row)}
-                              className="p-1.5 rounded-lg text-gray-400 hover:text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-colors"
+                              className="flex items-center justify-center rounded-lg bg-brand-50 p-2 text-brand-600 transition hover:bg-brand-100 dark:bg-brand-900/20 dark:hover:bg-brand-900/40"
                               title="View details"
                             >
-                              <Eye size={16} />
+                              <Eye size={14} />
                             </button>
                             <button
                               onClick={() => openEdit(row)}
-                              className="p-1.5 rounded-lg text-gray-400 hover:text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-colors"
+                              className="flex items-center justify-center rounded-lg bg-yellow-50 p-2 text-yellow-600 transition hover:bg-yellow-100 dark:bg-yellow-900/20 dark:hover:bg-yellow-900/40"
                               title="Edit"
                             >
-                              <Pencil size={16} />
+                              <Pencil size={14} />
                             </button>
                             <button
                               onClick={() => toggleActive(row)}
                               disabled={busy}
-                              className="p-1.5 rounded-lg text-gray-400 hover:text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-colors disabled:opacity-50"
+                              className="flex items-center justify-center rounded-lg bg-gray-100 p-2 text-gray-600 transition hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 disabled:opacity-50"
                               title={active ? "Mark inactive" : "Mark active"}
                             >
-                              {busy ? <Loader2 size={16} className="animate-spin" /> : active ? <Lock size={16} /> : <Unlock size={16} />}
+                              {busy ? <Loader2 size={14} className="animate-spin" /> : active ? <Lock size={14} /> : <Unlock size={14} />}
                             </button>
                             <button
                               onClick={() => setDeleteRow(row)}
-                              className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                              className="flex items-center justify-center rounded-lg bg-red-50 p-2 text-red-600 transition hover:bg-red-100 dark:bg-red-900/20"
                               title="Delete"
                             >
-                              <Trash2 size={16} />
+                              <Trash2 size={14} />
                             </button>
                           </div>
                         </td>
@@ -901,54 +1040,17 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
 
       {/* ── View modal ── */}
       {viewRow && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-gray-800 w-full max-w-lg max-h-[85vh] flex flex-col rounded-2xl shadow-xl overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="px-6 py-5 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-800/50 shrink-0">
-              <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                <EmployeePhoto row={viewRow} size={28} onClick={() => setPhotoModalRow(viewRow)} />
-                {viewRow.name || "Record"} Details
-              </h3>
-              <button onClick={() => setViewRow(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-6">
-              <div className="mb-5">
-                <Badge variant={(STAGE_META[viewRow.__stage] || STAGE_META.appointment).tone}>
-                  {(STAGE_META[viewRow.__stage] || STAGE_META.appointment).label}
-                </Badge>
-              </div>
-              <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
-                {DETAIL_FIELDS.map(([label, accessor]) => {
-                  const value = typeof accessor === "function" ? accessor(viewRow) : viewRow[accessor];
-                  if (!value) return null;
-                  return (
-                    <div key={label}>
-                      <dt className="text-[10px] font-bold uppercase tracking-widest text-gray-400 dark:text-slate-400">{label}</dt>
-                      <dd className="text-sm text-gray-900 dark:text-white break-words">{value}</dd>
-                    </div>
-                  );
-                })}
-              </dl>
-            </div>
-
-            <div className="px-6 py-4 border-t border-gray-100 dark:border-gray-700 flex gap-3 shrink-0">
-              <button
-                onClick={() => setViewRow(null)}
-                className="flex-1 px-4 py-2 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-              >
-                Close
-              </button>
-              <button
-                onClick={() => { const r = viewRow; setViewRow(null); openEdit(r); }}
-                className="flex-1 px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
-              >
-                <Pencil size={14} /> Edit
-              </button>
-            </div>
-          </div>
-        </div>
+        <EmployeeDetailsModal
+          isOpen={Boolean(viewRow)}
+          onClose={() => setViewRow(null)}
+          selected={viewRow}
+          viewLoading={false}
+          openEdit={(emp) => {
+            const target = emp || viewRow;
+            setViewRow(null);
+            openEdit(target);
+          }}
+        />
       )}
 
       {/* ── Delete confirm ── */}
@@ -1012,70 +1114,24 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
         onSuccess={() => { setTrialModalRow(null); setTrialModalMode(null); fetchAll(); }}
       />
 
-      {/* ── Pending/Employee stage: a purpose-built edit form. Not the same
-          component as the Employees page's AddEditEmployeeModal — that one is
-          tightly bound to EmployeeManagement's own fetch/save state and isn't
-          designed to be reused standalone — but it edits the same fields. ── */}
-      <Modal
-        isOpen={Boolean(editEmployeeRow)}
-        onClose={() => setEditEmployeeRow(null)}
-        title={`Edit ${editEmployeeRow?.name || "Employee"}`}
-        size="lg"
-      >
-        <form onSubmit={handleEditSave} className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {[
-              ["Name", "name"], ["Email", "email"], ["Mobile", "mobile_number"],
-              ["Department", "department"], ["Designation", "designation"],
-              ["Date of Birth", "dob", "date"], ["Gender", "gender"],
-              ["Joining Date", "joining_date", "date"], ["Salary", "salary"],
-              ["Aadhar No", "aadhar_card_no"], ["PAN No", "pan_card_no"],
-              ["Bank Name", "bank_name"], ["Bank IFSC", "bank_ifsc_code"],
-              ["Bank A/C No", "bank_account_no"],
-              ["City", "city"], ["District", "district"], ["State", "state"], ["PIN", "pin"],
-            ].map(([label, field, type]) => (
-              <div key={field}>
-                <label className="mb-1 block text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide">
-                  {label}
-                </label>
-                <input
-                  type={type || "text"}
-                  value={editForm[field] || ""}
-                  onChange={updateEditForm(field)}
-                  className="w-full px-3 py-2 text-sm bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white outline-none focus:border-brand-500"
-                />
-              </div>
-            ))}
-            <div className="sm:col-span-2">
-              <label className="mb-1 block text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide">
-                Address
-              </label>
-              <input
-                value={editForm.address || ""}
-                onChange={updateEditForm("address")}
-                className="w-full px-3 py-2 text-sm bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white outline-none focus:border-brand-500"
-              />
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-3 pt-4 border-t border-gray-100 dark:border-gray-700">
-            <button
-              type="button"
-              onClick={() => setEditEmployeeRow(null)}
-              className="px-4 py-2 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={editSaving}
-              className="px-4 py-2 bg-brand-600 hover:bg-brand-700 disabled:bg-brand-400 text-white text-sm font-semibold rounded-lg transition-colors"
-            >
-              {editSaving ? "Saving..." : "Save Changes"}
-            </button>
-          </div>
-        </form>
-      </Modal>
+      <AddEditEmployeeModal
+        modal={editModal}
+        setModal={(val) => {
+          setEditModal(val);
+          if (!val) setEditEmployeeRow(null);
+        }}
+        form={editForm}
+        setForm={setEditForm}
+        handleSave={handleEditSave}
+        saveLoading={editSaving}
+        viewLoading={false}
+        showPassword={showPassword}
+        setShowPassword={setShowPassword}
+        unitOptions={[]}
+        departmentsList={departmentOptions}
+        setDepartmentsList={() => {}}
+        setIsDeptModalOpen={() => {}}
+      />
 
       {/* ── Photo Popup Modal ── */}
       {photoModalRow && (
@@ -1091,6 +1147,11 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-800/80">
               <h3 className="text-base font-extrabold text-gray-900 dark:text-white flex items-center gap-2">
                 <span>Employee Photo</span>
+                {isPhotoDeletedOrDummy(photoModalRow) && (
+                  <span className="px-2 py-0.5 text-[10px] font-bold bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 rounded-full border border-red-200 dark:border-red-800">
+                    Dummy Photo Detected (Locked)
+                  </span>
+                )}
               </h3>
               <button
                 type="button"
@@ -1105,8 +1166,8 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
             {/* Content Body */}
             <div className="p-6 flex flex-col items-center text-center">
               {/* Photo Display Box */}
-              <div className="relative group flex items-center justify-center w-56 h-56 sm:w-64 sm:h-64 rounded-2xl bg-gradient-to-br from-brand-500/10 via-gray-100 to-brand-500/5 dark:from-brand-900/30 dark:via-gray-800 dark:to-gray-900 border-2 border-brand-500/20 shadow-inner overflow-hidden mb-5">
-                {getEmployeePhotoUrl(photoModalRow.photo) ? (
+              <div className="relative group flex items-center justify-center w-56 h-56 sm:w-64 sm:h-64 rounded-2xl bg-gradient-to-br from-brand-500/10 via-gray-100 to-brand-500/5 dark:from-brand-900/30 dark:via-gray-800 dark:to-gray-900 border-2 border-brand-500/20 shadow-inner overflow-hidden mb-4">
+                {getEmployeePhotoUrl(photoModalRow.photo) && !isPhotoDeletedOrDummy(photoModalRow) ? (
                   <img
                     src={getEmployeePhotoUrl(photoModalRow.photo)}
                     alt={photoModalRow.name || "Employee"}
@@ -1114,20 +1175,29 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
                     onError={(e) => {
                       e.currentTarget.onerror = null;
                       e.currentTarget.style.display = "none";
-                      if (e.currentTarget.nextSibling) {
-                        e.currentTarget.nextSibling.style.display = "flex";
-                      }
                     }}
                   />
-                ) : null}
-                <div
-                  className={`flex flex-col items-center justify-center h-full w-full font-black text-6xl text-brand-600 dark:text-brand-400 ${
-                    getEmployeePhotoUrl(photoModalRow.photo) ? "hidden" : "flex"
-                  }`}
-                >
-                  {(photoModalRow.name || "?").trim().charAt(0).toUpperCase()}
-                </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center p-4">
+                    <div className="w-16 h-16 rounded-full bg-red-100 dark:bg-red-900/30 text-red-500 flex items-center justify-center font-black text-3xl mb-2">
+                      !
+                    </div>
+                    <p className="text-xs font-bold text-red-600 dark:text-red-400">
+                      {isPhotoDeletedOrDummy(photoModalRow) ? "Dummy Photo Detected / Deleted" : "No Profile Photo"}
+                    </p>
+                    <p className="text-[11px] text-gray-400 mt-1">Profile locked until photo uploaded</p>
+                  </div>
+                )}
               </div>
+
+              {isPhotoDeletedOrDummy(photoModalRow) && (
+                <div className="w-full mb-4 px-4 py-2.5 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 rounded-xl text-left flex items-start gap-2 text-xs text-red-700 dark:text-red-300 font-medium">
+                  <AlertCircle size={16} className="shrink-0 text-red-500 mt-0.5" />
+                  <span>
+                    <strong>Dummy Photo Detected:</strong> Employee profile is currently locked. The employee will see a prompt to upload their original photo.
+                  </span>
+                </div>
+              )}
 
               {/* Employee Info Details */}
               <h4 className="text-xl font-black tracking-tight text-gray-900 dark:text-white mb-1">
@@ -1183,21 +1253,29 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
             </div>
 
             {/* Footer */}
-            <div className="px-6 py-4 border-t border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 flex gap-3">
-              {getEmployeePhotoUrl(photoModalRow.photo) && (
+            <div className="px-6 py-4 border-t border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 flex flex-wrap gap-2">
+              {getEmployeePhotoUrl(photoModalRow.photo) && !isPhotoDeletedOrDummy(photoModalRow) && (
                 <a
                   href={getEmployeePhotoUrl(photoModalRow.photo)}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2 bg-brand-50 hover:bg-brand-100 dark:bg-brand-950/40 dark:hover:bg-brand-900/40 text-brand-600 dark:text-brand-300 text-xs font-bold rounded-xl transition-colors"
+                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-brand-50 hover:bg-brand-100 dark:bg-brand-950/40 dark:hover:bg-brand-900/40 text-brand-600 dark:text-brand-300 text-xs font-bold rounded-xl transition-colors"
                 >
                   <Eye size={14} /> Full Image
                 </a>
               )}
               <button
                 type="button"
+                onClick={() => handleDeletePhoto(photoModalRow)}
+                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl transition-colors shadow-sm"
+                title="Delete profile picture & lock employee profile"
+              >
+                <Trash2 size={14} /> Delete Photo
+              </button>
+              <button
+                type="button"
                 onClick={() => setPhotoModalRow(null)}
-                className="flex-1 px-4 py-2 bg-gray-900 hover:bg-gray-800 dark:bg-gray-700 dark:hover:bg-gray-600 text-white text-xs font-bold rounded-xl transition-colors"
+                className="px-4 py-2 bg-gray-900 hover:bg-gray-800 dark:bg-gray-700 dark:hover:bg-gray-600 text-white text-xs font-bold rounded-xl transition-colors"
               >
                 Close
               </button>

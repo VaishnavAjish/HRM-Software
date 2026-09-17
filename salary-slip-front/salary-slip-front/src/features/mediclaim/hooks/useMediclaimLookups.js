@@ -23,6 +23,18 @@ function unwrapList(result) {
  * backend call (the schema may not exist on this deployment yet) leaves the
  * corresponding list genuinely empty and records the real error message.
  * Nothing here is ever synthesized or fabricated.
+ *
+ * `documentRequirements` is deliberately excluded from the shared `error`
+ * below: `hospitals`/`ruleBooks`/`members` all feed the SAME `error` field
+ * into unrelated consumers (`MemberPicker`, `HospitalPicker`,
+ * `FamilyMemberManager` — each renders whatever `lookups.error` says in
+ * place of its own picker/list), so one failing endpoint was blanking out
+ * completely unrelated UI. Its only consumer (`DocumentChecklist`) already
+ * treats an empty list as "still loading" on its own, so it degrades
+ * silently instead — this is what stops a not-yet-migrated
+ * `document-requirements` endpoint (a genuinely separate, newer permission
+ * grant) from taking down the Family Members tab or every claim-request
+ * picker with an unrelated "not permitted" message.
  */
 export function useMediclaimLookups() {
   const { user } = useAuth();
@@ -36,6 +48,7 @@ export function useMediclaimLookups() {
     hospitals: [],
     ruleBooks: [],
     members: [],
+    documentRequirements: [],
     // Undefined (not yet known) vs null (checked, no waiting-period rule
     // applies) vs an object — the workspace shell treats "undefined" as
     // "still loading, don't flash the lock screen or the tabs yet."
@@ -48,11 +61,12 @@ export function useMediclaimLookups() {
   });
 
   const fetchLookups = useCallback(async () => {
-    const [hospitalsResult, ruleBooksResult, membersResult, coverageResult] = await Promise.allSettled([
+    const [hospitalsResult, ruleBooksResult, membersResult, coverageResult, documentRequirementsResult] = await Promise.allSettled([
       mediclaimApi.hospitals({}, token, tokenType),
       mediclaimApi.ruleBooks({}, token, tokenType),
       mediclaimApi.myMembers(token, tokenType),
       mediclaimApi.myCoverage(token, tokenType),
+      mediclaimApi.documentRequirements({}, token, tokenType),
     ]);
 
     const firstRejection = [hospitalsResult, ruleBooksResult, membersResult]
@@ -64,6 +78,7 @@ export function useMediclaimLookups() {
       hospitals: unwrapList(hospitalsResult),
       ruleBooks: unwrapList(ruleBooksResult),
       members: unwrapList(membersResult),
+      documentRequirements: unwrapList(documentRequirementsResult),
       eligibility: coverage?.eligibility ?? null,
       onboarding: coverage?.onboarding ?? null,
       error: firstRejection ? (firstRejection.reason?.message || "Some Mediclaim data could not be loaded.") : null,
@@ -96,6 +111,7 @@ export function useMediclaimLookups() {
     hospitals: state.hospitals,
     ruleBooks: state.ruleBooks,
     members: state.members,
+    documentRequirements: state.documentRequirements,
     eligibility: state.eligibility,
     onboarding: state.onboarding,
     loading,

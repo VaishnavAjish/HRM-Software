@@ -97,6 +97,22 @@ export const mediclaimApi = {
     });
   },
 
+  /* -------------------------------------------------------- admin: intimations */
+
+  // Company-wide "Notify Office" list — every employee's intimation, not
+  // just the caller's own (`myIntimations` above stays self-scoped).
+  adminIntimations(filters = {}, accessToken, tokenType = "Bearer") {
+    return apiRequest(`${BASE}/intimations${query(filters)}`, { headers: headers(accessToken, tokenType) });
+  },
+
+  closeIntimation(id, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`${BASE}/intimations/${id}/close`, {
+      method: "POST",
+      headers: headers(accessToken, tokenType),
+      body: JSON.stringify(payload),
+    });
+  },
+
   /* -------------------------------------------------------------- self-service: claims */
 
   myClaims(filters = {}, accessToken, tokenType = "Bearer") {
@@ -129,6 +145,15 @@ export const mediclaimApi = {
   // enumerated it up front.
   adminClaims(filters = {}, accessToken, tokenType = "Bearer") {
     return apiRequest(`${BASE}/claims${query(filters)}`, { headers: headers(accessToken, tokenType) });
+  },
+
+  // Hard delete — `Admin\ClaimController::destroy()` — gated on
+  // `mediclaim.claim.delete`. See `ClaimsTab.jsx`'s Delete action.
+  deleteClaim(claimId, accessToken, tokenType = "Bearer") {
+    return apiRequest(`${BASE}/claims/${claimId}`, {
+      method: "DELETE",
+      headers: headers(accessToken, tokenType),
+    });
   },
 
   /* --------------------------------------------------------------- claim resource (shared) */
@@ -172,6 +197,17 @@ export const mediclaimApi = {
     });
   },
 
+  // Records the real discharge date once treatment that was still ongoing
+  // at submission time has finished — see `ClaimDetailDrawer.jsx`'s
+  // "mark as discharged" prompt and `ClaimWorkflowService::recordDischarge()`.
+  recordClaimDischarge(claimId, dischargeAt, accessToken, tokenType = "Bearer") {
+    return apiRequest(`${BASE}/claims/${claimId}/discharge`, {
+      method: "POST",
+      headers: headers(accessToken, tokenType),
+      body: JSON.stringify({ discharge_at: dischargeAt }),
+    });
+  },
+
   /* ------------------------------------------------------------------------ claim documents */
 
   claimDocuments(claimId, accessToken, tokenType = "Bearer") {
@@ -209,6 +245,18 @@ export const mediclaimApi = {
   },
 
   /* ---------------------------------------------------------------------------------- reviews */
+
+  // Required once per claim before managerDecision() will accept an
+  // Approve/Reject/Return — the backend 409s (CONFIDENTIALITY_ACK_REQUIRED)
+  // until this is called. See ManagerReviewPanel.jsx, which calls this
+  // automatically right before submitReviewDecision() so the manager never
+  // has to take a separate action for it.
+  acknowledgeConfidentiality(claimId, accessToken, tokenType = "Bearer") {
+    return apiRequest(`${BASE}/claims/${claimId}/confidentiality-ack`, {
+      method: "POST",
+      headers: headers(accessToken, tokenType),
+    });
+  },
 
   reviewsPending(filters = {}, accessToken, tokenType = "Bearer") {
     return apiRequest(`${BASE}/reviews/pending${query(filters)}`, { headers: headers(accessToken, tokenType) });
@@ -376,6 +424,38 @@ export const mediclaimApi = {
 
   deleteHospitalContact(hospitalId, contactId, accessToken, tokenType = "Bearer") {
     return apiRequest(`${BASE}/hospitals/${hospitalId}/contacts/${contactId}`, {
+      method: "DELETE",
+      headers: headers(accessToken, tokenType),
+    });
+  },
+
+  /* --------------------------------------------------------------- document requirements (shared) */
+
+  // Shared between the admin Document Settings screen and every employee's
+  // document checklist — see `Admin\DocumentRequirementController`'s
+  // docblock for why `.read` isn't split into an admin/self pair.
+  documentRequirements(filters = {}, accessToken, tokenType = "Bearer") {
+    return apiRequest(`${BASE}/document-requirements${query(filters)}`, { headers: headers(accessToken, tokenType) });
+  },
+
+  createDocumentRequirement(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`${BASE}/document-requirements`, {
+      method: "POST",
+      headers: headers(accessToken, tokenType),
+      body: JSON.stringify(payload),
+    });
+  },
+
+  updateDocumentRequirement(id, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`${BASE}/document-requirements/${id}`, {
+      method: "PUT",
+      headers: headers(accessToken, tokenType),
+      body: JSON.stringify(payload),
+    });
+  },
+
+  deleteDocumentRequirement(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`${BASE}/document-requirements/${id}`, {
       method: "DELETE",
       headers: headers(accessToken, tokenType),
     });

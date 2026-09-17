@@ -49,8 +49,8 @@ already exists and already enforces its own access rules.
 | Auth | `tymon/jwt-auth` | Untouched — consume the same JWT |
 | Access control | `RoleMiddleware` + RBAC tables | Untouched — mirror in UI only |
 | Client | React 18 + Tailwind | **Rebuild** — Kotlin + Compose |
-| Mobile shell | Capacitor WebView | **Drop entirely** |
-| Camera | `@capacitor/camera` + `getUserMedia` | **Rebuild** — CameraX |
+| Mobile shell | Capacitor WebView (Removed) | **Drop entirely** |
+| Camera | Web Camera (`getUserMedia` / HTML capture) | **Rebuild** — CameraX |
 | PDF / payslips | Client-side jsPDF | **Rebuild** — see §9 |
 | Excel import | Client parses, posts rows | Optional — admin desk task |
 

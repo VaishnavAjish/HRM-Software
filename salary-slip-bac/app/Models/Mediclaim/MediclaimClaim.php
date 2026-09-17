@@ -108,6 +108,13 @@ class MediclaimClaim extends Model
         self::STATUS_COMMITTEE_RECOMMENDATION => 'committee',
         self::STATUS_HR_ELIGIBILITY_VERIFICATION => 'hr_verification',
         self::STATUS_DIRECTOR_FINAL_APPROVAL => 'director',
+        // Added so SETTLEMENT_PENDING claims are visible/decidable the exact
+        // same way every other stage already is — via an active company-wide
+        // 'settlement' `mediclaim_reviewer_assignments` row — instead of
+        // being reachable by no one once Director Final Approval lands them
+        // here. See `ReviewQueueController::STAGE_METHODS` for the matching
+        // dispatch to `ClaimWorkflowService::recordSettlement()`.
+        self::STATUS_SETTLEMENT_PENDING => 'settlement',
     ];
 
     protected $fillable = [
@@ -138,6 +145,7 @@ class MediclaimClaim extends Model
         'non_network_reason',
         'admission_at',
         'discharge_at',
+        'documents_due_at',
         'is_ongoing_treatment',
         'treatment_description',
         'total_claimed_amount',
@@ -172,6 +180,7 @@ class MediclaimClaim extends Model
             'is_network_hospital' => 'boolean',
             'admission_at' => 'datetime',
             'discharge_at' => 'datetime',
+            'documents_due_at' => 'datetime',
             'is_ongoing_treatment' => 'boolean',
             'total_claimed_amount' => 'decimal:2',
             'total_approved_amount' => 'decimal:2',
@@ -341,9 +350,35 @@ class MediclaimClaim extends Model
      * Used directly by `Mediclaim\ReviewQueueController@index`
      * (`GET /reviews/pending`), and composed into `scopeVisibleTo()` and
      * `scopeDecidableBy()` below.
+     *
+     * A super admin bypasses all of the above and matches every claim
+     * currently sitting at ANY review stage — including MANAGER_REVIEW,
+     * which is otherwise excluded from this method entirely (see
+     * `STAGE_REVIEWER_ROLES`'s docblock). Without this, `GET /reviews/pending`
+     * returns nothing for a super admin who holds no personal reviewer
+     * assignment row and isn't literally anyone's `assigned_manager_id` —
+     * which is every claim, for an account used purely to administer the
+     * module rather than sit in anyone's real reporting line. This mirrors
+     * `scopeVisibleTo()`'s own unrestricted-for-super-admin behavior.
      */
     public function scopeAwaitingReviewBy(Builder $query, User $actor): Builder
     {
+        if ($actor->isSuperAdmin()) {
+            // STATUS_SUBMITTED is included here too (super admin only) —
+            // that is the state a claim is left in when
+            // ReportingHierarchy::managerFor() could not resolve an active
+            // manager for the employee at submission time (see submit()'s
+            // docblock, point (f)). Such a claim has no assigned reviewer at
+            // all, so it would otherwise be invisible everywhere: excluded
+            // from this list (no reviewer role owns SUBMITTED), and excluded
+            // from the admin Claims tab's finalized-only default. See
+            // ClaimWorkflowService::managerDecision()'s matching rescue path.
+            return $query->whereIn('status', array_merge(
+                [self::STATUS_SUBMITTED, self::STATUS_MANAGER_REVIEW],
+                array_keys(self::STAGE_REVIEWER_ROLES)
+            ));
+        }
+
         return $query->where(function (Builder $q) use ($actor) {
             foreach (self::STAGE_REVIEWER_ROLES as $status => $role) {
                 $q->orWhere(function (Builder $branch) use ($status, $role, $actor) {

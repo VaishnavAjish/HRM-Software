@@ -34,6 +34,25 @@ export function formatMaskedCardNumber(cardNumber) {
 }
 
 /**
+ * "2026-27" label for the Indian financial year (April 1 – March 31)
+ * containing `value` — mirrors `PolicyEligibilityService`'s FY math
+ * server-side exactly (the floater renews on the same boundary), so a claim
+ * grouped under "FY 2026-27" here is always the same claim counted against
+ * FY 2026-27's floater on the backend. Returns `null` for an unparseable/
+ * missing date so callers can bucket those separately rather than showing a
+ * nonsense label.
+ */
+export function getFinancialYearLabel(value) {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+
+  const month = date.getMonth() + 1; // JS months are 0-indexed
+  const startYear = month >= 4 ? date.getFullYear() : date.getFullYear() - 1;
+  return `${startYear}-${String((startYear + 1) % 100).padStart(2, "0")}`;
+}
+
+/**
  * Hospital contact photos are stored the same way employee photos are — a
  * server-relative path under the `public` disk — so this mirrors
  * `src/pages/admin/AdminModals/employee-helpers.js`'s `getEmployeePhotoUrl`

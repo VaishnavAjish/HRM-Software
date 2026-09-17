@@ -1,45 +1,52 @@
-import { DOCUMENT_TYPE } from "../models/documentTypes";
-
 export const REQUIREMENT = {
   REQUIRED: "REQUIRED",
   OPTIONAL: "OPTIONAL",
-  // Reserved for a future rule that removes a row from the checklist
-  // entirely. Not produced today: DocumentChecklist (F4) renders a *fixed*
-  // 8-row checklist, so a row that isn't required for this claim still
-  // shows as optional rather than disappearing.
-  HIDDEN: "HIDDEN",
 };
 
 const HOSPITALIZED_TREATMENT_TYPES = ["hospitalization", "surgery"];
 
-/**
- * Per-row required/optional state for the Section F document checklist,
- * driven only by treatment type and the medico-legal flag — exactly the two
- * conditional rules the paper form encodes ("(if hospitalized)" / "(if
- * applicable)"):
- *   - Discharge Summary: required iff treatment type is Hospitalization or Surgery
- *   - FIR / MLC: required iff the case is medico-legal
- * Every other row is required except "Any Other Supporting Documents", which
- * is always optional.
- */
-export function resolveRequiredDocuments({ treatmentType, isMedicoLegal } = {}) {
-  const isHospitalized = HOSPITALIZED_TREATMENT_TYPES.includes(treatmentType);
+function requirementFor(row, { treatmentType, isMedicoLegal } = {}) {
+  const rule = row.conditionalRule ?? row.conditional_rule ?? null;
+  let required;
 
-  return {
-    [DOCUMENT_TYPE.CLAIM_FORM]: REQUIREMENT.REQUIRED,
-    [DOCUMENT_TYPE.PRESCRIPTION]: REQUIREMENT.REQUIRED,
-    [DOCUMENT_TYPE.MEDICAL_REPORT]: REQUIREMENT.REQUIRED,
-    [DOCUMENT_TYPE.HOSPITAL_BILL]: REQUIREMENT.REQUIRED,
-    [DOCUMENT_TYPE.MEDICINE_BILL]: REQUIREMENT.REQUIRED,
-    [DOCUMENT_TYPE.DISCHARGE_SUMMARY]: isHospitalized ? REQUIREMENT.REQUIRED : REQUIREMENT.OPTIONAL,
-    [DOCUMENT_TYPE.FIR_MLC]: isMedicoLegal ? REQUIREMENT.REQUIRED : REQUIREMENT.OPTIONAL,
-    [DOCUMENT_TYPE.OTHER_SUPPORTING]: REQUIREMENT.OPTIONAL,
-  };
+  if (rule === "hospitalized_or_surgery") {
+    required = HOSPITALIZED_TREATMENT_TYPES.includes(treatmentType);
+  } else if (rule === "medico_legal") {
+    required = Boolean(isMedicoLegal);
+  } else {
+    required = Boolean(row.isRequired ?? row.is_required);
+  }
+
+  return required ? REQUIREMENT.REQUIRED : REQUIREMENT.OPTIONAL;
 }
 
-/** The subset of `resolveRequiredDocuments()` that are actually REQUIRED, as a flat list of document type codes — what `validateDocumentsStep` checks uploads against. */
-export function getRequiredDocumentTypes(context) {
-  const resolved = resolveRequiredDocuments(context);
+/**
+ * Per-row required/optional state for the document checklist, driven by the
+ * HR-managed `requirements` list (`mediclaimApi.documentRequirements()` —
+ * `Admin\DocumentRequirementController`) instead of a hardcoded constant.
+ * `conditionalRule` reproduces the two conditional rules the paper form
+ * encodes ("(if hospitalized)" / "(if applicable)") as data HR can edit:
+ *   - `hospitalized_or_surgery`: required iff treatment type is
+ *     Hospitalization or Surgery.
+ *   - `medico_legal`: required iff the case is medico-legal.
+ * A row with no `conditionalRule` just uses its own `isRequired` flag
+ * unconditionally.
+ */
+export function resolveRequiredDocuments(requirements = [], claimSnapshot = {}) {
+  const result = {};
+
+  (requirements || []).forEach((row) => {
+    const type = row.documentType || row.document_type;
+    if (!type) return;
+    result[type] = requirementFor(row, claimSnapshot);
+  });
+
+  return result;
+}
+
+/** The subset of `resolveRequiredDocuments()` that are actually REQUIRED, as a flat list of document type codes — what upload-completeness checks compare against. */
+export function getRequiredDocumentTypes(requirements = [], claimSnapshot = {}) {
+  const resolved = resolveRequiredDocuments(requirements, claimSnapshot);
   return Object.entries(resolved)
     .filter(([, requirement]) => requirement === REQUIREMENT.REQUIRED)
     .map(([documentType]) => documentType);

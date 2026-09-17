@@ -31,13 +31,22 @@ export const MEDICLAIM_PERMISSIONS = {
   MANAGER_DECIDE: "mediclaim.claim.manager.decide",
   CLAIM_REASSIGN: "mediclaim.claim.reassign",
   CLAIM_READ_ADMIN: "mediclaim.claim.read",
+  CLAIM_DELETE: "mediclaim.claim.delete",
 
   POLICY_READ: "mediclaim.policy.read",
   HOSPITAL_READ: "mediclaim.hospital.read",
   RULE_BOOK_READ: "mediclaim.rule_book.read",
   REVIEWER_ASSIGNMENT_READ: "mediclaim.reviewer_assignment.read",
+  SETTLEMENT_READ: "mediclaim.settlement.read",
+  SETTLEMENT_CREATE: "mediclaim.settlement.create",
   REPORT_READ: "mediclaim.report.read",
   AUDIT_READ: "mediclaim.audit.read",
+  INTIMATION_READ_ADMIN: "mediclaim.intimation.read",
+  INTIMATION_CLOSE: "mediclaim.intimation.close",
+  DOCUMENT_REQUIREMENT_READ: "mediclaim.document_requirement.read",
+  DOCUMENT_REQUIREMENT_CREATE: "mediclaim.document_requirement.create",
+  DOCUMENT_REQUIREMENT_UPDATE: "mediclaim.document_requirement.update",
+  DOCUMENT_REQUIREMENT_DELETE: "mediclaim.document_requirement.delete",
 };
 
 /**
@@ -111,6 +120,8 @@ export function useMediclaimAuthorization() {
       canViewTeamClaims: can(MEDICLAIM_PERMISSIONS.TEAM_CLAIM_READ),
       canReviewPendingApprovals: can(MEDICLAIM_PERMISSIONS.MANAGER_DECIDE),
       canReassignReviewer: can(MEDICLAIM_PERMISSIONS.CLAIM_REASSIGN),
+      canDeleteClaim: can(MEDICLAIM_PERMISSIONS.CLAIM_DELETE),
+      canRecordSettlement: can(MEDICLAIM_PERMISSIONS.SETTLEMENT_CREATE),
 
       canDecideStage,
       mediclaimActionAccess,
@@ -125,6 +136,9 @@ export function useMediclaimAuthorization() {
       canViewReviewerAssignments: can(MEDICLAIM_PERMISSIONS.REVIEWER_ASSIGNMENT_READ),
       canViewReports: can(MEDICLAIM_PERMISSIONS.REPORT_READ),
       canViewAudit: can(MEDICLAIM_PERMISSIONS.AUDIT_READ),
+      canViewIntimationsAdmin: can(MEDICLAIM_PERMISSIONS.INTIMATION_READ_ADMIN),
+      canCloseIntimation: can(MEDICLAIM_PERMISSIONS.INTIMATION_CLOSE),
+      canViewDocumentRequirements: can(MEDICLAIM_PERMISSIONS.DOCUMENT_REQUIREMENT_READ),
     };
   }, [can, canRoute, accessState, routeState, check, snapshot]);
 }

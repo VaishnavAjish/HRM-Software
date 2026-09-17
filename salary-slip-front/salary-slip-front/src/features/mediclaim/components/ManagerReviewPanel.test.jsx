@@ -7,8 +7,12 @@ vi.mock("../../../context/AuthContext", () => ({
 }));
 
 const submitReviewDecision = vi.fn();
+const acknowledgeConfidentiality = vi.fn();
 vi.mock("../services/mediclaimApi", () => ({
-  mediclaimApi: { submitReviewDecision: (...args) => submitReviewDecision(...args) },
+  mediclaimApi: {
+    submitReviewDecision: (...args) => submitReviewDecision(...args),
+    acknowledgeConfidentiality: (...args) => acknowledgeConfidentiality(...args),
+  },
 }));
 
 import ManagerReviewPanel from "./ManagerReviewPanel";
@@ -18,6 +22,8 @@ const claim = { id: 55, claimNumber: "MC-2026-000055", status: "MANAGER_REVIEW",
 beforeEach(() => {
   submitReviewDecision.mockReset();
   submitReviewDecision.mockResolvedValue({ data: { id: 55, status: "COORDINATOR_VERIFICATION" } });
+  acknowledgeConfidentiality.mockReset();
+  acknowledgeConfidentiality.mockResolvedValue({ data: {} });
 });
 
 /**
@@ -38,9 +44,10 @@ describe("ManagerReviewPanel — remarks required unless a clean approve", () =>
     await user.click(screen.getByRole("button", { name: "Submit Decision" }));
 
     await waitFor(() => expect(submitReviewDecision).toHaveBeenCalledTimes(1));
+    expect(acknowledgeConfidentiality).toHaveBeenCalledWith(55, "test-token", "Bearer");
     expect(submitReviewDecision).toHaveBeenCalledWith(
       55,
-      { decision: "APPROVE", remarks: "" },
+      { decision: "approve", remarks: "" },
       "test-token",
       "Bearer",
     );
@@ -87,7 +94,7 @@ describe("ManagerReviewPanel — remarks required unless a clean approve", () =>
     await waitFor(() => expect(submitReviewDecision).toHaveBeenCalledTimes(1));
     expect(submitReviewDecision).toHaveBeenCalledWith(
       55,
-      { decision: "REJECT", remarks: "Does not meet policy criteria" },
+      { decision: "reject", remarks: "Does not meet policy criteria" },
       "test-token",
       "Bearer",
     );

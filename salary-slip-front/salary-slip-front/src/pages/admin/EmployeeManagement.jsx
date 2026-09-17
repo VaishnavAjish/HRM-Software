@@ -9,6 +9,7 @@ import {
   TableProperties,
   Loader2,
   Search,
+  RotateCcw,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";
@@ -19,6 +20,9 @@ import {
 } from "../../utils/aadhaar";
 import { useSearchParams } from "react-router-dom";
 import { getCompanyConfig } from "../../config/companyConfig";
+import { getProfileCompletionPercentage } from "../../utils/profileCompletion";
+import { isPhotoDeletedOrDummy, markPhotoAsDeleted } from "../../utils/photoStatus";
+
 import { useTheme } from "../../context/theme-context";
 import { validateEmployeeForm } from "../../utils/validation";
 import useGridHeaderContextMenu from "../../hooks/useGridHeaderContextMenu";
@@ -42,6 +46,7 @@ import EmployeeDetailsModal from "./AdminModals/EmployeeDetailsModal";
 import {
   formatDisplayDate,
   isPasswordValid,
+  getEmployeePhotoUrl,
 } from "./AdminModals/employee-helpers";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
@@ -149,6 +154,8 @@ function mapEmployee(item) {
     companyLabel: getCompanyConfig(item.company_code)?.label || "-",
     unit: item.unit ?? "",
     department: item.department ?? "",
+    positionTitle: item.position_title ?? item.position ?? item.designation ?? "",
+    managerName: item.manager_name ?? item.manager ?? "",
     status: isResigned ? "Resigned" : isPending ? "Pending" : isActive ? "Active" : "Inactive",
     loginRole,
     agentCompany: item.company_code === "nidhi-impex,silverstar" || item.company_code === "all" ? "" : item.company_code,
@@ -227,6 +234,7 @@ export default function EmployeeManagement() {
   const [tableLoading, setTableLoading] = useState(false);
 
   const allColumns = useMemo(() => [
+    { field: "profile", label: "Profile" },
     { field: "empCode", label: "Emp Code" },
     { field: "name", label: "Name" },
     { field: "gender", label: "Gender" },
@@ -256,7 +264,7 @@ export default function EmployeeManagement() {
   ], []);
 
   const [visibleColumns, setVisibleColumns] = useState([
-    "empCode", "name", "gender", "department", "designation", "companyLabel", "unit", "loginRole", "status"
+    "profile", "empCode", "name", "gender", "department", "designation", "companyLabel", "unit", "loginRole", "status"
   ]);
   const [showColModal, setShowColModal] = useState(false);
 
@@ -285,6 +293,7 @@ export default function EmployeeManagement() {
   const [selectedCompany, setSelectedCompany] = useState("");
   const [selectedUnit, setSelectedUnit] = useState("");
   const [selectedGender, setSelectedGender] = useState("");
+  const [selectedCompletionFilter, setSelectedCompletionFilter] = useState("");
 
   const [departmentsList, setDepartmentsList] = useState([]);
   const [seenDepartments, setSeenDepartments] = useState([]);
@@ -338,6 +347,95 @@ export default function EmployeeManagement() {
 
   const mergedFiltersKey = useMemo(() => JSON.stringify(mergedFilters), [mergedFilters]);
 
+  const filteredEmployees = useMemo(() => {
+    let list = employees;
+
+    // Search query filter (matches name, empCode, email, mobile, department, designation, company, unit, city, district)
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      list = list.filter((emp) => {
+        return (
+          (emp.name && String(emp.name).toLowerCase().includes(q)) ||
+          (emp.displayName && String(emp.displayName).toLowerCase().includes(q)) ||
+          (emp.empCode && String(emp.empCode).toLowerCase().includes(q)) ||
+          (emp.email && String(emp.email).toLowerCase().includes(q)) ||
+          (emp.mobileNo && String(emp.mobileNo).toLowerCase().includes(q)) ||
+          (emp.department && String(emp.department).toLowerCase().includes(q)) ||
+          (emp.designation && String(emp.designation).toLowerCase().includes(q)) ||
+          (emp.companyLabel && String(emp.companyLabel).toLowerCase().includes(q)) ||
+          (emp.unit && String(emp.unit).toLowerCase().includes(q)) ||
+          (emp.city && String(emp.city).toLowerCase().includes(q)) ||
+          (emp.district && String(emp.district).toLowerCase().includes(q))
+        );
+      });
+    }
+
+    // Status filter
+    if (selectedStatus) {
+      list = list.filter((emp) => emp.status === selectedStatus);
+    }
+
+    // Department filter
+    if (selectedDepartment) {
+      list = list.filter(
+        (emp) => (emp.department || "").trim().toLowerCase() === selectedDepartment.trim().toLowerCase()
+      );
+    }
+
+    // Company filter
+    if (selectedCompany && selectedCompany !== "all") {
+      list = list.filter(
+        (emp) =>
+          String(emp.companyId).toLowerCase() === String(selectedCompany).toLowerCase() ||
+          String(emp.companyLabel).toLowerCase() === String(selectedCompany).toLowerCase()
+      );
+    }
+
+    // Unit filter
+    if (selectedUnit) {
+      list = list.filter(
+        (emp) => (emp.unit || "").trim().toLowerCase() === selectedUnit.trim().toLowerCase()
+      );
+    }
+
+    // Gender filter
+    if (selectedGender) {
+      if (selectedGender === "blank") {
+        list = list.filter((emp) => !emp.gender || emp.gender === "-" || String(emp.gender).trim() === "");
+      } else {
+        list = list.filter(
+          (emp) => (emp.gender || "").trim().toLowerCase() === selectedGender.trim().toLowerCase()
+        );
+      }
+    }
+
+    // Profile Completion filter
+    if (selectedCompletionFilter) {
+      list = list.filter((emp) => {
+        const pct = getProfileCompletionPercentage(emp);
+        if (selectedCompletionFilter === "complete") return pct === 100;
+        if (selectedCompletionFilter === "incomplete") return pct < 100;
+        return true;
+      });
+    }
+
+    return list;
+  }, [
+    employees,
+    searchQuery,
+    selectedStatus,
+    selectedDepartment,
+    selectedCompany,
+    selectedUnit,
+    selectedGender,
+    selectedCompletionFilter,
+  ]);
+
+  const displayedEmployees = useMemo(() => {
+    const start = (apiPage - 1) * perPage;
+    return filteredEmployees.slice(start, start + perPage);
+  }, [filteredEmployees, apiPage, perPage]);
+
   const [exportLoading, setExportLoading] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const [modal, setModal] = useState(searchParams.get("modal") || null);
@@ -364,6 +462,7 @@ export default function EmployeeManagement() {
     setSearchParams(nextParams, { replace: true });
   }, [searchParams, setSearchParams]);
   const [selected, setSelected] = useState(null);
+  const [photoModalRow, setPhotoModalRow] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [viewLoading, setViewLoading] = useState(false);
   const [saveLoading, setSaveLoading] = useState(false);
@@ -397,8 +496,8 @@ export default function EmployeeManagement() {
         const res = await salaryApi.getEmployees(
           currentUser?.accessToken,
           currentUser?.tokenType,
-          apiPage,
-          perPage,
+          1,
+          1000,
           JSON.parse(mergedFiltersKey),
           { companyId, unit: activeUnit },
         );
@@ -407,15 +506,23 @@ export default function EmployeeManagement() {
 
         const responseData = res?.data;
         const pagination = responseData?.users;
-        const list = (pagination?.data ?? []).map(mapEmployee);
+        const rawList = Array.isArray(pagination?.data)
+          ? pagination.data
+          : Array.isArray(pagination)
+          ? pagination
+          : Array.isArray(responseData)
+          ? responseData
+          : [];
+        const list = rawList.map(mapEmployee);
 
         setEmployees(list);
         setSeenDepartments((prev) => mergeDistinctSorted(prev, list.map((e) => e.department)));
         setAllUnits((prev) => mergeDistinctSorted(prev, list.map((e) => e.unit)));
-        setTotalRecords(pagination?.total ?? list.length);
-        setPerPage(pagination?.per_page ?? 15);
-        setActiveCount(responseData?.active_users ?? 0);
-        setInactiveCount(responseData?.inactive_users ?? 0);
+
+        const actCount = list.filter((e) => e.status === "Active").length;
+        setTotalRecords(list.length);
+        setActiveCount(responseData?.active_users ?? actCount);
+        setInactiveCount(responseData?.inactive_users ?? (list.length - actCount));
       } catch (err) {
         if (!cancelled) {
           toast.error(err.message || "Failed to load employees");
@@ -434,8 +541,6 @@ export default function EmployeeManagement() {
       cancelled = true;
     };
   }, [
-    apiPage,
-    perPage,
     mergedFiltersKey,
     refreshKey,
     companyId,
@@ -513,6 +618,31 @@ export default function EmployeeManagement() {
     },
     [companyScope, currentUser?.accessToken, currentUser?.tokenType],
   );
+
+    const handleDeletePhotoInMgmt = async (empRow) => {
+    if (!empRow) return;
+    const empName = empRow.name || empRow.displayName || "this employee";
+    if (!window.confirm("Are you sure you want to delete the profile photo for " + empName + "?\n\nThis will mark dummy photo detected and lock their profile until an original photo is uploaded.")) {
+      return;
+    }
+    try {
+      markPhotoAsDeleted(empRow);
+      if (empRow.id) {
+        await salaryApi.editEmployee(empRow.id, { photo: null, photo_rejected: true, is_photo_dummy: true }, currentUser?.accessToken, currentUser?.tokenType).catch(() => {});
+      }
+      toast.success("Profile photo deleted. Employee profile is now locked.");
+      setEmployees((prev) =>
+        prev.map((r) =>
+          r.id === empRow.id || (empRow.empCode && r.empCode === empRow.empCode)
+            ? { ...r, photo: null, photo_rejected: true, is_photo_dummy: true }
+            : r
+        )
+      );
+      setPhotoModalRow(null);
+    } catch (err) {
+      toast.error("Failed to delete profile photo.");
+    }
+  };
 
   const openDelete = useCallback((emp) => {
     setSelected(emp);
@@ -946,7 +1076,7 @@ export default function EmployeeManagement() {
           maxWidth: 45,
           pinned: "left",
           lockPosition: true,
-          suppressMenu: true,
+          suppressHeaderMenuButton: true,
           filter: false,
           sortable: false,
           resizable: false,
@@ -1010,11 +1140,101 @@ export default function EmployeeManagement() {
         maxWidth: 45,
         pinned: "left",
         lockPosition: true,
-        suppressMenu: true,
+        suppressHeaderMenuButton: true,
         filter: false,
         sortable: false,
         resizable: false,
         suppressMovable: true,
+      },
+      {
+        headerName: "Profile",
+        field: "profile",
+        width: 110,
+        minWidth: 105,
+        hide: isMobile || !visibleColumns.includes("profile"),
+        filter: "agNumberColumnFilter",
+        valueGetter: ({ data }) => getProfileCompletionPercentage(data),
+        cellRenderer: ({ data: emp }) => {
+          if (!emp) return null;
+          const pct = getProfileCompletionPercentage(emp);
+          const photoUrl = getEmployeePhotoUrl(emp.photo);
+          const initial = (emp.name || "?").trim().charAt(0).toUpperCase() || "?";
+          
+          const barColorText =
+            pct === 100
+              ? "text-emerald-500"
+              : pct >= 75
+              ? "text-brand-500"
+              : pct >= 50
+              ? "text-amber-500"
+              : "text-red-500";
+
+          const badgeBg =
+            pct === 100
+              ? "bg-emerald-600 text-white border-white dark:border-gray-800"
+              : pct >= 75
+              ? "bg-brand-600 text-white border-white dark:border-gray-800"
+              : pct >= 50
+              ? "bg-amber-500 text-white border-white dark:border-gray-800"
+              : "bg-red-500 text-white border-white dark:border-gray-800";
+
+          // Radius r=17 -> circumference C = 2 * PI * 17 ≈ 106.81
+          const strokeDasharray = 106.81;
+          const strokeDashoffset = strokeDasharray - (pct / 100) * strokeDasharray;
+
+          return (
+            <div className="flex h-full w-full items-center justify-center">
+              <div className="relative flex h-10 w-10 shrink-0 items-center justify-center">
+                <svg className="absolute inset-0 h-full w-full -rotate-90 transform" viewBox="0 0 40 40">
+                  <circle
+                    cx="20"
+                    cy="20"
+                    r="17"
+                    className="text-gray-200 dark:text-gray-700"
+                    strokeWidth="2.5"
+                    stroke="currentColor"
+                    fill="transparent"
+                  />
+                  <circle
+                    cx="20"
+                    cy="20"
+                    r="17"
+                    className={`${barColorText} transition-all duration-500`}
+                    strokeWidth="2.5"
+                    strokeDasharray={strokeDasharray}
+                    strokeDashoffset={strokeDashoffset}
+                    strokeLinecap="round"
+                    stroke="currentColor"
+                    fill="transparent"
+                  />
+                </svg>
+
+                <button
+                  type="button"
+                  onClick={() => setPhotoModalRow(emp)}
+                  className="group relative flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-brand-100 font-bold text-[11px] text-brand-600 dark:bg-brand-900/30 dark:text-brand-300 transition-transform hover:scale-110"
+                  title={`View photo card for ${emp.name || "employee"}`}
+                >
+                  <span>{initial}</span>
+                  {photoUrl && (
+                    <img
+                      src={photoUrl}
+                      alt={emp.name || "Photo"}
+                      className="absolute inset-0 h-full w-full rounded-full object-cover"
+                      onError={(e) => { e.currentTarget.style.display = "none"; }}
+                    />
+                  )}
+                </button>
+
+                <span
+                  className={`absolute -bottom-0.5 left-1/2 -translate-x-1/2 px-1 py-0.5 rounded-full text-[9px] font-extrabold leading-none border shadow-md whitespace-nowrap z-10 ${badgeBg}`}
+                >
+                  {pct}%
+                </span>
+              </div>
+            </div>
+          );
+        },
       },
       {
         headerName: "Emp Code",
@@ -1511,178 +1731,209 @@ export default function EmployeeManagement() {
   }
 
   return (
-    <div className="flex h-full flex-col gap-5 overflow-hidden">
-      <div className="shrink-0 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between w-full">
-        {/* Left Side: Search & Filter */}
-        <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
-          {/* Search Bar */}
-          <div className="relative w-full sm:w-60">
-            <input
-              type="text"
-              placeholder="Search employee..."
-              value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-                setApiPage(1);
-              }}
-              className="w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2 pl-9 text-sm text-gray-900 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-500/20 dark:border-white/10 dark:bg-[#0b0f1a] dark:text-white"
-            />
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400 dark:text-gray-500" />
+    <div className="flex h-full flex-col gap-4 overflow-hidden">
+      {/* ── Top Header & Filter Control Card ── */}
+      <div className="shrink-0 flex flex-col gap-3.5 w-full bg-white dark:bg-gray-800 p-4 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm">
+        {/* Row 1: Search + Status Tabs & Action Buttons */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 w-full">
+          {/* Left: Search Input & Status Tabs */}
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="relative w-full sm:w-72">
+              <input
+                type="text"
+                placeholder="Search employee..."
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setApiPage(1);
+                }}
+                className="w-full rounded-xl border border-gray-200 bg-gray-50 dark:bg-gray-900/60 px-3.5 py-2 pl-9 text-sm text-gray-900 dark:text-white outline-none transition focus:border-brand-500 focus:bg-white dark:focus:bg-gray-900 focus:ring-2 focus:ring-brand-500/20 dark:border-white/10"
+              />
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400 dark:text-gray-500" />
+            </div>
+
+            <div className="inline-flex bg-gray-100 dark:bg-gray-900/80 p-1 rounded-xl border border-gray-200/60 dark:border-gray-700/60">
+              {["All", "Active", "Inactive"].map((tab) => {
+                const val = tab === "All" ? "" : tab;
+                const isActiveTab = selectedStatus === val;
+                return (
+                  <button
+                    key={tab}
+                    type="button"
+                    onClick={() => {
+                      setSelectedStatus(val);
+                      setApiPage(1);
+                    }}
+                    className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                      isActiveTab
+                        ? "bg-white dark:bg-gray-800 text-brand-600 dark:text-brand-400 shadow-sm"
+                        : "text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
+                    }`}
+                  >
+                    {tab}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
-          {/* Status Tabs */}
-          <div className="flex bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
-            {["All", "Active", "Inactive"].map((tab) => {
-              const val = tab === "All" ? "" : tab;
-              return (
-                <button
-                  key={tab}
-                  onClick={() => {
-                    setSelectedStatus(val);
-                    setApiPage(1);
-                  }}
-                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                    selectedStatus === val
-                      ? "bg-white dark:bg-gray-700 shadow text-gray-900 dark:text-white"
-                      : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-                  }`}
-                >
-                  {tab}
-                </button>
-              );
-            })}
-          </div>
+          {/* Right: Actions Button Group */}
+          <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+            {selectedRows.length > 0 && (
+              <Button
+                variant="danger"
+                onClick={() => setShowBulkDeleteConfirm(true)}
+                icon={<Trash2 size={15} />}
+                disabled={tableLoading}
+                className="text-xs"
+              >
+                Delete ({selectedRows.length})
+              </Button>
+            )}
 
-          {/* Department Filter */}
-          <select
-            value={selectedDepartment}
-            onChange={(e) => {
-              setSelectedDepartment(e.target.value);
-              setApiPage(1);
-            }}
-            className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-500/20 dark:border-white/10 dark:bg-[#0b0f1a] dark:text-white"
-          >
-            <option value="">All Departments</option>
-            {allDepartments.map((d) => (
-              <option key={d} value={d}>
-                {d}
-              </option>
-            ))}
-          </select>
+            <Button
+              variant="secondary"
+              onClick={handleExport}
+              disabled={exportLoading || tableLoading}
+              icon={exportLoading ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+              className="text-xs"
+            >
+              Export CSV
+            </Button>
 
-          {/* Company Filter */}
-          <select
-            value={selectedCompany}
-            onChange={(e) => {
-              setSelectedCompany(e.target.value);
-              setApiPage(1);
-            }}
-            className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-500/20 dark:border-white/10 dark:bg-[#0b0f1a] dark:text-white"
-          >
-            <option value="">All Companies</option>
-            <option value="nidhi-impex">Nidhi Impex</option>
-            <option value="silverstar">Silver Star</option>
-          </select>
+            <Button
+              variant="secondary"
+              onClick={() => setShowColModal(true)}
+              icon={<TableProperties size={15} />}
+              className="text-xs"
+            >
+              Columns
+            </Button>
 
-          {/* Unit Filter */}
-          <select
-            value={selectedUnit}
-            onChange={(e) => {
-              setSelectedUnit(e.target.value);
-              setApiPage(1);
-            }}
-            className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-500/20 dark:border-white/10 dark:bg-[#0b0f1a] dark:text-white"
-          >
-            <option value="">All Units</option>
-            {allUnits.map((u) => (
-              <option key={u} value={u}>
-                {u}
-              </option>
-            ))}
-          </select>
-
-          {/* Gender Filter */}
-          <select
-            value={selectedGender}
-            onChange={(e) => {
-              setSelectedGender(e.target.value);
-              setApiPage(1);
-            }}
-            className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-500/20 dark:border-white/10 dark:bg-[#0b0f1a] dark:text-white"
-          >
-            <option value="">All Genders</option>
-            <option value="Male">Male</option>
-            <option value="Female">Female</option>
-            <option value="blank">Blank</option>
-          </select>
-
-          {/* Employee Counts */}
-          <div className="flex flex-wrap gap-3 text-sm text-gray-500 dark:text-gray-400">
-            <span>
-              <strong className="text-gray-900 dark:text-white">
-                {totalRecords}
-              </strong>{" "}
-              total employees
-            </span>
-
-            <span className="text-green-600">
-              <strong>{activeCount}</strong> active
-            </span>
-
-            <span className="text-gray-400">
-              <strong>{inactiveCount}</strong> inactive
-            </span>
+            <Button
+              variant="secondary"
+              onClick={refetchEmployees}
+              disabled={tableLoading}
+              icon={tableLoading ? <Loader2 size={15} className="animate-spin" /> : <RotateCcw size={15} />}
+              className="text-xs"
+            >
+              Refresh
+            </Button>
           </div>
         </div>
 
-        {/* Right Side: Actions */}
-        <div className="ml-auto flex flex-wrap items-center gap-2 w-full sm:w-auto sm:justify-end">
-          {selectedRows.length > 0 && (
-            <Button
-              variant="danger"
-              onClick={() => setShowBulkDeleteConfirm(true)}
-              icon={<Trash2 size={16} />}
-              disabled={tableLoading}
+        {/* Row 2: Dropdown Filters & Employee Stats Badge */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-gray-100 dark:border-gray-700/60">
+          {/* Dropdown Filters Group */}
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={selectedDepartment}
+              onChange={(e) => {
+                setSelectedDepartment(e.target.value);
+                setApiPage(1);
+              }}
+              className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/60 px-3 py-1.5 text-xs text-gray-800 dark:text-gray-200 font-medium outline-none transition focus:border-brand-500 focus:bg-white dark:focus:bg-gray-900"
             >
-              Delete Selected ({selectedRows.length})
-            </Button>
-          )}
+              <option value="">All Departments</option>
+              {allDepartments.map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))}
+            </select>
 
-          <Button
-            variant="secondary"
-            onClick={handleExport}
-            disabled={exportLoading || tableLoading}
-            icon={
-              exportLoading ? (
-                <Loader2 size={16} className="animate-spin" />
-              ) : (
-                <Download size={16} />
-              )
-            }
-          >
-            {exportLoading ? "Exporting..." : "Export CSV"}
-          </Button>
+            <select
+              value={selectedCompany}
+              onChange={(e) => {
+                setSelectedCompany(e.target.value);
+                setApiPage(1);
+              }}
+              className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/60 px-3 py-1.5 text-xs text-gray-800 dark:text-gray-200 font-medium outline-none transition focus:border-brand-500 focus:bg-white dark:focus:bg-gray-900"
+            >
+              <option value="">All Companies</option>
+              <option value="nidhi-impex">Nidhi Impex</option>
+              <option value="silverstar">Silver Star</option>
+            </select>
 
-          <Button
-            variant="secondary"
-            onClick={() => setShowColModal(true)}
-            icon={<TableProperties size={16} />}
-          >
-            Columns
-          </Button>
+            <select
+              value={selectedUnit}
+              onChange={(e) => {
+                setSelectedUnit(e.target.value);
+                setApiPage(1);
+              }}
+              className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/60 px-3 py-1.5 text-xs text-gray-800 dark:text-gray-200 font-medium outline-none transition focus:border-brand-500 focus:bg-white dark:focus:bg-gray-900"
+            >
+              <option value="">All Units</option>
+              {allUnits.map((u) => (
+                <option key={u} value={u}>
+                  {u}
+                </option>
+              ))}
+            </select>
 
-          <Button
-            variant="secondary"
-            onClick={refetchEmployees}
-            disabled={tableLoading}
-            icon={
-              tableLoading ? (
-                <Loader2 size={16} className="animate-spin" />
-              ) : null
-            }
-          >
-            Refresh
-          </Button>
+            <select
+              value={selectedCompletionFilter}
+              onChange={(e) => {
+                setSelectedCompletionFilter(e.target.value);
+                setApiPage(1);
+              }}
+              className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/60 px-3 py-1.5 text-xs text-gray-800 dark:text-gray-200 font-medium outline-none transition focus:border-brand-500 focus:bg-white dark:focus:bg-gray-900"
+            >
+              <option value="">All Profiles</option>
+              <option value="complete">Completed (100%)</option>
+              <option value="incomplete">Incomplete (&lt; 100%)</option>
+            </select>
+
+            <select
+              value={selectedGender}
+              onChange={(e) => {
+                setSelectedGender(e.target.value);
+                setApiPage(1);
+              }}
+              className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/60 px-3 py-1.5 text-xs text-gray-800 dark:text-gray-200 font-medium outline-none transition focus:border-brand-500 focus:bg-white dark:focus:bg-gray-900"
+            >
+              <option value="">All Genders</option>
+              <option value="Male">Male</option>
+              <option value="Female">Female</option>
+              <option value="blank">Blank</option>
+            </select>
+
+            {(searchQuery || selectedStatus || selectedDepartment || selectedCompany || selectedUnit || selectedGender || selectedCompletionFilter) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery("");
+                  setSelectedStatus("");
+                  setSelectedDepartment("");
+                  setSelectedCompany("");
+                  setSelectedUnit("");
+                  setSelectedGender("");
+                  setSelectedCompletionFilter("");
+                  setApiPage(1);
+                }}
+                className="flex items-center gap-1 rounded-xl px-2.5 py-1.5 text-xs font-semibold text-gray-500 hover:text-gray-800 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-gray-700 transition-colors"
+              >
+                <RotateCcw size={13} /> Reset
+              </button>
+            )}
+          </div>
+
+          {/* Stats Badge */}
+          <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-gray-100 dark:bg-gray-900 text-xs font-semibold text-gray-600 dark:text-gray-300 border border-gray-200/60 dark:border-gray-700/60 shrink-0">
+            <span className="flex items-center gap-1">
+              <span className="font-extrabold text-gray-900 dark:text-white">{filteredEmployees.length}</span> Total
+            </span>
+            <span className="text-gray-300 dark:text-gray-700">·</span>
+            <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+              <span className="font-bold">{activeCount}</span> Active
+            </span>
+            <span className="text-gray-300 dark:text-gray-700">·</span>
+            <span className="flex items-center gap-1 text-gray-400 dark:text-gray-500">
+              <span className="w-1.5 h-1.5 rounded-full bg-gray-400 inline-block" />
+              <span className="font-bold">{inactiveCount}</span> Inactive
+            </span>
+          </div>
         </div>
       </div>
 
@@ -1696,7 +1947,7 @@ export default function EmployeeManagement() {
           <AgGridReact
             key={isMobile ? "mobile" : "desktop"}
             ref={gridRef}
-            rowData={employees}
+            rowData={displayedEmployees}
             columnDefs={columnDefs}
             defaultColDef={defaultColDef}
             loading={tableLoading}
@@ -1731,7 +1982,7 @@ export default function EmployeeManagement() {
         <div className="shrink-0 px-5 py-3 border-t border-gray-100 dark:border-gray-700">
           <Pagination
             current={apiPage}
-            total={totalRecords}
+            total={filteredEmployees.length}
             pageSize={perPage}
             onChange={(page) => {
               setApiPage(page);
@@ -1865,6 +2116,134 @@ export default function EmployeeManagement() {
           </Button>
         </div>
       </Modal>
+      {/* ── Photo Popup Modal ── */}
+      {photoModalRow && (
+        <div
+          onClick={() => setPhotoModalRow(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative bg-white dark:bg-gray-800 w-full max-w-md flex flex-col rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 border border-gray-100 dark:border-gray-700"
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-800/80">
+              <h3 className="text-base font-extrabold text-gray-900 dark:text-white flex items-center gap-2">
+                <span>Employee Photo</span>
+                {isPhotoDeletedOrDummy(photoModalRow) && (
+                  <span className="px-2 py-0.5 text-[10px] font-bold bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 rounded-full border border-red-200 dark:border-red-800">
+                    Dummy Photo Detected (Locked)
+                  </span>
+                )}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setPhotoModalRow(null)}
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-200/60 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-200 transition-colors"
+                title="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Content Body */}
+            <div className="p-6 flex flex-col items-center text-center">
+              {/* Photo Display Box */}
+              <div className="relative group flex items-center justify-center w-56 h-56 sm:w-64 sm:h-64 rounded-2xl bg-gradient-to-br from-brand-500/10 via-gray-100 to-brand-500/5 dark:from-brand-900/30 dark:via-gray-800 dark:to-gray-900 border-2 border-brand-500/20 shadow-inner overflow-hidden mb-4">
+                {getEmployeePhotoUrl(photoModalRow.photo) && !isPhotoDeletedOrDummy(photoModalRow) ? (
+                  <img
+                    src={getEmployeePhotoUrl(photoModalRow.photo)}
+                    alt={photoModalRow.name || "Employee"}
+                    className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                    onError={(e) => {
+                      e.currentTarget.onerror = null;
+                      e.currentTarget.style.display = "none";
+                    }}
+                  />
+                ) : (
+                  <div className="flex flex-col items-center justify-center p-4">
+                    <div className="w-16 h-16 rounded-full bg-red-100 dark:bg-red-900/30 text-red-500 flex items-center justify-center font-black text-3xl mb-2">
+                      !
+                    </div>
+                    <p className="text-xs font-bold text-red-600 dark:text-red-400">
+                      {isPhotoDeletedOrDummy(photoModalRow) ? "Dummy Photo Detected / Deleted" : "No Profile Photo"}
+                    </p>
+                    <p className="text-[11px] text-gray-400 mt-1">Profile locked until photo uploaded</p>
+                  </div>
+                )}
+              </div>
+
+              {isPhotoDeletedOrDummy(photoModalRow) && (
+                <div className="w-full mb-4 px-4 py-2.5 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 rounded-xl text-left flex items-start gap-2 text-xs text-red-700 dark:text-red-300 font-medium">
+                  <AlertCircle size={16} className="shrink-0 text-red-500 mt-0.5" />
+                  <span>
+                    <strong>Dummy Photo Detected:</strong> Employee profile is currently locked. The employee will see a prompt to upload their original photo.
+                  </span>
+                </div>
+              )}
+
+              {/* Employee Info Details */}
+              <h4 className="text-xl font-black tracking-tight text-gray-900 dark:text-white mb-1">
+                {photoModalRow.name || "Unnamed Employee"}
+              </h4>
+              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-3">
+                {photoModalRow.email || "No email"}
+              </p>
+
+              {/* Metadata Grid */}
+              <div className="w-full grid grid-cols-2 gap-2 p-3 rounded-xl bg-gray-50 dark:bg-gray-900/50 border border-gray-100 dark:border-gray-800 text-left text-xs">
+                <div>
+                  <span className="block text-[10px] font-bold uppercase tracking-wider text-gray-400">Emp Code</span>
+                  <span className="font-semibold text-gray-800 dark:text-gray-200">{photoModalRow.empCode || photoModalRow.emp_code || "—"}</span>
+                </div>
+                <div>
+                  <span className="block text-[10px] font-bold uppercase tracking-wider text-gray-400">Department</span>
+                  <span className="font-semibold text-gray-800 dark:text-gray-200">{photoModalRow.department || "—"}</span>
+                </div>
+                <div>
+                  <span className="block text-[10px] font-bold uppercase tracking-wider text-gray-400">Designation</span>
+                  <span className="font-semibold text-gray-800 dark:text-gray-200">{photoModalRow.designation || "—"}</span>
+                </div>
+                <div>
+                  <span className="block text-[10px] font-bold uppercase tracking-wider text-gray-400">Company</span>
+                  <span className="font-semibold text-gray-800 dark:text-gray-200">
+                    {photoModalRow.companyLabel || photoModalRow.companyId || photoModalRow.company_code || "—"}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 border-t border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 flex flex-wrap gap-2">
+              {getEmployeePhotoUrl(photoModalRow.photo) && !isPhotoDeletedOrDummy(photoModalRow) && (
+                <a
+                  href={getEmployeePhotoUrl(photoModalRow.photo)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-brand-50 hover:bg-brand-100 dark:bg-brand-950/40 dark:hover:bg-brand-900/40 text-brand-600 dark:text-brand-300 text-xs font-bold rounded-xl transition-colors"
+                >
+                  <Eye size={14} /> Full Image
+                </a>
+              )}
+              <button
+                type="button"
+                onClick={() => handleDeletePhotoInMgmt(photoModalRow)}
+                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl transition-colors shadow-sm"
+                title="Delete profile picture & lock employee profile"
+              >
+                <Trash2 size={14} /> Delete Photo
+              </button>
+              <button
+                type="button"
+                onClick={() => setPhotoModalRow(null)}
+                className="px-4 py-2 bg-gray-900 hover:bg-gray-800 dark:bg-gray-700 dark:hover:bg-gray-600 text-white text-xs font-bold rounded-xl transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

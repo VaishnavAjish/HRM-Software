@@ -3,7 +3,7 @@ import { Plus, Pencil, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAuth } from "../../../../../context/AuthContext";
 import { useCompany } from "../../../../../context/CompanyContext";
-import Drawer from "../../../../../components/ui/Drawer";
+import Modal from "../../../../../components/ui/Modal";
 import Button from "../../../../../components/ui/Button";
 import Badge from "../../../../../components/ui/Badge";
 import { useMediclaimAuthorization } from "../../../hooks/useMediclaimAuthorization";
@@ -331,11 +331,11 @@ export default function HospitalsTab() {
         <HospitalDirectory hospitals={state.hospitals} loading={state.loading} error={state.error} />
       </div>
 
-      <Drawer
+      <Modal
         isOpen={drawerOpen}
         onClose={() => !saving && setDrawerOpen(false)}
         title={editingId ? "Edit Hospital" : "New Hospital"}
-        size="md"
+        size="lg"
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setDrawerOpen(false)} disabled={saving}>Cancel</Button>
@@ -468,7 +468,7 @@ export default function HospitalsTab() {
             </div>
           )}
         </div>
-      </Drawer>
+      </Modal>
     </div>
   );
 }

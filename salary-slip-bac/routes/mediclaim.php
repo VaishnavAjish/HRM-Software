@@ -5,7 +5,9 @@ use App\Http\Controllers\Api\V1\Mediclaim\Admin\ClaimController as AdminClaimCon
 use App\Http\Controllers\Api\V1\Mediclaim\Admin\EmployeeController as AdminEmployeeController;
 use App\Http\Controllers\Api\V1\Mediclaim\Admin\EnrollmentController as AdminEnrollmentController;
 use App\Http\Controllers\Api\V1\Mediclaim\Admin\HospitalController as AdminHospitalController;
+use App\Http\Controllers\Api\V1\Mediclaim\Admin\DocumentRequirementController as AdminDocumentRequirementController;
 use App\Http\Controllers\Api\V1\Mediclaim\Admin\HospitalContactController as AdminHospitalContactController;
+use App\Http\Controllers\Api\V1\Mediclaim\Admin\IntimationController as AdminIntimationController;
 use App\Http\Controllers\Api\V1\Mediclaim\Admin\MemberChangeRequestController as AdminMemberChangeRequestController;
 use App\Http\Controllers\Api\V1\Mediclaim\Admin\PolicyController as AdminPolicyController;
 use App\Http\Controllers\Api\V1\Mediclaim\Admin\ReportController as AdminReportController;
@@ -101,6 +103,10 @@ Route::middleware('jwt.auth')->prefix('v1/mediclaim')->middleware(['module.schem
     Route::get('claims', [AdminClaimController::class, 'index'])
         ->middleware('permission:mediclaim.claim.read');
 
+    Route::delete('claims/{claim}', [AdminClaimController::class, 'destroy'])
+        ->whereNumber('claim')
+        ->middleware('permission:mediclaim.claim.delete');
+
     /* --------------------------------------- Shared claim detail/workflow */
 
     // Read is intentionally broad-OR'd across every legitimate reader of a
@@ -129,6 +135,15 @@ Route::middleware('jwt.auth')->prefix('v1/mediclaim')->middleware(['module.schem
         ->middleware('permission:self.mediclaim.claim.withdraw');
 
     // Not in the plan's literal B4 endpoint table — see ClaimController::
+    // discharge()'s / ClaimWorkflowService::recordDischarge()'s docblocks:
+    // without this route a claim submitted while still hospitalized has no
+    // way to ever get a correct `documents_due_at`. Reuses the existing
+    // self-update permission rather than minting a new one.
+    Route::post('claims/{claim}/discharge', [ClaimController::class, 'discharge'])
+        ->whereNumber('claim')
+        ->middleware('permission:self.mediclaim.claim.update');
+
+    // Not in the plan's literal B4 endpoint table — see ClaimController::
     // confidentialityAck()'s docblock: without this route managerDecision()'s
     // CONFIDENTIALITY_ACK_REQUIRED gate could never be satisfied.
     Route::post('claims/{claim}/confidentiality-ack', [ClaimController::class, 'confidentialityAck'])
@@ -155,14 +170,31 @@ Route::middleware('jwt.auth')->prefix('v1/mediclaim')->middleware(['module.schem
 
     /* ------------------------------------------------------------- Reviews */
 
+    // Both routes below must accept every stage code the shared pending
+    // queue/decide machinery actually dispatches to (ReviewQueueController::
+    // STAGE_METHODS / PendingReviewsTab.jsx's STAGE_PANEL) — this previously
+    // omitted `mediclaim.claim.manager.decide` and `mediclaim.settlement.create`,
+    // so a reviewer holding only one of those two codes would 403 before
+    // ever reaching the controller, even though the manager/settlement
+    // panels were already wired to call them.
     Route::get('reviews/pending', [ReviewQueueController::class, 'index'])
-        ->middleware('permission:mediclaim.claim.coordinator.decide,mediclaim.claim.committee.decide,mediclaim.claim.hr_verification.decide,mediclaim.claim.director.decide');
+        ->middleware('permission:mediclaim.claim.manager.decide,mediclaim.claim.coordinator.decide,mediclaim.claim.committee.decide,mediclaim.claim.hr_verification.decide,mediclaim.claim.director.decide,mediclaim.settlement.create');
 
     Route::post('reviews/{claim}/decision', [ReviewQueueController::class, 'decide'])
         ->whereNumber('claim')
-        ->middleware(['throttle:30,1', 'permission:mediclaim.claim.manager.decide,mediclaim.claim.coordinator.decide,mediclaim.claim.committee.decide,mediclaim.claim.hr_verification.decide,mediclaim.claim.director.decide']);
+        ->middleware(['throttle:30,1', 'permission:mediclaim.claim.manager.decide,mediclaim.claim.coordinator.decide,mediclaim.claim.committee.decide,mediclaim.claim.hr_verification.decide,mediclaim.claim.director.decide,mediclaim.settlement.create']);
 
     /* ------------------------------------------------------------ Admin/HR */
+
+    // Admin/HR-visible list of every employee's office intimations, company-
+    // scoped — the natural admin counterpart to self-service `me/intimations`
+    // (see Admin\IntimationController's own docblock for why this was
+    // missing entirely until now).
+    Route::get('intimations', [AdminIntimationController::class, 'index'])
+        ->middleware('permission:mediclaim.intimation.read');
+    Route::post('intimations/{intimation}/close', [AdminIntimationController::class, 'close'])
+        ->whereNumber('intimation')
+        ->middleware(['throttle:30,1', 'permission:mediclaim.intimation.close']);
 
     Route::get('member-change-requests', [AdminMemberChangeRequestController::class, 'index'])
         ->middleware('permission:mediclaim.member_change_request.read');
@@ -230,6 +262,37 @@ Route::middleware('jwt.auth')->prefix('v1/mediclaim')->middleware(['module.schem
     Route::delete('hospitals/{hospital}/contacts/{contact}', [AdminHospitalContactController::class, 'destroy'])
         ->whereNumber(['hospital', 'contact'])
         ->middleware('permission:mediclaim.hospital.delete');
+
+    // Employee-facing document checklist (`DocumentChecklist.jsx`) and this
+    // admin settings screen share `.read` — see the controller's own
+    // docblock for why that's intentional, not an oversight.
+    //
+    // Also accepts `self.mediclaim.document.upload`/`self.mediclaim.claim.read`
+    // — every employee who can even open a claim already has one of those
+    // two (they're what let the employee submit a claim and upload its
+    // documents at all), whereas `mediclaim.document_requirement.read` is a
+    // separate, easy-to-forget business-side grant that was never actually
+    // given to the plain Employee role. Without this OR-fallback, every
+    // regular employee's own `GET /document-requirements` call 403s and
+    // `DocumentChecklist` silently renders as if HR had configured nothing
+    // — indistinguishable from "no option to upload documents", even
+    // though the exact same data is visibly populated for a super admin
+    // (who bypasses permission checks entirely). Nothing here needed a
+    // business-side grant that only admin tooling could hand out; a plain
+    // employee reading a label/required-flag list is not a sensitive
+    // action, so this is fixed at the route, not by asking someone to grant
+    // a permission that will just as easily be missed for the next
+    // employee role too.
+    Route::get('document-requirements', [AdminDocumentRequirementController::class, 'index'])
+        ->middleware('permission:mediclaim.document_requirement.read,self.mediclaim.document.upload,self.mediclaim.claim.read');
+    Route::post('document-requirements', [AdminDocumentRequirementController::class, 'store'])
+        ->middleware(['throttle:20,1', 'permission:mediclaim.document_requirement.create']);
+    Route::put('document-requirements/{requirement}', [AdminDocumentRequirementController::class, 'update'])
+        ->whereNumber('requirement')
+        ->middleware(['throttle:30,1', 'permission:mediclaim.document_requirement.update']);
+    Route::delete('document-requirements/{requirement}', [AdminDocumentRequirementController::class, 'destroy'])
+        ->whereNumber('requirement')
+        ->middleware(['throttle:20,1', 'permission:mediclaim.document_requirement.delete']);
 
     Route::get('rule-book-languages', [AdminRuleBookLanguageController::class, 'index'])
         ->middleware('permission:mediclaim.rule_book.read');

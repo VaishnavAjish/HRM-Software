@@ -3,7 +3,7 @@ import { ArrowDown, ArrowUp, BookPlus, Check, Pencil, Plus, Trash2, X } from "lu
 import toast from "react-hot-toast";
 import { useAuth } from "../../../../../context/AuthContext";
 import { useCompany } from "../../../../../context/CompanyContext";
-import Drawer from "../../../../../components/ui/Drawer";
+import Modal from "../../../../../components/ui/Modal";
 import Button from "../../../../../components/ui/Button";
 import Badge from "../../../../../components/ui/Badge";
 import { useMediclaimAuthorization } from "../../../hooks/useMediclaimAuthorization";
@@ -501,11 +501,10 @@ export default function RuleBooksTab() {
         <RuleBookViewer ruleBooks={ruleBooks} loading={ruleBooksLoading} error={ruleBooksLoading ? null : ruleBookResult.error} />
       </div>
 
-      <Drawer
+      <Modal
         isOpen={langDrawerOpen}
         onClose={() => setLangDrawerOpen(false)}
         title="Add a Language"
-        subtitle="Tap a language to add it — its own name is filled in for you."
         size="md"
         footer={
           <div className="flex justify-end">
@@ -513,6 +512,7 @@ export default function RuleBooksTab() {
           </div>
         }
       >
+        <p className="-mt-1 mb-3 text-xs text-gray-400">Tap a language to add it — its own name is filled in for you.</p>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           {PREDEFINED_LANGUAGES.map((predefined) => {
             const already = alreadyAddedNames.has(predefined.name.toLowerCase());
@@ -541,7 +541,7 @@ export default function RuleBooksTab() {
             );
           })}
         </div>
-      </Drawer>
+      </Modal>
     </div>
   );
 }

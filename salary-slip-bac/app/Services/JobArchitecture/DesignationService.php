@@ -67,8 +67,10 @@ class DesignationService
             $query->where('department_id', (int) $filters['departmentId']);
         }
 
-        if (($status = strtoupper((string) ($filters['status'] ?? ''))) !== '' && $status !== 'ALL') {
-            $query->where('status', $status);
+        if (($status = (string) ($filters['status'] ?? '')) !== '' && strtoupper($status) !== 'ALL') {
+            $query->where(function ($q) use ($status) {
+                $q->where('status', strtolower($status))->orWhere('status', strtoupper($status));
+            });
         }
 
         if (($search = trim((string) ($filters['search'] ?? ''))) !== '') {

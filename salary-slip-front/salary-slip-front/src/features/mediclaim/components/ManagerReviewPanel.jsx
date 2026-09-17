@@ -9,10 +9,18 @@ import { REVIEW_STAGE, REVIEW_STAGE_META } from "../models/reviewStages";
  * Reject / Return for Correction. No stage-specific extra fields, so this
  * is the thinnest of the five wrappers.
  *
- * Used from the employee workspace's `Pending My Approval` tab (F5) — the
- * admin workspace's Pending Reviews tab (F6) never renders this panel;
- * manager decisions are made only from the employee-side Team tabs, per
- * `models/reviewStages.js`'s `STAGE_DECIDE_PERMISSIONS` note.
+ * Rendered from both the employee workspace's `Pending My Approval` tab and
+ * the admin workspace's Pending Reviews tab (the latter via
+ * `PendingReviewsTab.jsx`'s `STAGE_PANEL[REVIEW_STAGE.MANAGER]`).
+ *
+ * `ClaimWorkflowService::managerDecision()` refuses every decision with a
+ * 409 (`CONFIDENTIALITY_ACK_REQUIRED`) until
+ * `POST /claims/{claim}/confidentiality-ack` has been called at least once
+ * for this claim — there was never a UI step for that anywhere, so every
+ * manager decision was silently failing. Rather than adding a separate
+ * "acknowledge" click the user has to remember, this calls it automatically,
+ * immediately before the decision itself, on every submit (idempotent on
+ * the backend — re-acknowledging just refreshes the timestamp).
  */
 export default function ManagerReviewPanel({ claim, onDecided }) {
   const { user } = useAuth();
@@ -22,9 +30,11 @@ export default function ManagerReviewPanel({ claim, onDecided }) {
   const handleSubmit = async (decision, remarks) => {
     setSubmitting(true);
     setError(null);
+    const claimId = claim?.id ?? claim?.claimId;
     try {
+      await mediclaimApi.acknowledgeConfidentiality(claimId, user?.accessToken, user?.tokenType);
       const res = await mediclaimApi.submitReviewDecision(
-        claim?.id ?? claim?.claimId,
+        claimId,
         { decision, remarks },
         user?.accessToken,
         user?.tokenType,

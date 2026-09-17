@@ -6,7 +6,6 @@
 flowchart TB
     subgraph Client["Client Layer"]
         WEB["React SPA (Vite)\nsalary-slip-front/salary-slip-front"]
-        MOBILE["Capacitor Android/iOS wrapper\n(same React codebase, CapacitorHttp instead of fetch)"]
         PWA["PWA (installable, useInstallPWA)"]
     end
 
@@ -35,7 +34,6 @@ flowchart TB
     end
 
     WEB -- "fetch, JWT bearer token" --> MW
-    MOBILE -- "CapacitorHttp, JWT bearer token" --> MW
     QUIZ --> CTRL
     INTAKE --> CTRL
     RESUME --> CTRL
@@ -60,7 +58,7 @@ flowchart TB
 - **Multi-tenancy on the client:** `CompanyContext.jsx` tracks the active "company scope" (all companies / one company / one branch), persisted to `localStorage` for Super Admin/Master users, and is merged into every list/read API call as `company_code`/`unit` query parameters.
 - **Data grids & documents:** `AgGridReact` for the heaviest tables; client-side PDF generation from rendered DOM nodes (no server-side PDF rendering); `react-to-print` for print flows; `PrintableForm`/`PrintableTrialForm`/`PayslipDocument`/`Form16Document` are dedicated print-layout components.
 - **Realtime:** `utils/socket.js` wraps `socket.io-client`, currently the sole consumer being the in-progress `NotificationContext`; its server URL falls back to a **hardcoded LAN IP** if `VITE_SOCKET_URL` is unset (flagged in [Bug & Issue Report](19-bugs-issues.md)).
-- **Mobile:** Capacitor wrapper for native Android/iOS, with `apiRequest()` branching to `CapacitorHttp.request()` to avoid webview CORS limitations; a separate PWA install path exists for browser installs.
+- **Mobile:** responsive web plus a PWA install path for browser installs. (The Capacitor Android wrapper present at the 2026-08-07 snapshot was removed on 2026-09-16.)
 - **Build-time tenancy:** `vite.config.js` can bake a single-tenant build (`__COMPANY_MODE__` = `"nidhi-impex"` / `"silver-star"` / `"all"`, apparently derived from git branch name) — i.e., the same codebase can be shipped as either a multi-tenant build or a locked single-company build.
 
 ## 2.3 Backend

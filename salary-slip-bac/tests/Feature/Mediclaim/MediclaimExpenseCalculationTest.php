@@ -46,7 +46,7 @@ class MediclaimExpenseCalculationTest extends TestCase
         $created = $this->actingAsUser($employee)
             ->postJson('/api/v1/mediclaim/me/claims', [
                 'total_claimed_amount' => 999999,
-                'expenses' => [['category' => 'consultation', 'claimed_amount' => 1000]],
+                'expenses' => [['category' => 'CONSULTATION_FEES', 'claimed_amount' => 1000]],
             ])->assertCreated()->json('data');
 
         $this->assertSame('1000.00', $created['total_claimed_amount']);
@@ -62,8 +62,8 @@ class MediclaimExpenseCalculationTest extends TestCase
         $created = $this->actingAsUser($employee)
             ->postJson('/api/v1/mediclaim/me/claims', [
                 'expenses' => [
-                    ['category' => 'consultation', 'claimed_amount' => 1000],
-                    ['category' => 'medicine', 'claimed_amount' => 500],
+                    ['category' => 'CONSULTATION_FEES', 'claimed_amount' => 1000],
+                    ['category' => 'MEDICINES', 'claimed_amount' => 500],
                 ],
             ])->assertCreated()->json('data');
 
@@ -87,7 +87,7 @@ class MediclaimExpenseCalculationTest extends TestCase
         $this->reportsTo($employee, $manager);
 
         $workflow = app(ClaimWorkflowService::class);
-        $claim = $workflow->createDraft($employee, ['expenses' => [['category' => 'consultation', 'claimed_amount' => 2000]]]);
+        $claim = $workflow->createDraft($employee, ['expenses' => [['category' => 'CONSULTATION_FEES', 'claimed_amount' => 2000]]]);
         $claim = $workflow->submit($claim, $employee);
         $workflow->acknowledgeConfidentiality($claim, $manager);
         $claim = $workflow->managerDecision($claim->fresh(), $manager, 'approve');
@@ -110,8 +110,8 @@ class MediclaimExpenseCalculationTest extends TestCase
         $workflow = app(ClaimWorkflowService::class);
         $claim = $workflow->createDraft($employee, [
             'expenses' => [
-                ['category' => 'consultation', 'claimed_amount' => 2000],
-                ['category' => 'medicine', 'claimed_amount' => 3000],
+                ['category' => 'CONSULTATION_FEES', 'claimed_amount' => 2000],
+                ['category' => 'MEDICINES', 'claimed_amount' => 3000],
             ],
         ]);
         $expenseIds = $claim->expenses()->pluck('id');

@@ -2,7 +2,11 @@
 
 namespace Tests\Feature\Mediclaim;
 
+use App\Models\Document;
+use App\Models\DocumentVersion;
 use App\Models\Mediclaim\MediclaimClaim;
+use App\Models\Mediclaim\MediclaimDocumentLink;
+use App\Models\Mediclaim\MediclaimDocumentRequirement;
 use App\Models\Permission;
 use App\Models\ReportingRelationship;
 use App\Models\User;
@@ -17,6 +21,13 @@ use Tests\TestCase;
  * ClaimWorkflowService::recordSettlement()/closeClaim(): a settlement
  * covering the full approved amount moves the claim to SETTLED; a partial
  * settlement keeps it at SETTLEMENT_PENDING; closing only works from SETTLED.
+ *
+ * `approvedClaim()` uploads every currently-required document
+ * (`MediclaimDocumentRequirement::resolveRequiredTypesFor()`) right after
+ * director approval, before returning — settlement is gated on document
+ * completeness (see recordSettlement()'s docblock), so every test here
+ * exercises the real "approve, then upload, then settle" sequence rather
+ * than assuming documents away.
  */
 class MediclaimSettlementTest extends TestCase
 {
@@ -108,7 +119,7 @@ class MediclaimSettlementTest extends TestCase
         ]);
 
         $workflow = app(ClaimWorkflowService::class);
-        $claim = $workflow->createDraft($employee, ['expenses' => [['category' => 'consultation', 'claimed_amount' => $approvedAmount]]]);
+        $claim = $workflow->createDraft($employee, ['expenses' => [['category' => 'CONSULTATION_FEES', 'claimed_amount' => $approvedAmount]]]);
         $claim = $workflow->submit($claim, $employee);
         $workflow->acknowledgeConfidentiality($claim, $manager);
         $claim = $workflow->managerDecision($claim->fresh(), $manager, 'approve');
@@ -116,7 +127,48 @@ class MediclaimSettlementTest extends TestCase
         $claim = $workflow->committeeRecommend($claim->fresh(), $reviewer, 'recommended');
         $claim = $workflow->hrVerifyEligibility($claim->fresh(), $reviewer, 'verified');
 
-        return $workflow->directorFinalApproval($claim->fresh(), $director, 'approved', $approvedAmount);
+        $decided = $workflow->directorFinalApproval($claim->fresh(), $director, 'approved', $approvedAmount);
+        $this->uploadRequiredDocuments($decided, $employee);
+
+        return $decided->fresh();
+    }
+
+    private function uploadRequiredDocuments(MediclaimClaim $claim, User $employee): void
+    {
+        foreach (MediclaimDocumentRequirement::resolveRequiredTypesFor($claim) as $type) {
+            $document = Document::create([
+                'owner_type' => 'user',
+                'owner_id' => $employee->id,
+                'owner_ref' => (string) $employee->id,
+                'user_id' => $employee->id,
+                'document_type' => $type,
+                'current_version' => 1,
+                'status' => Document::STATUS_ACTIVE,
+                'is_deleted' => false,
+            ]);
+
+            DocumentVersion::create([
+                'document_id' => $document->id,
+                'version' => 1,
+                'original_file_name' => strtolower($type) . '.pdf',
+                'generated_file_name' => $type . '_V1_20260101120000.pdf',
+                's3_object_key' => "mediclaim/{$employee->id}/" . strtolower($type) . '/V1.pdf',
+                'file_extension' => 'pdf',
+                'file_size' => 2048,
+                'mime_type' => 'application/pdf',
+                'upload_status' => DocumentVersion::UPLOAD_ACTIVE,
+                'scan_status' => DocumentVersion::SCAN_NOT_SCANNED,
+                'uploaded_at' => now(),
+            ]);
+
+            MediclaimDocumentLink::create([
+                'document_id' => $document->id,
+                'linkable_type' => MediclaimClaim::class,
+                'linkable_id' => $claim->id,
+                'document_role' => strtolower($type),
+                'created_by' => $employee->id,
+            ]);
+        }
     }
 
     private function makeUser(string $name, array $overrides = []): User

@@ -502,6 +502,48 @@ class UserController extends Controller
         return $data;
     }
 
+    private function enrichEmployeeWithActiveAssignment(User $employee, array &$data): void
+    {
+        $primary = \App\Models\EmployeeOrganizationAssignment::query()
+            ->where('user_id', $employee->id)
+            ->where('is_active', true)
+            ->where('is_primary', true)
+            ->with(['organizationUnit', 'position', 'designation', 'manager'])
+            ->latest('effective_from')
+            ->first();
+
+        if ($primary) {
+            if ($primary->organizationUnit?->name) {
+                $data['department'] = $primary->organizationUnit->name;
+                $data['unit'] = $primary->organizationUnit->name;
+            }
+            if ($primary->designation?->title) {
+                $data['designation'] = $primary->designation->title;
+            } elseif ($primary->position?->title && empty($data['designation'])) {
+                $data['designation'] = $primary->position->title;
+            }
+            if ($primary->position?->title) {
+                $data['position_title'] = $primary->position->title;
+                $data['position'] = $primary->position->title;
+            }
+            if ($primary->manager?->name) {
+                $data['manager_name'] = $primary->manager->name;
+            }
+        }
+
+        if (empty($data['manager_name'])) {
+            $rel = \App\Models\ReportingRelationship::query()
+                ->where('employee_id', $employee->id)
+                ->where('relationship_type', 'primary')
+                ->where('is_active', true)
+                ->with('manager')
+                ->first();
+            if ($rel?->manager?->name) {
+                $data['manager_name'] = $rel->manager->name;
+            }
+        }
+    }
+
     public function index(Request $request)
     {
         $userAuth = auth('api')->user();
@@ -606,13 +648,10 @@ class UserController extends Controller
 
         $rows = collect($employees->items())->map(function (User $employee) use ($userAuth, $deptHeadUserIds, &$disclosed) {
             $data = $employee->attributesToArray();
+            $this->enrichEmployeeWithActiveAssignment($employee, $data);
 
-            if ($this->isDepartmentHead($employee)) {
+            if (empty($data['designation']) && $this->isDepartmentHead($employee)) {
                 $data['designation'] = 'Manager';
-            } else {
-                if (strtolower(trim((string) ($data['designation'] ?? ''))) === 'manager') {
-                    $data['designation'] = '';
-                }
             }
 
             $full = AadhaarDisclosure::fullFor($employee, $userAuth);
@@ -670,12 +709,9 @@ class UserController extends Controller
         $isDeptHead = $this->isDepartmentHead($employee);
 
         $empArr = $employee->toArray();
-        if ($isDeptHead) {
+        $this->enrichEmployeeWithActiveAssignment($employee, $empArr);
+        if (empty($empArr['designation']) && $isDeptHead) {
             $empArr['designation'] = 'Manager';
-        } else {
-            if (strtolower(trim((string) ($empArr['designation'] ?? ''))) === 'manager') {
-                $empArr['designation'] = '';
-            }
         }
 
         $payload = AadhaarDisclosure::attach(

@@ -6,9 +6,11 @@ use App\Models\Mediclaim\MediclaimClaim;
 use App\Models\Mediclaim\MediclaimClaimAssignment;
 use App\Models\Mediclaim\MediclaimClaimDecision;
 use App\Models\Mediclaim\MediclaimClaimRevision;
+use App\Models\Mediclaim\MediclaimDocumentRequirement;
 use App\Models\Mediclaim\MediclaimEnrollment;
 use App\Models\Mediclaim\MediclaimFloaterOverride;
 use App\Models\Mediclaim\MediclaimIntimation;
+use App\Models\Mediclaim\MediclaimMember;
 use App\Models\Mediclaim\MediclaimPolicyVersion;
 use App\Models\Mediclaim\MediclaimSettlement;
 use App\Models\User;
@@ -91,6 +93,8 @@ class ClaimWorkflowService
             $claim->status = MediclaimClaim::STATUS_DRAFT;
             $claim->current_revision = 1;
             $claim->total_claimed_amount = 0;
+            $claim->employee_snapshot = $this->buildEmployeeSnapshot($employee);
+            $claim->patient_snapshot = $this->buildPatientSnapshot($claim->member_id);
             $claim->created_by = $employee->id;
             $claim->updated_by = $employee->id;
             $claim->save();
@@ -122,6 +126,17 @@ class ClaimWorkflowService
             $expenses = $data['expenses'] ?? null;
 
             $locked->fill($this->filterClaimData($data));
+            // Recomputed on every save (not just when `member_id` is part of
+            // this particular payload) — cheap, and guards against the
+            // snapshot ever going stale relative to whichever member is
+            // currently selected. This is what `SubmitClaimTab.jsx`'s
+            // `mapClaimToFormData()` reads back to restore the patient
+            // picker's relationship/DOB/gender after a save — before this,
+            // `patient_snapshot` was never populated at all, so resuming a
+            // draft silently lost that data and re-failed Section B
+            // validation even though a member was still selected.
+            $locked->patient_snapshot = $this->buildPatientSnapshot($locked->member_id);
+            $locked->employee_snapshot = $this->buildEmployeeSnapshot($actor);
             $locked->updated_by = $actor->id;
             $locked->save();
 
@@ -188,6 +203,13 @@ class ClaimWorkflowService
 
             // (a)
             $locked->total_claimed_amount = (float) $locked->expenses()->sum('claimed_amount');
+
+            // Documents are uploaded separately, after discharge — the
+            // employee has 7 days from discharge (or admission, or this
+            // submission instant, for a claim with neither, e.g. OPD) before
+            // `mediclaim:remind-missing-documents` starts nagging daily.
+            $documentsAnchor = $locked->discharge_at ?? $locked->admission_at ?? now();
+            $locked->documents_due_at = Carbon::parse($documentsAnchor)->addDays(7);
 
             // (b)
             $asOfDate = $locked->admission_at
@@ -287,6 +309,67 @@ class ClaimWorkflowService
     }
 
     /**
+     * Records the actual discharge date/time once treatment that was still
+     * ongoing at submission time has finished, and recomputes
+     * `documents_due_at` from that real date.
+     *
+     * submit() can only anchor the 7-day document-upload window to whatever
+     * was already known at submission time — `discharge_at` if the employee
+     * had already been discharged, otherwise falling back to `admission_at`
+     * (or the submission instant itself for an OPD claim with neither). For
+     * a claim submitted while still hospitalized (`is_ongoing_treatment =
+     * true`), that fallback anchor is not the real deadline — this is the
+     * employee's way to correct it once discharge actually happens, without
+     * reopening the whole claim for editing (which updateDraft() only
+     * allows from DRAFT/RETURNED_FOR_CORRECTION anyway).
+     *
+     * Legal on any non-draft, non-terminal status — discharge can happen
+     * well after Manager Review (or later stages) has already started, and
+     * documents still need a real deadline regardless of how far review has
+     * progressed.
+     */
+    public function recordDischarge(MediclaimClaim $claim, User $employee, Carbon $dischargeAt): MediclaimClaim
+    {
+        return DB::transaction(function () use ($claim, $employee, $dischargeAt) {
+            $locked = MediclaimClaim::query()->lockForUpdate()->findOrFail($claim->id);
+
+            if ((int) $locked->employee_user_id !== (int) $employee->id) {
+                throw MediclaimException::forbidden('WRONG_CLAIM_OWNER', 'You may only update your own claim.');
+            }
+
+            $blocked = array_merge([MediclaimClaim::STATUS_DRAFT], self::TERMINAL_STATUSES);
+            if (in_array($locked->status, $blocked, true)) {
+                throw ValidationException::withMessages(['status' => 'Discharge can only be recorded on a submitted, in-progress claim.']);
+            }
+
+            if ($dischargeAt->isFuture()) {
+                throw ValidationException::withMessages(['discharge_at' => 'Discharge date cannot be in the future.']);
+            }
+
+            if ($locked->admission_at && $dischargeAt->lt(Carbon::parse($locked->admission_at))) {
+                throw ValidationException::withMessages(['discharge_at' => 'Discharge date cannot be before the admission date.']);
+            }
+
+            $locked->discharge_at = $dischargeAt;
+            $locked->is_ongoing_treatment = false;
+            $locked->documents_due_at = $dischargeAt->copy()->addDays(7);
+            $locked->updated_by = $employee->id;
+            $locked->save();
+
+            $this->logTransition(
+                $locked,
+                'CLAIM_DISCHARGE_RECORDED',
+                $locked->status,
+                $locked->status,
+                $employee,
+                'Discharge recorded; document upload window now due ' . $locked->documents_due_at->toDateString() . '.'
+            );
+
+            return $this->freshClaim($locked);
+        });
+    }
+
+    /**
      * Records the confidentiality acknowledgement a manager must give before
      * managerDecision() will accept a decision from them.
      *
@@ -302,18 +385,20 @@ class ClaimWorkflowService
         return DB::transaction(function () use ($claim, $manager) {
             $locked = MediclaimClaim::query()->lockForUpdate()->findOrFail($claim->id);
 
-            if ((int) $locked->assigned_manager_id !== (int) $manager->id) {
+            // A super admin administering the module isn't necessarily
+            // anyone's real manager — see managerDecision()'s matching
+            // bypass, which this must stay consistent with (that method
+            // refuses to proceed until an ack row exists at all, regardless
+            // of who is calling).
+            $actingAsSuperAdmin = $manager->isSuperAdmin();
+
+            if (! $actingAsSuperAdmin && (int) $locked->assigned_manager_id !== (int) $manager->id) {
                 throw MediclaimException::forbidden('WRONG_ASSIGNED_REVIEWER', 'This claim is not assigned to you.');
             }
 
-            $assignment = MediclaimClaimAssignment::query()
-                ->where('claim_id', $locked->id)
-                ->where('stage', MediclaimClaimAssignment::STAGE_MANAGER_REVIEW)
-                ->where('status', 'ACTIVE')
-                ->lockForUpdate()
-                ->firstOrFail();
+            $assignment = $this->resolveOrCreateManagerAssignment($locked, $manager);
 
-            if ((int) $assignment->assigned_to !== (int) $manager->id) {
+            if (! $actingAsSuperAdmin && (int) $assignment->assigned_to !== (int) $manager->id) {
                 throw MediclaimException::forbidden('WRONG_ASSIGNED_REVIEWER', 'This claim is not assigned to you.');
             }
 
@@ -330,12 +415,15 @@ class ClaimWorkflowService
     }
 
     /**
-     * $decision ∈ approve|reject|return. Legal only from MANAGER_REVIEW.
-     * Requires `$claim->assigned_manager_id === $manager->id` (403
+     * $decision ∈ approve|reject|return. Legal from MANAGER_REVIEW — and,
+     * for a super admin only, also from SUBMITTED with no
+     * `assigned_manager_id` (see `resolveOrCreateManagerAssignment()`'s
+     * docblock for why that rescue path exists). Requires
+     * `$claim->assigned_manager_id === $manager->id` (403
      * WRONG_ASSIGNED_REVIEWER otherwise) and a prior confidentiality
      * acknowledgement on the manager-stage assignment (409
-     * CONFIDENTIALITY_ACK_REQUIRED otherwise). reject/return require
-     * remarks.
+     * CONFIDENTIALITY_ACK_REQUIRED otherwise) unless acting as super admin.
+     * reject/return require remarks.
      */
     public function managerDecision(MediclaimClaim $claim, User $manager, string $decision, ?string $remarks = null): MediclaimClaim
     {
@@ -346,27 +434,46 @@ class ClaimWorkflowService
         return DB::transaction(function () use ($claim, $manager, $decision, $remarks) {
             $locked = MediclaimClaim::query()->lockForUpdate()->findOrFail($claim->id);
 
-            if ($locked->status !== MediclaimClaim::STATUS_MANAGER_REVIEW) {
+            // A super admin administering the module can decide any claim
+            // regardless of who it was actually routed to (mirrors
+            // MediclaimClaim::scopeAwaitingReviewBy()'s super-admin bypass,
+            // which is what makes this claim reachable via GET
+            // /reviews/pending in the first place), AND may rescue a claim
+            // that never resolved a manager at all (status SUBMITTED, see
+            // resolveOrCreateManagerAssignment()). A real manager still must
+            // be the exact `assigned_manager_id` this claim was snapshotted
+            // to, and the claim must actually be at MANAGER_REVIEW.
+            $actingAsSuperAdmin = $manager->isSuperAdmin();
+            $rescuingUnassigned = $actingAsSuperAdmin && $locked->status === MediclaimClaim::STATUS_SUBMITTED;
+
+            if (! $rescuingUnassigned && $locked->status !== MediclaimClaim::STATUS_MANAGER_REVIEW) {
                 throw ValidationException::withMessages(['status' => 'This claim is not awaiting manager review.']);
             }
 
-            if ((int) $locked->assigned_manager_id !== (int) $manager->id) {
+            if (! $actingAsSuperAdmin && (int) $locked->assigned_manager_id !== (int) $manager->id) {
                 throw MediclaimException::forbidden('WRONG_ASSIGNED_REVIEWER', 'This claim is not assigned to you for manager review.');
             }
 
-            $assignment = MediclaimClaimAssignment::query()
-                ->where('claim_id', $locked->id)
-                ->where('stage', MediclaimClaimAssignment::STAGE_MANAGER_REVIEW)
-                ->where('status', 'ACTIVE')
-                ->lockForUpdate()
-                ->first();
+            $assignment = $this->resolveOrCreateManagerAssignment($locked, $manager);
 
-            if (! $assignment || (int) $assignment->assigned_to !== (int) $manager->id) {
+            if (! $actingAsSuperAdmin && (int) $assignment->assigned_to !== (int) $manager->id) {
                 throw MediclaimException::forbidden('WRONG_ASSIGNED_REVIEWER', 'This claim is not assigned to you for manager review.');
             }
 
             if ($assignment->confidentiality_ack_at === null) {
-                throw MediclaimException::conflict('CONFIDENTIALITY_ACK_REQUIRED', 'You must acknowledge the confidentiality notice before deciding this claim.');
+                if (! $actingAsSuperAdmin) {
+                    throw MediclaimException::conflict('CONFIDENTIALITY_ACK_REQUIRED', 'You must acknowledge the confidentiality notice before deciding this claim.');
+                }
+
+                // Super admin path: auto-record the ack rather than bouncing
+                // through a 409 with no assigned-manager session that could
+                // ever satisfy it. The real actor/IP/UA is still captured,
+                // same as a normal acknowledgeConfidentiality() call.
+                $request = request();
+                $assignment->confidentiality_ack_at = now();
+                $assignment->confidentiality_ack_ip = $request?->ip();
+                $assignment->confidentiality_ack_user_agent = $request?->userAgent();
+                $assignment->save();
             }
 
             if ($decision === 'return') {
@@ -627,7 +734,17 @@ class ClaimWorkflowService
                 if ($locked->enrollment_id && $locked->policy_version_id) {
                     $enrollment = MediclaimEnrollment::findOrFail($locked->enrollment_id);
                     $policyVersion = MediclaimPolicyVersion::findOrFail($locked->policy_version_id);
-                    $this->eligibility->assertWithinFloater($enrollment, $policyVersion, $approvedAmount, $override);
+                    // The claim's own submitted_at, not now() — a claim
+                    // submitted in one financial year must be checked
+                    // against THAT year's floater even if the director's
+                    // decision itself lands after the FY has rolled over.
+                    $this->eligibility->assertWithinFloater(
+                        $enrollment,
+                        $policyVersion,
+                        $approvedAmount,
+                        $override,
+                        $locked->submitted_at ? Carbon::parse($locked->submitted_at) : now()
+                    );
                 }
 
                 if ($override !== null) {
@@ -718,9 +835,14 @@ class ClaimWorkflowService
         });
     }
 
-    /** Legal only from SETTLEMENT_PENDING. Creates a MediclaimSettlement row
-     *  with the next sequence_no for the claim; transitions to SETTLED once
-     *  cumulative settled amount reaches total_approved_amount. */
+    /** Legal only from SETTLEMENT_PENDING, and only once every required
+     *  document is on file — "the employee uploads documents after
+     *  discharge, HR gives final approval once they're all in" is the whole
+     *  point of `documents_due_at`/the daily reminder sweep; settling a
+     *  claim before that would make both meaningless. Creates a
+     *  MediclaimSettlement row with the next sequence_no for the claim;
+     *  transitions to SETTLED once cumulative settled amount reaches
+     *  total_approved_amount. */
     public function recordSettlement(MediclaimClaim $claim, User $actor, float $amount, string $mode, ?string $reference = null): MediclaimClaim
     {
         if ($amount <= 0) {
@@ -732,6 +854,13 @@ class ClaimWorkflowService
 
             if ($locked->status !== MediclaimClaim::STATUS_SETTLEMENT_PENDING) {
                 throw ValidationException::withMessages(['status' => 'This claim is not awaiting settlement.']);
+            }
+
+            $missing = $this->missingDocumentTypes($locked);
+            if (! empty($missing)) {
+                throw ValidationException::withMessages([
+                    'documents' => 'This claim still has required documents outstanding: ' . implode(', ', $missing) . '. It cannot be settled until they are uploaded.',
+                ]);
             }
 
             $nextSequence = ((int) $locked->settlements()->max('sequence_no')) + 1;
@@ -943,6 +1072,59 @@ class ClaimWorkflowService
     }
 
     /**
+     * Resolves the claim's active MANAGER_REVIEW assignment, creating one
+     * lazily when none exists — which happens only for a claim stuck at
+     * SUBMITTED because `ReportingHierarchy::managerFor()` could not resolve
+     * an active primary manager for the employee at submission time (see
+     * submit()'s docblock, point f, and the `NO_MANAGER_ASSIGNED` event it
+     * logs). Before this method existed such a claim was permanently
+     * unreachable: `reassignReviewer()` only ever re-points an EXISTING
+     * MANAGER_REVIEW assignment, and no code path could create the first one
+     * for a claim that never got past SUBMITTED.
+     *
+     * Only a super admin may trigger the lazy-creation branch — anyone else
+     * hitting a genuinely missing assignment has no legitimate claim to act
+     * on and gets the same 403 as always. When it does trigger, the claim's
+     * `assigned_manager_id` is set to the acting super admin so every other
+     * check in `managerDecision()`/`acknowledgeConfidentiality()` (which key
+     * off `assigned_manager_id` and the assignment's `assigned_to`) treats
+     * this exactly like a normal, already-assigned manager review from here
+     * on.
+     */
+    private function resolveOrCreateManagerAssignment(MediclaimClaim $claim, User $actor): MediclaimClaimAssignment
+    {
+        $assignment = MediclaimClaimAssignment::query()
+            ->where('claim_id', $claim->id)
+            ->where('stage', MediclaimClaimAssignment::STAGE_MANAGER_REVIEW)
+            ->where('status', 'ACTIVE')
+            ->lockForUpdate()
+            ->first();
+
+        if ($assignment) {
+            return $assignment;
+        }
+
+        if ($claim->status !== MediclaimClaim::STATUS_SUBMITTED || ! $actor->isSuperAdmin()) {
+            throw MediclaimException::forbidden('WRONG_ASSIGNED_REVIEWER', 'This claim is not assigned to you for manager review.');
+        }
+
+        $assignment = MediclaimClaimAssignment::create([
+            'claim_id' => $claim->id,
+            'stage' => MediclaimClaimAssignment::STAGE_MANAGER_REVIEW,
+            'assigned_to' => $actor->id,
+            'status' => 'ACTIVE',
+            'assigned_by' => $actor->id,
+        ]);
+
+        $claim->assigned_manager_id = $actor->id;
+        $claim->save();
+
+        MediclaimClaimEventLog::record($claim, 'MANAGER_ASSIGNMENT_RESCUED', $claim->status, $claim->status, $actor, 'No manager could be resolved at submission; a super admin picked up manager review directly.');
+
+        return $assignment;
+    }
+
+    /**
      * Marks the claim's active assignment for `$stage` completed, creating
      * one first if none exists yet (coordinator/committee/HR/director
      * reviewers are resolved from company-wide `mediclaim_reviewer_assignments`
@@ -1000,6 +1182,49 @@ class ClaimWorkflowService
         return array_intersect_key($data, array_flip(self::EDITABLE_FIELDS));
     }
 
+    /**
+     * Historical employee identity as of this save — snake_case keys,
+     * matching how every other JSON-cast column on this model round-trips
+     * (there is no response-side camelCase transform anywhere in this app;
+     * `NormalizeMediclaimInputCase` only normalizes *request* input).
+     */
+    private function buildEmployeeSnapshot(User $employee): array
+    {
+        return [
+            'name' => $employee->name,
+            'emp_code' => $employee->emp_code,
+            'department' => $employee->department,
+            'designation' => $employee->designation,
+            'company_code' => $employee->company_code,
+            'mobile_number' => $employee->mobile_number,
+            'email' => $employee->email,
+        ];
+    }
+
+    /**
+     * Historical patient identity as of this save, resolved from the
+     * currently-selected `MediclaimMember`. `null` when no member is
+     * selected yet (Section B not filled in).
+     */
+    private function buildPatientSnapshot(?int $memberId): ?array
+    {
+        if (! $memberId) {
+            return null;
+        }
+
+        $member = MediclaimMember::find($memberId);
+        if (! $member) {
+            return null;
+        }
+
+        return [
+            'name' => $member->full_name,
+            'relationship_type' => $member->relationship_type,
+            'date_of_birth' => optional($member->date_of_birth)->toDateString(),
+            'gender' => $member->gender,
+        ];
+    }
+
     private function primaryCompanyCode(User $user): string
     {
         $first = trim(explode(',', (string) $user->company_code)[0] ?? '');
@@ -1016,6 +1241,20 @@ class ClaimWorkflowService
         }
 
         return $trimmed;
+    }
+
+    /**
+     * The same "required minus uploaded" computation
+     * `mediclaim:remind-missing-documents` and `MyClaimController::index()`
+     * use — now a single shared implementation on
+     * `MediclaimDocumentRequirement::missingTypesFor()` rather than three
+     * copies of the same diff.
+     *
+     * @return string[] document_type codes still missing
+     */
+    private function missingDocumentTypes(MediclaimClaim $claim): array
+    {
+        return MediclaimDocumentRequirement::missingTypesFor($claim);
     }
 
     private function freshClaim(MediclaimClaim $claim): MediclaimClaim

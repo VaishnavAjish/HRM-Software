@@ -30,15 +30,19 @@ import {
   Users,
   ChevronRight,
   ChevronDown,
+  ChevronLeft,
   X,
   AlertTriangle,
   FolderTree,
+  CornerDownRight,
   Focus,
   ArrowLeft,
   Globe,
   LayoutGrid,
   List as ListIcon,
   ShieldCheck,
+  Eye,
+  Table,
 } from "lucide-react";
 
 import { useAuth } from "../../../context/AuthContext";
@@ -46,12 +50,14 @@ import Card from "../../../components/ui/Card";
 import Button from "../../../components/ui/Button";
 import Modal from "../../../components/ui/Modal";
 import { organizationApi } from "../../../features/organization/services/organizationApi";
-import { companyUnitApi } from "../../../utils/api";
+import { companyUnitApi, adminUserApi } from "../../../utils/api";
+import EmployeeDetailsModal from "../AdminModals/EmployeeDetailsModal";
+import { getEmployeePhotoUrl } from "../AdminModals/employee-helpers";
 
 const NODE_WIDTH = 270;
 const NODE_HEIGHT = 110;
 
-function layoutElements(nodes, edges, { direction = "TB", spacing = "balanced" } = {}) {
+function layoutElements(nodes, edges, { direction = "TB", spacing = "balanced", focusedUnitId = null } = {}) {
   const graph = new dagre.graphlib.Graph();
   graph.setDefaultEdgeLabel(() => ({}));
   const spacingMap = {
@@ -81,7 +87,7 @@ function layoutElements(nodes, edges, { direction = "TB", spacing = "balanced" }
 
   const isHorizontal = direction === "LR" || direction === "RL";
 
-  return nodes.map((node) => {
+  let layouted = nodes.map((node) => {
     const box = graph.node(node.id);
     const width = node.width || NODE_WIDTH;
     const height = node.height || NODE_HEIGHT;
@@ -92,6 +98,93 @@ function layoutElements(nodes, edges, { direction = "TB", spacing = "balanced" }
       targetPosition: isHorizontal ? HandlePosition.Left : HandlePosition.Top,
     };
   });
+
+  // MULTI-ROW GRID WRAPPING FOR FOCUSED SUBTREE VIEW
+  if (focusedUnitId && layouted.length > 0) {
+    const rootNodeId = `unit_${focusedUnitId}`;
+    const nodeMap = new Map(layouted.map((n) => [n.id, n]));
+
+    const childrenByParent = new Map();
+    edges.forEach((e) => {
+      if (!childrenByParent.has(e.source)) childrenByParent.set(e.source, []);
+      childrenByParent.get(e.source).push(e.target);
+    });
+
+    const MAX_PER_ROW = 5;
+    const PITCH = NODE_WIDTH + 30; // 300px horizontal spacing
+
+    const rootNode = nodeMap.get(rootNodeId) || layouted[0];
+    if (rootNode) {
+      rootNode.position = { x: -NODE_WIDTH / 2, y: 0 };
+
+      const processNodeChildren = (parentId) => {
+        const parent = nodeMap.get(parentId);
+        if (!parent) return;
+
+        const childIds = childrenByParent.get(parentId) || [];
+        if (childIds.length === 0) return;
+
+        const pX = parent.position.x + NODE_WIDTH / 2;
+        const pY = parent.position.y;
+
+        const deptChildIds = childIds.filter((id) => id.startsWith("unit_"));
+        const otherChildIds = childIds.filter((id) => !id.startsWith("unit_"));
+
+        let currentY = pY + NODE_HEIGHT + 60;
+
+        if (deptChildIds.length > 0) {
+          const deptRows = [];
+          for (let i = 0; i < deptChildIds.length; i += MAX_PER_ROW) {
+            deptRows.push(deptChildIds.slice(i, i + MAX_PER_ROW));
+          }
+
+          deptRows.forEach((row) => {
+            const count = row.length;
+            const startX = pX - ((count - 1) * PITCH) / 2;
+
+            row.forEach((childId, colIdx) => {
+              const childNode = nodeMap.get(childId);
+              if (childNode) {
+                childNode.position = {
+                  x: startX + colIdx * PITCH - NODE_WIDTH / 2,
+                  y: currentY,
+                };
+                processNodeChildren(childId);
+              }
+            });
+            currentY += NODE_HEIGHT + 45;
+          });
+        }
+
+        if (otherChildIds.length > 0) {
+          const staffRows = [];
+          for (let i = 0; i < otherChildIds.length; i += MAX_PER_ROW) {
+            staffRows.push(otherChildIds.slice(i, i + MAX_PER_ROW));
+          }
+
+          staffRows.forEach((row) => {
+            const count = row.length;
+            const startX = pX - ((count - 1) * PITCH) / 2;
+
+            row.forEach((childId, colIdx) => {
+              const childNode = nodeMap.get(childId);
+              if (childNode) {
+                childNode.position = {
+                  x: startX + colIdx * PITCH - NODE_WIDTH / 2,
+                  y: currentY,
+                };
+              }
+            });
+            currentY += NODE_HEIGHT + 35;
+          });
+        }
+      };
+
+      processNodeChildren(rootNode.id);
+    }
+  }
+
+  return layouted;
 }
 
 
@@ -103,6 +196,35 @@ function isAuthForUnit(auth, unit) {
   return auth.childIds.some((cid) => {
     const sCid = String(cid).trim();
     return sCid === targetTag || sCid === uId;
+  });
+}
+
+
+
+function getUnitAuthorities(unit, authorities) {
+  if (!unit || !authorities || !Array.isArray(authorities)) return [];
+  const uId = String(unit.id);
+  const targetTag = `unit_${uId}`;
+
+  return authorities.filter((a) => {
+    if (!a) return false;
+    if (isAuthForUnit(a, unit)) return true;
+    if (Array.isArray(a.companyUnitIds) && a.companyUnitIds.some((id) => String(id) === uId)) return true;
+    if (Array.isArray(a.childIds) && a.childIds.some((cid) => {
+      const s = String(cid).trim();
+      return s === targetTag || s === uId;
+    })) return true;
+    if (String(a.unitId || a.organizationUnitId) === uId) return true;
+    return false;
+  });
+}
+
+function getCompanyAuthorities(compName, authorities, orgUnits, companies) {
+  if (!compName) return [];
+  return (authorities || []).filter((auth) => {
+    if (isAuthForCompany(auth, compName)) return true;
+    const compUnits = (orgUnits || []).filter((u) => getCompanyName(u, companies) === compName);
+    return compUnits.some((u) => isAuthForUnit(auth, u));
   });
 }
 
@@ -173,7 +295,7 @@ function getCompanyName(unit, companiesList) {
 
 function EnterpriseNode({ data }) {
   return (
-    <div className="w-[280px] rounded-2xl border-2 border-purple-600 bg-gradient-to-r from-purple-900 via-purple-900 to-indigo-900 p-3.5 shadow-xl text-white">
+    <div className="w-[270px] rounded-2xl border-2 border-purple-600 bg-gradient-to-r from-purple-900 via-purple-900 to-indigo-900 p-3.5 shadow-xl text-white">
       <Handle type="target" position={data.targetPosition || HandlePosition.Top} className="!bg-purple-400" />
       <div className="flex items-center gap-2.5 border-b border-purple-700/60 pb-2">
         <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-purple-500/30 text-purple-200 border border-purple-400/30">
@@ -197,24 +319,38 @@ function EnterpriseNode({ data }) {
 
 function AuthorityNode({ data }) {
   return (
-    <div className="w-[280px] rounded-2xl border-2 border-purple-600 bg-gradient-to-r from-purple-900 via-purple-900 to-indigo-900 p-3.5 shadow-xl text-white">
+    <div className="w-[270px] rounded-2xl border-2 border-purple-600 bg-gradient-to-r from-purple-900 via-purple-900 to-indigo-900 p-3.5 shadow-xl text-white">
       <Handle type="target" position={data.targetPosition || HandlePosition.Top} className="!bg-purple-400" />
-      <div className="flex items-center gap-2.5 border-b border-purple-700/60 pb-2">
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-purple-500/30 text-purple-200 border border-purple-400/30">
-          <ShieldCheck size={20} />
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-purple-500/30 text-purple-200 border border-purple-400/30">
+            <ShieldCheck size={20} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h4 className="text-xs font-extrabold tracking-wide uppercase truncate">{data.label}</h4>
+            <span className="text-[10px] font-medium text-purple-300 truncate block">
+              {data.role || "Authority Role"}
+            </span>
+          </div>
         </div>
-        <div className="min-w-0 flex-1">
-          <h4 className="text-xs font-extrabold tracking-wide uppercase truncate">{data.label}</h4>
-          <span className="text-[10px] font-medium text-purple-300 truncate block">
-            {data.role || "Authority Role"}
-          </span>
-        </div>
-      </div>
-      <div className="mt-2.5 flex items-center justify-between text-[11px] font-medium text-purple-200">
-        <span>Connected Children: {data.childCount || 0}</span>
-        <span className="flex items-center gap-1 font-semibold text-purple-100">
-          <Building2 size={12} className="text-purple-300" /> Authority Node
-        </span>
+        {!data.isLocked && data.onEditAuthority && (
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              onClick={(e) => { e.stopPropagation(); data.onEditAuthority(data.auth); }}
+              title="Edit Authority"
+              className="rounded p-1 text-purple-200 hover:bg-purple-800 hover:text-white cursor-pointer"
+            >
+              <Edit2 size={13} />
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); data.onDeleteAuthority(data.auth); }}
+              title="Delete Authority"
+              className="rounded p-1 text-red-300 hover:bg-purple-800 hover:text-red-100 cursor-pointer"
+            >
+              <Trash2 size={13} />
+            </button>
+          </div>
+        )}
       </div>
       <Handle type="source" position={data.sourcePosition || HandlePosition.Bottom} className="!bg-purple-400" />
     </div>
@@ -315,11 +451,157 @@ function DepartmentNode({ data }) {
   );
 }
 
+function StaffNode({ data }) {
+  const photoUrl = data.photoUrl;
+  const name = data.label || "Staff Member";
+  const empCode = data.empCode;
+
+  return (
+    <div className="w-[270px] rounded-2xl border border-gray-200 bg-white p-3.5 shadow-sm dark:bg-gray-800 transition-all hover:shadow-md">
+      <Handle type="target" position={data.targetPosition || HandlePosition.Top} className="!bg-brand-500" />
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+          {/* PHOTO IMMEDIATELY BEFORE NAME */}
+          <div className="relative h-8 w-8 shrink-0 overflow-hidden rounded-full bg-brand-50 dark:bg-brand-900/40 text-brand-600 dark:text-brand-400 font-bold flex items-center justify-center text-xs border border-brand-200 dark:border-brand-800/60">
+            <span>{initials(name)}</span>
+            {photoUrl && (
+              <img
+                src={photoUrl}
+                alt={name}
+                className="absolute inset-0 h-full w-full object-cover rounded-full"
+                onError={(e) => { e.currentTarget.style.display = "none"; }}
+              />
+            )}
+          </div>
+          <div className="min-w-0 flex-1">
+            <h4 className="text-xs font-bold text-gray-900 dark:text-white truncate">{name}</h4>
+            <span className="text-[10px] font-mono text-gray-400 truncate block">
+              {empCode ? `#${empCode}` : "Staff Member"}
+            </span>
+          </div>
+        </div>
+
+        {/* VIEW BUTTON */}
+        <button
+          onClick={(e) => { e.stopPropagation(); data.onViewStaff(data.assignment); }}
+          title="View Employee Profile"
+          className="flex items-center gap-1 rounded-lg bg-brand-50 px-2.5 py-1 text-[11px] font-extrabold text-brand-600 hover:bg-brand-100 dark:bg-brand-950/60 dark:text-brand-400 transition-all cursor-pointer shrink-0"
+        >
+          <Eye size={12} /> View
+        </button>
+      </div>
+      <Handle type="source" position={data.sourcePosition || HandlePosition.Bottom} className="!bg-brand-500" />
+    </div>
+  );
+}
+
+
+// ------------------------------------------------------------- DATA TABLE PAGINATION COMPONENT
+function DataTablePagination({
+  currentPage,
+  pageSize,
+  totalItems,
+  onPageChange,
+  onPageSizeChange,
+  pageSizeOptions = [5, 10, 15, 25, 50, 100],
+}) {
+  const totalPages = Math.ceil(totalItems / pageSize) || 1;
+  const startItem = totalItems === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+  const endItem = Math.min(currentPage * pageSize, totalItems);
+
+  // Generate pagination page numbers
+  const getPageNumbers = () => {
+    const pages = [];
+    if (totalPages <= 7) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
+    } else {
+      pages.push(1);
+      if (currentPage > 3) pages.push("...");
+      const start = Math.max(2, currentPage - 1);
+      const end = Math.min(totalPages - 1, currentPage + 1);
+      for (let i = start; i <= end; i++) pages.push(i);
+      if (currentPage < totalPages - 2) pages.push("...");
+      pages.push(totalPages);
+    }
+    return pages;
+  };
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-4 border-t border-gray-100 dark:border-gray-800 pt-3.5 mt-3 text-xs text-gray-500 dark:text-gray-400">
+      <div className="flex flex-wrap items-center gap-2">
+        <span>
+          Showing <strong className="font-semibold text-gray-900 dark:text-white">{startItem}-{endItem}</strong> of{" "}
+          <strong className="font-semibold text-gray-900 dark:text-white">{totalItems}</strong> entries
+        </span>
+        <span className="ml-2 flex items-center gap-1.5">
+          Show
+          <select
+            value={pageSize}
+            onChange={(e) => {
+              onPageSizeChange(Number(e.target.value));
+              onPageChange(1);
+            }}
+            className="mx-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 py-1 text-xs font-bold text-gray-700 dark:text-gray-200 focus:border-brand-500 focus:outline-none cursor-pointer"
+          >
+            {pageSizeOptions.map((opt) => (
+              <option key={opt} value={opt}>
+                {opt}
+              </option>
+            ))}
+          </select>
+          entries
+        </span>
+      </div>
+
+      <div className="flex items-center gap-1">
+        <button
+          disabled={currentPage <= 1}
+          onClick={() => onPageChange(currentPage - 1)}
+          className="flex h-7 w-7 items-center justify-center rounded-lg border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+          title="Previous Page"
+        >
+          <ChevronLeft size={14} />
+        </button>
+
+        {getPageNumbers().map((p, idx) =>
+          p === "..." ? (
+            <span key={`dots-${idx}`} className="px-1 text-gray-400 select-none">
+              ...
+            </span>
+          ) : (
+            <button
+              key={p}
+              onClick={() => onPageChange(p)}
+              className={`h-7 min-w-[28px] px-2 rounded-lg text-xs font-bold transition-all ${
+                currentPage === p
+                  ? "bg-brand-600 text-white shadow-sm dark:bg-brand-500"
+                  : "border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
+              }`}
+            >
+              {p}
+            </button>
+          )
+        )}
+
+        <button
+          disabled={currentPage >= totalPages}
+          onClick={() => onPageChange(currentPage + 1)}
+          className="flex h-7 w-7 items-center justify-center rounded-lg border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+          title="Next Page"
+        >
+          <ChevronRight size={14} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 const nodeTypes = {
   enterpriseNode: EnterpriseNode,
   authorityNode: AuthorityNode,
   companyNode: CompanyNode,
   departmentNode: DepartmentNode,
+  staffNode: StaffNode,
 };
 
 // ------------------------------------------------------------- HIERARCHICAL TREE ROW FOR LIST VIEW
@@ -341,75 +623,28 @@ function ListTreeUnitRow({
   handleDeleteDept,
   expandedIds,
   toggleExpand,
+  isUnderAuthorityGroup = false,
+  isLastInAuthorityGroup = false,
 }) {
   const isExpanded = expandedIds.has(String(unit.id));
   const childUnits = allUnits.filter((child) => String(child.parentId) === String(unit.id));
   const deptAssignments = assignments.filter((a) => String(a.organizationUnitId) === String(unit.id));
   const hasChildren = childUnits.length > 0;
 
-  const matchingAuthorities = (authorities || []).filter((auth) => isAuthForUnit(auth, unit));
-
   return (
     <div className="border-b border-gray-100 dark:border-gray-800/60 transition-colors">
-      {/* AUTHORITIES SELECTED ABOVE THIS DEPARTMENT */}
-      {matchingAuthorities.map((auth) => {
-        const staffCount = assignments.filter((a) => String(a.organizationUnitId) === String(unit.id)).length;
-        return (
-          <div
-            key={`auth_unit_${auth.id}_${unit.id}`}
-            className="py-2.5 px-4 bg-purple-50/70 dark:bg-purple-950/40 border-b border-purple-100 dark:border-purple-900/40"
-          >
-            <div className="flex items-center justify-between rounded-xl border-2 border-purple-500 bg-white p-2.5 shadow-sm dark:border-purple-600 dark:bg-gray-900" style={{ marginLeft: `${depth * 24}px` }}>
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-purple-600 text-white font-bold shadow-xs">
-                  <Globe size={15} />
-                </div>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-extrabold uppercase tracking-wide text-purple-950 dark:text-purple-100 truncate">
-                      {auth.name}
-                    </span>
-                    <span className="rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-extrabold text-purple-700 dark:bg-purple-950 dark:text-purple-300">
-                      Authority
-                    </span>
-                  </div>
-                  <span className="text-[10px] font-semibold text-purple-600 dark:text-purple-300 block">
-                    {auth.role || "Authority Parent"}
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3 shrink-0 text-xs font-bold text-purple-700 dark:text-purple-300">
-                <span className="flex items-center gap-1"><Users size={13} /> {staffCount} Staff</span>
-                {!isLocked && (
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => onEditAuthority && onEditAuthority(auth)}
-                      title="Edit Authority"
-                      className="rounded p-1 text-purple-600 hover:bg-purple-100 dark:text-purple-300 dark:hover:bg-purple-900/60"
-                    >
-                      <Edit2 size={13} />
-                    </button>
-                    <button
-                      onClick={() => onDeleteAuthority && onDeleteAuthority(auth)}
-                      title="Delete Authority"
-                      className="rounded p-1 text-red-500 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/60"
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-
-
-          </div>
-        );
-      })}
-
-      <div className={`flex items-center justify-between py-2.5 px-4 hover:bg-gray-50/80 dark:hover:bg-gray-800/40 ${
+      {/* DEPARTMENT ROW */}
+      <div className={`relative flex items-center justify-between py-2.5 px-4 hover:bg-gray-50/80 dark:hover:bg-gray-800/40 ${
         depth === 0 ? "bg-white font-semibold dark:bg-gray-900" : depth === 1 ? "bg-gray-50/40 dark:bg-gray-900/60" : "bg-gray-100/30 dark:bg-gray-900/40"
       }`}>
+        {/* HORIZONTAL CONNECTOR TICK CONNECTING VERTICAL TREE BRANCH TO THIS DEPARTMENT */}
+        {isUnderAuthorityGroup && (
+          <div
+            className="absolute left-0 top-1/2 w-4 border-b-2 border-purple-400 dark:border-purple-600 pointer-events-none"
+            style={{ top: "50%" }}
+          />
+        )}
+
         <div className="flex items-center gap-2 min-w-0" style={{ paddingLeft: `${depth * 24}px` }}>
           {hasChildren ? (
             <button
@@ -430,7 +665,6 @@ function ListTreeUnitRow({
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold text-gray-900 dark:text-white truncate">{unit.name}</span>
               {unit.code && <span className="font-mono text-[10px] text-gray-400">#{unit.code}</span>}
-
             </div>
           </div>
         </div>
@@ -566,6 +800,79 @@ function HierarchyCanvasInner() {
   const [deptModal, setDeptModal] = useState(null);
   const [moveModal, setMoveModal] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+
+  // Staff Details Modal State
+  // Local State for Table View Filters & Pagination
+    // Interactive Drill-Down State for Table View (Company -> Authority -> Department -> Employees)
+  const [drillCompany, setDrillCompany] = useState(null);
+  const [drillAuthorityId, setDrillAuthorityId] = useState(null);
+  const [drillDepartmentId, setDrillDepartmentId] = useState(null);
+
+    // Recruitment-Style Drill-Down State (Company -> Authority -> Department -> Employees)
+  const [selectedCompany, setSelectedCompany] = useState(null);
+  const [selectedAuthority, setSelectedAuthority] = useState(null);
+  const [selectedDepartment, setSelectedDepartment] = useState(null);
+
+  const drillLevel = useMemo(() => {
+    if (selectedDepartment) return "employees";
+    if (selectedAuthority === "filter_auths") return "authorities";
+    if (selectedAuthority && selectedAuthority !== "filter_auths") return "departments";
+    if (selectedCompany) return "departments";
+    return "companies";
+  }, [selectedCompany, selectedAuthority, selectedDepartment]);
+
+  const [authSearch, setAuthSearch] = useState("");
+  const [authCompanyFilter, setAuthCompanyFilter] = useState("all");
+  const [authPage, setAuthPage] = useState(1);
+  const [authPageSize, setAuthPageSize] = useState(10);
+
+  const [unitSearch, setUnitSearch] = useState("");
+  const [unitCompanyFilter, setUnitCompanyFilter] = useState("all");
+  const [unitTypeFilter, setUnitTypeFilter] = useState("all");
+  const [unitPage, setUnitPage] = useState(1);
+  const [unitPageSize, setUnitPageSize] = useState(10);
+
+  const [staffSearch, setStaffSearch] = useState("");
+  const [staffCompanyFilter, setStaffCompanyFilter] = useState("all");
+  const [staffDeptFilter, setStaffDeptFilter] = useState("all");
+  const [staffRoleFilter, setStaffRoleFilter] = useState("all");
+  const [staffPage, setStaffPage] = useState(1);
+  const [staffPageSize, setStaffPageSize] = useState(15);
+
+  const [staffModalOpen, setStaffModalOpen] = useState(false);
+  const [selectedStaffUser, setSelectedStaffUser] = useState(null);
+  const [staffViewLoading, setStaffViewLoading] = useState(false);
+
+  const handleOpenStaffDetails = useCallback((assignment) => {
+    if (!assignment?.userId) {
+      toast.error("Employee details not found.");
+      return;
+    }
+    setStaffModalOpen(true);
+    setStaffViewLoading(true);
+    setSelectedStaffUser(null);
+
+    adminUserApi
+      .get(assignment.userId, token, tokenType)
+      .then((res) => {
+        const userRec = res?.data || res;
+        setSelectedStaffUser(userRec);
+      })
+      .catch(() => {
+        setSelectedStaffUser({
+          id: assignment.userId,
+          name: assignment.userName || assignment.employeeName || "Employee",
+          empCode: assignment.userEmpCode || assignment.empCode,
+          department: assignment.departmentName || assignment.organizationUnitName,
+          unit: assignment.unitName,
+          status: "Active",
+          photo: assignment.userPhoto || assignment.photo,
+        });
+      })
+      .finally(() => {
+        setStaffViewLoading(false);
+      });
+  }, [token, tokenType]);
 
   const containerRef = useRef(null);
 
@@ -835,7 +1142,7 @@ function HierarchyCanvasInner() {
     return ids;
   }, []);
 
-  // Build ReactFlow Nodes & Edges FOR CHART VIEW (ORGANIZATION GROUP ROOT RESTORED EXACTLY AS BEFORE)
+  // Build ReactFlow Nodes & Edges FOR CHART VIEW (WITH AUTHORITIES RESTORED AS PARENT NODES)
   const { rawNodes, rawEdges } = useMemo(() => {
     const nodes = [];
     const edges = [];
@@ -897,18 +1204,6 @@ function HierarchyCanvasInner() {
             isHighlighted: searchLower && safeCompName.toLowerCase().includes(searchLower),
           },
         });
-
-        // Edge: Group Enterprise Root -> Company Root Node
-        if (companyFilter === "all") {
-          edges.push({
-            id: `edge_${enterpriseId}_${compId}`,
-            source: enterpriseId,
-            target: compId,
-            type: "smoothstep",
-            animated: true,
-            style: { stroke: "#8b5cf6", strokeWidth: 2.5 },
-          });
-        }
       });
     }
 
@@ -938,31 +1233,144 @@ function HierarchyCanvasInner() {
       });
     });
 
-    // Step 3: Create Edges for Departments to Parent Department / Company Root
+    // Step 3: Create Authority Nodes
+    (authorities || []).forEach((auth) => {
+      const authId = `auth_${auth.id}`;
+
+      // Calculate how many children (units or companies) this authority targets
+      const matchingCompCount = !focusedUnitId ? targetCompNames.filter((cName) => isAuthForCompany(auth, cName)).length : 0;
+      const matchingUnitCount = filteredUnits.filter((u) => isAuthForUnit(auth, u)).length;
+      const totalChildCount = matchingCompCount + matchingUnitCount;
+
+      // In Focused Subtree View, only include Authority nodes that target a unit in the focused subtree
+      const shouldInclude = focusedUnitId ? matchingUnitCount > 0 : true;
+
+      if (shouldInclude) {
+        nodes.push({
+          id: authId,
+          type: "authorityNode",
+          data: {
+            label: auth.name,
+            role: auth.role || "Authority Parent",
+            auth,
+            childCount: totalChildCount,
+            isLocked,
+            isHighlighted: searchLower && (auth.name.toLowerCase().includes(searchLower) || (auth.role && auth.role.toLowerCase().includes(searchLower))),
+            onEditAuthority: handleEditAuthority,
+            onDeleteAuthority: handleDeleteAuthority,
+          },
+        });
+      }
+    });
+
     const nodeIdSet = new Set(nodes.map((n) => n.id));
 
+    // Step 4: Create Edges for Companies (Enterprise Root -> Authority (if present) -> Company)
+    if (!focusedUnitId) {
+      targetCompNames.forEach((compName) => {
+        const safeCompName = normalizeCompName(compName);
+        const compId = `comp_${safeCompName.replace(/\s+/g, "_")}`;
+
+        if (!nodeIdSet.has(compId)) return;
+
+        // Find authorities targeting this company
+        const companyAuths = (authorities || []).filter((auth) => isAuthForCompany(auth, compName) && nodeIdSet.has(`auth_${auth.id}`));
+
+        if (companyAuths.length > 0) {
+          companyAuths.forEach((auth) => {
+            const authId = `auth_${auth.id}`;
+
+            // Edge from Enterprise Root to Authority
+            if (companyFilter === "all" && nodeIdSet.has(enterpriseId)) {
+              edges.push({
+                id: `edge_${enterpriseId}_${authId}`,
+                source: enterpriseId,
+                target: authId,
+                type: "smoothstep",
+                animated: false,
+                style: { stroke: "#6366f1", strokeWidth: 1.8 },
+              });
+            }
+
+            // Edge from Authority to Company
+            edges.push({
+              id: `edge_${authId}_${compId}`,
+              source: authId,
+              target: compId,
+              type: "smoothstep",
+              animated: false,
+              style: { stroke: "#6366f1", strokeWidth: 1.8 },
+            });
+          });
+        } else if (companyFilter === "all" && nodeIdSet.has(enterpriseId)) {
+          // Direct edge from Enterprise Root to Company
+          edges.push({
+            id: `edge_${enterpriseId}_${compId}`,
+            source: enterpriseId,
+            target: compId,
+            type: "smoothstep",
+            animated: false,
+            style: { stroke: "#6366f1", strokeWidth: 1.8 },
+          });
+        }
+      });
+    }
+
+    // Step 5: Create Edges for Departments (Parent Dept / Company -> Authority (if present) -> Department)
     filteredUnits.forEach((u) => {
       const uId = `unit_${u.id}`;
+      if (!nodeIdSet.has(uId)) return;
+
       const compName = getCompanyName(u, companies);
       const compId = `comp_${compName.replace(/\s+/g, "_")}`;
 
-      let sourceId = null;
+      let defaultSourceId = null;
 
       if (u.parentId && String(u.parentId) !== "0" && String(u.parentId) !== "null" && String(u.parentId) !== String(u.id)) {
         const potentialParentId = `unit_${u.parentId}`;
         if (nodeIdSet.has(potentialParentId)) {
-          sourceId = potentialParentId;
+          defaultSourceId = potentialParentId;
         }
       }
 
-      if (!sourceId && nodeIdSet.has(compId) && focusedUnitId !== String(u.id)) {
-        sourceId = compId;
+      if (!defaultSourceId && nodeIdSet.has(compId) && focusedUnitId !== String(u.id)) {
+        defaultSourceId = compId;
       }
 
-      if (sourceId && nodeIdSet.has(sourceId) && nodeIdSet.has(uId)) {
+      // Check if any authority targets this specific department
+      const deptAuths = (authorities || []).filter((auth) => isAuthForUnit(auth, u) && nodeIdSet.has(`auth_${auth.id}`));
+
+      if (deptAuths.length > 0) {
+        deptAuths.forEach((auth) => {
+          const authId = `auth_${auth.id}`;
+
+          // Edge from default parent (Company or Parent Dept) to Authority
+          if (defaultSourceId && nodeIdSet.has(defaultSourceId)) {
+            edges.push({
+              id: `edge_${defaultSourceId}_${authId}`,
+              source: defaultSourceId,
+              target: authId,
+              type: "smoothstep",
+              animated: false,
+              style: { stroke: "#6366f1", strokeWidth: 1.8 },
+            });
+          }
+
+          // Edge from Authority to Department
+          edges.push({
+            id: `edge_${authId}_${uId}`,
+            source: authId,
+            target: uId,
+            type: "smoothstep",
+            animated: false,
+            style: { stroke: "#6366f1", strokeWidth: 1.8 },
+          });
+        });
+      } else if (defaultSourceId && nodeIdSet.has(defaultSourceId)) {
+        // Direct edge from default parent to Department
         edges.push({
-          id: `edge_${sourceId}_${uId}`,
-          source: sourceId,
+          id: `edge_${defaultSourceId}_${uId}`,
+          source: defaultSourceId,
           target: uId,
           type: "smoothstep",
           animated: false,
@@ -971,12 +1379,208 @@ function HierarchyCanvasInner() {
       }
     });
 
+    // Step 6: Create Staff Connected Nodes (ONLY IN FOCUSED SUBTREE VIEW)
+    if (focusedUnitId) {
+      filteredUnits.forEach((u) => {
+        const uId = `unit_${u.id}`;
+        if (!nodeIdSet.has(uId)) return;
+
+        const deptAssignments = assignments.filter((a) => String(a.organizationUnitId) === String(u.id));
+
+        deptAssignments.forEach((assign) => {
+          const staffNodeId = `staff_${assign.id}_${u.id}`;
+          const staffName = assign.userName || assign.employeeName || `User #${assign.userId}`;
+          const staffCode = assign.userEmpCode || assign.empCode;
+          const photo = assign.userPhoto || assign.photo;
+
+          nodes.push({
+            id: staffNodeId,
+            type: "staffNode",
+            data: {
+              label: staffName,
+              empCode: staffCode,
+              photoUrl: getEmployeePhotoUrl(photo),
+              assignment: assign,
+              isLocked,
+              onViewStaff: (targetAssign) => handleOpenStaffDetails(targetAssign),
+            },
+          });
+
+          // Connected Edge from Department to Staff Node
+          edges.push({
+            id: `edge_${uId}_${staffNodeId}`,
+            source: uId,
+            target: staffNodeId,
+            type: "smoothstep",
+            animated: false,
+            style: { stroke: "#6366f1", strokeWidth: 1.8 },
+          });
+        });
+      });
+    }
+
     return { rawNodes: nodes, rawEdges: edges };
-  }, [orgUnits, assignments, companies, companyFilter, focusedUnitId, isLocked, search, getSubtreeUnitIds, handleDeleteDept]);
+  }, [orgUnits, assignments, companies, authorities, companyFilter, focusedUnitId, isLocked, search, getSubtreeUnitIds, handleDeleteDept, handleEditAuthority, handleDeleteAuthority, handleOpenStaffDetails]);
 
   const layoutedNodes = useMemo(() => {
-    return layoutElements(rawNodes, rawEdges, { direction: "TB", spacing });
-  }, [rawNodes, rawEdges, spacing]);
+    return layoutElements(rawNodes, rawEdges, { direction: "TB", spacing, focusedUnitId });
+  }, [rawNodes, rawEdges, spacing, focusedUnitId]);
+
+  // Filtered & Paginated Data for Table View (100% Synchronized with List & Chart Views)
+  const filteredCompaniesList = useMemo(() => {
+    let list = companies || [];
+    if (companyFilter !== "all") {
+      list = list.filter((c) => c.name === companyFilter);
+    }
+    const q = (unitSearch || search).trim().toLowerCase();
+    if (q) {
+      list = list.filter((c) => (c.name || "").toLowerCase().includes(q));
+    }
+    return list;
+  }, [companies, companyFilter, unitSearch, search]);
+
+  const [companyPage, setCompanyPage] = useState(1);
+  const [companyPageSize, setCompanyPageSize] = useState(10);
+
+  const paginatedCompaniesList = useMemo(() => {
+    const start = (companyPage - 1) * companyPageSize;
+    return filteredCompaniesList.slice(start, start + companyPageSize);
+  }, [filteredCompaniesList, companyPage, companyPageSize]);
+
+  const filteredAuthorities = useMemo(() => {
+    let list = authorities || [];
+    if (selectedCompany) {
+      list = getCompanyAuthorities(selectedCompany, authorities, orgUnits, companies);
+    } else if (authCompanyFilter !== "all") {
+      list = getCompanyAuthorities(authCompanyFilter, authorities, orgUnits, companies);
+    } else if (companyFilter !== "all") {
+      list = getCompanyAuthorities(companyFilter, authorities, orgUnits, companies);
+    }
+    const q = (authSearch || search).trim().toLowerCase();
+    if (q) {
+      list = list.filter(
+        (auth) =>
+          (auth.name || auth.authorityName || "").toLowerCase().includes(q) ||
+          (auth.role || auth.authorityRole || "").toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [authorities, orgUnits, companies, selectedCompany, authCompanyFilter, companyFilter, authSearch, search]);
+
+  const paginatedAuthorities = useMemo(() => {
+    const start = (authPage - 1) * authPageSize;
+    return filteredAuthorities.slice(start, start + authPageSize);
+  }, [filteredAuthorities, authPage, authPageSize]);
+
+  const filteredOrgUnits = useMemo(() => {
+    let list = orgUnits || [];
+    const activeCompany = selectedCompany || (unitCompanyFilter !== "all" ? unitCompanyFilter : companyFilter);
+    if (activeCompany !== "all" && activeCompany !== null) {
+      list = list.filter((u) => getCompanyName(u, companies) === activeCompany);
+    }
+
+    if (selectedAuthority) {
+      if (selectedAuthority === "unallocated") {
+        list = list.filter((u) => {
+          const hasDirectAuth = (authorities || []).some((a) => isAuthForUnit(a, u));
+          const compName = getCompanyName(u, companies);
+          const hasCompAuth = (authorities || []).some((a) => isAuthForCompany(a, compName));
+          return !hasDirectAuth && !hasCompAuth;
+        });
+      } else {
+        const targetAuthObj = typeof selectedAuthority === "object"
+          ? selectedAuthority
+          : (authorities || []).find((a) => String(a.id) === String(selectedAuthority));
+
+        if (targetAuthObj) {
+          list = list.filter((u) => {
+            if (isAuthForUnit(targetAuthObj, u)) return true;
+            const compName = getCompanyName(u, companies);
+            return isAuthForCompany(targetAuthObj, compName);
+          });
+        }
+      }
+    }
+
+    if (unitTypeFilter === "root") {
+      list = list.filter((u) => !u.parentId);
+    } else if (unitTypeFilter === "sub") {
+      list = list.filter((u) => !!u.parentId);
+    }
+
+    const q = (unitSearch || search).trim().toLowerCase();
+    if (q) {
+      list = list.filter(
+        (u) =>
+          (u.name || "").toLowerCase().includes(q) ||
+          (u.code || "").toLowerCase().includes(q) ||
+          (u.managerName || "").toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [orgUnits, companies, authorities, selectedCompany, selectedAuthority, unitCompanyFilter, companyFilter, unitTypeFilter, unitSearch, search]);
+
+  const paginatedOrgUnits = useMemo(() => {
+    const start = (unitPage - 1) * unitPageSize;
+    return filteredOrgUnits.slice(start, start + unitPageSize);
+  }, [filteredOrgUnits, unitPage, unitPageSize]);
+
+  const filteredAssignments = useMemo(() => {
+    let list = assignments || [];
+    if (selectedDepartment) {
+      const deptId = typeof selectedDepartment === "object" ? selectedDepartment.id : selectedDepartment;
+      list = list.filter((a) => String(a.organizationUnitId) === String(deptId));
+    } else if (selectedAuthority) {
+      const allowedUnitIds = new Set(filteredOrgUnits.map((u) => String(u.id)));
+      list = list.filter((a) => allowedUnitIds.has(String(a.organizationUnitId)));
+    } else if (selectedCompany) {
+      const companyUnitIds = new Set(
+        (orgUnits || [])
+          .filter((u) => getCompanyName(u, companies) === selectedCompany)
+          .map((u) => String(u.id))
+      );
+      list = list.filter((a) => companyUnitIds.has(String(a.organizationUnitId)));
+    }
+    if (staffDeptFilter !== "all" && !selectedDepartment) {
+      list = list.filter((a) => String(a.organizationUnitId) === String(staffDeptFilter));
+    }
+    if (staffRoleFilter !== "all") {
+      list = list.filter((a) => (a.role || a.designation || "").toLowerCase() === staffRoleFilter.toLowerCase());
+    }
+    const q = (staffSearch || search).trim().toLowerCase();
+    if (q) {
+      list = list.filter((a) => {
+        const name = (a.userName || a.employeeName || a.name || "").toLowerCase();
+        const code = (a.userEmpCode || a.empCode || "").toLowerCase();
+        const dept = (a.organizationUnitName || a.departmentName || "").toLowerCase();
+        return name.includes(q) || code.includes(q) || dept.includes(q);
+      });
+    }
+    return list;
+  }, [assignments, orgUnits, companies, filteredOrgUnits, selectedDepartment, selectedAuthority, selectedCompany, staffCompanyFilter, companyFilter, staffDeptFilter, staffRoleFilter, staffSearch, search]);
+
+    // Authority matching memos for headers
+  const companyMatchingAuths = useMemo(() => {
+    if (!selectedCompany) return [];
+    return (authorities || []).filter((a) => isAuthForCompany(a, selectedCompany));
+  }, [authorities, selectedCompany]);
+
+  const targetDepartmentUnit = useMemo(() => {
+    if (!selectedDepartment) return null;
+    return typeof selectedDepartment === "object"
+      ? selectedDepartment
+      : (orgUnits || []).find((u) => String(u.id) === String(selectedDepartment));
+  }, [orgUnits, selectedDepartment]);
+
+  const deptMatchingAuths = useMemo(() => {
+    if (!targetDepartmentUnit) return [];
+    return getUnitAuthorities(targetDepartmentUnit, authorities);
+  }, [authorities, targetDepartmentUnit]);
+
+  const paginatedAssignments = useMemo(() => {
+    const start = (staffPage - 1) * staffPageSize;
+    return filteredAssignments.slice(start, start + staffPageSize);
+  }, [filteredAssignments, staffPage, staffPageSize]);
 
   // Set Default Zoom to 100% (zoom: 1.0)
   const fitKey = activeTab === "chart" && !loading && layoutedNodes.length > 0 ? layoutedNodes.length : null;
@@ -988,9 +1592,13 @@ function HierarchyCanvasInner() {
 
   useEffect(() => {
     if (activeTab === "chart" && !loading && layoutedNodes.length > 0) {
-      fitView({ minZoom: 1.0, maxZoom: 1.0, duration: 300 });
+      if (focusedUnitId) {
+        fitView({ padding: 0.25, duration: 400 });
+      } else {
+        fitView({ minZoom: 1.0, maxZoom: 1.0, duration: 300 });
+      }
     }
-  }, [activeTab, loading, layoutedNodes.length, fitView]);
+  }, [activeTab, loading, layoutedNodes.length, focusedUnitId, fitView]);
 
   // Grouped Org Units for Hierarchical List View
   const listCompaniesGroup = useMemo(() => {
@@ -1075,6 +1683,18 @@ function HierarchyCanvasInner() {
         >
           <ListIcon size={15} />
           <span>List View</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab("table")}
+          className={`flex items-center gap-2 px-5 py-3 text-xs font-bold transition-all relative border-b-2 ${
+            activeTab === "table"
+              ? "border-brand-600 text-brand-600 dark:border-brand-400 dark:text-brand-400"
+              : "border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+          }`}
+        >
+          <Table size={15} />
+          <span>Table View</span>
         </button>
 
         <button
@@ -1219,11 +1839,12 @@ function HierarchyCanvasInner() {
 
                 return (
                   <div key={group.companyName} className="space-y-2">
-                    {/* AUTHORITIES SELECTED ABOVE THIS COMPANY */}
+                    {/* COMPANY AUTHORITIES - NO DROPDOWN TOGGLE */}
                     {companyAuths.map((auth) => (
-                      <div key={`auth_comp_${auth.id}_${group.companyName}`} className="rounded-2xl border-2 border-purple-500 bg-purple-50/90 dark:border-purple-600 dark:bg-purple-950/70 p-3 shadow-md">
+                      <div key={`auth_comp_${auth.id}_${group.companyName}`} className="rounded-2xl border-2 border-purple-500 bg-purple-50/90 dark:border-purple-600 dark:bg-purple-950/70 p-3 shadow-md mb-2">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-3">
+                            {/* NO DROPDOWN CHEVRON FOR COMPANY AUTHORITY */}
                             <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-purple-600 text-white shadow-sm">
                               <Globe size={18} />
                             </div>
@@ -1257,11 +1878,20 @@ function HierarchyCanvasInner() {
                             )}
                           </div>
                         </div>
-
                       </div>
                     ))}
 
-                <Card key={group.companyName} padding={false} className="overflow-hidden border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900 shadow-sm">
+                    {/* COMPANY CARD INDENTED UNDER COMPANY AUTHORITY WITH L-CONNECTOR |_ LINE */}
+                    <div className={companyAuths.length > 0 ? "relative ml-6" : ""}>
+                      {companyAuths.length > 0 && (
+                        <div className="absolute -left-4 -top-3 h-8 w-4 border-l-2 border-b-2 border-purple-400 dark:border-purple-600 rounded-bl-lg pointer-events-none" />
+                      )}
+                      <Card
+                        key={group.companyName}
+                        padding={false}
+                        className="overflow-hidden border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900 shadow-sm"
+                      >
+                      
                   {/* COMPANY HEADER */}
                   <div className="flex items-center justify-between border-b border-indigo-100 bg-indigo-50/60 px-4 py-3 dark:border-indigo-900/40 dark:bg-indigo-950/40">
                     <div className="flex items-center gap-2.5">
@@ -1283,40 +1913,169 @@ function HierarchyCanvasInner() {
                     </div>
                   </div>
 
-                  {/* HIERARCHICAL TREE ROWS FOR THIS COMPANY */}
-                  {group.rootUnits.length === 0 ? (
-                    <div className="py-6 text-center text-xs text-gray-400">
-                      No departments found for {group.companyName}.
-                    </div>
-                  ) : (
-                    <div className="divide-y divide-gray-100 dark:divide-gray-800/60">
-                      {group.rootUnits.map((rootUnit) => (
-                        <ListTreeUnitRow
-                          key={rootUnit.id}
-                          unit={rootUnit}
-                          depth={0}
-                          allUnits={group.units}
-                          assignments={assignments}
-                          companies={companies}
-                          authorities={authorities}
-                          isLocked={isLocked}
-                          onEditAuthority={handleEditAuthority}
-                          onDeleteAuthority={handleDeleteAuthority}
-                          search={search}
-                          setRosterTarget={setRosterTarget}
-                          setDeptModal={setDeptModal}
-                          setMoveModal={setMoveModal}
-                          handleDeleteDept={handleDeleteDept}
-                          expandedIds={expandedIds}
-                          toggleExpand={toggleExpand}
-                        />
-                      ))}
-                    </div>
-                  )}
+                  {/* HIERARCHICAL TREE ROWS FOR THIS COMPANY WITH PURE AUTHORITY GROUPING */}
+                  {(() => {
+                    if (group.rootUnits.length === 0) {
+                      return (
+                        <div className="py-6 text-center text-xs text-gray-400">
+                          No departments found for {group.companyName}.
+                        </div>
+                      );
+                    }
+
+                    // Pure Functional Grouping of Root Units by Authority
+                    const authGroupMap = new Map(); // authId -> { auth, units: [] }
+                    const unassignedRootUnits = [];
+
+                    group.rootUnits.forEach((rootUnit) => {
+                      const matchingAuths = (authorities || []).filter((a) => isAuthForUnit(a, rootUnit));
+                      if (matchingAuths.length > 0) {
+                        const primaryAuth = matchingAuths[0];
+                        if (!authGroupMap.has(primaryAuth.id)) {
+                          authGroupMap.set(primaryAuth.id, { auth: primaryAuth, units: [] });
+                        }
+                        authGroupMap.get(primaryAuth.id).units.push(rootUnit);
+                      } else {
+                        unassignedRootUnits.push(rootUnit);
+                      }
+                    });
+
+                    const authGroups = Array.from(authGroupMap.values());
+
+                    return (
+                      <div className="divide-y divide-gray-100 dark:divide-gray-800/60">
+                        {/* 1. RENDER AUTHORITY GROUPS (ONE AUTHORITY CARD -> MULTIPLE DEPARTMENTS) */}
+                        {authGroups.map(({ auth, units }) => {
+                          const totalStaffForAuth = units.reduce((acc, u) => {
+                            return acc + assignments.filter((a) => String(a.organizationUnitId) === String(u.id)).length;
+                          }, 0);
+
+                          return (
+                            <div key={`auth_group_${auth.id}`} className="mb-3">
+                              {/* SINGLE AUTHORITY CARD MATCHING SOHIL HR AUTHORITY CARD DESIGN */}
+                              <div className="rounded-2xl border-2 border-purple-500 bg-purple-50/90 dark:border-purple-600 dark:bg-purple-950/70 p-3 shadow-md mb-2">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-3">
+                                    <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-purple-600 text-white shadow-sm">
+                                      <Globe size={18} />
+                                    </div>
+                                    <div>
+                                      <div className="flex items-center gap-2">
+                                        <h3 className="text-xs font-extrabold tracking-wide uppercase text-purple-950 dark:text-purple-100">{auth.name}</h3>
+                                        <span className="rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-extrabold text-purple-700 dark:bg-purple-950 dark:text-purple-300">Authority</span>
+                                      </div>
+                                      <span className="text-[10px] font-semibold text-purple-600 dark:text-purple-300">{auth.role || "Authority Parent"}</span>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center gap-3 shrink-0 text-xs font-bold text-purple-700 dark:text-purple-300">
+                                    <span className="flex items-center gap-1"><Users size={13} /> {totalStaffForAuth} Staff</span>
+                                    {!isLocked && (
+                                      <div className="flex items-center gap-1">
+                                        <button
+                                          onClick={() => handleEditAuthority(auth)}
+                                          title="Edit Authority"
+                                          className="rounded p-1 text-purple-600 hover:bg-purple-100 dark:text-purple-300 dark:hover:bg-purple-900/60"
+                                        >
+                                          <Edit2 size={13} />
+                                        </button>
+                                        <button
+                                          onClick={() => handleDeleteAuthority(auth)}
+                                          title="Delete Authority"
+                                          className="rounded p-1 text-red-500 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/60"
+                                        >
+                                          <Trash2 size={13} />
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* DEPARTMENTS INDENTED UNDER AUTHORITY WITH SOHIL-MATCHING CONNECTORS */}
+                              <div className="relative ml-6 space-y-2">
+                                {units.map((unit, idx) => {
+                                  const isFirst = idx === 0;
+                                  const isLast = idx === units.length - 1;
+
+                                  return (
+                                    <div key={unit.id} className="relative">
+                                      {/* SINGLE UNIT CONNECTOR MATCHING SOHIL -> NIDHI IMPEX EXACT DESIGN */}
+                                      {units.length === 1 && (
+                                        <div className="absolute -left-4 -top-3.5 h-8 w-4 border-l-2 border-b-2 border-purple-400 dark:border-purple-600 rounded-bl-lg pointer-events-none" />
+                                      )}
+
+                                      {/* MULTI-UNIT CONTINUOUS CONNECTOR MATCHING SOHIL -> NIDHI IMPEX EXACT DESIGN */}
+                                      {units.length > 1 && (
+                                        <>
+                                          <div
+                                            className={`absolute -left-4 border-l-2 border-purple-400 dark:border-purple-600 pointer-events-none ${
+                                              isFirst ? "-top-3.5" : "top-0"
+                                            } ${isLast ? "h-6.5 rounded-bl-lg border-b-2" : "bottom-0"}`}
+                                            style={{ width: isLast ? "16px" : "0px" }}
+                                          />
+                                          {!isLast && (
+                                            <div className="absolute -left-4 top-4.5 w-4 border-b-2 border-purple-400 dark:border-purple-600 pointer-events-none" />
+                                          )}
+                                        </>
+                                      )}
+
+                                      <ListTreeUnitRow
+                                        unit={unit}
+                                        depth={0}
+                                        allUnits={group.units}
+                                        assignments={assignments}
+                                        companies={companies}
+                                        authorities={authorities}
+                                        isLocked={isLocked}
+                                        onEditAuthority={handleEditAuthority}
+                                        onDeleteAuthority={handleDeleteAuthority}
+                                        search={search}
+                                        setRosterTarget={setRosterTarget}
+                                        setDeptModal={setDeptModal}
+                                        setMoveModal={setMoveModal}
+                                        handleDeleteDept={handleDeleteDept}
+                                        expandedIds={expandedIds}
+                                        toggleExpand={toggleExpand}
+                                      />
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })}
+
+                        {/* 2. RENDER UNASSIGNED ROOT UNITS */}
+                        {unassignedRootUnits.map((rootUnit) => (
+                          <ListTreeUnitRow
+                            key={rootUnit.id}
+                            unit={rootUnit}
+                            depth={0}
+                            allUnits={group.units}
+                            assignments={assignments}
+                            companies={companies}
+                            authorities={authorities}
+                            isLocked={isLocked}
+                            onEditAuthority={handleEditAuthority}
+                            onDeleteAuthority={handleDeleteAuthority}
+                            search={search}
+                            setRosterTarget={setRosterTarget}
+                            setDeptModal={setDeptModal}
+                            setMoveModal={setMoveModal}
+                            handleDeleteDept={handleDeleteDept}
+                            expandedIds={expandedIds}
+                            toggleExpand={toggleExpand}
+                          />
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </Card>
-              </div>
-                  );
-                })}
+                    </div>
+                  </div>
+                );
+              })}
             </>
           )}
         </div>
@@ -1337,7 +2096,570 @@ function HierarchyCanvasInner() {
         </div>
       )}
 
-      {/* TAB 2: CHART VIEW (RESTORED TOP-MOST ORGANIZATION GROUP ROOT CARD + NIDHI IMPEX & SILVER STAR) */}
+                                    {/* TAB 2: TABLE VIEW (RECRUITMENT-STYLE DRILL-DOWN: COMPANY -> AUTHORITY -> DEPARTMENT -> EMPLOYEES) */}
+      {activeTab === "table" && (
+        <div className="space-y-5">
+          {loading ? (
+            <Card className="flex h-64 flex-col items-center justify-center gap-2 text-gray-500">
+              <RefreshCw size={24} className="animate-spin text-brand-600" />
+              <p className="text-xs font-semibold">Loading hierarchy table data...</p>
+            </Card>
+          ) : (
+            <>
+              {/* LEVEL 1: COMPANIES TABLE */}
+              {drillLevel === "companies" && (
+                <Card className="p-5 border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm rounded-2xl flex flex-col">
+                  {/* STICKY SECTION HEADER */}
+                  <div className="sticky top-0 z-20 bg-white dark:bg-gray-900 pb-3 mb-3 border-b border-gray-100 dark:border-gray-800">
+                    <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                      <div className="flex items-center gap-2.5">
+                        <div className="p-2 rounded-xl bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400">
+                          <Building2 size={18} />
+                        </div>
+                        <div>
+                          <h3 className="text-sm font-bold text-gray-900 dark:text-white">Organization Companies</h3>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            Select any company below to view its authorities and department pipeline
+                          </p>
+                        </div>
+                      </div>
+                      <span className="px-3 py-1 rounded-full text-xs font-bold bg-brand-50 dark:bg-brand-950/80 text-brand-700 dark:text-brand-300">
+                        {filteredCompaniesList.length} Companies
+                      </span>
+                    </div>
+
+                    {/* SEARCH ROW */}
+                    <div className="flex flex-wrap items-center gap-2.5">
+                      <div className="relative flex-1 min-w-[200px]">
+                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <input
+                          type="text"
+                          placeholder="Search company name..."
+                          value={unitSearch}
+                          onChange={(e) => {
+                            setUnitSearch(e.target.value);
+                            setCompanyPage(1);
+                          }}
+                          className="w-full rounded-xl border border-gray-200 bg-gray-50/50 py-1.5 pl-9 pr-3 text-xs focus:border-brand-500 focus:bg-white focus:outline-none dark:border-gray-800 dark:bg-gray-800/50 dark:text-white dark:focus:border-brand-400"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* SCROLLABLE TABLE CONTAINER */}
+                  <div className="max-h-[380px] overflow-y-auto custom-scrollbar border border-gray-100 dark:border-gray-800/60 rounded-xl">
+                    {filteredCompaniesList.length === 0 ? (
+                      <p className="text-xs text-gray-400 italic py-6 text-center">No companies matching criteria</p>
+                    ) : (
+                      <table className="w-full text-left text-xs">
+                        <thead className="sticky top-0 z-10 bg-gray-50/95 dark:bg-gray-800/95 backdrop-blur-sm border-b border-gray-200 dark:border-gray-800 shadow-sm">
+                          <tr className="text-gray-400 uppercase text-[10px] tracking-wider">
+                            <th className="py-3 px-4 font-bold">Company Name</th>
+                            <th className="py-3 px-4 font-bold">Code</th>
+                            <th className="py-3 px-4 font-bold text-center">Authorities</th>
+                            <th className="py-3 px-4 font-bold text-center">Departments</th>
+                            <th className="py-3 px-4 font-bold text-center">Employees</th>
+                            <th className="py-3 px-4 font-bold text-right">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100 dark:divide-gray-800 bg-white dark:bg-gray-900">
+                          {paginatedCompaniesList.map((comp) => {
+                            const compAuths = getCompanyAuthorities(comp.name, authorities, orgUnits, companies);
+                            const compDepts = (orgUnits || []).filter((u) => getCompanyName(u, companies) === comp.name);
+                            const compStaff = (assignments || []).filter((a) => {
+                              const u = (orgUnits || []).find((unit) => String(unit.id) === String(a.organizationUnitId));
+                              return u && getCompanyName(u, companies) === comp.name;
+                            });
+
+                            return (
+                              <tr key={comp.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-all">
+                                <td className="py-3.5 px-4 font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                  <div className="p-1.5 rounded-lg bg-brand-50 text-brand-600 dark:bg-brand-950 dark:text-brand-400">
+                                    <Building2 size={14} />
+                                  </div>
+                                  <span className="text-xs font-bold">{comp.name}</span>
+                                </td>
+                                <td className="py-3.5 px-4 font-mono text-gray-500 dark:text-gray-400">
+                                  {comp.code || comp.id}
+                                </td>
+                                <td className="py-3.5 px-4 text-center font-bold text-purple-600 dark:text-purple-400">
+                                  {compAuths.length} Authorities
+                                </td>
+                                <td className="py-3.5 px-4 text-center font-bold text-gray-600 dark:text-gray-400">
+                                  {compDepts.length} Departments
+                                </td>
+                                <td className="py-3.5 px-4 text-center font-bold text-brand-600 dark:text-brand-400">
+                                  {compStaff.length} Employees
+                                </td>
+                                <td className="py-3.5 px-4 text-right">
+                                  <button
+                                    onClick={() => {
+                                      setSelectedCompany(comp.name);
+                                      setSelectedAuthority(null);
+                                      setSelectedDepartment(null);
+                                      setUnitPage(1);
+                                      setStaffPage(1);
+                                    }}
+                                    className="inline-flex items-center gap-1 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-800 px-3 py-1.5 text-[11px] font-bold text-brand-600 dark:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-950/60 transition-all cursor-pointer shadow-2xs"
+                                  >
+                                    View Departments <ChevronRight size={13} />
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+
+                  {/* PAGINATION FOOTER */}
+                  <DataTablePagination
+                    currentPage={companyPage}
+                    pageSize={companyPageSize}
+                    totalItems={filteredCompaniesList.length}
+                    onPageChange={setCompanyPage}
+                    onPageSizeChange={setCompanyPageSize}
+                  />
+                </Card>
+              )}
+
+              {/* LEVEL 2: AUTHORITIES TABLE (DRILLED INTO COMPANY) */}
+              {drillLevel === "authorities" && (
+                <Card className="p-5 border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm rounded-2xl flex flex-col">
+                  {/* RECRUITMENT-STYLE HEADER BAR WITH BACK BUTTON */}
+                  <div className="sticky top-0 z-20 bg-white dark:bg-gray-900 pb-3 mb-3 border-b border-gray-100 dark:border-gray-800">
+                    <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => {
+                            setSelectedCompany(null);
+                            setAuthPage(1);
+                          }}
+                          className="flex items-center gap-1.5 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800 px-3 py-1.5 text-xs font-bold text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-all cursor-pointer"
+                        >
+                          <ArrowLeft size={14} /> Back to Companies
+                        </button>
+                        <div>
+                          <h3 className="text-base font-bold text-gray-900 dark:text-white">{selectedCompany}</h3>
+                          <p className="text-xs text-purple-600 dark:text-purple-400 font-medium">
+                            {filteredAuthorities.length} authorities in this company
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* SEARCH ROW */}
+                    <div className="flex flex-wrap items-center gap-2.5">
+                      <div className="relative flex-1 min-w-[200px]">
+                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <input
+                          type="text"
+                          placeholder="Search authority name or role..."
+                          value={authSearch}
+                          onChange={(e) => {
+                            setAuthSearch(e.target.value);
+                            setAuthPage(1);
+                          }}
+                          className="w-full rounded-xl border border-gray-200 bg-gray-50/50 py-1.5 pl-9 pr-3 text-xs focus:border-brand-500 focus:bg-white focus:outline-none dark:border-gray-800 dark:bg-gray-800/50 dark:text-white dark:focus:border-brand-400"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* SCROLLABLE TABLE CONTAINER */}
+                  <div className="max-h-[380px] overflow-y-auto custom-scrollbar border border-gray-100 dark:border-gray-800/60 rounded-xl">
+                    {filteredAuthorities.length === 0 ? (
+                      <p className="text-xs text-gray-400 italic py-6 text-center">No authorities found for {selectedCompany}</p>
+                    ) : (
+                      <table className="w-full text-left text-xs">
+                        <thead className="sticky top-0 z-10 bg-gray-50/95 dark:bg-gray-800/95 backdrop-blur-sm border-b border-gray-200 dark:border-gray-800 shadow-sm">
+                          <tr className="text-gray-400 uppercase text-[10px] tracking-wider">
+                            <th className="py-3 px-4 font-bold">Authority Name</th>
+                            <th className="py-3 px-4 font-bold">Designation / Role</th>
+                            <th className="py-3 px-4 font-bold">Assigned Scope</th>
+                            <th className="py-3 px-4 font-bold text-right">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100 dark:divide-gray-800 bg-white dark:bg-gray-900">
+                          {paginatedAuthorities.map((auth) => {
+                            return (
+                              <tr key={auth.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-all">
+                                <td className="py-3.5 px-4 font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                  <ShieldCheck size={14} className="text-purple-500 shrink-0" />
+                                  <span>{auth.name || auth.authorityName || "Authority"}</span>
+                                </td>
+                                <td className="py-3.5 px-4 text-purple-600 dark:text-purple-400 font-medium">
+                                  {auth.role || auth.authorityRole || "Authority"}
+                                </td>
+                                <td className="py-3.5 px-4 text-gray-600 dark:text-gray-300 font-medium">
+                                  {(() => {
+                                    const matchingComps = (companies || []).filter((c) => isAuthForCompany(auth, c.name)).map((c) => `${c.name} (Company)`);
+                                    const matchingUnits = (orgUnits || []).filter((u) => isAuthForUnit(auth, u)).map((u) => `${u.name} (Dept)`);
+                                    const allMatched = [...matchingComps, ...matchingUnits];
+                                    return allMatched.length > 0 ? allMatched.join(", ") : (selectedCompany || "All Companies");
+                                  })()}
+                                </td>
+                                <td className="py-3.5 px-4 text-right">
+                                  <div className="flex items-center justify-end gap-2">
+                                    <button
+                                      onClick={() => handleOpenAuthorityModal(auth)}
+                                      className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-brand-600 dark:hover:bg-gray-800 transition-all cursor-pointer"
+                                      title="Edit Authority"
+                                    >
+                                      <Edit2 size={13} />
+                                    </button>
+                                    <button
+                                      onClick={() => setDeleteConfirm({ type: "authority", id: auth.id, name: auth.name })}
+                                      className="p-1.5 rounded-lg text-gray-500 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 transition-all cursor-pointer"
+                                      title="Delete Authority"
+                                    >
+                                      <Trash2 size={13} />
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        setSelectedAuthority(auth);
+                                        setUnitPage(1);
+                                      }}
+                                      className="inline-flex items-center gap-1 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-800 px-3 py-1.5 text-[11px] font-bold text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/60 transition-all cursor-pointer shadow-2xs"
+                                    >
+                                      View Departments <ChevronRight size={13} />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+
+                  {/* PAGINATION FOOTER */}
+                  <DataTablePagination
+                    currentPage={authPage}
+                    pageSize={authPageSize}
+                    totalItems={filteredAuthorities.length}
+                    onPageChange={setAuthPage}
+                    onPageSizeChange={setAuthPageSize}
+                  />
+                </Card>
+              )}
+
+              {/* LEVEL 3: DEPARTMENTS TABLE (DRILLED INTO COMPANY / AUTHORITY) */}
+              {drillLevel === "departments" && (
+                <Card className="p-5 border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm rounded-2xl flex flex-col">
+                  {/* STICKY SECTION HEADER WITH BACK BUTTON AND COMPANY AUTHORITY BADGE */}
+                  <div className="sticky top-0 z-20 bg-white dark:bg-gray-900 pb-3 mb-3 border-b border-gray-100 dark:border-gray-800">
+                    <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <button
+                          onClick={() => {
+                            if (selectedAuthority) {
+                              setSelectedAuthority(null);
+                            } else {
+                              setSelectedCompany(null);
+                            }
+                            setUnitPage(1);
+                          }}
+                          className="flex items-center gap-1.5 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800 px-3 py-1.5 text-xs font-bold text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-all cursor-pointer shadow-2xs"
+                        >
+                          <ArrowLeft size={14} /> {selectedAuthority ? "Back to Authorities" : "Back to Companies"}
+                        </button>
+                        <div>
+                          <div className="flex items-center gap-2.5 flex-wrap">
+                            <h3 className="text-base font-bold text-gray-900 dark:text-white">
+                              {selectedAuthority
+                                ? typeof selectedAuthority === "object"
+                                  ? selectedAuthority.name || selectedAuthority.authorityName
+                                  : "Authority"
+                                : selectedCompany}
+                            </h3>
+                            {!selectedAuthority && companyMatchingAuths.length > 0 && (
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-purple-50 text-purple-700 dark:bg-purple-950/80 dark:text-purple-300 border border-purple-200 dark:border-purple-800 text-xs font-bold shadow-2xs">
+                                <ShieldCheck size={14} className="text-purple-600 dark:text-purple-400" />
+                                <span>
+                                  Authority: {companyMatchingAuths.map((a) => `${a.name || a.authorityName || "Authority"}${a.role || a.authorityRole ? ` (${a.role || a.authorityRole})` : ""}`).join(", ")}
+                                </span>
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-brand-600 dark:text-brand-400 font-medium mt-0.5">
+                            {filteredOrgUnits.length} departments {selectedAuthority ? "under this authority" : "in this company"}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* SEARCH & FILTERS ROW */}
+                    <div className="flex flex-wrap items-center gap-2.5">
+                      <div className="relative flex-1 min-w-[200px]">
+                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <input
+                          type="text"
+                          placeholder="Search department name, code, manager..."
+                          value={unitSearch}
+                          onChange={(e) => {
+                            setUnitSearch(e.target.value);
+                            setUnitPage(1);
+                          }}
+                          className="w-full rounded-xl border border-gray-200 bg-gray-50/50 py-1.5 pl-9 pr-3 text-xs focus:border-brand-500 focus:bg-white focus:outline-none dark:border-gray-800 dark:bg-gray-800/50 dark:text-white dark:focus:border-brand-400"
+                        />
+                      </div>
+
+                      <select
+                        value={unitTypeFilter}
+                        onChange={(e) => {
+                          setUnitTypeFilter(e.target.value);
+                          setUnitPage(1);
+                        }}
+                        className="rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-xs font-bold text-gray-700 dark:border-gray-800 dark:bg-gray-800 dark:text-gray-200 focus:border-brand-500 focus:outline-none cursor-pointer"
+                      >
+                        <option value="all">All Unit Types</option>
+                        <option value="root">Company Root Units</option>
+                        <option value="sub">Sub-Departments</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* SCROLLABLE TABLE CONTAINER */}
+                  <div className="max-h-[380px] overflow-y-auto custom-scrollbar border border-gray-100 dark:border-gray-800/60 rounded-xl">
+                    {filteredOrgUnits.length === 0 ? (
+                      <p className="text-xs text-gray-400 italic py-6 text-center">No departments found</p>
+                    ) : (
+                      <table className="w-full text-left text-xs">
+                        <thead className="sticky top-0 z-10 bg-gray-50/95 dark:bg-gray-800/95 backdrop-blur-sm border-b border-gray-200 dark:border-gray-800 shadow-sm">
+                          <tr className="text-gray-400 uppercase text-[10px] tracking-wider">
+                            <th className="py-3 px-4 font-bold">Unit / Department Name</th>
+                            <th className="py-3 px-4 font-bold">Code</th>
+                            <th className="py-3 px-4 font-bold">Company</th>
+                            <th className="py-3 px-4 font-bold">Authority</th>
+                            <th className="py-3 px-4 font-bold">Parent Unit</th>
+                            <th className="py-3 px-4 font-bold text-center">Staff</th>
+                            <th className="py-3 px-4 font-bold text-right">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100 dark:divide-gray-800 bg-white dark:bg-gray-900">
+                          {paginatedOrgUnits.map((unit) => {
+                            const compName = getCompanyName(unit, companies);
+                            const parentUnit = orgUnits.find((u) => String(u.id) === String(unit.parentId));
+                            const unitStaff = assignments.filter((a) => String(a.organizationUnitId) === String(unit.id));
+
+                            const directAuths = getUnitAuthorities(unit, authorities);
+                            const authDisplay = directAuths.length > 0
+                              ? directAuths.map((a) => a.name || a.authorityName || "Authority").join(", ")
+                              : "Unallocated";
+
+                            return (
+                              <tr key={unit.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-all">
+                                <td className="py-3.5 px-4 font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                  <Building2 size={14} className="text-brand-500 shrink-0" />
+                                  <span>{unit.name}</span>
+                                </td>
+                                <td className="py-3.5 px-4 font-mono text-gray-500 dark:text-gray-400">
+                                  {unit.code || `#${unit.id}`}
+                                </td>
+                                <td className="py-3.5 px-4 font-semibold text-brand-600 dark:text-brand-400">
+                                  {compName}
+                                </td>
+                                <td className="py-3.5 px-4 font-medium">
+                                  {directAuths.length > 0 ? (
+                                    <span className="text-purple-600 dark:text-purple-400 font-bold">{authDisplay}</span>
+                                  ) : (
+                                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
+                                      Unallocated
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="py-3.5 px-4 text-gray-600 dark:text-gray-300">
+                                  {parentUnit ? parentUnit.name : "—"}
+                                </td>
+                                <td className="py-3.5 px-4 text-center font-bold text-brand-600 dark:text-brand-400">
+                                  {unitStaff.length} Employees
+                                </td>
+                                <td className="py-3.5 px-4 text-right">
+                                  <button
+                                    onClick={() => {
+                                      setSelectedDepartment(unit);
+                                      setStaffPage(1);
+                                    }}
+                                    className="inline-flex items-center gap-1 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-800 px-3 py-1.5 text-[11px] font-bold text-brand-600 dark:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-950/60 transition-all cursor-pointer shadow-2xs"
+                                  >
+                                    View Employees <ChevronRight size={13} />
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+
+                  {/* PAGINATION FOOTER */}
+                  <DataTablePagination
+                    currentPage={unitPage}
+                    pageSize={unitPageSize}
+                    totalItems={filteredOrgUnits.length}
+                    onPageChange={setUnitPage}
+                    onPageSizeChange={setUnitPageSize}
+                  />
+                </Card>
+              )}
+
+              {/* LEVEL 4: EMPLOYEES TABLE (DRILLED INTO DEPARTMENT) */}
+              {drillLevel === "employees" && (
+                <Card className="p-5 border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm rounded-2xl flex flex-col">
+                  {/* STICKY SECTION HEADER WITH DYNAMIC AUTHORITY BADGE */}
+                  <div className="sticky top-0 z-20 bg-white dark:bg-gray-900 pb-3 mb-3 border-b border-gray-100 dark:border-gray-800">
+                    <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <button
+                          onClick={() => {
+                            setSelectedDepartment(null);
+                            setStaffPage(1);
+                          }}
+                          className="flex items-center gap-1.5 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800 px-3 py-1.5 text-xs font-bold text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-all cursor-pointer shadow-2xs"
+                        >
+                          <ArrowLeft size={14} /> Back to Departments
+                        </button>
+                        <div>
+                          <div className="flex items-center gap-2.5 flex-wrap">
+                            <h3 className="text-base font-bold text-gray-900 dark:text-white">
+                              {targetDepartmentUnit ? targetDepartmentUnit.name : "Department"}
+                            </h3>
+                            {deptMatchingAuths.length > 0 && (
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-purple-50 text-purple-700 dark:bg-purple-950/80 dark:text-purple-300 border border-purple-200 dark:border-purple-800 text-xs font-bold shadow-2xs">
+                                <ShieldCheck size={14} className="text-purple-600 dark:text-purple-400" />
+                                <span>
+                                  Authority: {deptMatchingAuths.map((a) => `${a.name || a.authorityName || "Authority"}${a.role || a.authorityRole ? ` (${a.role || a.authorityRole})` : ""}`).join(", ")}
+                                </span>
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-blue-600 dark:text-blue-400 font-medium mt-0.5">
+                            {filteredAssignments.length} employees in this department pipeline
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* SEARCH & FILTERS ROW */}
+                    <div className="flex flex-wrap items-center gap-2.5">
+                      <div className="relative flex-1 min-w-[200px]">
+                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <input
+                          type="text"
+                          placeholder="Search employee name, code, role..."
+                          value={staffSearch}
+                          onChange={(e) => {
+                            setStaffSearch(e.target.value);
+                            setStaffPage(1);
+                          }}
+                          className="w-full rounded-xl border border-gray-200 bg-gray-50/50 py-1.5 pl-9 pr-3 text-xs focus:border-brand-500 focus:bg-white focus:outline-none dark:border-gray-800 dark:bg-gray-800/50 dark:text-white dark:focus:border-brand-400"
+                        />
+                      </div>
+
+                      <select
+                        value={staffRoleFilter}
+                        onChange={(e) => {
+                          setStaffRoleFilter(e.target.value);
+                          setStaffPage(1);
+                        }}
+                        className="rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-xs font-bold text-gray-700 dark:border-gray-800 dark:bg-gray-800 dark:text-gray-200 focus:border-brand-500 focus:outline-none cursor-pointer"
+                      >
+                        <option value="all">All Roles</option>
+                        <option value="Manager">Manager</option>
+                        <option value="Employee">Employee</option>
+                        <option value="Staff Member">Staff Member</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* SCROLLABLE TABLE CONTAINER */}
+                  <div className="max-h-[400px] overflow-y-auto custom-scrollbar border border-gray-100 dark:border-gray-800/60 rounded-xl">
+                    {filteredAssignments.length === 0 ? (
+                      <p className="text-xs text-gray-400 italic py-6 text-center">No staff members in this department</p>
+                    ) : (
+                      <table className="w-full text-left text-xs">
+                        <thead className="sticky top-0 z-10 bg-gray-50/95 dark:bg-gray-800/95 backdrop-blur-sm border-b border-gray-200 dark:border-gray-800 shadow-sm">
+                          <tr className="text-gray-400 uppercase text-[10px] tracking-wider">
+                            <th className="py-3 px-4 font-bold">Employee</th>
+                            <th className="py-3 px-4 font-bold">Emp Code</th>
+                            <th className="py-3 px-4 font-bold">Role / Designation</th>
+                            <th className="py-3 px-4 font-bold">Department / Unit</th>
+                            <th className="py-3 px-4 font-bold">Company</th>
+                            <th className="py-3 px-4 font-bold text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100 dark:divide-gray-800 bg-white dark:bg-gray-900">
+                          {paginatedAssignments.map((a) => {
+                            const empName = a.userName || a.employeeName || a.name || "Staff Member";
+                            const empCode = a.userEmpCode || a.empCode || "—";
+                            const photoUrl = getEmployeePhotoUrl(a.userPhoto || a.photo || a.userAvatar);
+                            const unit = (orgUnits || []).find((u) => String(u.id) === String(a.organizationUnitId));
+                            const compName = unit ? getCompanyName(unit, companies) : (a.companyName || "—");
+
+                            return (
+                              <tr key={a.id || `${a.userId}-${a.organizationUnitId}`} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-all">
+                                <td className="py-3.5 px-4 font-bold text-gray-900 dark:text-white flex items-center gap-2.5">
+                                  <div className="relative h-7 w-7 shrink-0 overflow-hidden rounded-full bg-brand-50 dark:bg-brand-900/40 text-brand-600 dark:text-brand-400 font-bold flex items-center justify-center text-[10px] border border-brand-200 dark:border-brand-800/60">
+                                    <span>{initials(empName)}</span>
+                                    {photoUrl && (
+                                      <img
+                                        src={photoUrl}
+                                        alt={empName}
+                                        className="absolute inset-0 h-full w-full object-cover rounded-full"
+                                        onError={(e) => { e.currentTarget.style.display = "none"; }}
+                                      />
+                                    )}
+                                  </div>
+                                  <span className="truncate font-bold">{empName}</span>
+                                </td>
+                                <td className="py-3.5 px-4 font-mono text-gray-500 dark:text-gray-400">
+                                  {empCode}
+                                </td>
+                                <td className="py-3.5 px-4 text-gray-700 dark:text-gray-300 font-medium">
+                                  {a.role || a.designation || "Staff Member"}
+                                </td>
+                                <td className="py-3.5 px-4 font-medium text-gray-700 dark:text-gray-300">
+                                  {unit ? unit.name : (a.organizationUnitName || "—")}
+                                </td>
+                                <td className="py-3.5 px-4 font-semibold text-brand-600 dark:text-brand-400">
+                                  {compName}
+                                </td>
+                                <td className="py-3.5 px-4 text-right">
+                                  <button
+                                    onClick={() => handleOpenStaffDetails(a)}
+                                    className="inline-flex items-center gap-1 rounded-lg bg-brand-50 px-2.5 py-1 text-[11px] font-extrabold text-brand-600 hover:bg-brand-100 dark:bg-brand-950/60 dark:text-brand-400 transition-all cursor-pointer shadow-2xs"
+                                  >
+                                    <Eye size={12} /> View
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+
+                  {/* PAGINATION FOOTER */}
+                  <DataTablePagination
+                    currentPage={staffPage}
+                    pageSize={staffPageSize}
+                    totalItems={filteredAssignments.length}
+                    onPageChange={setStaffPage}
+                    onPageSizeChange={setStaffPageSize}
+                  />
+                </Card>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* TAB 3: CHART VIEW */}
       {activeTab === "chart" && (
         <div className="relative h-[680px] w-full overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900 shadow-inner">
           {loading ? (
@@ -1590,6 +2912,18 @@ function HierarchyCanvasInner() {
             </footer>
           </div>
         </Modal>
+      )}
+
+      {/* EMPLOYEE DETAILS MODAL FOR CONNECTED STAFF NODES */}
+      {staffModalOpen && (
+        <EmployeeDetailsModal
+          isOpen={staffModalOpen}
+          onClose={() => setStaffModalOpen(false)}
+          selected={selectedStaffUser}
+          viewLoading={staffViewLoading}
+          hideEdit={true}
+          allowedTabs={["profile", "employment", "address"]}
+        />
       )}
 
       {/* MODAL: Edit Department */}

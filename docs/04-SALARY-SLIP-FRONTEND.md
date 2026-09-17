@@ -19,13 +19,13 @@ source, commands and env files live in the nested `salary-slip-front/`.
 | Print | react-to-print | 3.3 |
 | Excel | xlsx (SheetJS) | 0.18 |
 | Drag & Drop | @dnd-kit/core + @dnd-kit/sortable | 6.3 / 10.0 |
-| Camera | @capacitor/camera | 8.2 |
+| Camera | Browser MediaDevices / HTML Capture | - |
 | QR Codes | qrcode.react | 4.2 |
 | Date Picker | react-tailwindcss-datepicker | 2.0 |
 | Icons | Lucide React | 1.14 |
 | Notifications | react-hot-toast | 2.6 |
 | UI Components | Headless UI React | 2.2 |
-| Mobile | Capacitor 8 (Android) | 8.4 |
+| Mobile | Responsive Web / PWA | - |
 | PWA | vite-plugin-pwa | 1.2 |
 | Testing | Vitest | - |
 
@@ -280,7 +280,8 @@ map when no snapshot is present.
 
 ## API Client (`utils/api.js`, 1777 lines)
 
-Fetch-based, with `CapacitorHttp` substituted on Android/iOS to bypass CORS.
+Fetch-based. All requests go through the browser network stack, so the backend's
+CORS allow-list (`salary-slip-bac/config/cors.php`) must include the frontend origin.
 
 - Base URL from `utils/url.js`: `VITE_ENV=DEV` → `VITE_API_BASE_URL`,
   `STAG` → `VITE_STAGING_URL`, otherwise the branch-injected `__PROD_API_URL__`
@@ -378,21 +379,11 @@ buttons, `aria-hidden` on decorative icons, focus rings on buttons.
 
 ## Mobile & PWA Support
 
-### Capacitor 8 Android
-| Script | Effect |
-|--------|--------|
-| `npm run mobile:build` | Dev build + `cap sync` |
-| `npm run mobile:build:prod` | Production build + `cap sync` |
-| `npm run mobile:run:android` | Build + run on device/emulator |
-| `npm run mobile:sync` | `cap sync` only |
-
-Native builds route HTTP through `CapacitorHttp` to avoid CORS.
+### Mobile Web Architecture
+The application runs as a fully responsive Web Application & Progressive Web App (PWA) across all desktop, tablet, and mobile browsers.
 
 ### Safe areas
-`--safe-area-inset-*` custom properties are set from `env(safe-area-inset-*)`
-as a fallback; Capacitor's SystemBars plugin overwrites them inline on `<html>`
-because Android WebView's `env()` is unreliable before Chromium 140. `header`,
-`aside`, `main`, `.modal-overlay` and `.safe-top-bar` consume them.
+`--safe-area-inset-*` custom properties are set from `env(safe-area-inset-*)` as a fallback. `header`, `aside`, `main`, `.modal-overlay` and `.safe-top-bar` consume them.
 
 ### PWA
 Service worker via `vite-plugin-pwa` with `registerType: "autoUpdate"`,

@@ -92,6 +92,28 @@ class ClaimController extends Controller
         return $this->guarded(fn () => $this->ok($this->workflow->withdraw($model, $actor)));
     }
 
+    /**
+     * `POST /claims/{claim}/discharge` — the employee records the actual
+     * discharge date once treatment that was still ongoing at submission
+     * time has finished. See `ClaimWorkflowService::recordDischarge()`'s
+     * docblock for why this can't just be another `update()` call.
+     */
+    public function discharge(Request $request, int $claim): JsonResponse
+    {
+        $actor = auth('api')->user();
+        $model = MediclaimClaim::visibleTo($actor)->find($claim);
+
+        if (! $model) {
+            return $this->missing('Claim not found.');
+        }
+
+        $data = $request->validate(['discharge_at' => ['required', 'date']]);
+
+        return $this->guarded(fn () => $this->ok(
+            $this->workflow->recordDischarge($model, $actor, \Illuminate\Support\Carbon::parse($data['discharge_at']))
+        ));
+    }
+
     public function timeline(Request $request, int $claim): JsonResponse
     {
         $actor = auth('api')->user();

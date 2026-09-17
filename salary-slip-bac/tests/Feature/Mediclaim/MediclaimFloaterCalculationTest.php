@@ -96,7 +96,7 @@ class MediclaimFloaterCalculationTest extends TestCase
     private function walkToDirectorStage(User $employee, User $manager, User $reviewer, ClaimWorkflowService $workflow, float $claimedAmount): MediclaimClaim
     {
         $claim = $workflow->submit($workflow->createDraft($employee, [
-            'expenses' => [['category' => 'consultation', 'claimed_amount' => $claimedAmount]],
+            'expenses' => [['category' => 'CONSULTATION_FEES', 'claimed_amount' => $claimedAmount]],
         ]), $employee);
         $workflow->acknowledgeConfidentiality($claim, $manager);
         $claim = $workflow->managerDecision($claim->fresh(), $manager, 'approve');

@@ -2,7 +2,11 @@
 
 namespace Tests\Feature\Mediclaim;
 
+use App\Models\Document;
+use App\Models\DocumentVersion;
 use App\Models\Mediclaim\MediclaimClaim;
+use App\Models\Mediclaim\MediclaimDocumentLink;
+use App\Models\Mediclaim\MediclaimDocumentRequirement;
 use App\Models\Mediclaim\MediclaimReviewerAssignment;
 use App\Models\Permission;
 use App\Models\ReportingRelationship;
@@ -43,7 +47,7 @@ class MediclaimClaimWorkflowTransitionsTest extends TestCase
 
         $created = $this->actingAsUser($actors['employee'])
             ->postJson('/api/v1/mediclaim/me/claims', [
-                'expenses' => [['category' => 'consultation', 'claimed_amount' => 5000]],
+                'expenses' => [['category' => 'CONSULTATION_FEES', 'claimed_amount' => 5000]],
             ])->assertCreated()->json('data');
 
         $this->actingAsUser($actors['employee'])
@@ -233,7 +237,7 @@ class MediclaimClaimWorkflowTransitionsTest extends TestCase
     {
         $created = $this->actingAsUser($actors['employee'])
             ->postJson('/api/v1/mediclaim/me/claims', [
-                'expenses' => [['category' => 'consultation', 'claimed_amount' => 5000]],
+                'expenses' => [['category' => 'CONSULTATION_FEES', 'claimed_amount' => 5000]],
             ])->assertCreated()->json('data');
 
         $submitted = $this->actingAsUser($actors['employee'])
@@ -293,7 +297,52 @@ class MediclaimClaimWorkflowTransitionsTest extends TestCase
                 'approved_amount' => $approvedAmount,
             ])->assertOk()->assertJsonPath('data.status', 'SETTLEMENT_PENDING');
 
+        // Settlement is gated on document completeness (recordSettlement()'s
+        // docblock) — every caller of this helper goes on to attempt a
+        // settlement, so upload whatever is currently required right here,
+        // exercising the real "approve, then employee uploads, then settle"
+        // sequence rather than assuming documents away.
+        $this->uploadRequiredDocuments(MediclaimClaim::findOrFail($claimId), $actors['employee']);
+
         return $claimId;
+    }
+
+    private function uploadRequiredDocuments(MediclaimClaim $claim, User $employee): void
+    {
+        foreach (MediclaimDocumentRequirement::resolveRequiredTypesFor($claim) as $type) {
+            $document = Document::create([
+                'owner_type' => 'user',
+                'owner_id' => $employee->id,
+                'owner_ref' => (string) $employee->id,
+                'user_id' => $employee->id,
+                'document_type' => $type,
+                'current_version' => 1,
+                'status' => Document::STATUS_ACTIVE,
+                'is_deleted' => false,
+            ]);
+
+            DocumentVersion::create([
+                'document_id' => $document->id,
+                'version' => 1,
+                'original_file_name' => strtolower($type) . '.pdf',
+                'generated_file_name' => $type . '_V1_20260101120000.pdf',
+                's3_object_key' => "mediclaim/{$employee->id}/" . strtolower($type) . '/V1.pdf',
+                'file_extension' => 'pdf',
+                'file_size' => 2048,
+                'mime_type' => 'application/pdf',
+                'upload_status' => DocumentVersion::UPLOAD_ACTIVE,
+                'scan_status' => DocumentVersion::SCAN_NOT_SCANNED,
+                'uploaded_at' => now(),
+            ]);
+
+            MediclaimDocumentLink::create([
+                'document_id' => $document->id,
+                'linkable_type' => MediclaimClaim::class,
+                'linkable_id' => $claim->id,
+                'document_role' => strtolower($type),
+                'created_by' => $employee->id,
+            ]);
+        }
     }
 
     /** @return array<string,User> */

@@ -1,17 +1,10 @@
-import { Camera, CameraResultType, CameraSource, CameraDirection } from "@capacitor/camera";
-import { Capacitor } from "@capacitor/core";
-
-// Camera-only photo capture. There is deliberately no gallery/file-picker path
-// here — on native we ask Capacitor for CameraSource.Camera, on web we drive
-// getUserMedia directly. Both return a File so existing upload code that does
-// `payload.photo instanceof File` keeps working unchanged.
+// Camera-only photo capture. Web drives getUserMedia directly, returning a File so
+// existing upload code that does `payload.photo instanceof File` keeps working unchanged.
 
 export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024; // 5 MB
 export const MAX_DIMENSION = 1280; // longest edge after resize
 export const JPEG_QUALITY = 0.82;
 export const ACCEPTED_MIME = ["image/jpeg", "image/png", "image/webp"];
-
-export const isNativePlatform = () => Capacitor.isNativePlatform();
 
 export class PhotoCaptureError extends Error {
   constructor(code, message) {
@@ -89,8 +82,8 @@ const loadImage = (src) =>
  * Downscale to MAX_DIMENSION on the longest edge and re-encode as JPEG.
  *
  * Drawing through a canvas strips the EXIF block, so orientation must already
- * be baked into the pixels: Capacitor is asked for correctOrientation, and the
- * web path composites from a live <video> frame which is upright by definition.
+ * be baked into the pixels, and the web path composites from a live <video>
+ * frame which is upright by definition.
  */
 export const compressImage = async (blob, fileName = "photo.jpg") => {
   const url = URL.createObjectURL(blob);
@@ -117,49 +110,6 @@ export const compressImage = async (blob, fileName = "photo.jpg") => {
     );
   } finally {
     URL.revokeObjectURL(url);
-  }
-};
-
-const dataUrlToBlob = async (dataUrl) => (await fetch(dataUrl)).blob();
-
-/**
- * Native (Capacitor) capture. `source: CameraSource.Camera` opens the camera
- * directly — it never shows the "Camera or Photos?" prompt, so the gallery is
- * unreachable from this flow. The OS camera app supplies its own
- * capture/retake/confirm screen.
- */
-export const captureNativePhoto = async ({ front = true } = {}) => {
-  try {
-    const perm = await Camera.checkPermissions();
-    if (perm.camera !== "granted") {
-      const asked = await Camera.requestPermissions({ permissions: ["camera"] });
-      if (asked.camera !== "granted") {
-        throw new PhotoCaptureError(CAPTURE_ERRORS.PERMISSION_DENIED, "camera not granted");
-      }
-    }
-
-    const photo = await Camera.getPhoto({
-      source: CameraSource.Camera, // camera only — no gallery, no prompt
-      direction: front ? CameraDirection.Front : CameraDirection.Rear,
-      resultType: CameraResultType.DataUrl,
-      correctOrientation: true, // bake EXIF rotation into the pixels
-      allowEditing: false,
-      saveToGallery: false, // never write to shared storage
-      quality: 85,
-      width: MAX_DIMENSION,
-    });
-
-    if (!photo?.dataUrl) throw new PhotoCaptureError(CAPTURE_ERRORS.UNKNOWN, "empty result");
-    return compressImage(await dataUrlToBlob(photo.dataUrl), `photo-${Date.now()}.jpg`);
-  } catch (err) {
-    if (err instanceof PhotoCaptureError) throw err;
-    const msg = String(err?.message || err);
-    if (/cancel/i.test(msg)) throw new PhotoCaptureError(CAPTURE_ERRORS.CANCELLED, msg);
-    if (/permission|denied/i.test(msg))
-      throw new PhotoCaptureError(CAPTURE_ERRORS.PERMISSION_DENIED, msg);
-    if (/no camera|unavailable/i.test(msg))
-      throw new PhotoCaptureError(CAPTURE_ERRORS.NO_CAMERA, msg);
-    throw new PhotoCaptureError(CAPTURE_ERRORS.UNKNOWN, msg);
   }
 };
 

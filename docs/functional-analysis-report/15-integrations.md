@@ -28,4 +28,4 @@
 
 ## 16.4 Mobile packaging (not a third-party service, but an integration point)
 
-A Capacitor wrapper packages the same React codebase as native Android/iOS apps. `apiRequest()` in `utils/api.js` detects the Capacitor platform and switches from `fetch` to `CapacitorHttp.request()` specifically to avoid WebView CORS restrictions — i.e., the native app talks to the backend directly rather than through a bundled webview proxy.
+Removed on 2026-09-16. At the 2026-08-07 snapshot a Capacitor wrapper packaged the React codebase as a native Android app and `apiRequest()` switched to `CapacitorHttp.request()` on native platforms. The frontend is now web/PWA only and every request uses browser `fetch`, subject to the backend CORS allow-list.

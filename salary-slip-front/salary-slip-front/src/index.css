@@ -677,10 +677,10 @@ body {
 }
 
 /* ─────────────────────────────────────────────────────────
-   Capacitor Mobile & Safe Area Responsive Adjustments
+   Mobile & Safe Area Responsive Adjustments
    ───────────────────────────────────────────────────────── */
 
-/* Touch & tap enhancements for native app experience */
+/* Touch & tap enhancements for mobile browsers and installed PWA */
 * {
   -webkit-tap-highlight-color: transparent;
 }
@@ -691,11 +691,7 @@ html, body {
   width: 100%;
 }
 
-/* Safe area inset custom properties.
-   Capacitor's SystemBars plugin injects these same --safe-area-inset-* names
-   as inline styles on <html> (Android WebView's env(safe-area-inset-*) is
-   unreliable pre-Chromium-140), so the env() below is only the fallback used
-   before that JS runs (or in a plain browser/iOS PWA with no Capacitor). */
+/* Safe area inset custom properties, read from env(safe-area-inset-*). */
 :root {
   --safe-area-inset-top: env(safe-area-inset-top, 0px);
   --safe-area-inset-right: env(safe-area-inset-right, 0px);

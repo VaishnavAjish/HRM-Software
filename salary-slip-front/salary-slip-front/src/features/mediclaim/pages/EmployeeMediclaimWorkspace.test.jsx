@@ -18,6 +18,7 @@ vi.mock("../services/mediclaimApi", () => ({
     hospitals: vi.fn().mockResolvedValue({ data: { data: [] } }),
     ruleBooks: vi.fn().mockResolvedValue({ data: { data: [] } }),
     myMembers: vi.fn().mockResolvedValue({ data: { data: [] } }),
+    documentRequirements: vi.fn().mockResolvedValue({ data: { data: [] } }),
     // Already past the onboarding gate by default, so every existing test
     // below keeps exercising tab-permission gating unchanged; the gate
     // itself is covered separately in the "onboarding gate" describe block
@@ -32,15 +33,10 @@ vi.mock("../hooks/useMediclaimAuthorization", () => ({
   useMediclaimAuthorization: () => ({ can: (code) => state.allowed.has(code) }),
 }));
 
-vi.mock("./employee/tabs/MyCoverageTab", () => ({ default: () => <div>Coverage Content</div> }));
+vi.mock("./employee/tabs/MediclaimInfoTab", () => ({ default: () => <div>Coverage Content</div> }));
 vi.mock("./employee/tabs/FamilyMembersTab", () => ({ default: () => <div>Family Content</div> }));
-vi.mock("./employee/tabs/CardsTab", () => ({ default: () => <div>Cards Content</div> }));
-vi.mock("./employee/tabs/NotifyOfficeTab", () => ({ default: () => <div>Notify Content</div> }));
-vi.mock("./employee/tabs/SubmitClaimTab", () => ({ default: () => <div>Submit Content</div> }));
 vi.mock("./employee/tabs/MyClaimsTab", () => ({ default: () => <div>MyClaims Content</div> }));
-vi.mock("./employee/tabs/HospitalsTab", () => ({ default: () => <div>Hospitals Content</div> }));
 vi.mock("./employee/tabs/RuleBookTab", () => ({ default: () => <div>RuleBook Content</div> }));
-vi.mock("./employee/tabs/HistoryTab", () => ({ default: () => <div>History Content</div> }));
 vi.mock("./employee/tabs/TeamClaimsTab", () => ({ default: () => <div>Team Content</div> }));
 vi.mock("./employee/tabs/PendingMyApprovalTab", () => ({ default: () => <div>Pending Content</div> }));
 
@@ -87,12 +83,11 @@ describe("EmployeeMediclaimWorkspace loading state", () => {
 });
 
 describe("EmployeeMediclaimWorkspace tab gating", () => {
-  it("shows the nine unconditional tabs with no manager permissions granted", async () => {
+  it("shows the three unconditional tabs with no manager permissions granted", async () => {
     await setup();
 
     expect(screen.getAllByRole("button").map((button) => button.textContent)).toEqual([
-      "My Coverage", "Family Members", "Rule Book", "Cards", "Notify Office", "Submit Claim",
-      "My Claims", "Hospitals", "History",
+      "Mediclaim Info", "Family Members", "My Claims",
     ]);
   });
 
@@ -119,13 +114,13 @@ describe("EmployeeMediclaimWorkspace tab gating", () => {
     expect(screen.queryByRole("button", { name: "Team Claims" })).not.toBeInTheDocument();
   });
 
-  it("shows both manager tabs together once both permissions are granted, appended after the unconditional nine", async () => {
+  it("shows both manager tabs together once both permissions are granted, appended after the unconditional three", async () => {
     state.allowed = new Set(["mediclaim.team_claim.read", "mediclaim.claim.manager.decide"]);
     await setup();
 
     expect(screen.getAllByRole("button").map((button) => button.textContent)).toEqual([
-      "My Coverage", "Family Members", "Rule Book", "Cards", "Notify Office", "Submit Claim",
-      "My Claims", "Hospitals", "History", "Team Claims", "Pending My Approval",
+      "Mediclaim Info", "Family Members", "My Claims",
+      "Team Claims", "Pending My Approval",
     ]);
   });
 
@@ -142,7 +137,7 @@ describe("EmployeeMediclaimWorkspace tab gating", () => {
     await waitFor(() => expect(screen.getByText("Pending Content")).toBeInTheDocument());
   });
 
-  it("falls back safely to My Coverage when a direct-linked manager tab is not permitted", async () => {
+  it("falls back safely to Mediclaim Info when a direct-linked manager tab is not permitted", async () => {
     await setup("/employee/tds/mediclaim?tab=pending");
 
     expect(screen.getByText("Coverage Content")).toBeInTheDocument();
@@ -160,7 +155,7 @@ describe("EmployeeMediclaimWorkspace onboarding gate", () => {
     expect(screen.getAllByRole("button").map((button) => button.textContent)).toEqual(["Rule Book", "Family Members"]);
   });
 
-  it("defaults to the Rule Book tab while gated, not My Coverage", async () => {
+  it("defaults to the Rule Book tab while gated, not Mediclaim Info", async () => {
     mediclaimApi.myCoverage.mockResolvedValueOnce({
       data: { eligibility: { eligible: true }, onboarding: { ruleBookAcknowledged: false, completed: false } },
     });
@@ -188,7 +183,7 @@ describe("EmployeeMediclaimWorkspace accessibility & responsiveness", () => {
   it("keeps the tab bar horizontally scrollable instead of wrapping at narrow widths", async () => {
     await setup();
 
-    const tabBar = screen.getByRole("button", { name: "My Coverage" }).parentElement;
+    const tabBar = screen.getByRole("button", { name: "Mediclaim Info" }).parentElement;
     expect(tabBar.className).toMatch(/overflow-x-auto/);
   });
 });

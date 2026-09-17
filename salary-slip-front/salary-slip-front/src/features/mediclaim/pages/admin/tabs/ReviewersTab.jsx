@@ -19,12 +19,18 @@ const inputClass =
 // (coordinator/committee/HR/director/settlement)"). Manager is deliberately
 // excluded — manager assignment is derived from the reporting hierarchy
 // (`assigned_manager_id`), never from `mediclaim_reviewer_assignments`.
+//
+// Values are the exact lowercase slugs `MediclaimReviewerAssignment::ROLES`
+// (backend) validates against — every assignment attempt used to fail
+// (422) because these were uppercase mismatches (`HR_ELIGIBILITY` doesn't
+// even share a string with the backend's `hr_verification`), silently
+// making this whole screen non-functional.
 const ROLE_OPTIONS = [
-  { value: "COORDINATOR", label: "Coordinator" },
-  { value: "COMMITTEE", label: "Committee" },
-  { value: "HR_ELIGIBILITY", label: "HR Eligibility" },
-  { value: "DIRECTOR", label: "Director" },
-  { value: "SETTLEMENT", label: "Settlement" },
+  { value: "coordinator", label: "Coordinator" },
+  { value: "committee", label: "Committee" },
+  { value: "hr_verification", label: "HR Eligibility" },
+  { value: "director", label: "Director" },
+  { value: "settlement", label: "Settlement" },
 ];
 
 const EMPTY_FORM = { role: ROLE_OPTIONS[0].value, userId: "", isBackup: false, activeFrom: "", activeTo: "" };

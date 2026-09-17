@@ -5,9 +5,7 @@ import DashboardTab from "./admin/tabs/DashboardTab";
 import EmployeesTab from "./admin/tabs/EmployeesTab";
 import ClaimsTab from "./admin/tabs/ClaimsTab";
 import PendingReviewsTab from "./admin/tabs/PendingReviewsTab";
-import PoliciesTab from "./admin/tabs/PoliciesTab";
-import HospitalsTab from "./admin/tabs/HospitalsTab";
-import RuleBooksTab from "./admin/tabs/RuleBooksTab";
+import SettingsTab from "./admin/tabs/SettingsTab";
 import ReportsTab from "./admin/tabs/ReportsTab";
 
 /**
@@ -17,17 +15,25 @@ import ReportsTab from "./admin/tabs/ReportsTab";
  * `permissions` array, `availableTabs = TABS.filter(t => !t.permissions ||
  * t.permissions.some(can))`.
  *
- * `dashboard`/`employees`/`claims`/`hospitals`/`rulebooks` are unconditional
- * because the whole workspace already sits behind `ui.admin.mediclaim.view`
- * at the route level (F2) — same reasoning `HiringWorkspace.jsx` uses for its
- * first several tabs. `pending-reviews` gates on ANY of the five stage
- * `.decide` codes (a reviewer who only holds one of the five must still be
- * able to open the tab — each row's actual decision panel is gated
- * individually inside `PendingReviewsTab`, per the implementation plan).
+ * Rule Books, Hospitals and Document Requirements are no longer separate
+ * top-level tabs — they're combined into one "Settings" tab
+ * (`SettingsTab.jsx`), a left-nav/right-content settings-page layout rather
+ * than three tabs or a popup/drawer per section. Policies has been removed
+ * from this workspace entirely (no UI reaches it).
+ *
+ * `dashboard`/`employees`/`claims`/`settings` are unconditional because the
+ * whole workspace already sits behind `ui.admin.mediclaim.view` at the route
+ * level (F2) — same reasoning `HiringWorkspace.jsx` uses for its first
+ * several tabs (fine-grained gating of Document Requirements within
+ * `SettingsTab` itself, same as Rule Books/Hospitals were always
+ * unconditional here). `pending-reviews` gates on ANY of the six stage
+ * `.decide`/`.create` codes (five review stages plus Settlement — a
+ * reviewer who only holds one must still be able to open the tab — each
+ * row's actual decision panel is gated individually inside
+ * `PendingReviewsTab`, per the implementation plan).
  */
 const TABS = [
   { key: "dashboard", label: "Dashboard" },
-  { key: "rulebooks", label: "Rule Books" },
   { key: "employees", label: "Employees" },
   { key: "claims", label: "Claims" },
   {
@@ -39,10 +45,10 @@ const TABS = [
       "mediclaim.claim.committee.decide",
       "mediclaim.claim.hr_verification.decide",
       "mediclaim.claim.director.decide",
+      "mediclaim.settlement.create",
     ],
   },
-  { key: "policies", label: "Policies", permissions: ["mediclaim.policy.read"] },
-  { key: "hospitals", label: "Hospitals" },
+  { key: "settings", label: "Settings" },
   { key: "reports", label: "Reports", permissions: ["mediclaim.report.read"] },
 ];
 
@@ -113,9 +119,7 @@ export default function AdminMediclaimWorkspace() {
         {tab === "employees" && <EmployeesTab />}
         {tab === "claims" && <ClaimsTab />}
         {tab === "pending-reviews" && <PendingReviewsTab />}
-        {tab === "policies" && <PoliciesTab />}
-        {tab === "hospitals" && <HospitalsTab />}
-        {tab === "rulebooks" && <RuleBooksTab />}
+        {tab === "settings" && <SettingsTab />}
         {tab === "reports" && <ReportsTab />}
       </div>
     </div>

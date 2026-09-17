@@ -1,21 +1,39 @@
 import { useEffect, useState } from "react";
+import { Search, Download, RefreshCw } from "lucide-react";
 import { useAuth } from "../../../../../context/AuthContext";
 import { useAuthorization } from "../../../../../hooks/useAuthorization";
 import { mediclaimActionAccess } from "../../../../../utils/formActionAccess";
+import { downloadCSV } from "../../../../../utils/exportUtils";
 import Drawer from "../../../../../components/ui/Drawer";
+import Button from "../../../../../components/ui/Button";
 import { mediclaimApi } from "../../../services/mediclaimApi";
 import ClaimsTable from "../../../components/ClaimsTable";
 import ClaimStatusBadge from "../../../components/ClaimStatusBadge";
 import ClaimSummaryCard from "../../../components/ClaimSummaryCard";
+import ClaimDetailDrawer from "../../../components/ClaimDetailDrawer";
 import ManagerReviewPanel from "../../../components/ManagerReviewPanel";
 import CoordinatorReviewPanel from "../../../components/CoordinatorReviewPanel";
 import CommitteeReviewPanel from "../../../components/CommitteeReviewPanel";
 import HrEligibilityReviewPanel from "../../../components/HrEligibilityReviewPanel";
 import DirectorDecisionPanel from "../../../components/DirectorDecisionPanel";
-import { REVIEW_STAGE, REVIEW_STAGE_META, getStageByPendingStatus } from "../../../models/reviewStages";
+import SettlementPanel from "../../../components/SettlementPanel";
+import {
+  REVIEW_STAGE,
+  REVIEW_STAGE_META,
+  getStageByPendingStatus,
+  CLAIM_WORKFLOW_BUCKET,
+  getClaimWorkflowBucket,
+  FINALIZED_CLAIM_STATUSES,
+} from "../../../models/reviewStages";
 import { formatCurrencyINR, formatClaimDate } from "../../../utils/formatters";
 
 const PER_PAGE = 15;
+const FINALIZED_FILTER_VALUE = FINALIZED_CLAIM_STATUSES.join(",");
+// reviews/pending covers every in-flight claim (Pending Approval + Pending
+// Document together) in one company — capped generously so the two
+// buckets below can be paginated purely client-side, with no extra
+// round-trip when switching between them.
+const PENDING_FETCH_SIZE = 100;
 
 // Which panel component renders for a resolved stage.
 const STAGE_PANEL = {
@@ -24,6 +42,7 @@ const STAGE_PANEL = {
   [REVIEW_STAGE.COMMITTEE]: CommitteeReviewPanel,
   [REVIEW_STAGE.HR_ELIGIBILITY]: HrEligibilityReviewPanel,
   [REVIEW_STAGE.DIRECTOR]: DirectorDecisionPanel,
+  [REVIEW_STAGE.SETTLEMENT]: SettlementPanel,
 };
 
 // Which `mediclaimActionAccess(can)` boolean gates that stage's decision
@@ -35,7 +54,26 @@ const STAGE_ACCESS_KEY = {
   [REVIEW_STAGE.COMMITTEE]: "committeeDecide",
   [REVIEW_STAGE.HR_ELIGIBILITY]: "hrVerificationDecide",
   [REVIEW_STAGE.DIRECTOR]: "directorDecide",
+  [REVIEW_STAGE.SETTLEMENT]: "settlementCreate",
 };
+
+const SUB_TABS = [
+  {
+    key: CLAIM_WORKFLOW_BUCKET.PENDING_APPROVAL,
+    label: "Pending Approval",
+    description: "Claims moving through Manager, Coordinator, Committee, HR Eligibility and Director review.",
+  },
+  {
+    key: CLAIM_WORKFLOW_BUCKET.PENDING_DOCUMENT,
+    label: "Pending Document",
+    description: "Director-approved claims waiting on the employee's documents, then HR's final settlement approval.",
+  },
+  {
+    key: CLAIM_WORKFLOW_BUCKET.FINALIZED,
+    label: "Approved Claim",
+    description: "Settled, closed, rejected, withdrawn or cancelled — the workflow is finished for these.",
+  },
+];
 
 /** Resolves which stage a pending-review row is awaiting, tolerant of the
  *  field-naming uncertainty the plan flagged (`currentStage`/`current_stage`
@@ -46,16 +84,64 @@ function resolveStage(row) {
   return getStageByPendingStatus(row.status || row.currentStatus || row.current_status) || null;
 }
 
+function employeeName(row) {
+  return row.employeeName || row.employee_snapshot?.name || row.employee?.name || "—";
+}
+
+function matchesSearch(row, term) {
+  if (!term) return true;
+  const haystack = `${row.claimNumber || row.claim_number || ""} ${employeeName(row)} ${row.patientName || row.patient_snapshot?.name || ""}`.toLowerCase();
+  return haystack.includes(term.toLowerCase());
+}
+
+function toCsvRow(row) {
+  return {
+    "Claim #": row.claimNumber || row.claim_number || "",
+    Employee: employeeName(row),
+    Patient: row.patientName || row.patient_snapshot?.name || "",
+    "Claimed Amount": row.totalClaimedAmount ?? row.total_claimed_amount ?? "",
+    "Approved Amount": row.approvedAmount ?? row.approved_amount ?? "",
+    Status: row.status || "",
+    Submitted: row.submittedAt || row.submitted_at || "",
+  };
+}
+
 /**
- * Company-wide queue of claims awaiting a review decision at any stage, via
- * `mediclaimApi.reviewsPending`. The tab itself is visible to anyone holding
- * ANY of the five stage `.decide` permission codes (gated one level up in
- * `AdminMediclaimWorkspace`'s `TABS`), but each row's actual decision panel
- * is resolved from that claim's own current stage and gated individually —
- * a reviewer who only holds, say, `mediclaim.claim.coordinator.decide` sees
- * every pending claim in this list (for visibility/awareness) but can only
- * open decision controls on the ones actually awaiting Coordinator
- * Verification; every other row opens as a read-only summary instead.
+ * Company-wide claim workflow view, split into three filter sub-tabs
+ * mirroring the actual pipeline end to end — "like Employees" in the sense
+ * of one consistent, well-organized table format reused across every
+ * stage, rather than one flat undifferentiated list:
+ *
+ *  - **Pending Approval**: every claim still moving through the five review
+ *    stages (Manager → Coordinator → Committee → HR Eligibility →
+ *    Director). Approving here at Director stage is what moves a claim into
+ *    the next bucket.
+ *  - **Pending Document**: SETTLEMENT_PENDING claims — cleared every review
+ *    stage, now waiting on the employee's document upload and then HR's
+ *    Final Approve (`SettlementPanel`, which shows the actual uploaded
+ *    documents read-only right there, not just a missing-count).
+ *  - **Approved Claim**: the finished pipeline — settled/closed (and also
+ *    rejected/withdrawn/cancelled, so a claim never just vanishes from
+ *    every tab) — the same `FINALIZED_CLAIM_STATUSES` set the admin Claims
+ *    tab defaults to, fetched via `adminClaims()` lazily, only once this
+ *    sub-tab is actually opened.
+ *
+ * Pending Approval and Pending Document share ONE `reviewsPending()` fetch
+ * (a generous `PENDING_FETCH_SIZE` cap) split client-side by
+ * `getClaimWorkflowBucket()` — that endpoint already returns both buckets
+ * together, and splitting a single mixed server-paginated result would make
+ * per-bucket pagination incoherent, so each bucket paginates independently
+ * over the same already-loaded set instead.
+ *
+ * Toolbar mirrors the house data-table pattern this app already uses
+ * elsewhere (`EmployeeMasterTable.jsx`'s search+pill-filter+action-button
+ * row, `RequisitionsTab.jsx`'s Export/Refresh buttons): a search box
+ * (claim #/employee/patient — client-side for the two in-memory buckets,
+ * forwarded as `Admin\ClaimController::index()`'s existing `search` param
+ * for Approved Claim), the three buckets as a pill-button group instead of
+ * plain underline tabs, and Refresh/Export CSV actions. `ClaimsTable`'s
+ * `Pagination` already supported a "Show N entries" page-size control and
+ * numbered pages — it just needed `onPageSizeChange` actually wired here.
  */
 export default function PendingReviewsTab() {
   const { user } = useAuth();
@@ -64,32 +150,73 @@ export default function PendingReviewsTab() {
 
   const accessToken = user?.accessToken;
   const tokenType = user?.tokenType;
-  const [result, setResult] = useState({ key: null, rows: [], total: 0, error: null });
-  const [page, setPage] = useState(1);
+
+  const [subTab, setSubTab] = useState(CLAIM_WORKFLOW_BUCKET.PENDING_APPROVAL);
+  const [search, setSearch] = useState("");
+  const [perPage, setPerPage] = useState(PER_PAGE);
   const [selectedClaim, setSelectedClaim] = useState(null);
   const [reloadToken, setReloadToken] = useState(0);
-  const requestKey = `${accessToken ?? ""}|${tokenType ?? ""}|${page}|${reloadToken}`;
+
+  const [pendingResult, setPendingResult] = useState({ key: null, rows: [], error: null });
+  const [approvalPage, setApprovalPage] = useState(1);
+  const [documentPage, setDocumentPage] = useState(1);
+  const [finalizedPage, setFinalizedPage] = useState(1);
+  const pendingRequestKey = `${accessToken ?? ""}|${tokenType ?? ""}|${reloadToken}`;
+
+  const selectSubTab = (key) => {
+    setSubTab(key);
+    setApprovalPage(1);
+    setDocumentPage(1);
+    setFinalizedPage(1);
+  };
 
   useEffect(() => {
     if (!accessToken) return undefined;
     let cancelled = false;
-    mediclaimApi.reviewsPending({ page, perPage: PER_PAGE }, accessToken, tokenType)
+    mediclaimApi.reviewsPending({ perPage: PENDING_FETCH_SIZE }, accessToken, tokenType)
+      .then((res) => {
+        if (cancelled) return;
+        const payload = res?.data;
+        const rows = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
+        setPendingResult({ key: pendingRequestKey, rows, error: null });
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setPendingResult({ key: pendingRequestKey, rows: [], error: err?.message || "Failed to load pending reviews." });
+      });
+    return () => { cancelled = true; };
+  }, [accessToken, tokenType, reloadToken, pendingRequestKey]);
+
+  const pendingLoading = pendingResult.key !== pendingRequestKey;
+  const approvalRows = pendingResult.rows
+    .filter((row) => getClaimWorkflowBucket(row.status) === CLAIM_WORKFLOW_BUCKET.PENDING_APPROVAL)
+    .filter((row) => matchesSearch(row, search));
+  const documentRows = pendingResult.rows
+    .filter((row) => getClaimWorkflowBucket(row.status) === CLAIM_WORKFLOW_BUCKET.PENDING_DOCUMENT)
+    .filter((row) => matchesSearch(row, search));
+
+  const [finalizedResult, setFinalizedResult] = useState({ key: null, rows: [], total: 0, error: null });
+  const finalizedRequestKey = `${accessToken ?? ""}|${tokenType ?? ""}|${finalizedPage}|${perPage}|${search}|${reloadToken}`;
+
+  useEffect(() => {
+    if (!accessToken || subTab !== CLAIM_WORKFLOW_BUCKET.FINALIZED) return undefined;
+    let cancelled = false;
+    mediclaimApi.adminClaims({ page: finalizedPage, perPage, status: FINALIZED_FILTER_VALUE, search: search || undefined }, accessToken, tokenType)
       .then((res) => {
         if (cancelled) return;
         const payload = res?.data;
         const rows = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
         const total = payload?.total ?? rows.length;
-        setResult({ key: requestKey, rows, total, error: null });
+        setFinalizedResult({ key: finalizedRequestKey, rows, total, error: null });
       })
       .catch((err) => {
         if (cancelled) return;
-        setResult({ key: requestKey, rows: [], total: 0, error: err?.message || "Failed to load pending reviews." });
+        setFinalizedResult({ key: finalizedRequestKey, rows: [], total: 0, error: err?.message || "Failed to load approved claims." });
       });
     return () => { cancelled = true; };
-  }, [accessToken, tokenType, page, requestKey]);
+  }, [accessToken, tokenType, subTab, finalizedPage, perPage, search, reloadToken, finalizedRequestKey]);
 
-  const loading = result.key !== requestKey;
-  const state = { loading, rows: result.rows, total: result.total, error: loading ? null : result.error };
+  const finalizedLoading = subTab === CLAIM_WORKFLOW_BUCKET.FINALIZED && finalizedResult.key !== finalizedRequestKey;
 
   const loadPending = () => setReloadToken((n) => n + 1);
 
@@ -98,16 +225,41 @@ export default function PendingReviewsTab() {
     loadPending();
   };
 
+  const handleSearchChange = (value) => {
+    setSearch(value);
+    setApprovalPage(1);
+    setDocumentPage(1);
+    setFinalizedPage(1);
+  };
+
+  // Exports the currently active sub-tab's full filtered set (not just the
+  // page on screen) for Pending Approval/Pending Document, since those are
+  // already fully loaded client-side — Approved Claim is server-paginated,
+  // so its export is scoped to the current page only.
+  const exportCsv = () => {
+    const rows = subTab === CLAIM_WORKFLOW_BUCKET.PENDING_APPROVAL
+      ? approvalRows
+      : subTab === CLAIM_WORKFLOW_BUCKET.PENDING_DOCUMENT
+        ? documentRows
+        : finalizedResult.rows;
+    downloadCSV(rows.map(toCsvRow), `mediclaim-${subTab.toLowerCase()}`);
+  };
+
   const selectedStage = selectedClaim ? resolveStage(selectedClaim) : null;
   const selectedStageMeta = selectedStage ? REVIEW_STAGE_META[selectedStage] : null;
   const SelectedPanel = selectedStage ? STAGE_PANEL[selectedStage] : null;
   const canDecideSelected = selectedStage ? Boolean(access[STAGE_ACCESS_KEY[selectedStage]]) : false;
+  const selectedIsFinalized = selectedClaim ? getClaimWorkflowBucket(selectedClaim.status) === CLAIM_WORKFLOW_BUCKET.FINALIZED : false;
 
-  const columns = [
+  const baseColumns = [
     { key: "claimNumber", label: "Claim #", render: (row) => row.claimNumber || row.claim_number || "—" },
-    { key: "employeeName", label: "Employee", render: (row) => row.employeeName || row.employee_snapshot?.name || "—" },
+    { key: "employeeName", label: "Employee", render: employeeName },
     { key: "patientName", label: "Patient", render: (row) => row.patientName || row.patient_snapshot?.name || "—" },
     { key: "claimedAmount", label: "Claimed", render: (row) => formatCurrencyINR(row.totalClaimedAmount ?? row.total_claimed_amount) },
+  ];
+
+  const pendingColumns = [
+    ...baseColumns,
     {
       key: "stage",
       label: "Awaiting",
@@ -120,49 +272,151 @@ export default function PendingReviewsTab() {
     { key: "submittedOn", label: "Submitted", render: (row) => formatClaimDate(row.submittedAt || row.submitted_at) },
   ];
 
-  return (
-    <div className="space-y-4">
-      <p className="text-sm text-gray-500 dark:text-gray-400">
-        Every claim currently awaiting a review decision at any stage, company-wide. You can open decision controls
-        only for the stage(s) you hold — other rows open as a read-only summary.
-      </p>
+  const finalizedColumns = [
+    ...baseColumns,
+    {
+      key: "approvedAmount",
+      label: "Approved",
+      render: (row) => ((row.approvedAmount ?? row.approved_amount) != null ? formatCurrencyINR(row.approvedAmount ?? row.approved_amount) : "—"),
+    },
+    { key: "status", label: "Status", render: (row) => <ClaimStatusBadge status={row.status} /> },
+    { key: "updatedOn", label: "Last Updated", render: (row) => formatClaimDate(row.updatedAt || row.updated_at) },
+  ];
 
-      <ClaimsTable
-        columns={columns}
-        rows={state.rows}
-        loading={state.loading}
-        error={state.error}
-        emptyMessage="No claims are currently pending review."
-        getRowKey={(row) => row.id ?? row.claimId}
-        onRowClick={setSelectedClaim}
-        page={page}
-        perPage={PER_PAGE}
-        total={state.total}
-        onPageChange={setPage}
-      />
+  const activeSubTab = SUB_TABS.find((t) => t.key === subTab) || SUB_TABS[0];
+  const tabCount = (key) => {
+    if (pendingLoading && key !== CLAIM_WORKFLOW_BUCKET.FINALIZED) return null;
+    if (key === CLAIM_WORKFLOW_BUCKET.PENDING_APPROVAL) return approvalRows.length;
+    if (key === CLAIM_WORKFLOW_BUCKET.PENDING_DOCUMENT) return documentRows.length;
+    if (key === CLAIM_WORKFLOW_BUCKET.FINALIZED) return finalizedLoading ? null : finalizedResult.total;
+    return null;
+  };
 
-      <Drawer
-        isOpen={Boolean(selectedClaim)}
-        onClose={() => setSelectedClaim(null)}
-        title={selectedStageMeta?.label || "Claim Review"}
-        subtitle={selectedClaim?.claimNumber || selectedClaim?.claim_number}
-        size="lg"
-      >
-        {selectedClaim && SelectedPanel && canDecideSelected && (
-          <SelectedPanel claim={selectedClaim} onDecided={handleDecided} />
-        )}
+  const toolbarHeader = (
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative w-full sm:w-64">
+          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            value={search}
+            onChange={(e) => handleSearchChange(e.target.value)}
+            placeholder="Search claim #, employee, patient…"
+            className="w-full rounded-lg border border-gray-200 bg-gray-50 py-1.5 pl-8 pr-3 text-xs text-gray-900 outline-none transition focus:border-brand-400 focus:bg-white dark:border-white/10 dark:bg-gray-800 dark:text-white dark:focus:bg-gray-900"
+          />
+        </div>
 
-        {selectedClaim && (!SelectedPanel || !canDecideSelected) && (
-          <div className="space-y-4">
-            <ClaimSummaryCard claim={selectedClaim} />
-            <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
-              {SelectedPanel
-                ? `You do not have permission to decide claims at the ${selectedStageMeta?.label || "current"} stage — showing a read-only summary instead.`
-                : "This claim's current review stage could not be determined — showing a read-only summary instead."}
-            </p>
-          </div>
-        )}
-      </Drawer>
+        <div className="h-5 w-px bg-gray-200 dark:bg-white/10 mx-1 hidden sm:block" />
+
+        {SUB_TABS.map((t) => {
+          const count = tabCount(t.key);
+          return (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => selectSubTab(t.key)}
+              aria-current={subTab === t.key ? "page" : undefined}
+              className={`rounded-lg px-3 py-1.5 text-xs font-semibold whitespace-nowrap transition ${
+                subTab === t.key
+                  ? "bg-brand-600 text-white shadow-sm shadow-brand-600/30"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-white/5 dark:text-slate-300 dark:hover:bg-white/10"
+              }`}
+            >
+              {t.label}{count != null ? ` (${count})` : ""}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="flex items-center gap-2">
+        <Button size="sm" variant="secondary" icon={<RefreshCw size={13} />} onClick={loadPending}>
+          Refresh
+        </Button>
+        <Button size="sm" variant="secondary" icon={<Download size={13} />} onClick={exportCsv}>
+          Export CSV
+        </Button>
+      </div>
     </div>
   );
+
+  return (
+    <div className="space-y-4">
+      <div>
+        {toolbarHeader}
+        <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">{activeSubTab.description}</p>
+      </div>
+
+      {subTab !== CLAIM_WORKFLOW_BUCKET.FINALIZED ? (
+        <ClaimsTable
+          columns={pendingColumns}
+          rows={paginate(subTab === CLAIM_WORKFLOW_BUCKET.PENDING_APPROVAL ? approvalRows : documentRows, subTab === CLAIM_WORKFLOW_BUCKET.PENDING_APPROVAL ? approvalPage : documentPage, perPage)}
+          loading={pendingLoading}
+          error={pendingResult.error}
+          emptyMessage={
+            search
+              ? "No claims match this search."
+              : subTab === CLAIM_WORKFLOW_BUCKET.PENDING_APPROVAL ? "No claims are currently pending approval." : "No claims are currently pending documents."
+          }
+          getRowKey={(row) => row.id ?? row.claimId}
+          onRowClick={setSelectedClaim}
+          page={subTab === CLAIM_WORKFLOW_BUCKET.PENDING_APPROVAL ? approvalPage : documentPage}
+          perPage={perPage}
+          total={subTab === CLAIM_WORKFLOW_BUCKET.PENDING_APPROVAL ? approvalRows.length : documentRows.length}
+          onPageChange={subTab === CLAIM_WORKFLOW_BUCKET.PENDING_APPROVAL ? setApprovalPage : setDocumentPage}
+          onPageSizeChange={setPerPage}
+        />
+      ) : (
+        <ClaimsTable
+          columns={finalizedColumns}
+          rows={finalizedResult.rows}
+          loading={finalizedLoading}
+          error={finalizedLoading ? null : finalizedResult.error}
+          emptyMessage={search ? "No approved claims match this search." : "No approved claims yet."}
+          getRowKey={(row) => row.id ?? row.claimId}
+          onRowClick={setSelectedClaim}
+          page={finalizedPage}
+          perPage={perPage}
+          total={finalizedResult.total}
+          onPageChange={setFinalizedPage}
+          onPageSizeChange={setPerPage}
+        />
+      )}
+
+      {selectedIsFinalized ? (
+        <ClaimDetailDrawer
+          isOpen={Boolean(selectedClaim)}
+          onClose={() => setSelectedClaim(null)}
+          claimId={selectedClaim?.id ?? selectedClaim?.claimId}
+          title={selectedClaim?.claimNumber || selectedClaim?.claim_number}
+        />
+      ) : (
+        <Drawer
+          isOpen={Boolean(selectedClaim)}
+          onClose={() => setSelectedClaim(null)}
+          title={selectedStageMeta?.label || "Claim Review"}
+          subtitle={selectedClaim?.claimNumber || selectedClaim?.claim_number}
+          size="lg"
+        >
+          {selectedClaim && SelectedPanel && canDecideSelected && (
+            <SelectedPanel claim={selectedClaim} onDecided={handleDecided} />
+          )}
+
+          {selectedClaim && (!SelectedPanel || !canDecideSelected) && (
+            <div className="space-y-4">
+              <ClaimSummaryCard claim={selectedClaim} />
+              <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+                {SelectedPanel
+                  ? `You do not have permission to decide claims at the ${selectedStageMeta?.label || "current"} stage — showing a read-only summary instead.`
+                  : "This claim's current review stage could not be determined — showing a read-only summary instead."}
+              </p>
+            </div>
+          )}
+        </Drawer>
+      )}
+    </div>
+  );
+}
+
+function paginate(rows, page, perPage) {
+  const start = (page - 1) * perPage;
+  return rows.slice(start, start + perPage);
 }

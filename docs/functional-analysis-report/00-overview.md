@@ -106,7 +106,7 @@ Not explicitly documented in the code (no product roadmap, vision statement, or 
 | Charts | `recharts` (dashboards, HR reports) |
 | Drag-and-drop | `@dnd-kit/core` (Candidate Pipeline Kanban board) |
 | PDF export | Client-side PDF generation from DOM nodes (`exportNodeToPdf`, `downloadForm16PDF`, `downloadTablePDF` utilities) |
-| Mobile | Capacitor wrapper present (native Android/iOS builds bypass `fetch` for `CapacitorHttp`) — a Progressive Web App (PWA) install flow also exists (`useInstallPWA`) |
+| Mobile | Responsive web + Progressive Web App (PWA) install flow (`useInstallPWA`); the Capacitor Android wrapper was removed on 2026-09-16 |
 | Testing | Vitest (test files co-located with the components/pages they cover, `*.test.jsx`) |
 
 ## 1.10 Architecture Summary

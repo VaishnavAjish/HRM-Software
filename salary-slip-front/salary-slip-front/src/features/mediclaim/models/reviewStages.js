@@ -1,4 +1,4 @@
-import { CLAIM_STATUS } from "./claimStatus";
+import { CLAIM_STATUS, CLAIM_STATUS_LIST } from "./claimStatus";
 
 /**
  * The five sequential review stages a submitted claim passes through
@@ -21,18 +21,29 @@ export const REVIEW_STAGE = {
   COMMITTEE: "COMMITTEE",
   HR_ELIGIBILITY: "HR_ELIGIBILITY",
   DIRECTOR: "DIRECTOR",
+  SETTLEMENT: "SETTLEMENT",
 };
 
+// Values are lowercase because they are sent verbatim as the `decision`
+// field of `POST /reviews/{claim}/decision`, and every
+// `ClaimWorkflowService` stage method validates against an exact lowercase
+// `in_array` (e.g. managerDecision(): `['approve', 'reject', 'return']`) —
+// there is no case-insensitive matching on the backend. This previously
+// held uppercase values ("APPROVE", "VERIFIED", ...), which every review
+// panel sent unchanged, so `ClaimWorkflowService` threw "Unknown manager/
+// coordinator/committee/... decision" on literally every decision, at every
+// stage — the same class of bug as the reviewer-role-slug mismatch found
+// earlier in this module (see ReviewersTab.jsx's ROLE_OPTIONS docblock).
 export const REVIEW_DECISION = {
-  APPROVE: "APPROVE",
-  REJECT: "REJECT",
-  RETURN: "RETURN",
-  VERIFIED: "VERIFIED",
-  RECOMMENDED: "RECOMMENDED",
-  NOT_RECOMMENDED: "NOT_RECOMMENDED",
-  APPROVED: "APPROVED",
-  PARTIALLY_APPROVED: "PARTIALLY_APPROVED",
-  REJECTED: "REJECTED",
+  APPROVE: "approve",
+  REJECT: "reject",
+  RETURN: "return",
+  VERIFIED: "verified",
+  RECOMMENDED: "recommended",
+  NOT_RECOMMENDED: "not_recommended",
+  APPROVED: "approved",
+  PARTIALLY_APPROVED: "partially_approved",
+  REJECTED: "rejected",
 };
 
 export const REVIEW_STAGE_META = {
@@ -97,6 +108,17 @@ export const REVIEW_STAGE_META = {
     // claim's total claimed amount.
     requiresApprovedAmountUnless: REVIEW_DECISION.REJECTED,
   },
+  [REVIEW_STAGE.SETTLEMENT]: {
+    label: "Settlement",
+    sectionLabel: null,
+    pendingStatus: CLAIM_STATUS.SETTLEMENT_PENDING,
+    decidePermission: "mediclaim.settlement.create",
+    // No `decisions`/`cleanApproveDecision` vocabulary — `SettlementPanel.jsx`
+    // is a standalone form (amount/mode/reference), not built on
+    // `ReviewPanelShell`'s decision-buttons-plus-remarks shape, so those
+    // fields are left unset here rather than populated with values nothing
+    // reads.
+  },
 };
 
 export const REVIEW_STAGES_IN_ORDER = [
@@ -108,16 +130,22 @@ export const REVIEW_STAGES_IN_ORDER = [
 ];
 
 /**
- * The four stage `.decide` permission codes checked by the admin Pending
- * Reviews tab's any-of gate (reconciliation #6). Manager decisions are made
- * from the employee workspace's Team/Pending tabs, not this admin tab, so
- * the Manager stage is intentionally excluded here.
+ * The stage `.decide`/`.create` permission codes checked by the admin
+ * Pending Reviews tab's any-of gate (`AdminMediclaimWorkspace.jsx`'s
+ * `pending-reviews` tab `permissions` array). Manager decisions can ALSO be
+ * made from the employee workspace's Pending My Approval tab, but
+ * `PendingReviewsTab.jsx` renders `ManagerReviewPanel` too (via
+ * `STAGE_PANEL[REVIEW_STAGE.MANAGER]`) so a company-wide reviewer/admin has
+ * one single place to work every stage — Manager is included here for that
+ * reason, not excluded.
  */
 export const STAGE_DECIDE_PERMISSIONS = [
+  REVIEW_STAGE.MANAGER,
   REVIEW_STAGE.COORDINATOR,
   REVIEW_STAGE.COMMITTEE,
   REVIEW_STAGE.HR_ELIGIBILITY,
   REVIEW_STAGE.DIRECTOR,
+  REVIEW_STAGE.SETTLEMENT,
 ].map((stage) => REVIEW_STAGE_META[stage].decidePermission);
 
 export function getReviewStageMeta(stage) {
@@ -125,7 +153,65 @@ export function getReviewStageMeta(stage) {
 }
 
 /** Resolves which stage a claim is currently pending at, from its status. */
+/**
+ * The three-stage workflow bucket a claim belongs in — shared by the admin
+ * "Pending Reviews" tab and the employee "My Claims" tab so both present the
+ * exact same three-tab structure (Pending Approval / Pending Document /
+ * Approved Claim) over the exact same status boundaries, rather than two
+ * independently-drifting definitions of "which stage is this claim really
+ * at". `FINALIZED_CLAIM_STATUSES` also replaces `ClaimsTab.jsx`'s
+ * previously-local `FINALIZED_STATUSES` constant — same list, one source.
+ */
+export const CLAIM_WORKFLOW_BUCKET = {
+  PENDING_APPROVAL: "PENDING_APPROVAL",
+  PENDING_DOCUMENT: "PENDING_DOCUMENT",
+  FINALIZED: "FINALIZED",
+};
+
+// SETTLEMENT_PENDING only — the claim has cleared every review stage and is
+// waiting on the employee's documents / HR's final settlement approve.
+export const PENDING_DOCUMENT_STATUSES = [CLAIM_STATUS.SETTLEMENT_PENDING];
+
+// The genuine end of the pipeline — matches ClaimsTab.jsx's original
+// FINALIZED_STATUSES exactly (kept broad, not just the success path, so a
+// rejected/withdrawn/cancelled claim still lands somewhere instead of
+// disappearing from every tab).
+export const FINALIZED_CLAIM_STATUSES = [
+  CLAIM_STATUS.APPROVED,
+  CLAIM_STATUS.PARTIALLY_APPROVED,
+  CLAIM_STATUS.REJECTED,
+  CLAIM_STATUS.SETTLED,
+  CLAIM_STATUS.CLOSED,
+  CLAIM_STATUS.WITHDRAWN,
+  CLAIM_STATUS.CANCELLED,
+];
+
+// DRAFT, SUBMITTED, every review stage, RETURNED_FOR_CORRECTION — computed
+// as "everything else" rather than hand-enumerated, so it can never drift
+// out of sync with the other two lists above. Used by the employee's "My
+// Claims" tab, which (unlike the admin Pending Reviews tab) filters
+// server-side via `GET /me/claims?status=...` and so needs an explicit
+// status list rather than relying on `getClaimWorkflowBucket()`'s fallback.
+export const PENDING_APPROVAL_STATUSES = CLAIM_STATUS_LIST.filter(
+  (status) => !PENDING_DOCUMENT_STATUSES.includes(status) && !FINALIZED_CLAIM_STATUSES.includes(status),
+);
+
+export function getClaimWorkflowBucket(status) {
+  if (PENDING_DOCUMENT_STATUSES.includes(status)) return CLAIM_WORKFLOW_BUCKET.PENDING_DOCUMENT;
+  if (FINALIZED_CLAIM_STATUSES.includes(status)) return CLAIM_WORKFLOW_BUCKET.FINALIZED;
+  return CLAIM_WORKFLOW_BUCKET.PENDING_APPROVAL;
+}
+
+/** Resolves which stage a claim is currently pending at, from its status. */
 export function getStageByPendingStatus(status) {
+  // SUBMITTED (not MANAGER_REVIEW) is the status a claim is left at when no
+  // manager could be resolved for the employee at submission time — the
+  // backend's ClaimWorkflowService::managerDecision() accepts it too (super
+  // admin only, see resolveOrCreateManagerAssignment()'s docblock), so the
+  // same ManagerReviewPanel/submitReviewDecision flow handles it here
+  // without needing a whole separate stage/panel.
+  if (status === CLAIM_STATUS.SUBMITTED) return REVIEW_STAGE.MANAGER;
+
   const entry = Object.entries(REVIEW_STAGE_META).find(([, meta]) => meta.pendingStatus === status);
   return entry ? entry[0] : null;
 }

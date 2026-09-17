@@ -60,7 +60,7 @@ describe("DirectorDecisionPanel — Approved Amount required unless Rejected", (
     await waitFor(() => expect(submitReviewDecision).toHaveBeenCalledTimes(1));
     expect(submitReviewDecision).toHaveBeenCalledWith(
       77,
-      { decision: "APPROVED", remarks: "", approvedAmount: 9500 },
+      { decision: "approved", remarks: "", approvedAmount: 9500 },
       "test-token",
       "Bearer",
     );
@@ -88,7 +88,7 @@ describe("DirectorDecisionPanel — Approved Amount required unless Rejected", (
 
     await waitFor(() => expect(submitReviewDecision).toHaveBeenCalledTimes(1));
     const payload = submitReviewDecision.mock.calls[0][1];
-    expect(payload).toEqual({ decision: "REJECTED", remarks: "Does not qualify under policy" });
+    expect(payload).toEqual({ decision: "rejected", remarks: "Does not qualify under policy" });
     expect(payload.approvedAmount).toBeUndefined();
   });
 

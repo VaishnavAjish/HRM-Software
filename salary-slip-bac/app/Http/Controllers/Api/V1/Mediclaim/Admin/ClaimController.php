@@ -6,8 +6,12 @@ use App\Http\Controllers\Admin\Hr\Concerns\ScopesCompany;
 use App\Http\Controllers\Api\V1\Mediclaim\Concerns\RespondsWithEnvelope;
 use App\Http\Controllers\Controller;
 use App\Models\Mediclaim\MediclaimClaim;
+use App\Models\Mediclaim\MediclaimDocumentLink;
+use App\Models\Mediclaim\MediclaimIntimation;
+use App\Support\MediclaimActivityLogSupport;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 /**
  * `GET /claims` — admin/company-scoped claim list. This is reconciliation
@@ -40,6 +44,13 @@ class ClaimController extends Controller
 
         $this->applyCompanyScope($query, $request);
 
+        // A draft is the employee's own private, unsubmitted work-in-progress
+        // — never admin's business to see, and definitely never something
+        // that belongs in a company-wide claims list. Excluded unconditionally
+        // (not just when no status filter is given) since there is no
+        // legitimate reason for this endpoint to ever surface one.
+        $query->where('status', '!=', MediclaimClaim::STATUS_DRAFT);
+
         if ($request->filled('status')) {
             $query->whereIn('status', explode(',', (string) $request->query('status')));
         }
@@ -55,5 +66,55 @@ class ClaimController extends Controller
         }
 
         return $this->ok($query->orderByDesc('id')->paginate(min((int) $request->query('per_page', 25), 100)));
+    }
+
+    /**
+     * `DELETE /claims/{claim}` — a genuine hard delete, unlike every other
+     * "retire"/status-flip pattern elsewhere in this module (hospitals,
+     * document requirements): those exist because a *historical* claim keeps
+     * referencing them, but a claim itself has nothing downstream that
+     * should ever need to resolve a deleted one. Gated on `mediclaim.claim.delete`
+     * — a permission only a super admin realistically holds unless a
+     * company explicitly grants it, per `RequirePermission`'s super-admin
+     * bypass — for cleaning up test/duplicate/erroneous claim rows.
+     *
+     * Every direct child table (expenses, events, decisions, assignments,
+     * settlements, revisions, floater overrides) cascade-deletes at the DB
+     * level (`cascadeOnDelete()` in their migrations). The polymorphic
+     * `mediclaim_document_links` rows and any intimation's `linked_claim_id`
+     * are NOT real foreign keys, so those are cleaned up explicitly here
+     * first — left alone, they'd dangle, pointing at a claim id that no
+     * longer exists.
+     */
+    public function destroy(Request $request, int $claim): JsonResponse
+    {
+        $query = MediclaimClaim::query()->where('id', $claim);
+        $this->applyCompanyScope($query, $request);
+        $model = $query->first();
+
+        if (! $model) {
+            return $this->missing('Claim not found.');
+        }
+
+        $actor = auth('api')->user();
+        $claimNumber = $model->claim_number;
+        $companyCode = $model->company_code;
+
+        DB::transaction(function () use ($model) {
+            MediclaimDocumentLink::query()
+                ->where('linkable_type', MediclaimClaim::class)
+                ->where('linkable_id', $model->id)
+                ->delete();
+
+            MediclaimIntimation::query()
+                ->where('linked_claim_id', $model->id)
+                ->update(['linked_claim_id' => null]);
+
+            $model->delete();
+        });
+
+        MediclaimActivityLogSupport::log($actor, 'CLAIM_DELETED', 'mediclaim_claim', $claim, ['claim_number' => $claimNumber], null, 'Claim permanently deleted.', $companyCode);
+
+        return $this->ok(['deleted' => true]);
     }
 }

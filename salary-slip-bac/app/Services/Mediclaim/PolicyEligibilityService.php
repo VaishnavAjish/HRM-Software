@@ -8,6 +8,7 @@ use App\Models\Mediclaim\MediclaimFloaterOverride;
 use App\Models\Mediclaim\MediclaimMember;
 use App\Models\Mediclaim\MediclaimPolicyVersion;
 use App\Models\User;
+use App\Support\MediclaimFinancialYear;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
@@ -151,46 +152,67 @@ class PolicyEligibilityService
     }
 
     /**
-     * The family floater's limit/used/remaining for an enrollment, "used"
-     * being the sum of `total_approved_amount` across the enrollment's
-     * claims (only ever set once a claim clears Director Final Approval).
+     * The family floater's limit/used/remaining for an enrollment WITHIN THE
+     * FINANCIAL YEAR containing `$asOf` (defaults to now — "how much is left
+     * for the employee right now"), "used" being the sum of
+     * `total_approved_amount` across the enrollment's claims *submitted*
+     * within that FY window (only ever set once a claim clears Director
+     * Final Approval). Anchored to `submitted_at` rather than the approval
+     * decision's own timestamp so a claim keeps counting against the FY it
+     * was actually raised in even if review drags into the next one.
      *
-     * @return array{limit: float, used: float, remaining: float}
+     * The limit resets automatically every April 1 simply because the
+     * window this sums over moves — there is no separate "renew the
+     * floater" job or stored balance to reset.
+     *
+     * @return array{limit: float, used: float, remaining: float, financialYearStart: string, financialYearEnd: string}
      */
-    public function floaterUsage(MediclaimEnrollment $enrollment, MediclaimPolicyVersion $version): array
+    public function floaterUsage(MediclaimEnrollment $enrollment, MediclaimPolicyVersion $version, ?Carbon $asOf = null): array
     {
+        $asOf ??= Carbon::now();
+        $fyStart = MediclaimFinancialYear::start($asOf);
+        $fyEnd = MediclaimFinancialYear::end($asOf);
+
         $limit = (float) ($version->rules['floater_limit_amount'] ?? 0);
         $used = (float) MediclaimClaim::query()
             ->where('enrollment_id', $enrollment->id)
             ->whereNotNull('total_approved_amount')
+            ->whereBetween('submitted_at', [$fyStart, $fyEnd])
             ->sum('total_approved_amount');
 
         return [
             'limit' => $limit,
             'used' => $used,
             'remaining' => max(0.0, $limit - $used),
+            'financialYearStart' => $fyStart->toDateString(),
+            'financialYearEnd' => $fyEnd->toDateString(),
         ];
     }
 
     /**
      * Throws unless approving `$additional` more keeps the enrollment's
-     * cumulative approved amount within its floater limit, or an authorized
-     * override accompanies the decision.
+     * cumulative approved amount — WITHIN THE SAME FINANCIAL YEAR `$asOf`
+     * falls in (defaults to now) — within its floater limit, or an
+     * authorized override accompanies the decision. `directorFinalApproval()`
+     * passes the claim's own `submitted_at` here, so the check is always
+     * against the FY the claim actually belongs to.
      */
-    public function assertWithinFloater(MediclaimEnrollment $enrollment, MediclaimPolicyVersion $version, float $additional, ?MediclaimFloaterOverride $override = null): void
+    public function assertWithinFloater(MediclaimEnrollment $enrollment, MediclaimPolicyVersion $version, float $additional, ?MediclaimFloaterOverride $override = null, ?Carbon $asOf = null): void
     {
         if ($override !== null) {
             return;
         }
 
-        $usage = $this->floaterUsage($enrollment, $version);
+        $usage = $this->floaterUsage($enrollment, $version, $asOf);
 
         if ($usage['used'] + $additional > $usage['limit']) {
             throw ValidationException::withMessages([
                 'approved_amount' => sprintf(
-                    'Approving %.2f would exceed the family floater limit of %.2f (already used %.2f, %.2f remaining). An authorized floater override is required.',
+                    'Approving %.2f would exceed the family floater limit of %.2f for FY %s to %s (already used %.2f, %.2f remaining). An authorized floater override is required.',
                     $additional,
                     $usage['limit'],
+                    $usage['financialYearStart'],
+                    $usage['financialYearEnd'],
                     $usage['used'],
                     $usage['remaining']
                 ),

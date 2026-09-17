@@ -8,7 +8,7 @@ return [
 
     'allowed_origins' => array_values(array_filter(array_map('trim', explode(',', env(
         'CORS_ALLOWED_ORIGINS',
-        'https://niss.pro,https://www.niss.pro,capacitor://localhost,http://localhost,https://localhost'
+        'https://niss.pro,https://www.niss.pro,http://localhost,https://localhost'
     ))))),
 
     'allowed_origins_patterns' => [

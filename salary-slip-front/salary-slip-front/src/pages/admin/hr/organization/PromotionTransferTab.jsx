@@ -37,14 +37,11 @@ const EMPTY_FORM = {
   positionId: "",
   designationId: "",
   managerUserId: "",
-  locationId: "",
-  costCenterId: "",
   effectiveFrom: "",
   effectiveTo: "",
   reason: "",
   notes: "",
   organizationOwnerApproverId: "",
-  hrApproverId: "",
 };
 
 function Th({ children, className = "" }) {
@@ -70,9 +67,8 @@ export default function PromotionTransferTab() {
 
   const [units, setUnits] = useState([]);
   const [positions, setPositions] = useState([]);
+  const [allPositions, setAllPositions] = useState([]);
   const [designations, setDesignations] = useState([]);
-  const [locations, setLocations] = useState([]);
-  const [costCenters, setCostCenters] = useState([]);
 
   const [activeChange, setActiveChange] = useState(null);
   const [activeItems, setActiveItems] = useState([]);
@@ -103,27 +99,36 @@ export default function PromotionTransferTab() {
     let active = true;
     Promise.all([
       organizationApi.orgUnits({ includeInactive: false }, token, tokenType),
-      workforceApi.designation.list({ status: "active" }, token, tokenType),
-      organizationApi.locations({}, token, tokenType),
-      organizationApi.financialOrganizations({}, token, tokenType),
-    ]).then(([unitsRes, desigRes, locRes, ccRes]) => {
+      organizationApi.globalPositions({}, token, tokenType),
+      workforceApi.designation.list({}, token, tokenType),
+    ]).then(([unitsRes, globalPosRes, wfDesigRes]) => {
       if (!active) return;
       setUnits(unitsRes?.data ?? []);
-      setDesignations(desigRes?.data ?? []);
-      setLocations(locRes?.data ?? []);
-      setCostCenters(ccRes?.data ?? []);
+      const globalPosList = globalPosRes?.data ?? [];
+      setAllPositions(globalPosList);
+      setPositions(globalPosList);
+      const wfList = wfDesigRes?.data ?? [];
+      setDesignations(wfList.length > 0 ? wfList : globalPosList);
     }).catch((err) => toast.error(err.message || "Could not load form options"));
     return () => { active = false; };
   }, [token, tokenType, showCreate]);
 
   useEffect(() => {
-    if (!token || !form.organizationUnitId) return undefined;
+    if (!token) return undefined;
+    if (!form.organizationUnitId) {
+      setPositions(allPositions);
+      return undefined;
+    }
     let active = true;
     organizationApi.orgUnitPositions(form.organizationUnitId, {}, token, tokenType)
-      .then((res) => { if (active) setPositions(res?.data ?? []); })
-      .catch(() => { if (active) setPositions([]); });
+      .then((res) => {
+        if (!active) return;
+        const list = res?.data ?? [];
+        setPositions(list.length > 0 ? list : allPositions);
+      })
+      .catch(() => { if (active) setPositions(allPositions); });
     return () => { active = false; };
-  }, [token, tokenType, form.organizationUnitId]);
+  }, [token, tokenType, form.organizationUnitId, allPositions]);
 
   useEffect(() => {
     if (!token || !form.employeeId) return undefined;
@@ -174,7 +179,6 @@ export default function PromotionTransferTab() {
     if (!form.effectiveFrom) next.effectiveFrom = "Effective date is required.";
     if (!form.reason || !form.reason.trim()) next.reason = "A reason is required.";
     if (!form.organizationOwnerApproverId) next.organizationOwnerApproverId = "An organization owner approver is required.";
-    if (!form.hrApproverId) next.hrApproverId = "An HR approver is required.";
     setErrors(next);
     return Object.keys(next).length === 0;
   };
@@ -193,16 +197,13 @@ export default function PromotionTransferTab() {
         currentAssignmentId: form.currentAssignmentId ? Number(form.currentAssignmentId) : undefined,
         organizationUnitId: Number(form.organizationUnitId),
         positionId: Number(form.positionId),
-        designationId: Number(form.designationId),
+        designationId: form.designationId ? Number(form.designationId) : undefined,
         managerUserId: Number(form.managerUserId),
-        locationId: form.locationId ? Number(form.locationId) : undefined,
-        costCenterId: form.costCenterId ? Number(form.costCenterId) : undefined,
         effectiveFrom: form.effectiveFrom,
         effectiveTo: form.effectiveTo || undefined,
         reason: form.reason.trim(),
         notes: form.notes?.trim() || undefined,
         organizationOwnerApproverId: Number(form.organizationOwnerApproverId),
-        hrApproverId: Number(form.hrApproverId),
       }, token, tokenType);
 
       toast.success("Promotion/transfer request created as a draft.");
@@ -287,54 +288,54 @@ export default function PromotionTransferTab() {
 
                 {changes.map((change) => (
                   <tr key={change.id} className="hover:bg-gray-50/70 dark:hover:bg-gray-700/40">
-                    <td className="px-4 py-3 font-semibold text-gray-900 dark:text-white">{change.name || "—"}</td>
+                    <td className="px-4 py-3 font-semibold text-gray-900 dark:text-white">{change.name || "-"}</td>
                     <td className="px-4 py-3">
                       <Badge variant={STATUS_VARIANT[change.status] || "gray"}>
-                        <span className="capitalize">{change.status?.replace(/_/g, " ")}</span>
+                        <span className="capitalize">{change.status === "applied" ? "Approved" : change.status?.replace(/_/g, " ")}</span>
                       </Badge>
                     </td>
-                    <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{change.requestedBy || "—"}</td>
+                    <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{change.requestedBy || "-"}</td>
                     <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
-                      {change.createdAt ? new Date(change.createdAt).toLocaleDateString() : "—"}
+                      {change.createdAt ? new Date(change.createdAt).toLocaleDateString() : "-"}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <div className="flex justify-end gap-1">
-                        <Button size="sm" variant="ghost" onClick={() => viewDetails(change)} title="View details">
-                          <Eye size={14} />
+                      <Button variant="ghost" size="sm" onClick={() => viewDetails(change)} title="View Details">
+                        <Eye size={14} className="mr-1" /> View
+                      </Button>
+                      {change.status === "draft" && canSubmit && (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          className="ml-1"
+                          onClick={() => run(() => organizationApi.submitOrgChange(change.id, token, tokenType), "Submitted for approval")}
+                        >
+                          Submit
                         </Button>
-                        {canSubmit && change.status === "draft" && (
-                          <Button
-                            size="sm" variant="ghost"
-                            onClick={() => run(() => organizationApi.submitOrgChange(change.id, token, tokenType), "Submitted for approval")}
-                          >
-                            <Clock size={14} /> Submit
-                          </Button>
-                        )}
-                        {canApprove && change.status === "pending_approval" && (
-                          <Button
-                            size="sm" variant="ghost"
-                            onClick={() => run(() => organizationApi.approveOrgChange(change.id, null, token, tokenType), "Approved")}
-                          >
-                            <Check size={14} /> Approve
-                          </Button>
-                        )}
-                        {canReject && change.status === "pending_approval" && (
-                          <Button
-                            size="sm" variant="ghost"
-                            onClick={() => run(() => organizationApi.rejectOrgChange(change.id, "Rejected", token, tokenType), "Rejected")}
-                          >
-                            <X size={14} /> Reject
-                          </Button>
-                        )}
-                        {canApply && (change.status === "approved" || change.status === "scheduled") && (
-                          <Button
-                            size="sm" variant="ghost"
-                            onClick={() => run(() => organizationApi.applyOrgChange(change.id, token, tokenType), "Applied")}
-                          >
-                            <Power size={14} /> Apply
-                          </Button>
-                        )}
-                      </div>
+                      )}
+                      {(change.status === "submitted" || change.status === "pending_approval") && canApprove && (
+                        <Button
+                          variant="success"
+                          size="sm"
+                          className="ml-1"
+                          onClick={() => run(() => organizationApi.approveOrgChange(change.id, null, token, tokenType), "Approved")}
+                        >
+                          <Check size={14} /> Approve
+                        </Button>
+                      )}
+                      {(change.status === "submitted" || change.status === "pending_approval") && canReject && (
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          className="ml-1"
+                          onClick={() => {
+                            const r = window.prompt("Reason for rejection:");
+                            if (r) run(() => organizationApi.rejectOrgChange(change.id, { reason: r }, token, tokenType), "Rejected");
+                          }}
+                        >
+                          <X size={14} /> Reject
+                        </Button>
+                      )}
+
                     </td>
                   </tr>
                 ))}
@@ -344,7 +345,7 @@ export default function PromotionTransferTab() {
         )}
       </Card>
 
-      <Modal isOpen={showCreate} onClose={() => setShowCreate(false)} title="New Promotion / Transfer" size="lg">
+      <Modal isOpen={showCreate} onClose={() => setShowCreate(false)} title="New Promotion / Transfer Request" size="lg">
         <form onSubmit={submitCreate} className="space-y-4">
           <UserPicker
             label="Employee *"
@@ -356,13 +357,13 @@ export default function PromotionTransferTab() {
           />
           {errors.employeeId && <p className="text-xs text-red-600">{errors.employeeId}</p>}
 
-          <div className="rounded-lg border border-dashed border-gray-200 p-3 text-xs text-gray-500 dark:border-gray-700 dark:text-gray-400">
-            <span className="font-semibold text-gray-600 dark:text-gray-300">Current assignment: </span>
-            {loadingCurrentAssignment && "Loading…"}
+          <div className="rounded-lg bg-gray-50 p-3 text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+            <span className="font-semibold">Current Assignment: </span>
+            {loadingCurrentAssignment && "Loading..."}
             {!loadingCurrentAssignment && currentAssignment && (
-              <span>{currentAssignment.organizationUnitName || "—"} · {currentAssignment.positionTitle || "No position"}</span>
+              <span>{currentAssignment.organizationUnitName || "-"} - {currentAssignment.positionTitle || "No position"}</span>
             )}
-            {!loadingCurrentAssignment && !currentAssignment && form.employeeId && "No active primary assignment on file — this will be their first."}
+            {!loadingCurrentAssignment && !currentAssignment && form.employeeId && "No active primary assignment on file - this will be their first."}
             {!form.employeeId && "Select an employee to see their current assignment."}
           </div>
 
@@ -375,7 +376,7 @@ export default function PromotionTransferTab() {
                 value={form.organizationUnitId}
                 onChange={handleUnitChange}
               >
-                <option value="">Select…</option>
+                <option value="">Select...</option>
                 {units.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
               </select>
               {errors.organizationUnitId && <p className="mt-1 text-xs text-red-600">{errors.organizationUnitId}</p>}
@@ -388,9 +389,9 @@ export default function PromotionTransferTab() {
                 className={inputClass}
                 value={form.positionId}
                 onChange={(e) => setField("positionId")(e.target.value)}
-                disabled={!form.organizationUnitId}
+                
               >
-                <option value="">Select…</option>
+                <option value="">Select...</option>
                 {positionOptions.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
               </select>
               {errors.positionId && <p className="mt-1 text-xs text-red-600">{errors.positionId}</p>}
@@ -404,8 +405,8 @@ export default function PromotionTransferTab() {
                 value={form.designationId}
                 onChange={(e) => setField("designationId")(e.target.value)}
               >
-                <option value="">Select…</option>
-                {designations.map((d) => <option key={d.id} value={d.id}>{d.title}</option>)}
+                <option value="">Select...</option>
+                {designations.map((d) => <option key={d.id} value={d.id}>{d.title || d.name}</option>)}
               </select>
               {errors.designationId && <p className="mt-1 text-xs text-red-600">{errors.designationId}</p>}
             </div>
@@ -420,32 +421,6 @@ export default function PromotionTransferTab() {
                 onChange={(e) => setField("effectiveFrom")(e.target.value)}
               />
               {errors.effectiveFrom && <p className="mt-1 text-xs text-red-600">{errors.effectiveFrom}</p>}
-            </div>
-
-            <div>
-              <label className={labelClass} htmlFor="pt-location">Target Location</label>
-              <select
-                id="pt-location"
-                className={inputClass}
-                value={form.locationId}
-                onChange={(e) => setField("locationId")(e.target.value)}
-              >
-                <option value="">No change / not applicable</option>
-                {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-              </select>
-            </div>
-
-            <div>
-              <label className={labelClass} htmlFor="pt-cost-center">Target Cost Center</label>
-              <select
-                id="pt-cost-center"
-                className={inputClass}
-                value={form.costCenterId}
-                onChange={(e) => setField("costCenterId")(e.target.value)}
-              >
-                <option value="">No change / not applicable</option>
-                {costCenters.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
             </div>
           </div>
 
@@ -483,34 +458,21 @@ export default function PromotionTransferTab() {
             />
           </div>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <UserPicker
-                label="Organization Owner Approver *"
-                required
-                value={form.organizationOwnerApproverId}
-                onChange={setField("organizationOwnerApproverId")}
-                token={token}
-                tokenType={tokenType}
-              />
-              {errors.organizationOwnerApproverId && <p className="mt-1 text-xs text-red-600">{errors.organizationOwnerApproverId}</p>}
-            </div>
-            <div>
-              <UserPicker
-                label="HR Approver *"
-                required
-                value={form.hrApproverId}
-                onChange={setField("hrApproverId")}
-                token={token}
-                tokenType={tokenType}
-              />
-              {errors.hrApproverId && <p className="mt-1 text-xs text-red-600">{errors.hrApproverId}</p>}
-            </div>
+          <div>
+            <UserPicker
+              label="Organization Owner Approver *"
+              required
+              value={form.organizationOwnerApproverId}
+              onChange={setField("organizationOwnerApproverId")}
+              token={token}
+              tokenType={tokenType}
+            />
+            {errors.organizationOwnerApproverId && <p className="mt-1 text-xs text-red-600">{errors.organizationOwnerApproverId}</p>}
           </div>
 
           <div className="flex justify-end gap-2 border-t border-gray-200 pt-4 dark:border-gray-700">
             <Button type="button" variant="secondary" onClick={() => setShowCreate(false)}>Cancel</Button>
-            <Button type="submit" disabled={busy}>{busy ? "Creating…" : "Create Draft"}</Button>
+            <Button type="submit" disabled={busy}>{busy ? "Creating..." : "Create Draft"}</Button>
           </div>
         </form>
       </Modal>
@@ -523,17 +485,77 @@ export default function PromotionTransferTab() {
                 <span className="capitalize">{activeChange.status?.replace(/_/g, " ")}</span>
               </Badge>
               <span className="text-xs text-gray-500 dark:text-gray-400">
-                Requested by {activeChange.requestedBy || "—"}
+                Requested by {activeChange.requestedBy || "-"}
               </span>
             </div>
-            {activeItems.map((item) => (
-              <div key={item.id} className="rounded-lg border border-gray-200 p-3 text-xs dark:border-gray-700">
-                <p className="mb-2 font-semibold text-gray-700 dark:text-gray-200">Assignment change</p>
-                <pre className="overflow-x-auto whitespace-pre-wrap text-gray-500 dark:text-gray-400">
-                  {JSON.stringify(item.afterValues, null, 2)}
-                </pre>
-              </div>
-            ))}
+            {activeItems.map((item) => {
+              const vals = item.afterValues || {};
+              const unit = units.find((u) => String(u.id) === String(vals.organizationUnitId));
+              const pos = positions.find((p) => String(p.id) === String(vals.positionId));
+              const desig = designations.find((d) => String(d.id) === String(vals.designationId));
+
+              const deptName = vals.departmentName || unit?.name || null;
+              const posTitle = vals.positionTitle || pos?.title || null;
+              const desigTitle = vals.designationTitle || desig?.title || desig?.name || null;
+
+              return (
+                <div key={item.id} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+                  <h4 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 border-b border-gray-100 pb-2 dark:border-gray-700">
+                    Assignment Details
+                  </h4>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 text-sm">
+                    {vals.employeeName && (
+                      <div>
+                        <span className="block text-xs font-medium text-gray-500 dark:text-gray-400">Employee</span>
+                        <p className="font-semibold text-gray-900 dark:text-white">{vals.employeeName}</p>
+                      </div>
+                    )}
+                    {deptName && (
+                      <div>
+                        <span className="block text-xs font-medium text-gray-500 dark:text-gray-400">Target Department / Org Unit</span>
+                        <p className="font-semibold text-gray-900 dark:text-white">{deptName}</p>
+                      </div>
+                    )}
+                    {posTitle && (
+                      <div>
+                        <span className="block text-xs font-medium text-gray-500 dark:text-gray-400">Target Position</span>
+                        <p className="font-semibold text-gray-900 dark:text-white">{posTitle}</p>
+                      </div>
+                    )}
+                    {desigTitle && (
+                      <div>
+                        <span className="block text-xs font-medium text-gray-500 dark:text-gray-400">Target Designation</span>
+                        <p className="font-semibold text-gray-900 dark:text-white">{desigTitle}</p>
+                      </div>
+                    )}
+                    {vals.managerName && (
+                      <div>
+                        <span className="block text-xs font-medium text-gray-500 dark:text-gray-400">Target Manager</span>
+                        <p className="font-semibold text-gray-900 dark:text-white">{vals.managerName}</p>
+                      </div>
+                    )}
+                    {vals.effectiveFrom && (
+                      <div>
+                        <span className="block text-xs font-medium text-gray-500 dark:text-gray-400">Effective Date</span>
+                        <p className="font-semibold text-gray-900 dark:text-white">{vals.effectiveFrom}</p>
+                      </div>
+                    )}
+                    {vals.reason && (
+                      <div className="sm:col-span-2">
+                        <span className="block text-xs font-medium text-gray-500 dark:text-gray-400">Reason</span>
+                        <p className="text-gray-800 dark:text-gray-200 mt-0.5">{vals.reason}</p>
+                      </div>
+                    )}
+                    {vals.notes && (
+                      <div className="sm:col-span-2">
+                        <span className="block text-xs font-medium text-gray-500 dark:text-gray-400">Notes</span>
+                        <p className="text-gray-600 dark:text-gray-400 mt-0.5">{vals.notes}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
             {activeItems.length === 0 && (
               <p className="text-sm text-gray-500 dark:text-gray-400">No items on this request.</p>
             )}

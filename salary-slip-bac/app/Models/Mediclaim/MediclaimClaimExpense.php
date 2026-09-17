@@ -12,8 +12,27 @@ use Illuminate\Database\Eloquent\Model;
  */
 class MediclaimClaimExpense extends Model
 {
+    /**
+     * Must match the frontend's `EXPENSE_CATEGORY` keys
+     * (`src/features/mediclaim/models/expenseCategories.js`) verbatim — both
+     * sides derive this 6-row set from the paper claim form's Section E
+     * table ("DETAILS OF CLAIM AMOUNT") independently, and
+     * `ValidatesClaimPayload::claimRules()` rejects anything else via
+     * `Rule::in`. Previously drifted (`'consultation'`/`'medicine'`/...),
+     * which made every claim save fail with "the selected expenses.0.category
+     * is invalid" the moment a real expense line was submitted.
+     */
     public const CATEGORIES = [
-        'consultation', 'medicine', 'diagnostic', 'hospitalization', 'surgery', 'other',
+        'CONSULTATION_FEES', 'HOSPITAL_CHARGES', 'MEDICINES', 'DIAGNOSTIC_TESTS', 'SURGERY_PROCEDURE', 'OTHER_EXPENSES',
+    ];
+
+    public const CATEGORY_LABELS = [
+        'CONSULTATION_FEES' => 'Consultation Fees',
+        'HOSPITAL_CHARGES' => 'Hospital Charges',
+        'MEDICINES' => 'Medicines',
+        'DIAGNOSTIC_TESTS' => 'Diagnostic Tests',
+        'SURGERY_PROCEDURE' => 'Surgery / Procedure',
+        'OTHER_EXPENSES' => 'Other Expenses',
     ];
 
     protected $fillable = [

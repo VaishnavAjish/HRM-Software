@@ -40,9 +40,6 @@ uploads/
 *.log
 coverage/
 
-# Android releases
-*.aab
-
 # Database dumps / snapshots (may contain PII — never commit)
 *.bak
 *.sqlite

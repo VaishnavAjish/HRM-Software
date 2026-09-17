@@ -19,16 +19,22 @@ class MediclaimIntimation extends Model
         'employee_user_id',
         'member_id',
         'hospital_id',
+        'is_non_network_hospital',
+        'non_network_hospital_name',
+        'non_network_reason',
         'company_code',
         'reference_number',
         'treating_doctor',
         'planned_treatment',
         'estimated_amount',
         'employee_remarks',
+        'office_remarks',
         'is_emergency',
         'emergency_explanation',
         'notified_at',
         'notified_by',
+        'reviewed_by',
+        'reviewed_at',
         'expected_admission_date',
         'status',
         'linked_claim_id',
@@ -39,7 +45,9 @@ class MediclaimIntimation extends Model
         return [
             'estimated_amount' => 'decimal:2',
             'is_emergency' => 'boolean',
+            'is_non_network_hospital' => 'boolean',
             'notified_at' => 'datetime',
+            'reviewed_at' => 'datetime',
             'expected_admission_date' => 'date',
         ];
     }
@@ -47,6 +55,11 @@ class MediclaimIntimation extends Model
     public function notifiedBy()
     {
         return $this->belongsTo(User::class, 'notified_by');
+    }
+
+    public function reviewedBy()
+    {
+        return $this->belongsTo(User::class, 'reviewed_by');
     }
 
     public function employee()

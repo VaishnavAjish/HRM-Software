@@ -177,9 +177,9 @@ Employee and agent navs are static lists filtered by the legacy permission map
 
 ### Live product
 ```
-salary-slip-front (React, :5175, PWA + Capacitor Android)
+salary-slip-front (React, :5175, PWA)
   |
-  | fetch, or CapacitorHttp on android/ios (CORS bypass)
+  | fetch (browser; subject to backend CORS allow-list)
   | Base URL: VITE_ENV=DEV -> VITE_API_BASE_URL
   |           STAG        -> VITE_STAGING_URL
   |           otherwise   -> __PROD_API_URL__ (chosen by git branch at build)

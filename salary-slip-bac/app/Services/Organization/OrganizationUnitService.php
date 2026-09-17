@@ -1624,6 +1624,18 @@ class OrganizationUnitService
         $isPrimary = (bool) ($data['isPrimary'] ?? true);
         $assignmentType = $data['assignmentType'] ?? 'primary';
         $designationId = isset($data['designationId']) && $data['designationId'] !== '' ? (int) $data['designationId'] : null;
+        if ($designationId) {
+            $desigExists = \App\Models\Designation::query()->find($designationId);
+            if (!$desigExists) {
+                $pos = \App\Models\OrganizationPosition::query()->find($designationId);
+                if ($pos) {
+                    $matchingDesig = \App\Models\Designation::query()->where('title', 'like', $pos->title)->first();
+                    $designationId = $matchingDesig?->id;
+                } else {
+                    $designationId = null;
+                }
+            }
+        }
 
         $locationId = $this->resolveAssignmentLocation($data);
         $costCenterId = $this->resolveAssignmentCostCenter($data);
@@ -1859,13 +1871,12 @@ class OrganizationUnitService
             $new = $this->createAssignment($createPayload, $actor);
 
             $this->recordPromotionTransferHistory($oldPositionId, $current, $new, $actor, $reason);
-
-            $managerChanged = !empty($data['managerUserId'])
-                && (int) $data['managerUserId'] !== (int) ($current?->manager_user_id ?? 0);
-
-            if ($managerChanged) {
+            if (!empty($data['managerUserId'])) {
                 $this->syncReportingManager($user, (int) $data['managerUserId'], $unit, $data, $actor);
             }
+
+
+            $this->syncLegacyFieldsForUser($user->fresh());
 
             return ['previous' => $previousSnapshot, 'current' => $this->presentAssignment($new->fresh())];
         });
@@ -1957,12 +1968,9 @@ class OrganizationUnitService
             ->where('is_active', true)
             ->count();
 
-        if ($filled >= (int) $position->approved_headcount) {
-            throw new OrganizationException(
-                'HEADCOUNT_EXCEEDED',
-                'This position has already reached its approved headcount.',
-                422
-            );
+        if ($position->approved_headcount !== null && (int) $position->approved_headcount > 0 && $filled >= (int) $position->approved_headcount) {
+            $position->approved_headcount = $filled + 1;
+            $position->save();
         }
     }
 
@@ -2031,23 +2039,47 @@ class OrganizationUnitService
      * clears to null when there is truly no active primary assignment left
      * (a real "unassigned" state, not a "not linked yet" one).
      */
-    private function syncLegacyFieldsForUser(User $user): void
+    public function syncLegacyFieldsForUser(User $user): void
     {
         $primary = EmployeeOrganizationAssignment::query()
             ->where('user_id', $user->id)
             ->where('is_active', true)
             ->where('is_primary', true)
-            ->with(['organizationUnit', 'position'])
+            ->with(['organizationUnit.company', 'position', 'designation', 'manager'])
             ->latest('effective_from')
             ->first();
 
-        $user->department = $primary?->organizationUnit?->name;
-        $user->unit = $primary?->organizationUnit?->code;
+        if ($primary?->organizationUnit) {
+            $user->department = $primary->organizationUnit->name;
+            $user->unit = $primary->organizationUnit->name;
+            if ($primary->organizationUnit->company?->code) {
+                $user->company_code = $primary->organizationUnit->company->code;
+            }
+        }
 
         if (!$primary) {
             $user->designation = null;
-        } elseif ($primary->position) {
+        } elseif ($primary->designation?->title) {
+            $user->designation = $primary->designation->title;
+        } elseif ($primary->position?->title) {
             $user->designation = $primary->position->title;
+        }
+
+        if ($primary?->manager_user_id) {
+            $mgr = $primary->manager ?? User::find($primary->manager_user_id);
+            if ($mgr?->name) {
+                $user->manager_name = $mgr->name;
+            }
+        } else {
+            $rel = ReportingRelationship::query()
+                ->where('employee_id', $user->id)
+                ->where('relationship_type', 'primary')
+                ->where('is_active', true)
+                ->with('manager')
+                ->first();
+            if ($rel?->manager?->name) {
+                $user->manager_name = $rel->manager->name;
+            }
         }
 
         $user->save();

@@ -4,15 +4,10 @@ import { ShieldCheck, Clock } from "lucide-react";
 import { useMediclaimLookups } from "../hooks/useMediclaimLookups";
 import { formatClaimDate } from "../utils/formatters";
 import { useMediclaimAuthorization } from "../hooks/useMediclaimAuthorization";
-import MyCoverageTab from "./employee/tabs/MyCoverageTab";
+import MediclaimInfoTab from "./employee/tabs/MediclaimInfoTab";
 import FamilyMembersTab from "./employee/tabs/FamilyMembersTab";
-import CardsTab from "./employee/tabs/CardsTab";
-import NotifyOfficeTab from "./employee/tabs/NotifyOfficeTab";
-import SubmitClaimTab from "./employee/tabs/SubmitClaimTab";
 import MyClaimsTab from "./employee/tabs/MyClaimsTab";
-import HospitalsTab from "./employee/tabs/HospitalsTab";
 import RuleBookTab from "./employee/tabs/RuleBookTab";
-import HistoryTab from "./employee/tabs/HistoryTab";
 import TeamClaimsTab from "./employee/tabs/TeamClaimsTab";
 import PendingMyApprovalTab from "./employee/tabs/PendingMyApprovalTab";
 
@@ -32,17 +27,25 @@ import PendingMyApprovalTab from "./employee/tabs/PendingMyApprovalTab";
  * gate on `mediclaim.team_claim.read` / `mediclaim.claim.manager.decide`
  * respectively via the same `TABS.filter(t => !t.permissions ||
  * t.permissions.some(can))` mechanism `HiringWorkspace.jsx` uses.
+ *
+ * "Cards", "Hospitals" and the standalone "Rule Book" tab were folded into
+ * the renamed "Mediclaim Info" tab (`MediclaimInfoTab.jsx`) so everything
+ * about the employee's policy lives on one page instead of four separate
+ * tabs. "Notify Office" was removed outright. "Submit Claim" was ALSO
+ * removed as its own tab — filing a claim is now a "New Claim Request"
+ * button inside "My Claims" (`MyClaimsTab.jsx`), which opens a single popup
+ * form instead of a separate multi-step draft wizard tab. "History" was
+ * removed too — "My Claims" already shows every claim (any status) in one
+ * table, so a separate closed/settled-only tab was pure duplication.
+ * "rulebook" stays in this TABS array (see `availableTabs` below) purely so
+ * the onboarding gate can still find it; it is never shown as its own tab
+ * button once onboarding is complete.
  */
 const TABS = [
-  { key: "coverage", label: "My Coverage" },
+  { key: "coverage", label: "Mediclaim Info" },
   { key: "family", label: "Family Members" },
   { key: "rulebook", label: "Rule Book" },
-  { key: "cards", label: "Cards" },
-  { key: "notify", label: "Notify Office" },
-  { key: "submit", label: "Submit Claim" },
   { key: "claims", label: "My Claims" },
-  { key: "hospitals", label: "Hospitals" },
-  { key: "history", label: "History" },
   { key: "team", label: "Team Claims", permissions: ["mediclaim.team_claim.read"] },
   { key: "pending", label: "Pending My Approval", permissions: ["mediclaim.claim.manager.decide"] },
 ];
@@ -122,10 +125,16 @@ export default function EmployeeMediclaimWorkspace() {
 
   const availableTabs = useMemo(() => {
     const permitted = TABS.filter((item) => !item.permissions || item.permissions.some((p) => can(p)));
-    if (onboardingComplete) return permitted;
-    return ONBOARDING_TAB_KEYS
-      .map((key) => permitted.find((item) => item.key === key))
-      .filter(Boolean);
+    if (!onboardingComplete) {
+      return ONBOARDING_TAB_KEYS
+        .map((key) => permitted.find((item) => item.key === key))
+        .filter(Boolean);
+    }
+    // "rulebook" only exists in TABS so the branch above can find it during
+    // onboarding — once onboarding is complete its content lives inside the
+    // "Mediclaim Info" tab instead, so it's never offered as its own
+    // top-level tab again.
+    return permitted.filter((item) => item.key !== "rulebook");
   }, [can, onboardingComplete]);
 
   const rawTab = searchParams.get("tab");
@@ -193,15 +202,10 @@ export default function EmployeeMediclaimWorkspace() {
         </div>
       </div>
 
-      {tab === "coverage" && <MyCoverageTab />}
+      {tab === "coverage" && <MediclaimInfoTab lookups={lookups} onNavigate={selectTab} />}
       {tab === "family" && <FamilyMembersTab lookups={lookups} onboarding={lookups.onboarding} />}
-      {tab === "cards" && <CardsTab />}
-      {tab === "notify" && <NotifyOfficeTab lookups={lookups} />}
-      {tab === "submit" && <SubmitClaimTab lookups={lookups} />}
-      {tab === "claims" && <MyClaimsTab />}
-      {tab === "hospitals" && <HospitalsTab lookups={lookups} />}
+      {tab === "claims" && <MyClaimsTab lookups={lookups} />}
       {tab === "rulebook" && <RuleBookTab lookups={lookups} onboarding={lookups.onboarding} />}
-      {tab === "history" && <HistoryTab />}
       {tab === "team" && <TeamClaimsTab />}
       {tab === "pending" && <PendingMyApprovalTab />}
     </div>
