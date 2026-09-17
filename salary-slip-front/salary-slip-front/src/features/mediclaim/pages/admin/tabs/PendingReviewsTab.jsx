@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Search, Download, RefreshCw } from "lucide-react";
+import { Search, Download, RefreshCw, Trash2 } from "lucide-react";
+import toast from "react-hot-toast";
 import { useAuth } from "../../../../../context/AuthContext";
 import { useAuthorization } from "../../../../../hooks/useAuthorization";
 import { mediclaimActionAccess } from "../../../../../utils/formActionAccess";
@@ -156,6 +157,7 @@ export default function PendingReviewsTab() {
   const [perPage, setPerPage] = useState(PER_PAGE);
   const [selectedClaim, setSelectedClaim] = useState(null);
   const [reloadToken, setReloadToken] = useState(0);
+  const [deletingId, setDeletingId] = useState(null);
 
   const [pendingResult, setPendingResult] = useState({ key: null, rows: [], error: null });
   const [approvalPage, setApprovalPage] = useState(1);
@@ -245,6 +247,29 @@ export default function PendingReviewsTab() {
     downloadCSV(rows.map(toCsvRow), `mediclaim-${subTab.toLowerCase()}`);
   };
 
+  // Hard delete (mediclaim.claim.delete — realistically super-admin only,
+  // see Admin\ClaimController::destroy()'s docblock), available from every
+  // sub-tab: a claim stuck mid-review, mid-document, or already finalized
+  // can all be cleaned up from wherever it happens to currently sit rather
+  // than only from the separate top-level Claims tab.
+  const deleteClaim = async (row) => {
+    const id = row.id ?? row.claimId;
+    const label = row.claimNumber || row.claim_number || "this claim";
+    if (!window.confirm(`Permanently delete ${label}? This cannot be undone.`)) return;
+
+    setDeletingId(id);
+    try {
+      await mediclaimApi.deleteClaim(id, accessToken, tokenType);
+      toast.success(`${label} deleted`);
+      if (selectedClaim && (selectedClaim.id ?? selectedClaim.claimId) === id) setSelectedClaim(null);
+      loadPending();
+    } catch (err) {
+      toast.error(err?.message || "Failed to delete this claim.");
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   const selectedStage = selectedClaim ? resolveStage(selectedClaim) : null;
   const selectedStageMeta = selectedStage ? REVIEW_STAGE_META[selectedStage] : null;
   const SelectedPanel = selectedStage ? STAGE_PANEL[selectedStage] : null;
@@ -258,6 +283,30 @@ export default function PendingReviewsTab() {
     { key: "claimedAmount", label: "Claimed", render: (row) => formatCurrencyINR(row.totalClaimedAmount ?? row.total_claimed_amount) },
   ];
 
+  // Delete is available on every sub-tab, not just the finalized/Claims
+  // view — a claim can be a test/duplicate/erroneous row at any stage of
+  // the pipeline, and there is no reason super admin should have to wait
+  // for it to reach "Approved Claim" first to clean it up.
+  const actionsColumn = access.claimDelete ? [{
+    key: "actions",
+    label: "",
+    className: "text-right",
+    render: (row) => {
+      const id = row.id ?? row.claimId;
+      return (
+        <button
+          type="button"
+          title="Delete claim"
+          disabled={deletingId === id}
+          onClick={(e) => { e.stopPropagation(); deleteClaim(row); }}
+          className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50 dark:hover:bg-red-900/20"
+        >
+          <Trash2 size={14} />
+        </button>
+      );
+    },
+  }] : [];
+
   const pendingColumns = [
     ...baseColumns,
     {
@@ -270,6 +319,7 @@ export default function PendingReviewsTab() {
     },
     { key: "status", label: "Status", render: (row) => <ClaimStatusBadge status={row.status} /> },
     { key: "submittedOn", label: "Submitted", render: (row) => formatClaimDate(row.submittedAt || row.submitted_at) },
+    ...actionsColumn,
   ];
 
   const finalizedColumns = [
@@ -281,6 +331,7 @@ export default function PendingReviewsTab() {
     },
     { key: "status", label: "Status", render: (row) => <ClaimStatusBadge status={row.status} /> },
     { key: "updatedOn", label: "Last Updated", render: (row) => formatClaimDate(row.updatedAt || row.updated_at) },
+    ...actionsColumn,
   ];
 
   const activeSubTab = SUB_TABS.find((t) => t.key === subTab) || SUB_TABS[0];
