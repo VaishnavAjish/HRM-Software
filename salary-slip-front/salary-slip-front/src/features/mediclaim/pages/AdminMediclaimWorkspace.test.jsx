@@ -83,12 +83,12 @@ describe("AdminMediclaimWorkspace tab gating", () => {
     setup();
 
     expect(screen.getByRole("button", { name: "Reports" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Pending Reviews" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Claims" })).not.toBeInTheDocument();
   });
 
   it("supports direct links, tab URL updates, and browser navigation", async () => {
     state.allowed = new Set(["mediclaim.claim.coordinator.decide", "mediclaim.report.read"]);
-    const router = setup("/admin/tds/mediclaim?tab=pending-reviews");
+    const router = setup("/admin/tds/mediclaim?tab=claims");
 
     expect(screen.getByText("Pending Reviews Content")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Reports" }));

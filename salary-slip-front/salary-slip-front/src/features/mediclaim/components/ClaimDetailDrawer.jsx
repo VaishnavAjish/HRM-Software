@@ -6,7 +6,7 @@ import Button from "../../../components/ui/Button";
 import DocumentViewerModal from "../../../components/documents/DocumentViewerModal";
 import { useAuth } from "../../../context/AuthContext";
 import { mediclaimApi } from "../services/mediclaimApi";
-import { getExpenseCategoryLabel } from "../models/expenseCategories";
+import { EXPENSE_CATEGORIES, getExpenseCategoryLabel } from "../models/expenseCategories";
 import { isTerminalClaimStatus } from "../models/claimStatus";
 import { getRequiredDocumentTypes } from "../utils/documentChecklistRules";
 import { formatCurrencyINR, formatClaimDate } from "../utils/formatters";
@@ -41,12 +41,15 @@ const EMPTY_RESULT = { key: null, claim: null, documents: [], error: null };
  *
  * When that same claim was submitted while treatment was still ongoing
  * (`is_ongoing_treatment`), the checklist/due-date banner is replaced by a
- * "record discharge" prompt instead — there is no real due date to show
+ * "Finalize Treatment" prompt instead — there is no real due date to show
  * yet, since `documents_due_at` was only ever anchored to admission (or the
- * submission instant) as a placeholder. Submitting a discharge date here
- * calls `mediclaimApi.recordClaimDischarge()`, which recomputes the real
- * 7-day window server-side; once that lands the claim reloads and the
- * normal checklist takes over.
+ * submission instant) as a placeholder, and the final bill wasn't known at
+ * submission either. Recording the discharge date AND the final expense
+ * line items together here calls `mediclaimApi.finalizeTreatment()`, which
+ * recomputes the real 7-day window server-side and (for a claim already
+ * approved-in-principle) reconciles the approved amount to the final total
+ * — see `ClaimWorkflowService::finalizeTreatment()`'s docblock. Once that
+ * lands the claim reloads and the normal checklist takes over.
  */
 export default function ClaimDetailDrawer({ isOpen, onClose, claimId, footer, title, allowDocumentUpload = false, documentRequirements = [], documentRequirementsLoading = false, onDocumentsChanged }) {
   const { user } = useAuth();
@@ -63,6 +66,7 @@ export default function ClaimDetailDrawer({ isOpen, onClose, claimId, footer, ti
   const [now] = useState(() => new Date());
   const [dischargeInput, setDischargeInput] = useState("");
   const [dischargeSaving, setDischargeSaving] = useState(false);
+  const [finalizeExpenses, setFinalizeExpenses] = useState([{ category: "", description: "", claimedAmount: "", expenseDate: "" }]);
 
   if (wasOpen !== isOpen) {
     setWasOpen(isOpen);
@@ -113,22 +117,84 @@ export default function ClaimDetailDrawer({ isOpen, onClose, claimId, footer, ti
     : [];
   const isOverdue = documentsDueAt && new Date(documentsDueAt).getTime() < now.getTime();
   const isOngoing = Boolean(claim?.isOngoingTreatment ?? claim?.is_ongoing_treatment);
+  const dischargeAt = claim?.dischargeDate || claim?.discharge_at;
+  const admissionAt = claim?.admissionDate || claim?.admission_at;
+  const isDischargeMissing = isOngoing || !dischargeAt;
+
+  const formatForDatetimeInput = (dateVal) => {
+    if (!dateVal) return undefined;
+    try {
+      const d = new Date(dateVal);
+      if (isNaN(d.getTime())) return undefined;
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, "0");
+      const day = String(d.getDate()).padStart(2, "0");
+      const hours = String(d.getHours()).padStart(2, "0");
+      const minutes = String(d.getMinutes()).padStart(2, "0");
+      return `${year}-${month}-${day}T${hours}:${minutes}`;
+    } catch {
+      return undefined;
+    }
+  };
+  const minDischargeDate = formatForDatetimeInput(admissionAt);
+
   // Once a claim reaches a genuinely terminal status (Rejected/Closed/
   // Withdrawn/Cancelled — NOT Settled, which still legally accepts a
   // corrective re-upload), inviting more uploads no longer makes sense;
   // fall back to the plain read-only document list instead.
   const canUploadNow = allowDocumentUpload && !isTerminalClaimStatus(claim?.status);
 
-  const submitDischarge = async () => {
-    if (!dischargeInput) return;
+  const addExpenseLine = () => {
+    setFinalizeExpenses((prev) => [...prev, { category: "", description: "", claimedAmount: "", expenseDate: "" }]);
+  };
+
+  const updateExpenseLine = (index, field, value) => {
+    setFinalizeExpenses((prev) => prev.map((row, i) => (i === index ? { ...row, [field]: value } : row)));
+  };
+
+  const removeExpenseLine = (index) => {
+    setFinalizeExpenses((prev) => (prev.length > 1 ? prev.filter((_, i) => i !== index) : prev));
+  };
+
+  const validExpenseLines = finalizeExpenses.filter((row) => row.category && Number(row.claimedAmount) > 0);
+  const canSubmitFinalize = Boolean(dischargeInput) && validExpenseLines.length > 0 && !dischargeSaving;
+
+  const submitFinalizeTreatment = async () => {
+    if (!canSubmitFinalize) return;
+
+    const dDate = new Date(dischargeInput);
+    const dDay = new Date(dDate.getFullYear(), dDate.getMonth(), dDate.getDate());
+
+    if (admissionAt) {
+      const aDate = new Date(admissionAt);
+      const aDay = new Date(aDate.getFullYear(), aDate.getMonth(), aDate.getDate());
+      if (dDay < aDay) {
+        toast.error("Discharge date cannot be before the admission date.");
+        return;
+      }
+    }
+
+    const today = new Date();
+    const todayDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    if (dDay > todayDay) {
+      toast.error("Discharge date cannot be in the future.");
+      return;
+    }
+
     setDischargeSaving(true);
     try {
-      await mediclaimApi.recordClaimDischarge(claimId, dischargeInput, accessToken, tokenType);
-      toast.success("Discharge recorded — the document upload window has started.");
+      await mediclaimApi.finalizeTreatment(
+        claimId,
+        { dischargeAt: dischargeInput, expenses: validExpenseLines },
+        accessToken,
+        tokenType,
+      );
+      toast.success("Treatment finalized — the document upload window has started.");
       setDischargeInput("");
+      setFinalizeExpenses([{ category: "", description: "", claimedAmount: "", expenseDate: "" }]);
       reloadDocuments();
     } catch (err) {
-      toast.error(err?.message || "Failed to record the discharge date.");
+      toast.error(err?.message || "Failed to finalize the treatment.");
     } finally {
       setDischargeSaving(false);
     }
@@ -163,13 +229,17 @@ export default function ClaimDetailDrawer({ isOpen, onClose, claimId, footer, ti
                         {line.description && <p className="text-xs text-gray-500 dark:text-gray-400">{line.description}</p>}
                       </div>
                       <div className="text-right">
-                        <p className="font-semibold text-gray-800 dark:text-gray-100">{formatCurrencyINR(line.claimedAmount ?? line.amount)}</p>
-                        {(line.approvedAmount != null || line.approved_amount != null) && (
+                        <p className="font-semibold text-gray-800 dark:text-gray-100">
+                          {formatCurrencyINR(line.claimed_amount ?? line.claimedAmount ?? line.amount)}
+                        </p>
+                        {(line.approved_amount ?? line.approvedAmount) != null && (
                           <p className="text-xs text-emerald-600 dark:text-emerald-400">
-                            Approved {formatCurrencyINR(line.approvedAmount ?? line.approved_amount)}
+                            Approved {formatCurrencyINR(line.approved_amount ?? line.approvedAmount)}
                           </p>
                         )}
-                        {line.disallowedReason && <p className="text-xs text-red-500">{line.disallowedReason}</p>}
+                        {(line.disallowed_reason || line.disallowedReason) && (
+                          <p className="text-xs text-red-500">{line.disallowed_reason || line.disallowedReason}</p>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -178,32 +248,94 @@ export default function ClaimDetailDrawer({ isOpen, onClose, claimId, footer, ti
             </CollapsibleSection>
 
             <CollapsibleSection title="Documents" icon={<FileText size={15} />} count={documents.length} defaultOpen={canUploadNow}>
-              {canUploadNow && isOngoing ? (
-                <div className="space-y-3 rounded-lg border border-dashed border-amber-200 bg-amber-50/60 px-3 py-3 text-xs dark:border-amber-500/30 dark:bg-amber-500/5">
-                  <p className="flex items-start gap-2 text-amber-700 dark:text-amber-300">
-                    <BedDouble size={14} className="mt-0.5 flex-shrink-0" />
-                    Treatment was still ongoing when this claim was submitted, so the document upload window hasn&apos;t
-                    started yet. Once discharged, record the date below — you&apos;ll then have 7 days to upload the
-                    required documents.
-                  </p>
-                  <div className="flex flex-wrap items-end gap-2">
-                    <label className="flex-1 min-w-[180px]">
-                      <span className="mb-1 block font-semibold text-gray-500 dark:text-gray-400">Date &amp; Time of Discharge</span>
-                      <input
-                        type="datetime-local"
-                        value={dischargeInput}
-                        onChange={(e) => setDischargeInput(e.target.value)}
-                        className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                      />
-                    </label>
-                    <Button size="sm" onClick={submitDischarge} disabled={!dischargeInput || dischargeSaving}>
-                      {dischargeSaving ? "Saving…" : "Confirm Discharge"}
-                    </Button>
-                  </div>
-                </div>
-              ) : canUploadNow ? (
+              {canUploadNow ? (
                 <div className="space-y-3">
-                  {documentsDueAt && (
+                  {isDischargeMissing && (
+                    <div className="space-y-3 rounded-lg border border-dashed border-amber-200 bg-amber-50/60 px-3 py-3 text-xs dark:border-amber-500/30 dark:bg-amber-500/5">
+                      <p className="flex items-start gap-2 text-amber-700 dark:text-amber-300">
+                        <BedDouble size={14} className="mt-0.5 flex-shrink-0" />
+                        Treatment was still ongoing when this claim was submitted, so the document upload window hasn&apos;t
+                        started yet. Once discharged, record the discharge date and the final bill below — you&apos;ll
+                        then have 7 days to upload the required documents.
+                      </p>
+
+                      <label className="block">
+                        <span className="mb-1 block font-semibold text-gray-500 dark:text-gray-400">Date &amp; Time of Discharge</span>
+                        <input
+                          type="datetime-local"
+                          value={dischargeInput}
+                          onChange={(e) => setDischargeInput(e.target.value)}
+                          min={minDischargeDate}
+                          className="w-full max-w-xs rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                        />
+                      </label>
+
+                      <div className="space-y-2">
+                        <span className="block font-semibold text-gray-500 dark:text-gray-400">Final Charges</span>
+                        {finalizeExpenses.map((row, index) => (
+                          <div key={index} className="flex flex-wrap items-end gap-2 rounded-lg border border-amber-100 bg-white/60 p-2 dark:border-amber-500/20 dark:bg-gray-800/40">
+                            <label className="min-w-[160px] flex-1">
+                              <span className="mb-1 block text-[11px] text-gray-500 dark:text-gray-400">Category</span>
+                              <select
+                                value={row.category}
+                                onChange={(e) => updateExpenseLine(index, "category", e.target.value)}
+                                className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                              >
+                                <option value="">Select…</option>
+                                {EXPENSE_CATEGORIES.map((cat) => (
+                                  <option key={cat.key} value={cat.key}>{cat.label}</option>
+                                ))}
+                              </select>
+                            </label>
+                            <label className="min-w-[120px]">
+                              <span className="mb-1 block text-[11px] text-gray-500 dark:text-gray-400">Amount (₹)</span>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={row.claimedAmount}
+                                onChange={(e) => updateExpenseLine(index, "claimedAmount", e.target.value)}
+                                className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                              />
+                            </label>
+                            <label className="min-w-[130px]">
+                              <span className="mb-1 block text-[11px] text-gray-500 dark:text-gray-400">Expense Date</span>
+                              <input
+                                type="date"
+                                value={row.expenseDate}
+                                onChange={(e) => updateExpenseLine(index, "expenseDate", e.target.value)}
+                                className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                              />
+                            </label>
+                            {finalizeExpenses.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => removeExpenseLine(index)}
+                                className="pb-1.5 text-[11px] font-semibold text-red-500 hover:text-red-600"
+                              >
+                                Remove
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={addExpenseLine}
+                          className="text-[11px] font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-400"
+                        >
+                          + Add another line
+                        </button>
+                      </div>
+
+                      <div className="flex justify-end">
+                        <Button size="sm" onClick={submitFinalizeTreatment} disabled={!canSubmitFinalize}>
+                          {dischargeSaving ? "Saving…" : "Finalize Treatment"}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {documentsDueAt && !isDischargeMissing && (
                     <div
                       className={`flex items-start gap-2 rounded-lg px-3 py-2 text-xs ${
                         isOverdue
@@ -223,6 +355,7 @@ export default function ClaimDetailDrawer({ isOpen, onClose, claimId, footer, ti
                       </span>
                     </div>
                   )}
+
                   <DocumentChecklist
                     claimId={claimId}
                     requirements={documentRequirements}
@@ -230,6 +363,7 @@ export default function ClaimDetailDrawer({ isOpen, onClose, claimId, footer, ti
                     claimSnapshot={{ treatmentType: claim.treatmentType || claim.treatment_type, isMedicoLegal: claim.isMedicoLegal ?? claim.is_medico_legal_case }}
                     uploadedDocs={documents}
                     onUploaded={reloadDocuments}
+                    dischargeDateMissing={isDischargeMissing}
                   />
                 </div>
               ) : documents.length === 0 ? (

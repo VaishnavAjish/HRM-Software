@@ -13,6 +13,7 @@ use App\Models\Mediclaim\MediclaimDocumentRequirement;
 use App\Models\User;
 use App\Services\Documents\DocumentAuthorizer;
 use App\Services\Documents\DocumentService;
+use App\Services\Mediclaim\ClaimWorkflowService;
 use App\Support\DocumentType;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -44,6 +45,10 @@ class ClaimDocumentController extends Controller
 {
     use RespondsWithEnvelope;
 
+    public function __construct(private readonly ClaimWorkflowService $workflow)
+    {
+    }
+
     public function index(Request $request, int $claim): JsonResponse
     {
         $actor = auth('api')->user();
@@ -51,6 +56,12 @@ class ClaimDocumentController extends Controller
 
         if (! $model) {
             return $this->missing('Claim not found.');
+        }
+
+        if ($model->is_ongoing_treatment || ! $model->discharge_at) {
+            throw ValidationException::withMessages([
+                'discharge_at' => 'Discharge date is mandatory before uploading documents.'
+            ]);
         }
 
         $links = MediclaimDocumentLink::query()
@@ -70,6 +81,12 @@ class ClaimDocumentController extends Controller
 
         if (! $model) {
             return $this->missing('Claim not found.');
+        }
+
+        if ($model->is_ongoing_treatment || ! $model->discharge_at) {
+            throw ValidationException::withMessages([
+                'discharge_at' => 'Discharge date is mandatory before uploading documents.'
+            ]);
         }
 
         $documentType = (string) $request->input('document_type');
@@ -122,6 +139,14 @@ class ClaimDocumentController extends Controller
                 'document_role' => $data['document_role'] ?? $data['document_type'],
                 'created_by' => $actor->id,
             ]);
+
+            // Simplified workflow: opportunistically finish the claim the
+            // moment its last required document lands — a no-op unless the
+            // claim is actually APPROVED/PARTIALLY_APPROVED and every
+            // required document is now on file. See
+            // ClaimWorkflowService::autoSettleIfDocumentsComplete()'s
+            // docblock.
+            $this->workflow->autoSettleIfDocumentsComplete($model, $actor);
 
             return $this->ok($this->presentLink($link->fresh(['document.currentVersionRecord']), $actor), 201);
         } catch (DocumentException $e) {

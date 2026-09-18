@@ -373,13 +373,46 @@ class MediclaimClaim extends Model
             // from this list (no reviewer role owns SUBMITTED), and excluded
             // from the admin Claims tab's finalized-only default. See
             // ClaimWorkflowService::managerDecision()'s matching rescue path.
+            // APPROVED/PARTIALLY_APPROVED are included too — the simplified
+            // workflow's post-approveDirect() "awaiting documents" resting
+            // state (see that method's docblock) — so a super admin keeps
+            // visibility into a claim all the way through document upload,
+            // same as every other stage here.
             return $query->whereIn('status', array_merge(
-                [self::STATUS_SUBMITTED, self::STATUS_MANAGER_REVIEW],
+                [self::STATUS_SUBMITTED, self::STATUS_MANAGER_REVIEW, self::STATUS_APPROVED, self::STATUS_PARTIALLY_APPROVED],
                 array_keys(self::STAGE_REVIEWER_ROLES)
             ));
         }
 
         return $query->where(function (Builder $q) use ($actor) {
+            // Simplified workflow: whoever holds `mediclaim.claim.approve` (a
+            // fixed, company-wide HR-admin permission — not a per-claim or
+            // per-stage assignment like every branch below) can see and
+            // decide EVERY claim currently sitting at SUBMITTED or
+            // MANAGER_REVIEW, the instant it's submitted — see
+            // ClaimWorkflowService::approveDirect()'s docblock. Checked via
+            // the same AuthorizationEngine the `permission:` route
+            // middleware already uses, so this stays consistent with
+            // whatever grants that middleware honors, rather than
+            // re-deriving role membership here. Purely additive: every
+            // branch below (the five legacy per-stage reviewer-role checks)
+            // is untouched. APPROVED/PARTIALLY_APPROVED are included too, so
+            // the approver keeps visibility (via the admin "Pending
+            // Document" tab) into a claim they approved while it's waiting
+            // on the employee's documents — nothing is actually decidable
+            // at that status (ReviewQueueController::STAGE_METHODS has no
+            // entry for it), so `decide()` correctly 422s if attempted; this
+            // branch only grants read visibility, matching how
+            // SETTLEMENT_PENDING already works for the settlement role.
+            if (app(\App\Services\Authorization\AuthorizationEngine::class)->decide($actor, 'mediclaim.claim.approve')->allowed) {
+                $q->orWhereIn('status', [
+                    self::STATUS_SUBMITTED,
+                    self::STATUS_MANAGER_REVIEW,
+                    self::STATUS_APPROVED,
+                    self::STATUS_PARTIALLY_APPROVED,
+                ]);
+            }
+
             foreach (self::STAGE_REVIEWER_ROLES as $status => $role) {
                 $q->orWhere(function (Builder $branch) use ($status, $role, $actor) {
                     $branch->where('status', $status)

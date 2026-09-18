@@ -38,7 +38,6 @@ vi.mock("./employee/tabs/FamilyMembersTab", () => ({ default: () => <div>Family 
 vi.mock("./employee/tabs/MyClaimsTab", () => ({ default: () => <div>MyClaims Content</div> }));
 vi.mock("./employee/tabs/RuleBookTab", () => ({ default: () => <div>RuleBook Content</div> }));
 vi.mock("./employee/tabs/TeamClaimsTab", () => ({ default: () => <div>Team Content</div> }));
-vi.mock("./employee/tabs/PendingMyApprovalTab", () => ({ default: () => <div>Pending Content</div> }));
 
 import { mediclaimApi } from "../services/mediclaimApi";
 import EmployeeMediclaimWorkspace from "./EmployeeMediclaimWorkspace";
@@ -91,11 +90,10 @@ describe("EmployeeMediclaimWorkspace tab gating", () => {
     ]);
   });
 
-  it("hides Team Claims and Pending My Approval without their permissions", async () => {
+  it("hides Team Claims without its permission", async () => {
     await setup();
 
     expect(screen.queryByRole("button", { name: "Team Claims" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Pending My Approval" })).not.toBeInTheDocument();
   });
 
   it("shows Team Claims only with mediclaim.team_claim.read", async () => {
@@ -103,42 +101,33 @@ describe("EmployeeMediclaimWorkspace tab gating", () => {
     await setup();
 
     expect(screen.getByRole("button", { name: "Team Claims" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Pending My Approval" })).not.toBeInTheDocument();
   });
 
-  it("shows Pending My Approval only with mediclaim.claim.manager.decide", async () => {
-    state.allowed = new Set(["mediclaim.claim.manager.decide"]);
-    await setup();
-
-    expect(screen.getByRole("button", { name: "Pending My Approval" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Team Claims" })).not.toBeInTheDocument();
-  });
-
-  it("shows both manager tabs together once both permissions are granted, appended after the unconditional three", async () => {
-    state.allowed = new Set(["mediclaim.team_claim.read", "mediclaim.claim.manager.decide"]);
+  it("appends Team Claims after the unconditional three once granted", async () => {
+    state.allowed = new Set(["mediclaim.team_claim.read"]);
     await setup();
 
     expect(screen.getAllByRole("button").map((button) => button.textContent)).toEqual([
       "Mediclaim Info", "Family Members", "My Claims",
-      "Team Claims", "Pending My Approval",
+      "Team Claims",
     ]);
   });
 
   it("supports direct links, tab URL updates, and browser navigation", async () => {
-    state.allowed = new Set(["mediclaim.team_claim.read", "mediclaim.claim.manager.decide"]);
-    const router = await setup("/employee/tds/mediclaim?tab=pending");
+    state.allowed = new Set(["mediclaim.team_claim.read"]);
+    const router = await setup("/employee/tds/mediclaim?tab=team");
 
-    expect(screen.getByText("Pending Content")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Team Claims" }));
-    await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("?tab=team"));
     expect(screen.getByText("Team Content")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "My Claims" }));
+    await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("?tab=claims"));
+    expect(screen.getByText("MyClaims Content")).toBeInTheDocument();
 
     await router.navigate(-1);
-    await waitFor(() => expect(screen.getByText("Pending Content")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Team Content")).toBeInTheDocument());
   });
 
   it("falls back safely to Mediclaim Info when a direct-linked manager tab is not permitted", async () => {
-    await setup("/employee/tds/mediclaim?tab=pending");
+    await setup("/employee/tds/mediclaim?tab=team");
 
     expect(screen.getByText("Coverage Content")).toBeInTheDocument();
     await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("?tab=coverage"));

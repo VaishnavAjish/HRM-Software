@@ -46,6 +46,32 @@ const RELATION_OPTIONS = [
   "Brother", "Sister", "Guardian", "Other",
 ];
 
+function getAvailableProfileRelations(familyDetails, currentIndex) {
+  const otherMembers = (familyDetails || []).filter((_, i) => i !== currentIndex);
+
+  const spouseCount = otherMembers.filter((m) => (m.relation || "").toLowerCase() === "spouse").length;
+  const fatherCount = otherMembers.filter((m) => (m.relation || "").toLowerCase() === "father").length;
+  const motherCount = otherMembers.filter((m) => (m.relation || "").toLowerCase() === "mother").length;
+  const parentCount = otherMembers.filter((m) => ["father", "mother", "parent"].includes((m.relation || "").toLowerCase())).length;
+
+  return RELATION_OPTIONS.filter((option) => {
+    const optLower = option.toLowerCase();
+    if (optLower === "spouse") {
+      return spouseCount < 1;
+    }
+    if (optLower === "father") {
+      return fatherCount < 1 && parentCount < 2;
+    }
+    if (optLower === "mother") {
+      return motherCount < 1 && parentCount < 2;
+    }
+    if (optLower === "parent") {
+      return parentCount < 2;
+    }
+    return true;
+  });
+}
+
 const BLANK_FAMILY_MEMBER = { name: "", relation: "", mobileNumber: "" };
 
 // Family details are mandatory: an employee with none on file always gets at
@@ -1412,7 +1438,7 @@ export default function Profile() {
                     className="w-full text-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white focus:outline-none focus:border-brand-500"
                   >
                     <option value="">Select relation</option>
-                    {RELATION_OPTIONS.map((rel) => (
+                    {getAvailableProfileRelations(familyDetails, index).map((rel) => (
                       <option key={rel} value={rel}>{rel}</option>
                     ))}
                   </select>

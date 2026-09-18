@@ -114,6 +114,39 @@ class ClaimController extends Controller
         ));
     }
 
+    /**
+     * `POST /claims/{claim}/finalize-treatment` — the simplified workflow's
+     * ongoing-treatment follow-up: the employee records the real discharge
+     * date AND the final expense line items together, once the actual bill
+     * is known. See `ClaimWorkflowService::finalizeTreatment()`'s docblock
+     * for the amount-reconciliation rules this triggers.
+     */
+    public function finalizeTreatment(Request $request, int $claim): JsonResponse
+    {
+        $actor = auth('api')->user();
+        $model = MediclaimClaim::visibleTo($actor)->find($claim);
+
+        if (! $model) {
+            return $this->missing('Claim not found.');
+        }
+
+        $data = $request->validate([
+            'discharge_at' => ['required', 'date'],
+            'expenses' => ['required', 'array', 'min:1'],
+            'expenses.*.category' => ['required', 'string', 'max:60'],
+            'expenses.*.description' => ['sometimes', 'nullable', 'string', 'max:500'],
+            'expenses.*.claimed_amount' => ['required', 'numeric', 'min:0.01'],
+            'expenses.*.expense_date' => ['sometimes', 'nullable', 'date'],
+        ]);
+
+        return $this->guarded(fn () => $this->ok($this->workflow->finalizeTreatment(
+            $model,
+            $actor,
+            \Illuminate\Support\Carbon::parse($data['discharge_at']),
+            $data['expenses']
+        )));
+    }
+
     public function timeline(Request $request, int $claim): JsonResponse
     {
         $actor = auth('api')->user();

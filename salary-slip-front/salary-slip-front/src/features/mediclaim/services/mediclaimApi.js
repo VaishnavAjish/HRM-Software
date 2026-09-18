@@ -208,6 +208,27 @@ export const mediclaimApi = {
     });
   },
 
+  // Simplified workflow's ongoing-treatment follow-up — records the real
+  // discharge date AND the final expense line items together, once the
+  // actual bill is known. See `ClaimDetailDrawer.jsx`'s "Finalize Treatment"
+  // form and `ClaimWorkflowService::finalizeTreatment()`.
+  // `expenses`: [{ category, description, claimedAmount, expenseDate }]
+  finalizeTreatment(claimId, { dischargeAt, expenses }, accessToken, tokenType = "Bearer") {
+    return apiRequest(`${BASE}/claims/${claimId}/finalize-treatment`, {
+      method: "POST",
+      headers: headers(accessToken, tokenType),
+      body: JSON.stringify({
+        discharge_at: dischargeAt,
+        expenses: (expenses || []).map((row) => ({
+          category: row.category,
+          description: row.description || null,
+          claimed_amount: row.claimedAmount,
+          expense_date: row.expenseDate || null,
+        })),
+      }),
+    });
+  },
+
   /* ------------------------------------------------------------------------ claim documents */
 
   claimDocuments(claimId, accessToken, tokenType = "Bearer") {

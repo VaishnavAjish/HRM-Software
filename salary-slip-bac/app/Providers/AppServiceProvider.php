@@ -7,6 +7,7 @@ use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -26,6 +27,23 @@ class AppServiceProvider extends ServiceProvider
         // package providers, so this binding wins and the revocation check is
         // actually enforced on every protected route.
         $router->aliasMiddleware('jwt.auth', JwtMiddleware::class);
+
+        // Without this, `URL::temporarySignedRoute()` (used for every
+        // document view/download link — see LocalStorageProvider::viewUrl())
+        // signs the URL against whatever host+port the CURRENT INBOUND
+        // REQUEST appears to have arrived on, not a fixed public origin. If
+        // a reverse proxy forwards to an internal port, or the app is
+        // reachable at more than one address, that can produce a signed
+        // link the browser can't actually reach directly ("refused to
+        // connect" on the document preview/download), even though the API
+        // call that generated it succeeded. Forcing the root URL from
+        // config('app.url') makes every signed URL deterministic regardless
+        // of how the request reached the app. Guarded so a local
+        // `php artisan serve` run with no APP_URL set still falls back to
+        // today's request-derived behavior.
+        if (config('app.url')) {
+            URL::forceRootUrl(config('app.url'));
+        }
 
         RateLimiter::for('api', function (Request $request) {
             return Limit::perMinute((int) env('API_RATE_LIMIT', 10000))

@@ -46,6 +46,9 @@ export function trialActionAccess(can) {
  */
 export function mediclaimActionAccess(can) {
   return {
+    // Simplified workflow's single approval step
+    claimApprove: can("mediclaim.claim.approve"),
+
     // Per-stage review decisions
     managerDecide: can("mediclaim.claim.manager.decide"),
     coordinatorDecide: can("mediclaim.claim.coordinator.decide"),

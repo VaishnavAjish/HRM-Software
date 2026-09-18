@@ -25,9 +25,12 @@ const CLAIM_COLUMNS = [
 /**
  * Read-only browsing of the manager's reporting-subtree claims, at any
  * status, via `mediclaimApi.teamClaims`. Row click always opens the shared
- * `ClaimDetailDrawer` (read-only) — this tab is deliberately NOT where a
- * manager decides a claim; that is `PendingMyApprovalTab`, which renders
- * `ManagerReviewPanel` instead of this drawer.
+ * `ClaimDetailDrawer` (read-only) — this tab is deliberately not where a
+ * decision is made; claim approval is now a single fixed-role step handled
+ * entirely from the admin "Pending Reviews" tab (see
+ * `ClaimWorkflowService::approveDirect()`), not by an individual manager
+ * here. The old per-claim "Pending My Approval" tab that used to render
+ * `ManagerReviewPanel` has been removed.
  */
 export default function TeamClaimsTab() {
   const { user } = useAuth();

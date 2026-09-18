@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import Button from "../../../components/ui/Button";
 import ClaimSummaryCard from "./ClaimSummaryCard";
+import ClaimFullDetail from "./ClaimFullDetail";
 import { validateReviewDecision } from "../utils/claimValidation";
 import { getReviewStageMeta } from "../models/reviewStages";
 
@@ -8,13 +9,17 @@ const textareaClass =
   "w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500";
 
 /**
- * Shared chrome for every stage review panel (F5): claim summary header, a
- * row of decision buttons, any stage-specific extra fields, a remarks
- * textarea, and a Submit action. This component owns no network logic at
- * all — it is pure controlled UI, exactly mirroring the plan's prop shape
+ * Shared chrome for every stage review panel (F5): claim summary header,
+ * the full claim detail body (`ClaimFullDetail` — illness/hospital/
+ * treatment info, expense breakdown, documents, prior decisions, timeline;
+ * fetched by claim id, since the thin `reviews/pending` row this panel is
+ * handed carries none of it), a row of decision buttons, any
+ * stage-specific extra fields, a remarks textarea, and a Submit action.
+ * This component itself owns no decision-submission network logic — it is
+ * otherwise pure controlled UI, exactly mirroring the plan's prop shape
  * (`onSubmit(decision, remarks, extraFields)` + `submitting`/`error` passed
- * in from the caller). Each of the five stage panels (`ManagerReviewPanel`,
- * `CoordinatorReviewPanel`, `CommitteeReviewPanel`,
+ * in from the caller). Each of the six stage panels (`SingleApprovalPanel`,
+ * `ManagerReviewPanel`, `CoordinatorReviewPanel`, `CommitteeReviewPanel`,
  * `HrEligibilityReviewPanel`, `DirectorDecisionPanel`) is the thing that
  * actually calls `mediclaimApi.submitReviewDecision` and manages its own
  * `submitting`/`error` state, then hands this shell a plain callback.
@@ -92,6 +97,8 @@ export default function ReviewPanelShell({
   return (
     <div className="space-y-4">
       <ClaimSummaryCard claim={claim} />
+
+      <ClaimFullDetail claimId={claim?.id ?? claim?.claimId} />
 
       <div className="space-y-4 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
         <div>

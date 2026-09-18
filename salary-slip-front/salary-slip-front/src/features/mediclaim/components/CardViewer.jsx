@@ -106,9 +106,12 @@ export default function CardViewer({ onLoaded }) {
         const name = card.memberName || card.member_name || card.member?.fullName
           || card.member?.full_name || (isSelf ? employeeProfile?.name : "") || "—";
         const photoUrl = isSelf ? getEmployeePhotoUrl(employeeProfile?.photo) : "";
-        const employeeCode = isSelf
-          ? (employeeProfile?.punching_no || employeeProfile?.punching_code || employeeProfile?.employee_code)
-          : null;
+        // The card's "ID No." is always the sponsoring employee's own code —
+        // every family member's card is issued under that same number,
+        // since that's what HR/hospitals actually look coverage up by —
+        // not just the self card.
+        const employeeCode = employeeProfile?.emp_code || employeeProfile?.punching_no
+          || employeeProfile?.punching_code || employeeProfile?.employee_code;
 
         return (
           <MediclaimIdCard
@@ -118,6 +121,9 @@ export default function CardViewer({ onLoaded }) {
             relationship={relationship}
             photoUrl={photoUrl}
             employeeCode={employeeCode}
+            companyCode={employeeProfile?.company_code}
+            department={isSelf ? employeeProfile?.department : undefined}
+            designation={isSelf ? employeeProfile?.designation : undefined}
           />
         );
       })}

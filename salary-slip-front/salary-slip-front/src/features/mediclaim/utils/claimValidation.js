@@ -103,6 +103,19 @@ export function validateTreatmentStep(data = {}) {
     }
     if (!data.isOngoing && !data.dischargeDate) {
       errors.dischargeDate = "Date of discharge is required unless treatment is ongoing.";
+    } else if (data.admissionDate && data.dischargeDate) {
+      const admit = new Date(data.admissionDate);
+      const discharge = new Date(data.dischargeDate);
+      const admitDay = new Date(admit.getFullYear(), admit.getMonth(), admit.getDate());
+      const dischargeDay = new Date(discharge.getFullYear(), discharge.getMonth(), discharge.getDate());
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+      if (dischargeDay < admitDay) {
+        errors.dischargeDate = "Discharge date cannot be before the admission date.";
+      } else if (dischargeDay > today) {
+        errors.dischargeDate = "Discharge date cannot be in the future.";
+      }
     }
   }
 
@@ -193,7 +206,7 @@ export function validateReviewDecision({ stage, decision, remarks, approvedAmoun
     }
   }
 
-  if (stage === REVIEW_STAGE.DIRECTOR && normalizedDecision !== "REJECTED") {
+  if ((stage === REVIEW_STAGE.DIRECTOR || stage === REVIEW_STAGE.APPROVAL) && normalizedDecision !== "REJECTED") {
     if (approvedAmount === undefined || approvedAmount === null || approvedAmount === "") {
       errors.approvedAmount = "Approved amount is required unless the claim is rejected.";
     } else if (Number.isNaN(Number(approvedAmount)) || Number(approvedAmount) < 0) {

@@ -1066,24 +1066,32 @@ export default function EmployeeManagement() {
     [],
   );
 
+  const selectionColumnDef = useMemo(
+    () => ({
+      width: 45,
+      minWidth: 45,
+      maxWidth: 45,
+      pinned: "left",
+      lockPosition: true,
+      suppressHeaderMenuButton: true,
+    }),
+    []
+  );
+
+  const rowSelection = useMemo(
+    () => ({
+      mode: "multiRow",
+      enableClickSelection: false,
+      checkboxes: true,
+      headerCheckbox: true,
+    }),
+    []
+  );
+
   const columnDefs = useMemo(() => {
     if (isMobile) {
       return [
-        {
-          headerName: "",
-          checkboxSelection: true,
-          headerCheckboxSelection: true,
-          width: 45,
-          minWidth: 45,
-          maxWidth: 45,
-          pinned: "left",
-          lockPosition: true,
-          suppressHeaderMenuButton: true,
-          filter: false,
-          sortable: false,
-          resizable: false,
-          suppressMovable: true,
-        },
+        
         {
           headerName: "Employee Record",
           field: "mobileDetails",
@@ -1133,21 +1141,7 @@ export default function EmployeeManagement() {
     }
 
     return [
-      {
-        headerName: "",
-        checkboxSelection: true,
-        headerCheckboxSelection: true,
-        width: 45,
-        minWidth: 45,
-        maxWidth: 45,
-        pinned: "left",
-        lockPosition: true,
-        suppressHeaderMenuButton: true,
-        filter: false,
-        sortable: false,
-        resizable: false,
-        suppressMovable: true,
-      },
+      
       {
         headerName: "Profile",
         field: "profile",

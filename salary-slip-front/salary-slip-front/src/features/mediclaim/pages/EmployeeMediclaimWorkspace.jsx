@@ -9,7 +9,6 @@ import FamilyMembersTab from "./employee/tabs/FamilyMembersTab";
 import MyClaimsTab from "./employee/tabs/MyClaimsTab";
 import RuleBookTab from "./employee/tabs/RuleBookTab";
 import TeamClaimsTab from "./employee/tabs/TeamClaimsTab";
-import PendingMyApprovalTab from "./employee/tabs/PendingMyApprovalTab";
 
 /**
  * Employee Mediclaim workspace shell — title, sticky tab bar, then whichever
@@ -21,12 +20,18 @@ import PendingMyApprovalTab from "./employee/tabs/PendingMyApprovalTab";
  * Every F3/F4 tab here is unconditional — the whole workspace already sits
  * behind the route-level `ui.admin.mediclaim.view` / `canRoute()` check
  * added in F2, so none of these read-only or self-service tabs needs its
- * own permission gate. `team` and `pending` (F5) are the only two tabs in
- * this workspace that carry a `permissions` array: Team Claims and Pending
- * My Approval are manager-facing, not available to every employee, so they
- * gate on `mediclaim.team_claim.read` / `mediclaim.claim.manager.decide`
- * respectively via the same `TABS.filter(t => !t.permissions ||
- * t.permissions.some(can))` mechanism `HiringWorkspace.jsx` uses.
+ * own permission gate. `team` is the only tab in this workspace that
+ * carries a `permissions` array: Team Claims is manager-facing, not
+ * available to every employee, so it gates on `mediclaim.team_claim.read`
+ * via the same `TABS.filter(t => !t.permissions || t.permissions.some(can))`
+ * mechanism `HiringWorkspace.jsx` uses.
+ *
+ * "Pending My Approval" (the old per-claim manager-decision queue) was
+ * removed outright: the simplified claim workflow (see
+ * `ClaimWorkflowService::approveDirect()` on the backend) replaced the
+ * manager-review stage with a single fixed-role approval step handled
+ * entirely from the admin "Pending Reviews" tab, so there is no longer
+ * anything for an individual manager to decide here.
  *
  * "Cards", "Hospitals" and the standalone "Rule Book" tab were folded into
  * the renamed "Mediclaim Info" tab (`MediclaimInfoTab.jsx`) so everything
@@ -47,7 +52,6 @@ const TABS = [
   { key: "rulebook", label: "Rule Book" },
   { key: "claims", label: "My Claims" },
   { key: "team", label: "Team Claims", permissions: ["mediclaim.team_claim.read"] },
-  { key: "pending", label: "Pending My Approval", permissions: ["mediclaim.claim.manager.decide"] },
 ];
 
 // Until onboarding is complete, the tab bar is cut down to just these two
@@ -207,7 +211,6 @@ export default function EmployeeMediclaimWorkspace() {
       {tab === "claims" && <MyClaimsTab lookups={lookups} />}
       {tab === "rulebook" && <RuleBookTab lookups={lookups} onboarding={lookups.onboarding} />}
       {tab === "team" && <TeamClaimsTab />}
-      {tab === "pending" && <PendingMyApprovalTab />}
     </div>
   );
 }

@@ -530,7 +530,13 @@ function EmployeeDetailPanel({ data, canUpdate, onEditEnrollment }) {
                   name={member ? memberName(member) : "—"}
                   relationship={relationship}
                   photoUrl={isSelf ? getEmployeePhotoUrl(employee.photo) : ""}
-                  employeeCode={isSelf ? employee.empCode : null}
+                  // Every family member's card carries the sponsoring
+                  // employee's own code, not just the self card — that's
+                  // what HR/hospitals actually look coverage up by.
+                  employeeCode={employee.empCode}
+                  companyCode={employee.companyCode}
+                  department={isSelf ? employee.department : undefined}
+                  designation={isSelf ? employee.designation : undefined}
                 />
               );
             })}

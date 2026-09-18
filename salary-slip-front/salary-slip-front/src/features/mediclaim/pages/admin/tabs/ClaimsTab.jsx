@@ -36,8 +36,8 @@ const inputClass =
  * (Drafts are excluded unconditionally, server-side, regardless of filter —
  * they're the employee's own private unsubmitted work). Row click opens the
  * shared, read-only `ClaimDetailDrawer` — deciding a claim happens from the
- * Pending Reviews tab instead, same separation `TeamClaimsTab`/
- * `PendingMyApprovalTab` already established on the employee side.
+ * Pending Reviews tab instead, same separation `TeamClaimsTab` already
+ * established on the employee side.
  *
  * "Delete" (gated on `mediclaim.claim.delete`, realistically super-admin
  * only) is a genuine hard delete, unlike every "retire" pattern elsewhere

@@ -16,6 +16,14 @@ import { CLAIM_STATUS, CLAIM_STATUS_LIST } from "./claimStatus";
  */
 
 export const REVIEW_STAGE = {
+  // The simplified workflow's single approval step — a claim at SUBMITTED
+  // or MANAGER_REVIEW, decided in one action by whoever holds
+  // `mediclaim.claim.approve` (see ClaimWorkflowService::approveDirect()'s
+  // docblock on the backend). Replaces MANAGER as the stage
+  // `getStageByPendingStatus()` resolves those two statuses to below — the
+  // MANAGER stage/panel itself is left registered for backward
+  // compatibility but is no longer reachable from a fresh claim.
+  APPROVAL: "APPROVAL",
   MANAGER: "MANAGER",
   COORDINATOR: "COORDINATOR",
   COMMITTEE: "COMMITTEE",
@@ -47,6 +55,21 @@ export const REVIEW_DECISION = {
 };
 
 export const REVIEW_STAGE_META = {
+  [REVIEW_STAGE.APPROVAL]: {
+    label: "Approval",
+    sectionLabel: null,
+    pendingStatus: null, // resolved from two statuses (SUBMITTED, MANAGER_REVIEW) — see getStageByPendingStatus()
+    decidePermission: "mediclaim.claim.approve",
+    decisions: [
+      { value: REVIEW_DECISION.APPROVED, label: "Approved" },
+      { value: REVIEW_DECISION.PARTIALLY_APPROVED, label: "Partially Approved" },
+      { value: REVIEW_DECISION.REJECTED, label: "Rejected" },
+    ],
+    cleanApproveDecision: REVIEW_DECISION.APPROVED,
+    // Approved Amount is required for every Approval decision except a
+    // clean Rejected — same rule as DIRECTOR, see claimValidation.js.
+    requiresApprovedAmountUnless: REVIEW_DECISION.REJECTED,
+  },
   [REVIEW_STAGE.MANAGER]: {
     label: "Manager Review",
     sectionLabel: null,
@@ -140,6 +163,7 @@ export const REVIEW_STAGES_IN_ORDER = [
  * reason, not excluded.
  */
 export const STAGE_DECIDE_PERMISSIONS = [
+  REVIEW_STAGE.APPROVAL,
   REVIEW_STAGE.MANAGER,
   REVIEW_STAGE.COORDINATOR,
   REVIEW_STAGE.COMMITTEE,
@@ -168,17 +192,27 @@ export const CLAIM_WORKFLOW_BUCKET = {
   FINALIZED: "FINALIZED",
 };
 
-// SETTLEMENT_PENDING only — the claim has cleared every review stage and is
-// waiting on the employee's documents / HR's final settlement approve.
-export const PENDING_DOCUMENT_STATUSES = [CLAIM_STATUS.SETTLEMENT_PENDING];
+// APPROVED/PARTIALLY_APPROVED (the simplified workflow's single-approval
+// resting state — see ClaimWorkflowService::approveDirect()'s docblock) and
+// SETTLEMENT_PENDING (the legacy flow's post-Director state) both mean the
+// same thing from this bucket's point of view: the claim has cleared
+// approval and is waiting on the employee's documents (then, for
+// SETTLEMENT_PENDING claims only, HR's manual final settlement approve —
+// a claim newly approved via approveDirect() settles automatically instead,
+// see autoSettleIfDocumentsComplete()). Neither is "finished" yet, so
+// neither belongs in the finalized bucket below.
+export const PENDING_DOCUMENT_STATUSES = [
+  CLAIM_STATUS.APPROVED,
+  CLAIM_STATUS.PARTIALLY_APPROVED,
+  CLAIM_STATUS.SETTLEMENT_PENDING,
+];
 
 // The genuine end of the pipeline — matches ClaimsTab.jsx's original
 // FINALIZED_STATUSES exactly (kept broad, not just the success path, so a
 // rejected/withdrawn/cancelled claim still lands somewhere instead of
-// disappearing from every tab).
+// disappearing from every tab). APPROVED/PARTIALLY_APPROVED are
+// deliberately NOT here — see PENDING_DOCUMENT_STATUSES above.
 export const FINALIZED_CLAIM_STATUSES = [
-  CLAIM_STATUS.APPROVED,
-  CLAIM_STATUS.PARTIALLY_APPROVED,
   CLAIM_STATUS.REJECTED,
   CLAIM_STATUS.SETTLED,
   CLAIM_STATUS.CLOSED,
@@ -204,13 +238,13 @@ export function getClaimWorkflowBucket(status) {
 
 /** Resolves which stage a claim is currently pending at, from its status. */
 export function getStageByPendingStatus(status) {
-  // SUBMITTED (not MANAGER_REVIEW) is the status a claim is left at when no
-  // manager could be resolved for the employee at submission time — the
-  // backend's ClaimWorkflowService::managerDecision() accepts it too (super
-  // admin only, see resolveOrCreateManagerAssignment()'s docblock), so the
-  // same ManagerReviewPanel/submitReviewDecision flow handles it here
-  // without needing a whole separate stage/panel.
-  if (status === CLAIM_STATUS.SUBMITTED) return REVIEW_STAGE.MANAGER;
+  // Simplified workflow: SUBMITTED and MANAGER_REVIEW both resolve to the
+  // single APPROVAL stage/panel — see ClaimWorkflowService::approveDirect()'s
+  // docblock. This supersedes the old MANAGER mapping for both statuses;
+  // that panel stays registered (STAGE_PANEL still has a MANAGER entry) only
+  // so the legacy managerDecision() codepath remains directly testable, but
+  // it is no longer reached through this resolver.
+  if (status === CLAIM_STATUS.SUBMITTED || status === CLAIM_STATUS.MANAGER_REVIEW) return REVIEW_STAGE.APPROVAL;
 
   const entry = Object.entries(REVIEW_STAGE_META).find(([, meta]) => meta.pendingStatus === status);
   return entry ? entry[0] : null;

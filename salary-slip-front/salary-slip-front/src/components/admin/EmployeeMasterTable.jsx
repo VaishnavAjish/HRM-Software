@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "react-hot-toast";
 import {
-  Search, Eye, Pencil, Trash2, Lock, Unlock, X,
+  Search, Eye, Pencil, Trash2, Lock, Unlock, X as CloseIcon,
   Users, Loader2, Filter, RotateCcw, Download, CloudUpload,
 } from "lucide-react";
 import Badge from "../ui/Badge";

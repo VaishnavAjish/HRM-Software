@@ -10,8 +10,8 @@ import Button from "../../../../../components/ui/Button";
 import { mediclaimApi } from "../../../services/mediclaimApi";
 import ClaimsTable from "../../../components/ClaimsTable";
 import ClaimStatusBadge from "../../../components/ClaimStatusBadge";
-import ClaimSummaryCard from "../../../components/ClaimSummaryCard";
 import ClaimDetailDrawer from "../../../components/ClaimDetailDrawer";
+import SingleApprovalPanel from "../../../components/SingleApprovalPanel";
 import ManagerReviewPanel from "../../../components/ManagerReviewPanel";
 import CoordinatorReviewPanel from "../../../components/CoordinatorReviewPanel";
 import CommitteeReviewPanel from "../../../components/CommitteeReviewPanel";
@@ -38,6 +38,7 @@ const PENDING_FETCH_SIZE = 100;
 
 // Which panel component renders for a resolved stage.
 const STAGE_PANEL = {
+  [REVIEW_STAGE.APPROVAL]: SingleApprovalPanel,
   [REVIEW_STAGE.MANAGER]: ManagerReviewPanel,
   [REVIEW_STAGE.COORDINATOR]: CoordinatorReviewPanel,
   [REVIEW_STAGE.COMMITTEE]: CommitteeReviewPanel,
@@ -50,6 +51,7 @@ const STAGE_PANEL = {
 // controls — the exact key names that helper exports (see
 // `src/utils/formActionAccess.js`).
 const STAGE_ACCESS_KEY = {
+  [REVIEW_STAGE.APPROVAL]: "claimApprove",
   [REVIEW_STAGE.MANAGER]: "managerDecide",
   [REVIEW_STAGE.COORDINATOR]: "coordinatorDecide",
   [REVIEW_STAGE.COMMITTEE]: "committeeDecide",
@@ -62,12 +64,12 @@ const SUB_TABS = [
   {
     key: CLAIM_WORKFLOW_BUCKET.PENDING_APPROVAL,
     label: "Pending Approval",
-    description: "Claims moving through Manager, Coordinator, Committee, HR Eligibility and Director review.",
+    description: "Newly submitted claims awaiting the single approval decision (legacy in-flight claims still moving through Manager, Coordinator, Committee, HR Eligibility or Director review also show here).",
   },
   {
     key: CLAIM_WORKFLOW_BUCKET.PENDING_DOCUMENT,
     label: "Pending Document",
-    description: "Director-approved claims waiting on the employee's documents, then HR's final settlement approval.",
+    description: "Approved claims waiting on the employee's documents — they settle automatically once every required document is on file (legacy Settlement-stage claims still need HR's manual final approval).",
   },
   {
     key: CLAIM_WORKFLOW_BUCKET.FINALIZED,
@@ -271,10 +273,18 @@ export default function PendingReviewsTab() {
   };
 
   const selectedStage = selectedClaim ? resolveStage(selectedClaim) : null;
-  const selectedStageMeta = selectedStage ? REVIEW_STAGE_META[selectedStage] : null;
   const SelectedPanel = selectedStage ? STAGE_PANEL[selectedStage] : null;
   const canDecideSelected = selectedStage ? Boolean(access[STAGE_ACCESS_KEY[selectedStage]]) : false;
-  const selectedIsFinalized = selectedClaim ? getClaimWorkflowBucket(selectedClaim.status) === CLAIM_WORKFLOW_BUCKET.FINALIZED : false;
+  // Anything that isn't an actionable decision panel the current user can
+  // actually use — finalized, awaiting documents (APPROVED/
+  // PARTIALLY_APPROVED under the simplified workflow auto-settle once
+  // documents are complete — see autoSettleIfDocumentsComplete() — so there
+  // is nothing to decide here), or a legacy stage the viewer lacks
+  // permission for — falls back to the same full, read-only
+  // `ClaimDetailDrawer` the Approved Claim tab already uses, instead of a
+  // bare summary card plus a "no permission" message that was actively
+  // misleading for a claim with no decision pending at all.
+  const selectedIsActionable = Boolean(selectedClaim && SelectedPanel && canDecideSelected);
 
   const baseColumns = [
     { key: "claimNumber", label: "Claim #", render: (row) => row.claimNumber || row.claim_number || "—" },
@@ -314,7 +324,9 @@ export default function PendingReviewsTab() {
       label: "Awaiting",
       render: (row) => {
         const stage = resolveStage(row);
-        return stage ? REVIEW_STAGE_META[stage]?.label : (row.status || "—");
+        if (stage) return REVIEW_STAGE_META[stage]?.label;
+        if (row.status === "APPROVED" || row.status === "PARTIALLY_APPROVED") return "Employee's Documents";
+        return row.status || "—";
       },
     },
     { key: "status", label: "Status", render: (row) => <ClaimStatusBadge status={row.status} /> },
@@ -432,36 +444,23 @@ export default function PendingReviewsTab() {
         />
       )}
 
-      {selectedIsFinalized ? (
+      {selectedIsActionable ? (
+        <Drawer
+          isOpen={Boolean(selectedClaim)}
+          onClose={() => setSelectedClaim(null)}
+          title={REVIEW_STAGE_META[selectedStage]?.label || "Claim Review"}
+          subtitle={selectedClaim?.claimNumber || selectedClaim?.claim_number}
+          size="lg"
+        >
+          <SelectedPanel claim={selectedClaim} onDecided={handleDecided} />
+        </Drawer>
+      ) : (
         <ClaimDetailDrawer
           isOpen={Boolean(selectedClaim)}
           onClose={() => setSelectedClaim(null)}
           claimId={selectedClaim?.id ?? selectedClaim?.claimId}
           title={selectedClaim?.claimNumber || selectedClaim?.claim_number}
         />
-      ) : (
-        <Drawer
-          isOpen={Boolean(selectedClaim)}
-          onClose={() => setSelectedClaim(null)}
-          title={selectedStageMeta?.label || "Claim Review"}
-          subtitle={selectedClaim?.claimNumber || selectedClaim?.claim_number}
-          size="lg"
-        >
-          {selectedClaim && SelectedPanel && canDecideSelected && (
-            <SelectedPanel claim={selectedClaim} onDecided={handleDecided} />
-          )}
-
-          {selectedClaim && (!SelectedPanel || !canDecideSelected) && (
-            <div className="space-y-4">
-              <ClaimSummaryCard claim={selectedClaim} />
-              <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
-                {SelectedPanel
-                  ? `You do not have permission to decide claims at the ${selectedStageMeta?.label || "current"} stage — showing a read-only summary instead.`
-                  : "This claim's current review stage could not be determined — showing a read-only summary instead."}
-              </p>
-            </div>
-          )}
-        </Drawer>
       )}
     </div>
   );

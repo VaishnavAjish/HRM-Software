@@ -62,6 +62,43 @@ function countActiveChildren(members, excludingMemberId) {
   }).length;
 }
 
+function countActiveSpouses(members, excludingMemberId = null) {
+  return members.filter((m) => {
+    const relationship = String(m.relationshipType || m.relationship_type || "").toUpperCase();
+    if (relationship !== "SPOUSE") return false;
+    if (excludingMemberId && String(m.id) === String(excludingMemberId)) return false;
+    const status = String(m.status || "").toLowerCase();
+    return status === "" || status === "active" || status === "pending";
+  }).length;
+}
+
+function countActiveParents(members, excludingMemberId = null) {
+  return members.filter((m) => {
+    const relationship = String(m.relationshipType || m.relationship_type || "").toUpperCase();
+    if (!["PARENT", "FATHER", "MOTHER"].includes(relationship)) return false;
+    if (excludingMemberId && String(m.id) === String(excludingMemberId)) return false;
+    const status = String(m.status || "").toLowerCase();
+    return status === "" || status === "active" || status === "pending";
+  }).length;
+}
+
+function getAvailableRelationshipOptions(members, requestType, currentMemberId = null) {
+  const excludingId = requestType === REQUEST_TYPE.UPDATE ? currentMemberId : null;
+  const spouseCount = countActiveSpouses(members, excludingId);
+  const parentCount = countActiveParents(members, excludingId);
+
+  return RELATIONSHIP_OPTIONS.filter((option) => {
+    const optUpper = option.toUpperCase();
+    if (optUpper === "SPOUSE") {
+      return spouseCount < 1;
+    }
+    if (["PARENT", "FATHER", "MOTHER"].includes(optUpper)) {
+      return parentCount < 2;
+    }
+    return true;
+  });
+}
+
 /**
  * Client-side, advisory-only eligibility check mirroring the backend's
  * authoritative `PolicyEligibilityService`/`MediclaimMemberService` rules —
@@ -152,12 +189,24 @@ export default function FamilyMemberManager({ members = [], loading = false, err
 
   const loadRequests = () => setReloadToken((n) => n + 1);
 
+  const availableRelationshipOptions = getAvailableRelationshipOptions(
+    members,
+    form.requestType,
+    form.memberId
+  );
+
   const openRequest = (requestType = REQUEST_TYPE.ADD, member = null) => {
+    const available = getAvailableRelationshipOptions(members, requestType, member?.id);
+    const memberRel = member?.relationshipType || member?.relationship_type;
+    const defaultRel = memberRel && available.includes(memberRel)
+      ? memberRel
+      : (available[0] || "CHILD");
+
     setForm({
       ...EMPTY_FORM,
       requestType,
       memberId: member?.id != null ? String(member.id) : "",
-      relationshipType: member?.relationshipType || member?.relationship_type || "SPOUSE",
+      relationshipType: defaultRel,
       name: memberName(member),
       dateOfBirth: member?.dateOfBirth || member?.date_of_birth || "",
       gender: member?.gender || "",
@@ -312,7 +361,14 @@ export default function FamilyMemberManager({ members = [], loading = false, err
             {Object.values(REQUEST_TYPE).map((type) => (
               <button
                 key={type}
-                onClick={() => setForm((f) => ({ ...f, requestType: type }))}
+                onClick={() => {
+                  const available = getAvailableRelationshipOptions(members, type, form.memberId);
+                  setForm((f) => ({
+                    ...f,
+                    requestType: type,
+                    relationshipType: available.includes(f.relationshipType) ? f.relationshipType : (available[0] || "CHILD"),
+                  }));
+                }}
                 className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
                   form.requestType === type
                     ? "bg-white text-brand-600 shadow-sm dark:bg-gray-800 dark:text-brand-400"
@@ -356,7 +412,7 @@ export default function FamilyMemberManager({ members = [], loading = false, err
             <>
               <Field label="Relationship" required>
                 <select className={inputClass} value={form.relationshipType} onChange={(e) => setForm((f) => ({ ...f, relationshipType: e.target.value }))}>
-                  {RELATIONSHIP_OPTIONS.map((r) => <option key={r} value={r}>{r.charAt(0) + r.slice(1).toLowerCase()}</option>)}
+                  {availableRelationshipOptions.map((r) => <option key={r} value={r}>{r.charAt(0) + r.slice(1).toLowerCase()}</option>)}
                 </select>
               </Field>
               <Field label="Full Name" required>

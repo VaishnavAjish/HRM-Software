@@ -120,7 +120,7 @@ Route::middleware('jwt.auth')->prefix('v1/mediclaim')->middleware(['module.schem
     // still does the actual per-row 404-concealment underneath this.
     Route::get('claims/{claim}', [ClaimController::class, 'show'])
         ->whereNumber('claim')
-        ->middleware('permission:self.mediclaim.claim.read,mediclaim.claim.read,mediclaim.claim.manager.decide,mediclaim.claim.coordinator.decide,mediclaim.claim.committee.decide,mediclaim.claim.hr_verification.decide,mediclaim.claim.director.decide,mediclaim.audit.read');
+        ->middleware('permission:self.mediclaim.claim.read,mediclaim.claim.read,mediclaim.claim.approve,mediclaim.claim.manager.decide,mediclaim.claim.coordinator.decide,mediclaim.claim.committee.decide,mediclaim.claim.hr_verification.decide,mediclaim.claim.director.decide,mediclaim.audit.read');
 
     Route::put('claims/{claim}', [ClaimController::class, 'update'])
         ->whereNumber('claim')
@@ -140,6 +140,16 @@ Route::middleware('jwt.auth')->prefix('v1/mediclaim')->middleware(['module.schem
     // way to ever get a correct `documents_due_at`. Reuses the existing
     // self-update permission rather than minting a new one.
     Route::post('claims/{claim}/discharge', [ClaimController::class, 'discharge'])
+        ->whereNumber('claim')
+        ->middleware('permission:self.mediclaim.claim.update');
+
+    // Simplified workflow's ongoing-treatment follow-up — see
+    // ClaimController::finalizeTreatment()'s / ClaimWorkflowService::
+    // finalizeTreatment()'s docblocks: records the real discharge date AND
+    // appends the final expense line items in one call, once the actual
+    // bill is known. Reuses the existing self-update permission, same as
+    // the plain `discharge` route above.
+    Route::post('claims/{claim}/finalize-treatment', [ClaimController::class, 'finalizeTreatment'])
         ->whereNumber('claim')
         ->middleware('permission:self.mediclaim.claim.update');
 
@@ -178,11 +188,11 @@ Route::middleware('jwt.auth')->prefix('v1/mediclaim')->middleware(['module.schem
     // ever reaching the controller, even though the manager/settlement
     // panels were already wired to call them.
     Route::get('reviews/pending', [ReviewQueueController::class, 'index'])
-        ->middleware('permission:mediclaim.claim.manager.decide,mediclaim.claim.coordinator.decide,mediclaim.claim.committee.decide,mediclaim.claim.hr_verification.decide,mediclaim.claim.director.decide,mediclaim.settlement.create');
+        ->middleware('permission:mediclaim.claim.approve,mediclaim.claim.manager.decide,mediclaim.claim.coordinator.decide,mediclaim.claim.committee.decide,mediclaim.claim.hr_verification.decide,mediclaim.claim.director.decide,mediclaim.settlement.create');
 
     Route::post('reviews/{claim}/decision', [ReviewQueueController::class, 'decide'])
         ->whereNumber('claim')
-        ->middleware(['throttle:30,1', 'permission:mediclaim.claim.manager.decide,mediclaim.claim.coordinator.decide,mediclaim.claim.committee.decide,mediclaim.claim.hr_verification.decide,mediclaim.claim.director.decide,mediclaim.settlement.create']);
+        ->middleware(['throttle:30,1', 'permission:mediclaim.claim.approve,mediclaim.claim.manager.decide,mediclaim.claim.coordinator.decide,mediclaim.claim.committee.decide,mediclaim.claim.hr_verification.decide,mediclaim.claim.director.decide,mediclaim.settlement.create']);
 
     /* ------------------------------------------------------------ Admin/HR */
 

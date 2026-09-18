@@ -411,6 +411,7 @@ export default function NewClaimRequestModal({ onClose, lookups, onSubmitted, ed
                   value={formData.dischargeDate}
                   onChange={(e) => updateField({ dischargeDate: e.target.value })}
                   disabled={Boolean(formData.isOngoing)}
+                  min={formData.admissionDate || undefined}
                 />
               </Field>
             </div>

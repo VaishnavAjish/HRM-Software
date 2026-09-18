@@ -51,10 +51,30 @@ use Throwable;
  */
 class ClaimWorkflowService
 {
-    /** Statuses from which cancel() may still be called. */
+    /** Statuses cancel() refuses to act on — the claim is already terminal. */
     private const TERMINAL_STATUSES = [
         MediclaimClaim::STATUS_APPROVED,
         MediclaimClaim::STATUS_PARTIALLY_APPROVED,
+        MediclaimClaim::STATUS_REJECTED,
+        MediclaimClaim::STATUS_SETTLED,
+        MediclaimClaim::STATUS_CLOSED,
+        MediclaimClaim::STATUS_WITHDRAWN,
+        MediclaimClaim::STATUS_CANCELLED,
+    ];
+
+    /**
+     * Statuses recordDischarge()/finalizeTreatment() refuse to act on —
+     * deliberately NARROWER than TERMINAL_STATUSES above: it excludes
+     * APPROVED/PARTIALLY_APPROVED. Under the simplified workflow (see
+     * approveDirect()'s docblock) those two are a genuine mid-flow
+     * "approved, awaiting documents" resting state, not a finished one — an
+     * ongoing-treatment claim approved in principle before discharge MUST
+     * still be able to reach finalizeTreatment() afterward. Reusing
+     * TERMINAL_STATUSES here (as an earlier version of this method did) blocked
+     * exactly that case with "Treatment can only be finalized on a
+     * submitted, in-progress claim."
+     */
+    private const FINISHED_STATUSES = [
         MediclaimClaim::STATUS_REJECTED,
         MediclaimClaim::STATUS_SETTLED,
         MediclaimClaim::STATUS_CLOSED,
@@ -323,10 +343,13 @@ class ClaimWorkflowService
      * reopening the whole claim for editing (which updateDraft() only
      * allows from DRAFT/RETURNED_FOR_CORRECTION anyway).
      *
-     * Legal on any non-draft, non-terminal status — discharge can happen
-     * well after Manager Review (or later stages) has already started, and
-     * documents still need a real deadline regardless of how far review has
-     * progressed.
+     * Legal on any non-draft, non-finished status (see FINISHED_STATUSES —
+     * deliberately NOT the broader TERMINAL_STATUSES, since APPROVED/
+     * PARTIALLY_APPROVED are a genuine mid-flow "awaiting documents" resting
+     * state under the simplified workflow, not a finished one) — discharge
+     * can happen well after Manager Review (or later stages, or the new
+     * single approval) has already started, and documents still need a real
+     * deadline regardless of how far review has progressed.
      */
     public function recordDischarge(MediclaimClaim $claim, User $employee, Carbon $dischargeAt): MediclaimClaim
     {
@@ -337,16 +360,16 @@ class ClaimWorkflowService
                 throw MediclaimException::forbidden('WRONG_CLAIM_OWNER', 'You may only update your own claim.');
             }
 
-            $blocked = array_merge([MediclaimClaim::STATUS_DRAFT], self::TERMINAL_STATUSES);
+            $blocked = array_merge([MediclaimClaim::STATUS_DRAFT], self::FINISHED_STATUSES);
             if (in_array($locked->status, $blocked, true)) {
                 throw ValidationException::withMessages(['status' => 'Discharge can only be recorded on a submitted, in-progress claim.']);
             }
 
-            if ($dischargeAt->isFuture()) {
+            if ($dischargeAt->copy()->startOfDay()->gt(Carbon::now()->endOfDay())) {
                 throw ValidationException::withMessages(['discharge_at' => 'Discharge date cannot be in the future.']);
             }
 
-            if ($locked->admission_at && $dischargeAt->lt(Carbon::parse($locked->admission_at))) {
+            if ($locked->admission_at && $dischargeAt->copy()->startOfDay()->lt(Carbon::parse($locked->admission_at)->startOfDay())) {
                 throw ValidationException::withMessages(['discharge_at' => 'Discharge date cannot be before the admission date.']);
             }
 
@@ -363,6 +386,101 @@ class ClaimWorkflowService
                 $locked->status,
                 $employee,
                 'Discharge recorded; document upload window now due ' . $locked->documents_due_at->toDateString() . '.'
+            );
+
+            return $this->freshClaim($locked);
+        });
+    }
+
+    /**
+     * Employee follow-up for a claim submitted while treatment was still
+     * ongoing (`is_ongoing_treatment = true`): records the real discharge
+     * date/time (same rules as recordDischarge() above — deliberately not
+     * reused as a nested transaction, since the expense/reconciliation work
+     * below must commit atomically with the discharge write, not as two
+     * separate transactions) and APPENDS the final expense line items now
+     * that the actual bill is known. syncExpenses() is a destructive
+     * wholesale-replace and is only legal pre-submit (DRAFT/
+     * RETURNED_FOR_CORRECTION), so it cannot be reused here.
+     *
+     * Reconciliation (only when the claim already rests at
+     * APPROVED/PARTIALLY_APPROVED, i.e. approveDirect() already ran on
+     * preliminary information while treatment was ongoing): if the original
+     * approval decision was a full `approved` (not a capped
+     * `partially_approved`), `total_approved_amount` is bumped to match the
+     * freshly recomputed `total_claimed_amount` — the admin approved the
+     * claim in principle, not a specific capped figure, so the final bill is
+     * what gets auto-settled with no second review (see
+     * `autoSettleIfDocumentsComplete()`). A `partially_approved` cap is a
+     * deliberate reduced figure and is never silently raised by later
+     * expense additions.
+     *
+     * Legal on the same statuses as recordDischarge() — see
+     * FINISHED_STATUSES's docblock for why APPROVED/PARTIALLY_APPROVED must
+     * stay legal here specifically (an ongoing-treatment claim approved in
+     * principle before discharge must still be able to reach this method
+     * afterward).
+     */
+    public function finalizeTreatment(MediclaimClaim $claim, User $employee, Carbon $dischargeAt, array $newExpenses): MediclaimClaim
+    {
+        return DB::transaction(function () use ($claim, $employee, $dischargeAt, $newExpenses) {
+            $locked = MediclaimClaim::query()->lockForUpdate()->findOrFail($claim->id);
+
+            if ((int) $locked->employee_user_id !== (int) $employee->id) {
+                throw MediclaimException::forbidden('WRONG_CLAIM_OWNER', 'You may only update your own claim.');
+            }
+
+            $blocked = array_merge([MediclaimClaim::STATUS_DRAFT], self::FINISHED_STATUSES);
+            if (in_array($locked->status, $blocked, true)) {
+                throw ValidationException::withMessages(['status' => 'Treatment can only be finalized on a submitted, in-progress claim.']);
+            }
+
+            if ($dischargeAt->copy()->startOfDay()->gt(Carbon::now()->endOfDay())) {
+                throw ValidationException::withMessages(['discharge_at' => 'Discharge date cannot be in the future.']);
+            }
+
+            if ($locked->admission_at && $dischargeAt->copy()->startOfDay()->lt(Carbon::parse($locked->admission_at)->startOfDay())) {
+                throw ValidationException::withMessages(['discharge_at' => 'Discharge date cannot be before the admission date.']);
+            }
+
+            $locked->discharge_at = $dischargeAt;
+            $locked->is_ongoing_treatment = false;
+            $locked->documents_due_at = $dischargeAt->copy()->addDays(7);
+
+            foreach ($newExpenses as $row) {
+                $locked->expenses()->create([
+                    'category' => $row['category'] ?? null,
+                    'description' => $row['description'] ?? null,
+                    'claimed_amount' => $row['claimed_amount'] ?? 0,
+                    'expense_date' => $row['expense_date'] ?? null,
+                ]);
+            }
+
+            $locked->total_claimed_amount = (float) $locked->expenses()->sum('claimed_amount');
+
+            if (in_array($locked->status, [MediclaimClaim::STATUS_APPROVED, MediclaimClaim::STATUS_PARTIALLY_APPROVED], true)) {
+                $latestApproval = $locked->decisions()
+                    ->where('stage', 'APPROVAL')
+                    ->latest('decided_at')
+                    ->first();
+
+                if ($latestApproval && $latestApproval->decision === 'approved') {
+                    $locked->total_approved_amount = $locked->total_claimed_amount;
+                    $locked->total_disallowed_amount = 0;
+                    $locked->status = MediclaimClaim::STATUS_APPROVED;
+                }
+            }
+
+            $locked->updated_by = $employee->id;
+            $locked->save();
+
+            $this->logTransition(
+                $locked,
+                'TREATMENT_FINALIZED',
+                $locked->status,
+                $locked->status,
+                $employee,
+                'Discharge and final charges recorded; document upload window now due ' . $locked->documents_due_at->toDateString() . '.'
             );
 
             return $this->freshClaim($locked);
@@ -800,6 +918,115 @@ class ClaimWorkflowService
     }
 
     /**
+     * Single-step approval used by the simplified claim workflow: any actor
+     * holding `mediclaim.claim.approve` (a fixed HR-admin role, NOT the
+     * employee's manager) can approve/reject a claim directly from
+     * SUBMITTED or MANAGER_REVIEW — replacing the old five-stage
+     * Manager -> Coordinator -> Committee -> HR -> Director chain for claims
+     * decided this way. Deliberately skips the manager-assignment/
+     * confidentiality-ack checks managerDecision() enforces: this approver
+     * acts under a company-wide permission, not a point-in-time
+     * reporting-line snapshot, so there is no per-claim assignment row to
+     * create here either.
+     *
+     * $decision ∈ approved|partially_approved|rejected — identical
+     * vocabulary and amount-cap/floater-override rules to
+     * directorFinalApproval(), reused verbatim rather than re-derived. On
+     * approved/partially_approved the claim rests at
+     * APPROVED/PARTIALLY_APPROVED (status constants that existed but were
+     * never used as a resting state prior to this method — see
+     * directorFinalApproval()'s docblock) rather than jumping straight to
+     * SETTLEMENT_PENDING, because — unlike the old flow — documents are not
+     * yet known to be complete at this point. autoSettleIfDocumentsComplete()
+     * is what carries the claim the rest of the way once they are.
+     */
+    public function approveDirect(
+        MediclaimClaim $claim,
+        User $actor,
+        string $decision,
+        float $approvedAmount,
+        ?string $remarks = null,
+        ?MediclaimFloaterOverride $override = null
+    ): MediclaimClaim {
+        if (! in_array($decision, ['approved', 'partially_approved', 'rejected'], true)) {
+            throw ValidationException::withMessages(['decision' => 'Unknown approval decision.']);
+        }
+
+        return DB::transaction(function () use ($claim, $actor, $decision, $approvedAmount, $remarks, $override) {
+            $locked = MediclaimClaim::query()->lockForUpdate()->findOrFail($claim->id);
+
+            if (! in_array($locked->status, [MediclaimClaim::STATUS_SUBMITTED, MediclaimClaim::STATUS_MANAGER_REVIEW], true)) {
+                throw ValidationException::withMessages(['status' => 'This claim is not awaiting approval.']);
+            }
+
+            if ($decision !== 'approved') {
+                $remarks = $this->assertRemarks($remarks);
+            }
+
+            $claimedTotal = (float) $locked->total_claimed_amount;
+
+            if ($decision === 'rejected') {
+                $approvedAmount = 0.0;
+            }
+
+            if ($approvedAmount < 0) {
+                throw ValidationException::withMessages(['approved_amount' => 'The approved amount cannot be negative.']);
+            }
+
+            if ($approvedAmount > $claimedTotal) {
+                throw ValidationException::withMessages(['approved_amount' => 'The approved amount cannot exceed the total claimed amount.']);
+            }
+
+            if (in_array($decision, ['approved', 'partially_approved'], true) && $approvedAmount > 0) {
+                if ($locked->enrollment_id && $locked->policy_version_id) {
+                    $enrollment = MediclaimEnrollment::findOrFail($locked->enrollment_id);
+                    $policyVersion = MediclaimPolicyVersion::findOrFail($locked->policy_version_id);
+                    $this->eligibility->assertWithinFloater(
+                        $enrollment,
+                        $policyVersion,
+                        $approvedAmount,
+                        $override,
+                        $locked->submitted_at ? Carbon::parse($locked->submitted_at) : now()
+                    );
+                }
+
+                if ($override !== null) {
+                    $override->claim_id = $locked->id;
+                    $override->enrollment_id = $override->enrollment_id ?? $locked->enrollment_id;
+                    $override->approved_by = $override->approved_by ?? $actor->id;
+                    $override->approved_at = $override->approved_at ?? now();
+                    $override->save();
+                }
+            }
+
+            MediclaimClaimDecision::create([
+                'claim_id' => $locked->id,
+                'stage' => 'APPROVAL',
+                'decided_by' => $actor->id,
+                'decision' => $decision,
+                'remarks' => $remarks,
+                'fields' => ['approved_amount' => $approvedAmount],
+                'decided_at' => now(),
+            ]);
+
+            $fromStatus = $locked->status;
+            $locked->total_approved_amount = $approvedAmount;
+            $locked->total_disallowed_amount = max(0.0, $claimedTotal - $approvedAmount);
+            $locked->status = match ($decision) {
+                'rejected' => MediclaimClaim::STATUS_REJECTED,
+                'partially_approved' => MediclaimClaim::STATUS_PARTIALLY_APPROVED,
+                default => MediclaimClaim::STATUS_APPROVED,
+            };
+            $locked->updated_by = $actor->id;
+            $locked->save();
+
+            $this->logTransition($locked, 'CLAIM_' . strtoupper($decision), $fromStatus, $locked->status, $actor, $remarks);
+
+            return $this->freshClaim($locked);
+        });
+    }
+
+    /**
      * Generic "send back to the employee" usable from any active review
      * stage, for the plan's separate `/claims/{claim}/return` endpoint (B4)
      * that lets whoever currently holds the claim return it regardless of
@@ -899,6 +1126,72 @@ class ClaimWorkflowService
 
             return $this->freshClaim($locked);
         });
+    }
+
+    /**
+     * Opportunistic completion for the simplified workflow: called after
+     * every claim-document upload (see `ClaimDocumentController::store()`),
+     * this carries a claim the rest of the way to SETTLED/CLOSED the moment
+     * its last required document lands — replacing the old flow's separate
+     * manual "Settlement" form for claims decided via approveDirect(). A
+     * pure no-op (returns null, changes nothing) unless the claim is
+     * currently APPROVED/PARTIALLY_APPROVED with a positive approved amount
+     * and every required document (`missingDocumentTypes()`) is already on
+     * file — safe to call unconditionally after any upload regardless of
+     * the claim's actual status.
+     *
+     * Advances the status to SETTLEMENT_PENDING in its own transaction
+     * first (so that transition is durably recorded even if something below
+     * fails), then delegates to the existing `recordSettlement()` +
+     * `closeClaim()` — the exact same two calls
+     * `ReviewQueueController::decide()`'s "Final Approve" already makes for
+     * the legacy flow — rather than re-implementing settlement bookkeeping.
+     */
+    public function autoSettleIfDocumentsComplete(MediclaimClaim $claim, User $actor): ?MediclaimClaim
+    {
+        $advanced = DB::transaction(function () use ($claim, $actor) {
+            $locked = MediclaimClaim::query()->lockForUpdate()->findOrFail($claim->id);
+
+            if (! in_array($locked->status, [MediclaimClaim::STATUS_APPROVED, MediclaimClaim::STATUS_PARTIALLY_APPROVED], true)) {
+                return null;
+            }
+
+            if ((float) $locked->total_approved_amount <= 0) {
+                return null;
+            }
+
+            if (! empty($this->missingDocumentTypes($locked))) {
+                return null;
+            }
+
+            $fromStatus = $locked->status;
+            $locked->status = MediclaimClaim::STATUS_SETTLEMENT_PENDING;
+            $locked->updated_by = $actor->id;
+            $locked->save();
+
+            $this->logTransition(
+                $locked,
+                'AUTO_ADVANCED_TO_SETTLEMENT_PENDING',
+                $fromStatus,
+                $locked->status,
+                $actor,
+                'All required documents on file; advancing to settlement automatically.'
+            );
+
+            return $locked;
+        });
+
+        if ($advanced === null) {
+            return null;
+        }
+
+        $settled = $this->recordSettlement($advanced->fresh(), $actor, (float) $advanced->total_approved_amount, 'auto_settlement', null);
+
+        if ($settled->status === MediclaimClaim::STATUS_SETTLED) {
+            $settled = $this->closeClaim($settled, $actor);
+        }
+
+        return $settled;
     }
 
     /** Legal only from SETTLED -> CLOSED. */

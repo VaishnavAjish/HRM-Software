@@ -30,13 +30,17 @@ class ReviewQueueController extends Controller
 
     /** status (= MediclaimClaimAssignment::STAGE_*) => ClaimWorkflowService method name. */
     private const STAGE_METHODS = [
-        // A claim stuck at SUBMITTED (no manager could be resolved at
-        // submission — see ClaimWorkflowService::submit()'s docblock, point
-        // f) dispatches through this exact same managerDecision() method;
-        // that method now has a super-admin-only rescue branch for it. See
-        // MediclaimClaim::scopeAwaitingReviewBy()'s matching addition.
-        MediclaimClaim::STATUS_SUBMITTED => 'managerDecision',
-        MediclaimClaim::STATUS_MANAGER_REVIEW => 'managerDecision',
+        // Simplified workflow: a claim at SUBMITTED or MANAGER_REVIEW is
+        // decided in one step by whoever holds `mediclaim.claim.approve` (a
+        // fixed HR-admin role) via ClaimWorkflowService::approveDirect() —
+        // see that method's docblock. The legacy managerDecision() method
+        // (tied to the employee's actual assigned manager +
+        // confidentiality-ack) is left fully intact and still directly
+        // callable; it is simply no longer reachable through this dispatch
+        // table, since the fixed approver replaces the manager stage
+        // entirely going forward.
+        MediclaimClaim::STATUS_SUBMITTED => 'approveDirect',
+        MediclaimClaim::STATUS_MANAGER_REVIEW => 'approveDirect',
         MediclaimClaim::STATUS_COORDINATOR_VERIFICATION => 'coordinatorVerify',
         MediclaimClaim::STATUS_COMMITTEE_RECOMMENDATION => 'committeeRecommend',
         MediclaimClaim::STATUS_HR_ELIGIBILITY_VERIFICATION => 'hrVerifyEligibility',
@@ -105,6 +109,15 @@ class ReviewQueueController extends Controller
         return $this->guarded(function () use ($method, $model, $actor, $data) {
             if ($method === 'directorFinalApproval') {
                 $updated = $this->workflow->directorFinalApproval(
+                    $model,
+                    $actor,
+                    (string) $data['decision'],
+                    (float) ($data['approved_amount'] ?? 0),
+                    $data['remarks'] ?? null,
+                    $this->buildOverride($data['floater_override'] ?? null, $model)
+                );
+            } elseif ($method === 'approveDirect') {
+                $updated = $this->workflow->approveDirect(
                     $model,
                     $actor,
                     (string) $data['decision'],

@@ -3,7 +3,6 @@ import { useSearchParams } from "react-router-dom";
 import { useMediclaimAuthorization } from "../hooks/useMediclaimAuthorization";
 import DashboardTab from "./admin/tabs/DashboardTab";
 import EmployeesTab from "./admin/tabs/EmployeesTab";
-import ClaimsTab from "./admin/tabs/ClaimsTab";
 import PendingReviewsTab from "./admin/tabs/PendingReviewsTab";
 import SettingsTab from "./admin/tabs/SettingsTab";
 import ReportsTab from "./admin/tabs/ReportsTab";
@@ -35,11 +34,11 @@ import ReportsTab from "./admin/tabs/ReportsTab";
 const TABS = [
   { key: "dashboard", label: "Dashboard" },
   { key: "employees", label: "Employees" },
-  { key: "claims", label: "Claims" },
   {
-    key: "pending-reviews",
-    label: "Pending Reviews",
+    key: "claims",
+    label: "Claims",
     permissions: [
+      "mediclaim.claim.approve",
       "mediclaim.claim.manager.decide",
       "mediclaim.claim.coordinator.decide",
       "mediclaim.claim.committee.decide",
@@ -117,8 +116,7 @@ export default function AdminMediclaimWorkspace() {
       <div className={isFullHeightTab ? "flex-1 min-h-0 flex flex-col overflow-hidden" : ""}>
         {tab === "dashboard" && <DashboardTab onNavigate={selectTab} />}
         {tab === "employees" && <EmployeesTab />}
-        {tab === "claims" && <ClaimsTab />}
-        {tab === "pending-reviews" && <PendingReviewsTab />}
+        {(tab === "claims" || tab === "pending-reviews") && <PendingReviewsTab />}
         {tab === "settings" && <SettingsTab />}
         {tab === "reports" && <ReportsTab />}
       </div>
