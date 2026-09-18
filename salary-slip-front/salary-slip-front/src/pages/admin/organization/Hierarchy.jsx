@@ -2303,7 +2303,7 @@ function HierarchyCanvasInner() {
                                 <td className="py-3.5 px-4 text-right">
                                   <div className="flex items-center justify-end gap-2">
                                     <button
-                                      onClick={() => handleOpenAuthorityModal(auth)}
+                                      onClick={() => handleEditAuthority(auth)}
                                       className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-brand-600 dark:hover:bg-gray-800 transition-all cursor-pointer"
                                       title="Edit Authority"
                                     >

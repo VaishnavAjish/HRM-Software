@@ -10,6 +10,8 @@ import {
   Loader2,
   Search,
   RotateCcw,
+  X,
+  AlertCircle,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";

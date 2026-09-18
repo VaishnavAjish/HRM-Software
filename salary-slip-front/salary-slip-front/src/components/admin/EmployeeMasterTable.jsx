@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "react-hot-toast";
-import * as XLSX from "xlsx";
 import {
   Search, Eye, Pencil, Trash2, Lock, Unlock, X,
   Users, Loader2, Filter, RotateCcw, Download, CloudUpload,
@@ -13,6 +12,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";
 import { useAuthorization } from "../../hooks/useAuthorization";
 import { getCompanyConfig } from "../../config/companyConfig";
+import { saveJsonToXlsx } from "../../utils/excel";
 // These two are the same production forms used on the Appointments and Trial
 // Form admin pages — reused here rather than rebuilt so "view/edit like the
 // appointment form" is literally that form, not a lookalike.
@@ -615,7 +615,7 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
 
   // Exports exactly what's on screen — same search/stage/month/year filters
   // already applied to `filtered` — not the full unfiltered dataset.
-  const exportToExcel = () => {
+  const exportToExcel = async () => {
     if (filtered.length === 0) {
       toast.error("No rows to export with the current filters");
       return;
@@ -636,10 +636,11 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
       "Joining Date": r.joining_date || "",
       "Trial Date": r.trial_date || "",
     }));
-    const ws = XLSX.utils.json_to_sheet(sheetRows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Employee Master");
-    XLSX.writeFile(wb, `employee_master_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    try {
+      await saveJsonToXlsx(`employee_master_${new Date().toISOString().slice(0, 10)}.xlsx`, "Employee Master", sheetRows);
+    } catch (err) {
+      toast.error(err.message || "Failed to export Excel file");
+    }
   };
 
   const cellInputCls =

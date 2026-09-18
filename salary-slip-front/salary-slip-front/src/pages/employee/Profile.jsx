@@ -184,8 +184,8 @@ export default function Profile() {
           : Promise.resolve(null);
 
         const [sRes, posRes] = await Promise.all([
-          salaryDesigFetcher.catch(() => null),
-          posFetcher.catch(() => null),
+          Promise.resolve(salaryDesigFetcher).catch(() => null),
+          Promise.resolve(posFetcher).catch(() => null),
         ]);
         const set = new Set();
         if (sRes?.data && Array.isArray(sRes.data)) {

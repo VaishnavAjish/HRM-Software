@@ -1,0 +1,47 @@
+import { R as RouteModule, e as LinkDescriptor, L as Location, F as Func, f as Pretty, g as MetaDescriptor, G as GetLoaderData, h as ServerDataFunctionArgs, i as MiddlewareNextFunction, j as ClientDataFunctionArgs, D as DataStrategyResult, k as ServerDataFrom, N as Normalize, l as GetActionData } from '../../data-DEjBmEfD.mjs';
+import { R as RouteFiles, P as Pages } from '../../register-CmkRspdl.mjs';
+import 'react';
+
+type MaybePromise<T> = T | Promise<T>;
+type Props = {
+    params: unknown;
+    loaderData: unknown;
+    actionData: unknown;
+};
+type RouteInfo = Props & {
+    module: RouteModule;
+    matches: Array<MatchInfo>;
+};
+type MatchInfo = {
+    id: string;
+    module: RouteModule;
+};
+type MetaMatch<T extends MatchInfo> = Pretty<{
+    id: T["id"];
+    params: Record<string, string | undefined>;
+    pathname: string;
+    meta: MetaDescriptor[];
+    /** @deprecated Use `MetaMatch.loaderData` instead */
+    data: GetLoaderData<T["module"]>;
+    loaderData: GetLoaderData<T["module"]>;
+    handle?: unknown;
+    error?: unknown;
+}>;
+type MetaMatches<T extends Array<MatchInfo>> = T extends [infer F extends MatchInfo, ...infer R extends Array<MatchInfo>] ? [MetaMatch<F>, ...MetaMatches<R>] : Array<MetaMatch<MatchInfo> | undefined>;
+type HasErrorBoundary<T extends RouteInfo> = T["module"] extends {
+    ErrorBoundary: Func;
+} ? true : false;
+type CreateMetaArgs<T extends RouteInfo> = {
+    /** This is the current router `Location` object. This is useful for generating tags for routes at specific paths or query parameters. */
+    location: Location;
+    /** {@link https://reactrouter.com/start/framework/routing#dynamic-segments Dynamic route params} for the current route. */
+    params: T["params"];
+    /**
+     * The return value for this route's server loader function
+     *
+     * @deprecated Use `Route.MetaArgs.loaderData` instead
+     */
+    data: T["loaderData"] | (HasErrorBoundary<T> extends true ? undefined : never);
+    /** The return value for this route's server loader function */
+    loaderData: T["loaderData"] | (HasErrorBoundary<T> extends true ? undefined : never);
+    /** Thrown errors that trigger error boundaries will be passed to the meta function. This is useful for

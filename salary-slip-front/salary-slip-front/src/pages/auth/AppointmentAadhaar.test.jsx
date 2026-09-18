@@ -8,6 +8,7 @@ import {
 } from "./testUtils/appointmentFixtures";
 
 vi.mock("../../utils/api", () => ({
+  apiRequest: vi.fn(),
   // AppointmentModal and TrialFormModal import this helper from utils/api to
   // resolve the company a write belongs to. A vi.mock factory replaces the whole
   // module, so omitting it makes the import undefined and the save throws before
@@ -60,7 +61,7 @@ import AppointmentModal from "./AppointmentModal";
 import { authApi, appointmentV1Api } from "../../utils/api";
 import { maskAadhaar, normaliseAadhaar, isCompleteAadhaar } from "../../utils/aadhaar";
 
-const SAVE = /Save Changes & Next: Upload Documents/i;
+const SAVE = /Save Changes & Next/i;
 const SAVE_NEW = /Save & Next: Upload Documents/i;
 const AADHAAR_LABEL = /Aadhaar Card No/i;
 
@@ -184,7 +185,7 @@ describe("AppointmentModal — Aadhaar on an existing record", () => {
     await userEvent.click(screen.getByRole("button", { name: SAVE }));
 
     expect(await screen.findByRole("button", { name: /Complete Appointment/i })).toBeInTheDocument();
-    expect(screen.getByText("7151 1598 8793")).toBeInTheDocument();
+    expect(screen.getByText("Aadhaar").parentElement).toHaveTextContent("7151 1598 8793");
     expect(screen.queryByText("XXXX XXXX 8793")).toBeNull();
   });
 
@@ -194,7 +195,7 @@ describe("AppointmentModal — Aadhaar on an existing record", () => {
     await userEvent.click(await screen.findByRole("button", { name: SAVE }));
 
     expect(await screen.findByRole("button", { name: /Complete Appointment/i })).toBeInTheDocument();
-    expect(screen.getByText("7151 1598 8793")).toBeInTheDocument();
+    expect(screen.getByText("Aadhaar").parentElement).toHaveTextContent("7151 1598 8793");
   });
 });
 

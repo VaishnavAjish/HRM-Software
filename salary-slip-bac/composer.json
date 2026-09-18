@@ -86,7 +86,8 @@
         }
     },
     "config": {
-        "optimize-autoloader": true,
+        "optimize-autoloader": false,
+        "platform-check": false,
         "preferred-install": "dist",
         "sort-packages": true,
         "allow-plugins": {

@@ -1,0 +1,1979 @@
+s case, simply
+	  // checking whether the root is a prefix of the path won't work. Instead, we
+	  // need to remove components from the root one by one, until either we find
+	  // a prefix that fits, or we run out of components to remove.
+	  var level = 0;
+	  while (aPath.indexOf(aRoot + '/') !== 0) {
+	    var index = aRoot.lastIndexOf("/");
+	    if (index < 0) {
+	      return aPath;
+	    }
+
+	    // If the only part of the root that is left is the scheme (i.e. http://,
+	    // file:///, etc.), one or more slashes (/), or simply nothing at all, we
+	    // have exhausted all components, so the path is not relative to the root.
+	    aRoot = aRoot.slice(0, index);
+	    if (aRoot.match(/^([^\/]+:\/)?\/*$/)) {
+	      return aPath;
+	    }
+
+	    ++level;
+	  }
+
+	  // Make sure we add a "../" for each component we removed from the root.
+	  return Array(level + 1).join("../") + aPath.substr(aRoot.length + 1);
+	}
+	exports.relative = relative;
+
+	var supportsNullProto = (function () {
+	  var obj = Object.create(null);
+	  return !('__proto__' in obj);
+	}());
+
+	function identity (s) {
+	  return s;
+	}
+
+	/**
+	 * Because behavior goes wacky when you set `__proto__` on objects, we
+	 * have to prefix all the strings in our set with an arbitrary character.
+	 *
+	 * See https://github.com/mozilla/source-map/pull/31 and
+	 * https://github.com/mozilla/source-map/issues/30
+	 *
+	 * @param String aStr
+	 */
+	function toSetString(aStr) {
+	  if (isProtoString(aStr)) {
+	    return '$' + aStr;
+	  }
+
+	  return aStr;
+	}
+	exports.toSetString = supportsNullProto ? identity : toSetString;
+
+	function fromSetString(aStr) {
+	  if (isProtoString(aStr)) {
+	    return aStr.slice(1);
+	  }
+
+	  return aStr;
+	}
+	exports.fromSetString = supportsNullProto ? identity : fromSetString;
+
+	function isProtoString(s) {
+	  if (!s) {
+	    return false;
+	  }
+
+	  var length = s.length;
+
+	  if (length < 9 /* "__proto__".length */) {
+	    return false;
+	  }
+
+	  if (s.charCodeAt(length - 1) !== 95  /* '_' */ ||
+	      s.charCodeAt(length - 2) !== 95  /* '_' */ ||
+	      s.charCodeAt(length - 3) !== 111 /* 'o' */ ||
+	      s.charCodeAt(length - 4) !== 116 /* 't' */ ||
+	      s.charCodeAt(length - 5) !== 111 /* 'o' */ ||
+	      s.charCodeAt(length - 6) !== 114 /* 'r' */ ||
+	      s.charCodeAt(length - 7) !== 112 /* 'p' */ ||
+	      s.charCodeAt(length - 8) !== 95  /* '_' */ ||
+	      s.charCodeAt(length - 9) !== 95  /* '_' */) {
+	    return false;
+	  }
+
+	  for (var i = length - 10; i >= 0; i--) {
+	    if (s.charCodeAt(i) !== 36 /* '$' */) {
+	      return false;
+	    }
+	  }
+
+	  return true;
+	}
+
+	/**
+	 * Comparator between two mappings where the original positions are compared.
+	 *
+	 * Optionally pass in `true` as `onlyCompareGenerated` to consider two
+	 * mappings with the same original source/line/column, but different generated
+	 * line and column the same. Useful when searching for a mapping with a
+	 * stubbed out mapping.
+	 */
+	function compareByOriginalPositions(mappingA, mappingB, onlyCompareOriginal) {
+	  var cmp = strcmp(mappingA.source, mappingB.source);
+	  if (cmp !== 0) {
+	    return cmp;
+	  }
+
+	  cmp = mappingA.originalLine - mappingB.originalLine;
+	  if (cmp !== 0) {
+	    return cmp;
+	  }
+
+	  cmp = mappingA.originalColumn - mappingB.originalColumn;
+	  if (cmp !== 0 || onlyCompareOriginal) {
+	    return cmp;
+	  }
+
+	  cmp = mappingA.generatedColumn - mappingB.generatedColumn;
+	  if (cmp !== 0) {
+	    return cmp;
+	  }
+
+	  cmp = mappingA.generatedLine - mappingB.generatedLine;
+	  if (cmp !== 0) {
+	    return cmp;
+	  }
+
+	  return strcmp(mappingA.name, mappingB.name);
+	}
+	exports.compareByOriginalPositions = compareByOriginalPositions;
+
+	/**
+	 * Comparator between two mappings with deflated source and name indices where
+	 * the generated positions are compared.
+	 *
+	 * Optionally pass in `true` as `onlyCompareGenerated` to consider two
+	 * mappings with the same generated line and column, but different
+	 * source/name/original line and column the same. Useful when searching for a
+	 * mapping with a stubbed out mapping.
+	 */
+	function compareByGeneratedPositionsDeflated(mappingA, mappingB, onlyCompareGenerated) {
+	  var cmp = mappingA.generatedLine - mappingB.generatedLine;
+	  if (cmp !== 0) {
+	    return cmp;
+	  }
+
+	  cmp = mappingA.generatedColumn - mappingB.generatedColumn;
+	  if (cmp !== 0 || onlyCompareGenerated) {
+	    return cmp;
+	  }
+
+	  cmp = strcmp(mappingA.source, mappingB.source);
+	  if (cmp !== 0) {
+	    return cmp;
+	  }
+
+	  cmp = mappingA.originalLine - mappingB.originalLine;
+	  if (cmp !== 0) {
+	    return cmp;
+	  }
+
+	  cmp = mappingA.originalColumn - mappingB.originalColumn;
+	  if (cmp !== 0) {
+	    return cmp;
+	  }
+
+	  return strcmp(mappingA.name, mappingB.name);
+	}
+	exports.compareByGeneratedPositionsDeflated = compareByGeneratedPositionsDeflated;
+
+	function strcmp(aStr1, aStr2) {
+	  if (aStr1 === aStr2) {
+	    return 0;
+	  }
+
+	  if (aStr1 === null) {
+	    return 1; // aStr2 !== null
+	  }
+
+	  if (aStr2 === null) {
+	    return -1; // aStr1 !== null
+	  }
+
+	  if (aStr1 > aStr2) {
+	    return 1;
+	  }
+
+	  return -1;
+	}
+
+	/**
+	 * Comparator between two mappings with inflated source and name strings where
+	 * the generated positions are compared.
+	 */
+	function compareByGeneratedPositionsInflated(mappingA, mappingB) {
+	  var cmp = mappingA.generatedLine - mappingB.generatedLine;
+	  if (cmp !== 0) {
+	    return cmp;
+	  }
+
+	  cmp = mappingA.generatedColumn - mappingB.generatedColumn;
+	  if (cmp !== 0) {
+	    return cmp;
+	  }
+
+	  cmp = strcmp(mappingA.source, mappingB.source);
+	  if (cmp !== 0) {
+	    return cmp;
+	  }
+
+	  cmp = mappingA.originalLine - mappingB.originalLine;
+	  if (cmp !== 0) {
+	    return cmp;
+	  }
+
+	  cmp = mappingA.originalColumn - mappingB.originalColumn;
+	  if (cmp !== 0) {
+	    return cmp;
+	  }
+
+	  return strcmp(mappingA.name, mappingB.name);
+	}
+	exports.compareByGeneratedPositionsInflated = compareByGeneratedPositionsInflated;
+
+	/**
+	 * Strip any JSON XSSI avoidance prefix from the string (as documented
+	 * in the source maps specification), and then parse the string as
+	 * JSON.
+	 */
+	function parseSourceMapInput(str) {
+	  return JSON.parse(str.replace(/^\)]}'[^\n]*\n/, ''));
+	}
+	exports.parseSourceMapInput = parseSourceMapInput;
+
+	/**
+	 * Compute the URL of a source given the the source root, the source's
+	 * URL, and the source map's URL.
+	 */
+	function computeSourceURL(sourceRoot, sourceURL, sourceMapURL) {
+	  sourceURL = sourceURL || '';
+
+	  if (sourceRoot) {
+	    // This follows what Chrome does.
+	    if (sourceRoot[sourceRoot.length - 1] !== '/' && sourceURL[0] !== '/') {
+	      sourceRoot += '/';
+	    }
+	    // The spec says:
+	    //   Line 4: An optional source root, useful for relocating source
+	    //   files on a server or removing repeated values in the
+	    //   “sources” entry.  This value is prepended to the individual
+	    //   entries in the “source” field.
+	    sourceURL = sourceRoot + sourceURL;
+	  }
+
+	  // Historically, SourceMapConsumer did not take the sourceMapURL as
+	  // a parameter.  This mode is still somewhat supported, which is why
+	  // this code block is conditional.  However, it's preferable to pass
+	  // the source map URL to SourceMapConsumer, so that this function
+	  // can implement the source URL resolution algorithm as outlined in
+	  // the spec.  This block is basically the equivalent of:
+	  //    new URL(sourceURL, sourceMapURL).toString()
+	  // ... except it avoids using URL, which wasn't available in the
+	  // older releases of node still supported by this library.
+	  //
+	  // The spec says:
+	  //   If the sources are not absolute URLs after prepending of the
+	  //   “sourceRoot”, the sources are resolved relative to the
+	  //   SourceMap (like resolving script src in a html document).
+	  if (sourceMapURL) {
+	    var parsed = urlParse(sourceMapURL);
+	    if (!parsed) {
+	      throw new Error("sourceMapURL could not be parsed");
+	    }
+	    if (parsed.path) {
+	      // Strip the last path component, but keep the "/".
+	      var index = parsed.path.lastIndexOf('/');
+	      if (index >= 0) {
+	        parsed.path = parsed.path.substring(0, index + 1);
+	      }
+	    }
+	    sourceURL = join(urlGenerate(parsed), sourceURL);
+	  }
+
+	  return normalize(sourceURL);
+	}
+	exports.computeSourceURL = computeSourceURL;
+
+
+/***/ }),
+/* 5 */
+/***/ (function(module, exports, __webpack_require__) {
+
+	/* -*- Mode: js; js-indent-level: 2; -*- */
+	/*
+	 * Copyright 2011 Mozilla Foundation and contributors
+	 * Licensed under the New BSD license. See LICENSE or:
+	 * http://opensource.org/licenses/BSD-3-Clause
+	 */
+
+	var util = __webpack_require__(4);
+	var has = Object.prototype.hasOwnProperty;
+	var hasNativeMap = typeof Map !== "undefined";
+
+	/**
+	 * A data structure which is a combination of an array and a set. Adding a new
+	 * member is O(1), testing for membership is O(1), and finding the index of an
+	 * element is O(1). Removing elements from the set is not supported. Only
+	 * strings are supported for membership.
+	 */
+	function ArraySet() {
+	  this._array = [];
+	  this._set = hasNativeMap ? new Map() : Object.create(null);
+	}
+
+	/**
+	 * Static method for creating ArraySet instances from an existing array.
+	 */
+	ArraySet.fromArray = function ArraySet_fromArray(aArray, aAllowDuplicates) {
+	  var set = new ArraySet();
+	  for (var i = 0, len = aArray.length; i < len; i++) {
+	    set.add(aArray[i], aAllowDuplicates);
+	  }
+	  return set;
+	};
+
+	/**
+	 * Return how many unique items are in this ArraySet. If duplicates have been
+	 * added, than those do not count towards the size.
+	 *
+	 * @returns Number
+	 */
+	ArraySet.prototype.size = function ArraySet_size() {
+	  return hasNativeMap ? this._set.size : Object.getOwnPropertyNames(this._set).length;
+	};
+
+	/**
+	 * Add the given string to this set.
+	 *
+	 * @param String aStr
+	 */
+	ArraySet.prototype.add = function ArraySet_add(aStr, aAllowDuplicates) {
+	  var sStr = hasNativeMap ? aStr : util.toSetString(aStr);
+	  var isDuplicate = hasNativeMap ? this.has(aStr) : has.call(this._set, sStr);
+	  var idx = this._array.length;
+	  if (!isDuplicate || aAllowDuplicates) {
+	    this._array.push(aStr);
+	  }
+	  if (!isDuplicate) {
+	    if (hasNativeMap) {
+	      this._set.set(aStr, idx);
+	    } else {
+	      this._set[sStr] = idx;
+	    }
+	  }
+	};
+
+	/**
+	 * Is the given string a member of this set?
+	 *
+	 * @param String aStr
+	 */
+	ArraySet.prototype.has = function ArraySet_has(aStr) {
+	  if (hasNativeMap) {
+	    return this._set.has(aStr);
+	  } else {
+	    var sStr = util.toSetString(aStr);
+	    return has.call(this._set, sStr);
+	  }
+	};
+
+	/**
+	 * What is the index of the given string in the array?
+	 *
+	 * @param String aStr
+	 */
+	ArraySet.prototype.indexOf = function ArraySet_indexOf(aStr) {
+	  if (hasNativeMap) {
+	    var idx = this._set.get(aStr);
+	    if (idx >= 0) {
+	        return idx;
+	    }
+	  } else {
+	    var sStr = util.toSetString(aStr);
+	    if (has.call(this._set, sStr)) {
+	      return this._set[sStr];
+	    }
+	  }
+
+	  throw new Error('"' + aStr + '" is not in the set.');
+	};
+
+	/**
+	 * What is the element at the given index?
+	 *
+	 * @param Number aIdx
+	 */
+	ArraySet.prototype.at = function ArraySet_at(aIdx) {
+	  if (aIdx >= 0 && aIdx < this._array.length) {
+	    return this._array[aIdx];
+	  }
+	  throw new Error('No element indexed by ' + aIdx);
+	};
+
+	/**
+	 * Returns the array representation of this set (which has the proper indices
+	 * indicated by indexOf). Note that this is a copy of the internal array used
+	 * for storing the members so that no one can mess with internal state.
+	 */
+	ArraySet.prototype.toArray = function ArraySet_toArray() {
+	  return this._array.slice();
+	};
+
+	exports.ArraySet = ArraySet;
+
+
+/***/ }),
+/* 6 */
+/***/ (function(module, exports, __webpack_require__) {
+
+	/* -*- Mode: js; js-indent-level: 2; -*- */
+	/*
+	 * Copyright 2014 Mozilla Foundation and contributors
+	 * Licensed under the New BSD license. See LICENSE or:
+	 * http://opensource.org/licenses/BSD-3-Clause
+	 */
+
+	var util = __webpack_require__(4);
+
+	/**
+	 * Determine whether mappingB is after mappingA with respect to generated
+	 * position.
+	 */
+	function generatedPositionAfter(mappingA, mappingB) {
+	  // Optimized for most common case
+	  var lineA = mappingA.generatedLine;
+	  var lineB = mappingB.generatedLine;
+	  var columnA = mappingA.generatedColumn;
+	  var columnB = mappingB.generatedColumn;
+	  return lineB > lineA || lineB == lineA && columnB >= columnA ||
+	         util.compareByGeneratedPositionsInflated(mappingA, mappingB) <= 0;
+	}
+
+	/**
+	 * A data structure to provide a sorted view of accumulated mappings in a
+	 * performance conscious manner. It trades a neglibable overhead in general
+	 * case for a large speedup in case of mappings being added in order.
+	 */
+	function MappingList() {
+	  this._array = [];
+	  this._sorted = true;
+	  // Serves as infimum
+	  this._last = {generatedLine: -1, generatedColumn: 0};
+	}
+
+	/**
+	 * Iterate through internal items. This method takes the same arguments that
+	 * `Array.prototype.forEach` takes.
+	 *
+	 * NOTE: The order of the mappings is NOT guaranteed.
+	 */
+	MappingList.prototype.unsortedForEach =
+	  function MappingList_forEach(aCallback, aThisArg) {
+	    this._array.forEach(aCallback, aThisArg);
+	  };
+
+	/**
+	 * Add the given source mapping.
+	 *
+	 * @param Object aMapping
+	 */
+	MappingList.prototype.add = function MappingList_add(aMapping) {
+	  if (generatedPositionAfter(this._last, aMapping)) {
+	    this._last = aMapping;
+	    this._array.push(aMapping);
+	  } else {
+	    this._sorted = false;
+	    this._array.push(aMapping);
+	  }
+	};
+
+	/**
+	 * Returns the flat, sorted array of mappings. The mappings are sorted by
+	 * generated position.
+	 *
+	 * WARNING: This method returns internal data without copying, for
+	 * performance. The return value must NOT be mutated, and should be treated as
+	 * an immutable borrow. If you want to take ownership, you must make your own
+	 * copy.
+	 */
+	MappingList.prototype.toArray = function MappingList_toArray() {
+	  if (!this._sorted) {
+	    this._array.sort(util.compareByGeneratedPositionsInflated);
+	    this._sorted = true;
+	  }
+	  return this._array;
+	};
+
+	exports.MappingList = MappingList;
+
+
+/***/ }),
+/* 7 */
+/***/ (function(module, exports, __webpack_require__) {
+
+	/* -*- Mode: js; js-indent-level: 2; -*- */
+	/*
+	 * Copyright 2011 Mozilla Foundation and contributors
+	 * Licensed under the New BSD license. See LICENSE or:
+	 * http://opensource.org/licenses/BSD-3-Clause
+	 */
+
+	var util = __webpack_require__(4);
+	var binarySearch = __webpack_require__(8);
+	var ArraySet = __webpack_require__(5).ArraySet;
+	var base64VLQ = __webpack_require__(2);
+	var quickSort = __webpack_require__(9).quickSort;
+
+	function SourceMapConsumer(aSourceMap, aSourceMapURL) {
+	  var sourceMap = aSourceMap;
+	  if (typeof aSourceMap === 'string') {
+	    sourceMap = util.parseSourceMapInput(aSourceMap);
+	  }
+
+	  return sourceMap.sections != null
+	    ? new IndexedSourceMapConsumer(sourceMap, aSourceMapURL)
+	    : new BasicSourceMapConsumer(sourceMap, aSourceMapURL);
+	}
+
+	SourceMapConsumer.fromSourceMap = function(aSourceMap, aSourceMapURL) {
+	  return BasicSourceMapConsumer.fromSourceMap(aSourceMap, aSourceMapURL);
+	}
+
+	/**
+	 * The version of the source mapping spec that we are consuming.
+	 */
+	SourceMapConsumer.prototype._version = 3;
+
+	// `__generatedMappings` and `__originalMappings` are arrays that hold the
+	// parsed mapping coordinates from the source map's "mappings" attribute. They
+	// are lazily instantiated, accessed via the `_generatedMappings` and
+	// `_originalMappings` getters respectively, and we only parse the mappings
+	// and create these arrays once queried for a source location. We jump through
+	// these hoops because there can be many thousands of mappings, and parsing
+	// them is expensive, so we only want to do it if we must.
+	//
+	// Each object in the arrays is of the form:
+	//
+	//     {
+	//       generatedLine: The line number in the generated code,
+	//       generatedColumn: The column number in the generated code,
+	//       source: The path to the original source file that generated this
+	//               chunk of code,
+	//       originalLine: The line number in the original source that
+	//                     corresponds to this chunk of generated code,
+	//       originalColumn: The column number in the original source that
+	//                       corresponds to thisimport { createCacheKey, getCache, setCache } from "./cache.js";
+import { isString } from "./common.js";
+import { interpolateHue, roundToPrecision, splitValue } from "./util.js";
+import { ANGLE, CS_HUE_CAPT, CS_MIX, CS_RGB, CS_XYZ, FN_MIX, NONE, NUM, PCT, SYN_COLOR_TYPE, SYN_FN_COLOR, SYN_HSL, SYN_HSL_LV3, SYN_LCH, SYN_MIX, SYN_MIX_CAPT, SYN_MIX_PART, SYN_MOD, SYN_RGB_LV3, VAL_COMP, VAL_MIX, VAL_SPEC } from "./constant.js";
+//#region src/js/color.ts
+/**
+* color
+*
+* Ref: CSS Color Module Level 4
+*      Sample code for Color Conversions
+*      https://w3c.github.io/csswg-drafts/css-color-4/#color-conversion-code
+*/
+var NAMESPACE = "color";
+var PPTH = .001;
+var HALF = .5;
+var DUO = 2;
+var TRIA = 3;
+var QUAD = 4;
+var OCT = 8;
+var DEC = 10;
+var DOZ = 12;
+var HEX = 16;
+var SEXA = 60;
+var DEG_HALF = 180;
+var DEG = 360;
+var MAX_PCT = 100;
+var MAX_RGB = 255;
+var POW_SQR = 2;
+var POW_CUBE = 3;
+var POW_LINEAR = 2.4;
+var LINEAR_COEF = 12.92;
+var LINEAR_OFFSET = .055;
+var LAB_L = 116;
+var LAB_A = 500;
+var LAB_B = 200;
+var LAB_EPSILON = 216 / 24389;
+var LAB_KAPPA = 24389 / 27;
+var D50 = [
+	.3457 / .3585,
+	1,
+	.2958 / .3585
+];
+var MATRIX_D50_TO_D65 = [
+	[
+		.955473421488075,
+		-.02309845494876471,
+		.06325924320057072
+	],
+	[
+		-.0283697093338637,
+		1.0099953980813041,
+		.021041441191917323
+	],
+	[
+		.012314014864481998,
+		-.020507649298898964,
+		1.330365926242124
+	]
+];
+var MATRIX_D65_TO_D50 = [
+	[
+		1.0479297925449969,
+		.022946870601609652,
+		-.05019226628920524
+	],
+	[
+		.02962780877005599,
+		.9904344267538799,
+		-.017073799063418826
+	],
+	[
+		-.009243040646204504,
+		.015055191490298152,
+		.7518742814281371
+	]
+];
+var MATRIX_L_RGB_TO_XYZ = [
+	[
+		506752 / 1228815,
+		87881 / 245763,
+		12673 / 70218
+	],
+	[
+		87098 / 409605,
+		175762 / 245763,
+		12673 / 175545
+	],
+	[
+		7918 / 409605,
+		87881 / 737289,
+		1001167 / 1053270
+	]
+];
+var MATRIX_XYZ_TO_L_RGB = [
+	[
+		12831 / 3959,
+		-329 / 214,
+		-1974 / 3959
+	],
+	[
+		-851781 / 878810,
+		1648619 / 878810,
+		36519 / 878810
+	],
+	[
+		705 / 12673,
+		-2585 / 12673,
+		705 / 667
+	]
+];
+var MATRIX_XYZ_TO_LMS = [
+	[
+		.819022437996703,
+		.3619062600528904,
+		-.1288737815209879
+	],
+	[
+		.0329836539323885,
+		.9292868615863434,
+		.0361446663506424
+	],
+	[
+		.0481771893596242,
+		.2642395317527308,
+		.6335478284694309
+	]
+];
+var MATRIX_LMS_TO_XYZ = [
+	[
+		1.2268798758459243,
+		-.5578149944602171,
+		.2813910456659647
+	],
+	[
+		-.0405757452148008,
+		1.112286803280317,
+		-.0717110580655164
+	],
+	[
+		-.0763729366746601,
+		-.4214933324022432,
+		1.5869240198367816
+	]
+];
+var MATRIX_OKLAB_TO_LMS = [
+	[
+		1,
+		.3963377773761749,
+		.2158037573099136
+	],
+	[
+		1,
+		-.1055613458156586,
+		-.0638541728258133
+	],
+	[
+		1,
+		-.0894841775298119,
+		-1.2914855480194092
+	]
+];
+var MATRIX_LMS_TO_OKLAB = [
+	[
+		.210454268309314,
+		.7936177747023054,
+		-.0040720430116193
+	],
+	[
+		1.9779985324311684,
+		-2.42859224204858,
+		.450593709617411
+	],
+	[
+		.0259040424655478,
+		.7827717124575296,
+		-.8086757549230774
+	]
+];
+var MATRIX_P3_TO_XYZ = [
+	[
+		608311 / 1250200,
+		189793 / 714400,
+		198249 / 1000160
+	],
+	[
+		35783 / 156275,
+		247089 / 357200,
+		198249 / 2500400
+	],
+	[
+		0 / 1,
+		32229 / 714400,
+		5220557 / 5000800
+	]
+];
+var MATRIX_REC2020_TO_XYZ = [
+	[
+		63426534 / 99577255,
+		20160776 / 139408157,
+		47086771 / 278816314
+	],
+	[
+		26158966 / 99577255,
+		472592308 / 697040785,
+		8267143 / 139408157
+	],
+	[
+		0 / 1,
+		19567812 / 697040785,
+		295819943 / 278816314
+	]
+];
+var MATRIX_A98_TO_XYZ = [
+	[
+		573536 / 994567,
+		263643 / 1420810,
+		187206 / 994567
+	],
+	[
+		591459 / 1989134,
+		6239551 / 9945670,
+		374412 / 4972835
+	],
+	[
+		53769 / 1989134,
+		351524 / 4972835,
+		4929758 / 4972835
+	]
+];
+var MATRIX_PROPHOTO_TO_XYZ_D50 = [
+	[
+		.7977666449006423,
+		.13518129740053308,
+		.0313477341283922
+	],
+	[
+		.2880748288194013,
+		.711835234241873,
+		8993693872564e-17
+	],
+	[
+		0,
+		0,
+		.8251046025104602
+	]
+];
+var REG_COLOR = new RegExp(`^(?:${SYN_COLOR_TYPE})$`);
+var REG_CS_HUE = new RegExp(`^${CS_HUE_CAPT}$`);
+var REG_CS_XYZ = /^xyz(?:-d(?:50|65))?$/;
+var REG_CURRENT = /^currentColor$/i;
+var REG_FN_COLOR = new RegExp(`^color\\(\\s*(${SYN_FN_COLOR})\\s*\\)$`);
+var REG_HSL = new RegExp(`^hsla?\\(\\s*(${SYN_HSL}|${SYN_HSL_LV3})\\s*\\)$`);
+var REG_HWB = new RegExp(`^hwb\\(\\s*(${SYN_HSL})\\s*\\)$`);
+var REG_LAB = new RegExp(`^lab\\(\\s*(${SYN_MOD})\\s*\\)$`);
+var REG_LCH = new RegExp(`^lch\\(\\s*(${SYN_LCH})\\s*\\)$`);
+var REG_MIX = new RegExp(`^${SYN_MIX}$`);
+var REG_MIX_CAPT = new RegExp(`^${SYN_MIX_CAPT}$`);
+var REG_MIX_NEST = new RegExp(`${SYN_MIX}`, "g");
+var REG_OKLAB = new RegExp(`^oklab\\(\\s*(${SYN_MOD})\\s*\\)$`);
+var REG_OKLCH = new RegExp(`^oklch\\(\\s*(${SYN_LCH})\\s*\\)$`);
+var REG_SPEC = /^(?:specifi|comput)edValue$/;
+var REG_ANGLE_TO_DEG = new RegExp(`^(${NUM})(${ANGLE})?$`);
+var REG_PARSE_RGB = new RegExp(`^rgba?\\(\\s*(${SYN_MOD}|${SYN_RGB_LV3})\\s*\\)$`);
+var REG_MIX_CS_RGB_XYZ = new RegExp(`^(?:${CS_RGB}|${CS_XYZ})$`);
+var REG_MIX_IN_CS = new RegExp(`in\\s+(${CS_MIX})`);
+var REG_MIX_START = new RegExp(`^color-mix\\(\\s*in\\s+(${CS_MIX})\\s*,`);
+var REG_MIX_COLOR_PART = new RegExp(`^(${SYN_COLOR_TYPE})(?:\\s+(${PCT}))?$`);
+/**
+* named colors
+*/
+var NAMED_COLORS = {
+	aliceblue: [
+		240,
+		248,
+		255
+	],
+	antiquewhite: [
+		250,
+		235,
+		215
+	],
+	aqua: [
+		0,
+		255,
+		255
+	],
+	aquamarine: [
+		127,
+		255,
+		212
+	],
+	azure: [
+		240,
+		255,
+		255
+	],
+	beige: [
+		245,
+		245,
+		220
+	],
+	bisque: [
+		255,
+		228,
+		196
+	],
+	black: [
+		0,
+		0,
+		0
+	],
+	blanchedalmond: [
+		255,
+		235,
+		205
+	],
+	blue: [
+		0,
+		0,
+		255
+	],
+	blueviolet: [
+		138,
+		43,
+		226
+	],
+	brown: [
+		165,
+		42,
+		42
+	],
+	burlywood: [
+		222,
+		184,
+		135
+	],
+	cadetblue: [
+		95,
+		158,
+		160
+	],
+	chartreuse: [
+		127,
+		255,
+		0
+	],
+	chocolate: [
+		210,
+		105,
+		30
+	],
+	coral: [
+		255,
+		127,
+		80
+	],
+	cornflowerblue: [
+		100,
+		149,
+		237
+	],
+	cornsilk: [
+		255,
+		248,
+		220
+	],
+	crimson: [
+		220,
+		20,
+		60
+	],
+	cyan: [
+		0,
+		255,
+		255
+	],
+	darkblue: [
+		0,
+		0,
+		139
+	],
+	darkcyan: [
+		0,
+		139,
+		139
+	],
+	darkgoldenrod: [
+		184,
+		134,
+		11
+	],
+	darkgray: [
+		169,
+		169,
+		169
+	],
+	darkgreen: [
+		0,
+		100,
+		0
+	],
+	darkgrey: [
+		169,
+		169,
+		169
+	],
+	darkkhaki: [
+		189,
+		183,
+		107
+	],
+	darkmagenta: [
+		139,
+		0,
+		139
+	],
+	darkolivegreen: [
+		85,
+		107,
+		47
+	],
+	darkorange: [
+		255,
+		140,
+		0
+	],
+	darkorchid: [
+		153,
+		50,
+		204
+	],
+	darkred: [
+		139,
+		0,
+		0
+	],
+	darksalmon: [
+		233,
+		150,
+		122
+	],
+	darkseagreen: [
+		143,
+		188,
+		143
+	],
+	darkslateblue: [
+		72,
+		61,
+		139
+	],
+	darkslategray: [
+		47,
+		79,
+		79
+	],
+	darkslategrey: [
+		47,
+		79,
+		79
+	],
+	darkturquoise: [
+		0,
+		206,
+		209
+	],
+	darkviolet: [
+		148,
+		0,
+		211
+	],
+	deeppink: [
+		255,
+		20,
+		147
+	],
+	deepskyblue: [
+		0,
+		191,
+		255
+	],
+	dimgray: [
+		105,
+		105,
+		105
+	],
+	dimgrey: [
+		105,
+		105,
+		105
+	],
+	dodgerblue: [
+		30,
+		144,
+		255
+	],
+	firebrick: [
+		178,
+		34,
+		34
+	],
+	floralwhite: [
+		255,
+		250,
+		240
+	],
+	forestgreen: [
+		34,
+		139,
+		34
+	],
+	fuchsia: [
+		255,
+		0,
+		255
+	],
+	gainsboro: [
+		220,
+		220,
+		220
+	],
+	ghostwhite: [
+		248,
+		248,
+		255
+	],
+	gold: [
+		255,
+		215,
+		0
+	],
+	goldenrod: [
+		218,
+		165,
+		32
+	],
+	gray: [
+		128,
+		128,
+		128
+	],
+	green: [
+		0,
+		128,
+		0
+	],
+	greenyellow: [
+		173,
+		255,
+		47
+	],
+	grey: [
+		128,
+		128,
+		128
+	],
+	honeydew: [
+		240,
+		255,
+		240
+	],
+	hotpink: [
+		255,
+		105,
+		180
+	],
+	indianred: [
+		205,
+		92,
+		92
+	],
+	indigo: [
+		75,
+		0,
+		130
+	],
+	ivory: [
+		255,
+		255,
+		240
+	],
+	khaki: [
+		240,
+		230,
+		140
+	],
+	lavender: [
+		230,
+		230,
+		250
+	],
+	lavenderblush: [
+		255,
+		240,
+		245
+	],
+	lawngreen: [
+		124,
+		252,
+		0
+	],
+	lemonchiffon: [
+		255,
+		250,
+		205
+	],
+	lightblue: [
+		173,
+		216,
+		230
+	],
+	lightcoral: [
+		240,
+		128,
+		128
+	],
+	lightcyan: [
+		224,
+		255,
+		255
+	],
+	lightgoldenrodyellow: [
+		250,
+		250,
+		210
+	],
+	lightgray: [
+		211,
+		211,
+		211
+	],
+	lightgreen: [
+		144,
+		238,
+		144
+	],
+	lightgrey: [
+		211,
+		211,
+		211
+	],
+	lightpink: [
+		255,
+		182,
+		193
+	],
+	lightsalmon: [
+		255,
+		160,
+		122
+	],
+	lightseagreen: [
+		32,
+		178,
+		170
+	],
+	lightskyblue: [
+		135,
+		206,
+		250
+	],
+	lightslategray: [
+		119,
+		136,
+		153
+	],
+	lightslategrey: [
+		119,
+		136,
+		153
+	],
+	lightsteelblue: [
+		176,
+		196,
+		222
+	],
+	lightyellow: [
+		255,
+		255,
+		224
+	],
+	lime: [
+		0,
+		255,
+		0
+	],
+	limegreen: [
+		50,
+		205,
+		50
+	],
+	linen: [
+		250,
+		240,
+		230
+	],
+	magenta: [
+		255,
+		0,
+		255
+	],
+	maroon: [
+		128,
+		0,
+		0
+	],
+	mediumaquamarine: [
+		102,
+		205,
+		170
+	],
+	mediumblue: [
+		0,
+		0,
+		205
+	],
+	mediumorchid: [
+		186,
+		85,
+		211
+	],
+	mediumpurple: [
+		147,
+		112,
+		219
+	],
+	mediumseagreen: [
+		60,
+		179,
+		113
+	],
+	mediumslateblue: [
+		123,
+		104,
+		238
+	],
+	mediumspringgreen: [
+		0,
+		250,
+		154
+	],
+	mediumturquoise: [
+		72,
+		209,
+		204
+	],
+	mediumvioletred: [
+		199,
+		21,
+		133
+	],
+	midnightblue: [
+		25,
+		25,
+		112
+	],
+	mintcream: [
+		245,
+		255,
+		250
+	],
+	mistyrose: [
+		255,
+		228,
+		225
+	],
+	moccasin: [
+		255,
+		228,
+		181
+	],
+	navajowhite: [
+		255,
+		222,
+		173
+	],
+	navy: [
+		0,
+		0,
+		128
+	],
+	oldlace: [
+		253,
+		245,
+		230
+	],
+	olive: [
+		128,
+		128,
+		0
+	],
+	olivedrab: [
+		107,
+		142,
+		35
+	],
+	orange: [
+		255,
+		165,
+		0
+	],
+	orangered: [
+		255,
+		69,
+		0
+	],
+	orchid: [
+		218,
+		112,
+		214
+	],
+	palegoldenrod: [
+		238,
+		232,
+		170
+	],
+	palegreen: [
+		152,
+		251,
+		152
+	],
+	paleturquoise: [
+		175,
+		238,
+		238
+	],
+	palevioletred: [
+		219,
+		112,
+		147
+	],
+	papayawhip: [
+		255,
+		239,
+		213
+	],
+	peachpuff: [
+		255,
+		218,
+		185
+	],
+	peru: [
+		205,
+		133,
+		63
+	],
+	pink: [
+		255,
+		192,
+		203
+	],
+	plum: [
+		221,
+		160,
+		221
+	],
+	powderblue: [
+		176,
+		224,
+		230
+	],
+	purple: [
+		128,
+		0,
+		128
+	],
+	rebeccapurple: [
+		102,
+		51,
+		153
+	],
+	red: [
+		255,
+		0,
+		0
+	],
+	rosybrown: [
+		188,
+		143,
+		143
+	],
+	royalblue: [
+		65,
+		105,
+		225
+	],
+	saddlebrown: [
+		139,
+		69,
+		19
+	],
+	salmon: [
+		250,
+		128,
+		114
+	],
+	sandybrown: [
+		244,
+		164,
+		96
+	],
+	seagreen: [
+		46,
+		139,
+		87
+	],
+	seashell: [
+		255,
+		245,
+		238
+	],
+	sienna: [
+		160,
+		82,
+		45
+	],
+	silver: [
+		192,
+		192,
+		192
+	],
+	skyblue: [
+		135,
+		206,
+		235
+	],
+	slateblue: [
+		106,
+		90,
+		205
+	],
+	slategray: [
+		112,
+		128,
+		144
+	],
+	slategrey: [
+		112,
+		128,
+		144
+	],
+	snow: [
+		255,
+		250,
+		250
+	],
+	springgreen: [
+		0,
+		255,
+		127
+	],
+	steelblue: [
+		70,
+		130,
+		180
+	],
+	tan: [
+		210,
+		180,
+		140
+	],
+	teal: [
+		0,
+		128,
+		128
+	],
+	thistle: [
+		216,
+		191,
+		216
+	],
+	tomato: [
+		255,
+		99,
+		71
+	],
+	turquoise: [
+		64,
+		224,
+		208
+	],
+	violet: [
+		238,
+		130,
+		238
+	],
+	wheat: [
+		245,
+		222,
+		179
+	],
+	white: [
+		255,
+		255,
+		255
+	],
+	whitesmoke: [
+		245,
+		245,
+		245
+	],
+	yellow: [
+		255,
+		255,
+		0
+	],
+	yellowgreen: [
+		154,
+		205,
+		50
+	]
+};
+/**
+* cache invalid color value
+* @param key - cache key
+* @param nullable - is nullable
+* @returns cached value
+*/
+var cacheInvalidColorValue = (cacheKey, format, nullable = false) => {
+	if (format === "specifiedValue") {
+		const res = "";
+		setCache(cacheKey, res);
+		return res;
+	}
+	if (nullable) {
+		setCache(cacheKey, null);
+		return null;
+	}
+	const res = [
+		"rgb",
+		0,
+		0,
+		0,
+		0
+	];
+	setCache(cacheKey, res);
+	return res;
+};
+/**
+* resolve invalid color value
+* @param format - output format
+* @param nullable - is nullable
+* @returns resolved value
+*/
+var resolveInvalidColorValue = (format, nullable = false) => {
+	switch (format) {
+		case "hsl":
+		case "hwb":
+		case VAL_MIX: return null;
+		case VAL_SPEC: return "";
+		default:
+			if (nullable) return null;
+			return [
+				"rgb",
+				0,
+				0,
+				0,
+				0
+			];
+	}
+};
+/**
+* validate color components
+* @param arr - color components
+* @param opt - options
+* @param opt.alpha - alpha channel
+* @param opt.minLength - min length
+* @param opt.maxLength - max length
+* @param opt.minRange - min range
+* @param opt.maxRange - max range
+* @param opt.validateRange - validate range
+* @returns result - validated color components
+*/
+var validateColorComponents = (arr, opt = {}) => {
+	if (!Array.isArray(arr)) throw new TypeError(`${arr} is not an array.`);
+	const { alpha = false, minLength = TRIA, maxLength = QUAD, minRange = 0, maxRange = 1, validateRange = true } = opt;
+	if (!Number.isFinite(minLength)) throw new TypeError(`${minLength} is not a number.`);
+	if (!Number.isFinite(maxLength)) throw new TypeError(`${maxLength} is not a number.`);
+	if (!Number.isFinite(minRange)) throw new TypeError(`${minRange} is not a number.`);
+	if (!Number.isFinite(maxRange)) throw new TypeError(`${maxRange} is not a number.`);
+	const l = arr.length;
+	if (l < minLength || l > maxLength) throw new Error(`Unexpected array length ${l}.`);
+	let i = 0;
+	while (i < l) {
+		const v = arr[i];
+		if (!Number.isFinite(v)) throw new TypeError(`${v} is not a number.`);
+		else if (i < TRIA && validateRange && (v < minRange || v > maxRange)) throw new RangeError(`${v} is not between ${minRange} and ${maxRange}.`);
+		else if (i === TRIA && (v < 0 || v > 1)) throw new RangeError(`${v} is not between 0 and 1.`);
+		i++;
+	}
+	if (alpha && l === TRIA) arr.push(1);
+	return arr;
+};
+/**
+* transform matrix
+* @param mtx - 3 * 3 matrix
+* @param vct - vector
+* @param [skip] - skip validate
+* @returns TriColorChannels - [p1, p2, p3]
+*/
+var transformMatrix = (mtx, vct, skip = false) => {
+	if (!Array.isArray(mtx)) throw new TypeError(`${mtx} is not an array.`);
+	else if (mtx.length !== TRIA) throw new Error(`Unexpected array length ${mtx.length}.`);
+	else if (!skip) for (let i of mtx) i = validateColorComponents(i, {
+		maxLength: TRIA,
+		validateRange: false
+	});
+	const [[r1c1, r1c2, r1c3], [r2c1, r2c2, r2c3], [r3c1, r3c2, r3c3]] = mtx;
+	let v1, v2, v3;
+	if (skip) [v1, v2, v3] = vct;
+	else [v1, v2, v3] = validateColorComponents(vct, {
+		maxLength: TRIA,
+		validateRange: false
+	});
+	return [
+		r1c1 * v1 + r1c2 * v2 + r1c3 * v3,
+		r2c1 * v1 + r2c2 * v2 + r2c3 * v3,
+		r3c1 * v1 + r3c2 * v2 + r3c3 * v3
+	];
+};
+/**
+* normalize color components
+* @param colorA - color components [v1, v2, v3, v4]
+* @param colorB - color components [v1, v2, v3, v4]
+* @param [skip] - skip validate
+* @returns result - [colorA, colorB]
+*/
+var normalizeColorComponents = (colorA, colorB, skip = false) => {
+	if (!Array.isArray(colorA)) throw new TypeError(`${colorA} is not an array.`);
+	else if (colorA.length !== QUAD) throw new Error(`Unexpected array length ${colorA.length}.`);
+	if (!Array.isArray(colorB)) throw new TypeError(`${colorB} is not an array.`);
+	else if (colorB.length !== QUAD) throw new Error(`Unexpected array length ${colorB.length}.`);
+	let i = 0;
+	while (i < QUAD) {
+		if (colorA[i] === "none" && colorB[i] === "none") {
+			colorA[i] = 0;
+			colorB[i] = 0;
+		} else if (colorA[i] === "none") colorA[i] = colorB[i];
+		else if (colorB[i] === "none") colorB[i] = colorA[i];
+		i++;
+	}
+	if (skip) return [colorA, colorB];
+	return [validateColorComponents(colorA, {
+		minLength: QUAD,
+		validateRange: false
+	}), validateColorComponents(colorB, {
+		minLength: QUAD,
+		validateRange: false
+	})];
+};
+/**
+* number to hex string
+* @param value - numeric value
+* @returns hex string
+*/
+var numberToHexString = (value) => {
+	if (!Number.isFinite(value)) throw new TypeError(`${value} is not a number.`);
+	else {
+		value = Math.round(value);
+		if (value < 0 || value > MAX_RGB) throw new RangeError(`${value} is not between 0 and ${MAX_RGB}.`);
+	}
+	let hex = value.toString(HEX);
+	if (hex.length === 1) hex = `0${hex}`;
+	return hex;
+};
+/**
+* angle to deg
+* @param angle
+* @returns deg: 0..360
+*/
+var angleToDeg = (angle) => {
+	if (isString(angle)) angle = angle.trim();
+	else throw new TypeError(`${angle} is not a string.`);
+	const GRAD = DEG / 400;
+	const RAD = DEG / (Math.PI * DUO);
+	if (!REG_ANGLE_TO_DEG.test(angle)) throw new SyntaxError(`Invalid property value: ${angle}`);
+	const [, value, unit] = angle.match(REG_ANGLE_TO_DEG);
+	let deg;
+	switch (unit) {
+		case "grad":
+			deg = parseFloat(value) * GRAD;
+			break;
+		case "rad":
+			deg = parseFloat(value) * RAD;
+			break;
+		case "turn":
+			deg = parseFloat(value) * DEG;
+			break;
+		default: deg = parseFloat(value);
+	}
+	deg %= DEG;
+	if (deg < 0) deg += DEG;
+	else if (Object.is(deg, -0)) deg = 0;
+	return deg;
+};
+/**
+* parse alpha
+* @param [alpha] - alpha value
+* @returns alpha: 0..1
+*/
+var parseAlpha = (alpha = "") => {
+	if (isString(alpha)) {
+		alpha = alpha.trim();
+		if (!alpha) alpha = "1";
+		else if (alpha === "none") alpha = "0";
+		else {
+			let a;
+			if (alpha.endsWith("%")) a = parseFloat(alpha) / MAX_PCT;
+			else a = parseFloat(alpha);
+			if (!Number.isFinite(a)) throw new TypeError(`${a} is not a finite number.`);
+			if (a < PPTH) alpha = "0";
+			else if (a > 1) alpha = "1";
+			else alpha = a.toFixed(TRIA);
+		}
+	} else alpha = "1";
+	return parseFloat(alpha);
+};
+/**
+* parse hex alpha
+* @param value - alpha value in hex string
+* @returns alpha: 0..1
+*/
+var parseHexAlpha = (value) => {
+	if (isString(value)) {
+		if (value === "") throw new SyntaxError("Invalid property value: (empty string)");
+		value = value.trim();
+	} else throw new TypeError(`${value} is not a string.`);
+	let alpha = parseInt(value, HEX);
+	if (alpha <= 0) return 0;
+	if (alpha >= MAX_RGB) return 1;
+	const alphaMap = /* @__PURE__ */ new Map();
+	for (let i = 1; i < MAX_PCT; i++) alphaMap.set(Math.round(i * MAX_RGB / MAX_PCT), i);
+	if (alphaMap.has(alpha)) alpha = alphaMap.get(alpha) / MAX_PCT;
+	else alpha = Math.round(alpha / MAX_RGB / PPTH) * PPTH;
+	return parseFloat(alpha.toFixed(TRIA));
+};
+/**
+* transform rgb to linear rgb
+* @param rgb - [r, g, b] r|g|b: 0..255
+* @param [skip] - skip validate
+* @returns TriColorChannels - [r, g, b] r|g|b: 0..1
+*/
+var transformRgbToLinearRgb = (rgb, skip = false) => {
+	let rr, gg, bb;
+	if (skip) [rr, gg, bb] = rgb;
+	else [rr, gg, bb] = validateColorComponents(rgb, {
+		maxLength: TRIA,
+		maxRange: MAX_RGB
+	});
+	let r = rr / MAX_RGB;
+	let g = gg / MAX_RGB;
+	let b = bb / MAX_RGB;
+	const COND_POW = .04045;
+	if (r > COND_POW) r = Math.pow((r + LINEAR_OFFSET) / 1.055, POW_LINEAR);
+	else r /= LINEAR_COEF;
+	if (g > COND_POW) g = Math.pow((g + LINEAR_OFFSET) / 1.055, POW_LINEAR);
+	else g /= LINEAR_COEF;
+	if (b > COND_POW) b = Math.pow((b + LINEAR_OFFSET) / 1.055, POW_LINEAR);
+	else b /= LINEAR_COEF;
+	return [
+		r,
+		g,
+		b
+	];
+};
+/**
+* transform rgb to xyz
+* @param rgb - [r, g, b] r|g|b: 0..255
+* @param [skip] - skip validate
+* @returns TriColorChannels - [x, y, z]
+*/
+var transformRgbToXyz = (rgb, skip = false) => {
+	if (!skip) rgb = validateColorComponents(rgb, {
+		maxLength: TRIA,
+		maxRange: MAX_RGB
+	});
+	rgb = transformRgbToLinearRgb(rgb, true);
+	return transformMatrix(MATRIX_L_RGB_TO_XYZ, rgb, true);
+};
+/**
+* transform linear rgb to rgb
+* @param rgb - [r, g, b] r|g|b: 0..1
+* @param [round] - round result
+* @returns TriColorChannels - [r, g, b] r|g|b: 0..255
+*/
+var transformLinearRgbToRgb = (rgb, round = false) => {
+	let [r, g, b] = validateColorComponents(rgb, { maxLength: TRIA });
+	const COND_POW = 809 / 258400;
+	if (r > COND_POW) r = Math.pow(r, 1 / POW_LINEAR) * 1.055 - LINEAR_OFFSET;
+	else r *= LINEAR_COEF;
+	r *= MAX_RGB;
+	if (g > COND_POW) g = Math.pow(g, 1 / POW_LINEAR) * 1.055 - LINEAR_OFFSET;
+	else g *= LINEAR_COEF;
+	g *= MAX_RGB;
+	if (b > COND_POW) b = Math.pow(b, 1 / POW_LINEAR) * 1.055 - LINEAR_OFFSET;
+	else b *= LINEAR_COEF;
+	b *= MAX_RGB;
+	return [
+		round ? Math.round(r) : r,
+		round ? Math.round(g) : g,
+		round ? Math.round(b) : b
+	];
+};
+/**
+* transform xyz to rgb
+* @param xyz - [x, y, z]
+* @param [skip] - skip validate
+* @returns TriColorChannels - [r, g, b] r|g|b: 0..255
+*/
+var transformXyzToRgb = (xyz, skip = false) => {
+	if (!skip) xyz = validateColorComponents(xyz, {
+		maxLength: TRIA,
+		validateRange: false
+	});
+	let [r, g, b] = transformMatrix(MATRIX_XYZ_TO_L_RGB, xyz, true);
+	[r, g, b] = transformLinearRgbToRgb([
+		Math.min(Math.max(r, 0), 1),
+		Math.min(Math.max(g, 0), 1),
+		Math.min(Math.max(b, 0), 1)
+	], true);
+	return [
+		r,
+		g,
+		b
+	];
+};
+/**
+* transform xyz to hsl
+* @param xyz - [x, y, z]
+* @param [skip] - skip validate
+* @returns TriColorChannels - [h, s, l]
+*/
+var transformXyzToHsl = (xyz, skip = false) => {
+	const [rr, gg, bb] = transformXyzToRgb(xyz, skip);
+	const r = rr / MAX_RGB;
+	const g = gg / MAX_RGB;
+	const b = bb / MAX_RGB;
+	const max = Math.max(r, g, b);
+	const min = Math.min(r, g, b);
+	const d = max - min;
+	const l = (max + min) * HALF * MAX_PCT;
+	let h, s;
+	if (Math.round(l) === 0 || Math.round(l) === MAX_PCT) {
+		h = 0;
+		s = 0;
+	} else {
+		s = d / (1 - Math.abs(max + min - 1)) * MAX_PCT;
+		if (s === 0) h = 0;
+		else {
+			switch (max) {
+				case r:
+					h = (g - b) / d;
+					break;
+				case g:
+					h = (b - r) / d + DUO;
+					break;
+				case b:
+				default:
+					h = (r - g) / d + QUAD;
+					break;
+			}
+			h = h * SEXA % DEG;
+			if (h < 0) h += DEG;
+		}
+	}
+	return [
+		h,
+		s,
+		l
+	];
+};
+/**
+* transform xyz to hwb
+* @param xyz - [x, y, z]
+* @param [skip] - skip validate
+* @returns TriColorChannels - [h, w, b]
+*/
+var transformXyzToHwb = (xyz, skip = false) => {
+	const [r, g, b] = transformXyzToRgb(xyz, skip);
+	const wh = Math.min(r, g, b) / MAX_RGB;
+	const bk = 1 - Math.max(r, g, b) / MAX_RGB;
+	let h;
+	if (wh + bk === 1) h = 0;
+	else [h] = transformXyzToHsl(xyz);
+	return [
+		h,
+		wh * MAX_PCT,
+		bk * MAX_PCT
+	];
+};
+/**
+* transform xyz to oklab
+* @param xyz - [x, y, z]
+* @param [skip] - skip validate
+* @returns TriColorChannels - [l, a, b]
+*/
+var transformXyzToOklab = (xyz, skip = false) => {
+	if (!skip) xyz = validateColorComponents(xyz, {
+		maxLength: TRIA,
+		validateRange: false
+	});
+	let [l, a, b] = transformMatrix(MATRIX_LMS_TO_OKLAB, transformMatrix(MATRIX_XYZ_TO_LMS, xyz, true).map((c) => Math.cbrt(c)), true);
+	l = Math.min(Math.max(l, 0), 1);
+	const lPct = Math.round(parseFloat(l.toFixed(QUAD)) * MAX_PCT);
+	if (lPct === 0 || lPct === MAX_PCT) {
+		a = 0;
+		b = 0;
+	}
+	return [
+		l,
+		a,
+		b
+	];
+};
+/**
+* transform xyz to oklch
+* @param xyz - [x, y, z]
+* @param [skip] - skip validate
+* @returns TriColorChannels - [l, c, h]
+*/
+var transformXyzToOklch = (xyz, skip = false) => {
+	const [l, a, b] = transformXyzToOklab(xyz

@@ -485,7 +485,7 @@ class OrganizationChangeManagementService
             ->orderBy('sequence')
             ->first();
 
-        if (!$approval) {
+        if (!$approval || (int) $approval->approver_user_id !== (int) $actor->id) {
             throw new OrganizationException(
                 'CHANGE_REQUEST_NOT_YOUR_TURN',
                 'It is not your turn to approve this request, or you have already acted on it.',
@@ -555,7 +555,7 @@ class OrganizationChangeManagementService
             ->orderBy('sequence')
             ->first();
 
-        if (!$approval) {
+        if (!$approval || (int) $approval->approver_user_id !== (int) $actor->id) {
             throw new OrganizationException(
                 'CHANGE_REQUEST_NOT_YOUR_TURN',
                 'It is not your turn to reject this request, or you have already acted on it.',

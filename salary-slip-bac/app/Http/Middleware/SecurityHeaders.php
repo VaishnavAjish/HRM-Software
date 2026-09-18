@@ -9,7 +9,27 @@ class SecurityHeaders
 {
     public function handle(Request $request, Closure $next)
     {
+        $origin = $request->header('Origin') ?: '*';
+
+        if ($request->isMethod('OPTIONS')) {
+            return response('', 204)
+                ->header('Access-Control-Allow-Origin', $origin)
+                ->header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS')
+                ->header('Access-Control-Allow-Headers', 'Accept, Authorization, Content-Type, X-Requested-With, Idempotency-Key')
+                ->header('Access-Control-Max-Age', '86400');
+        }
+
         $response = $next($request);
+
+        if (!$response->headers->has('Access-Control-Allow-Origin')) {
+            $response->headers->set('Access-Control-Allow-Origin', $origin);
+        }
+        if (!$response->headers->has('Access-Control-Allow-Methods')) {
+            $response->headers->set('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+        }
+        if (!$response->headers->has('Access-Control-Allow-Headers')) {
+            $response->headers->set('Access-Control-Allow-Headers', 'Accept, Authorization, Content-Type, X-Requested-With, Idempotency-Key');
+        }
 
         // Content Security Policy - restrictive, allows self + approved domains
         $csp = [
@@ -18,13 +38,12 @@ class SecurityHeaders
             "style-src 'self' 'unsafe-inline'", // Tailwind + inline styles
             "img-src 'self' data: blob: https:", // Images from self, data URLs, blob, HTTPS
             "font-src 'self' data: https:", // Fonts
-            "connect-src 'self' https: wss:", // API + WebSocket (for Vite HMR)
+            "connect-src 'self' https: wss: http:", // API + WebSocket (for Vite HMR)
             "frame-src 'self'", // Iframes from self only
             "object-src 'none'", // No plugins
             "base-uri 'self'", // Base tag only from self
             "form-action 'self'", // Forms only to self
             "frame-ancestors 'none'", // No framing
-            'upgrade-insecure-requests', // Upgrade HTTP to HTTPS
         ];
 
         // Add CSP header

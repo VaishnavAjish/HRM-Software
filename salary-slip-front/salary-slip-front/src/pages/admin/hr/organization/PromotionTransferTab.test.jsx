@@ -30,6 +30,7 @@ vi.mock("../../../../features/organization/services/organizationApi", () => ({
     orgChanges: vi.fn(() => Promise.resolve({ data: apiState.changes })),
     orgUnits: vi.fn(() => Promise.resolve({ data: [{ id: 1, name: "Marketing" }] })),
     orgUnitPositions: vi.fn(() => Promise.resolve({ data: [{ id: 10, title: "Marketing Lead" }] })),
+    globalPositions: vi.fn(() => Promise.resolve({ data: [] })),
     orgUnitAssignments: vi.fn(() => Promise.resolve({ data: [] })),
     locations: vi.fn(() => Promise.resolve({ data: [] })),
     financialOrganizations: vi.fn(() => Promise.resolve({ data: [] })),
@@ -74,7 +75,6 @@ describe("PromotionTransferTab create form", () => {
     expect(screen.getByText(/effective date is required/i)).toBeInTheDocument();
     expect(screen.getByText(/a reason is required/i)).toBeInTheDocument();
     expect(screen.getByText(/organization owner approver is required/i)).toBeInTheDocument();
-    expect(screen.getByText(/hr approver is required/i)).toBeInTheDocument();
     expect(organizationApi.createPromotionTransfer).not.toHaveBeenCalled();
   });
 
@@ -107,7 +107,6 @@ describe("PromotionTransferTab create form", () => {
     await user.type(screen.getByLabelText("Target Manager *"), "7");
     await user.type(screen.getByLabelText(/reason \*/i), "Promotion to Marketing Lead");
     await user.type(screen.getByLabelText("Organization Owner Approver *"), "8");
-    await user.type(screen.getByLabelText("HR Approver *"), "9");
 
     await user.click(screen.getByRole("button", { name: /create draft/i }));
 
@@ -122,7 +121,6 @@ describe("PromotionTransferTab create form", () => {
       effectiveFrom: "2026-03-01",
       reason: "Promotion to Marketing Lead",
       organizationOwnerApproverId: 8,
-      hrApproverId: 9,
     });
   });
 

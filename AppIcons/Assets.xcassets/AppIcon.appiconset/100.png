@@ -1,0 +1,347 @@
+path });
+    await handleFetcherLoader(
+      key,
+      routeId,
+      path,
+      matches,
+      scopedContext,
+      fogOfWar.active,
+      flushSync,
+      preventScrollReset,
+      submission
+    );
+  }
+  async function handleFetcherAction(key, routeId, path, requestMatches, scopedContext, isFogOfWar, flushSync, preventScrollReset, submission, callSiteDefaultShouldRevalidate) {
+    interruptActiveLoads();
+    fetchLoadMatches.delete(key);
+    let existingFetcher = state.fetchers.get(key);
+    updateFetcherState(key, getSubmittingFetcher(submission, existingFetcher), {
+      flushSync
+    });
+    let abortController = new AbortController();
+    let fetchRequest = createClientSideRequest(
+      init.history,
+      path,
+      abortController.signal,
+      submission
+    );
+    if (isFogOfWar) {
+      let discoverResult = await discoverRoutes(
+        requestMatches,
+        new URL(fetchRequest.url).pathname,
+        fetchRequest.signal,
+        key
+      );
+      if (discoverResult.type === "aborted") {
+        return;
+      } else if (discoverResult.type === "error") {
+        setFetcherError(key, routeId, discoverResult.error, { flushSync });
+        return;
+      } else if (!discoverResult.matches) {
+        setFetcherError(
+          key,
+          routeId,
+          getInternalRouterError(404, { pathname: path }),
+          { flushSync }
+        );
+        return;
+      } else {
+        requestMatches = discoverResult.matches;
+      }
+    }
+    let match = getTargetMatch(requestMatches, path);
+    if (!match.route.action && !match.route.lazy) {
+      let error = getInternalRouterError(405, {
+        method: submission.formMethod,
+        pathname: path,
+        routeId
+      });
+      setFetcherError(key, routeId, error, { flushSync });
+      return;
+    }
+    fetchControllers.set(key, abortController);
+    let originatingLoadId = incrementingLoadId;
+    let fetchMatches = getTargetedDataStrategyMatches(
+      mapRouteProperties2,
+      manifest,
+      fetchRequest,
+      path,
+      requestMatches,
+      match,
+      hydrationRouteProperties2,
+      scopedContext
+    );
+    let actionResults = await callDataStrategy(
+      fetchRequest,
+      path,
+      fetchMatches,
+      scopedContext,
+      key
+    );
+    let actionResult = actionResults[match.route.id];
+    if (!actionResult) {
+      for (let match2 of fetchMatches) {
+        if (actionResults[match2.route.id]) {
+          actionResult = actionResults[match2.route.id];
+          break;
+        }
+      }
+    }
+    if (fetchRequest.signal.aborted) {
+      if (fetchControllers.get(key) === abortController) {
+        fetchControllers.delete(key);
+      }
+      return;
+    }
+    if (fetchersQueuedForDeletion.has(key)) {
+      if (isRedirectResult(actionResult) || isErrorResult(actionResult)) {
+        updateFetcherState(key, getDoneFetcher(void 0));
+        return;
+      }
+    } else {
+      if (isRedirectResult(actionResult)) {
+        fetchControllers.delete(key);
+        if (pendingNavigationLoadId > originatingLoadId) {
+          updateFetcherState(key, getDoneFetcher(void 0));
+          return;
+        } else {
+          fetchRedirectIds.add(key);
+          updateFetcherState(key, getLoadingFetcher(submission));
+          return startRedirectNavigation(fetchRequest, actionResult, false, {
+            fetcherSubmission: submission,
+            preventScrollReset
+          });
+        }
+      }
+      if (isErrorResult(actionResult)) {
+        setFetcherError(key, routeId, actionResult.error);
+        return;
+      }
+    }
+    let nextLocation = state.navigation.location || state.location;
+    let revalidationRequest = createClientSideRequest(
+      init.history,
+      nextLocation,
+      abortController.signal
+    );
+    let routesToUse = dataRoutes.activeRoutes;
+    let matches = state.navigation.state !== "idle" ? matchRoutesImpl(
+      routesToUse,
+      state.navigation.location,
+      basename,
+      false,
+      dataRoutes.branches
+    ) : state.matches;
+    invariant(matches, "Didn't find any matches after fetcher action");
+    let loadId = ++incrementingLoadId;
+    fetchReloadIds.set(key, loadId);
+    let { dsMatches, revalidatingFetchers } = getMatchesToLoad(
+      revalidationRequest,
+      scopedContext,
+      mapRouteProperties2,
+      manifest,
+      init.history,
+      state,
+      matches,
+      submission,
+      nextLocation,
+      hydrationRouteProperties2,
+      false,
+      isRevalidationRequired,
+      cancelledFetcherLoads,
+      fetchersQueuedForDeletion,
+      fetchLoadMatches,
+      fetchRedirectIds,
+      routesToUse,
+      basename,
+      init.patchRoutesOnNavigation != null,
+      dataRoutes.branches,
+      [match.route.id, actionResult],
+      callSiteDefaultShouldRevalidate
+    );
+    let loadFetcher = getLoadingFetcher(submission, actionResult.data);
+    let workingFetchers = new Map(state.fetchers);
+    workingFetchers.set(key, loadFetcher);
+    revalidatingFetchers.filter((rf) => rf.key !== key).forEach((rf) => {
+      let staleKey = rf.key;
+      let existingFetcher2 = workingFetchers.get(staleKey);
+      let revalidatingFetcher = getLoadingFetcher(
+        void 0,
+        existingFetcher2 ? existingFetcher2.data : void 0
+      );
+      workingFetchers.set(staleKey, revalidatingFetcher);
+      abortFetcher(staleKey);
+      if (rf.controller) {
+        fetchControllers.set(staleKey, rf.controller);
+      }
+    });
+    updateState({ fetchers: workingFetchers });
+    let abortPendingFetchRevalidations = () => revalidatingFetchers.forEach((rf) => abortFetcher(rf.key));
+    abortController.signal.addEventListener(
+      "abort",
+      abortPendingFetchRevalidations
+    );
+    let { loaderResults, fetcherResults } = await callLoadersAndMaybeResolveData(
+      dsMatches,
+      revalidatingFetchers,
+      revalidationRequest,
+      nextLocation,
+      scopedContext
+    );
+    if (abortController.signal.aborted) {
+      return;
+    }
+    abortController.signal.removeEventListener(
+      "abort",
+      abortPendingFetchRevalidations
+    );
+    fetchReloadIds.delete(key);
+    fetchControllers.delete(key);
+    revalidatingFetchers.forEach((r) => fetchControllers.delete(r.key));
+    let fetcherIsMounted = state.fetchers.has(key);
+    let getRedirectStateWithDoneFetcher = (s) => {
+      if (!fetcherIsMounted) return s;
+      let workingFetchers2 = new Map(s.fetchers);
+      workingFetchers2.set(key, getDoneFetcher(actionResult.data));
+      return { ...s, fetchers: workingFetchers2 };
+    };
+    let redirect2 = findRedirect(loaderResults);
+    if (redirect2) {
+      state = getRedirectStateWithDoneFetcher(state);
+      return startRedirectNavigation(
+        revalidationRequest,
+        redirect2.result,
+        false,
+        { preventScrollReset }
+      );
+    }
+    redirect2 = findRedirect(fetcherResults);
+    if (redirect2) {
+      fetchRedirectIds.add(redirect2.key);
+      state = getRedirectStateWithDoneFetcher(state);
+      return startRedirectNavigation(
+        revalidationRequest,
+        redirect2.result,
+        false,
+        { preventScrollReset }
+      );
+    }
+    let finalFetchers = new Map(state.fetchers);
+    if (fetcherIsMounted) {
+      finalFetchers.set(key, getDoneFetcher(actionResult.data));
+    }
+    let { loaderData, errors } = processLoaderData(
+      state,
+      matches,
+      loaderResults,
+      void 0,
+      revalidatingFetchers,
+      fetcherResults,
+      finalFetchers
+    );
+    abortStaleFetchLoads(loadId, finalFetchers);
+    if (state.navigation.state === "loading" && loadId > pendingNavigationLoadId) {
+      invariant(pendingAction, "Expected pending action");
+      pendingNavigationController && pendingNavigationController.abort();
+      completeNavigation(state.navigation.location, {
+        matches,
+        loaderData,
+        errors,
+        fetchers: finalFetchers
+      });
+    } else {
+      updateState({
+        errors,
+        loaderData: mergeLoaderData(
+          state.loaderData,
+          loaderData,
+          matches,
+          errors
+        ),
+        fetchers: finalFetchers
+      });
+      isRevalidationRequired = false;
+    }
+  }
+  async function handleFetcherLoader(key, routeId, path, matches, scopedContext, isFogOfWar, flushSync, preventScrollReset, submission) {
+    let existingFetcher = state.fetchers.get(key);
+    updateFetcherState(
+      key,
+      getLoadingFetcher(
+        submission,
+        existingFetcher ? existingFetcher.data : void 0
+      ),
+      { flushSync }
+    );
+    let abortController = new AbortController();
+    let fetchRequest = createClientSideRequest(
+      init.history,
+      path,
+      abortController.signal
+    );
+    if (isFogOfWar) {
+      let discoverResult = await discoverRoutes(
+        matches,
+        new URL(fetchRequest.url).pathname,
+        fetchRequest.signal,
+        key
+      );
+      if (discoverResult.type === "aborted") {
+        return;
+      } else if (discoverResult.type === "error") {
+        setFetcherError(key, routeId, discoverResult.error, { flushSync });
+        return;
+      } else if (!discoverResult.matches) {
+        setFetcherError(
+          key,
+          routeId,
+          getInternalRouterError(404, { pathname: path }),
+          { flushSync }
+        );
+        return;
+      } else {
+        matches = discoverResult.matches;
+      }
+    }
+    let match = getTargetMatch(matches, path);
+    fetchControllers.set(key, abortController);
+    let originatingLoadId = incrementingLoadId;
+    let dsMatches = getTargetedDataStrategyMatches(
+      mapRouteProperties2,
+      manifest,
+      fetchRequest,
+      path,
+      matches,
+      match,
+      hydrationRouteProperties2,
+      scopedContext
+    );
+    let results = await callDataStrategy(
+      fetchRequest,
+      path,
+      dsMatches,
+      scopedContext,
+      key
+    );
+    let result = results[match.route.id];
+    if (!result) {
+      for (let match2 of matches) {
+        if (results[match2.route.id]) {
+          result = results[match2.route.id];
+          break;
+        }
+      }
+    }
+    if (fetchControllers.get(key) === abortController) {
+      fetchControllers.delete(key);
+    }
+    if (fetchRequest.signal.aborted) {
+      return;
+    }
+    if (fetchersQueuedForDeletion.has(key)) {
+      updateFetcherState(key, getDoneFetcher(void 0));
+      return;
+    }
+    if (isRedirectResult(result)) {
+      if (pendingNavigationLoadId > originatingLoadId) {
+        updateFetcherSt

@@ -223,8 +223,8 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess, isView
           : Promise.resolve(null);
 
         const [sRes, posRes] = await Promise.all([
-          salaryDesigFetcher.catch(() => null),
-          posFetcher.catch(() => null),
+          Promise.resolve(salaryDesigFetcher).catch(() => null),
+          Promise.resolve(posFetcher).catch(() => null),
         ]);
         const set = new Set();
         if (sRes?.data && Array.isArray(sRes.data)) {
@@ -239,6 +239,7 @@ const TrialFormModal = ({ isOpen, onClose, initialData = null, onSuccess, isView
             if (title) set.add(String(title).trim());
           });
         }
+        if (cancelled) return;
         setDesignationsList(Array.from(set).sort());
       } catch (err) {
         console.error("Failed to fetch standalone DB designations:", err);

@@ -22,10 +22,8 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
-        // HandleCors is already in Laravel's default global middleware stack, so
-        // it was appended here for nothing. Harmless (append() de-duplicates via
-        // array_unique) but misleading: it read like CORS was switched on here
-        // rather than in config/cors.php.
+        $middleware->prepend(\Illuminate\Http\Middleware\HandleCors::class);
+
         $middleware->alias([
             'jwt.auth' => JwtMiddleware::class,
             'role' => RoleMiddleware::class,

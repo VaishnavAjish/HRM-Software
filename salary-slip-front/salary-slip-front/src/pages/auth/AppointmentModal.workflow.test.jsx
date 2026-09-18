@@ -14,6 +14,7 @@ import {
 
 // ── Mocks. Declared before the component import so it binds to these. ────────
 vi.mock("../../utils/api", () => ({
+  apiRequest: vi.fn(),
   // AppointmentModal and TrialFormModal import this helper from utils/api to
   // resolve the company a write belongs to. A vi.mock factory replaces the whole
   // module, so omitting it makes the import undefined and the save throws before
@@ -78,7 +79,7 @@ import { authApi, appointmentV1Api } from "../../utils/api";
 import toast from "react-hot-toast";
 
 const SAVE_NEW = /Save & Next: Upload Documents/i;
-const SAVE_CHANGES = /Save Changes & Next: Upload Documents/i;
+const SAVE_CHANGES = /Save Changes & Next/i;
 
 const renderModal = (props = {}) =>
   render(

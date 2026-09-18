@@ -17,6 +17,7 @@ import { createInitialData, setAppointmentRoute } from "./testUtils/appointmentF
  */
 
 vi.mock("../../utils/api", () => ({
+  apiRequest: vi.fn(),
   resolveWriteCompanyId: (value) => value,
   // The lifecycle forms read companies and units from canonical master data
   // now, through useProvisioningOptions.
@@ -64,7 +65,7 @@ import { authApi, appointmentV1Api } from "../../utils/api";
 import toast from "react-hot-toast";
 
 const SAVE_NEW = /Save & Next: Upload Documents/i;
-const SAVE_CHANGES = /Save Changes & Next: Upload Documents/i;
+const SAVE_CHANGES = /Save Changes & Next/i;
 
 const renderModal = (props = {}) =>
   render(<AppointmentModal isOpen onClose={vi.fn()} onSuccess={vi.fn()} {...props} />);
@@ -183,7 +184,7 @@ describe("Editing an existing appointment", () => {
     renderModal({ initialData: createInitialData() });
 
     const department = await screen.findByLabelText(/^Department/i);
-    await userEvent.clear(department);
+    await userEvent.selectOptions(department, "");
     await userEvent.click(screen.getByRole("button", { name: SAVE_CHANGES }));
 
     await waitFor(() => expect(authApi.updateAppointment).toHaveBeenCalledTimes(1));

@@ -1,0 +1,275 @@
+}
+  async function discoverRoutes(matches, pathname, signal, fetcherKey) {
+    if (!init.patchRoutesOnNavigation) {
+      return { type: "success", matches };
+    }
+    let partialMatches = matches;
+    while (true) {
+      let localManifest = manifest;
+      try {
+        await init.patchRoutesOnNavigation({
+          signal,
+          path: pathname,
+          matches: partialMatches,
+          fetcherKey,
+          patch: (routeId, children) => {
+            if (signal.aborted) return;
+            patchRoutesImpl(
+              routeId,
+              children,
+              dataRoutes,
+              localManifest,
+              mapRouteProperties2,
+              false
+            );
+          }
+        });
+      } catch (e) {
+        return { type: "error", error: e, partialMatches };
+      }
+      if (signal.aborted) {
+        return { type: "aborted" };
+      }
+      let activeBranches = dataRoutes.branches;
+      let newMatches = matchRoutesImpl(
+        dataRoutes.activeRoutes,
+        pathname,
+        basename,
+        false,
+        activeBranches
+      );
+      let newPartialMatches = null;
+      if (newMatches) {
+        if (Object.keys(newMatches[0].params).length === 0) {
+          return { type: "success", matches: newMatches };
+        } else {
+          newPartialMatches = matchRoutesImpl(
+            dataRoutes.activeRoutes,
+            pathname,
+            basename,
+            true,
+            activeBranches
+          );
+          let matchedDeeper = newPartialMatches && partialMatches.length < newPartialMatches.length && compareMatches(
+            partialMatches,
+            newPartialMatches.slice(0, partialMatches.length)
+          );
+          if (!matchedDeeper) {
+            return { type: "success", matches: newMatches };
+          }
+        }
+      }
+      if (!newPartialMatches) {
+        newPartialMatches = matchRoutesImpl(
+          dataRoutes.activeRoutes,
+          pathname,
+          basename,
+          true,
+          activeBranches
+        );
+      }
+      if (!newPartialMatches || compareMatches(partialMatches, newPartialMatches)) {
+        return { type: "success", matches: null };
+      }
+      partialMatches = newPartialMatches;
+    }
+  }
+  function compareMatches(a, b) {
+    return a.length === b.length && a.every((m, i) => m.route.id === b[i].route.id);
+  }
+  function _internalSetRoutes(newRoutes) {
+    manifest = {};
+    dataRoutes.setHmrRoutes(
+      convertRoutesToDataRoutes(
+        newRoutes,
+        mapRouteProperties2,
+        void 0,
+        manifest
+      )
+    );
+  }
+  function patchRoutes(routeId, children, unstable_allowElementMutations = false) {
+    patchRoutesImpl(
+      routeId,
+      children,
+      dataRoutes,
+      manifest,
+      mapRouteProperties2,
+      unstable_allowElementMutations
+    );
+    if (!dataRoutes.hasHMRRoutes) {
+      updateState({});
+    }
+  }
+  router = {
+    get basename() {
+      return basename;
+    },
+    get future() {
+      return future;
+    },
+    get state() {
+      return state;
+    },
+    get routes() {
+      return dataRoutes.stableRoutes;
+    },
+    get branches() {
+      return dataRoutes.branches;
+    },
+    get manifest() {
+      return manifest;
+    },
+    get window() {
+      return routerWindow;
+    },
+    initialize,
+    subscribe,
+    enableScrollRestoration,
+    navigate,
+    fetch: fetch2,
+    revalidate,
+    // Passthrough to history-aware createHref used by useHref so we get proper
+    // hash-aware URLs in DOM paths
+    createHref: (to) => init.history.createHref(to),
+    encodeLocation: (to) => init.history.encodeLocation(to),
+    getFetcher,
+    resetFetcher,
+    deleteFetcher: queueFetcherForDeletion,
+    dispose,
+    getBlocker,
+    deleteBlocker,
+    patchRoutes,
+    _internalFetchControllers: fetchControllers,
+    // TODO: Remove setRoutes, it's temporary to avoid dealing with
+    // updating the tree while validating the update algorithm.
+    _internalSetRoutes,
+    _internalSetStateDoNotUseOrYouWillBreakYourApp(newState) {
+      updateState(newState);
+    }
+  };
+  if (init.instrumentations) {
+    router = instrumentClientSideRouter(
+      router,
+      init.instrumentations.map((i) => i.router).filter(Boolean)
+    );
+  }
+  return router;
+}
+function createStaticHandler(routes, opts) {
+  invariant(
+    routes.length > 0,
+    "You must provide a non-empty routes array to createStaticHandler"
+  );
+  let manifest = {};
+  let basename = (opts ? opts.basename : null) || "/";
+  let _mapRouteProperties = _optionalChain([opts, 'optionalAccess', _29 => _29.mapRouteProperties]) || defaultMapRouteProperties;
+  let mapRouteProperties2 = _mapRouteProperties;
+  let future = {
+    ..._optionalChain([opts, 'optionalAccess', _30 => _30.future])
+  };
+  if (_optionalChain([opts, 'optionalAccess', _31 => _31.instrumentations])) {
+    let instrumentations = opts.instrumentations;
+    mapRouteProperties2 = (route) => {
+      return {
+        ..._mapRouteProperties(route),
+        ...getRouteInstrumentationUpdates(
+          instrumentations.map((i) => i.route).filter(Boolean),
+          route
+        )
+      };
+    };
+  }
+  let dataRoutes = convertRoutesToDataRoutes(
+    routes,
+    mapRouteProperties2,
+    void 0,
+    manifest
+  );
+  let routeBranches = flattenAndRankRoutes(dataRoutes);
+  async function query(request, {
+    requestContext,
+    filterMatchesToLoad,
+    skipLoaderErrorBubbling,
+    skipRevalidation,
+    dataStrategy,
+    generateMiddlewareResponse,
+    normalizePath
+  } = {}) {
+    let normalizePathImpl = normalizePath || defaultNormalizePath;
+    let method = request.method;
+    let location = createLocation(
+      "",
+      normalizePathImpl(request),
+      null,
+      "default"
+    );
+    let matches = matchRoutesImpl(
+      dataRoutes,
+      location,
+      basename,
+      false,
+      routeBranches
+    );
+    requestContext = requestContext != null ? requestContext : new RouterContextProvider();
+    if (!isValidMethod(method) && method !== "HEAD") {
+      let error = getInternalRouterError(405, { method });
+      let { matches: methodNotAllowedMatches, route } = getShortCircuitMatches(dataRoutes);
+      let staticContext = {
+        basename,
+        location,
+        matches: methodNotAllowedMatches,
+        loaderData: {},
+        actionData: null,
+        errors: {
+          [route.id]: error
+        },
+        statusCode: error.status,
+        loaderHeaders: {},
+        actionHeaders: {}
+      };
+      return generateMiddlewareResponse ? generateMiddlewareResponse(() => Promise.resolve(staticContext)) : staticContext;
+    } else if (!matches) {
+      let error = getInternalRouterError(404, { pathname: location.pathname });
+      let { matches: notFoundMatches, route } = getShortCircuitMatches(dataRoutes);
+      let staticContext = {
+        basename,
+        location,
+        matches: notFoundMatches,
+        loaderData: {},
+        actionData: null,
+        errors: {
+          [route.id]: error
+        },
+        statusCode: error.status,
+        loaderHeaders: {},
+        actionHeaders: {}
+      };
+      return generateMiddlewareResponse ? generateMiddlewareResponse(() => Promise.resolve(staticContext)) : staticContext;
+    }
+    if (generateMiddlewareResponse) {
+      invariant(
+        requestContext instanceof RouterContextProvider,
+        "When using middleware in `staticHandler.query()`, any provided `requestContext` must be an instance of `RouterContextProvider`"
+      );
+      try {
+        await loadLazyMiddlewareForMatches(
+          matches,
+          manifest,
+          mapRouteProperties2
+        );
+        let renderedStaticContext;
+        let response = await runServerMiddlewarePipeline(
+          {
+            request,
+            url: createDataFunctionUrl(request, location),
+            pattern: getRoutePattern(matches),
+            matches,
+            params: matches[0].params,
+            // If we're calling middleware then it must be enabled so we can cast
+            // this to the proper type knowing it's not an `AppLoadContext`
+            context: requestContext
+          },
+          async () => {
+            let res = await generateMiddlewareResponse(
+              async (revalidationRequeINDX( 	 ±÷Jl           (   °	  è       İd .   İe          A*     ˆ x     …     +¨8^ŸFİã8^ŸFİã8^ŸFİã8^ŸFİ8      2               a c c e s s i b l e - d e s c r i p t i o n . d . t s Â#      €     …     bû]ŸFİÈFû]ŸFİÈFû]ŸFİÈFû]ŸFİ                     a c c e s s i b l e - d e s c r i p t i o n . d . t s . m a p ¹     ˆ t     …     E‹·]ŸFİ[º]ŸFİ[º]ŸFİNwº]ŸFİ       Z               a c c e s s i b l e - d e s c r i p t i o n . j s     $      |     …     7Yş]ŸF |¨ş]ŸFİ|¨ş]ŸFİ|¨ş]ŸFİ                      a c c e s s i b l e - d e s c r i p t i o n . j s . m a p o n Ø(     ˆ v     …     Y.^ŸFİN€.^ŸFİN€.^ŸFİN€.^ŸFİ       Ï               a c c e s s i b l e - d e s c r i p t i o n . m j s . 7$      ~     …     ğ ^ŸFİe ^ŸFİe ^ŸFİe ^ŸFİ                      a c c e s s i b l e - d e s c r i p t i o n . m j s . m a p n Y*       Š     …     tm9^ŸFİÀ”9^ŸFİÀ”9^ŸFİÀ”9^ŸFİ       ;              $ a c c e s s i b l e - n a m e - a n  - d e s c r i p t i o n . d . t s . m a i$     ¨ ’     …     ›£^ŸFİ¨Ê^ŸFİ¨Ê^ŸFİ¨Ê^ŸFİè      ä              ( a c c e s s i b l e - n a m e - a n d - d e s c r i p t i o n . d . t s . m a p f     *     ˜ †     …     hàÃ]ŸFİ˜ôÇ]ŸFİ˜ôÇ]ŸFİ˜ôÇ]ŸFİ P      ÉL              " a c c e s s i b l e - n a m e - a n d - d e s c r i p t i o n . j s   ˜$            …     ƒ^ŸFİ’^ŸFİ’^ŸFİ’^ŸFİ        x—              & a c c 

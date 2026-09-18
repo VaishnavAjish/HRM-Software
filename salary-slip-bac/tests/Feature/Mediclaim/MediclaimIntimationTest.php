@@ -3,6 +3,7 @@
 namespace Tests\Feature\Mediclaim;
 
 use App\Models\Mediclaim\MediclaimClaim;
+use App\Models\Mediclaim\MediclaimHospital;
 use App\Models\Permission;
 use App\Models\User;
 use App\Support\MediclaimIntimationNumber;
@@ -80,11 +81,17 @@ class MediclaimIntimationTest extends TestCase
         $employee = $this->makeUser('Employee');
         $this->grant($employee, ['self.mediclaim.intimation.create']);
 
+        $hospital = MediclaimHospital::create([
+            'company_code' => 'nidhi-impex', 'name' => 'Surat Diamond Hospital',
+            'city' => 'Surat', 'status' => 'active', 'is_cashless' => true,
+        ]);
+
         $response = $this->actingAsUser($employee)
             ->postJson('/api/v1/mediclaim/me/intimations', [
                 'is_emergency' => true,
                 'emergency_explanation' => 'Patient was rushed to the ER following a road accident.',
                 'planned_treatment' => 'Emergency surgery',
+                'hospital_id' => $hospital->id,
             ])->assertCreated()->json('data');
 
         $this->assertNotEmpty($response['reference_number']);
@@ -97,11 +104,17 @@ class MediclaimIntimationTest extends TestCase
         $employee = $this->makeUser('Employee');
         $this->grant($employee, ['self.mediclaim.intimation.create']);
 
+        $hospital = MediclaimHospital::create([
+            'company_code' => 'nidhi-impex', 'name' => 'Surat Diamond Hospital',
+            'city' => 'Surat', 'status' => 'active', 'is_cashless' => true,
+        ]);
+
         $this->actingAsUser($employee)
             ->postJson('/api/v1/mediclaim/me/intimations', [
                 'is_emergency' => false,
                 'planned_treatment' => 'Planned knee surgery',
                 'expected_admission_date' => now()->addWeek()->toDateString(),
+                'hospital_id' => $hospital->id,
             ])->assertCreated();
     }
 

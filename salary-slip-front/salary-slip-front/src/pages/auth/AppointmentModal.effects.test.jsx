@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { createInitialData, createPhotoFile, setAppointmentRoute } from "./testUtils/appointmentFixtures";
 
 vi.mock("../../utils/api", () => ({
+  apiRequest: vi.fn(),
   authApi: {
     submitAppointmentForm: vi.fn(),
     updateAppointment: vi.fn(),
@@ -57,7 +58,7 @@ vi.mock("react-hot-toast", () => ({
 import AppointmentModal from "./AppointmentModal";
 import { salaryApi, appointmentV1Api, authApi } from "../../utils/api";
 
-const SAVE_CHANGES = /Save Changes & Next: Upload Documents/i;
+const SAVE_CHANGES = /Save Changes & Next/i;
 
 const renderModal = () =>
   render(

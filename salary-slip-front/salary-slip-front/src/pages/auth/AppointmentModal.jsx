@@ -142,8 +142,8 @@ const AppointmentModal = ({
           : Promise.resolve(null);
 
         const [sRes, posRes] = await Promise.all([
-          salaryDesigFetcher.catch(() => null),
-          posFetcher.catch(() => null),
+          Promise.resolve(salaryDesigFetcher).catch(() => null),
+          Promise.resolve(posFetcher).catch(() => null),
         ]);
         const set = new Set();
         if (sRes?.data && Array.isArray(sRes.data)) {
@@ -158,6 +158,7 @@ const AppointmentModal = ({
             if (title) set.add(String(title).trim());
           });
         }
+        if (cancelled) return;
         setDesignationsList(Array.from(set).sort());
       } catch (err) {
         console.error("Failed to fetch standalone DB designations:", err);
@@ -199,6 +200,7 @@ const AppointmentModal = ({
         // the name, never the row id, so duplicate rows would otherwise
         // render as duplicate <option> entries with the same React key.
         const names = (res?.data ?? []).map((dept) => dept.name).filter(Boolean);
+        if (cancelled) return;
         setDepartmentsList(Array.from(new Set(names)));
       } catch {
         // Suppress expected 403s for Agents so it gracefully falls back to text input
@@ -318,6 +320,7 @@ const AppointmentModal = ({
           tokenType,
         );
 
+        if (cancelled) return;
         const record = res?.data?.appointment;
         if (!record?.id) throw new Error("Appointment not found.");
 
@@ -336,7 +339,7 @@ const AppointmentModal = ({
         // Documents only open once the record actually loaded.
         setStep(routeRequest.step === STEP_DOCUMENTS ? 2 : 1);
       } catch (err) {
-
+        if (cancelled) return;
         setRehydrateState("error");
         // Do not silently fall back to create mode â€” that is how duplicates get
         // made. Clear the bad params and stay on step 1.

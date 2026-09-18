@@ -12,6 +12,7 @@ import {
 import { PHOTO_DOCUMENT_TYPE } from "./documentTypes";
 
 vi.mock("../../utils/api", () => ({
+  apiRequest: vi.fn(),
   // AppointmentModal and TrialFormModal import this helper from utils/api to
   // resolve the company a write belongs to. A vi.mock factory replaces the whole
   // module, so omitting it makes the import undefined and the save throws before
@@ -70,7 +71,7 @@ import AppointmentModal from "./AppointmentModal";
 import AppointmentDocumentsStep from "./AppointmentDocumentsStep";
 import { authApi, appointmentV1Api } from "../../utils/api";
 
-const SAVE_CHANGES = /Save Changes & Next: Upload Documents/i;
+const SAVE_CHANGES = /Save Changes & Next/i;
 const RETRY_UPLOAD = /Retry Upload/i;
 const REMOVE_PHOTO = /Remove Photo/i;
 
