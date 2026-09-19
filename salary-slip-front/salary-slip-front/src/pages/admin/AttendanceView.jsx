@@ -244,6 +244,7 @@ export default function AttendanceView() {
         remarks,
         shiftName: emp.shift_name || emp.shift || "—",
       };
+    });
   }, [employees, attendanceMap, attendanceDetails, targetDateStr]);
 
   // Overall KPI Cards Metrics
