@@ -154,6 +154,31 @@ export default function EnterpriseNav({ onFlyoutChange }) {
           const active = isItemActive(item, location.pathname);
           const isMenuOpen = openMenus.includes(item.label);
 
+          if (item.disabled) {
+            return (
+              <span
+                key={itemKey(item, index)}
+                aria-disabled="true"
+                title="You do not have access to this page"
+                className="group relative flex h-11 w-full cursor-not-allowed items-center rounded-xl px-2.5 text-sm font-medium text-gray-600 opacity-60"
+              >
+                <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg">
+                  <Icon size={18} />
+                </span>
+
+                <div
+                  className={`overflow-hidden transition-all duration-300 ease-in-out ${
+                    isExpanded ? "max-w-[180px] opacity-100 ml-3" : "max-w-0 opacity-0 ml-0 pointer-events-none"
+                  }`}
+                >
+                  <span className="truncate whitespace-nowrap text-sm font-medium">
+                    {item.label}
+                  </span>
+                </div>
+              </span>
+            );
+          }
+
           if (item.subItems) {
             return (
               <div key={itemKey(item, index)} className="space-y-1">
@@ -245,31 +270,6 @@ export default function EnterpriseNav({ onFlyoutChange }) {
                   </div>
                 )}
               </div>
-            );
-          }
-
-          if (item.disabled) {
-            return (
-              <span
-                key={itemKey(item, index)}
-                aria-disabled="true"
-                title="You do not have access to this page"
-                className="group relative flex h-11 w-full cursor-not-allowed items-center rounded-xl px-2.5 text-sm font-medium text-gray-600 opacity-60"
-              >
-                <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg">
-                  <Icon size={18} />
-                </span>
-
-                <div
-                  className={`overflow-hidden transition-all duration-300 ease-in-out ${
-                    isExpanded ? "max-w-[180px] opacity-100 ml-3" : "max-w-0 opacity-0 ml-0 pointer-events-none"
-                  }`}
-                >
-                  <span className="truncate whitespace-nowrap text-sm font-medium">
-                    {item.label}
-                  </span>
-                </div>
-              </span>
             );
           }
 

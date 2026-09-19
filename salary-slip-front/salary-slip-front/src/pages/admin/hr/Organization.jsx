@@ -1,7 +1,6 @@
 import OrgWorkspaceTabs from "../../../features/organization/components/OrgWorkspaceTabs";
 import OverviewTab from "./organization/OverviewTab";
 import PromotionTransferTab from "./organization/PromotionTransferTab";
-import OrgChartPage from "../organization/OrgChart";
 import PositionsPage from "../organization/Positions";
 import HierarchyPage from "../organization/Hierarchy";
 import AssignmentsPage from "../organization/Assignments";
@@ -43,7 +42,6 @@ const TABS = [
   { key: "departments", label: "Departments", permission: "admin.company.read", render: () => <CompanyUnits key="departments" initialTab="departments" hideTabs /> },
   { key: "positions", label: "Designations", permission: "org.unit_position.read", render: () => <PositionsPage /> },
   { key: "hierarchy", label: "Hierarchy", permission: "org.unit_position.read", render: () => <HierarchyPage /> },
-  { key: "org-chart", label: "Org Chart", permission: "org.chart.read", render: () => <OrgChartPage /> },
   { key: "assignments", label: "Assignments", permission: "org.unit_assignment.read", render: () => <AssignmentsPage /> },
   { key: "promotions-transfers", label: "Promotions & Transfers", permission: "org.change.read", render: () => <PromotionTransferTab /> },
 ];

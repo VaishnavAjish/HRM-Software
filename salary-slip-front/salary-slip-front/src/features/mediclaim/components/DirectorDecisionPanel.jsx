@@ -30,7 +30,11 @@ export default function DirectorDecisionPanel({ claim, onDecided }) {
     setError(null);
     const payload = { decision, remarks };
     if (decision !== REVIEW_DECISION.REJECTED) {
-      payload.approvedAmount = Number(fields.approvedAmount);
+      const amt = (fields.approvedAmount !== "" && fields.approvedAmount !== undefined && !Number.isNaN(Number(fields.approvedAmount)))
+        ? Number(fields.approvedAmount)
+        : (Number(claim?.totalClaimedAmount ?? claim?.total_claimed_amount) || 0);
+      payload.approvedAmount = amt;
+      payload.approved_amount = amt;
     }
     try {
       const res = await mediclaimApi.submitReviewDecision(

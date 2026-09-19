@@ -32,7 +32,7 @@ import { useAuth } from "../../context/AuthContext"; // Corrected import path
 import { authApi, salaryApi } from "../../utils/api";
 import { getAadhaarDisplayValue, hasStoredAadhaar, buildSafeAadhaarUpdate } from "../../utils/aadhaar";
 import { getProfileCompletionPercentage } from "../../utils/profileCompletion";
-import { isPhotoDeletedOrDummy, clearPhotoDeletedFlag } from "../../utils/photoStatus";
+import { isPhotoDeletedOrDummy, clearPhotoDeletedFlag, getPhotoDeletionReason } from "../../utils/photoStatus";
 import toast from "react-hot-toast";
 import SearchableSelect from "../../components/ui/SearchableSelect";
 import { designationApi } from "../../features/workforce/services/workforceApi";
@@ -422,7 +422,13 @@ export default function Profile() {
         punching_no: form.punching_no,
         family_members: cleanFamily,
       };
-      if (photoFile) payload.photo = photoFile;
+      if (photoFile) {
+        payload.photo = photoFile;
+        payload.photo_rejected = false;
+        payload.photo_deleted = false;
+        payload.is_photo_dummy = false;
+        payload.photo_deletion_reason = "";
+      }
 
       const res = await authApi.updateProfile(
         payload,
@@ -459,6 +465,10 @@ export default function Profile() {
         marital_status: form.marital_status,
         punching_no: form.punching_no,
         photo: updatedPhoto || prev?.photo,
+        photo_rejected: false,
+        photo_deleted: false,
+        is_photo_dummy: false,
+        photo_deletion_reason: null,
         family_members: cleanFamily,
       }));
       setFamilyDetails(cleanFamily.map((m) => ({ name: m.name, relation: m.relation, mobileNumber: m.mobile_number })));

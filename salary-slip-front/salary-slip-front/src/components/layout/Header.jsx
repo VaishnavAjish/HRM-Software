@@ -1,7 +1,6 @@
-import { Menu, Sun, Moon, Download, LogOut } from "lucide-react";
+import { Menu, Sun, Moon, LogOut } from "lucide-react";
 import { useTheme } from "../../context/theme-context";
 import { useAuth } from "../../context/AuthContext";
-import { useInstallPWA } from "../../hooks/useInstallPWA";
 import { useState } from "react";
 import CompanyScopeDropdown from "./CompanyScopeDropdown";
 
@@ -10,8 +9,6 @@ import NotificationBell from "../notifications/NotificationBell";
 export default function Header({ onMenuClick, title, isCollapsed }) {
   const { dark, toggle } = useTheme();
   const { user, logout } = useAuth();
-  const { canInstall, install, showIOSGuide, dismissIOSGuide } =
-    useInstallPWA();
   const [profileOpen, setProfileOpen] = useState(false);
 
   return (
@@ -32,52 +29,6 @@ export default function Header({ onMenuClick, title, isCollapsed }) {
       </div>
 
       <CompanyScopeDropdown />
-
-      {canInstall && (
-        <button
-          onClick={install}
-          className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold rounded-lg transition-colors"
-        >
-          <Download size={14} />
-          Install App
-        </button>
-      )}
-
-      {showIOSGuide && (
-        <div
-          className="fixed inset-0 z-50 flex items-end justify-center px-4 pb-8 bg-black/50"
-          onClick={dismissIOSGuide}
-        >
-          <div
-            className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-sm shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="text-base font-bold text-gray-900 dark:text-white mb-3">
-              Install on iPhone / iPad
-            </h3>
-            <ol className="space-y-2 text-sm text-gray-700 dark:text-gray-300 list-decimal list-inside">
-              <li>
-                Tap the <span className="font-semibold">Share</span> button{" "}
-                <span className="text-base">⎙</span> at the bottom of Safari
-              </li>
-              <li>
-                Scroll down and tap{" "}
-                <span className="font-semibold">"Add to Home Screen"</span>
-              </li>
-              <li>
-                Tap <span className="font-semibold">Add</span> — the app icon
-                will appear on your home screen
-              </li>
-            </ol>
-            <button
-              onClick={dismissIOSGuide}
-              className="mt-5 w-full py-2.5 bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold rounded-xl transition-colors"
-            >
-              Got it
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* The label names the action, not the current state, so it stays
           accurate whichever icon is showing. */}

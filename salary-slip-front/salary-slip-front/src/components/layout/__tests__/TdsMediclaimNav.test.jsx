@@ -120,8 +120,26 @@ describe("admin TDS -> Mediclaim nav (getAdminNav, reached only via useNavItems(
 });
 
 describe("employee TDS -> Mediclaim nav (buildEmployeeNav, via the real useNavItems() hook)", () => {
+  const completeEmployee = (overrides = {}) => ({
+    role: "employee",
+    name: "John Doe",
+    phone: "9876543210",
+    dob: "1990-01-01",
+    gender: "Male",
+    department: "IT",
+    designation: "Engineer",
+    address: "123 Street",
+    hasAadhaar: true,
+    panCardNo: "ABCDE1234F",
+    bankName: "HDFC",
+    bankAccountNo: "1234567890",
+    bankIfscCode: "HDFC0001234",
+    photo: "photo_employee_123.jpg",
+    ...overrides,
+  });
+
   it("shows Mediclaim under TDS for an employee once the module is available", () => {
-    authState.user = { role: "employee" };
+    authState.user = completeEmployee();
     moduleState.available = new Set(["mediclaim", "tickets"]);
 
     const tds = findTds(renderNav());

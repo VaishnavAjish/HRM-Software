@@ -167,6 +167,56 @@ class MediclaimClaim extends Model
         'updated_by',
     ];
 
+    protected $appends = [
+        'approved_amount',
+        'approvedAmount',
+        'totalApprovedAmount',
+        'totalClaimedAmount',
+    ];
+
+    public function getApprovedAmountAttribute(): ?float
+    {
+        $raw = $this->attributes['total_approved_amount'] ?? null;
+        if ($raw !== null && (float) $raw > 0) {
+            return (float) $raw;
+        }
+
+        $status = $this->attributes['status'] ?? null;
+        if (in_array($status, [self::STATUS_APPROVED, self::STATUS_PARTIALLY_APPROVED, self::STATUS_SETTLEMENT_PENDING, self::STATUS_SETTLED, self::STATUS_CLOSED], true)) {
+            if ($this->relationLoaded('decisions') && $this->decisions) {
+                $decision = $this->decisions
+                    ->filter(fn ($d) => !empty($d->fields['approved_amount']))
+                    ->sortByDesc('decided_at')
+                    ->first();
+                if ($decision && !empty($decision->fields['approved_amount'])) {
+                    return (float) $decision->fields['approved_amount'];
+                }
+            }
+            if ($raw !== null && (float) $raw > 0) {
+                return (float) $raw;
+            }
+            if ($status !== self::STATUS_PARTIALLY_APPROVED) {
+                $claimed = $this->attributes['total_claimed_amount'] ?? null;
+                if ($claimed !== null && (float) $claimed > 0) {
+                    return (float) $claimed;
+                }
+            }
+        }
+
+        return $raw !== null ? (float) $raw : null;
+    }
+
+    public function getTotalApprovedAmountAttribute(): ?float
+    {
+        return $this->getApprovedAmountAttribute();
+    }
+
+    public function getTotalClaimedAmountAttribute(): ?float
+    {
+        $raw = $this->attributes['total_claimed_amount'] ?? null;
+        return $raw !== null ? (float) $raw : null;
+    }
+
     protected function casts(): array
     {
         return [

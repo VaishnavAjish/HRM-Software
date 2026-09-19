@@ -14,7 +14,7 @@ export default function ClaimSummaryCard({ claim, className = "" }) {
   const patientName = claim.patientName || claim.patient_snapshot?.name || claim.patient?.name || "—";
   const relationship = claim.relationshipType || claim.relationship_type;
   const claimedAmount = claim.totalClaimedAmount ?? claim.total_claimed_amount;
-  const approvedAmount = claim.approvedAmount ?? claim.approved_amount;
+  const approvedAmount = claim.approvedAmount ?? claim.approved_amount ?? claim.totalApprovedAmount ?? claim.total_approved_amount;
   const submittedOn = claim.submittedAt || claim.submitted_at;
 
   return (

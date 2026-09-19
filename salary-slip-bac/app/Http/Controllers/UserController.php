@@ -2415,7 +2415,11 @@ class UserController extends Controller
             }
 
             try {
-                $row['photo'] = $service->viewUrl($document, $version)['url'];
+                if (config('documents.provider') === 's3') {
+                    $row['photo'] = $service->viewUrl($document, $version)['url'];
+                } else {
+                    $row['photo'] = 'storage/' . ltrim($version->s3_object_key, '/');
+                }
             } catch (\Throwable $e) {
                 // Leave photo empty rather than fail the whole list over one row.
             }

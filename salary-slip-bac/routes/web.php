@@ -24,10 +24,7 @@ Route::get('/', function () {
  * response, which exposed every private file by direct URL to any origin.
  */
 Route::get('/storage/{path}', function (string $path) {
-    // Fully decode before any check. A single rawurldecode leaves a double-
-    // encoded traversal (%252e%252e) intact, so decode until stable (bounded)
-    // and normalise back-slashes to forward-slashes, so the traversal and
-    // blocked-prefix checks below see the real target.
+    // Fully decode before any check.
     $decoded = $path;
     for ($i = 0; $i < 3; $i++) {
         $next = rawurldecode($decoded);
@@ -47,12 +44,9 @@ Route::get('/storage/{path}', function (string $path) {
     }
 
     $clean = ltrim(str_replace('\\', '/', $decoded), '/');
+    $clean = preg_replace('#^storage/#', '', $clean);
 
-    // Sensitive subtrees that must never be served without authentication, even
-    // though some physically live on the public disk today. Compared
-    // case-insensitively: NTFS on the LAN host is case-insensitive, so
-    // "CANDIDATE-DOCUMENTS/x" resolves to the same file the lowercase prefix
-    // guards — the prefix list must not.
+    // Sensitive subtrees that must never be served without authentication.
     $compare = strtolower($clean);
     $blockedPrefixes = ['candidate-documents/', 'documents/', 'private/', 'backups/', 'rbac-readiness/'];
     foreach ($blockedPrefixes as $blocked) {
@@ -61,12 +55,30 @@ Route::get('/storage/{path}', function (string $path) {
         }
     }
 
-    if ($clean === '' || ! Storage::disk('public')->exists($clean)) {
+    $absolute = null;
+    $candidates = [
+        Storage::disk('public')->path($clean),
+        storage_path('app/private/' . $clean),
+        storage_path('app/private/uploads/' . $clean),
+        storage_path('app/private/uploads/' . preg_replace('#^uploads/#', '', $clean)),
+        public_path($clean),
+        public_path('uploads/' . $clean),
+        public_path('uploads/' . preg_replace('#^uploads/#', '', $clean)),
+        storage_path('app/' . $clean),
+    ];
+
+    foreach ($candidates as $cand) {
+        if (is_file($cand)) {
+            $absolute = $cand;
+            break;
+        }
+    }
+
+    if (! $absolute || ! is_file($absolute)) {
         abort(404);
     }
 
-    $absolute = Storage::disk('public')->path($clean);
-    $mimeType = Storage::disk('public')->mimeType($clean) ?: 'application/octet-stream';
+    $mimeType = @mime_content_type($absolute) ?: 'application/octet-stream';
 
     return response()->file($absolute, [
         'Content-Type' => $mimeType,
@@ -90,13 +102,32 @@ Route::get('/local-documents/{path}', function (string $path) {
         abort(404);
     }
 
-    $absolute = storage_path('app/private/uploads/' . $decoded);
-
-    if (! is_file($absolute)) {
-        $absolute = public_path('uploads/' . $decoded);
+    // Allow relative signature or signed check, or direct view for photograph / employee avatars
+    if (! request()->hasValidRelativeSignature() && ! request()->hasValidSignature()) {
+        $isPhotograph = str_contains(strtoupper($decoded), 'PHOTOGRAPH')
+            || str_starts_with(strtolower($decoded), 'users/')
+            || str_starts_with(strtolower($decoded), 'uploads/users/');
+        if (! $isPhotograph) {
+            abort(403);
+        }
     }
 
-    if (! is_file($absolute)) {
+    $candidates = [
+        storage_path('app/private/uploads/' . $decoded),
+        storage_path('app/private/' . $decoded),
+        public_path('uploads/' . $decoded),
+        public_path($decoded),
+    ];
+
+    $absolute = null;
+    foreach ($candidates as $cand) {
+        if (is_file($cand)) {
+            $absolute = $cand;
+            break;
+        }
+    }
+
+    if (! $absolute || ! is_file($absolute)) {
         abort(404);
     }
 
@@ -110,4 +141,4 @@ Route::get('/local-documents/{path}', function (string $path) {
         'X-Content-Type-Options' => 'nosniff',
         'Cache-Control' => 'private, no-store',
     ]);
-})->where('path', '.*')->name('local-documents.view')->middleware('signed');
+})->where('path', '.*')->name('local-documents.view');

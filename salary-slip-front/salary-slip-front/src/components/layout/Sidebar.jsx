@@ -127,6 +127,20 @@ export default function Sidebar({ open, onClose, width, isCollapsed, onCollapse 
 
         <nav className="flex-1 space-y-1 overflow-y-auto overflow-x-hidden px-3 py-4">
           {nav.map(({ to, label, icon: Icon, end, subItems, disabled }) => {
+            if (disabled) {
+              return (
+                <span
+                  key={to || label}
+                  aria-disabled="true"
+                  title="You do not have access to this page"
+                  className={`group flex items-center ${isCollapsed ? 'justify-center' : 'gap-3'} cursor-not-allowed rounded-xl px-3 py-2.5 text-sm font-medium text-gray-600 opacity-60`}
+                >
+                  <Icon size={18} className="flex-shrink-0" />
+                  {!isCollapsed && <span className="flex-1">{label}</span>}
+                </span>
+              );
+            }
+
             if (subItems) {
               const isOpen = openMenus.includes(label);
               const isAnyChildActive = subItems.some(subItem => {
@@ -193,20 +207,6 @@ export default function Sidebar({ open, onClose, width, isCollapsed, onCollapse 
                     </div>
                   )}
                 </div>
-              );
-            }
-
-            if (disabled) {
-              return (
-                <span
-                  key={to}
-                  aria-disabled="true"
-                  title="You do not have access to this page"
-                  className={`group flex items-center ${isCollapsed ? 'justify-center' : 'gap-3'} cursor-not-allowed rounded-xl px-3 py-2.5 text-sm font-medium text-gray-600 opacity-60`}
-                >
-                  <Icon size={18} className="flex-shrink-0" />
-                  {!isCollapsed && <span className="flex-1">{label}</span>}
-                </span>
               );
             }
 

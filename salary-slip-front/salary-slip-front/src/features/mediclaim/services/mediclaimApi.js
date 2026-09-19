@@ -288,10 +288,17 @@ export const mediclaimApi = {
   // client-supplied stage (reconciliation #5). `payload` carries
   // `{ decision, remarks, approvedAmount? }`.
   submitReviewDecision(claimId, payload, accessToken, tokenType = "Bearer") {
+    const body = { ...payload };
+    if (body.approvedAmount !== undefined && body.approved_amount === undefined) {
+      body.approved_amount = body.approvedAmount;
+    }
+    if (body.approved_amount !== undefined && body.approvedAmount === undefined) {
+      body.approvedAmount = body.approved_amount;
+    }
     return apiRequest(`${BASE}/reviews/${claimId}/decision`, {
       method: "POST",
       headers: headers(accessToken, tokenType),
-      body: JSON.stringify(payload),
+      body: JSON.stringify(body),
     });
   },
 

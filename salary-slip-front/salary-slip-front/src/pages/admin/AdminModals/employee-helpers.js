@@ -11,24 +11,41 @@ import { baseUrl } from "../../../utils/url";
 export function getEmployeePhotoUrl(photo) {
   if (!photo) return "";
 
-  const photoValue = String(photo).trim();
-
-  if (!photoValue) return "";
-
-  if (/^(https?:)?\/\//i.test(photoValue) || photoValue.startsWith("data:")) {
-    return photoValue;
+  let raw = photo;
+  if (typeof photo === "object" && photo !== null) {
+    raw = photo.url || photo.path || photo.src || "";
   }
 
-  // A server-local filesystem path is never servable to the browser. Chrome
-  // parses a leading drive letter as a URL scheme and rewrites "C:\…" to
-  // file:///C:/…, then refuses to load it ("Not allowed to load local
-  // resource"). Older rows hold PHP temp upload paths like
-  // C:\…\Temp\phpXXXX.tmp; render them as "no image" rather than a broken one.
+  let photoValue = String(raw).trim();
+
+  if (!photoValue || photoValue === "null" || photoValue === "undefined") return "";
+
+  // A server-local filesystem path is never servable to the browser.
   if (/^[a-z]:[\\/]/i.test(photoValue) || photoValue.startsWith("\\\\") || /^file:/i.test(photoValue)) {
     return "";
   }
 
-  return `${baseUrl}/storage/${photoValue.replace(/^\/+/, "")}`;
+  // If the photo URL contains localhost or 127.0.0.1 (e.g. from backend APP_URL=http://localhost:8000),
+  // rewrite localhost to baseUrl so network clients can load the photo without ERR_CONNECTION_REFUSED.
+  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i.test(photoValue)) {
+    const rel = photoValue.replace(/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i, "");
+    const cleanRel = rel.replace(/^[\\/]+/, "");
+    return `${baseUrl}/${cleanRel}`;
+  }
+
+  if (/^(https?:)?\/\//i.test(photoValue) || photoValue.startsWith("data:") || photoValue.startsWith("blob:")) {
+    return photoValue;
+  }
+
+  const cleanPath = photoValue.replace(/^[\\/]+/, "");
+  if (cleanPath.startsWith("storage/")) {
+    return `${baseUrl}/${cleanPath}`;
+  }
+  if (cleanPath.startsWith("local-documents/") || cleanPath.startsWith("api/")) {
+    return `${baseUrl}/${cleanPath}`;
+  }
+
+  return `${baseUrl}/storage/${cleanPath}`;
 }
 
 export function validatePassword(pwd) {

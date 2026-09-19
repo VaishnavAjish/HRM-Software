@@ -295,7 +295,18 @@ export function useNavItems() {
       if (item.to === "/employee/profile") {
         return { ...item, disabled: false };
       }
-      return { ...item, disabled: !isComplete };
+      return {
+        ...item,
+        disabled: !isComplete,
+        ...(item.subItems
+          ? {
+              subItems: item.subItems.map(sub => ({
+                ...sub,
+                disabled: !isComplete,
+              })),
+            }
+          : {}),
+      };
     });
   })();
 
@@ -331,13 +342,9 @@ export function decorateNavigation(nav, routeState) {
       return { ...item, disabled: false };
     }
 
-    if (item.to?.startsWith("/employee")) {
-      return { ...item, disabled: Boolean(item.disabled) };
-    }
+    const state = routeState ? routeState(item.to) : "allow";
 
-    const state = routeState(item.to);
-
-    return state === "unassigned" ? null : { ...item, disabled: item.disabled || state === "deny" };
+    return state === "unassigned" ? null : { ...item, disabled: Boolean(item.disabled) || state === "deny" };
   };
 
   return nav
@@ -348,7 +355,11 @@ export function decorateNavigation(nav, routeState) {
 
       if (subItems.length === 0) return null;
 
-      return { ...item, subItems, disabled: subItems.every((sub) => sub.disabled) };
+      return {
+        ...item,
+        subItems,
+        disabled: Boolean(item.disabled) || subItems.every((sub) => sub.disabled),
+      };
     })
     .filter(Boolean);
 }

@@ -95,6 +95,7 @@ class ReviewQueueController extends Controller
             'decision' => ['required', 'string', 'max:40'],
             'remarks' => ['sometimes', 'nullable', 'string', 'max:4000'],
             'approved_amount' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            'approvedAmount' => ['sometimes', 'nullable', 'numeric', 'min:0'],
             'floater_override' => ['sometimes', 'nullable', 'array'],
             'floater_override.override_amount' => ['sometimes', 'nullable', 'numeric', 'min:0.01'],
             'floater_override.reason' => ['sometimes', 'nullable', 'string', 'max:1000'],
@@ -106,13 +107,24 @@ class ReviewQueueController extends Controller
             'reference' => ['sometimes', 'nullable', 'string', 'max:100'],
         ]);
 
-        return $this->guarded(function () use ($method, $model, $actor, $data) {
+        $approvedAmount = null;
+        if (isset($data['approved_amount']) && $data['approved_amount'] !== null && $data['approved_amount'] !== '') {
+            $approvedAmount = (float) $data['approved_amount'];
+        } elseif (isset($data['approvedAmount']) && $data['approvedAmount'] !== null && $data['approvedAmount'] !== '') {
+            $approvedAmount = (float) $data['approvedAmount'];
+        } elseif ($request->filled('approved_amount')) {
+            $approvedAmount = (float) $request->input('approved_amount');
+        } elseif ($request->filled('approvedAmount')) {
+            $approvedAmount = (float) $request->input('approvedAmount');
+        }
+
+        return $this->guarded(function () use ($method, $model, $actor, $data, $approvedAmount) {
             if ($method === 'directorFinalApproval') {
                 $updated = $this->workflow->directorFinalApproval(
                     $model,
                     $actor,
                     (string) $data['decision'],
-                    (float) ($data['approved_amount'] ?? 0),
+                    (float) ($approvedAmount ?? 0),
                     $data['remarks'] ?? null,
                     $this->buildOverride($data['floater_override'] ?? null, $model)
                 );
@@ -121,7 +133,7 @@ class ReviewQueueController extends Controller
                     $model,
                     $actor,
                     (string) $data['decision'],
-                    (float) ($data['approved_amount'] ?? 0),
+                    (float) ($approvedAmount ?? 0),
                     $data['remarks'] ?? null,
                     $this->buildOverride($data['floater_override'] ?? null, $model)
                 );

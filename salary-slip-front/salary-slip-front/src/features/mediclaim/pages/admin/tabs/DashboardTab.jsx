@@ -156,7 +156,7 @@ export default function DashboardTab({ onNavigate }) {
   );
 
   const approvedTotal = useMemo(
-    () => state.rows.reduce((sum, row) => sum + (Number(row.approvedAmount ?? row.approved_amount) || 0), 0),
+    () => state.rows.reduce((sum, row) => sum + (Number(row.approvedAmount ?? row.approved_amount ?? row.totalApprovedAmount ?? row.total_approved_amount) || 0), 0),
     [state.rows],
   );
 

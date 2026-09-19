@@ -23,6 +23,11 @@ import {
   UserCheck,
   UserX,
   AlertCircle,
+  Fingerprint,
+  Sparkles,
+  Check,
+  Server,
+  Radio,
 } from "lucide-react";
 import Modal from "../../components/ui/Modal";
 import { salaryApi } from "../../utils/api";
@@ -38,6 +43,17 @@ const MONTHS = [
 
 const YEARS = ["2024", "2025", "2026", "2027", "2028", "2029", "2030"];
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+// 28 Connected eSSL Biometric Device Serials
+const ESSL_DEVICES = [
+  "TDBD254500578", "TDBD253600396", "TDBD253600373", "CPAK232160545",
+  "TDBD253600369", "TDBD253600390", "CRJP230760314", "CPAK222560309",
+  "JYK8234700169", "TDBD240400272", "TDBD240400401", "NES1260500255",
+  "CPAK222560310", "NES1260500183", "CPAK222560312", "CPAK222560451",
+  "CRJP230760340", "CPAK222560320", "CPAK222560658", "CRJP230760331",
+  "TDBD260200086", "TDBD260200491", "CPAK222560653", "CPAK223760033",
+  "CPAK223760603", "CPAK222560306", "CPAK222560307", "CPAK222560447"
+];
 
 const STATUS_CONFIG = {
   present:  { label: "P", short: "Present",  bg: "bg-emerald-500", bgLight: "bg-emerald-50 dark:bg-emerald-950/40", text: "text-emerald-700 dark:text-emerald-400", border: "border-emerald-200 dark:border-emerald-800/60", badge: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700", icon: CheckCircle2 },
@@ -60,7 +76,9 @@ export default function AttendanceView() {
   const { user } = useAuth();
   const { companyId, activeUnit, isAllCompanies } = useCompany();
 
-  const [selectedCompanyId, setSelectedCompanyId] = useState(companyId !== "all" ? companyId : "");
+  const [selectedCompanyId, setSelectedCompanyId] = useState(
+    companyId && companyId !== "all" ? companyId : "all-companies"
+  );
   const [selectedUnit, setSelectedUnit] = useState(activeUnit || "");
   const [selectedDepartment, setSelectedDepartment] = useState("");
   const [selectedShift, setSelectedShift] = useState("");
@@ -68,20 +86,41 @@ export default function AttendanceView() {
   const [selectedYear, setSelectedYear] = useState(String(new Date().getFullYear()));
   const [selectedDay, setSelectedDay] = useState(String(new Date().getDate()));
   const [statusFilter, setStatusFilter] = useState("all");
+  const [onlyUploaded, setOnlyUploaded] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [employees, setEmployees] = useState([]);
   const [attendanceMap, setAttendanceMap] = useState({});
+  const [attendanceDetails, setAttendanceDetails] = useState({});
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [isCalendarModalOpen, setIsCalendarModalOpen] = useState(false);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
+
+  // Biometric eSSL Sync Modal States
+  const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState(null);
+  const [syncMonth, setSyncMonth] = useState(String(new Date().getMonth() + 1));
+  const [syncYear, setSyncYear] = useState(String(new Date().getFullYear()));
+  const [syncStartDate, setSyncStartDate] = useState("");
+  const [syncEndDate, setSyncEndDate] = useState("");
+  const [showDevicesList, setShowDevicesList] = useState(false);
 
   // Pagination & Sorting state
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [sortField, setSortField] = useState("emp_code");
   const [sortDirection, setSortDirection] = useState("asc");
+
+  // Keep selectedCompanyId in sync when company context changes
+  useEffect(() => {
+    if (companyId && companyId !== "all") {
+      setSelectedCompanyId(companyId);
+    } else if (!selectedCompanyId) {
+      setSelectedCompanyId("all-companies");
+    }
+  }, [companyId]);
 
   const activeCompanyConfig = getCompanyConfig(selectedCompanyId);
   const unitOptions = activeCompanyConfig ? activeCompanyConfig.units : [];
@@ -99,7 +138,6 @@ export default function AttendanceView() {
         dateStr: `${selectedYear}-${String(selectedMonth).padStart(2, "0")}-${String(d).padStart(2, "0")}`,
       });
     }
-    // Pad to exactly 42 cells (6 rows) to keep modal height fixed across all months
     while (cells.length < 42) {
       cells.push({ day: null, dateStr: null });
     }
@@ -123,34 +161,31 @@ export default function AttendanceView() {
     setSelectedYear(String(newYear));
   };
 
-  useEffect(() => {
-    if (!selectedCompanyId) return undefined;
-    let cancelled = false;
-
-    async function load() {
-      setLoading(true);
-      try {
-        const res = await salaryApi.getAttendanceGrid(user?.accessToken, user?.tokenType, {
-          companyId: selectedCompanyId,
-          unit: selectedUnit,
-          month: selectedMonth,
-          year: selectedYear,
-          only_uploaded: 1,
-        });
-        if (cancelled) return;
-        const emps = res?.data?.employees || [];
-        setEmployees(emps);
-        setAttendanceMap(res?.data?.attendance || {});
-      } catch (err) {
-        if (!cancelled) toast.error(err.message || "Failed to load attendance records");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
+  const loadAttendance = async () => {
+    if (!selectedCompanyId) return;
+    setLoading(true);
+    try {
+      const res = await salaryApi.getAttendanceGrid(user?.accessToken, user?.tokenType, {
+        companyId: selectedCompanyId === "all-companies" ? "" : selectedCompanyId,
+        unit: selectedUnit,
+        month: selectedMonth,
+        year: selectedYear,
+        only_uploaded: onlyUploaded ? 1 : 0,
+      });
+      const emps = res?.data?.employees || [];
+      setEmployees(emps);
+      setAttendanceMap(res?.data?.attendance || {});
+      setAttendanceDetails(res?.data?.attendance_details || {});
+    } catch (err) {
+      toast.error(err.message || "Failed to load attendance records");
+    } finally {
+      setLoading(false);
     }
+  };
 
-    load();
-    return () => { cancelled = true; };
-  }, [selectedCompanyId, selectedUnit, selectedMonth, selectedYear, user?.accessToken, user?.tokenType]);
+  useEffect(() => {
+    loadAttendance();
+  }, [selectedCompanyId, selectedUnit, selectedMonth, selectedYear, onlyUploaded, user?.accessToken, user?.tokenType]);
 
   // Derived departments list
   const departmentsList = useMemo(() => {
@@ -166,15 +201,23 @@ export default function AttendanceView() {
   const processedRows = useMemo(() => {
     return employees.map((emp) => {
       const empData = attendanceMap[emp.emp_code] || {};
-      const dayStatus = empData[targetDateStr] || "not_marked";
+      const empDetails = attendanceDetails[emp.emp_code]?.[targetDateStr] || {};
+      const dayStatus = empDetails.status || empData[targetDateStr] || "not_marked";
 
-      let checkIn = "—";
-      let checkOut = "—";
-      let workHours = "—";
+      let checkIn = empDetails.check_in || "—";
+      let checkOut = empDetails.check_out || "—";
+      let workHours = empDetails.work_hours !== undefined && empDetails.work_hours !== null
+        ? `${Number(empDetails.work_hours).toFixed(1)} hrs`
+        : "—";
+      let deviceSerial = empDetails.device_serial || null;
       let breakTime = "—";
       let overtime = "0.0 hrs";
-      let remarks;
 
+      if (empDetails.work_hours && Number(empDetails.work_hours) > 8) {
+        overtime = `${(Number(empDetails.work_hours) - 8).toFixed(1)} hrs`;
+      }
+
+      let remarks;
       if (dayStatus === "present") {
         remarks = "Present";
       } else if (dayStatus === "late") {
@@ -195,13 +238,13 @@ export default function AttendanceView() {
         checkIn,
         checkOut,
         workHours,
+        deviceSerial,
         breakTime,
         overtime,
         remarks,
         shiftName: emp.shift_name || emp.shift || "—",
       };
-    });
-  }, [employees, attendanceMap, targetDateStr]);
+  }, [employees, attendanceMap, attendanceDetails, targetDateStr]);
 
   // Overall KPI Cards Metrics
   const metrics = useMemo(() => {
@@ -276,6 +319,32 @@ export default function AttendanceView() {
 
   const totalPages = Math.ceil(filteredRows.length / rowsPerPage) || 1;
 
+  const handleSyncEssl = async () => {
+    setIsSyncing(true);
+    setSyncResult(null);
+    try {
+      const payload = {
+        month: parseInt(syncMonth, 10),
+        year: parseInt(syncYear, 10),
+        company_code: selectedCompanyId === "all-companies" ? "" : selectedCompanyId,
+        start_date: syncStartDate || undefined,
+        end_date: syncEndDate || undefined,
+      };
+      const res = await salaryApi.syncEsslAttendance(payload, user?.accessToken, user?.tokenType);
+      if (res?.status) {
+        setSyncResult(res);
+        toast.success(res.message || "eSSL Biometric attendance synced successfully!");
+        await loadAttendance();
+      } else {
+        toast.error(res?.message || "Failed to sync eSSL Biometric attendance");
+      }
+    } catch (err) {
+      toast.error(err.message || "Error syncing eSSL biometric attendance");
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   const handleSort = (field) => {
     if (sortField === field) {
       setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
@@ -290,6 +359,7 @@ export default function AttendanceView() {
     setSelectedDepartment("");
     setSelectedShift("");
     setStatusFilter("all");
+    setOnlyUploaded(false);
     setSelectedDay(String(new Date().getDate()));
   };
 
@@ -300,11 +370,11 @@ export default function AttendanceView() {
     }
     const headers = [
       "Emp Code", "Name", "Department", "Date",
-      "Check In", "Check Out", "Status",
+      "Check In", "Check Out", "Work Hours", "Status",
     ];
     const data = filteredRows.map((r) => [
       r.emp_code, r.name, r.department || "—", targetDateStr,
-      r.checkIn, r.checkOut, r.dayStatus.toUpperCase(),
+      r.checkIn, r.checkOut, r.workHours, r.dayStatus.toUpperCase(),
     ]);
     saveAoaToXlsx(`attendance_${targetDateStr}.xlsx`, "Attendance", [headers, ...data]);
     toast.success("Excel exported successfully!");
@@ -357,11 +427,26 @@ export default function AttendanceView() {
         </div>
 
         {/* Top Actions Bar */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Direct eSSL Biometric Cloud Sync Trigger */}
           <button
             onClick={() => {
-              setLoading(true);
-              setTimeout(() => { setLoading(false); toast.success("Attendance refreshed!"); }, 400);
+              setSyncMonth(selectedMonth);
+              setSyncYear(selectedYear);
+              setSyncResult(null);
+              setIsSyncModalOpen(true);
+            }}
+            className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-700 hover:via-indigo-700 hover:to-purple-700 px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:shadow transition active:scale-95"
+          >
+            <Fingerprint className="h-4 w-4 animate-pulse text-blue-200" />
+            <span>Sync eSSL Biometric</span>
+            <span className="rounded-full bg-white/20 px-1.5 py-0.2 text-[10px] font-bold">28 Machines</span>
+          </button>
+
+          <button
+            onClick={() => {
+              loadAttendance();
+              toast.success("Attendance refreshed!");
             }}
             className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-3 py-1.5 text-xs font-semibold text-gray-700 dark:text-gray-200 shadow-sm hover:bg-gray-50 dark:hover:bg-gray-800 transition"
           >
@@ -405,6 +490,16 @@ export default function AttendanceView() {
               <span>Filters</span>
               <ChevronDown className={`h-3 w-3 transition-transform ${showMobileFilters ? "rotate-180" : ""}`} />
             </button>
+
+            <label className="inline-flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={onlyUploaded}
+                onChange={(e) => setOnlyUploaded(e.target.checked)}
+                className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+              />
+              <span className="text-[11px]">Only with logs</span>
+            </label>
 
             <button
               onClick={handleResetFilters}
@@ -450,7 +545,7 @@ export default function AttendanceView() {
               disabled={!isAllCompanies}
               className="w-full rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-brand-500/20 disabled:opacity-50"
             >
-              <option value="">Select Company</option>
+              <option value="all-companies">Both Companies (All)</option>
               {COMPANY_OPTIONS.map((c) => (
                 <option key={c.id} value={c.id}>{c.label}</option>
               ))}
@@ -597,16 +692,20 @@ export default function AttendanceView() {
                       </span>
                     </div>
 
-                    {/* Bottom: Check-In, Check-Out & View action */}
+                    {/* Bottom: Check-In, Check-Out, Work Hours & View action */}
                     <div className="flex items-center justify-between pt-1 text-xs">
-                      <div className="flex items-center gap-4 text-[11px]">
+                      <div className="flex items-center gap-3 text-[11px]">
                         <div>
-                          <span className="text-gray-400 text-[10px] block font-medium">CHECK-IN</span>
+                          <span className="text-gray-400 text-[10px] block font-medium">IN</span>
                           <span className="font-mono font-medium text-gray-700 dark:text-gray-300">{emp.checkIn}</span>
                         </div>
                         <div>
-                          <span className="text-gray-400 text-[10px] block font-medium">CHECK-OUT</span>
+                          <span className="text-gray-400 text-[10px] block font-medium">OUT</span>
                           <span className="font-mono font-medium text-gray-700 dark:text-gray-300">{emp.checkOut}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400 text-[10px] block font-medium">HOURS</span>
+                          <span className="font-mono font-medium text-indigo-600 dark:text-indigo-400">{emp.workHours}</span>
                         </div>
                       </div>
 
@@ -637,6 +736,7 @@ export default function AttendanceView() {
                     </th>
                     <th className="py-3 px-3">Check-In</th>
                     <th className="py-3 px-3">Check-Out</th>
+                    <th className="py-3 px-3">Work Hours</th>
                     <th className="py-3 px-3 cursor-pointer hover:bg-gray-200/60 dark:hover:bg-gray-700/60 transition" onClick={() => handleSort("dayStatus")}>
                       Status {sortField === "dayStatus" && (sortDirection === "asc" ? "↑" : "↓")}
                     </th>
@@ -692,6 +792,14 @@ export default function AttendanceView() {
                         {/* Check-Out */}
                         <td className="py-2.5 px-3 text-gray-700 dark:text-gray-300 font-mono text-[11px]">
                           {emp.checkOut}
+                        </td>
+
+                        {/* Work Hours */}
+                        <td className="py-2.5 px-3 font-mono text-[11px] text-gray-700 dark:text-gray-300">
+                          {emp.workHours}
+                          {emp.overtime && emp.overtime !== "0.0 hrs" && (
+                            <span className="ml-1 text-[10px] text-amber-600 font-medium">({emp.overtime} OT)</span>
+                          )}
                         </td>
 
                         {/* Status Badge */}
@@ -875,6 +983,194 @@ export default function AttendanceView() {
             </div>
           );
         })()}
+      </Modal>
+
+      {/* eSSL Biometric Attendance Synchronization Modal */}
+      <Modal
+        isOpen={isSyncModalOpen}
+        onClose={() => !isSyncing && setIsSyncModalOpen(false)}
+        title="eSSL Biometric Attendance Sync"
+        maxWidth="max-w-2xl"
+      >
+        <div className="flex flex-col gap-4 text-xs text-gray-700 dark:text-gray-300">
+          {/* Header Info Banner */}
+          <div className="flex items-start gap-3 rounded-xl bg-gradient-to-br from-blue-500/10 via-indigo-500/10 to-purple-500/10 border border-blue-200/80 dark:border-blue-900/50 p-3.5">
+            <div className="rounded-lg bg-blue-600 p-2 text-white shrink-0 shadow-sm">
+              <Fingerprint className="h-5 w-5" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-gray-900 dark:text-white text-sm">
+                  eSSL SOAP WebAPIService
+                </span>
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 dark:bg-emerald-950 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  28 Devices Online
+                </span>
+              </div>
+              <p className="mt-1 text-gray-500 dark:text-gray-400 text-[11px] leading-relaxed">
+                Connects directly to the enterprise biometric cloud server (<code className="font-mono text-[10px] bg-white/80 dark:bg-gray-800 px-1 py-0.5 rounded">/WebAPIService.asmx</code>) to pull timestamped punches, calculate daily check-in, check-out, duration, and update company attendance records.
+              </p>
+            </div>
+          </div>
+
+          {/* Sync Timeframe Configuration */}
+          <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/50 p-3.5 flex flex-col gap-3">
+            <span className="font-bold text-gray-900 dark:text-white text-xs uppercase tracking-wider flex items-center gap-1.5">
+              <Clock className="h-3.5 w-3.5 text-brand-600 dark:text-brand-400" />
+              Target Sync Timeframe
+            </span>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              <div>
+                <label className="block text-[10px] font-bold uppercase text-gray-400 dark:text-gray-500 mb-1">
+                  Month
+                </label>
+                <select
+                  value={syncMonth}
+                  onChange={(e) => setSyncMonth(e.target.value)}
+                  disabled={isSyncing}
+                  className="w-full rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 px-2.5 py-1.5 text-xs outline-none focus:ring-2 focus:ring-brand-500/20"
+                >
+                  {MONTHS.map((m, idx) => (
+                    <option key={m} value={String(idx + 1)}>{m}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase text-gray-400 dark:text-gray-500 mb-1">
+                  Year
+                </label>
+                <select
+                  value={syncYear}
+                  onChange={(e) => setSyncYear(e.target.value)}
+                  disabled={isSyncing}
+                  className="w-full rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 px-2.5 py-1.5 text-xs outline-none focus:ring-2 focus:ring-brand-500/20"
+                >
+                  {YEARS.map((y) => (
+                    <option key={y} value={y}>{y}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase text-gray-400 dark:text-gray-500 mb-1">
+                  Start Date (Optional)
+                </label>
+                <input
+                  type="date"
+                  value={syncStartDate}
+                  onChange={(e) => setSyncStartDate(e.target.value)}
+                  disabled={isSyncing}
+                  className="w-full rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 px-2.5 py-1 text-xs outline-none focus:ring-2 focus:ring-brand-500/20"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase text-gray-400 dark:text-gray-500 mb-1">
+                  End Date (Optional)
+                </label>
+                <input
+                  type="date"
+                  value={syncEndDate}
+                  onChange={(e) => setSyncEndDate(e.target.value)}
+                  disabled={isSyncing}
+                  className="w-full rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 px-2.5 py-1 text-xs outline-none focus:ring-2 focus:ring-brand-500/20"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-1 border-t border-gray-200/60 dark:border-gray-800 text-[11px]">
+              <span className="text-gray-500 dark:text-gray-400">
+                Company Scope: <strong className="text-gray-900 dark:text-white">{selectedCompanyId === "all-companies" ? "Both Companies" : (activeCompanyConfig?.label || selectedCompanyId)}</strong>
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowDevicesList((p) => !p)}
+                className="text-brand-600 dark:text-brand-400 hover:underline font-medium inline-flex items-center gap-1"
+              >
+                <Server className="h-3 w-3" />
+                {showDevicesList ? "Hide Devices List" : "View 28 Machine Serials"}
+              </button>
+            </div>
+
+            {/* Collapsible Devices List */}
+            {showDevicesList && (
+              <div className="mt-2 p-2.5 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 max-h-36 overflow-y-auto">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 font-mono text-[10px]">
+                  {ESSL_DEVICES.map((sn, i) => (
+                    <div key={sn} className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800/80 text-gray-700 dark:text-gray-300">
+                      <span className="text-gray-400 text-[9px]">#{i + 1}</span>
+                      <span className="truncate">{sn}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Sync Results Summary (if finished) */}
+          {syncResult && (
+            <div className="rounded-xl border border-emerald-200 dark:border-emerald-800/60 bg-emerald-50/50 dark:bg-emerald-950/30 p-3.5 flex flex-col gap-2 animate-fadeIn">
+              <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-300 font-bold text-xs">
+                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                <span>Sync Summary Results</span>
+              </div>
+              <p className="text-emerald-700 dark:text-emerald-400 text-[11px]">
+                {syncResult.message}
+              </p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 font-mono text-[11px]">
+                <div className="bg-white/80 dark:bg-gray-900/60 p-2 rounded-lg border border-emerald-100 dark:border-emerald-900/40">
+                  <div className="text-[9px] uppercase font-sans text-gray-500 font-bold">Total Punches</div>
+                  <div className="text-base font-bold text-emerald-700 dark:text-emerald-300">{syncResult.total_punches ?? 0}</div>
+                </div>
+                <div className="bg-white/80 dark:bg-gray-900/60 p-2 rounded-lg border border-emerald-100 dark:border-emerald-900/40">
+                  <div className="text-[9px] uppercase font-sans text-gray-500 font-bold">Records Synced</div>
+                  <div className="text-base font-bold text-emerald-700 dark:text-emerald-300">{syncResult.records_synced ?? 0}</div>
+                </div>
+                <div className="bg-white/80 dark:bg-gray-900/60 p-2 rounded-lg border border-emerald-100 dark:border-emerald-900/40">
+                  <div className="text-[9px] uppercase font-sans text-gray-500 font-bold">Active Employees</div>
+                  <div className="text-base font-bold text-emerald-700 dark:text-emerald-300">{syncResult.unique_employees ?? 0}</div>
+                </div>
+                <div className="bg-white/80 dark:bg-gray-900/60 p-2 rounded-lg border border-emerald-100 dark:border-emerald-900/40">
+                  <div className="text-[9px] uppercase font-sans text-gray-500 font-bold">Machines Scanned</div>
+                  <div className="text-base font-bold text-emerald-700 dark:text-emerald-300">{syncResult.devices_count ?? 28}</div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Action Buttons */}
+          <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-gray-200 dark:border-gray-800">
+            <button
+              type="button"
+              onClick={() => setIsSyncModalOpen(false)}
+              disabled={isSyncing}
+              className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2 text-xs font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-750 transition disabled:opacity-50"
+            >
+              Close
+            </button>
+            <button
+              type="button"
+              onClick={handleSyncEssl}
+              disabled={isSyncing}
+              className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 px-4 py-2 text-xs font-semibold text-white shadow hover:from-blue-700 hover:via-indigo-700 hover:to-purple-700 transition active:scale-95 disabled:opacity-60"
+            >
+              {isSyncing ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Syncing 28 eSSL Machines...</span>
+                </>
+              ) : (
+                <>
+                  <Fingerprint className="h-4 w-4" />
+                  <span>Start Biometric Sync</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

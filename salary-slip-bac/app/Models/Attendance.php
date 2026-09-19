@@ -10,7 +10,7 @@ class Attendance extends Model
     public const STATUSES = ['present', 'absent', 'half_day', 'leave'];
 
     protected $fillable = [
-        'emp_code', 'company_code', 'unit', 'date', 'status', 'marked_by', 'user_id',
+        'emp_code', 'company_code', 'unit', 'date', 'status', 'check_in', 'check_out', 'work_hours', 'device_serial', 'raw_punches', 'marked_by', 'user_id',
     ];
 
     protected function casts(): array

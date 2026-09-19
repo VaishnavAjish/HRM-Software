@@ -23,7 +23,7 @@ import {
 import { useSearchParams } from "react-router-dom";
 import { getCompanyConfig } from "../../config/companyConfig";
 import { getProfileCompletionPercentage } from "../../utils/profileCompletion";
-import { isPhotoDeletedOrDummy, markPhotoAsDeleted } from "../../utils/photoStatus";
+import { isPhotoDeletedOrDummy, markPhotoAsDeleted, getPhotoDeletionReason } from "../../utils/photoStatus";
 
 import { useTheme } from "../../context/theme-context";
 import { validateEmployeeForm } from "../../utils/validation";
@@ -465,6 +465,82 @@ export default function EmployeeManagement() {
   }, [searchParams, setSearchParams]);
   const [selected, setSelected] = useState(null);
   const [photoModalRow, setPhotoModalRow] = useState(null);
+  const modalPhotoUrl = getEmployeePhotoUrl(
+    photoModalRow?.photo || photoModalRow?.user?.photo || photoModalRow?.employee?.photo || photoModalRow?.userPhoto || photoModalRow?.userAvatar
+  );
+  const [deleteReasonModal, setDeleteReasonModal] = useState({ open: false, row: null });
+  const [deleteReasonText, setDeleteReasonText] = useState("");
+  const [deleteReasonError, setDeleteReasonError] = useState("");
+
+  const handleOpenDeleteReasonModal = (row) => {
+    if (!row) return;
+    const currentReason = getPhotoDeletionReason(row) || "Dummy photo detected / Invalid profile picture";
+    setDeleteReasonText(currentReason);
+    setDeleteReasonError("");
+    setDeleteReasonModal({ open: true, row });
+  };
+
+  const handleConfirmPhotoDelete = async () => {
+    const row = deleteReasonModal.row;
+    const reason = deleteReasonText.trim();
+    if (!reason) {
+      setDeleteReasonError("Please enter a reason for photo deletion.");
+      return;
+    }
+    if (!row) return;
+
+    try {
+      markPhotoAsDeleted(row, reason);
+
+      if (row.id) {
+        await salaryApi.editEmployee(
+          row.id,
+          {
+            photo: null,
+            photo_rejected: true,
+            photo_deleted: true,
+            is_photo_dummy: true,
+            photo_deletion_reason: reason,
+          },
+          currentUser?.accessToken,
+          currentUser?.tokenType
+        ).catch((err) => {
+          console.warn("Photo delete API warning:", err);
+        });
+      }
+
+      if (photoModalRow && (photoModalRow.id === row.id || (row.empCode && photoModalRow.empCode === row.empCode))) {
+        setPhotoModalRow({
+          ...photoModalRow,
+          photo: null,
+          photo_rejected: true,
+          photo_deleted: true,
+          is_photo_dummy: true,
+          photo_deletion_reason: reason,
+        });
+      }
+
+      setEmployees((prev) =>
+        prev.map((item) =>
+          item.id === row.id || (row.empCode && item.empCode === row.empCode)
+            ? {
+                ...item,
+                photo: null,
+                photo_rejected: true,
+                photo_deleted: true,
+                is_photo_dummy: true,
+                photo_deletion_reason: reason,
+              }
+            : item
+        )
+      );
+
+      toast.success("Employee photo deleted and profile locked.");
+      setDeleteReasonModal({ open: false, row: null });
+    } catch (err) {
+      toast.error(err.message || "Failed to delete employee photo");
+    }
+  };
   const [form, setForm] = useState(emptyForm);
   const [viewLoading, setViewLoading] = useState(false);
   const [saveLoading, setSaveLoading] = useState(false);
@@ -1153,7 +1229,7 @@ export default function EmployeeManagement() {
         cellRenderer: ({ data: emp }) => {
           if (!emp) return null;
           const pct = getProfileCompletionPercentage(emp);
-          const photoUrl = getEmployeePhotoUrl(emp.photo);
+          const photoUrl = getEmployeePhotoUrl(emp.photo || emp.user?.photo || emp.employee?.photo || emp.userPhoto || emp.userAvatar);
           const initial = (emp.name || "?").trim().charAt(0).toUpperCase() || "?";
           
           const barColorText =
@@ -2112,7 +2188,7 @@ export default function EmployeeManagement() {
           </Button>
         </div>
       </Modal>
-      {/* ── Photo Popup Modal ── */}
+      {/* Photo Popup Modal */}
       {photoModalRow && (
         <div
           onClick={() => setPhotoModalRow(null)}
@@ -2146,9 +2222,9 @@ export default function EmployeeManagement() {
             <div className="p-6 flex flex-col items-center text-center">
               {/* Photo Display Box */}
               <div className="relative group flex items-center justify-center w-56 h-56 sm:w-64 sm:h-64 rounded-2xl bg-gradient-to-br from-brand-500/10 via-gray-100 to-brand-500/5 dark:from-brand-900/30 dark:via-gray-800 dark:to-gray-900 border-2 border-brand-500/20 shadow-inner overflow-hidden mb-4">
-                {getEmployeePhotoUrl(photoModalRow.photo) && !isPhotoDeletedOrDummy(photoModalRow) ? (
+                {modalPhotoUrl && !isPhotoDeletedOrDummy(photoModalRow) ? (
                   <img
-                    src={getEmployeePhotoUrl(photoModalRow.photo)}
+                    src={modalPhotoUrl}
                     alt={photoModalRow.name || "Employee"}
                     className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
                     onError={(e) => {
@@ -2211,9 +2287,9 @@ export default function EmployeeManagement() {
 
             {/* Footer */}
             <div className="px-6 py-4 border-t border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 flex flex-wrap gap-2">
-              {getEmployeePhotoUrl(photoModalRow.photo) && !isPhotoDeletedOrDummy(photoModalRow) && (
+              {modalPhotoUrl && !isPhotoDeletedOrDummy(photoModalRow) && (
                 <a
-                  href={getEmployeePhotoUrl(photoModalRow.photo)}
+                  href={modalPhotoUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-brand-50 hover:bg-brand-100 dark:bg-brand-950/40 dark:hover:bg-brand-900/40 text-brand-600 dark:text-brand-300 text-xs font-bold rounded-xl transition-colors"
@@ -2223,7 +2299,7 @@ export default function EmployeeManagement() {
               )}
               <button
                 type="button"
-                onClick={() => handleDeletePhotoInMgmt(photoModalRow)}
+                onClick={() => handleOpenDeleteReasonModal(photoModalRow)}
                 className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl transition-colors shadow-sm"
                 title="Delete profile picture & lock employee profile"
               >

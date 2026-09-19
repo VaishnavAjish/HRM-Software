@@ -174,13 +174,6 @@ export default function ClaimDetailDrawer({ isOpen, onClose, claimId, footer, ti
       }
     }
 
-    const today = new Date();
-    const todayDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-    if (dDay > todayDay) {
-      toast.error("Discharge date cannot be in the future.");
-      return;
-    }
-
     setDischargeSaving(true);
     try {
       await mediclaimApi.finalizeTreatment(

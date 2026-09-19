@@ -101,7 +101,20 @@ class ReportController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $type = (string) ($request->query('reportType') ?: 'dashboard');
+        $rawType = (string) ($request->query('reportType') ?: $request->query('type') ?: 'dashboard');
+
+        $typeMap = [
+            'claims_by_stage' => 'claims',
+            'claims_by_status' => 'claims',
+            'requested_amounts' => 'amounts',
+            'approved_amounts' => 'amounts',
+            'disallowed_amounts' => 'amounts',
+            'settled_amounts' => 'amounts',
+            'turnaround_time' => 'turnaround',
+            'expiring_policies_cards' => 'expiring_policies',
+        ];
+
+        $type = $typeMap[$rawType] ?? $rawType;
 
         if ($type === 'dashboard') {
             return $this->ok($this->dashboard($request));
@@ -139,7 +152,20 @@ class ReportController extends Controller
      */
     public function export(Request $request): StreamedResponse|JsonResponse
     {
-        $type = (string) ($request->query('reportType') ?: 'claims');
+        $rawType = (string) ($request->query('reportType') ?: $request->query('type') ?: 'claims');
+
+        $typeMap = [
+            'claims_by_stage' => 'claims',
+            'claims_by_status' => 'claims',
+            'requested_amounts' => 'amounts',
+            'approved_amounts' => 'amounts',
+            'disallowed_amounts' => 'amounts',
+            'settled_amounts' => 'amounts',
+            'turnaround_time' => 'turnaround',
+            'expiring_policies_cards' => 'expiring_policies',
+        ];
+
+        $type = $typeMap[$rawType] ?? $rawType;
 
         if (! in_array($type, self::DETAIL_REPORT_TYPES, true)) {
             return response()->json([

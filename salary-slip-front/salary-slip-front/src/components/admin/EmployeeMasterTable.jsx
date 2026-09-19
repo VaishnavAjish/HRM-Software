@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "react-hot-toast";
 import {
-  Search, Eye, Pencil, Trash2, Lock, Unlock, X as CloseIcon,
+  Search, Eye, Pencil, Trash2, Lock, Unlock, X, X as CloseIcon,
   Users, Loader2, Filter, RotateCcw, Download, CloudUpload,
 } from "lucide-react";
 import Badge from "../ui/Badge";
@@ -27,7 +27,7 @@ import {
 } from "../../utils/aadhaar";
 import { getEmployeePhotoUrl } from "../../pages/admin/AdminModals/employee-helpers";
 import { getProfileCompletionPercentage } from "../../utils/profileCompletion";
-import { isPhotoDeletedOrDummy, markPhotoAsDeleted } from "../../utils/photoStatus";
+import { isPhotoDeletedOrDummy, markPhotoAsDeleted, getPhotoDeletionReason } from "../../utils/photoStatus";
 import { AlertCircle } from "lucide-react";
 
 const MONTHS = [
@@ -83,7 +83,7 @@ function EmployeePhoto({ row, size = 40, onClick }) {
 
   const strokeDasharray = 106.81;
   const strokeDashoffset = strokeDasharray - (pct / 100) * strokeDasharray;
-  const src = !isDummy ? getEmployeePhotoUrl(row?.photo) : "";
+  const src = !isDummy ? getEmployeePhotoUrl(row?.photo || row?.user?.photo || row?.employee?.photo || row?.userPhoto || row?.userAvatar) : "";
   const initial = (row?.name || "?").trim().charAt(0).toUpperCase() || "?";
   const Wrapper = onClick ? "button" : "div";
 
@@ -187,6 +187,78 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
   // full AddEditEmployeeModal, which is tightly coupled to EmployeeManagement's
   // own page-level state and not designed to be dropped in elsewhere.
   const [photoModalRow, setPhotoModalRow] = useState(null);
+  const modalPhotoUrl = getEmployeePhotoUrl(
+    photoModalRow?.photo || photoModalRow?.user?.photo || photoModalRow?.employee?.photo || photoModalRow?.userPhoto || photoModalRow?.userAvatar
+  );
+  const [deleteReasonModal, setDeleteReasonModal] = useState({ open: false, row: null });
+  const [deleteReasonText, setDeleteReasonText] = useState("");
+  const [deleteReasonError, setDeleteReasonError] = useState("");
+
+  const handleOpenDeleteReasonModal = (row) => {
+    if (!row) return;
+    const currentReason = getPhotoDeletionReason(row) || "Dummy photo detected / Invalid profile picture";
+    setDeleteReasonText(currentReason);
+    setDeleteReasonError("");
+    setDeleteReasonModal({ open: true, row });
+  };
+
+  const handleConfirmPhotoDelete = async () => {
+    const row = deleteReasonModal.row;
+    const reason = deleteReasonText.trim();
+    if (!reason) {
+      setDeleteReasonError("Please enter a reason for photo deletion.");
+      return;
+    }
+    if (!row) return;
+
+    try {
+      markPhotoAsDeleted(row, reason);
+
+      if (row.id) {
+        await salaryApi.editEmployee(
+          row.id,
+          {
+            photo: null,
+            photo_rejected: true,
+            photo_deleted: true,
+            is_photo_dummy: true,
+            photo_deletion_reason: reason,
+          },
+          user?.accessToken,
+          user?.tokenType
+        ).catch((err) => {
+          console.warn("Photo delete API warning:", err);
+        });
+      }
+
+      if (photoModalRow && (photoModalRow.id === row.id || (row.emp_code && photoModalRow.emp_code === row.emp_code))) {
+        setPhotoModalRow({
+          ...photoModalRow,
+          photo: null,
+          photo_rejected: true,
+          photo_deleted: true,
+          is_photo_dummy: true,
+          photo_deletion_reason: reason,
+        });
+      }
+
+      if (onUpdateEmployee) {
+        onUpdateEmployee(row.id || row.emp_code, {
+          photo: null,
+          photo_rejected: true,
+          photo_deleted: true,
+          is_photo_dummy: true,
+          photo_deletion_reason: reason,
+        });
+      }
+
+      toast.success("Employee photo deleted and reason recorded.");
+      setDeleteReasonModal({ open: false, row: null });
+      await fetchAll();
+    } catch (err) {
+      toast.error(err.message || "Failed to delete employee photo");
+    }
+  };
   const [appointmentModalRow, setAppointmentModalRow] = useState(null);
   const [trialModalRow, setTrialModalRow] = useState(null);
   const [trialModalMode, setTrialModalMode] = useState(null); // 'view' or 'edit'
@@ -1134,7 +1206,7 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
         setIsDeptModalOpen={() => {}}
       />
 
-      {/* ── Photo Popup Modal ── */}
+      {/* Photo Popup Modal */}
       {photoModalRow && (
         <div
           onClick={() => setPhotoModalRow(null)}
@@ -1168,9 +1240,9 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
             <div className="p-6 flex flex-col items-center text-center">
               {/* Photo Display Box */}
               <div className="relative group flex items-center justify-center w-56 h-56 sm:w-64 sm:h-64 rounded-2xl bg-gradient-to-br from-brand-500/10 via-gray-100 to-brand-500/5 dark:from-brand-900/30 dark:via-gray-800 dark:to-gray-900 border-2 border-brand-500/20 shadow-inner overflow-hidden mb-4">
-                {getEmployeePhotoUrl(photoModalRow.photo) && !isPhotoDeletedOrDummy(photoModalRow) ? (
+                {modalPhotoUrl && !isPhotoDeletedOrDummy(photoModalRow) ? (
                   <img
-                    src={getEmployeePhotoUrl(photoModalRow.photo)}
+                    src={modalPhotoUrl}
                     alt={photoModalRow.name || "Employee"}
                     className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
                     onError={(e) => {
@@ -1255,9 +1327,9 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
 
             {/* Footer */}
             <div className="px-6 py-4 border-t border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 flex flex-wrap gap-2">
-              {getEmployeePhotoUrl(photoModalRow.photo) && !isPhotoDeletedOrDummy(photoModalRow) && (
+              {modalPhotoUrl && !isPhotoDeletedOrDummy(photoModalRow) && (
                 <a
-                  href={getEmployeePhotoUrl(photoModalRow.photo)}
+                  href={modalPhotoUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-brand-50 hover:bg-brand-100 dark:bg-brand-950/40 dark:hover:bg-brand-900/40 text-brand-600 dark:text-brand-300 text-xs font-bold rounded-xl transition-colors"
@@ -1267,7 +1339,7 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
               )}
               <button
                 type="button"
-                onClick={() => handleDeletePhoto(photoModalRow)}
+                onClick={() => handleOpenDeleteReasonModal(photoModalRow)}
                 className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl transition-colors shadow-sm"
                 title="Delete profile picture & lock employee profile"
               >

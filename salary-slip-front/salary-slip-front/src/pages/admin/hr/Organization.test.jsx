@@ -50,8 +50,7 @@ describe("HrOrganization workspace", () => {
     setup();
 
     for (const name of [
-      "Overview", "Companies", "Units", "Departments", "Department Managers",
-      "Org Chart", "Positions", "Designations", "Assignments", "Promotions & Transfers",
+      "Overview", "Companies", "Departments", "Designations", "Hierarchy", "Assignments", "Promotions & Transfers",
     ]) {
       expect(screen.getByRole("button", { name })).toBeInTheDocument();
     }

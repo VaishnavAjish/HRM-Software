@@ -365,10 +365,6 @@ class ClaimWorkflowService
                 throw ValidationException::withMessages(['status' => 'Discharge can only be recorded on a submitted, in-progress claim.']);
             }
 
-            if ($dischargeAt->copy()->startOfDay()->gt(Carbon::now()->endOfDay())) {
-                throw ValidationException::withMessages(['discharge_at' => 'Discharge date cannot be in the future.']);
-            }
-
             if ($locked->admission_at && $dischargeAt->copy()->startOfDay()->lt(Carbon::parse($locked->admission_at)->startOfDay())) {
                 throw ValidationException::withMessages(['discharge_at' => 'Discharge date cannot be before the admission date.']);
             }
@@ -433,10 +429,6 @@ class ClaimWorkflowService
             $blocked = array_merge([MediclaimClaim::STATUS_DRAFT], self::FINISHED_STATUSES);
             if (in_array($locked->status, $blocked, true)) {
                 throw ValidationException::withMessages(['status' => 'Treatment can only be finalized on a submitted, in-progress claim.']);
-            }
-
-            if ($dischargeAt->copy()->startOfDay()->gt(Carbon::now()->endOfDay())) {
-                throw ValidationException::withMessages(['discharge_at' => 'Discharge date cannot be in the future.']);
             }
 
             if ($locked->admission_at && $dischargeAt->copy()->startOfDay()->lt(Carbon::parse($locked->admission_at)->startOfDay())) {
@@ -838,6 +830,8 @@ class ClaimWorkflowService
 
             if ($decision === 'rejected') {
                 $approvedAmount = 0.0;
+            } elseif ($decision === 'approved' && ($approvedAmount === null || (float) $approvedAmount <= 0) && $claimedTotal > 0) {
+                $approvedAmount = $claimedTotal;
             }
 
             if ($approvedAmount < 0) {
@@ -967,6 +961,8 @@ class ClaimWorkflowService
 
             if ($decision === 'rejected') {
                 $approvedAmount = 0.0;
+            } elseif ($decision === 'approved' && ($approvedAmount === null || (float) $approvedAmount <= 0) && $claimedTotal > 0) {
+                $approvedAmount = $claimedTotal;
             }
 
             if ($approvedAmount < 0) {

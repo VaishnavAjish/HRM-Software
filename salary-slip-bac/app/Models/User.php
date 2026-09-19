@@ -309,30 +309,32 @@ class User extends Authenticatable implements JWTSubject
      */
     private function resolveStoredFile(?string $value): ?string
     {
-        if (!$value || !\App\Support\ObjectKeyBuilder::looksLikeObjectKey($value)) {
+        if (!$value) {
             return $value;
         }
 
-        if (config('documents.provider') !== 's3') {
-            return $value;
+        if (\App\Support\ObjectKeyBuilder::looksLikeObjectKey($value)) {
+            if (config('documents.provider') === 's3') {
+                $extension = strtolower(pathinfo($value, PATHINFO_EXTENSION));
+                $mime = array_search($extension, (array) config('documents.mime_extension_map', []), true)
+                    ?: 'application/octet-stream';
+
+                try {
+                    return \App\Services\Documents\DocumentService::provider()->viewUrl(
+                        $value,
+                        (int) config('documents.view_url_ttl'),
+                        $mime
+                    );
+                } catch (\Throwable) {
+                    return $value;
+                }
+            }
+
+            // For local storage provider, route directly to servable storage path
+            return 'storage/' . ltrim($value, '/');
         }
 
-        // Send the real content type so the browser renders an <img> inline
-        // instead of treating it as an opaque download.
-        $extension = strtolower(pathinfo($value, PATHINFO_EXTENSION));
-        $mime = array_search($extension, (array) config('documents.mime_extension_map', []), true)
-            ?: 'application/octet-stream';
-
-        try {
-            return \App\Services\Documents\DocumentService::provider()->viewUrl(
-                $value,
-                (int) config('documents.view_url_ttl'),
-                $mime
-            );
-        } catch (\Throwable) {
-            // Never let a storage hiccup break a user listing.
-            return null;
-        }
+        return $value;
     }
 
     public function getPhotoAttribute($value)

@@ -1368,6 +1368,7 @@ Route::middleware('jwt.auth')->group(function () {
             Route::get('grid', [AttendanceController::class, 'grid'])->middleware('permission:hr.attendance.read');
             Route::post('cell', [AttendanceController::class, 'upsertCell'])->middleware('permission:hr.attendance.update');
             Route::post('import', [AttendanceController::class, 'bulkImport'])->middleware(['throttle:20,1', 'permission:hr.attendance.import']);
+            Route::post('sync-essl', [AttendanceController::class, 'syncEssl'])->middleware('permission:hr.attendance.update');
         });
         Route::group(['prefix' => 'shifts'], function () {
             Route::get('get', [ShiftController::class, 'index'])->middleware('permission:hr.shift.read');

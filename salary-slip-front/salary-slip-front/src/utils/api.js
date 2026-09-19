@@ -619,8 +619,12 @@ export const salaryApi = {
   },
 
   getAttendanceGrid(accessToken, tokenType = "Bearer", { companyId, unit, month, year, only_uploaded } = {}) {
+    let resolvedCompany = "all";
+    if (companyId && companyId !== "all" && companyId !== "all-companies") {
+      resolvedCompany = resolveWriteCompanyId(companyId);
+    }
     const params = new URLSearchParams({
-      company_code: resolveWriteCompanyId(companyId),
+      company_code: resolvedCompany,
       month,
       year,
     });
@@ -628,6 +632,14 @@ export const salaryApi = {
     if (only_uploaded) params.set("only_uploaded", "1");
     return apiRequest(`/attendance/grid?${params}`, {
       headers: accessToken ? { Authorization: `${tokenType} ${accessToken}` } : {},
+    });
+  },
+
+  syncEsslAttendance(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest("/attendance/sync-essl", {
+      method: "POST",
+      headers: accessToken ? { Authorization: `${tokenType} ${accessToken}` } : {},
+      body: JSON.stringify(payload),
     });
   },
 

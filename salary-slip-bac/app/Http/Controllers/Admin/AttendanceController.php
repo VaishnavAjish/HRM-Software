@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Attendance;
 use App\Models\UploadBatch;
 use App\Models\User;
+use App\Services\Biometric\EsslBiometricService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 
@@ -37,7 +38,11 @@ class AttendanceController extends Controller
         if ($userAuth && (int) $userAuth->role === 2) {
             return [$userAuth->company_code, $userAuth->unit];
         }
-        return [$request->company_code, $request->unit];
+        $company = $request->company_code ?: $request->companyId;
+        if (empty($company)) {
+            $company = 'all';
+        }
+        return [$company, $request->unit];
     }
 
     public function grid(Request $request)
@@ -49,7 +54,7 @@ class AttendanceController extends Controller
 
         [$companyCode, $unit] = $this->scopedCompany($request);
         if (!$companyCode) {
-            return response()->json(['status' => false, 'message' => 'Company is required'], 422);
+            $companyCode = 'all';
         }
 
         $employees = User::when($companyCode && !in_array($companyCode, ['all', 'all-companies']), fn($q) => $q->where('company_code', $companyCode))
@@ -60,7 +65,7 @@ class AttendanceController extends Controller
             })
             ->when($unit, fn ($q) => $q->where('unit', $unit))
             ->orderBy('name')
-            ->get(['id', 'emp_code', 'name', 'department', 'unit'])
+            ->get(['id', 'emp_code', 'name', 'department', 'unit', 'company_code'])
             ->values();
 
         $start = Carbon::create((int) $request->year, (int) $request->month, 1)->startOfMonth();
@@ -69,12 +74,21 @@ class AttendanceController extends Controller
         $records = Attendance::when($companyCode && !in_array($companyCode, ['all', 'all-companies']), fn($q) => $q->where('company_code', $companyCode))
             ->when($unit, fn ($q) => $q->where('unit', $unit))
             ->whereBetween('date', [$start->toDateString(), $end->toDateString()])
-            ->get(['emp_code', 'date', 'status']);
+            ->get(['emp_code', 'date', 'status', 'check_in', 'check_out', 'work_hours', 'device_serial']);
 
         $map = [];
+        $detailsMap = [];
         $recordedEmpCodes = [];
         foreach ($records as $r) {
-            $map[$r->emp_code][$r->date->format('Y-m-d')] = $r->status;
+            $dateKey = $r->date->format('Y-m-d');
+            $map[$r->emp_code][$dateKey] = $r->status;
+            $detailsMap[$r->emp_code][$dateKey] = [
+                'status'        => $r->status,
+                'check_in'      => $r->check_in,
+                'check_out'     => $r->check_out,
+                'work_hours'    => $r->work_hours,
+                'device_serial' => $r->device_serial,
+            ];
             $recordedEmpCodes[$r->emp_code] = true;
         }
 
@@ -85,11 +99,54 @@ class AttendanceController extends Controller
         return response()->json([
             'status' => true,
             'data' => [
-                'employees' => $employees,
-                'attendance' => $map,
-                'days_in_month' => $end->day,
+                'employees'          => $employees,
+                'attendance'         => $map,
+                'attendance_details' => $detailsMap,
+                'days_in_month'      => $end->day,
             ],
         ]);
+    }
+
+    /**
+     * Trigger live biometric synchronization from connected eSSL machines.
+     */
+    public function syncEssl(Request $request, EsslBiometricService $service)
+    {
+        $request->validate([
+            'month'          => 'nullable|integer|min:1|max:12',
+            'year'           => 'nullable|integer|min:2020|max:2035',
+            'company_code'   => 'nullable|string',
+            'device_serials' => 'nullable|array',
+            'start_date'     => 'nullable|date',
+            'end_date'       => 'nullable|date',
+        ]);
+
+        [$companyCode, ] = $this->scopedCompany($request);
+
+        $month = (int) ($request->month ?: Carbon::now()->month);
+        $year = (int) ($request->year ?: Carbon::now()->year);
+        $devices = $request->device_serials ?: null;
+        $userId = auth('api')->id();
+
+        try {
+            $result = $service->syncAttendance(
+                $month,
+                $year,
+                $devices,
+                $companyCode,
+                $userId,
+                $request->start_date,
+                $request->end_date
+            );
+
+            return response()->json($result);
+        } catch (\Throwable $e) {
+            \Log::error("eSSL sync failed: " . $e->getMessage());
+            return response()->json([
+                'status'  => false,
+                'message' => 'eSSL Biometric sync failed: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 
     public function upsertCell(Request $request)

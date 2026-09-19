@@ -113,8 +113,6 @@ export function validateTreatmentStep(data = {}) {
 
       if (dischargeDay < admitDay) {
         errors.dischargeDate = "Discharge date cannot be before the admission date.";
-      } else if (dischargeDay > today) {
-        errors.dischargeDate = "Discharge date cannot be in the future.";
       }
     }
   }

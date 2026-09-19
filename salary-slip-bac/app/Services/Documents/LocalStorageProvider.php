@@ -96,6 +96,14 @@ class LocalStorageProvider implements StorageProvider
     {
         ObjectKeyBuilder::assertSafe($objectKey);
 
+        $root = request() && request()->getHttpHost()
+            ? request()->getSchemeAndHttpHost()
+            : config('app.url');
+
+        if ($root) {
+            URL::forceRootUrl($root);
+        }
+
         return URL::temporarySignedRoute(
             'local-documents.view',
             now()->addSeconds(max(60, $ttlSeconds)),
@@ -106,6 +114,14 @@ class LocalStorageProvider implements StorageProvider
     public function downloadUrl(string $objectKey, int $ttlSeconds, string $downloadName): string
     {
         ObjectKeyBuilder::assertSafe($objectKey);
+
+        $root = request() && request()->getHttpHost()
+            ? request()->getSchemeAndHttpHost()
+            : config('app.url');
+
+        if ($root) {
+            URL::forceRootUrl($root);
+        }
 
         return URL::temporarySignedRoute(
             'local-documents.view',

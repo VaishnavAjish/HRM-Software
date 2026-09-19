@@ -71,10 +71,9 @@ const SUB_TABS = [
     label: "Pending Document",
     description: "Approved claims waiting on the employee's documents — they settle automatically once every required document is on file (legacy Settlement-stage claims still need HR's manual final approval).",
   },
-  {
+    {
     key: CLAIM_WORKFLOW_BUCKET.FINALIZED,
     label: "Approved Claim",
-    description: "Settled, closed, rejected, withdrawn or cancelled — the workflow is finished for these.",
   },
 ];
 
@@ -103,7 +102,7 @@ function toCsvRow(row) {
     Employee: employeeName(row),
     Patient: row.patientName || row.patient_snapshot?.name || "",
     "Claimed Amount": row.totalClaimedAmount ?? row.total_claimed_amount ?? "",
-    "Approved Amount": row.approvedAmount ?? row.approved_amount ?? "",
+    "Approved Amount": row.approvedAmount ?? row.approved_amount ?? row.totalApprovedAmount ?? row.total_approved_amount ?? "",
     Status: row.status || "",
     Submitted: row.submittedAt || row.submitted_at || "",
   };
@@ -339,7 +338,10 @@ export default function PendingReviewsTab() {
     {
       key: "approvedAmount",
       label: "Approved",
-      render: (row) => ((row.approvedAmount ?? row.approved_amount) != null ? formatCurrencyINR(row.approvedAmount ?? row.approved_amount) : "—"),
+      render: (row) => {
+        const amt = row.approvedAmount ?? row.approved_amount ?? row.totalApprovedAmount ?? row.total_approved_amount;
+        return amt != null && amt !== "" ? formatCurrencyINR(amt) : "—";
+      },
     },
     { key: "status", label: "Status", render: (row) => <ClaimStatusBadge status={row.status} /> },
     { key: "updatedOn", label: "Last Updated", render: (row) => formatClaimDate(row.updatedAt || row.updated_at) },
@@ -405,7 +407,9 @@ export default function PendingReviewsTab() {
     <div className="space-y-4">
       <div>
         {toolbarHeader}
-        <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">{activeSubTab.description}</p>
+        {activeSubTab.description && (
+          <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">{activeSubTab.description}</p>
+        )}
       </div>
 
       {subTab !== CLAIM_WORKFLOW_BUCKET.FINALIZED ? (
