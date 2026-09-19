@@ -248,6 +248,9 @@ class EsslBiometricService
             }
         }
 
+        // Ensure database columns exist
+        $this->ensureColumnsExist();
+
         // Perform chunked atomic upserts
         foreach (array_chunk($batchRows, 500) as $chunk) {
             Attendance::upsert(
@@ -284,5 +287,31 @@ class EsslBiometricService
             'devices_count'    => count($serials),
             'device_results'   => $deviceResults,
         ];
+    }
+
+    /**
+     * Auto-heal database schema if biometric fields are missing.
+     */
+    private function ensureColumnsExist(): void
+    {
+        if (!\Illuminate\Support\Facades\Schema::hasColumn('attendances', 'check_in')) {
+            \Illuminate\Support\Facades\Schema::table('attendances', function (\Illuminate\Database\Schema\Blueprint $table) {
+                if (!\Illuminate\Support\Facades\Schema::hasColumn('attendances', 'check_in')) {
+                    $table->string('check_in')->nullable();
+                }
+                if (!\Illuminate\Support\Facades\Schema::hasColumn('attendances', 'check_out')) {
+                    $table->string('check_out')->nullable();
+                }
+                if (!\Illuminate\Support\Facades\Schema::hasColumn('attendances', 'work_hours')) {
+                    $table->string('work_hours')->nullable();
+                }
+                if (!\Illuminate\Support\Facades\Schema::hasColumn('attendances', 'device_serial')) {
+                    $table->string('device_serial')->nullable();
+                }
+                if (!\Illuminate\Support\Facades\Schema::hasColumn('attendances', 'raw_punches')) {
+                    $table->text('raw_punches')->nullable();
+                }
+            });
+        }
     }
 }

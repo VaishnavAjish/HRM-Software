@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Services\Biometric\EsslBiometricService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Daily attendance grid: one status (present/absent/half_day/leave) per
@@ -71,10 +72,16 @@ class AttendanceController extends Controller
         $start = Carbon::create((int) $request->year, (int) $request->month, 1)->startOfMonth();
         $end = $start->copy()->endOfMonth();
 
+        $selectCols = ['emp_code', 'date', 'status'];
+        $hasBiometric = Schema::hasColumn('attendances', 'check_in');
+        if ($hasBiometric) {
+            $selectCols = array_merge($selectCols, ['check_in', 'check_out', 'work_hours', 'device_serial']);
+        }
+
         $records = Attendance::when($companyCode && !in_array($companyCode, ['all', 'all-companies']), fn($q) => $q->where('company_code', $companyCode))
             ->when($unit, fn ($q) => $q->where('unit', $unit))
             ->whereBetween('date', [$start->toDateString(), $end->toDateString()])
-            ->get(['emp_code', 'date', 'status', 'check_in', 'check_out', 'work_hours', 'device_serial']);
+            ->get($selectCols);
 
         $map = [];
         $detailsMap = [];
@@ -84,10 +91,10 @@ class AttendanceController extends Controller
             $map[$r->emp_code][$dateKey] = $r->status;
             $detailsMap[$r->emp_code][$dateKey] = [
                 'status'        => $r->status,
-                'check_in'      => $r->check_in,
-                'check_out'     => $r->check_out,
-                'work_hours'    => $r->work_hours,
-                'device_serial' => $r->device_serial,
+                'check_in'      => $hasBiometric ? $r->check_in : null,
+                'check_out'     => $hasBiometric ? $r->check_out : null,
+                'work_hours'    => $hasBiometric ? $r->work_hours : null,
+                'device_serial' => $hasBiometric ? $r->device_serial : null,
             ];
             $recordedEmpCodes[$r->emp_code] = true;
         }

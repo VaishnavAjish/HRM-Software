@@ -10,19 +10,19 @@ return new class extends Migration
     {
         Schema::table('attendances', function (Blueprint $table) {
             if (!Schema::hasColumn('attendances', 'check_in')) {
-                $table->string('check_in')->nullable()->after('status');
+                $table->string('check_in')->nullable();
             }
             if (!Schema::hasColumn('attendances', 'check_out')) {
-                $table->string('check_out')->nullable()->after('check_in');
+                $table->string('check_out')->nullable();
             }
             if (!Schema::hasColumn('attendances', 'work_hours')) {
-                $table->string('work_hours')->nullable()->after('check_out');
+                $table->string('work_hours')->nullable();
             }
             if (!Schema::hasColumn('attendances', 'device_serial')) {
-                $table->string('device_serial')->nullable()->after('work_hours');
+                $table->string('device_serial')->nullable();
             }
             if (!Schema::hasColumn('attendances', 'raw_punches')) {
-                $table->text('raw_punches')->nullable()->after('device_serial');
+                $table->text('raw_punches')->nullable();
             }
         });
     }
