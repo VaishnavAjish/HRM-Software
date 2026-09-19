@@ -105,6 +105,22 @@ export default function ClaimDetailDrawer({ isOpen, onClose, claimId, footer, ti
 
   const expenses = claim?.expenses || claim?.expenseLines || claim?.expense_lines || [];
 
+  const totalExpenses = expenses.length > 0
+    ? expenses.reduce((sum, line) => {
+        const val = Number(line.claimed_amount ?? line.claimedAmount ?? line.amount ?? 0);
+        return sum + (isNaN(val) ? 0 : val);
+      }, 0)
+    : Number(claim?.totalClaimedAmount ?? claim?.total_claimed_amount ?? 0);
+
+  const totalApprovedExpenses = expenses.some((line) => (line.approved_amount ?? line.approvedAmount) != null)
+    ? expenses.reduce((sum, line) => {
+        const val = Number(line.approved_amount ?? line.approvedAmount ?? 0);
+        return sum + (isNaN(val) ? 0 : val);
+      }, 0)
+    : (claim?.approvedAmount ?? claim?.approved_amount ?? claim?.totalApprovedAmount ?? claim?.total_approved_amount != null
+        ? Number(claim?.approvedAmount ?? claim?.approved_amount ?? claim?.totalApprovedAmount ?? claim?.total_approved_amount)
+        : null);
+
   const reloadDocuments = () => {
     setReloadToken((n) => n + 1);
     onDocumentsChanged?.();
@@ -212,7 +228,24 @@ export default function ClaimDetailDrawer({ isOpen, onClose, claimId, footer, ti
 
             <CollapsibleSection title="Expense Breakdown" icon={<Receipt size={15} />} count={expenses.length}>
               {expenses.length === 0 ? (
-                <p className="py-2 text-center text-xs text-gray-400">No expense line items recorded.</p>
+                <div className="space-y-2">
+                  <p className="py-2 text-center text-xs text-gray-400">No expense line items recorded.</p>
+                  {Number(claim?.totalClaimedAmount ?? claim?.total_claimed_amount ?? 0) > 0 && (
+                    <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50/90 px-3 py-2.5 text-sm font-semibold dark:border-gray-700 dark:bg-gray-800/80">
+                      <p className="text-gray-900 dark:text-white">Total Expenses</p>
+                      <div className="text-right">
+                        <p className="text-base font-bold text-gray-900 dark:text-white">
+                          {formatCurrencyINR(claim?.totalClaimedAmount ?? claim?.total_claimed_amount)}
+                        </p>
+                        {totalApprovedExpenses != null && totalApprovedExpenses > 0 && (
+                          <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                            Approved {formatCurrencyINR(totalApprovedExpenses)}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
               ) : (
                 <div className="space-y-2">
                   {expenses.map((line, index) => (
@@ -236,6 +269,25 @@ export default function ClaimDetailDrawer({ isOpen, onClose, claimId, footer, ti
                       </div>
                     </div>
                   ))}
+
+                  <div className="mt-3 flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50/90 px-3 py-2.5 text-sm font-semibold dark:border-gray-700 dark:bg-gray-800/80">
+                    <div>
+                      <p className="text-gray-900 dark:text-white">Total Expenses</p>
+                      <p className="text-xs font-normal text-gray-500 dark:text-gray-400">
+                        {expenses.length} {expenses.length === 1 ? "item" : "items"}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-base font-bold text-gray-900 dark:text-white">
+                        {formatCurrencyINR(totalExpenses)}
+                      </p>
+                      {totalApprovedExpenses != null && totalApprovedExpenses > 0 && (
+                        <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                          Approved {formatCurrencyINR(totalApprovedExpenses)}
+                        </p>
+                      )}
+                    </div>
+                  </div>
                 </div>
               )}
             </CollapsibleSection>

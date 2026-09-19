@@ -117,7 +117,7 @@ export default function MyClaimsTab({ lookups }) {
 
   const claimsNeedingDocuments = useMemo(() => {
     return claimsState.rows.filter(
-      (r) => r.status === CLAIM_STATUS.APPROVED_AWAITING_DOCUMENTS || missingDocs(r).length > 0,
+      (r) => String(r?.status || '').toUpperCase() === CLAIM_STATUS.SUBMITTED,
     );
   }, [claimsState.rows]);
 
@@ -262,10 +262,21 @@ export default function MyClaimsTab({ lookups }) {
           <span className="flex items-center gap-2 text-amber-800 dark:text-amber-300">
             <AlertTriangle size={16} className="flex-shrink-0" />
             {claimsNeedingDocuments.length === 1
-              ? "1 claim has been approved and is waiting on you to upload documents."
-              : `${claimsNeedingDocuments.length} claims have been approved and are waiting on you to upload documents.`}
+              ? "1 claim has been submitted and is waiting on you to upload documents."
+              : `${claimsNeedingDocuments.length} claims have been submitted and are waiting on you to upload documents.`}
           </span>
-          <Button size="sm" variant="amber" onClick={() => setSelectedClaimId(claimsNeedingDocuments[0].id ?? claimsNeedingDocuments[0].claimId)}>
+          <Button
+            size="sm"
+            variant="amber"
+            onClick={() => {
+              const target = claimsNeedingDocuments.find(
+                (r) => String(r?.status || '').toUpperCase() === CLAIM_STATUS.SUBMITTED
+              ) || claimsNeedingDocuments[0];
+              if (target) {
+                setSelectedClaimId(target.id ?? target.claimId);
+              }
+            }}
+          >
             Upload Now
           </Button>
         </div>

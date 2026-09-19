@@ -128,7 +128,7 @@ export default function MediclaimInfoTab({ lookups, onNavigate }) {
         if (cancelled) return;
         const payload = res?.data;
         const rows = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
-        setClaimsNeedingDocuments(rows.filter((row) => (row.missingDocumentTypes || row.missing_document_types || []).length > 0));
+        setClaimsNeedingDocuments(rows.filter((row) => String(row?.status || '').toUpperCase() === 'SUBMITTED'));
       })
       .catch(() => {});
 
@@ -194,8 +194,8 @@ export default function MediclaimInfoTab({ lookups, onNavigate }) {
           <span className="flex items-center gap-2 text-amber-800 dark:text-amber-300">
             <AlertTriangle size={16} className="flex-shrink-0" />
             {claimsNeedingDocuments.length === 1
-              ? "Your claim has been approved — upload the required documents to move it to final settlement."
-              : `${claimsNeedingDocuments.length} of your claims have been approved and are waiting on document uploads.`}
+              ? "1 claim has been submitted and is waiting on document uploads."
+              : `${claimsNeedingDocuments.length} of your claims have been submitted and are waiting on document uploads.`}
           </span>
           <Button size="sm" variant="amber" onClick={() => onNavigate?.("claims")}>
             Go to My Claims
