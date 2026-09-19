@@ -200,8 +200,29 @@ export default function AttendanceView() {
   // Process employee rows with check-in, check-out, working hours, status
   const processedRows = useMemo(() => {
     return employees.map((emp) => {
-      const empData = attendanceMap[emp.emp_code] || {};
-      const empDetails = attendanceDetails[emp.emp_code]?.[targetDateStr] || {};
+      const codeKey = String(emp.emp_code || emp.punching_no || emp.form_no || emp.id || "").trim();
+      const trimmedKey = codeKey.replace(/^0+/, "");
+      const punchingKey = emp.punching_no ? String(emp.punching_no).trim() : "";
+      const formKey = emp.form_no ? String(emp.form_no).trim() : "";
+      const userIdKey = emp.id ? `user_${emp.id}` : "";
+      const rawIdKey = emp.id ? String(emp.id) : "";
+
+      const empData = attendanceMap[codeKey]
+        || (trimmedKey && attendanceMap[trimmedKey])
+        || (punchingKey && attendanceMap[punchingKey])
+        || (formKey && attendanceMap[formKey])
+        || (userIdKey && attendanceMap[userIdKey])
+        || (rawIdKey && attendanceMap[rawIdKey])
+        || {};
+
+      const empDetails = attendanceDetails[codeKey]?.[targetDateStr]
+        || (trimmedKey && attendanceDetails[trimmedKey]?.[targetDateStr])
+        || (punchingKey && attendanceDetails[punchingKey]?.[targetDateStr])
+        || (formKey && attendanceDetails[formKey]?.[targetDateStr])
+        || (userIdKey && attendanceDetails[userIdKey]?.[targetDateStr])
+        || (rawIdKey && attendanceDetails[rawIdKey]?.[targetDateStr])
+        || {};
+
       const dayStatus = empDetails.status || empData[targetDateStr] || "not_marked";
 
       let checkIn = empDetails.check_in || "—";
@@ -232,8 +253,24 @@ export default function AttendanceView() {
         remarks = "Not Marked";
       }
 
+      // Calculate monthly summary metrics for this employee
+      let monthPresents = 0;
+      let monthHalfDays = 0;
+      let monthLeaves = 0;
+      let monthAbsents = 0;
+      Object.values(empData).forEach((st) => {
+        if (st === "present" || st === "late") monthPresents++;
+        else if (st === "half_day") { monthHalfDays++; monthPresents += 0.5; }
+        else if (st === "leave") monthLeaves++;
+        else if (st === "absent") monthAbsents++;
+      });
+
+      const displayCode = emp.emp_code || emp.punching_no || emp.form_no || (emp.id ? `EMP-${emp.id}` : "—");
+
       return {
         ...emp,
+        emp_code: displayCode,
+        raw_emp_code: emp.emp_code,
         dayStatus,
         checkIn,
         checkOut,
@@ -242,6 +279,10 @@ export default function AttendanceView() {
         breakTime,
         overtime,
         remarks,
+        monthPresents,
+        monthHalfDays,
+        monthLeaves,
+        monthAbsents,
         shiftName: emp.shift_name || emp.shift || "—",
       };
     });
@@ -289,6 +330,9 @@ export default function AttendanceView() {
       const matchesSearch = !q ||
         (row.name || "").toLowerCase().includes(q) ||
         (row.emp_code || "").toLowerCase().includes(q) ||
+        (row.punching_no ? String(row.punching_no).toLowerCase().includes(q) : false) ||
+        (row.form_no ? String(row.form_no).toLowerCase().includes(q) : false) ||
+        (row.id ? String(row.id).toLowerCase().includes(q) : false) ||
         (row.department || "").toLowerCase().includes(q) ||
         (row.shiftName || "").toLowerCase().includes(q);
 
@@ -512,7 +556,7 @@ export default function AttendanceView() {
         </div>
 
         {/* Filter Controls Grid */}
-        <div className={`grid grid-cols-2 md:grid-cols-8 gap-2.5 ${showMobileFilters ? "block" : "hidden md:grid"}`}>
+        <div className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-9 gap-2.5 ${showMobileFilters ? "block" : "hidden md:grid"}`}>
           {/* Search Bar Input */}
           <div className="col-span-2 md:col-span-2">
             <label className="block text-[10px] font-bold uppercase text-gray-400 dark:text-gray-500 mb-1">
@@ -599,6 +643,24 @@ export default function AttendanceView() {
             >
               {MONTHS.map((m, idx) => (
                 <option key={m} value={String(idx + 1)}>{m}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Day */}
+          <div className="col-span-1 md:col-span-1">
+            <label className="block text-[10px] font-bold uppercase text-gray-400 dark:text-gray-500 mb-1">
+              Day
+            </label>
+            <select
+              value={selectedDay}
+              onChange={(e) => setSelectedDay(e.target.value)}
+              className="w-full rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-brand-500/20 font-medium"
+            >
+              {Array.from({ length: totalDays }, (_, i) => i + 1).map((d) => (
+                <option key={d} value={String(d)}>
+                  Day {d} {Number(selectedDay) === d && d === new Date().getDate() && Number(selectedMonth) === new Date().getMonth() + 1 && Number(selectedYear) === new Date().getFullYear() ? "(Today)" : ""}
+                </option>
               ))}
             </select>
           </div>
@@ -881,9 +943,23 @@ export default function AttendanceView() {
           let halfDayCount = 0;
           let leaveCount = 0;
 
-          const empData = attendanceMap[selectedEmployee.emp_code] || {};
+          const codeKey = String(selectedEmployee.emp_code || selectedEmployee.punching_no || selectedEmployee.form_no || selectedEmployee.id || "").trim();
+          const trimmedKey = codeKey.replace(/^0+/, "");
+          const punchingKey = selectedEmployee.punching_no ? String(selectedEmployee.punching_no).trim() : "";
+          const formKey = selectedEmployee.form_no ? String(selectedEmployee.form_no).trim() : "";
+          const userIdKey = selectedEmployee.id ? `user_${selectedEmployee.id}` : "";
+          const rawIdKey = selectedEmployee.id ? String(selectedEmployee.id) : "";
+
+          const empData = attendanceMap[codeKey]
+            || (trimmedKey && attendanceMap[trimmedKey])
+            || (punchingKey && attendanceMap[punchingKey])
+            || (formKey && attendanceMap[formKey])
+            || (userIdKey && attendanceMap[userIdKey])
+            || (rawIdKey && attendanceMap[rawIdKey])
+            || {};
+
           Object.values(empData).forEach(status => {
-            if (status === 'present') presentCount++;
+            if (status === 'present' || status === 'late') presentCount++;
             else if (status === 'absent') absentCount++;
             else if (status === 'half_day') halfDayCount++;
             else if (status === 'leave') leaveCount++;

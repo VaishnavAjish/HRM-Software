@@ -168,12 +168,45 @@ class EsslBiometricService
             ];
         }
 
-        // Preload existing employees from users table to match emp_code
+        // Preload existing employees from users table by emp_code, punching_no, form_no, and id
         $empCodes = array_keys($logMap);
-        $users = User::whereIn('emp_code', $empCodes)
-            ->where('is_deleted', 0)
-            ->get()
-            ->keyBy('emp_code');
+        $numericCodes = array_values(array_filter($empCodes, fn($c) => is_numeric($c)));
+        $trimmedCodes = array_values(array_unique(array_filter(array_map(fn($c) => ltrim((string)$c, '0'), $empCodes))));
+
+        $users = User::where('is_deleted', 0)
+            ->where(function ($q) use ($empCodes, $numericCodes, $trimmedCodes) {
+                $q->whereIn('emp_code', $empCodes)
+                  ->orWhereIn('punching_no', $empCodes)
+                  ->orWhereIn('form_no', $empCodes);
+                if (!empty($numericCodes)) {
+                    $q->orWhereIn('id', $numericCodes);
+                }
+                if (!empty($trimmedCodes)) {
+                    $q->orWhereIn('emp_code', $trimmedCodes)
+                      ->orWhereIn('punching_no', $trimmedCodes)
+                      ->orWhereIn('form_no', $trimmedCodes);
+                }
+            })
+            ->get();
+
+        // Build a comprehensive multi-key index for fast resolution
+        $userLookup = [];
+        foreach ($users as $u) {
+            $keys = [
+                (string) $u->emp_code,
+                ltrim((string) $u->emp_code, '0'),
+                (string) $u->punching_no,
+                ltrim((string) $u->punching_no, '0'),
+                (string) $u->form_no,
+                ltrim((string) $u->form_no, '0'),
+                (string) $u->id,
+            ];
+            foreach ($keys as $k) {
+                if ($k !== '') {
+                    $userLookup[$k] = $u;
+                }
+            }
+        }
 
         $batchRows = [];
         $rowReports = [];
@@ -181,12 +214,15 @@ class EsslBiometricService
         $totalRecords = 0;
 
         foreach ($logMap as $empCode => $dates) {
-            $user = $users->get($empCode);
+            $codeStr = (string) $empCode;
+            $trimmedCode = ltrim($codeStr, '0');
+            $user = $userLookup[$codeStr] ?? ($trimmedCode !== '' ? ($userLookup[$trimmedCode] ?? null) : null);
 
-            // Determine tenant company
+            // Determine canonical code, tenant company, and user ID
             $empCompany = $user ? $user->company_code : ($companyCode && !in_array($companyCode, ['all', 'all-companies']) ? $companyCode : 'nidhi-impex');
             $empUnit = $user ? $user->unit : null;
-            $userId = $user ? $user->id : null;
+            $userId = $user ? $user->id : (is_numeric($codeStr) ? (int)$codeStr : null);
+            $canonicalCode = $user ? (string)($user->emp_code ?: $user->punching_no ?: $user->form_no ?: $user->id) : $codeStr;
 
             foreach ($dates as $dateStr => $data) {
                 $times = $data['times'];
@@ -216,7 +252,7 @@ class EsslBiometricService
                 $deviceList = implode(',', array_keys($data['devices']));
 
                 $batchRows[] = [
-                    'emp_code'      => (string) $empCode,
+                    'emp_code'      => (string) $canonicalCode,
                     'company_code'  => $empCompany,
                     'unit'          => $empUnit,
                     'date'          => $dateStr,

@@ -27,22 +27,25 @@ class AttendanceController extends Controller
     ];
 
     /**
-     * Scope company_code/unit to the acting master/manager's own company —
-     * mirrors the same restriction UserController::index() applies.
+     * Scope company_code/unit to the acting master/manager's own company.
+     * Allows explicit 'all' or 'all-companies' for enterprise-wide viewing.
      */
     private function scopedCompany(Request $request): array
     {
+        $requestedCompany = $request->company_code ?: $request->companyId;
+        if (!empty($requestedCompany) && in_array($requestedCompany, ['all', 'all-companies'], true)) {
+            return ['all', $request->unit];
+        }
+
         $userAuth = auth('api')->user();
-        if ($userAuth && (int) $userAuth->role === 1) {
+        if ($userAuth && (int) $userAuth->role === 1 && empty($requestedCompany)) {
             return [$userAuth->company_code, $request->unit];
         }
         if ($userAuth && (int) $userAuth->role === 2) {
             return [$userAuth->company_code, $userAuth->unit];
         }
-        $company = $request->company_code ?: $request->companyId;
-        if (empty($company)) {
-            $company = 'all';
-        }
+
+        $company = $requestedCompany ?: ($userAuth?->company_code ?: 'all');
         return [$company, $request->unit];
     }
 
@@ -60,19 +63,28 @@ class AttendanceController extends Controller
 
         $employees = User::when($companyCode && !in_array($companyCode, ['all', 'all-companies']), fn($q) => $q->where('company_code', $companyCode))
             ->where('is_deleted', 0)
-            ->whereNotIn('role', [0, 1, 2])
+            ->whereNotIn('role', [0, 1])
             ->where(function ($q) {
                 $q->whereNull('type')->orWhereNotIn('type', ['appointment', 'agent']);
             })
             ->when($unit, fn ($q) => $q->where('unit', $unit))
             ->orderBy('name')
-            ->get(['id', 'emp_code', 'name', 'department', 'unit', 'company_code'])
+            ->get(['id', 'emp_code', 'punching_no', 'form_no', 'name', 'department', 'unit', 'company_code'])
+            ->map(function ($u) {
+                // Ensure emp_code is never empty: fall back to punching_no, form_no, or user id
+                $effectiveCode = (string) ($u->emp_code ?: $u->punching_no ?: $u->form_no ?: $u->id);
+                $u->emp_code = $effectiveCode;
+                return $u;
+            })
             ->values();
 
         $start = Carbon::create((int) $request->year, (int) $request->month, 1)->startOfMonth();
         $end = $start->copy()->endOfMonth();
 
         $selectCols = ['emp_code', 'date', 'status'];
+        if (Schema::hasColumn('attendances', 'user_id')) {
+            $selectCols[] = 'user_id';
+        }
         $hasBiometric = Schema::hasColumn('attendances', 'check_in');
         if ($hasBiometric) {
             $selectCols = array_merge($selectCols, ['check_in', 'check_out', 'work_hours', 'device_serial']);
@@ -83,24 +95,100 @@ class AttendanceController extends Controller
             ->whereBetween('date', [$start->toDateString(), $end->toDateString()])
             ->get($selectCols);
 
+        // Build employee identifier lookup dictionary
+        $empIdentifierMap = [];
+        foreach ($employees as $e) {
+            $eff = (string) $e->emp_code;
+            $identifiers = [
+                $eff,
+                ltrim($eff, '0'),
+                (string) ($e->punching_no ?? ''),
+                ltrim((string) ($e->punching_no ?? ''), '0'),
+                (string) ($e->form_no ?? ''),
+                ltrim((string) ($e->form_no ?? ''), '0'),
+                (string) ($e->id ?? ''),
+            ];
+            foreach ($identifiers as $ident) {
+                if ($ident !== '') {
+                    $empIdentifierMap[$ident] = $eff;
+                }
+            }
+        }
+
         $map = [];
         $detailsMap = [];
         $recordedEmpCodes = [];
         foreach ($records as $r) {
             $dateKey = $r->date->format('Y-m-d');
-            $map[$r->emp_code][$dateKey] = $r->status;
-            $detailsMap[$r->emp_code][$dateKey] = [
+            $detail = [
                 'status'        => $r->status,
                 'check_in'      => $hasBiometric ? $r->check_in : null,
                 'check_out'     => $hasBiometric ? $r->check_out : null,
                 'work_hours'    => $hasBiometric ? $r->work_hours : null,
                 'device_serial' => $hasBiometric ? $r->device_serial : null,
             ];
-            $recordedEmpCodes[$r->emp_code] = true;
+
+            $codeStr = (string) $r->emp_code;
+            $trimmed = ltrim($codeStr, '0');
+            $uIdStr = !empty($r->user_id) ? (string) $r->user_id : null;
+
+            $aliasKeys = array_filter(array_unique([
+                $codeStr,
+                $trimmed,
+                $uIdStr,
+                $uIdStr ? 'user_' . $uIdStr : null,
+                $empIdentifierMap[$codeStr] ?? null,
+                ($trimmed !== '' && isset($empIdentifierMap[$trimmed])) ? $empIdentifierMap[$trimmed] : null,
+                ($uIdStr && isset($empIdentifierMap[$uIdStr])) ? $empIdentifierMap[$uIdStr] : null,
+            ]));
+
+            foreach ($aliasKeys as $k) {
+                $map[$k][$dateKey] = $r->status;
+                $detailsMap[$k][$dateKey] = $detail;
+                $recordedEmpCodes[$k] = true;
+            }
+        }
+
+        // Include any biometric punched employees whose ID isn't in users table yet (just like Google Apps Script)
+        $knownCodes = $employees->pluck('emp_code')->filter()->map(fn($c) => (string)$c)->flip();
+        $knownIds = $employees->pluck('id')->filter()->map(fn($id) => (int)$id)->flip();
+
+        $unmatchedPunches = [];
+        foreach ($records as $r) {
+            $c = (string) $r->emp_code;
+            $trimmed = ltrim($c, '0');
+            $uId = !empty($r->user_id) ? (int) $r->user_id : (is_numeric($c) ? (int)$c : null);
+
+            $matched = isset($knownCodes[$c])
+                || ($trimmed !== '' && isset($knownCodes[$trimmed]))
+                || ($uId && isset($knownIds[$uId]));
+
+            if (!$matched && !isset($unmatchedPunches[$c])) {
+                $unmatchedPunches[$c] = [
+                    'id'           => $uId,
+                    'emp_code'     => $c,
+                    'name'         => "Employee " . $c,
+                    'department'   => 'Biometric Enrolled',
+                    'unit'         => $r->unit ?: 'Headquarters',
+                    'company_code' => $r->company_code ?: 'nidhi-impex',
+                ];
+                $recordedEmpCodes[$c] = true;
+            }
+        }
+
+        if (!empty($unmatchedPunches)) {
+            $employees = $employees->concat(array_values($unmatchedPunches))->values();
         }
 
         if ($request->only_uploaded || $request->only_marked) {
-            $employees = $employees->filter(fn ($e) => isset($recordedEmpCodes[$e->emp_code]))->values();
+            $employees = $employees->filter(function ($e) use ($recordedEmpCodes) {
+                $c = (string) $e->emp_code;
+                $trimmed = ltrim($c, '0');
+                $idStr = (string) $e->id;
+                return isset($recordedEmpCodes[$c])
+                    || ($trimmed !== '' && isset($recordedEmpCodes[$trimmed]))
+                    || ($idStr && isset($recordedEmpCodes[$idStr]));
+            })->values();
         }
 
         return response()->json([
