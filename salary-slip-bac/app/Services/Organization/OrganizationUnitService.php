@@ -2082,7 +2082,6 @@ class OrganizationUnitService
 
         if ($primary?->organizationUnit) {
             $user->department = $primary->organizationUnit->name;
-            $user->unit = $primary->organizationUnit->name;
             if ($primary->organizationUnit->company?->code) {
                 $user->company_code = $primary->organizationUnit->company->code;
             }

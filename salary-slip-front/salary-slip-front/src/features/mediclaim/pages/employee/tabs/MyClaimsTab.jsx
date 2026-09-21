@@ -125,7 +125,7 @@ export default function MyClaimsTab({ lookups }) {
   };
 
   const ALL_COLUMNS = [
-    { key: "claimNumber", label: "Claim #", render: (row) => row.claimNumber || row.claim_number || "—" },
+    { key: "claimNumber", label: "Claim #", render: (row) => formatClaimNumber(row) || "—" },
     { key: "patientName", label: "Patient", render: (row) => row.patientName || row.patient_snapshot?.name || "—" },
     { key: "claimedAmount", label: "Claimed", render: (row) => formatCurrencyINR(row.totalClaimedAmount ?? row.total_claimed_amount) },
     {

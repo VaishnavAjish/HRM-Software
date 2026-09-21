@@ -37,7 +37,7 @@ class TeamClaimController extends Controller
 
         $query = MediclaimClaim::query()
             ->whereIn('employee_user_id', $subordinateIds === [] ? [0] : $subordinateIds)
-            ->with(['employee:id,name,email,emp_code,designation', 'hospital']);
+            ->with(['employee:id,name,email,emp_code,designation,company_code,unit,branch', 'hospital']);
 
         if ($request->filled('status')) {
             $query->whereIn('status', explode(',', (string) $request->query('status')));
@@ -52,7 +52,7 @@ class TeamClaimController extends Controller
 
         $query = MediclaimClaim::query()
             ->where('status', MediclaimClaim::STATUS_MANAGER_REVIEW)
-            ->with(['employee:id,name,email,emp_code,designation', 'hospital', 'expenses']);
+            ->with(['employee:id,name,email,emp_code,designation,company_code,unit,branch', 'hospital', 'expenses']);
 
         // A super admin isn't necessarily anyone's real assigned_manager_id
         // — same bypass as MediclaimClaim::scopeAwaitingReviewBy(), so this

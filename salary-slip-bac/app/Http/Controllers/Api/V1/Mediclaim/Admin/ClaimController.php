@@ -41,7 +41,7 @@ class ClaimController extends Controller
     public function index(Request $request): JsonResponse
     {
         $query = MediclaimClaim::query()
-            ->with(['employee:id,name,email,emp_code,designation', 'hospital', 'assignedManager:id,name,email']);
+            ->with(['employee:id,name,email,emp_code,designation,company_code,unit,branch', 'hospital', 'assignedManager:id,name,email']);
 
         $this->applyCompanyScope($query, $request);
 

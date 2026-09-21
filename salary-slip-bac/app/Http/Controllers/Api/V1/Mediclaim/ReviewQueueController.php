@@ -71,7 +71,7 @@ class ReviewQueueController extends Controller
         // the decide() action below always accepted them.
         $query = MediclaimClaim::query()
             ->decidableBy($actor)
-            ->with(['employee:id,name,email,emp_code,designation', 'hospital']);
+            ->with(['employee:id,name,email,emp_code,designation,company_code,unit,branch', 'hospital']);
 
         return $this->ok($query->orderBy('submitted_at')->paginate(min((int) $request->query('per_page', 25), 100)));
     }

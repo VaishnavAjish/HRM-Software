@@ -78,52 +78,84 @@ export function getHospitalContactPhotoUrl(photo) {
 export function formatClaimNumber(claim) {
   if (!claim) return "-";
 
-  // If passed a plain string directly
   if (typeof claim === "string") {
-    if (/^(NS|NI|SD|SI)-.+-\d{4}-\d{2}-\d{2}/.test(claim)) {
-      return claim;
-    }
-    return claim;
+    return claim.trim() || "-";
   }
 
-  const raw = claim.claimNumber || claim.claim_number;
-  if (raw && /^(NS|NI|SD|SI)-.+-\d{4}-\d{2}-\d{2}/.test(raw)) {
-    return raw;
-  }
+  const raw = String(claim.claimNumber || claim.claim_number || "").trim();
 
   const company = String(
+    claim.employee?.company_code ||
+    claim.employee_snapshot?.company_code ||
     claim.company_code ||
     claim.companyCode ||
     claim.companyId ||
-    claim.employee?.company_code ||
-    claim.employee_snapshot?.company_code ||
     ""
-  ).toLowerCase();
+  ).trim();
 
   const branch = String(
     claim.employee?.unit ||
     claim.employee?.branch ||
+    claim.unit ||
+    claim.branch ||
     claim.patient_snapshot?.unit ||
     claim.employee_snapshot?.unit ||
     claim.employee_snapshot?.branch ||
-    claim.unit ||
-    claim.branch ||
     ""
-  ).toLowerCase();
+  ).trim();
 
-  const isNidhi = company.includes("nidhi");
-  const isSilver = company.includes("silver");
-  const isShreeji = branch.includes("shreeji");
-  const isIchapur = branch.includes("ichapur") || branch.includes("ichhapore");
-  const isDaduk = branch.includes("daduk") || branch.includes("dhaduk");
+  const compLower = company.toLowerCase();
+  const branchLower = branch.toLowerCase();
 
-  let prefix = "MC";
-  if (isNidhi && isShreeji) prefix = "NS";
-  else if (isNidhi && isIchapur) prefix = "NI";
-  else if (isSilver && isDaduk) prefix = "SD";
-  else if (isSilver && isIchapur) prefix = "SI";
-  else if (isNidhi) prefix = isDaduk ? "ND" : "NS";
-  else if (isSilver) prefix = isDaduk ? "SD" : "SI";
+  const isNidhi = compLower.includes("nidhi") || compLower.startsWith("n");
+  const isSilver = compLower.includes("silver") || compLower.startsWith("s");
+
+  const isShreeji = branchLower.includes("shreeji") || branchLower.startsWith("s");
+  const isIchapur = branchLower.includes("ichapur") || branchLower.includes("ichhapore") || branchLower.includes("ichhapor") || branchLower.startsWith("i");
+  const isDaduk = branchLower.includes("daduk") || branchLower.includes("dhaduk") || branchLower.startsWith("d");
+
+  let expectedPrefix;
+  if (isNidhi && isShreeji) {
+    expectedPrefix = "NS";
+  } else if (isNidhi && isIchapur) {
+    expectedPrefix = "NI";
+  } else if (isSilver && isDaduk) {
+    expectedPrefix = "SD";
+  } else if (isSilver && isIchapur) {
+    expectedPrefix = "SI";
+  } else {
+    // First alphabet of company + First alphabet of unit
+    const cClean = company.replace(/[^a-zA-Z]/g, "");
+    const cInitial = isNidhi ? "N" : (isSilver ? "S" : (cClean[0] ? cClean[0].toUpperCase() : "M"));
+
+    const bClean = branch.replace(/[^a-zA-Z]/g, "");
+    let bInitial;
+    if (isShreeji) {
+      bInitial = "S";
+    } else if (isIchapur) {
+      bInitial = "I";
+    } else if (isDaduk) {
+      bInitial = "D";
+    } else if (bClean[0]) {
+      bInitial = bClean[0].toUpperCase();
+    } else {
+      bInitial = cInitial === "N" ? "S" : (cInitial === "S" ? "D" : "C");
+    }
+    expectedPrefix = `${cInitial}${bInitial}`;
+  }
+
+  // If raw is already formatted as {PREFIX}-{EMP_CODE}-{YYYY-MM-DD}[-{SEQ}]
+  const match = raw.match(/^([A-Za-z]{2})-(.+)-(\d{4}-\d{2}-\d{2}(?:-\d+)?)$/);
+  if (match) {
+    const currentPrefix = match[1].toUpperCase();
+    const rest = `${match[2]}-${match[3]}`;
+
+    // If expectedPrefix was resolved and differs from currentPrefix, rewrite with the accurate prefix
+    if (expectedPrefix && currentPrefix !== expectedPrefix) {
+      return `${expectedPrefix}-${rest}`;
+    }
+    return `${currentPrefix}-${rest}`;
+  }
 
   const empCode = String(
     claim.employee?.emp_code ||
@@ -133,31 +165,37 @@ export function formatClaimNumber(claim) {
     "0001"
   );
 
+  let dateStr = "";
   const dateVal =
     claim.submittedAt ||
     claim.submitted_at ||
     claim.admissionDate ||
     claim.admission_at ||
     claim.createdAt ||
-    claim.created_at ||
-    new Date();
+    claim.created_at;
 
-  let dateStr = "";
-  try {
-    const d = new Date(dateVal);
-    if (!Number.isNaN(d.getTime())) {
-      const year = d.getFullYear();
-      const month = String(d.getMonth() + 1).padStart(2, "0");
-      const day = String(d.getDate()).padStart(2, "0");
-      dateStr = `${year}-${month}-${day}`;
+  if (dateVal) {
+    try {
+      const d = new Date(dateVal);
+      if (!Number.isNaN(d.getTime())) {
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, "0");
+        const day = String(d.getDate()).padStart(2, "0");
+        dateStr = `${year}-${month}-${day}`;
+      }
+    } catch {
+      // fallback
     }
-  } catch {
-    // fallback
   }
 
   if (!dateStr) {
-    dateStr = new Date().toISOString().slice(0, 10);
+    const rawDateMatch = raw.match(/(\d{4}-\d{2}-\d{2})/);
+    if (rawDateMatch) {
+      dateStr = rawDateMatch[1];
+    } else {
+      dateStr = new Date().toISOString().slice(0, 10);
+    }
   }
 
-  return `${prefix}-${empCode}-${dateStr}`;
+  return `${expectedPrefix || "MC"}-${empCode}-${dateStr}`;
 }

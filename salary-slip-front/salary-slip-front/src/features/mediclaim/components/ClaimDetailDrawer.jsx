@@ -268,7 +268,7 @@ export default function ClaimDetailDrawer({ isOpen, onClose, claimId, footer, ti
       <Drawer
         isOpen={isOpen}
         onClose={onClose}
-        title={title && !String(title).startsWith("MC-") ? title : formatClaimNumber(claim || { claimNumber: title })}
+        title={claim ? formatClaimNumber(claim) : (title ? formatClaimNumber(title) : "Claim Details")}
         subtitle={claim?.patientName || claim?.patient_snapshot?.name}
         size="lg"
         footer={footer}

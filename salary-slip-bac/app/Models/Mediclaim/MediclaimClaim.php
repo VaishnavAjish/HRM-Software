@@ -184,28 +184,71 @@ class MediclaimClaim extends Model
             return null;
         }
 
-        if (preg_match('/^(NS|NI|SD|SI)-/', $raw)) {
-            return $raw;
+        // Always resolve the employee's live company and unit from users table
+        $employee = null;
+        if ($this->employee_user_id) {
+            $employee = DB::table('users')->where('id', $this->employee_user_id)->first();
+        }
+        if (! $employee && $this->relationLoaded('employee')) {
+            $employee = $this->employee;
         }
 
-        $company = $this->company_code;
-        $employee = $this->relationLoaded('employee') ? $this->employee : $this->employee()->first();
+        $company = $employee?->company_code ?: $this->company_code;
         $branch = $employee?->unit ?: $employee?->branch ?: ($this->employee_snapshot['unit'] ?? $this->employee_snapshot['branch'] ?? null);
         $empCode = $employee?->emp_code ?: ($this->employee_snapshot['emp_code'] ?? '0001');
-        $date = $this->submitted_at ? Carbon::parse($this->submitted_at)->format('Y-m-d') : ($this->created_at ? Carbon::parse($this->created_at)->format('Y-m-d') : now()->format('Y-m-d'));
 
-        $prefix = MediclaimClaimNumber::resolvePrefix($company, $branch);
-        $formatted = sprintf('%s-%s-%s', $prefix, $empCode, $date);
+        $expectedPrefix = MediclaimClaimNumber::resolvePrefix($company, $branch);
+
+        // If raw claim number is already formatted as {PREFIX}-{EMP_CODE}-{YYYY-MM-DD}[-{SEQ}]
+        if (preg_match('/^([A-Za-z]{2})-(.+)-(\d{4}-\d{2}-\d{2})(?:-(\d+))?$/', $raw, $matches)) {
+            $currPrefix = strtoupper($matches[1]);
+            $currEmpCode = $matches[2];
+            $currDate = $matches[3];
+            $currSeq = isset($matches[4]) ? '-'.$matches[4] : '';
+
+            // If prefix matches expectedPrefix, it's accurate!
+            if ($currPrefix === $expectedPrefix) {
+                return $raw;
+            }
+
+            // Prefix is inaccurate; update to expectedPrefix
+            $corrected = sprintf('%s-%s-%s%s', $expectedPrefix, $currEmpCode ?: $empCode, $currDate, $currSeq);
+
+            try {
+                if ($this->id && ! DB::table('mediclaim_claims')->where('claim_number', $corrected)->where('id', '!=', $this->id)->exists()) {
+                    DB::table('mediclaim_claims')->where('id', $this->id)->update(['claim_number' => $corrected]);
+                    $this->attributes['claim_number'] = $corrected;
+                }
+            } catch (Throwable $e) {
+            }
+
+            return $corrected;
+        }
+
+        // Non-standard or legacy format
+        $date = $this->submitted_at ? Carbon::parse($this->submitted_at)->format('Y-m-d') : ($this->created_at ? Carbon::parse($this->created_at)->format('Y-m-d') : now()->format('Y-m-d'));
+        if (preg_match('/(\d{4}-\d{2}-\d{2})/', $raw, $dm)) {
+            $date = $dm[1];
+        }
+
+        $base = sprintf('%s-%s-%s', $expectedPrefix, $empCode, $date);
+        $candidate = $base;
+        $counter = 1;
+
+        while (DB::table('mediclaim_claims')->where('claim_number', $candidate)->where('id', '!=', $this->id ?? 0)->exists()) {
+            $counter++;
+            $candidate = sprintf('%s-%d', $base, $counter);
+        }
 
         try {
-            if ($this->id && !DB::table('mediclaim_claims')->where('claim_number', $formatted)->where('id', '!=', $this->id)->exists()) {
-                DB::table('mediclaim_claims')->where('id', $this->id)->update(['claim_number' => $formatted]);
-                $this->attributes['claim_number'] = $formatted;
+            if ($this->id) {
+                DB::table('mediclaim_claims')->where('id', $this->id)->update(['claim_number' => $candidate]);
+                $this->attributes['claim_number'] = $candidate;
             }
         } catch (Throwable $e) {
         }
 
-        return $formatted;
+        return $candidate;
     }
 
     public function getApprovedAmountAttribute(): ?float

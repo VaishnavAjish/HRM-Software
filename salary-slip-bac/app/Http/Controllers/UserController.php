@@ -502,6 +502,127 @@ class UserController extends Controller
         return $data;
     }
 
+    public static function allowedUnitsForCompany(?string $companyCode): array
+    {
+        $normalized = strtolower(str_replace([' ', '_'], '-', trim((string) $companyCode)));
+        if (str_contains($normalized, 'silver')) {
+            return ['Daduk', 'Ichapur'];
+        }
+        return ['Shreeji', 'Ichapur'];
+    }
+
+    public static function normalizeUnitName(?string $unit): ?string
+    {
+        if ($unit === null || trim((string) $unit) === '') {
+            return null;
+        }
+        $u = strtolower(trim((string) $unit));
+        if ($u === 'shreeji' || str_contains($u, 'shree')) {
+            return 'Shreeji';
+        }
+        if ($u === 'ichapur' || $u === 'ichapor' || str_contains($u, 'icha')) {
+            return 'Ichapur';
+        }
+        if ($u === 'daduk' || $u === 'dhaduk' || str_contains($u, 'dhad') || str_contains($u, 'dadu')) {
+            return 'Daduk';
+        }
+        return null;
+    }
+
+    public function resolveValidEmployeeUnit(User $employee, ?string $candidateUnit = null): string
+    {
+        $allowed = self::allowedUnitsForCompany($employee->company_code);
+        $defaultUnit = $allowed[0];
+
+        // 1. Candidate unit if passed and valid
+        $normCandidate = self::normalizeUnitName($candidateUnit);
+        if ($normCandidate && in_array($normCandidate, $allowed, true)) {
+            return $normCandidate;
+        }
+
+        // 2. Current employee unit if already valid
+        $rawUnit = $employee->getRawOriginal('unit') ?: $employee->unit;
+        $normCurrent = self::normalizeUnitName($rawUnit);
+        if ($normCurrent && in_array($normCurrent, $allowed, true)) {
+            return $normCurrent;
+        }
+
+        // 3. Employee branch field
+        $rawBranch = $employee->getRawOriginal('branch') ?: $employee->branch;
+        $normBranch = self::normalizeUnitName($rawBranch);
+        if ($normBranch && in_array($normBranch, $allowed, true)) {
+            $this->persistRecoveredUnit($employee, $normBranch);
+            return $normBranch;
+        }
+
+        // 4. Latest salary slips
+        try {
+            $slipUnits = DB::table('salary_slips')
+                ->where(function ($q) use ($employee) {
+                    $q->where('user_id', $employee->id);
+                    if ($employee->emp_code) {
+                        $q->orWhere('emp_code', (string) $employee->emp_code);
+                    }
+                })
+                ->whereNotNull('unit')
+                ->where('unit', '!=', '')
+                ->orderByDesc('id')
+                ->limit(5)
+                ->pluck('unit');
+
+            foreach ($slipUnits as $slipUnit) {
+                $normSlip = self::normalizeUnitName($slipUnit);
+                if ($normSlip && in_array($normSlip, $allowed, true)) {
+                    $this->persistRecoveredUnit($employee, $normSlip);
+                    return $normSlip;
+                }
+            }
+        } catch (\Throwable $e) {
+        }
+
+        // 5. Shift assignment
+        if (!empty($employee->shift_id)) {
+            try {
+                $shiftUnit = DB::table('shifts')->where('id', $employee->shift_id)->value('unit');
+                $normShift = self::normalizeUnitName($shiftUnit);
+                if ($normShift && in_array($normShift, $allowed, true)) {
+                    $this->persistRecoveredUnit($employee, $normShift);
+                    return $normShift;
+                }
+            } catch (\Throwable $e) {
+            }
+        }
+
+        // 6. user_units pivot table
+        try {
+            $pivotUnit = DB::table('user_units')
+                ->join('units', 'user_units.unit_id', '=', 'units.id')
+                ->where('user_units.user_id', $employee->id)
+                ->value('units.name');
+            $normPivot = self::normalizeUnitName($pivotUnit);
+            if ($normPivot && in_array($normPivot, $allowed, true)) {
+                $this->persistRecoveredUnit($employee, $normPivot);
+                return $normPivot;
+            }
+        } catch (\Throwable $e) {
+        }
+
+        // 7. Fallback to company default unit
+        $this->persistRecoveredUnit($employee, $defaultUnit);
+        return $defaultUnit;
+    }
+
+    private function persistRecoveredUnit(User $employee, string $unit): void
+    {
+        try {
+            if ($employee->id && ($employee->getRawOriginal('unit') !== $unit)) {
+                DB::table('users')->where('id', $employee->id)->update(['unit' => $unit]);
+                $employee->setAttribute('unit', $unit);
+            }
+        } catch (\Throwable $e) {
+        }
+    }
+
     private function enrichEmployeeWithActiveAssignment(User $employee, array &$data): void
     {
         $primary = \App\Models\EmployeeOrganizationAssignment::query()
@@ -515,7 +636,6 @@ class UserController extends Controller
         if ($primary) {
             if ($primary->organizationUnit?->name) {
                 $data['department'] = $primary->organizationUnit->name;
-                $data['unit'] = $primary->organizationUnit->name;
             }
             if ($primary->designation?->title) {
                 $data['designation'] = $primary->designation->title;
@@ -545,6 +665,8 @@ class UserController extends Controller
                 $data['manager_name'] = $rel->manager->name;
             }
         }
+
+        $data['unit'] = $this->resolveValidEmployeeUnit($employee, $data['unit'] ?? null);
     }
 
     public function index(Request $request)
@@ -919,8 +1041,13 @@ class UserController extends Controller
             }
         }
 
+        if (array_key_exists('unit', $data) && filled($data['unit'])) {
+            $data['unit'] = $this->resolveValidEmployeeUnit($employee, (string) $data['unit']);
+        }
+
         $this->applyUpdate($employee, $data);
         $this->saveFamilyMembers($employee, $familyRows);
+        $employee->unit = $this->resolveValidEmployeeUnit($employee, $employee->unit);
 
         return response()->json(['status' => true, 'message' => 'Employee updated', 'data' => $employee]);
     }

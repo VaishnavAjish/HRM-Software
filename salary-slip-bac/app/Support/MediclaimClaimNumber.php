@@ -13,6 +13,8 @@ use Illuminate\Support\Facades\DB;
  * - Company NIDHI IMPEX and Branch ICHAPUR: NI-{EMP_CODE}-{YYYY-MM-DD}
  * - Company SILVER STAR and Branch DADUK:   SD-{EMP_CODE}-{YYYY-MM-DD}
  * - Company SILVER STAR and Branch ICHAPUR: SI-{EMP_CODE}-{YYYY-MM-DD}
+ *
+ * Rule: First alphabet of company + First alphabet of unit (from View Employees / users table).
  * Date format is strictly YYYY-MM-DD.
  *
  * If duplicate claims are created for the same employee on the same date,
@@ -25,18 +27,19 @@ class MediclaimClaimNumber
 
     /**
      * Resolves the prefix based on company name/code and unit/branch.
+     * Selects first alphabet of company and first alphabet of unit.
      */
     public static function resolvePrefix(?string $company, ?string $branch): string
     {
         $comp = strtolower(trim((string) $company));
         $br = strtolower(trim((string) $branch));
 
-        $isNidhi = str_contains($comp, 'nidhi');
-        $isSilver = str_contains($comp, 'silver');
+        $isNidhi = str_contains($comp, 'nidhi') || str_starts_with($comp, 'n');
+        $isSilver = str_contains($comp, 'silver') || str_starts_with($comp, 's');
 
-        $isShreeji = str_contains($br, 'shreeji');
-        $isIchapur = str_contains($br, 'ichapur') || str_contains($br, 'ichhapore');
-        $isDaduk = str_contains($br, 'daduk') || str_contains($br, 'dhaduk');
+        $isShreeji = str_contains($br, 'shreeji') || str_starts_with($br, 's');
+        $isIchapur = str_contains($br, 'ichapur') || str_contains($br, 'ichhapore') || str_contains($br, 'ichhapor') || str_starts_with($br, 'i');
+        $isDaduk = str_contains($br, 'daduk') || str_contains($br, 'dhaduk') || str_starts_with($br, 'd');
 
         if ($isNidhi && $isShreeji) {
             return 'NS';
@@ -51,18 +54,26 @@ class MediclaimClaimNumber
             return 'SI';
         }
 
-        // Fallbacks if matching partially
-        if ($isNidhi) {
-            return $isDaduk ? 'ND' : 'NS';
-        }
-        if ($isSilver) {
-            return $isShreeji ? 'SS' : 'SD';
+        // Generic rule: first alphabet of company + first alphabet of unit
+        $cClean = preg_replace('/[^a-zA-Z]/', '', $comp);
+        $cInitial = $isNidhi ? 'N' : ($isSilver ? 'S' : (!empty($cClean) ? strtoupper(substr($cClean, 0, 1)) : 'M'));
+
+        $bClean = preg_replace('/[^a-zA-Z]/', '', $br);
+        $bInitial = '';
+        if ($isShreeji) {
+            $bInitial = 'S';
+        } elseif ($isIchapur) {
+            $bInitial = 'I';
+        } elseif ($isDaduk) {
+            $bInitial = 'D';
+        } elseif (!empty($bClean)) {
+            $bInitial = strtoupper(substr($bClean, 0, 1));
+        } else {
+            // Default unit if not set: Shreeji (S) for Nidhi, Daduk (D) for Silver Star
+            $bInitial = ($cInitial === 'N') ? 'S' : (($cInitial === 'S') ? 'D' : 'C');
         }
 
-        $cInitial = !empty($comp) ? strtoupper(substr(preg_replace('/[^a-zA-Z]/', '', $comp), 0, 1)) : 'M';
-        $bInitial = !empty($br) ? strtoupper(substr(preg_replace('/[^a-zA-Z]/', '', $br), 0, 1)) : 'C';
-
-        return ($cInitial ?: 'M') . ($bInitial ?: 'C');
+        return $cInitial . $bInitial;
     }
 
     /**
@@ -74,27 +85,30 @@ class MediclaimClaimNumber
     public static function next(string $companyCode, mixed $employeeOrYear = null, ?string $date = null, ?string $branch = null): string
     {
         // If employee context is passed, format according to the new company/branch specification
-        if ($employeeOrYear instanceof User || (is_array($employeeOrYear) && (isset($employeeOrYear['emp_code']) || isset($employeeOrYear['unit']) || isset($employeeOrYear['branch'])))) {
+        if ($employeeOrYear instanceof User || (is_array($employeeOrYear) && (isset($employeeOrYear['emp_code']) || isset($employeeOrYear['unit']) || isset($employeeOrYear['branch']) || isset($employeeOrYear['id'])))) {
             $empCode = '0001';
             $userBranch = $branch;
             $company = $companyCode;
+            $userId = null;
 
             if ($employeeOrYear instanceof User) {
+                $userId = $employeeOrYear->id;
                 $empCode = trim((string) ($employeeOrYear->emp_code ?: $employeeOrYear->id));
                 $userBranch = $userBranch ?: ($employeeOrYear->unit ?: $employeeOrYear->branch);
                 $company = $companyCode ?: $employeeOrYear->company_code;
-
-                if (! $userBranch && $employeeOrYear->id) {
-                    $dbUser = User::find($employeeOrYear->id);
-                    $userBranch = $dbUser?->unit ?: $dbUser?->branch;
-                    if (! $company) {
-                        $company = $dbUser?->company_code;
-                    }
-                }
             } elseif (is_array($employeeOrYear)) {
+                $userId = $employeeOrYear['id'] ?? null;
                 $empCode = trim((string) ($employeeOrYear['emp_code'] ?? $employeeOrYear['id'] ?? '0001'));
                 $userBranch = $userBranch ?: ($employeeOrYear['unit'] ?? $employeeOrYear['branch'] ?? null);
                 $company = $companyCode ?: ($employeeOrYear['company_code'] ?? null);
+            }
+
+            if ((! $userBranch || ! $company) && $userId) {
+                $dbUser = DB::table('users')->where('id', $userId)->first();
+                if ($dbUser) {
+                    $userBranch = $userBranch ?: ($dbUser->unit ?: $dbUser->branch);
+                    $company = $company ?: $dbUser->company_code;
+                }
             }
 
             $prefix = self::resolvePrefix($company, $userBranch);

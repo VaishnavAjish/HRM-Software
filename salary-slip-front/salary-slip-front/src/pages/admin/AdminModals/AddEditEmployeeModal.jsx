@@ -21,7 +21,6 @@ import {
 import Button from "../../../components/ui/Button";
 import { salaryApi } from "../../../utils/api";
 import SearchableSelect from "../../../components/ui/SearchableSelect";
-import { designationApi } from "../../../features/workforce/services/workforceApi";
 import { organizationApi } from "../../../features/organization/services/organizationApi";
 import { useAuth } from "../../../context/AuthContext";
 import { useCompany } from "../../../context/CompanyContext";

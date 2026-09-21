@@ -27,7 +27,7 @@ class ClaimController extends Controller
     use ValidatesClaimPayload;
 
     private const DETAIL_WITH = [
-        'employee:id,name,email,emp_code,designation,company_code',
+        'employee:id,name,email,emp_code,designation,company_code,unit,branch',
         'member', 'enrollment', 'policyVersion', 'hospital',
         'assignedManager:id,name,email,designation',
         'intimation', 'expenses',

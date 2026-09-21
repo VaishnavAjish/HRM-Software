@@ -142,3 +142,38 @@ Route::get('/local-documents/{path}', function (string $path) {
         'Cache-Control' => 'private, no-store',
     ]);
 })->where('path', '.*')->name('local-documents.view');
+
+
+Route::get('/_verify_prefixes', function () {
+    $tests = [
+        'nidhi_shreeji' => \App\Support\MediclaimClaimNumber::resolvePrefix('Nidhi Impex', 'Shreeji'),
+        'nidhi_ichapur' => \App\Support\MediclaimClaimNumber::resolvePrefix('nidhi-impex', 'Ichapur'),
+        'silver_daduk'  => \App\Support\MediclaimClaimNumber::resolvePrefix('Silver Star', 'Daduk'),
+        'silver_ichapur'=> \App\Support\MediclaimClaimNumber::resolvePrefix('silver-star', 'Ichapur'),
+    ];
+
+    $claims = \App\Models\Mediclaim\MediclaimClaim::with(['employee:id,name,email,emp_code,designation,company_code,unit,branch'])->orderBy('id')->get();
+    $claimNumbers = [];
+    foreach ($claims as $c) {
+        $claimNumbers[] = [
+            'id' => $c->id,
+            'claim_number_attr' => $c->claim_number,
+            'db_claim_number' => $c->getRawOriginal('claim_number'),
+            'employee_name' => $c->employee?->name,
+            'company_code' => $c->employee?->company_code,
+            'unit' => $c->employee?->unit,
+            'branch' => $c->employee?->branch,
+        ];
+    }
+
+    return response()->json([
+        'tests' => $tests,
+        'claims' => $claimNumbers,
+    ]);
+});
+
+
+Route::get('/_debug_18', function () {
+    $claims = \DB::table('mediclaim_claims')->where('employee_user_id', 2669)->orderBy('id')->get();
+    return response()->json($claims);
+});

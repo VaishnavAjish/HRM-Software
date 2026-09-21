@@ -99,7 +99,7 @@ export default function ClaimsTab() {
   };
 
   const ALL_COLUMNS = [
-    { key: "claimNumber", label: "Claim #", render: (row) => row.claimNumber || row.claim_number || "—" },
+    { key: "claimNumber", label: "Claim #", render: (row) => formatClaimNumber(row) || "—" },
     { key: "employeeName", label: "Employee", render: (row) => row.employeeName || row.employee_snapshot?.name || "—" },
     { key: "patientName", label: "Patient", render: (row) => row.patientName || row.patient_snapshot?.name || "—" },
     { key: "claimedAmount", label: "Claimed", render: (row) => formatCurrencyINR(row.totalClaimedAmount ?? row.total_claimed_amount) },

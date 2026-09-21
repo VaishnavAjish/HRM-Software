@@ -31,7 +31,7 @@ class MyClaimController extends Controller
 
         $query = MediclaimClaim::query()
             ->where('employee_user_id', $actor->id)
-            ->with(['member', 'hospital', 'policyVersion']);
+            ->with(['employee:id,name,email,emp_code,designation,company_code,unit,branch', 'member', 'hospital', 'policyVersion']);
 
         if ($request->filled('status')) {
             $query->whereIn('status', explode(',', (string) $request->query('status')));

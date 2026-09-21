@@ -24,7 +24,7 @@ import {
 import { useSearchParams } from "react-router-dom";
 import { getCompanyConfig } from "../../config/companyConfig";
 import { getProfileCompletionPercentage } from "../../utils/profileCompletion";
-import { isPhotoDeletedOrDummy, markPhotoAsDeleted, getPhotoDeletionReason } from "../../utils/photoStatus";
+import { isPhotoDeletedOrDummy, markPhotoAsDeleted } from "../../utils/photoStatus";
 
 import { useTheme } from "../../context/theme-context";
 import { validateEmployeeForm } from "../../utils/validation";
@@ -282,7 +282,7 @@ export default function EmployeeManagement() {
 
   const [employees, setEmployees] = useState([]);
   const [apiPage, setApiPage] = useState(1);
-  const [totalRecords, setTotalRecords] = useState(0);
+  const [, setTotalRecords] = useState(0);
   const [perPage, setPerPage] = useState(15);
 
   const [activeCount, setActiveCount] = useState(0);
@@ -471,79 +471,6 @@ export default function EmployeeManagement() {
   const modalPhotoUrl = getEmployeePhotoUrl(
     photoModalRow?.photo || photoModalRow?.user?.photo || photoModalRow?.employee?.photo || photoModalRow?.userPhoto || photoModalRow?.userAvatar
   );
-  const [deleteReasonModal, setDeleteReasonModal] = useState({ open: false, row: null });
-  const [deleteReasonText, setDeleteReasonText] = useState("");
-  const [deleteReasonError, setDeleteReasonError] = useState("");
-
-  const handleOpenDeleteReasonModal = (row) => {
-    if (!row) return;
-    const currentReason = getPhotoDeletionReason(row) || "Dummy photo detected / Invalid profile picture";
-    setDeleteReasonText(currentReason);
-    setDeleteReasonError("");
-    setDeleteReasonModal({ open: true, row });
-  };
-
-  const handleConfirmPhotoDelete = async () => {
-    const row = deleteReasonModal.row;
-    const reason = deleteReasonText.trim();
-    if (!reason) {
-      setDeleteReasonError("Please enter a reason for photo deletion.");
-      return;
-    }
-    if (!row) return;
-
-    try {
-      markPhotoAsDeleted(row, reason);
-
-      if (row.id) {
-        await salaryApi.editEmployee(
-          row.id,
-          {
-            photo: null,
-            photo_rejected: true,
-            photo_deleted: true,
-            is_photo_dummy: true,
-            photo_deletion_reason: reason,
-          },
-          currentUser?.accessToken,
-          currentUser?.tokenType
-        ).catch((err) => {
-          console.warn("Photo delete API warning:", err);
-        });
-      }
-
-      if (photoModalRow && (photoModalRow.id === row.id || (row.empCode && photoModalRow.empCode === row.empCode))) {
-        setPhotoModalRow({
-          ...photoModalRow,
-          photo: null,
-          photo_rejected: true,
-          photo_deleted: true,
-          is_photo_dummy: true,
-          photo_deletion_reason: reason,
-        });
-      }
-
-      setEmployees((prev) =>
-        prev.map((item) =>
-          item.id === row.id || (row.empCode && item.empCode === row.empCode)
-            ? {
-                ...item,
-                photo: null,
-                photo_rejected: true,
-                photo_deleted: true,
-                is_photo_dummy: true,
-                photo_deletion_reason: reason,
-              }
-            : item
-        )
-      );
-
-      toast.success("Employee photo deleted and profile locked.");
-      setDeleteReasonModal({ open: false, row: null });
-    } catch (err) {
-      toast.error(err.message || "Failed to delete employee photo");
-    }
-  };
   const [form, setForm] = useState(emptyForm);
   const [viewLoading, setViewLoading] = useState(false);
   const [saveLoading, setSaveLoading] = useState(false);
@@ -562,10 +489,11 @@ export default function EmployeeManagement() {
   // coming from the sidebar's company scope, so unit options must follow
   // whatever is currently selected in the form, not just the outer scope.
   const formCompanyId = form.companyId || companyId;
-  const unitOptions = useMemo(
-    () => getCompanyConfig(formCompanyId)?.units || [],
-    [formCompanyId],
-  );
+  const unitOptions = useMemo(() => {
+    const conf = getCompanyConfig(formCompanyId);
+    if (conf?.units && conf.units.length > 0) return conf.units;
+    return ["Shreeji", "Daduk", "Ichapur"];
+  }, [formCompanyId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -598,7 +526,9 @@ export default function EmployeeManagement() {
 
         setEmployees(list);
         setSeenDepartments((prev) => mergeDistinctSorted(prev, list.map((e) => e.department)));
-        setAllUnits((prev) => mergeDistinctSorted(prev, list.map((e) => e.unit)));
+        const validUnits = ["Shreeji", "Daduk", "Ichapur"];
+        const unitsFromList = list.map((e) => e.unit).filter((u) => validUnits.includes(u));
+        setAllUnits((prev) => mergeDistinctSorted(prev, unitsFromList.length > 0 ? unitsFromList : validUnits));
 
         const actCount = list.filter((e) => e.status === "Active").length;
         setTotalRecords(list.length);
@@ -720,7 +650,7 @@ export default function EmployeeManagement() {
         )
       );
       setPhotoModalRow(null);
-    } catch (err) {
+    } catch {
       toast.error("Failed to delete profile photo.");
     }
   };
@@ -1145,27 +1075,7 @@ export default function EmployeeManagement() {
     [],
   );
 
-  const selectionColumnDef = useMemo(
-    () => ({
-      width: 45,
-      minWidth: 45,
-      maxWidth: 45,
-      pinned: "left",
-      lockPosition: true,
-      suppressHeaderMenuButton: true,
-    }),
-    []
-  );
 
-  const rowSelection = useMemo(
-    () => ({
-      mode: "multiRow",
-      enableClickSelection: false,
-      checkboxes: true,
-      headerCheckbox: true,
-    }),
-    []
-  );
 
   const columnDefs = useMemo(() => {
     if (isMobile) {
@@ -2311,7 +2221,7 @@ export default function EmployeeManagement() {
               )}
               <button
                 type="button"
-                onClick={() => handleOpenDeleteReasonModal(photoModalRow)}
+                onClick={() => handleDeletePhotoInMgmt(photoModalRow)}
                 className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl transition-colors shadow-sm"
                 title="Delete profile picture & lock employee profile"
               >
