@@ -17,8 +17,8 @@ use Illuminate\Support\Facades\DB;
  * Rule: First alphabet of company + First alphabet of unit (from View Employees / users table).
  * Date format is strictly YYYY-MM-DD.
  *
- * If duplicate claims are created for the same employee on the same date,
- * a sequence counter suffix (-2, -3) is appended to maintain unique index integrity.
+ * When multiple claims are created for the same employee on the same date,
+ * they are sequenced in chronological order starting from -1, -2, -3, ...
  */
 class MediclaimClaimNumber
 {
@@ -56,7 +56,7 @@ class MediclaimClaimNumber
 
         // Generic rule: first alphabet of company + first alphabet of unit
         $cClean = preg_replace('/[^a-zA-Z]/', '', $comp);
-        $cInitial = $isNidhi ? 'N' : ($isSilver ? 'S' : (!empty($cClean) ? strtoupper(substr($cClean, 0, 1)) : 'M'));
+        $cInitial = $isNidhi ? 'N' : ($isSilver ? 'S' : (! empty($cClean) ? strtoupper(substr($cClean, 0, 1)) : 'M'));
 
         $bClean = preg_replace('/[^a-zA-Z]/', '', $br);
         $bInitial = '';
@@ -66,40 +66,45 @@ class MediclaimClaimNumber
             $bInitial = 'I';
         } elseif ($isDaduk) {
             $bInitial = 'D';
-        } elseif (!empty($bClean)) {
+        } elseif (! empty($bClean)) {
             $bInitial = strtoupper(substr($bClean, 0, 1));
         } else {
             // Default unit if not set: Shreeji (S) for Nidhi, Daduk (D) for Silver Star
             $bInitial = ($cInitial === 'N') ? 'S' : (($cInitial === 'S') ? 'D' : 'C');
         }
 
-        return $cInitial . $bInitial;
+        return $cInitial.$bInitial;
     }
 
     /**
      * Allocates next claim number.
-     * When employee context is provided (User or employee array), generates:
-     *   {PREFIX}-{EMP_CODE}-{YYYY-MM-DD}
+     * When employee context is provided (User, stdClass object, or employee array), generates:
+     *   {PREFIX}-{EMP_CODE}-{YYYY-MM-DD} (if single claim on date)
+     *   {PREFIX}-{EMP_CODE}-{YYYY-MM-DD}-1, -2, -3... (if multiple claims on date)
      * Otherwise falls back to legacy atomic company+year counter.
      */
     public static function next(string $companyCode, mixed $employeeOrYear = null, ?string $date = null, ?string $branch = null): string
     {
+        $isUser = $employeeOrYear instanceof User;
+        $isObj = is_object($employeeOrYear) && (isset($employeeOrYear->emp_code) || isset($employeeOrYear->id) || isset($employeeOrYear->unit));
+        $isArr = is_array($employeeOrYear) && (isset($employeeOrYear['emp_code']) || isset($employeeOrYear['id']) || isset($employeeOrYear['unit']));
+
         // If employee context is passed, format according to the new company/branch specification
-        if ($employeeOrYear instanceof User || (is_array($employeeOrYear) && (isset($employeeOrYear['emp_code']) || isset($employeeOrYear['unit']) || isset($employeeOrYear['branch']) || isset($employeeOrYear['id'])))) {
+        if ($isUser || $isObj || $isArr) {
             $empCode = '0001';
             $userBranch = $branch;
             $company = $companyCode;
             $userId = null;
 
-            if ($employeeOrYear instanceof User) {
-                $userId = $employeeOrYear->id;
-                $empCode = trim((string) ($employeeOrYear->emp_code ?: $employeeOrYear->id));
-                $userBranch = $userBranch ?: ($employeeOrYear->unit ?: $employeeOrYear->branch);
-                $company = $companyCode ?: $employeeOrYear->company_code;
-            } elseif (is_array($employeeOrYear)) {
+            if ($isUser || $isObj) {
+                $userId = $employeeOrYear->id ?? null;
+                $empCode = trim((string) (($employeeOrYear->emp_code ?? null) ?: ($employeeOrYear->id ?? '0001')));
+                $userBranch = $userBranch ?: (($employeeOrYear->unit ?? null) ?: ($employeeOrYear->branch ?? null));
+                $company = $companyCode ?: ($employeeOrYear->company_code ?? null);
+            } elseif ($isArr) {
                 $userId = $employeeOrYear['id'] ?? null;
-                $empCode = trim((string) ($employeeOrYear['emp_code'] ?? $employeeOrYear['id'] ?? '0001'));
-                $userBranch = $userBranch ?: ($employeeOrYear['unit'] ?? $employeeOrYear['branch'] ?? null);
+                $empCode = trim((string) (($employeeOrYear['emp_code'] ?? null) ?: ($employeeOrYear['id'] ?? '0001')));
+                $userBranch = $userBranch ?: (($employeeOrYear['unit'] ?? null) ?: ($employeeOrYear['branch'] ?? null));
                 $company = $companyCode ?: ($employeeOrYear['company_code'] ?? null);
             }
 
@@ -116,14 +121,52 @@ class MediclaimClaimNumber
 
             $base = sprintf('%s-%s-%s', $prefix, $empCode, $dateStr);
 
-            $claimNumber = $base;
-            $counter = 1;
-            while (DB::table('mediclaim_claims')->where('claim_number', $claimNumber)->exists()) {
-                $counter++;
-                $claimNumber = sprintf('%s-%d', $base, $counter);
+            // Query existing claims for this employee on this date
+            $existing = DB::table('mediclaim_claims')
+                ->where('employee_user_id', $userId)
+                ->where(function ($q) use ($dateStr, $base) {
+                    $q->whereDate('submitted_at', $dateStr)
+                        ->orWhere(function ($q2) use ($dateStr) {
+                            $q2->whereNull('submitted_at')->whereDate('created_at', $dateStr);
+                        })
+                        ->orWhere('claim_number', 'like', "{$base}%");
+                })
+                ->orderBy('id')
+                ->get();
+
+            if ($existing->isEmpty()) {
+                // First claim of the day
+                return $base;
             }
 
-            return $claimNumber;
+            // If the first claim on this date has no suffix, upgrade it to -1
+            $first = $existing->first();
+            if ($first->claim_number === $base) {
+                $firstSeq = sprintf('%s-1', $base);
+                if (! DB::table('mediclaim_claims')->where('claim_number', $firstSeq)->exists()) {
+                    DB::table('mediclaim_claims')->where('id', $first->id)->update(['claim_number' => $firstSeq]);
+                }
+            }
+
+            // Find highest sequence suffix currently used for this base
+            $maxSeq = 1;
+            foreach ($existing as $c) {
+                if (preg_match('/-(\d+)$/', (string) $c->claim_number, $m)) {
+                    $val = (int) $m[1];
+                    if ($val > $maxSeq) {
+                        $maxSeq = $val;
+                    }
+                }
+            }
+
+            $nextSeq = $maxSeq + 1;
+            $candidate = sprintf('%s-%d', $base, $nextSeq);
+            while (DB::table('mediclaim_claims')->where('claim_number', $candidate)->exists()) {
+                $nextSeq++;
+                $candidate = sprintf('%s-%d', $base, $nextSeq);
+            }
+
+            return $candidate;
         }
 
         // Legacy counter fallback when called without employee context (e.g. older tests or tools)

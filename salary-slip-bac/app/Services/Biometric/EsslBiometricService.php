@@ -221,7 +221,7 @@ class EsslBiometricService
             // Determine canonical code, tenant company, and user ID
             $empCompany = $user ? $user->company_code : ($companyCode && !in_array($companyCode, ['all', 'all-companies']) ? $companyCode : 'nidhi-impex');
             $empUnit = $user ? $user->unit : null;
-            $userId = $user ? $user->id : (is_numeric($codeStr) ? (int)$codeStr : null);
+            $userId = $user ? $user->id : null;
             $canonicalCode = $user ? (string)($user->emp_code ?: $user->punching_no ?: $user->form_no ?: $user->id) : $codeStr;
 
             foreach ($dates as $dateStr => $data) {

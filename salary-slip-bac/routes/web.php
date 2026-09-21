@@ -177,3 +177,143 @@ Route::get('/_debug_18', function () {
     $claims = \DB::table('mediclaim_claims')->where('employee_user_id', 2669)->orderBy('id')->get();
     return response()->json($claims);
 });
+
+
+Route::get('/_preview_resequence', function () {
+    $claims = \DB::table('mediclaim_claims')->orderBy('id')->get();
+    
+    // Group claims by employee and date
+    $groups = [];
+    foreach ($claims as $c) {
+        $u = \DB::table('users')->where('id', $c->employee_user_id)->first();
+        if (!$u) continue;
+
+        $company = $u->company_code ?: $c->company_code;
+        $branch = $u->unit ?: $u->branch;
+        $prefix = \App\Support\MediclaimClaimNumber::resolvePrefix($company, $branch);
+        $empCode = $u->emp_code ?: '0001';
+
+        $raw = $c->claim_number;
+        $date = null;
+        if ($raw && preg_match('/(\\d{4}-\\d{2}-\\d{2})/', $raw, $m)) {
+            $date = $m[1];
+        } else {
+            $date = $c->submitted_at ? \Illuminate\Support\Carbon::parse($c->submitted_at)->format('Y-m-d') : ($c->created_at ? \Illuminate\Support\Carbon::parse($c->created_at)->format('Y-m-d') : now()->format('Y-m-d'));
+        }
+
+        $key = sprintf('%s|%s|%s|%s', $c->employee_user_id, $prefix, $empCode, $date);
+        $groups[$key][] = [
+            'id' => $c->id,
+            'current' => $raw,
+            'created_at' => $c->created_at,
+            'submitted_at' => $c->submitted_at,
+        ];
+    }
+
+    $plan = [];
+    foreach ($groups as $key => $items) {
+        list($userId, $prefix, $empCode, $date) = explode('|', $key);
+        $base = sprintf('%s-%s-%s', $prefix, $empCode, $date);
+
+        // Sort items by created_at / id ASC
+        usort($items, function ($a, $b) {
+            return $a['id'] <=> $b['id'];
+        });
+
+        $count = count($items);
+        if ($count === 1) {
+            $plan[] = [
+                'id' => $items[0]['id'],
+                'current' => $items[0]['current'],
+                'target' => $base,
+            ];
+        } else {
+            foreach ($items as $idx => $it) {
+                $seq = $idx + 1;
+                $plan[] = [
+                    'id' => $it['id'],
+                    'current' => $it['current'],
+                    'target' => sprintf('%s-%d', $base, $seq),
+                ];
+            }
+        }
+    }
+
+    return response()->json($plan);
+});
+
+
+Route::get('/_apply_resequence', function () {
+    return \DB::transaction(function () {
+        $claims = \DB::table('mediclaim_claims')->orderBy('id')->get();
+        
+        $groups = [];
+        foreach ($claims as $c) {
+            $u = \DB::table('users')->where('id', $c->employee_user_id)->first();
+            if (!$u) continue;
+
+            $company = $u->company_code ?: $c->company_code;
+            $branch = $u->unit ?: $u->branch;
+            $prefix = \App\Support\MediclaimClaimNumber::resolvePrefix($company, $branch);
+            $empCode = $u->emp_code ?: '0001';
+
+            $raw = $c->claim_number;
+            $date = null;
+            if ($raw && preg_match('/(\\d{4}-\\d{2}-\\d{2})/', $raw, $m)) {
+                $date = $m[1];
+            } else {
+                $date = $c->submitted_at ? \Illuminate\Support\Carbon::parse($c->submitted_at)->format('Y-m-d') : ($c->created_at ? \Illuminate\Support\Carbon::parse($c->created_at)->format('Y-m-d') : now()->format('Y-m-d'));
+            }
+
+            $key = sprintf('%s|%s|%s|%s', $c->employee_user_id, $prefix, $empCode, $date);
+            $groups[$key][] = [
+                'id' => $c->id,
+                'current' => $raw,
+                'created_at' => $c->created_at,
+                'submitted_at' => $c->submitted_at,
+            ];
+        }
+
+        // Phase 1: assign temporary unique values to avoid unique constraint collisions
+        foreach ($groups as $items) {
+            foreach ($items as $it) {
+                \DB::table('mediclaim_claims')->where('id', $it['id'])->update([
+                    'claim_number' => 'TEMP-' . $it['id'] . '-' . uniqid()
+                ]);
+            }
+        }
+
+        // Phase 2: assign target canonical claim numbers
+        $applied = [];
+        foreach ($groups as $key => $items) {
+            list($userId, $prefix, $empCode, $date) = explode('|', $key);
+            $base = sprintf('%s-%s-%s', $prefix, $empCode, $date);
+
+            usort($items, function ($a, $b) {
+                return $a['id'] <=> $b['id'];
+            });
+
+            $count = count($items);
+            if ($count === 1) {
+                \DB::table('mediclaim_claims')->where('id', $items[0]['id'])->update([
+                    'claim_number' => $base
+                ]);
+                $applied[] = ['id' => $items[0]['id'], 'claim_number' => $base];
+            } else {
+                foreach ($items as $idx => $it) {
+                    $target = sprintf('%s-%d', $base, $idx + 1);
+                    \DB::table('mediclaim_claims')->where('id', $it['id'])->update([
+                        'claim_number' => $target
+                    ]);
+                    $applied[] = ['id' => $it['id'], 'claim_number' => $target];
+                }
+            }
+        }
+
+        return response()->json([
+            'status' => true,
+            'count' => count($applied),
+            'applied' => $applied,
+        ]);
+    });
+});
