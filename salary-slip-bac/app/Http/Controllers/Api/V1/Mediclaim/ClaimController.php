@@ -147,6 +147,30 @@ class ClaimController extends Controller
         )));
     }
 
+    public function updateExpenses(Request $request, int $claim): JsonResponse
+    {
+        $actor = auth('api')->user();
+        $model = MediclaimClaim::visibleTo($actor)->find($claim);
+
+        if (! $model) {
+            return $this->missing('Claim not found.');
+        }
+
+        $data = $request->validate([
+            'expenses' => ['required', 'array', 'min:1'],
+            'expenses.*.category' => ['required', 'string', 'max:60'],
+            'expenses.*.description' => ['sometimes', 'nullable', 'string', 'max:500'],
+            'expenses.*.claimed_amount' => ['required', 'numeric', 'min:0'],
+            'expenses.*.expense_date' => ['sometimes', 'nullable', 'date'],
+        ]);
+
+        return $this->guarded(fn () => $this->ok($this->workflow->updateExpenses(
+            $model,
+            $actor,
+            $data['expenses']
+        )));
+    }
+
     public function timeline(Request $request, int $claim): JsonResponse
     {
         $actor = auth('api')->user();

@@ -43,7 +43,9 @@ return [
 
     'fast2sms' => [
         'key' => env('FAST2SMS_API_KEY'),
-        'route' => env('FAST2SMS_ROUTE', 'otp'),
+        'route' => env('FAST2SMS_ROUTE', 'dlt'),
+        'sender_id' => env('FAST2SMS_SENDER_ID', 'HRMS'),
+        'dlt_template_id' => env('FAST2SMS_DLT_TEMPLATE_ID', '225936'),
     ],
 
     // Google Calendar/Meet integration for interview scheduling

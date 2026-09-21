@@ -519,8 +519,11 @@ class UserController extends Controller
             }
             if ($primary->designation?->title) {
                 $data['designation'] = $primary->designation->title;
-            } elseif ($primary->position?->title && empty($data['designation'])) {
-                $data['designation'] = $primary->position->title;
+            } elseif ($primary->designation_id) {
+                $desig = \App\Models\Designation::find($primary->designation_id);
+                if ($desig?->title) {
+                    $data['designation'] = $desig->title;
+                }
             }
             if ($primary->position?->title) {
                 $data['position_title'] = $primary->position->title;

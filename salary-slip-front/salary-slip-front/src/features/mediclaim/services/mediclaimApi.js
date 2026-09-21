@@ -229,10 +229,39 @@ export const mediclaimApi = {
     });
   },
 
+  updateClaimExpenses(claimId, expenses, accessToken, tokenType = "Bearer") {
+    return apiRequest(`${BASE}/claims/${claimId}/update-expenses`, {
+      method: "POST",
+      headers: headers(accessToken, tokenType),
+      body: JSON.stringify({
+        expenses: (expenses || []).map((row) => ({
+          category: row.category,
+          description: row.description || null,
+          claimed_amount: Number(row.claimedAmount ?? row.claimed_amount ?? row.amount ?? 0),
+          expense_date: row.expenseDate || row.expense_date || null,
+        })),
+      }),
+    });
+  },
+
   /* ------------------------------------------------------------------------ claim documents */
 
   claimDocuments(claimId, accessToken, tokenType = "Bearer") {
     return apiRequest(`${BASE}/claims/${claimId}/documents`, { headers: headers(accessToken, tokenType) });
+  },
+
+  approveClaimDocument(claimId, documentId, accessToken, tokenType = "Bearer") {
+    return apiRequest(`${BASE}/claims/${claimId}/documents/${documentId}/approve`, {
+      method: "POST",
+      headers: headers(accessToken, tokenType),
+    });
+  },
+
+  denyClaimDocument(claimId, documentId, accessToken, tokenType = "Bearer") {
+    return apiRequest(`${BASE}/claims/${claimId}/documents/${documentId}/deny`, {
+      method: "POST",
+      headers: headers(accessToken, tokenType),
+    });
   },
 
   // FormData body — deliberately no Content-Type header. apiRequest detects

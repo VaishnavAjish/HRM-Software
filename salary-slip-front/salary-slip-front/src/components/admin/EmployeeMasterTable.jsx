@@ -1,14 +1,20 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
+import { AgGridReact } from "ag-grid-react";
+import { AllCommunityModule, ModuleRegistry } from "ag-grid-community";
+
+ModuleRegistry.registerModules([AllCommunityModule]);
+import useGridHeaderContextMenu from "../../hooks/useGridHeaderContextMenu";
+import GridHeaderContextMenu from "../ui/GridHeaderContextMenu";
 import { toast } from "react-hot-toast";
 import {
-  Search, Eye, Pencil, Trash2, Lock, Unlock, X, X as CloseIcon,
+  Search, Eye, Pencil, Trash2, Lock, Unlock, X, X as 
   Users, Loader2, Filter, RotateCcw, Download, CloudUpload,
 } from "lucide-react";
 import Badge from "../ui/Badge";
-import Modal from "../ui/Modal";
 import Pagination from "../ui/Pagination";
 import { salaryApi, authApi } from "../../utils/api";
 import { useAuth } from "../../context/AuthContext";
+import { useTheme } from "../../context/theme-context";
 import { useCompany } from "../../context/CompanyContext";
 import { useAuthorization } from "../../hooks/useAuthorization";
 import { getCompanyConfig } from "../../config/companyConfig";
@@ -128,25 +134,15 @@ function EmployeePhoto({ row, size = 40, onClick }) {
 // Fields shown in the View modal. Trial-specific fields only render when
 // there's actually a value, so a promoted trial row (now __stage "pending"
 // or "employee") doesn't show a wall of empty labels.
-const DETAIL_FIELDS = [
-  ["Emp Code", "emp_code"], ["Punching No", "punching_no"], ["Email", "email"],
-  ["Mobile", "mobile_number"], ["Department", "department"], ["Designation", "designation"],
-  ["Company", (r) => getCompanyConfig(r.company_code)?.label || r.company_code],
-  ["Unit / Branch", "unit"], ["Joining Date", "joining_date"], ["Date of Birth", "dob"],
-  ["Gender", "gender"], ["Blood Group", "blood_group"], ["Salary", "salary"],
-  // Accessor, not a key: aadhar_card_no is in User::$hidden so it never reaches
-  // the client, and reading it directly rendered an empty column. The list
-  // endpoints return aadhaar_full for rows the caller may open.
-  ["Manager", "manager_name"], ["Aadhaar No", (r) => getAadhaarDisplayValue(r)], ["PAN No", "pan_card_no"],
-  ["Bank Name", "bank_name"], ["Bank A/C No", "bank_account_no"], ["IFSC", "bank_ifsc_code"],
-  ["Address", "address"],
-  ["Trial Date", "trial_date"], ["Last Company", "last_company_name"],
-  ["Experience", "experience"], ["Reason for Leaving", "reason_for_leaving"],
-  ["Reference Name", "reference_name"], ["Reference Mobile", "reference_mobile_no"],
-];
 
-export default function EmployeeMasterTable({ onBulkUpload }) {
+
+export default function EmployeeMasterTable({ onUpdateEmployee = () => {}, onBulkUpload }) {
+  const gridRef = useRef(null);
+  const gridContainerRef = useRef(null);
+  const { headerMenu, headerFrozen, closeHeaderMenu, toggleHeaderFrozen } =
+    useGridHeaderContextMenu(gridRef, gridContainerRef);
   const { user } = useAuth();
+  const { dark } = useTheme();
   const { can } = useAuthorization();
   const { companyScope, companyId } = useCompany();
 
@@ -156,7 +152,7 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
   const [stageFilter, setStageFilter] = useState("all");
   const [departmentFilter, setDepartmentFilter] = useState("");
   const [genderFilter, setGenderFilter] = useState("");
-  const [completionFilter, setCompletionFilter] = useState("");
+  const [completionFilter] = useState(''); // setCompletionFilter unused
   const [month, setMonth] = useState("");
   const [year, setYear] = useState("");
   const [page, setPage] = useState(1);
@@ -192,7 +188,9 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
   );
   const [deleteReasonModal, setDeleteReasonModal] = useState({ open: false, row: null });
   const [deleteReasonText, setDeleteReasonText] = useState("");
-  const [deleteReasonError, setDeleteReasonError] = useState("");
+  const [, setDeleteReasonError] = useState(''); // deleteReasonError unused
+
+
 
   const handleOpenDeleteReasonModal = (row) => {
     if (!row) return;
@@ -202,6 +200,8 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
     setDeleteReasonModal({ open: true, row });
   };
 
+//   /* eslint-disable-next-line no-unused-vars */
+  /* eslint-disable-next-line no-unused-vars */
   const handleConfirmPhotoDelete = async () => {
     const row = deleteReasonModal.row;
     const reason = deleteReasonText.trim();
@@ -268,6 +268,7 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
   const [editForm, setEditForm] = useState({});
   const [editSaving, setEditSaving] = useState(false);
 
+/* eslint-disable-next-line no-unused-vars */
   const handleDeletePhoto = async (targetRow) => {
     if (!targetRow) return;
     const empName = targetRow.name || targetRow.displayName || "this employee";
@@ -290,7 +291,7 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
       );
       setPhotoModalRow(null);
     } catch (err) {
-      toast.error("Failed to delete profile photo.");
+      toast.error(err?.message || 'Failed to delete employee photo');
     }
   };
 
@@ -614,8 +615,8 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
     }
   };
 
-  const updateEditForm = (field) => (e) =>
-    setEditForm((prev) => ({ ...prev, [field]: e.target.value }));
+/* eslint-disable-next-line no-unused-vars */
+  const updateEditForm = (field) => (e) => setEditForm((prev) => ({ ...prev, [field]: e.target.value }));
 
   const handleEditSave = async () => {
     if (!editEmployeeRow && !editForm.id) return;
@@ -715,8 +716,217 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
     }
   };
 
+    
   const cellInputCls =
     "w-full min-w-[92px] rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 px-2 py-1.5 text-xs font-mono text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 disabled:opacity-50";
+
+  const defaultColDef = useMemo(() => ({
+    sortable: true,
+    resizable: true,
+    flex: 1,
+    minWidth: 100,
+    filter: "agTextColumnFilter",
+    suppressHeaderMenuButton: true,
+    suppressHeaderFilterButton: false,
+    filterParams: {
+      buttons: ["apply", "reset"],
+      closeOnApply: false,
+      trimInput: true,
+      debounceMs: 200,
+    },
+  }), []);
+
+  const columnDefs = useMemo(() => [
+    {
+      headerName: "PROFILE",
+      field: "name",
+      width: 100,
+      minWidth: 85,
+      flex: 0.7,
+      cellRenderer: (params) => (
+        <div className="flex items-center justify-center h-full">
+          <EmployeePhoto row={params.data} size={32} onClick={() => setPhotoModalRow(params.data)} />
+        </div>
+      ),
+      sortable: false,
+      filter: false,
+    },
+    {
+      headerName: "EMP CODE",
+      field: "emp_code",
+      minWidth: 130,
+      flex: 1,
+      cellRenderer: (params) => {
+        const row = params.data;
+        if (!row) return "";
+        return (
+          <input
+            value={draftValue(row, "emp_code")}
+            onChange={(e) => setDraft(row.id, "emp_code", e.target.value)}
+            onBlur={() => commitField(row, "emp_code")}
+            onKeyDown={handleCellKeyDown}
+            disabled={savingCell === `${row.id}:emp_code`}
+            placeholder="Assign code"
+            className={cellInputCls}
+          />
+        );
+      },
+    },
+    {
+      headerName: "PUNCHING NO",
+      field: "punching_no",
+      minWidth: 140,
+      flex: 1,
+      cellRenderer: (params) => {
+        const row = params.data;
+        if (!row) return "";
+        return (
+          <input
+            value={draftValue(row, "punching_no")}
+            onChange={(e) => setDraft(row.id, "punching_no", e.target.value)}
+            onBlur={() => commitField(row, "punching_no")}
+            onKeyDown={handleCellKeyDown}
+            disabled={savingCell === `${row.id}:punching_no`}
+            placeholder="Assign no."
+            className={cellInputCls}
+          />
+        );
+      },
+    },
+    {
+      headerName: "NAME",
+      field: "name",
+      minWidth: 180,
+      flex: 1.5,
+      cellRenderer: (params) => {
+        const row = params.data;
+        if (!row) return "";
+        return (
+          <div className="flex flex-col justify-center h-full">
+            <span className="font-medium text-gray-900 dark:text-white leading-snug truncate">{row.name || "—"}</span>
+            <span className="text-[11px] text-gray-400 dark:text-slate-400 truncate">{row.email || "No email"}</span>
+          </div>
+        );
+      },
+    },
+    {
+      headerName: "GENDER",
+      field: "gender",
+      minWidth: 110,
+      flex: 0.9,
+      valueGetter: (params) => (params.data?.gender && params.data.gender !== "-" ? params.data.gender : ""),
+    },
+    {
+      headerName: "STAGE",
+      field: "__stage",
+      minWidth: 120,
+      flex: 1,
+      cellRenderer: (params) => {
+        const row = params.data;
+        if (!row) return null;
+        const meta = STAGE_META[row.__stage] || STAGE_META.appointment;
+        return (
+          <div className="flex items-center h-full">
+            <Badge variant={meta.tone}>{meta.label}</Badge>
+          </div>
+        );
+      },
+    },
+    {
+      headerName: "DEPARTMENT",
+      field: "department",
+      minWidth: 170,
+      flex: 1.4,
+      valueGetter: (params) => {
+        const row = params.data;
+        if (!row) return "";
+        return [row.department, row.designation].filter(Boolean).join(" - ");
+      },
+    },
+    {
+      headerName: "COMPANY / UNIT",
+      field: "company_code",
+      minWidth: 180,
+      flex: 1.5,
+      valueGetter: (params) => {
+        const row = params.data;
+        if (!row) return "";
+        const comp = getCompanyConfig(row.company_code)?.label || row.company_code || "—";
+        return row.unit ? `${comp} - ${row.unit}` : comp;
+      },
+    },
+    {
+      headerName: "STATUS",
+      field: "status",
+      minWidth: 120,
+      flex: 1,
+      cellRenderer: (params) => {
+        const row = params.data;
+        if (!row) return null;
+        const active = isActive(row);
+        const resigned = isResigned(row);
+        const pending = row.status === 2 || row.status === "2";
+        const variant = resigned ? "red" : active ? "green" : pending ? "yellow" : "red";
+        const label = resigned ? "Resigned" : active ? "Active" : pending ? "Pending" : "Inactive";
+        return (
+          <div className="flex items-center h-full">
+            <Badge variant={variant}>{label}</Badge>
+          </div>
+        );
+      },
+    },
+    {
+      headerName: "ACTIONS",
+      field: "id",
+      width: 140,
+      minWidth: 130,
+      flex: 0,
+      sortable: false,
+      filter: false,
+      pinned: "right",
+      cellRenderer: (params) => {
+        const row = params.data;
+        if (!row) return null;
+        const active = isActive(row);
+        const busy = rowBusy[row.id];
+        return (
+          <div className="flex items-center justify-end gap-1 h-full">
+            <button
+              onClick={() => openView(row)}
+              className="p-1.5 rounded-lg text-gray-400 hover:text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-colors"
+              title="View details"
+            >
+              <Eye size={15} />
+            </button>
+            <button
+              onClick={() => openEdit(row)}
+              className="p-1.5 rounded-lg text-gray-400 hover:text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-colors"
+              title="Edit"
+            >
+              <Pencil size={15} />
+            </button>
+            <button
+              onClick={() => toggleActive(row)}
+              disabled={busy}
+              className="p-1.5 rounded-lg text-gray-400 hover:text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-colors disabled:opacity-50"
+              title={active ? "Mark inactive" : "Mark active"}
+            >
+              {busy ? <Loader2 size={15} className="animate-spin" /> : active ? <Lock size={15} /> : <Unlock size={15} />}
+            </button>
+            <button
+              onClick={() => setDeleteRow(row)}
+              className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+              title="Delete"
+            >
+              <Trash2 size={15} />
+            </button>
+          </div>
+        );
+      },
+    },
+  ], [draftValue, setDraft, commitField, handleCellKeyDown, savingCell, cellInputCls, rowBusy, openView, openEdit, toggleActive, setDeleteRow]);
+
+  
 
   return (
     <div className="flex-1 min-h-0 flex flex-col bg-white dark:bg-[#0b0f1a] rounded-2xl border border-gray-200 dark:border-white/10 shadow-sm overflow-hidden">
@@ -827,7 +1037,7 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 min-h-0 flex flex-col overflow-auto">
         {loading ? (
           <div className="flex h-64 flex-col items-center justify-center gap-3 text-gray-400">
             <div className="h-6 w-6 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
@@ -970,129 +1180,38 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
               })}
             </ul>
 
-            <div className="hidden md:block overflow-x-auto overflow-y-visible">
-              <table className="w-full text-sm table-fixed border-separate border-spacing-0">
-                <thead className="text-left text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                  <tr>
-                    <th className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900/40 px-4 py-2.5 font-bold w-20">Profile</th>
-                    <th className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900/40 px-4 py-2.5 font-bold w-32">Emp Code</th>
-                    <th className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900/40 px-4 py-2.5 font-bold w-32">Punching No</th>
-                    <th className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900/40 px-4 py-2.5 font-bold w-48">Name</th>
-                    <th className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900/40 px-4 py-2.5 font-bold w-24">Gender</th>
-                    <th className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900/40 px-4 py-2.5 font-bold w-28">Stage</th>
-                    <th className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900/40 px-4 py-2.5 font-bold w-40">Department</th>
-                    <th className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900/40 px-4 py-2.5 font-bold w-40">Company / Unit</th>
-                    <th className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900/40 px-4 py-2.5 font-bold w-28">Status</th>
-                    <th className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900/40 px-4 py-2.5 font-bold text-right w-32">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {paginated.map((row) => {
-                    const meta = STAGE_META[row.__stage] || STAGE_META.appointment;
-                    const active = isActive(row);
-                    const busy = rowBusy[row.id];
-                    return (
-                      <tr key={row.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/40">
-                        <td className="px-4 py-1.5 border-b border-gray-100 dark:border-gray-700">
-                          <EmployeePhoto row={row} onClick={() => setPhotoModalRow(row)} />
-                        </td>
-                        <td className="px-4 py-1.5 border-b border-gray-100 dark:border-gray-700">
-                          <input
-                            value={draftValue(row, "emp_code")}
-                            onChange={(e) => setDraft(row.id, "emp_code", e.target.value)}
-                            onBlur={() => commitField(row, "emp_code")}
-                            onKeyDown={handleCellKeyDown}
-                            disabled={savingCell === `${row.id}:emp_code` || row.__stage === "trial" || row.__stage === "appointment"}
-                            placeholder="Assign code"
-                            className={cellInputCls}
-                          />
-                        </td>
-                        <td className="px-4 py-1.5 border-b border-gray-100 dark:border-gray-700">
-                          <input
-                            value={draftValue(row, "punching_no")}
-                            onChange={(e) => setDraft(row.id, "punching_no", e.target.value)}
-                            onBlur={() => commitField(row, "punching_no")}
-                            onKeyDown={handleCellKeyDown}
-                            disabled={savingCell === `${row.id}:punching_no` || row.__stage === "trial" || row.__stage === "appointment"}
-                            placeholder="Assign no."
-                            className={cellInputCls}
-                          />
-                        </td>
-                        <td className="px-4 py-1.5 border-b border-gray-100 dark:border-gray-700">
-                          <div className="font-medium text-gray-900 dark:text-white">{row.name || "—"}</div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400">{row.email || "No email"}</div>
-                        </td>
-                        <td className="px-4 py-1.5 border-b border-gray-100 dark:border-gray-700 text-gray-600 dark:text-gray-300">
-                          {row.gender && row.gender !== "-" ? row.gender : ""}
-                        </td>
-                        <td className="px-4 py-1.5 border-b border-gray-100 dark:border-gray-700">
-                          <Badge variant={meta.tone}>{meta.label}</Badge>
-                        </td>
-                        <td className="px-4 py-1.5 border-b border-gray-100 dark:border-gray-700 text-gray-600 dark:text-gray-300">
-                          {row.department || "—"}
-                          {row.designation && (
-                            <div className="text-xs text-gray-400">{row.designation}</div>
-                          )}
-                        </td>
-                        <td className="px-4 py-1.5 border-b border-gray-100 dark:border-gray-700 text-gray-600 dark:text-gray-300">
-                          {getCompanyConfig(row.company_code)?.label || row.company_code || "—"}
-                          {row.unit ? <div className="text-xs text-gray-400">{row.unit}</div> : null}
-                        </td>
-                        <td className="px-4 py-1.5 border-b border-gray-100 dark:border-gray-700">
-                          <Badge variant={
-                            row.__stage === "trial" ? "gray"
-                            : row.__stage === "appointment" ? "blue"
-                            : isResigned(row) ? "red"
-                            : active ? "green"
-                            : (row.status === 2 || row.status === "2") ? "yellow"
-                            : "red"
-                          }>
-                            {row.__stage === "trial" ? "Trial"
-                            : row.__stage === "appointment" ? "Appointment"
-                            : isResigned(row) ? "Resigned"
-                            : active ? "Active"
-                            : (row.status === 2 || row.status === "2") ? "Pending"
-                            : "Inactive"}
-                          </Badge>
-                        </td>
-                        <td className="px-4 py-1.5 border-b border-gray-100 dark:border-gray-700">
-                          <div className="flex justify-end items-center gap-1.5">
-                            <button
-                              onClick={() => openView(row)}
-                              className="flex items-center justify-center rounded-lg bg-brand-50 p-2 text-brand-600 transition hover:bg-brand-100 dark:bg-brand-900/20 dark:hover:bg-brand-900/40"
-                              title="View details"
-                            >
-                              <Eye size={14} />
-                            </button>
-                            <button
-                              onClick={() => openEdit(row)}
-                              className="flex items-center justify-center rounded-lg bg-yellow-50 p-2 text-yellow-600 transition hover:bg-yellow-100 dark:bg-yellow-900/20 dark:hover:bg-yellow-900/40"
-                              title="Edit"
-                            >
-                              <Pencil size={14} />
-                            </button>
-                            <button
-                              onClick={() => toggleActive(row)}
-                              disabled={busy}
-                              className="flex items-center justify-center rounded-lg bg-gray-100 p-2 text-gray-600 transition hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 disabled:opacity-50"
-                              title={active ? "Mark inactive" : "Mark active"}
-                            >
-                              {busy ? <Loader2 size={14} className="animate-spin" /> : active ? <Lock size={14} /> : <Unlock size={14} />}
-                            </button>
-                            <button
-                              onClick={() => setDeleteRow(row)}
-                              className="flex items-center justify-center rounded-lg bg-red-50 p-2 text-red-600 transition hover:bg-red-100 dark:bg-red-900/20"
-                              title="Delete"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            <div
+              ref={gridContainerRef}
+              className={`employee-ag-grid hidden md:flex flex-col flex-1 min-h-[520px] w-full relative ${
+                dark ? "ag-theme-alpine-dark" : "ag-theme-alpine"
+              } ${headerFrozen ? "grid-header-frozen" : ""}`}
+              style={{ height: "620px", minHeight: "500px" }}
+            >
+              <GridHeaderContextMenu
+                menu={headerMenu}
+                frozen={headerFrozen}
+                onClose={closeHeaderMenu}
+                onToggleFrozen={toggleHeaderFrozen}
+              />
+              <AgGridReact
+                ref={gridRef}
+                rowData={paginated}
+                columnDefs={columnDefs}
+                defaultColDef={defaultColDef}
+                animateRows={true}
+                headerHeight={44}
+                rowHeight={56}
+                popupParent={document.body}
+                suppressCellFocus
+                enableCellTextSelection
+                domLayout="normal"
+                onGridReady={(params) => {
+                  params.api.sizeColumnsToFit();
+                }}
+                onGridSizeChanged={(params) => {
+                  params.api.sizeColumnsToFit();
+                }}
+              />
             </div>
           </>
         )}
@@ -1116,7 +1235,7 @@ export default function EmployeeMasterTable({ onBulkUpload }) {
         <EmployeeDetailsModal
           isOpen={Boolean(viewRow)}
           onClose={() => setViewRow(null)}
-          selected={viewRow}
+          selected={viewRow ? { ...viewRow, positionTitle: viewRow.position_title || viewRow.position || viewRow.positionTitle } : null}
           viewLoading={false}
           openEdit={(emp) => {
             const target = emp || viewRow;

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Search, Download, RefreshCw, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAuth } from "../../../../../context/AuthContext";
@@ -11,6 +11,7 @@ import { mediclaimApi } from "../../../services/mediclaimApi";
 import ClaimsTable from "../../../components/ClaimsTable";
 import ClaimStatusBadge from "../../../components/ClaimStatusBadge";
 import ClaimDetailDrawer from "../../../components/ClaimDetailDrawer";
+import { CLAIM_STATUS } from "../../../models/claimStatus";
 import SingleApprovalPanel from "../../../components/SingleApprovalPanel";
 import ManagerReviewPanel from "../../../components/ManagerReviewPanel";
 import CoordinatorReviewPanel from "../../../components/CoordinatorReviewPanel";
@@ -26,10 +27,24 @@ import {
   getClaimWorkflowBucket,
   FINALIZED_CLAIM_STATUSES,
 } from "../../../models/reviewStages";
-import { formatCurrencyINR, formatClaimDate } from "../../../utils/formatters";
+import { formatCurrencyINR, formatClaimDate, getFinancialYearLabel, formatClaimNumber } from "../../../utils/formatters";
 
 const PER_PAGE = 15;
 const FINALIZED_FILTER_VALUE = FINALIZED_CLAIM_STATUSES.join(",");
+
+const inputClass =
+  "rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-xs text-gray-900 dark:text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none";
+
+const STATUS_OPTIONS = [
+  { value: CLAIM_STATUS.APPROVED, label: "Approved" },
+  { value: CLAIM_STATUS.SUBMITTED, label: "Submitted" },
+  { value: CLAIM_STATUS.PARTIALLY_APPROVED, label: "Partially Approved" },
+  { value: CLAIM_STATUS.REJECTED, label: "Rejected" },
+  { value: CLAIM_STATUS.SETTLEMENT_PENDING, label: "Settlement Pending" },
+  { value: CLAIM_STATUS.SETTLED, label: "Settled" },
+  { value: CLAIM_STATUS.CLOSED, label: "Closed" },
+  { value: CLAIM_STATUS.DRAFT, label: "Draft" },
+];
 // reviews/pending covers every in-flight claim (Pending Approval + Pending
 // Document together) in one company — capped generously so the two
 // buckets below can be paginated purely client-side, with no extra
@@ -92,13 +107,13 @@ function employeeName(row) {
 
 function matchesSearch(row, term) {
   if (!term) return true;
-  const haystack = `${row.claimNumber || row.claim_number || ""} ${employeeName(row)} ${row.patientName || row.patient_snapshot?.name || ""}`.toLowerCase();
+  const haystack = `${formatClaimNumber(row)} ${employeeName(row)} ${row.patientName || row.patient_snapshot?.name || ""}`.toLowerCase();
   return haystack.includes(term.toLowerCase());
 }
 
 function toCsvRow(row) {
   return {
-    "Claim #": row.claimNumber || row.claim_number || "",
+    "Claim #": formatClaimNumber(row),
     Employee: employeeName(row),
     Patient: row.patientName || row.patient_snapshot?.name || "",
     "Claimed Amount": row.totalClaimedAmount ?? row.total_claimed_amount ?? "",
@@ -155,6 +170,8 @@ export default function PendingReviewsTab() {
 
   const [subTab, setSubTab] = useState(CLAIM_WORKFLOW_BUCKET.PENDING_APPROVAL);
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [fyFilter, setFyFilter] = useState("");
   const [perPage, setPerPage] = useState(PER_PAGE);
   const [selectedClaim, setSelectedClaim] = useState(null);
   const [reloadToken, setReloadToken] = useState(0);
@@ -191,20 +208,61 @@ export default function PendingReviewsTab() {
   }, [accessToken, tokenType, reloadToken, pendingRequestKey]);
 
   const pendingLoading = pendingResult.key !== pendingRequestKey;
+
+  const matchesFilters = (row) => {
+    if (!matchesSearch(row, search)) return false;
+    if (statusFilter && String(row.status || "").toUpperCase() !== statusFilter.toUpperCase()) {
+      return false;
+    }
+    if (fyFilter) {
+      const d = row.submittedAt || row.submitted_at || row.createdAt || row.created_at || row.updatedAt;
+      if (getFinancialYearLabel(d) !== fyFilter) return false;
+    }
+    return true;
+  };
+
   const approvalRows = pendingResult.rows
     .filter((row) => getClaimWorkflowBucket(row.status) === CLAIM_WORKFLOW_BUCKET.PENDING_APPROVAL)
-    .filter((row) => matchesSearch(row, search));
+    .filter(matchesFilters);
   const documentRows = pendingResult.rows
     .filter((row) => getClaimWorkflowBucket(row.status) === CLAIM_WORKFLOW_BUCKET.PENDING_DOCUMENT)
-    .filter((row) => matchesSearch(row, search));
+    .filter(matchesFilters);
 
   const [finalizedResult, setFinalizedResult] = useState({ key: null, rows: [], total: 0, error: null });
-  const finalizedRequestKey = `${accessToken ?? ""}|${tokenType ?? ""}|${finalizedPage}|${perPage}|${search}|${reloadToken}`;
+  const finalizedStatus = statusFilter || FINALIZED_FILTER_VALUE;
+  const finalizedRequestKey = `${accessToken ?? ""}|${tokenType ?? ""}|${finalizedPage}|${perPage}|${search}|${statusFilter}|${fyFilter}|${reloadToken}`;
+
+  const fyOptions = useMemo(() => {
+    const set = new Set();
+    const allRows = [...(pendingResult.rows || []), ...(finalizedResult.rows || [])];
+    allRows.forEach((r) => {
+      const d = r.submittedAt || r.submitted_at || r.createdAt || r.created_at || r.updatedAt;
+      const label = getFinancialYearLabel(d);
+      if (label) set.add(label);
+    });
+    const currentFY = getFinancialYearLabel(new Date());
+    if (currentFY) set.add(currentFY);
+    set.add("2025-26");
+    set.add("2024-25");
+    set.add("2023-24");
+    return Array.from(set).sort().reverse();
+  }, [pendingResult.rows, finalizedResult.rows]);
 
   useEffect(() => {
     if (!accessToken || subTab !== CLAIM_WORKFLOW_BUCKET.FINALIZED) return undefined;
     let cancelled = false;
-    mediclaimApi.adminClaims({ page: finalizedPage, perPage, status: FINALIZED_FILTER_VALUE, search: search || undefined }, accessToken, tokenType)
+    mediclaimApi.adminClaims(
+      {
+        page: finalizedPage,
+        perPage,
+        status: finalizedStatus,
+        search: search || undefined,
+        financial_year: fyFilter || undefined,
+        year: fyFilter || undefined,
+      },
+      accessToken,
+      tokenType,
+    )
       .then((res) => {
         if (cancelled) return;
         const payload = res?.data;
@@ -217,7 +275,20 @@ export default function PendingReviewsTab() {
         setFinalizedResult({ key: finalizedRequestKey, rows: [], total: 0, error: err?.message || "Failed to load approved claims." });
       });
     return () => { cancelled = true; };
-  }, [accessToken, tokenType, subTab, finalizedPage, perPage, search, reloadToken, finalizedRequestKey]);
+  }, [accessToken, tokenType, subTab, finalizedPage, perPage, search, finalizedStatus, fyFilter, reloadToken, finalizedRequestKey]);
+
+  const finalizedRows = useMemo(() => {
+    return finalizedResult.rows.filter((row) => {
+      if (statusFilter && String(row.status || "").toUpperCase() !== statusFilter.toUpperCase()) {
+        return false;
+      }
+      if (fyFilter) {
+        const d = row.submittedAt || row.submitted_at || row.createdAt || row.created_at || row.updatedAt;
+        if (getFinancialYearLabel(d) !== fyFilter) return false;
+      }
+      return true;
+    });
+  }, [finalizedResult.rows, statusFilter, fyFilter]);
 
   const finalizedLoading = subTab === CLAIM_WORKFLOW_BUCKET.FINALIZED && finalizedResult.key !== finalizedRequestKey;
 
@@ -244,7 +315,7 @@ export default function PendingReviewsTab() {
       ? approvalRows
       : subTab === CLAIM_WORKFLOW_BUCKET.PENDING_DOCUMENT
         ? documentRows
-        : finalizedResult.rows;
+        : finalizedRows;
     downloadCSV(rows.map(toCsvRow), `mediclaim-${subTab.toLowerCase()}`);
   };
 
@@ -255,7 +326,7 @@ export default function PendingReviewsTab() {
   // than only from the separate top-level Claims tab.
   const deleteClaim = async (row) => {
     const id = row.id ?? row.claimId;
-    const label = row.claimNumber || row.claim_number || "this claim";
+    const label = formatClaimNumber(row) || "this claim";
     if (!window.confirm(`Permanently delete ${label}? This cannot be undone.`)) return;
 
     setDeletingId(id);
@@ -298,7 +369,7 @@ export default function PendingReviewsTab() {
   // for it to reach "Approved Claim" first to clean it up.
   const actionsColumn = access.claimDelete ? [{
     key: "actions",
-    label: "",
+    label: "ACTIONS",
     className: "text-right",
     render: (row) => {
       const id = row.id ?? row.claimId;
@@ -353,7 +424,7 @@ export default function PendingReviewsTab() {
     if (pendingLoading && key !== CLAIM_WORKFLOW_BUCKET.FINALIZED) return null;
     if (key === CLAIM_WORKFLOW_BUCKET.PENDING_APPROVAL) return approvalRows.length;
     if (key === CLAIM_WORKFLOW_BUCKET.PENDING_DOCUMENT) return documentRows.length;
-    if (key === CLAIM_WORKFLOW_BUCKET.FINALIZED) return finalizedLoading ? null : finalizedResult.total;
+    if (key === CLAIM_WORKFLOW_BUCKET.FINALIZED) return finalizedLoading ? null : (statusFilter || fyFilter ? finalizedRows.length : finalizedResult.total);
     return null;
   };
 
@@ -369,6 +440,42 @@ export default function PendingReviewsTab() {
             className="w-full rounded-lg border border-gray-200 bg-gray-50 py-1.5 pl-8 pr-3 text-xs text-gray-900 outline-none transition focus:border-brand-400 focus:bg-white dark:border-white/10 dark:bg-gray-800 dark:text-white dark:focus:bg-gray-900"
           />
         </div>
+
+        <div className="h-5 w-px bg-gray-200 dark:bg-white/10 mx-1 hidden sm:block" />
+
+        {/* Specific Status Dropdown */}
+        <select
+          className={inputClass}
+          value={statusFilter}
+          onChange={(e) => {
+            setStatusFilter(e.target.value);
+            setApprovalPage(1);
+            setDocumentPage(1);
+            setFinalizedPage(1);
+          }}
+        >
+          <option value="">All Statuses</option>
+          {STATUS_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
+          ))}
+        </select>
+
+        {/* Financial Year Dropdown Filter */}
+        <select
+          className={inputClass}
+          value={fyFilter}
+          onChange={(e) => {
+            setFyFilter(e.target.value);
+            setApprovalPage(1);
+            setDocumentPage(1);
+            setFinalizedPage(1);
+          }}
+        >
+          <option value="">All Financial Years</option>
+          {fyOptions.map((label) => (
+            <option key={label} value={label}>FY {label}</option>
+          ))}
+        </select>
 
         <div className="h-5 w-px bg-gray-200 dark:bg-white/10 mx-1 hidden sm:block" />
 
@@ -419,8 +526,8 @@ export default function PendingReviewsTab() {
           loading={pendingLoading}
           error={pendingResult.error}
           emptyMessage={
-            search
-              ? "No claims match this search."
+            search || statusFilter || fyFilter
+              ? "No claims match this filter."
               : subTab === CLAIM_WORKFLOW_BUCKET.PENDING_APPROVAL ? "No claims are currently pending approval." : "No claims are currently pending documents."
           }
           getRowKey={(row) => row.id ?? row.claimId}
@@ -434,15 +541,15 @@ export default function PendingReviewsTab() {
       ) : (
         <ClaimsTable
           columns={finalizedColumns}
-          rows={finalizedResult.rows}
+          rows={finalizedRows}
           loading={finalizedLoading}
           error={finalizedLoading ? null : finalizedResult.error}
-          emptyMessage={search ? "No approved claims match this search." : "No approved claims yet."}
+          emptyMessage={search || statusFilter || fyFilter ? "No approved claims match this filter." : "No approved claims yet."}
           getRowKey={(row) => row.id ?? row.claimId}
           onRowClick={setSelectedClaim}
           page={finalizedPage}
           perPage={perPage}
-          total={finalizedResult.total}
+          total={statusFilter || fyFilter ? finalizedRows.length : finalizedResult.total}
           onPageChange={setFinalizedPage}
           onPageSizeChange={setPerPage}
         />
@@ -453,7 +560,7 @@ export default function PendingReviewsTab() {
           isOpen={Boolean(selectedClaim)}
           onClose={() => setSelectedClaim(null)}
           title={REVIEW_STAGE_META[selectedStage]?.label || "Claim Review"}
-          subtitle={selectedClaim?.claimNumber || selectedClaim?.claim_number}
+          subtitle={formatClaimNumber(selectedClaim)}
           size="lg"
         >
           <SelectedPanel claim={selectedClaim} onDecided={handleDecided} />
@@ -463,7 +570,7 @@ export default function PendingReviewsTab() {
           isOpen={Boolean(selectedClaim)}
           onClose={() => setSelectedClaim(null)}
           claimId={selectedClaim?.id ?? selectedClaim?.claimId}
-          title={selectedClaim?.claimNumber || selectedClaim?.claim_number}
+          title={formatClaimNumber(selectedClaim)}
         />
       )}
     </div>

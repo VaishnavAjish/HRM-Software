@@ -326,7 +326,11 @@ class OrganizationChangeManagementService
             'userId' => $employee->id,
             'organizationUnitId' => $unit->id,
             'positionId' => $data['positionId'] ?? null,
+            'positionTitle' => $data['positionTitle'] ?? $data['targetRole'] ?? null,
+            'targetRole' => $data['positionTitle'] ?? $data['targetRole'] ?? null,
             'designationId' => $data['designationId'] ?? null,
+            'designationTitle' => $data['designationTitle'] ?? $data['targetDesignation'] ?? null,
+            'targetDesignation' => $data['designationTitle'] ?? $data['targetDesignation'] ?? null,
             'managerUserId' => $data['managerUserId'] ?? null,
             'locationId' => $data['locationId'] ?? null,
             'costCenterId' => $data['costCenterId'] ?? null,
@@ -407,13 +411,15 @@ class OrganizationChangeManagementService
             );
         }
 
-        // Requester cannot be their own approver
-        if ($request->organization_owner_approver_id === $actor->id || ($request->hr_approver_id && $request->hr_approver_id === $actor->id)) {
-            throw new OrganizationException(
-                'CHANGE_REQUEST_SELF_APPROVAL',
-                'A requester cannot approve their own request.',
-                422
-            );
+        // Requester cannot be their own approver (unless promotion_transfer or super admin)
+        if ($request->change_type !== 'promotion_transfer' && !$actor->isSuperAdmin()) {
+            if ($request->organization_owner_approver_id === $actor->id || ($request->hr_approver_id && $request->hr_approver_id === $actor->id)) {
+                throw new OrganizationException(
+                    'CHANGE_REQUEST_SELF_APPROVAL',
+                    'A requester cannot approve their own request.',
+                    422
+                );
+            }
         }
 
         $before = $this->snapshot($request);
@@ -485,7 +491,19 @@ class OrganizationChangeManagementService
             ->orderBy('sequence')
             ->first();
 
-        if (!$approval || (int) $approval->approver_user_id !== (int) $actor->id) {
+        if (!$approval) {
+            throw new OrganizationException(
+                'CHANGE_REQUEST_NOT_YOUR_TURN',
+                'It is not your turn to approve this request, or you have already acted on it.',
+                422
+            );
+        }
+
+        $canApprove = (int) $approval->approver_user_id === (int) $actor->id
+            || $actor->isSuperAdmin()
+            || in_array((int) $actor->role, [0, 1], true);
+
+        if (!$canApprove) {
             throw new OrganizationException(
                 'CHANGE_REQUEST_NOT_YOUR_TURN',
                 'It is not your turn to approve this request, or you have already acted on it.',
@@ -495,10 +513,13 @@ class OrganizationChangeManagementService
 
         $before = $this->snapshot($request);
 
-        DB::transaction(function () use ($request, $approval, $comments) {
+        DB::transaction(function () use ($request, $approval, $comments, $actor) {
             $approval->status = 'approved';
             $approval->acted_at = now()->toDateString();
             $approval->comments = $comments;
+            if ((int) $approval->approver_user_id !== (int) $actor->id) {
+                $approval->approver_user_id = $actor->id;
+            }
             $approval->save();
 
             // Check if all approvals are done
@@ -555,7 +576,19 @@ class OrganizationChangeManagementService
             ->orderBy('sequence')
             ->first();
 
-        if (!$approval || (int) $approval->approver_user_id !== (int) $actor->id) {
+        if (!$approval) {
+            throw new OrganizationException(
+                'CHANGE_REQUEST_NOT_YOUR_TURN',
+                'It is not your turn to reject this request, or you have already acted on it.',
+                422
+            );
+        }
+
+        $canReject = (int) $approval->approver_user_id === (int) $actor->id
+            || $actor->isSuperAdmin()
+            || in_array((int) $actor->role, [0, 1], true);
+
+        if (!$canReject) {
             throw new OrganizationException(
                 'CHANGE_REQUEST_NOT_YOUR_TURN',
                 'It is not your turn to reject this request, or you have already acted on it.',
@@ -565,10 +598,13 @@ class OrganizationChangeManagementService
 
         $before = $this->snapshot($request);
 
-        DB::transaction(function () use ($request, $approval, $reason) {
+        DB::transaction(function () use ($request, $approval, $reason, $actor) {
             $approval->status = 'rejected';
             $approval->acted_at = now()->toDateString();
             $approval->comments = $reason;
+            if ((int) $approval->approver_user_id !== (int) $actor->id) {
+                $approval->approver_user_id = $actor->id;
+            }
             $approval->save();
 
             // Rejection skips remaining approvals

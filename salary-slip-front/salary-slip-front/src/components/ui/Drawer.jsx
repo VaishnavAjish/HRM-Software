@@ -79,7 +79,7 @@ export default function Drawer({
 
 /** Simple expand/collapse section — the drawer's building block so a
  *  candidate/requisition profile never becomes one long scroll. */
-export function CollapsibleSection({ title, icon, defaultOpen = true, count, children }) {
+export function CollapsibleSection({ title, icon, defaultOpen = true, count, action, children }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
     <div className="border border-gray-100 dark:border-gray-700 rounded-xl overflow-hidden">
@@ -92,6 +92,11 @@ export function CollapsibleSection({ title, icon, defaultOpen = true, count, chi
           {title}
           {count != null && (
             <span className="text-[11px] font-medium text-gray-400 dark:text-gray-500">({count})</span>
+          )}
+          {action && (
+            <span onClick={(e) => e.stopPropagation()} className="ml-1">
+              {action}
+            </span>
           )}
         </span>
         <ChevronDown size={16} className={`text-gray-400 transition-transform ${open ? "rotate-180" : ""}`} />

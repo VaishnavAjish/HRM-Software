@@ -1,3 +1,4 @@
+import "@testing-library/jest-dom";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -34,6 +35,7 @@ vi.mock("../../../../features/organization/services/organizationApi", () => ({
     orgUnitAssignments: vi.fn(() => Promise.resolve({ data: [] })),
     locations: vi.fn(() => Promise.resolve({ data: [] })),
     financialOrganizations: vi.fn(() => Promise.resolve({ data: [] })),
+    salaryDesignations: vi.fn(() => Promise.resolve({ data: [] })),
     createPromotionTransfer: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
     submitOrgChange: vi.fn(),
     approveOrgChange: vi.fn(),

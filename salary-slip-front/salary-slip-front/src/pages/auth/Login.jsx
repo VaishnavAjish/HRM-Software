@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { authApi } from "../../utils/api";
-import { COMPANY_OPTIONS, getCompanyUnits, getCompanyConfig, normalizeCompanyId } from "../../config/companyConfig";
+import { COMPANY_OPTIONS, getCompanyConfig, normalizeCompanyId } from "../../config/companyConfig";
 
 /* ─── Step indicator ─── */
 function StepBar({ step }) {
@@ -232,6 +232,12 @@ export default function Login() {
   const [showPass, setShowPass] = useState(false);
   const [loginErr, setLoginErr] = useState("");
 
+  /* ── Login Employee Dropdown state ── */
+  const [matchingEmployees, setMatchingEmployees] = useState([]);
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [fetchingEmployees, setFetchingEmployees] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
+
   /* ── Forgot / Set Password flow state ── */
   const [mode, setMode] = useState("login"); // 'login' | 'forgot'
   const [step, setStep] = useState(1);
@@ -246,6 +252,12 @@ export default function Login() {
   const [verificationToken, setVerificationToken] = useState("");
   const [codeChecking, setCodeChecking] = useState(false);
   const [codeResolved, setCodeResolved] = useState(false);
+
+  // Set Password Employee Dropdown state
+  const [fMatchingEmployees, setFMatchingEmployees] = useState([]);
+  const [fSelectedEmployee, setFSelectedEmployee] = useState(null);
+  const [fFetchingEmployees, setFFetchingEmployees] = useState(false);
+  const [fShowDropdown, setFShowDropdown] = useState(false);
 
   // Step 2 — Mobile OTP Verification
   const [otp, setOtp] = useState(OTP_BLANK);
@@ -270,9 +282,161 @@ export default function Login() {
   const [pwdErr, setPwdErr] = useState("");
   const [pwdLoading, setPwdLoading] = useState(false);
 
+  /* ── Search matching employees when user types code ── */
+  useEffect(() => {
+    if (mode !== "login") return;
+
+    const query = empCode.trim();
+    let active = true;
+
+    const timer = setTimeout(async () => {
+      if (
+        query.length < 2 ||
+        (selectedUser && (selectedUser.emp_code === query || selectedUser.name === query || selectedUser.email === query))
+      ) {
+        if (active) {
+          setMatchingEmployees([]);
+          setShowDropdown(false);
+        }
+        return;
+      }
+
+      setFetchingEmployees(true);
+      try {
+        const res = await authApi.getEmployeesByCode(query);
+        if (active) {
+          if (res?.employees && res.employees.length > 0) {
+            setMatchingEmployees(res.employees);
+            setShowDropdown(true);
+          } else {
+            setMatchingEmployees([]);
+            setShowDropdown(false);
+          }
+        }
+      } catch {
+        if (active) {
+          setMatchingEmployees([]);
+          setShowDropdown(false);
+        }
+      } finally {
+        if (active) {
+          setFetchingEmployees(false);
+        }
+      }
+    }, 300);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [empCode, mode, selectedUser]);
+
+  /* ── Search matching employees for Set Password ── */
+  useEffect(() => {
+    if (mode !== "forgot" || step !== 1) return;
+
+    const query = fEmpCode.trim();
+    let active = true;
+
+    const timer = setTimeout(async () => {
+      if (
+        query.length < 2 ||
+        (fSelectedEmployee && (fSelectedEmployee.emp_code === query || fSelectedEmployee.name === query))
+      ) {
+        if (active) {
+          setFMatchingEmployees([]);
+          setFShowDropdown(false);
+        }
+        return;
+      }
+
+      setFFetchingEmployees(true);
+      try {
+        const res = await authApi.getEmployeesByCode(query);
+        if (active) {
+          if (res?.employees && res.employees.length > 0) {
+            setFMatchingEmployees(res.employees);
+            setFShowDropdown(true);
+          } else {
+            setFMatchingEmployees([]);
+            setFShowDropdown(false);
+          }
+        }
+      } catch {
+        if (active) {
+          setFMatchingEmployees([]);
+          setFShowDropdown(false);
+        }
+      } finally {
+        if (active) {
+          setFFetchingEmployees(false);
+        }
+      }
+    }, 300);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [fEmpCode, mode, step, fSelectedEmployee]);
+
+  /* ── Auto-fetch Company & Branch ONLY AFTER Mobile Number (10 digits) is entered ── */
+  useEffect(() => {
+    if (mode !== "forgot" || step !== 1) return;
+
+    const code = fEmpCode.trim().toUpperCase();
+    const mobile = fMobileNum.trim().replace(/\D/g, "");
+
+    if (code.length < 2 || mobile.length < 10) {
+      // Do not auto-fetch until mobile number is 10 digits
+      return;
+    }
+
+    let active = true;
+    const timer = setTimeout(async () => {
+      if (active) {
+        setCodeChecking(true);
+        setS1Err("");
+      }
+      try {
+        const res = await authApi.verifyEmpCode(code, "", "", { mobile_num: mobile });
+        if (active && res?.data) {
+          const comp = normalizeCompanyId(res.data.company_code);
+          const unit = res.data.unit || "";
+          setFCompanyId(comp);
+          setFUnit(unit);
+          setCodeResolved(true);
+          if (res.verification_token) {
+            setVerificationToken(res.verification_token);
+          }
+        }
+      } catch (err) {
+        if (active) {
+          setCodeResolved(false);
+          setS1Err(err.message || "Details do not match our records");
+        }
+      } finally {
+        if (active) {
+          setCodeChecking(false);
+        }
+      }
+    }, 400);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [fEmpCode, fMobileNum, mode, step]);
+
   const enterForgot = () => {
     clearOtpTimers();
     setMode("forgot");
+    setShowDropdown(false);
+    setMatchingEmployees([]);
+    setSelectedUser(null);
+    setFMatchingEmployees([]);
+    setFSelectedEmployee(null);
+    setFShowDropdown(false);
     setStep(1);
     setFCompanyId("");
     setFUnit("");
@@ -304,10 +468,19 @@ export default function Login() {
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoginErr("");
+    setShowDropdown(false);
+
+    const targetEmail = selectedUser ? (selectedUser.email || selectedUser.emp_code) : empCode;
+    const targetCompany = selectedUser
+      ? selectedUser.company_code
+      : (COMPANY_OPTIONS.length > 1 ? "all" : COMPANY_OPTIONS[0]?.id);
+    const targetUserId = selectedUser ? selectedUser.id : null;
+
     const result = await login(
-      empCode,
+      targetEmail,
       password,
-      COMPANY_OPTIONS.length > 1 ? "all" : COMPANY_OPTIONS[0]?.id,
+      targetCompany,
+      targetUserId,
     );
     if (result.success) {
       redirectAfterLogin(result.role);
@@ -316,47 +489,10 @@ export default function Login() {
     }
   };
 
-  /* ── Step 1a: auto-detect company & unit ── */
-  const handleEmpCodeBlur = async () => {
-    const code = fEmpCode.trim().toUpperCase();
-    setFEmpCode(code);
-    if (!code) {
-      setFCompanyId("");
-      setFUnit("");
-      setCodeResolved(false);
-      return;
-    }
-
-    setCodeChecking(true);
-    setS1Err("");
-    try {
-      const res = await authApi.checkEmpCode(code);
-      const normalizedId = normalizeCompanyId(res?.company_code);
-      const units = getCompanyUnits(normalizedId);
-      const matchedUnit =
-        units.find((u) => u.toLowerCase() === String(res?.unit || "").toLowerCase()) || res?.unit || "";
-
-      setFCompanyId(normalizedId);
-      setFUnit(matchedUnit);
-      setCodeResolved(true);
-    } catch (error) {
-      setFCompanyId("");
-      setFUnit("");
-      setCodeResolved(false);
-      setS1Err(error.message || "Employee code not found");
-    } finally {
-      setCodeChecking(false);
-    }
-  };
-
   /* ── Step 1: verify employee details ── */
   const handleVerifyEmployee = async () => {
     if (!fEmpCode.trim()) {
       setS1Err("Enter your employee code");
-      return;
-    }
-    if (!codeResolved || !fCompanyId || !fUnit) {
-      setS1Err("Enter a valid employee code so your company and branch can be detected");
       return;
     }
     const code = fEmpCode.trim().toUpperCase();
@@ -368,20 +504,26 @@ export default function Login() {
     setS1Err("");
     setS1Loading(true);
     try {
-      const res = await authApi.verifyEmpCode(code, fCompanyId, fUnit, {
+      const res = await authApi.verifyEmpCode(code, fCompanyId || "", fUnit || "", {
         mobile_num: fMobileNum.trim(),
       });
       const token = res?.verification_token || "";
+      const detectedCompany = normalizeCompanyId(res?.data?.company_code) || fCompanyId;
+      const detectedUnit = res?.data?.unit || fUnit;
+
       setVerificationToken(token);
       setFEmpCode(code);
+      if (detectedCompany) setFCompanyId(detectedCompany);
+      if (detectedUnit) setFUnit(detectedUnit);
+      setCodeResolved(true);
 
       setSendLoading(true);
       try {
         const otpRes = await authApi.sendMobileOtp(fMobileNum.trim(), {
           emp_code: code,
           verification_token: token,
-          company_code: fCompanyId,
-          unit: fUnit,
+          company_code: detectedCompany,
+          unit: detectedUnit,
         });
         if (otpRes?.dev_otp) {
           setDevOtp(otpRes.dev_otp);
@@ -696,12 +838,81 @@ export default function Login() {
                         name="username"
                         autoComplete="username"
                         value={empCode}
-                        onChange={(e) => setEmpCode(e.target.value)}
+                        onChange={(e) => {
+                          setEmpCode(e.target.value);
+                          if (selectedUser && e.target.value !== selectedUser.name && e.target.value !== selectedUser.emp_code && e.target.value !== selectedUser.email) {
+                            setSelectedUser(null);
+                          }
+                        }}
+                        onFocus={() => {
+                          if (matchingEmployees.length > 0 && !selectedUser) setShowDropdown(true);
+                        }}
                         placeholder="Enter your email or employee code"
                         required
                         className={inCls}
                       />
+                      {fetchingEmployees && (
+                        <span className="absolute right-3.5 w-4 h-4 border-2 border-slate-300 border-t-indigo-600 rounded-full animate-spin" />
+                      )}
                     </div>
+
+                    {showDropdown && matchingEmployees.length > 0 && !selectedUser && (
+                      <div className="mt-1.5 w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl overflow-hidden z-30 relative max-h-56 overflow-y-auto animate-in fade-in slide-in-from-top-2 duration-200">
+                        <div className="px-3 py-1.5 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-100 dark:border-slate-700 text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                          Select Your Account ({matchingEmployees.length} profiles found)
+                        </div>
+                        {matchingEmployees.map((emp) => (
+                          <button
+                            key={emp.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedUser(emp);
+                              setEmpCode(emp.name || emp.emp_code);
+                              setShowDropdown(false);
+                            }}
+                            className="w-full text-left px-3.5 py-2.5 hover:bg-indigo-50/80 dark:hover:bg-indigo-950/50 border-b border-slate-100 last:border-0 dark:border-slate-700/60 transition-colors flex items-center justify-between group cursor-pointer"
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 flex items-center justify-center font-bold text-xs shrink-0">
+                                {emp.name ? emp.name.charAt(0).toUpperCase() : "U"}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
+                                  {emp.name}
+                                </p>
+                                <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                                  Code: {emp.emp_code} • {emp.company_code ? emp.company_code.toUpperCase() : "N/A"}{emp.unit ? ` (${emp.unit})` : ""}
+                                </p>
+                              </div>
+                            </div>
+                            <span className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-2">
+                              Select →
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {selectedUser && (
+                      <div className="flex items-center justify-between text-xs bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 px-3 py-2 rounded-xl border border-indigo-200 dark:border-indigo-800/70 mt-2 animate-in fade-in duration-200">
+                        <div className="flex items-center gap-2 truncate">
+                          <UserCheck size={16} className="text-indigo-600 dark:text-indigo-400 shrink-0" />
+                          <span className="truncate">
+                            Logging in as: <strong>{selectedUser.name}</strong> ({selectedUser.company_code ? selectedUser.company_code.toUpperCase() : ""}{selectedUser.unit ? ` - ${selectedUser.unit}` : ""})
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedUser(null);
+                            setEmpCode("");
+                          }}
+                          className="text-[11px] font-semibold text-slate-400 hover:text-red-500 dark:hover:text-red-400 transition-colors shrink-0 ml-2 cursor-pointer"
+                        >
+                          Change
+                        </button>
+                      </div>
+                    )}
                   </div>
 
                   <div>
@@ -799,11 +1010,12 @@ export default function Login() {
                         Verify Employee
                       </h2>
                       <p className="text-xs sm:text-sm text-[#64748b] dark:text-slate-400 mt-1.5 max-w-xs mx-auto">
-                        Confirm your employee code and registered mobile number to set your password.
+                        Enter your employee code and registered mobile number to set your password.
                       </p>
                     </div>
 
                     <div className="mt-7 space-y-4">
+                      {/* 1. Employee Code Input + Dropdown */}
                       <div>
                         <label htmlFor="forgot-emp-code" className="block text-xs font-semibold text-[#334155] dark:text-slate-300 mb-1.5">
                           Employee Code
@@ -816,75 +1028,91 @@ export default function Login() {
                             autoComplete="username"
                             value={fEmpCode}
                             onChange={(e) => {
-                              setFEmpCode(e.target.value.toUpperCase());
-                              if (codeResolved) setCodeResolved(false);
+                              const val = e.target.value.toUpperCase();
+                              setFEmpCode(val);
+                              setCodeResolved(false);
+                              if (fSelectedEmployee && val !== fSelectedEmployee.emp_code && val !== fSelectedEmployee.name) {
+                                setFSelectedEmployee(null);
+                              }
                             }}
-                            onBlur={handleEmpCodeBlur}
+                            onFocus={() => {
+                              if (fMatchingEmployees.length > 0 && !fSelectedEmployee) setFShowDropdown(true);
+                            }}
                             placeholder="e.g. NI1234"
                             className={inCls + " pr-9"}
                           />
-                          {codeChecking && (
+                          {fFetchingEmployees && (
                             <span className="absolute right-3.5 w-4 h-4 border-2 border-slate-300 border-t-indigo-600 rounded-full animate-spin" />
                           )}
-                          {!codeChecking && codeResolved && (
-                            <CheckCircle2
-                              size={18}
-                              className="absolute right-3.5 text-emerald-500"
-                            />
-                          )}
                         </div>
-                      </div>
 
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label htmlFor="forgot-company-select" className="block text-xs font-semibold text-[#334155] dark:text-slate-300 mb-1.5">
-                            Company
-                          </label>
-                          <div className="relative flex items-center">
-                            <Building2 size={16} className={iconCls} aria-hidden="true" />
-                            <select
-                              id="forgot-company-select"
-                              name="company_id"
-                              value={fCompanyId}
-                              disabled
-                              className={inCls + " opacity-60 cursor-not-allowed text-xs"}
-                            >
-                              <option value="">
-                                {codeChecking ? "Detecting..." : "Auto-detected"}
-                              </option>
-                              {COMPANY_OPTIONS.map((c) => (
-                                <option key={c.id} value={c.id}>{c.label}</option>
-                              ))}
-                            </select>
-                          </div>
-                        </div>
-                        <div>
-                          <label htmlFor="forgot-unit-select" className="block text-xs font-semibold text-[#334155] dark:text-slate-300 mb-1.5">
-                            Branch / Unit
-                          </label>
-                          <select
-                            id="forgot-unit-select"
-                            name="unit"
-                            value={fUnit}
-                            disabled
-                            className={inCls + " opacity-60 cursor-not-allowed pl-4 text-xs"}
-                          >
-                            <option value="">
-                              {codeChecking ? "Detecting..." : "Auto-detected"}
-                            </option>
-                            {getCompanyUnits(fCompanyId).map((u) => (
-                              <option key={u} value={u}>{u}</option>
+                        {/* Set Password Employee Dropdown */}
+                        {fShowDropdown && fMatchingEmployees.length > 0 && !fSelectedEmployee && (
+                          <div className="mt-1.5 w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl overflow-hidden z-30 relative max-h-56 overflow-y-auto animate-in fade-in slide-in-from-top-2 duration-200">
+                            <div className="px-3 py-1.5 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-100 dark:border-slate-700 text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                              Select Employee Account ({fMatchingEmployees.length} profiles found)
+                            </div>
+                            {fMatchingEmployees.map((emp) => (
+                              <button
+                                key={emp.id}
+                                type="button"
+                                onClick={() => {
+                                  setFSelectedEmployee(emp);
+                                  setFEmpCode(emp.emp_code);
+                                  if (emp.company_code) setFCompanyId(normalizeCompanyId(emp.company_code));
+                                  if (emp.unit) setFUnit(emp.unit);
+                                  setFShowDropdown(false);
+                                }}
+                                className="w-full text-left px-3.5 py-2.5 hover:bg-indigo-50/80 dark:hover:bg-indigo-950/50 border-b border-slate-100 last:border-0 dark:border-slate-700/60 transition-colors flex items-center justify-between group cursor-pointer"
+                              >
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 flex items-center justify-center font-bold text-xs shrink-0">
+                                    {emp.name ? emp.name.charAt(0).toUpperCase() : "U"}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
+                                      {emp.name}
+                                    </p>
+                                    <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                                      Code: {emp.emp_code} • {emp.company_code ? emp.company_code.toUpperCase() : "N/A"}{emp.unit ? ` (${emp.unit})` : ""}
+                                    </p>
+                                  </div>
+                                </div>
+                                <span className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-2">
+                                  Select →
+                                </span>
+                              </button>
                             ))}
-                          </select>
-                        </div>
-                      </div>
-                      {codeResolved && (
-                        <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium -mt-1 flex items-center gap-1">
-                          <CheckCircle2 size={13} />
-                          Detected {getCompanyConfig(fCompanyId)?.label} — {fUnit}
-                        </p>
-                      )}
+                          </div>
+                        )}
 
+                        {/* Selected Profile Badge */}
+                        {fSelectedEmployee && (
+                          <div className="flex items-center justify-between text-xs bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 px-3 py-2 rounded-xl border border-indigo-200 dark:border-indigo-800/70 mt-2 animate-in fade-in duration-200">
+                            <div className="flex items-center gap-2 truncate">
+                              <UserCheck size={16} className="text-indigo-600 dark:text-indigo-400 shrink-0" />
+                              <span className="truncate">
+                                Account: <strong>{fSelectedEmployee.name}</strong> ({fSelectedEmployee.emp_code})
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setFSelectedEmployee(null);
+                                setFEmpCode("");
+                                setFCompanyId("");
+                                setFUnit("");
+                                setCodeResolved(false);
+                              }}
+                              className="text-[11px] font-semibold text-slate-400 hover:text-red-500 dark:hover:text-red-400 transition-colors shrink-0 ml-2 cursor-pointer"
+                            >
+                              Change
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 2. Registered Mobile Number Input */}
                       <div>
                         <label htmlFor="forgot-mobile-num" className="block text-xs font-semibold text-[#334155] dark:text-slate-300 mb-1.5">
                           Registered Mobile Number
@@ -895,19 +1123,82 @@ export default function Login() {
                             id="forgot-mobile-num"
                             name="mobile_num"
                             value={fMobileNum}
-                            onChange={(e) => setFMobileNum(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                            onChange={(e) => {
+                              const val = e.target.value.replace(/\D/g, "").slice(0, 10);
+                              setFMobileNum(val);
+                              if (val.length < 10) setCodeResolved(false);
+                            }}
                             placeholder="10-digit mobile number"
                             type="tel"
                             inputMode="numeric"
                             autoComplete="tel"
                             maxLength={10}
-                            className={inCls}
+                            className={inCls + " pr-9"}
                           />
+                          {codeChecking && (
+                            <span className="absolute right-3.5 w-4 h-4 border-2 border-slate-300 border-t-indigo-600 rounded-full animate-spin" />
+                          )}
+                          {!codeChecking && codeResolved && (
+                            <CheckCircle2 size={18} className="absolute right-3.5 text-emerald-500" />
+                          )}
                         </div>
                         <p className="mt-1 text-[11px] text-[#94a3b8]">
-                          Enter the mobile number registered in your employee profile.
+                          Enter your 10-digit registered mobile number to auto-detect your company & branch.
                         </p>
                       </div>
+
+                      {/* 3. Auto-Fetched Company & Branch/Unit (Shown AFTER Mobile Number) */}
+                      {codeResolved && fCompanyId && (
+                        <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/80 rounded-xl text-emerald-800 dark:text-emerald-300 text-xs font-semibold flex items-center gap-2.5 animate-in fade-in duration-300">
+                          <CheckCircle2 size={18} className="text-emerald-500 shrink-0" />
+                          <div className="min-w-0">
+                            <p className="font-bold text-emerald-900 dark:text-emerald-200 leading-tight">
+                              Auto-Detected Account Details
+                            </p>
+                            <p className="text-[11px] font-medium text-emerald-700 dark:text-emerald-300 mt-0.5 truncate">
+                              Company: <strong>{getCompanyConfig(fCompanyId)?.label || fCompanyId.toUpperCase()}</strong> • Branch/Unit: <strong>{fUnit || "Main"}</strong>
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {codeResolved && fCompanyId && (
+                        <div className="grid grid-cols-2 gap-3 animate-in fade-in duration-300">
+                          <div>
+                            <label htmlFor="forgot-company-select" className="block text-xs font-semibold text-[#334155] dark:text-slate-300 mb-1.5">
+                              Auto-Detected Company
+                            </label>
+                            <div className="relative flex items-center">
+                              <Building2 size={16} className={iconCls} aria-hidden="true" />
+                              <select
+                                id="forgot-company-select"
+                                name="company_id"
+                                value={fCompanyId}
+                                disabled
+                                className={inCls + " opacity-75 cursor-not-allowed text-xs font-bold bg-emerald-50/50 border-emerald-300 dark:border-emerald-800"}
+                              >
+                                {COMPANY_OPTIONS.map((c) => (
+                                  <option key={c.id} value={c.id}>{c.label}</option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                          <div>
+                            <label htmlFor="forgot-unit-select" className="block text-xs font-semibold text-[#334155] dark:text-slate-300 mb-1.5">
+                              Auto-Detected Branch / Unit
+                            </label>
+                            <select
+                              id="forgot-unit-select"
+                              name="unit"
+                              value={fUnit}
+                              disabled
+                              className={inCls + " opacity-75 cursor-not-allowed pl-4 text-xs font-bold bg-emerald-50/50 border-emerald-300 dark:border-emerald-800"}
+                            >
+                              <option value={fUnit}>{fUnit || "Default Branch"}</option>
+                            </select>
+                          </div>
+                        </div>
+                      )}
 
                       {s1Err && (
                         <div className="flex items-center gap-2 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/80 rounded-xl px-3.5 py-2.5">
@@ -918,7 +1209,7 @@ export default function Login() {
 
                       <button
                         onClick={handleVerifyEmployee}
-                        disabled={s1Loading || codeChecking}
+                        disabled={s1Loading || sendLoading || codeChecking}
                         className={primaryBtnCls}
                       >
                         {s1Loading || sendLoading ? (

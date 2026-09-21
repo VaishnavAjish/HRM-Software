@@ -32,12 +32,20 @@ class Fast2SmsService
         }
 
         try {
-            $route = config('services.fast2sms.route', 'otp');
+            $route = config('services.fast2sms.route', 'dlt');
+            $senderId = config('services.fast2sms.sender_id', 'HRMS');
+            $dltTemplateId = config('services.fast2sms.dlt_template_id', '225936');
+
             $payload = [
                 'route' => $route,
                 'numbers' => $mobile,
             ];
-            if ($route === 'otp') {
+
+            if ($route === 'dlt') {
+                $payload['sender_id'] = $senderId;
+                $payload['message'] = $dltTemplateId;
+                $payload['variables_values'] = "{$otp}|";
+            } elseif ($route === 'otp') {
                 $payload['variables_values'] = $otp;
             } else {
                 $payload['message'] = "Your Nidhi Impex verification OTP is {$otp}. Valid for 10 minutes.";
@@ -49,9 +57,10 @@ class Fast2SmsService
                 ->timeout(15)
                 ->post('https://www.fast2sms.com/dev/bulkV2', $payload);
 
-            // If OTP route is blocked (e.g. status 996 website verification required or status 999), try 'q' (Quick SMS) route
-            if (! $response->successful() && $route === 'otp') {
-                Log::warning('Fast2SMS OTP route rejected, attempting fallback route q', [
+            // Fallback: If DLT/OTP route is rejected, attempt fallback to 'q' (Quick SMS) route
+            if (! $response->successful() && $route !== 'q') {
+                Log::warning('Fast2SMS primary route rejected, attempting fallback route q', [
+                    'route' => $route,
                     'body' => mb_substr((string) $response->body(), 0, 300),
                 ]);
 

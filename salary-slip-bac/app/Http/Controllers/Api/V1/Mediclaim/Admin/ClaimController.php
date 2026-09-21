@@ -9,6 +9,7 @@ use App\Models\Mediclaim\MediclaimClaim;
 use App\Models\Mediclaim\MediclaimDocumentLink;
 use App\Models\Mediclaim\MediclaimIntimation;
 use App\Support\MediclaimActivityLogSupport;
+use App\Support\MediclaimFinancialYear;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -44,15 +45,12 @@ class ClaimController extends Controller
 
         $this->applyCompanyScope($query, $request);
 
-        // A draft is the employee's own private, unsubmitted work-in-progress
-        // — never admin's business to see, and definitely never something
-        // that belongs in a company-wide claims list. Excluded unconditionally
-        // (not just when no status filter is given) since there is no
-        // legitimate reason for this endpoint to ever surface one.
-        $query->where('status', '!=', MediclaimClaim::STATUS_DRAFT);
-
+        // A draft is excluded by default unless explicitly requested.
         if ($request->filled('status')) {
-            $query->whereIn('status', explode(',', (string) $request->query('status')));
+            $statuses = explode(',', (string) $request->query('status'));
+            $query->whereIn('status', $statuses);
+        } else {
+            $query->where('status', '!=', MediclaimClaim::STATUS_DRAFT);
         }
 
         if ($request->filled('search')) {
@@ -63,6 +61,21 @@ class ClaimController extends Controller
                         $e->where('name', 'like', "%{$search}%")->orWhere('emp_code', 'like', "%{$search}%");
                     });
             });
+        }
+
+        $fy = $request->query('financial_year') ?? $request->query('year');
+        if ($fy !== null && $fy !== '') {
+            $startYear = (int) (is_numeric($fy) ? $fy : explode('-', (string) $fy)[0]);
+            if ($startYear > 2000) {
+                [$fyStart, $fyEnd] = MediclaimFinancialYear::boundsForStartYear($startYear);
+                $query->where(function ($q) use ($fyStart, $fyEnd) {
+                    $q->whereBetween('submitted_at', [$fyStart, $fyEnd])
+                        ->orWhere(function ($sub) use ($fyStart, $fyEnd) {
+                            $sub->whereNull('submitted_at')
+                                ->whereBetween('created_at', [$fyStart, $fyEnd]);
+                        });
+                });
+            }
         }
 
         return $this->ok($query->orderByDesc('id')->paginate(min((int) $request->query('per_page', 25), 100)));

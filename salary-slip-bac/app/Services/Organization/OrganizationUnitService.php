@@ -1623,18 +1623,49 @@ class OrganizationUnitService
 
         $isPrimary = (bool) ($data['isPrimary'] ?? true);
         $assignmentType = $data['assignmentType'] ?? 'primary';
+        $targetDesignationTitle = trim((string) ($data['designationTitle'] ?? $data['targetDesignation'] ?? ''));
         $designationId = isset($data['designationId']) && $data['designationId'] !== '' ? (int) $data['designationId'] : null;
+
         if ($designationId) {
             $desigExists = \App\Models\Designation::query()->find($designationId);
-            if (!$desigExists) {
-                $pos = \App\Models\OrganizationPosition::query()->find($designationId);
-                if ($pos) {
-                    $matchingDesig = \App\Models\Designation::query()->where('title', 'like', $pos->title)->first();
-                    $designationId = $matchingDesig?->id;
-                } else {
-                    $designationId = null;
+            if ($desigExists) {
+                if ($targetDesignationTitle === '') {
+                    $targetDesignationTitle = $desigExists->title;
                 }
+            } else {
+                $pos = \App\Models\OrganizationPosition::query()->find($designationId);
+                if ($pos && $targetDesignationTitle === '') {
+                    $targetDesignationTitle = $pos->title;
+                }
+                $matchingDesig = \App\Models\Designation::query()
+                    ->when($targetDesignationTitle !== '', fn ($q) => $q->where('title', 'like', $targetDesignationTitle))
+                    ->first();
+                $designationId = $matchingDesig?->id;
             }
+        } elseif ($targetDesignationTitle !== '') {
+            $matchingDesig = \App\Models\Designation::query()
+                ->where('title', 'like', $targetDesignationTitle)
+                ->first();
+            $designationId = $matchingDesig?->id;
+        }
+
+        // If targetDesignationTitle is provided but no Designation row exists in designations table, create one
+        if (!$designationId && $targetDesignationTitle !== '') {
+            $slugCode = 'DESIG-' . strtoupper(\Illuminate\Support\Str::slug($targetDesignationTitle));
+            $baseCode = substr($slugCode, 0, 30);
+            $uniqueCode = $baseCode;
+            $counter = 1;
+            while (\App\Models\Designation::query()->where('code', $uniqueCode)->exists()) {
+                $uniqueCode = $baseCode . '-' . $counter;
+                $counter++;
+            }
+            $createdDesig = \App\Models\Designation::query()->create([
+                'company_id' => $unit->company_id,
+                'code' => $uniqueCode,
+                'title' => $targetDesignationTitle,
+                'status' => 'active',
+            ]);
+            $designationId = $createdDesig->id;
         }
 
         $locationId = $this->resolveAssignmentLocation($data);
@@ -2061,8 +2092,11 @@ class OrganizationUnitService
             $user->designation = null;
         } elseif ($primary->designation?->title) {
             $user->designation = $primary->designation->title;
-        } elseif ($primary->position?->title) {
-            $user->designation = $primary->position->title;
+        } elseif ($primary->designation_id) {
+            $desig = \App\Models\Designation::find($primary->designation_id);
+            if ($desig?->title) {
+                $user->designation = $desig->title;
+            }
         }
 
         if ($primary?->manager_user_id) {

@@ -255,7 +255,7 @@ class ClaimWorkflowService
 
             // (d)
             if ($locked->claim_number === null) {
-                $locked->claim_number = MediclaimClaimNumber::next($locked->company_code);
+                $locked->claim_number = MediclaimClaimNumber::next($locked->company_code, $employee);
             }
 
             if ($idempotencyKey !== null) {
@@ -479,17 +479,54 @@ class ClaimWorkflowService
         });
     }
 
-    /**
-     * Records the confidentiality acknowledgement a manager must give before
-     * managerDecision() will accept a decision from them.
-     *
-     * Not one of the B3-specified ClaimWorkflowService methods, but without
-     * it the CONFIDENTIALITY_ACK_REQUIRED gate below could never be
-     * satisfied. Added here as the natural home for it (same locking
-     * discipline, same assignment row); flagged in the handoff notes as an
-     * addition a future B4 controller endpoint (e.g.
-     * `POST /claims/{claim}/confidentiality-ack`) will need to call.
-     */
+    public function updateExpenses(MediclaimClaim $claim, User $employee, array $expenses): MediclaimClaim
+    {
+        return DB::transaction(function () use ($claim, $employee, $expenses) {
+            $locked = MediclaimClaim::query()->lockForUpdate()->findOrFail($claim->id);
+
+            if ((int) $locked->employee_user_id !== (int) $employee->id) {
+                throw MediclaimException::forbidden('WRONG_CLAIM_OWNER', 'You may only update your own claim.');
+            }
+
+            $terminalStatuses = [
+                MediclaimClaim::STATUS_REJECTED,
+                MediclaimClaim::STATUS_WITHDRAWN,
+                MediclaimClaim::STATUS_CANCELLED,
+            ];
+            if (in_array($locked->status, $terminalStatuses, true)) {
+                throw ValidationException::withMessages(['status' => 'Expenses cannot be updated on a closed or rejected claim.']);
+            }
+
+            $this->syncExpenses($locked, $expenses);
+
+            if (in_array($locked->status, [MediclaimClaim::STATUS_APPROVED, MediclaimClaim::STATUS_PARTIALLY_APPROVED], true)) {
+                $latestApproval = $locked->decisions()
+                    ->where('stage', 'APPROVAL')
+                    ->latest('decided_at')
+                    ->first();
+
+                if ($latestApproval && $latestApproval->decision === 'approved') {
+                    $locked->total_approved_amount = $locked->total_claimed_amount;
+                    $locked->total_disallowed_amount = 0;
+                }
+            }
+
+            $locked->updated_by = $employee->id;
+            $locked->save();
+
+            $this->logTransition(
+                $locked,
+                'EXPENSES_UPDATED',
+                $locked->status,
+                $locked->status,
+                $employee,
+                'Expense breakdown updated.'
+            );
+
+            return $this->freshClaim($locked);
+        });
+    }
+
     public function acknowledgeConfidentiality(MediclaimClaim $claim, User $manager): MediclaimClaimAssignment
     {
         return DB::transaction(function () use ($claim, $manager) {
@@ -1485,6 +1522,8 @@ class ClaimWorkflowService
             'department' => $employee->department,
             'designation' => $employee->designation,
             'company_code' => $employee->company_code,
+            'unit' => $employee->unit,
+            'branch' => $employee->branch,
             'mobile_number' => $employee->mobile_number,
             'email' => $employee->email,
         ];

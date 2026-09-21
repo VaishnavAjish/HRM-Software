@@ -111,6 +111,8 @@ Route::post('new{data}', [AuthController::class, 'newData'])->middleware('thrott
  */
 Route::get('/check-emp-code/{code}', [AuthController::class, 'checkEmpCode'])
     ->middleware('throttle:10,1');
+Route::get('/auth/employees-by-code/{code}', [AuthController::class, 'getEmployeesByCode'])
+    ->middleware('throttle:30,1');
 
 Route::middleware(['jwt.auth', 'permission:hr.candidate.read'])->group(function () {
     Route::get('candidates/{id}/resume', [CandidateController::class, 'resume']);
@@ -347,6 +349,10 @@ Route::middleware('jwt.auth')->group(function () {
             ->whereNumber('id')->middleware('permission:admin.user.assign_role');
         Route::post('{id}/assign-permissions', [V1AdminUserController::class, 'assignPermissions'])
             ->whereNumber('id')->middleware('permission:admin.user.assign_permission');
+        Route::post('{id}/sync-employee', [V1AdminUserController::class, 'syncEmployee'])
+            ->whereNumber('id')->middleware('permission:admin.user.update');
+        Route::post('bulk-profile-update', [V1AdminUserController::class, 'bulkProfileUpdate'])
+            ->middleware(['throttle:30,1', 'permission:admin.user.update']);
     });
 
     /*
@@ -1679,3 +1685,5 @@ Route::group(['prefix' => 'candidate'], function () {
 });
 
 require __DIR__.'/mediclaim.php';
+
+

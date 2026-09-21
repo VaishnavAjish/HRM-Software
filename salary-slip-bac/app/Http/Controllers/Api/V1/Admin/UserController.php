@@ -21,6 +21,7 @@ use App\Services\Provisioning\UserProvisioningService;
 use App\Support\ProvisioningContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class UserController extends Controller
@@ -902,5 +903,189 @@ class UserController extends Controller
             'success' => false,
             'error' => ['code' => $code, 'message' => $message],
         ], $status);
+    }
+    public function syncEmployee(Request $request, int $id)
+    {
+        $actor = auth('api')->user();
+        $user = User::query()->find($id);
+
+        if (! $user) {
+            return $this->error('NOT_FOUND', 'User not found.', 404);
+        }
+
+        if ($guard = $this->guardTarget($actor, $user)) {
+            return $guard;
+        }
+
+        $data = $request->validate([
+            'targetStage' => ['required', 'string', 'in:employee,pending,appointment,trial'],
+            'empCode' => ['nullable', 'string', 'max:50'],
+            'companyCode' => ['nullable', 'string', 'max:100'],
+            'unit' => ['nullable', 'string', 'max:100'],
+            'department' => ['nullable', 'string', 'max:100'],
+            'designation' => ['nullable', 'string', 'max:100'],
+            'reason' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $stage = $data['targetStage'];
+
+        $typeMap = [
+            'employee' => 'employee',
+            'pending' => 'pending_employee',
+            'appointment' => 'appointment',
+            'trial' => 'trial',
+        ];
+
+        $user->type = $typeMap[$stage] ?? 'employee';
+        $user->is_deleted = 0;
+
+        if (! empty($data['companyCode'])) {
+            $user->company_code = $data['companyCode'];
+        }
+        if (array_key_exists('unit', $data) && $data['unit'] !== null) {
+            $user->unit = $data['unit'];
+        }
+        if (! empty($data['empCode'])) {
+            $user->emp_code = strtoupper(trim($data['empCode']));
+        }
+        if (! empty($data['department'])) {
+            $user->department = $data['department'];
+        }
+        if (! empty($data['designation'])) {
+            $user->designation = $data['designation'];
+        }
+
+        if ($stage === 'employee') {
+            $user->status = 0; // Active
+            if (empty($user->role) || (int) $user->role === 0) {
+                $user->role = 3; // Employee role tier
+            }
+        } elseif ($stage === 'pending') {
+            $user->status = 2; // Pending
+            if (empty($user->role)) {
+                $user->role = 3;
+            }
+        }
+
+        $user->save();
+
+        \Illuminate\Support\Facades\Log::info('User restored/synced to employee tab', [
+            'user_id' => $user->id,
+            'actor_id' => $actor->id,
+            'target_stage' => $stage,
+            'company_code' => $user->company_code,
+            'emp_code' => $user->emp_code,
+            'reason' => $data['reason'] ?? null,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => "User restored to {$stage} tab successfully.",
+            'data' => [
+                'id' => $user->id,
+                'type' => $user->type,
+                'emp_code' => $user->emp_code,
+                'company_code' => $user->company_code,
+                'unit' => $user->unit,
+            ],
+        ]);
+    }
+    public function bulkProfileUpdate(Request $request)
+    {
+        $data = $request->validate([
+            'updates' => ['required', 'array', 'min:1', 'max:1000'],
+            'updates.*.emp_code' => ['required', 'string'],
+            'updates.*.fields' => ['required', 'array'],
+        ]);
+
+        $actor = auth('api')->user();
+        $updatedCount = 0;
+        $errors = [];
+
+        $allowedFields = [
+            'name', 'email', 'mobile_number', 'department', 'designation', 'company_code', 'unit',
+            'gender', 'dob', 'joining_date', 'salary', 'address', 'city', 'district', 'state', 'pin',
+            'aadhar_card_no', 'pan_card_no', 'bank_name', 'bank_account_no', 'bank_ifsc_code',
+            'pf_no', 'esi_no', 'punching_no', 'manager_name', 'father_name', 'mother_name',
+            'marital_status', 'blood_group', 'emergency_contact_no'
+        ];
+
+        foreach ($data['updates'] as $index => $item) {
+            $empCode = trim((string) $item['emp_code']);
+            $fields = $item['fields'] ?? [];
+
+            if (empty($empCode)) {
+                $errors[] = "Row #" . ($index + 1) . ": Missing employee code.";
+                continue;
+            }
+
+            $user = User::where('is_deleted', 0)->where('emp_code', $empCode)->first();
+            if (! $user && isset($item['id'])) {
+                $user = User::where('is_deleted', 0)->where('id', $item['id'])->first();
+            }
+
+            if (! $user) {
+                $errors[] = "Employee code '{$empCode}' not found.";
+                continue;
+            }
+
+            if ($guard = $this->guardTarget($actor, $user)) {
+                $errors[] = "Permission denied for employee '{$empCode}'.";
+                continue;
+            }
+
+            $hasChange = false;
+            foreach ($fields as $key => $val) {
+                if (in_array($key, $allowedFields, true)) {
+                    $cleanVal = $val === null ? null : trim((string) $val);
+
+                    if ($key === 'mobile_number' && ! empty($cleanVal)) {
+                        $cleanVal = preg_replace('/\D+/', '', $cleanVal);
+                        if (strlen($cleanVal) > 10) $cleanVal = substr($cleanVal, -10);
+                        if (strlen($cleanVal) !== 10) {
+                            $errors[] = "Employee '{$empCode}': Invalid 10-digit mobile number ('{$val}').";
+                            continue 2;
+                        }
+                    }
+                    if ($key === 'email' && ! empty($cleanVal) && ! filter_var($cleanVal, FILTER_VALIDATE_EMAIL)) {
+                        $errors[] = "Employee '{$empCode}': Invalid email format ('{$val}').";
+                        continue 2;
+                    }
+                    if ($key === 'pan_card_no' && ! empty($cleanVal) && ! preg_match('/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/i', $cleanVal)) {
+                        $errors[] = "Employee '{$empCode}': Invalid PAN card format ('{$val}').";
+                        continue 2;
+                    }
+                    if ($key === 'aadhar_card_no' && ! empty($cleanVal)) {
+                        $digits = preg_replace('/\D+/', '', $cleanVal);
+                        if (strlen($digits) !== 12) {
+                            $errors[] = "Employee '{$empCode}': Invalid 12-digit Aadhaar number ('{$val}').";
+                            continue 2;
+                        }
+                        $cleanVal = $digits;
+                    }
+
+                    $user->{$key} = $cleanVal;
+                    $hasChange = true;
+                }
+            }
+
+            if ($hasChange) {
+                $user->save();
+                $updatedCount++;
+            }
+        }
+
+        \Illuminate\Support\Facades\Log::info('Bulk employee profile update performed', [
+            'actor_id' => $actor->id,
+            'updated_count' => $updatedCount,
+            'total_rows' => count($data['updates']),
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => "Bulk update complete: {$updatedCount} employee profile(s) updated.",
+            'updated_count' => $updatedCount,
+            'errors' => $errors,
+        ]);
     }
 }

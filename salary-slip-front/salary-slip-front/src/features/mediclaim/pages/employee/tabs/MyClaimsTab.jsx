@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
-import { FilePlus2, AlertTriangle, Search, Download, RefreshCw, Columns, Calendar, Check } from "lucide-react";
+import { FilePlus2, AlertTriangle, Search, Download, RefreshCw, Columns } from "lucide-react";
 import { useAuth } from "../../../../../context/AuthContext";
 import { mediclaimApi } from "../../../services/mediclaimApi";
 import Button from "../../../../../components/ui/Button";
@@ -8,14 +8,8 @@ import ClaimsTable from "../../../components/ClaimsTable";
 import ClaimStatusBadge from "../../../components/ClaimStatusBadge";
 import ClaimDetailDrawer from "../../../components/ClaimDetailDrawer";
 import NewClaimRequestModal from "../../../components/NewClaimRequestModal";
-import { CLAIM_STATUS, CLAIM_STATUS_LIST, CLAIM_STATUS_META } from "../../../models/claimStatus";
-import {
-  CLAIM_WORKFLOW_BUCKET,
-  PENDING_APPROVAL_STATUSES,
-  PENDING_DOCUMENT_STATUSES,
-  FINALIZED_CLAIM_STATUSES,
-} from "../../../models/reviewStages";
-import { formatCurrencyINR, formatClaimDate, getFinancialYearLabel } from "../../../utils/formatters";
+import { CLAIM_STATUS } from "../../../models/claimStatus";
+import { formatCurrencyINR, formatClaimDate, formatClaimNumber } from "../../../utils/formatters";
 
 const EDITABLE_STATUSES = [CLAIM_STATUS.DRAFT, CLAIM_STATUS.RETURNED_FOR_CORRECTION];
 
@@ -27,8 +21,12 @@ const inputClass =
   "rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-xs text-gray-900 dark:text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none";
 
 const STATUS_OPTIONS = [
-  { value: CLAIM_STATUS.REJECTED, label: "Rejected" },
+  { value: CLAIM_STATUS.APPROVED, label: "Approved" },
   { value: CLAIM_STATUS.SUBMITTED, label: "Submitted" },
+  { value: CLAIM_STATUS.PARTIALLY_APPROVED, label: "Partially Approved" },
+  { value: CLAIM_STATUS.REJECTED, label: "Rejected" },
+  { value: CLAIM_STATUS.SETTLEMENT_PENDING, label: "Settlement Pending" },
+  { value: CLAIM_STATUS.SETTLED, label: "Settled" },
   { value: CLAIM_STATUS.CLOSED, label: "Closed" },
   { value: CLAIM_STATUS.DRAFT, label: "Draft" },
 ];
@@ -74,11 +72,6 @@ export default function MyClaimsTab({ lookups }) {
     pageSize,
   ]);
 
-  useEffect(() => {
-    if (!accessToken) return;
-    loadClaims();
-  }, [accessToken, tokenType, fyFilter, statusFilter, search, page, pageSize]);
-
   const loadClaims = () => {
     if (!accessToken) return;
     let cancelled = false;
@@ -106,6 +99,12 @@ export default function MyClaimsTab({ lookups }) {
         setClaimsResult({ key: requestKey, rows: [], total: 0, error: err?.message || "Failed to load your claims." });
       });
   };
+
+  useEffect(() => {
+    if (!accessToken) return;
+    loadClaims();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accessToken, tokenType, fyFilter, statusFilter, search, page, pageSize]);
 
   const claimsLoading = claimsResult.key !== requestKey;
   const claimsState = {
@@ -143,7 +142,7 @@ export default function MyClaimsTab({ lookups }) {
 
   const exportCsv = () => {
     const rowsToExport = claimsState.rows.map((row) => ({
-      "Claim #": row.claimNumber || row.claim_number || "",
+      "Claim #": formatClaimNumber(row),
       Patient: row.patientName || row.patient_snapshot?.name || "",
       "Claimed Amount": row.totalClaimedAmount ?? row.total_claimed_amount ?? "",
       "Approved Amount": row.approvedAmount ?? row.approved_amount ?? row.totalApprovedAmount ?? row.total_approved_amount ?? "",

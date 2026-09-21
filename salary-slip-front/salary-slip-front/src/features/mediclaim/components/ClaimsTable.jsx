@@ -1,11 +1,18 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useCallback } from "react";
+import { AgGridReact } from "ag-grid-react";
+import { AllCommunityModule, ModuleRegistry } from "ag-grid-community";
+
+ModuleRegistry.registerModules([AllCommunityModule]);
 import { SkeletonTable } from "../../../components/ui/Skeleton";
 import Pagination from "../../../components/ui/Pagination";
-import { Columns, ArrowUpDown, ArrowUp, ArrowDown, Check } from "lucide-react";
+import useGridHeaderContextMenu from "../../../hooks/useGridHeaderContextMenu";
+import GridHeaderContextMenu from "../../../components/ui/GridHeaderContextMenu";
+import { formatClaimNumber } from "../utils/formatters";
 
 /**
- * Enhanced Paginated Claims Table matching View Employees table style
- * Supports column sorting, column visibility toggle, sticky headers, and pagination.
+ * Enhanced AG Grid Claims Table matching View Employees table style
+ * Supports AG Grid right-click header context menu, text filter popups (Contains, Equals, Apply/Reset),
+ * column sorting, and pagination.
  */
 export default function ClaimsTable({
   columns,
@@ -24,53 +31,76 @@ export default function ClaimsTable({
   headerContent,
   enableSorting = true,
   hiddenColumns = {},
-  onToggleColumn,
 }) {
-  const clickable = typeof onRowClick === "function";
-  const [internalHiddenColumns, setInternalHiddenColumns] = useState({});
-  const [sortConfig, setSortConfig] = useState({ key: null, direction: "asc" });
+  const gridRef = useRef(null);
+  const gridContainerRef = useRef(null);
+  const { headerMenu, headerFrozen, closeHeaderMenu, toggleHeaderFrozen } =
+    useGridHeaderContextMenu(gridRef, gridContainerRef);
 
-  const isColumnHidden = (key) => {
+  const clickable = typeof onRowClick === "function";
+  const [internalHiddenColumns] = useState({});
+
+  const isColumnHidden = useCallback((key) => {
     if (hiddenColumns && typeof hiddenColumns[key] === "boolean") {
       return hiddenColumns[key];
     }
     return Boolean(internalHiddenColumns[key]);
-  };
+  }, [hiddenColumns, internalHiddenColumns]);
 
   const visibleColumns = useMemo(() => {
     return columns.filter((col) => !isColumnHidden(col.key));
-  }, [columns, hiddenColumns, internalHiddenColumns]);
+  }, [columns, isColumnHidden]);
 
-  const handleSort = (key) => {
-    if (!enableSorting || key === "actions") return;
-    setSortConfig((prev) => {
-      if (prev.key !== key) return { key, direction: "asc" };
-      if (prev.direction === "asc") return { key, direction: "desc" };
-      return { key: null, direction: "asc" };
+  const defaultColDef = useMemo(
+    () => ({
+      sortable: true,
+      filter: "agTextColumnFilter",
+      resizable: true,
+      suppressMovable: true,
+      suppressHeaderMenuButton: true,
+      suppressHeaderFilterButton: false,
+      cellClass: "employee-ag-cell",
+      cellStyle: { overflow: "hidden", display: "flex", alignItems: "center" },
+      filterParams: {
+        buttons: ["apply", "reset"],
+        closeOnApply: false,
+        trimInput: true,
+        debounceMs: 200,
+      },
+    }),
+    []
+  );
+
+  const columnDefs = useMemo(() => {
+    return visibleColumns.map((col) => {
+      const isAction = col.key === "actions";
+      return {
+        colId: col.key,
+        field: col.key,
+        headerName: col.label,
+        sortable: !isAction && enableSorting,
+        filter: isAction ? false : "agTextColumnFilter",
+        suppressHeaderFilterButton: isAction,
+        flex: isAction ? 0 : 1,
+        minWidth: isAction ? 110 : 130,
+        pinned: isAction ? 'right' : null,
+        valueGetter: (params) => {
+          if (!params.data) return "";
+          if (col.key === "claimNumber") return formatClaimNumber(params.data);
+          if (col.key === "employeeName") return params.data.employeeName || params.data.employee_snapshot?.name || "";
+          if (col.key === "patientName") return params.data.patientName || params.data.patient_snapshot?.name || "";
+          if (col.key === "claimedAmount") return params.data.totalClaimedAmount ?? params.data.total_claimed_amount ?? "";
+          if (col.key === "approvedAmount") return params.data.approvedAmount ?? params.data.approved_amount ?? params.data.totalApprovedAmount ?? params.data.total_approved_amount ?? "";
+          if (col.key === "status") return params.data.status || "";
+          return params.data[col.key] ?? "";
+        },
+        cellRenderer: (params) => {
+          if (!params.data) return "—";
+          return col.render ? col.render(params.data) : (params.data[col.key] ?? "—");
+        },
+      };
     });
-  };
-
-  const sortedRows = useMemo(() => {
-    if (!sortConfig.key || !Array.isArray(rows)) return rows;
-
-    return [...rows].sort((a, b) => {
-      let valA = a[sortConfig.key];
-      let valB = b[sortConfig.key];
-
-      if (valA == null) return 1;
-      if (valB == null) return -1;
-
-      if (typeof valA === "number" && typeof valB === "number") {
-        return sortConfig.direction === "asc" ? valA - valB : valB - valA;
-      }
-
-      const strA = String(valA).toLowerCase();
-      const strB = String(valB).toLowerCase();
-      if (strA < strB) return sortConfig.direction === "asc" ? -1 : 1;
-      if (strA > strB) return sortConfig.direction === "asc" ? 1 : -1;
-      return 0;
-    });
-  }, [rows, sortConfig]);
+  }, [visibleColumns, enableSorting]);
 
   return (
     <div
@@ -89,61 +119,40 @@ export default function ClaimsTable({
         </div>
       ) : error ? (
         <p className={`py-16 text-center text-sm text-red-500 ${fillHeight ? "flex-1 min-h-0" : ""}`}>{error}</p>
-      ) : sortedRows.length === 0 ? (
+      ) : rows.length === 0 ? (
         <p className={`py-16 text-center text-sm text-gray-500 dark:text-gray-400 ${fillHeight ? "flex-1 min-h-0" : ""}`}>{emptyMessage}</p>
       ) : (
-        <div className={fillHeight ? "flex-1 min-h-0 overflow-auto" : "overflow-x-auto"}>
-          <table className="w-full text-sm">
-            <thead
-              className={`bg-gray-50 text-xs uppercase text-gray-500 dark:bg-gray-700/50 dark:text-gray-400 ${
-                fillHeight ? "sticky top-0 z-10" : ""
-              }`}
-            >
-              <tr>
-                {visibleColumns.map((col) => (
-                  <th
-                    key={col.key}
-                    onClick={() => handleSort(col.key)}
-                    className={`px-4 py-3 text-left font-semibold tracking-wider transition select-none ${
-                      enableSorting && col.key !== "actions" ? "cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600/50" : ""
-                    } ${col.headerClassName || ""}`}
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <span>{col.label}</span>
-                      {enableSorting && col.key !== "actions" && (
-                        <span className="text-gray-400">
-                          {sortConfig.key === col.key ? (
-                            sortConfig.direction === "asc" ? (
-                              <ArrowUp size={12} className="text-brand-600 dark:text-brand-400" />
-                            ) : (
-                              <ArrowDown size={12} className="text-brand-600 dark:text-brand-400" />
-                            )
-                          ) : (
-                            <ArrowUpDown size={12} className="opacity-40 hover:opacity-100" />
-                          )}
-                        </span>
-                      )}
-                    </div>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-              {sortedRows.map((row) => (
-                <tr
-                  key={getRowKey(row)}
-                  onClick={clickable ? () => onRowClick(row) : undefined}
-                  className={clickable ? "cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/30" : ""}
-                >
-                  {visibleColumns.map((col) => (
-                    <td key={col.key} className={`px-4 py-3 text-gray-600 dark:text-gray-300 ${col.className || ""}`}>
-                      {col.render ? col.render(row) : (row[col.key] ?? "—")}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div
+          ref={gridContainerRef}
+          className={`employee-ag-grid w-full ${fillHeight ? "flex-1 min-h-0" : "h-[450px]"} ${
+            headerFrozen ? "grid-header-frozen" : ""
+          }`}
+        >
+          <AgGridReact
+            ref={gridRef}
+            rowData={rows}
+            columnDefs={columnDefs}
+            defaultColDef={defaultColDef}
+            getRowId={(params) => String(getRowKey(params.data))}
+            domLayout="normal"
+            rowHeight={48}
+            headerHeight={48}
+            popupParent={document.body}
+            suppressCellFocus
+            enableCellTextSelection
+            animateRows
+            onRowClicked={(params) => {
+              if (clickable && params.data) {
+                onRowClick(params.data);
+              }
+            }}
+          />
+          <GridHeaderContextMenu
+            menu={headerMenu}
+            frozen={headerFrozen}
+            onClose={closeHeaderMenu}
+            onToggleFrozen={toggleHeaderFrozen}
+          />
         </div>
       )}
       {typeof onPageChange === "function" && (

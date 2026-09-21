@@ -153,6 +153,10 @@ Route::middleware('jwt.auth')->prefix('v1/mediclaim')->middleware(['module.schem
         ->whereNumber('claim')
         ->middleware('permission:self.mediclaim.claim.update');
 
+    Route::post('claims/{claim}/update-expenses', [ClaimController::class, 'updateExpenses'])
+        ->whereNumber('claim')
+        ->middleware('permission:self.mediclaim.claim.update');
+
     // Not in the plan's literal B4 endpoint table — see ClaimController::
     // confidentialityAck()'s docblock: without this route managerDecision()'s
     // CONFIDENTIALITY_ACK_REQUIRED gate could never be satisfied.
@@ -170,6 +174,14 @@ Route::middleware('jwt.auth')->prefix('v1/mediclaim')->middleware(['module.schem
     Route::post('claims/{claim}/documents', [ClaimDocumentController::class, 'store'])
         ->whereNumber('claim')
         ->middleware(['throttle:30,1', 'permission:self.mediclaim.document.upload,mediclaim.claim_document.upload']);
+    Route::post('claims/{claim}/documents/{document}/approve', [ClaimDocumentController::class, 'approve'])
+        ->whereNumber('claim')
+        ->whereNumber('document')
+        ->middleware('permission:mediclaim.claim.approve,mediclaim.claim.hr_verification.decide,mediclaim.claim.coordinator.decide,mediclaim.claim.committee.decide,mediclaim.claim.director.decide,mediclaim.claim.manager.decide,mediclaim.claim.read');
+    Route::post('claims/{claim}/documents/{document}/deny', [ClaimDocumentController::class, 'deny'])
+        ->whereNumber('claim')
+        ->whereNumber('document')
+        ->middleware('permission:mediclaim.claim.approve,mediclaim.claim.hr_verification.decide,mediclaim.claim.coordinator.decide,mediclaim.claim.committee.decide,mediclaim.claim.director.decide,mediclaim.claim.manager.decide,mediclaim.claim.read');
 
     Route::get('claims/{claim}/timeline', [ClaimController::class, 'timeline'])
         ->whereNumber('claim')

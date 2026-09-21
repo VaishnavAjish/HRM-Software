@@ -1024,6 +1024,13 @@ export const adminUserApi = {
     });
   },
 
+  bulkProfileUpdate(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest("/v1/admin/users/bulk-profile-update", {
+      method: "POST", headers: authHeaders(accessToken, tokenType),
+      body: JSON.stringify(payload),
+    });
+  },
+
   auditLogs(id, accessToken, tokenType = "Bearer", limit = 50) {
     return apiRequest(`/v1/admin/users/${id}/audit-logs?limit=${limit}`, {
       headers: authHeaders(accessToken, tokenType),
@@ -1537,14 +1544,21 @@ export const authApi = {
     });
   },
 
-  login(email, password, company_code) {
+  login(email, password, company_code, user_id) {
     return apiRequest("/login", {
       method: "POST",
       body: JSON.stringify({
         email,
         password,
         ...(company_code ? { company_code } : {}),
+        ...(user_id ? { user_id } : {}),
       }),
+    });
+  },
+
+  getEmployeesByCode(empCode) {
+    return apiRequest(`/auth/employees-by-code/${encodeURIComponent(empCode)}`, {
+      method: "GET",
     });
   },
 

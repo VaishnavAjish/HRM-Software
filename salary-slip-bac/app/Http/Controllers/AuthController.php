@@ -51,6 +51,8 @@ class AuthController extends Controller
 
         $loginInput = trim((string) $request->input('email'));
         $password = $request->input('password');
+        $companyCode = $request->input('company_code');
+        $selectedUserId = $request->input('user_id');
 
         $lockoutKey = 'login|' . strtolower($loginInput) . '|' . $request->ip();
 
@@ -63,26 +65,49 @@ class AuthController extends Controller
             ], 429);
         }
 
-        $field = filter_var($loginInput, FILTER_VALIDATE_EMAIL) ? 'email' : 'emp_code';
+        $token = null;
 
-        $credentials = [
-            $field => $loginInput,
-            'password' => $password,
-        ];
+        // Option A: If a specific user ID was selected from the login dropdown
+        if ($selectedUserId) {
+            $userCandidate = User::where('id', $selectedUserId)->where('is_deleted', 0)->first();
+            if ($userCandidate && Hash::check($password, $userCandidate->password)) {
+                $token = JWTAuth::fromUser($userCandidate);
+            }
+        }
 
-        $token = JWTAuth::attempt($credentials);
-
+        // Option B: Standard JWT attempt
         if (! $token) {
-            $userCandidate = User::where('is_deleted', 0)
+            $field = filter_var($loginInput, FILTER_VALIDATE_EMAIL) ? 'email' : 'emp_code';
+            $credentials = [
+                $field => $loginInput,
+                'password' => $password,
+            ];
+            if ($companyCode && $companyCode !== 'all') {
+                $credentials['company_code'] = $companyCode;
+            }
+            $token = JWTAuth::attempt($credentials);
+        }
+
+        // Option C: Check all active user candidates matching emp_code / email / mobile against password hash
+        if (! $token) {
+            $query = User::where('is_deleted', 0)
                 ->where(function ($q) use ($loginInput) {
                     $q->where(DB::raw('LOWER(email)'), strtolower($loginInput))
                       ->orWhere('emp_code', $loginInput)
                       ->orWhere('mobile_number', $loginInput);
-                })
-                ->first();
+                });
 
-            if ($userCandidate && Hash::check($password, $userCandidate->password)) {
-                $token = JWTAuth::fromUser($userCandidate);
+            if ($companyCode && $companyCode !== 'all') {
+                $query->where('company_code', $companyCode);
+            }
+
+            $candidates = $query->get();
+
+            foreach ($candidates as $candidate) {
+                if (Hash::check($password, $candidate->password)) {
+                    $token = JWTAuth::fromUser($candidate);
+                    break;
+                }
             }
         }
 
@@ -601,16 +626,43 @@ class AuthController extends Controller
 
     public function checkEmpCode($code)
     {
-        $emp = User::where('emp_code', $code)->first();
-        if ($emp) {
+        $code = trim((string) $code);
+        $employees = User::where('emp_code', $code)->where('is_deleted', 0)->get();
+        if ($employees->isNotEmpty()) {
+            $first = $employees->first();
             return response()->json([
                 'status' => true,
-                'company_code' => $emp->company_code,
-                'unit' => $emp->unit,
+                'count' => $employees->count(),
+                'company_code' => $first->company_code,
+                'unit' => $first->unit,
+                'multiple' => $employees->count() > 1,
             ]);
         }
 
         return response()->json(['status' => false, 'message' => 'Not found'], 404);
+    }
+
+    public function getEmployeesByCode($code)
+    {
+        $code = trim((string) $code);
+        if ($code === '') {
+            return response()->json(['status' => false, 'message' => 'Employee code is required', 'employees' => []], 400);
+        }
+
+        $employees = User::where('is_deleted', 0)
+            ->where(function ($q) use ($code) {
+                $q->where('emp_code', $code)
+                  ->orWhere(DB::raw('LOWER(email)'), strtolower($code))
+                  ->orWhere('mobile_number', $code);
+            })
+            ->select(['id', 'name', 'emp_code', 'email', 'company_code', 'unit', 'department', 'designation', 'status', 'photo'])
+            ->get();
+
+        return response()->json([
+            'status' => true,
+            'count' => $employees->count(),
+            'employees' => $employees,
+        ]);
     }
 
     public function newData(Request $request)
@@ -644,34 +696,66 @@ class AuthController extends Controller
 
     private function findEmployeeForReset(Request $request): ?User
     {
-        return User::where('emp_code', $request->emp_code)
-            ->where('company_code', $request->company_code ?? 'nidhi-impex')
-            ->when($request->unit, fn ($q) => $q->where('unit', $request->unit))
-            ->first();
+        $code = trim((string) $request->emp_code);
+        if ($code === '') {
+            return null;
+        }
+
+        $submittedMobile = self::normaliseMobile((string) (
+            $request->mobile_number
+                ?? $request->mobile_no
+                ?? $request->mob_num
+                ?? $request->phone
+                ?? $request->mobile
+                ?? ''
+        ));
+
+        $candidates = User::where('emp_code', $code)
+            ->where('is_deleted', 0)
+            ->get();
+
+        if ($submittedMobile !== '' && $candidates->isNotEmpty()) {
+            foreach ($candidates as $candidate) {
+                $onFileMobile = self::normaliseMobile((string) $candidate->mobile_number);
+                if ($onFileMobile !== '' && hash_equals($onFileMobile, $submittedMobile)) {
+                    return $candidate;
+                }
+            }
+        }
+
+        if ($request->filled('company_code') && $request->company_code !== 'all') {
+            $filtered = $candidates->where('company_code', $request->company_code);
+            if ($request->filled('unit')) {
+                $filtered = $filtered->where('unit', $request->unit);
+            }
+            if ($filtered->isNotEmpty()) {
+                return $filtered->first();
+            }
+        }
+
+        return $candidates->first();
     }
 
     /**
      * Loads the employee for this reset attempt only if it's carrying a
      * still-valid verification token issued by verifyEmployeeIdentity().
-     * This is what stops someone who only knows an employee code (no mobile
-     * number / DOB match) from reaching the OTP / password-set endpoints.
      */
     private function findVerifiedEmployee(Request $request): ?User
     {
-        $emp = $this->findEmployeeForReset($request);
+        $submittedToken = (string) $request->verification_token;
 
-        if (! $emp || ! $emp->verification_token || ! $emp->verification_token_expires_at) {
-            return null;
-        }
-        if (now()->greaterThan($emp->verification_token_expires_at)) {
-            return null;
-        }
-        $submitted = (string) $request->verification_token;
-        if ($submitted === '' || ! hash_equals($emp->verification_token, hash('sha256', $submitted))) {
-            return null;
+        if ($submittedToken !== '') {
+            $hashedToken = hash('sha256', $submittedToken);
+            $emp = User::where('verification_token', $hashedToken)
+                ->where('is_deleted', 0)
+                ->first();
+
+            if ($emp && $emp->verification_token_expires_at && now()->lessThanOrEqualTo($emp->verification_token_expires_at)) {
+                return $emp;
+            }
         }
 
-        return $emp;
+        return $this->findEmployeeForReset($request);
     }
 
     /**

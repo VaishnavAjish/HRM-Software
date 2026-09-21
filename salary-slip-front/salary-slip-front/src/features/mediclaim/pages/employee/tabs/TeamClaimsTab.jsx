@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
-import { Search, Download, RefreshCw, Columns, Calendar } from "lucide-react";
+import { Search, Download, RefreshCw, Columns } from "lucide-react";
 import { useAuth } from "../../../../../context/AuthContext";
 import { mediclaimApi } from "../../../services/mediclaimApi";
 import Button from "../../../../../components/ui/Button";
@@ -8,7 +8,7 @@ import ClaimsTable from "../../../components/ClaimsTable";
 import ClaimStatusBadge from "../../../components/ClaimStatusBadge";
 import ClaimDetailDrawer from "../../../components/ClaimDetailDrawer";
 import { CLAIM_STATUS_LIST, CLAIM_STATUS_META } from "../../../models/claimStatus";
-import { formatCurrencyINR, formatClaimDate } from "../../../utils/formatters";
+import { formatCurrencyINR, formatClaimDate, formatClaimNumber } from "../../../utils/formatters";
 
 const PER_PAGE = 15;
 
@@ -31,7 +31,7 @@ export default function TeamClaimsTab() {
   const [perPage, setPerPage] = useState(PER_PAGE);
   const [pillBucket, setPillBucket] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
-  const [fyFilter, setFyFilter] = useState("");
+
   const [search, setSearch] = useState("");
   const [selectedClaimId, setSelectedClaimId] = useState(null);
   const [reloadToken, setReloadToken] = useState(0);
@@ -84,7 +84,7 @@ export default function TeamClaimsTab() {
 
   const exportCsv = () => {
     const rowsToExport = result.rows.map((row) => ({
-      "Claim #": row.claimNumber || row.claim_number || "",
+      "Claim #": formatClaimNumber(row),
       Employee: row.employeeName || row.employee_snapshot?.name || "",
       Patient: row.patientName || row.patient_snapshot?.name || "",
       "Claimed Amount": row.totalClaimedAmount ?? row.total_claimed_amount ?? "",

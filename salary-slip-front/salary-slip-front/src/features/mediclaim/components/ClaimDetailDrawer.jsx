@@ -1,19 +1,19 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, FileText, Receipt, ClipboardList, Gavel, UploadCloud, BedDouble } from "lucide-react";
+import { AlertTriangle, FileText, Receipt, ClipboardList, Gavel, UploadCloud, BedDouble, Check, CheckCircle2, Eye, X, XCircle } from "lucide-react";
 import toast from "react-hot-toast";
 import Drawer, { CollapsibleSection } from "../../../components/ui/Drawer";
 import Button from "../../../components/ui/Button";
 import DocumentViewerModal from "../../../components/documents/DocumentViewerModal";
 import { useAuth } from "../../../context/AuthContext";
 import { mediclaimApi } from "../services/mediclaimApi";
-import { EXPENSE_CATEGORIES, getExpenseCategoryLabel } from "../models/expenseCategories";
 import { isTerminalClaimStatus } from "../models/claimStatus";
 import { getRequiredDocumentTypes } from "../utils/documentChecklistRules";
-import { formatCurrencyINR, formatClaimDate } from "../utils/formatters";
+import { formatCurrencyINR, formatClaimDate, formatClaimNumber } from "../utils/formatters";
 import ClaimSummaryCard from "./ClaimSummaryCard";
 import ClaimTimeline from "./ClaimTimeline";
 import ClaimDecisionsList from "./ClaimDecisionsList";
 import DocumentChecklist from "./DocumentChecklist";
+import ExpenseEditor from "./ExpenseEditor";
 
 const EMPTY_RESULT = { key: null, claim: null, documents: [], error: null };
 
@@ -66,7 +66,43 @@ export default function ClaimDetailDrawer({ isOpen, onClose, claimId, footer, ti
   const [now] = useState(() => new Date());
   const [dischargeInput, setDischargeInput] = useState("");
   const [dischargeSaving, setDischargeSaving] = useState(false);
-  const [finalizeExpenses, setFinalizeExpenses] = useState([{ category: "", description: "", claimedAmount: "", expenseDate: "" }]);
+  const [isEditingExpenses, setIsEditingExpenses] = useState(false);
+  const [editingExpenses, setEditingExpenses] = useState([]);
+  const [savingExpenses, setSavingExpenses] = useState(false);
+  const [actionDocId, setActionDocId] = useState(null);
+  const [actionType, setActionType] = useState(null);
+
+  const handleApproveDocument = async (docId) => {
+    if (!docId || actionDocId) return;
+    setActionDocId(docId);
+    setActionType("approve");
+    try {
+      await mediclaimApi.approveClaimDocument(claimId, docId, accessToken, tokenType);
+      toast.success("Document approved successfully.");
+      reloadDocuments();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || err?.message || "Failed to approve document.");
+    } finally {
+      setActionDocId(null);
+      setActionType(null);
+    }
+  };
+
+  const handleDenyDocument = async (docId) => {
+    if (!docId || actionDocId) return;
+    setActionDocId(docId);
+    setActionType("deny");
+    try {
+      await mediclaimApi.denyClaimDocument(claimId, docId, accessToken, tokenType);
+      toast.success("Document denied successfully.");
+      reloadDocuments();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || err?.message || "Failed to deny document.");
+    } finally {
+      setActionDocId(null);
+      setActionType(null);
+    }
+  };
 
   if (wasOpen !== isOpen) {
     setWasOpen(isOpen);
@@ -160,20 +196,7 @@ export default function ClaimDetailDrawer({ isOpen, onClose, claimId, footer, ti
   // fall back to the plain read-only document list instead.
   const canUploadNow = allowDocumentUpload && !isTerminalClaimStatus(claim?.status);
 
-  const addExpenseLine = () => {
-    setFinalizeExpenses((prev) => [...prev, { category: "", description: "", claimedAmount: "", expenseDate: "" }]);
-  };
-
-  const updateExpenseLine = (index, field, value) => {
-    setFinalizeExpenses((prev) => prev.map((row, i) => (i === index ? { ...row, [field]: value } : row)));
-  };
-
-  const removeExpenseLine = (index) => {
-    setFinalizeExpenses((prev) => (prev.length > 1 ? prev.filter((_, i) => i !== index) : prev));
-  };
-
-  const validExpenseLines = finalizeExpenses.filter((row) => row.category && Number(row.claimedAmount) > 0);
-  const canSubmitFinalize = Boolean(dischargeInput) && validExpenseLines.length > 0 && !dischargeSaving;
+  const canSubmitFinalize = Boolean(dischargeInput) && !dischargeSaving;
 
   const submitFinalizeTreatment = async () => {
     if (!canSubmitFinalize) return;
@@ -192,15 +215,14 @@ export default function ClaimDetailDrawer({ isOpen, onClose, claimId, footer, ti
 
     setDischargeSaving(true);
     try {
-      await mediclaimApi.finalizeTreatment(
+      await mediclaimApi.recordClaimDischarge(
         claimId,
-        { dischargeAt: dischargeInput, expenses: validExpenseLines },
+        dischargeInput,
         accessToken,
         tokenType,
       );
       toast.success("Treatment finalized — the document upload window has started.");
       setDischargeInput("");
-      setFinalizeExpenses([{ category: "", description: "", claimedAmount: "", expenseDate: "" }]);
       reloadDocuments();
     } catch (err) {
       toast.error(err?.message || "Failed to finalize the treatment.");
@@ -209,12 +231,44 @@ export default function ClaimDetailDrawer({ isOpen, onClose, claimId, footer, ti
     }
   };
 
+  const startEditingExpenses = () => {
+    const lines = expenses.length > 0
+      ? expenses.map((line) => ({
+          category: line.category,
+          amount: String(line.claimed_amount ?? line.claimedAmount ?? line.amount ?? ""),
+          description: line.description || "",
+          expenseDate: line.expense_date || line.expenseDate || "",
+        }))
+      : [{ category: "", amount: "", description: "" }];
+    setEditingExpenses(lines);
+    setIsEditingExpenses(true);
+  };
+
+  const cancelEditingExpenses = () => {
+    setIsEditingExpenses(false);
+    setEditingExpenses([]);
+  };
+
+  const handleSaveExpenses = async () => {
+    setSavingExpenses(true);
+    try {
+      await mediclaimApi.updateClaimExpenses(claimId, editingExpenses, accessToken, tokenType);
+      toast.success("Expense breakdown updated.");
+      setIsEditingExpenses(false);
+      reloadDocuments();
+    } catch (err) {
+      toast.error(err?.message || "Failed to update expense breakdown.");
+    } finally {
+      setSavingExpenses(false);
+    }
+  };
+
   return (
     <>
       <Drawer
         isOpen={isOpen}
         onClose={onClose}
-        title={title || claim?.claimNumber || claim?.claim_number || "Claim Details"}
+        title={title && !String(title).startsWith("MC-") ? title : formatClaimNumber(claim || { claimNumber: title })}
         subtitle={claim?.patientName || claim?.patient_snapshot?.name}
         size="lg"
         footer={footer}
@@ -226,71 +280,110 @@ export default function ClaimDetailDrawer({ isOpen, onClose, claimId, footer, ti
           <div className="space-y-4">
             <ClaimSummaryCard claim={claim} />
 
-            <CollapsibleSection title="Expense Breakdown" icon={<Receipt size={15} />} count={expenses.length}>
-              {expenses.length === 0 ? (
-                <div className="space-y-2">
-                  <p className="py-2 text-center text-xs text-gray-400">No expense line items recorded.</p>
-                  {Number(claim?.totalClaimedAmount ?? claim?.total_claimed_amount ?? 0) > 0 && (
-                    <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50/90 px-3 py-2.5 text-sm font-semibold dark:border-gray-700 dark:bg-gray-800/80">
-                      <p className="text-gray-900 dark:text-white">Total Expenses</p>
-                      <div className="text-right">
-                        <p className="text-base font-bold text-gray-900 dark:text-white">
-                          {formatCurrencyINR(claim?.totalClaimedAmount ?? claim?.total_claimed_amount)}
-                        </p>
-                        {totalApprovedExpenses != null && totalApprovedExpenses > 0 && (
-                          <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
-                            Approved {formatCurrencyINR(totalApprovedExpenses)}
+            <CollapsibleSection
+              title="Expense Breakdown"
+              icon={<Receipt size={15} />}
+              count={expenses.length}
+              action={
+                !isTerminalClaimStatus(claim?.status) && !isEditingExpenses ? (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      startEditingExpenses();
+                    }}
+                    className="text-xs font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-400"
+                  >
+                    Edit Expenses
+                  </button>
+                ) : null
+              }
+            >
+              {isEditingExpenses ? (
+                <div className="space-y-3 pt-1">
+                  <ExpenseEditor
+                    lines={editingExpenses}
+                    onChange={setEditingExpenses}
+                  />
+                  <div className="flex justify-end gap-2 pt-2">
+                    <Button size="sm" variant="secondary" onClick={cancelEditingExpenses} disabled={savingExpenses}>
+                      Cancel
+                    </Button>
+                    <Button size="sm" onClick={handleSaveExpenses} disabled={savingExpenses}>
+                      {savingExpenses ? "Saving..." : "Save Expenses"}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {expenses.length === 0 ? (
+                    <div className="space-y-2">
+                      <p className="py-2 text-center text-xs text-gray-400">No expense line items recorded.</p>
+                      {Number(claim?.totalClaimedAmount ?? claim?.total_claimed_amount ?? 0) > 0 && (
+                        <div className="flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50/50 px-3 py-2 text-xs dark:border-gray-700 dark:bg-gray-800/40">
+                          <span className="text-gray-600 dark:text-gray-300">Total Claimed</span>
+                          <span className="font-semibold text-gray-900 dark:text-white">
+                            {formatCurrencyINR(claim?.totalClaimedAmount ?? claim?.total_claimed_amount)}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {expenses.map((line, idx) => (
+                        <div
+                          key={line.id ?? idx}
+                          className="flex items-start justify-between rounded-lg border border-gray-100 bg-white p-2.5 text-xs dark:border-gray-700 dark:bg-gray-800"
+                        >
+                          <div>
+                            <p className="font-medium text-gray-900 dark:text-white">
+                              {line.categoryLabel || line.category}
+                            </p>
+                            {line.description && (
+                              <p className="mt-0.5 text-gray-500 dark:text-gray-400">{line.description}</p>
+                            )}
+                            {line.expense_date && (
+                              <p className="mt-0.5 text-[11px] text-gray-400">{line.expense_date}</p>
+                            )}
+                          </div>
+                          <div className="text-right">
+                            <p className="font-semibold text-gray-900 dark:text-white">
+                              {formatCurrencyINR(line.claimed_amount ?? line.claimedAmount ?? line.amount)}
+                            </p>
+                            {(line.approved_amount ?? line.approvedAmount) != null && (
+                              <p className="text-xs text-emerald-600 dark:text-emerald-400">
+                                Approved {formatCurrencyINR(line.approved_amount ?? line.approvedAmount)}
+                              </p>
+                            )}
+                            {(line.disallowed_reason || line.disallowedReason) && (
+                              <p className="text-xs text-red-500">{line.disallowed_reason || line.disallowedReason}</p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+
+                      <div className="mt-3 flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50/90 px-3 py-2.5 text-sm font-semibold dark:border-gray-700 dark:bg-gray-800/80">
+                        <div>
+                          <p className="text-gray-900 dark:text-white">Total Expenses</p>
+                          <p className="text-xs font-normal text-gray-500 dark:text-gray-400">
+                            {expenses.length} {expenses.length === 1 ? "item" : "items"}
                           </p>
-                        )}
+                        </div>
+                        <div className="text-right">
+                          <p className="text-base font-bold text-gray-900 dark:text-white">
+                            {formatCurrencyINR(totalExpenses)}
+                          </p>
+                          {totalApprovedExpenses != null && totalApprovedExpenses > 0 && (
+                            <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                              Approved {formatCurrencyINR(totalApprovedExpenses)}
+                            </p>
+                          )}
+                        </div>
                       </div>
                     </div>
                   )}
                 </div>
-              ) : (
-                <div className="space-y-2">
-                  {expenses.map((line, index) => (
-                    <div key={line.id ?? index} className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2 text-sm dark:border-gray-700">
-                      <div>
-                        <p className="font-medium text-gray-800 dark:text-gray-100">{getExpenseCategoryLabel(line.category)}</p>
-                        {line.description && <p className="text-xs text-gray-500 dark:text-gray-400">{line.description}</p>}
-                      </div>
-                      <div className="text-right">
-                        <p className="font-semibold text-gray-800 dark:text-gray-100">
-                          {formatCurrencyINR(line.claimed_amount ?? line.claimedAmount ?? line.amount)}
-                        </p>
-                        {(line.approved_amount ?? line.approvedAmount) != null && (
-                          <p className="text-xs text-emerald-600 dark:text-emerald-400">
-                            Approved {formatCurrencyINR(line.approved_amount ?? line.approvedAmount)}
-                          </p>
-                        )}
-                        {(line.disallowed_reason || line.disallowedReason) && (
-                          <p className="text-xs text-red-500">{line.disallowed_reason || line.disallowedReason}</p>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-
-                  <div className="mt-3 flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50/90 px-3 py-2.5 text-sm font-semibold dark:border-gray-700 dark:bg-gray-800/80">
-                    <div>
-                      <p className="text-gray-900 dark:text-white">Total Expenses</p>
-                      <p className="text-xs font-normal text-gray-500 dark:text-gray-400">
-                        {expenses.length} {expenses.length === 1 ? "item" : "items"}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-base font-bold text-gray-900 dark:text-white">
-                        {formatCurrencyINR(totalExpenses)}
-                      </p>
-                      {totalApprovedExpenses != null && totalApprovedExpenses > 0 && (
-                        <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
-                          Approved {formatCurrencyINR(totalApprovedExpenses)}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </CollapsibleSection>
+              )}</CollapsibleSection>
 
             <CollapsibleSection title="Documents" icon={<FileText size={15} />} count={documents.length} defaultOpen={canUploadNow}>
               {canUploadNow ? (
@@ -300,7 +393,7 @@ export default function ClaimDetailDrawer({ isOpen, onClose, claimId, footer, ti
                       <p className="flex items-start gap-2 text-amber-700 dark:text-amber-300">
                         <BedDouble size={14} className="mt-0.5 flex-shrink-0" />
                         Treatment was still ongoing when this claim was submitted, so the document upload window hasn&apos;t
-                        started yet. Once discharged, record the discharge date and the final bill below — you&apos;ll
+                        started yet. Once discharged, record the discharge date below — you&apos;ll
                         then have 7 days to upload the required documents.
                       </p>
 
@@ -314,63 +407,6 @@ export default function ClaimDetailDrawer({ isOpen, onClose, claimId, footer, ti
                           className="w-full max-w-xs rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                         />
                       </label>
-
-                      <div className="space-y-2">
-                        <span className="block font-semibold text-gray-500 dark:text-gray-400">Final Charges</span>
-                        {finalizeExpenses.map((row, index) => (
-                          <div key={index} className="flex flex-wrap items-end gap-2 rounded-lg border border-amber-100 bg-white/60 p-2 dark:border-amber-500/20 dark:bg-gray-800/40">
-                            <label className="min-w-[160px] flex-1">
-                              <span className="mb-1 block text-[11px] text-gray-500 dark:text-gray-400">Category</span>
-                              <select
-                                value={row.category}
-                                onChange={(e) => updateExpenseLine(index, "category", e.target.value)}
-                                className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                              >
-                                <option value="">Select…</option>
-                                {EXPENSE_CATEGORIES.map((cat) => (
-                                  <option key={cat.key} value={cat.key}>{cat.label}</option>
-                                ))}
-                              </select>
-                            </label>
-                            <label className="min-w-[120px]">
-                              <span className="mb-1 block text-[11px] text-gray-500 dark:text-gray-400">Amount (₹)</span>
-                              <input
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                value={row.claimedAmount}
-                                onChange={(e) => updateExpenseLine(index, "claimedAmount", e.target.value)}
-                                className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                              />
-                            </label>
-                            <label className="min-w-[130px]">
-                              <span className="mb-1 block text-[11px] text-gray-500 dark:text-gray-400">Expense Date</span>
-                              <input
-                                type="date"
-                                value={row.expenseDate}
-                                onChange={(e) => updateExpenseLine(index, "expenseDate", e.target.value)}
-                                className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                              />
-                            </label>
-                            {finalizeExpenses.length > 1 && (
-                              <button
-                                type="button"
-                                onClick={() => removeExpenseLine(index)}
-                                className="pb-1.5 text-[11px] font-semibold text-red-500 hover:text-red-600"
-                              >
-                                Remove
-                              </button>
-                            )}
-                          </div>
-                        ))}
-                        <button
-                          type="button"
-                          onClick={addExpenseLine}
-                          className="text-[11px] font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-400"
-                        >
-                          + Add another line
-                        </button>
-                      </div>
 
                       <div className="flex justify-end">
                         <Button size="sm" onClick={submitFinalizeTreatment} disabled={!canSubmitFinalize}>
@@ -415,17 +451,76 @@ export default function ClaimDetailDrawer({ isOpen, onClose, claimId, footer, ti
                 <p className="py-2 text-center text-xs text-gray-400">No documents uploaded yet.</p>
               ) : (
                 <div className="space-y-2">
-                  {documents.map((doc) => (
-                    <button
-                      key={doc.documentId ?? doc.id}
-                      type="button"
-                      onClick={() => setViewerDoc(doc)}
-                      className="flex w-full items-center justify-between rounded-lg border border-gray-100 px-3 py-2 text-left text-sm hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-700/40"
-                    >
-                      <span className="text-gray-700 dark:text-gray-200">{doc.documentLabel || doc.documentType}</span>
-                      <span className="text-xs text-gray-400">{doc.status || "View"}</span>
-                    </button>
-                  ))}
+                  {documents.map((doc) => {
+                    const docId = doc.documentId ?? doc.id;
+                    const docStatus = (doc.status || "ACTIVE").toUpperCase();
+                    const isApproved = docStatus === "APPROVED";
+                    const isDenied = docStatus === "DENIED" || docStatus === "REJECTED";
+                    const isActive = !isApproved && !isDenied;
+
+                    return (
+                      <div
+                        key={docId}
+                        className="flex items-center justify-between gap-3 rounded-lg border border-gray-100 bg-white px-3 py-2.5 text-sm hover:bg-gray-50/70 dark:border-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700/40"
+                      >
+                        <div
+                          onClick={() => setViewerDoc(doc)}
+                          className="min-w-0 flex-1 cursor-pointer"
+                        >
+                          <span className="truncate font-medium text-gray-800 hover:text-brand-600 dark:text-gray-200 dark:hover:text-brand-400">
+                            {doc.documentLabel || doc.documentType}
+                          </span>
+                        </div>
+
+                        <div className="flex flex-shrink-0 items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setViewerDoc(doc)}
+                            className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+                          >
+                            <Eye size={12} />
+                            View
+                          </button>
+
+                          {isActive && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleApproveDocument(docId)}
+                                disabled={actionDocId === docId}
+                                className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white shadow-sm hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-1 disabled:opacity-50"
+                              >
+                                <Check size={12} />
+                                {actionDocId === docId && actionType === "approve" ? "Approving..." : "Approve"}
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleDenyDocument(docId)}
+                                disabled={actionDocId === docId}
+                                className="inline-flex items-center gap-1 rounded-md bg-red-600 px-2.5 py-1 text-xs font-medium text-white shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-1 disabled:opacity-50"
+                              >
+                                <X size={12} />
+                                {actionDocId === docId && actionType === "deny" ? "Denying..." : "Deny"}
+                              </button>
+                            </>
+                          )}
+
+                          {isApproved && (
+                            <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                              <CheckCircle2 size={14} className="text-emerald-600 dark:text-emerald-400" /> Approved
+                            </span>
+                          )}
+
+                          {isDenied && (
+                            <span className="inline-flex items-center gap-1 text-xs font-semibold text-red-600 dark:text-red-400">
+                              <XCircle size={14} className="text-red-600 dark:text-red-400" /> Denied
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </CollapsibleSection>

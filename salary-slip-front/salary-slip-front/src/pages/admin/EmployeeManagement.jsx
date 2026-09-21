@@ -4,6 +4,7 @@ import {
   Trash2,
   Eye,
   Download,
+  FileSpreadsheet,
   Crown,
   CheckCircle,
   TableProperties,
@@ -44,6 +45,7 @@ import { AgGridReact } from "ag-grid-react";
 import AddEditEmployeeModal from "./AdminModals/AddEditEmployeeModal";
 import DeleteEmployeeModal from "./AdminModals/DeleteEmployeeModal";
 import AddNewDepartment from "./AdminModals/AddNewDepartment";
+import BulkProfileUpdateModal from "../../components/admin/BulkProfileUpdateModal";
 import EmployeeDetailsModal from "./AdminModals/EmployeeDetailsModal";
 import {
   formatDisplayDate,
@@ -269,6 +271,7 @@ export default function EmployeeManagement() {
     "profile", "empCode", "name", "gender", "department", "designation", "companyLabel", "unit", "loginRole", "status"
   ]);
   const [showColModal, setShowColModal] = useState(false);
+  const [isBulkUpdateModalOpen, setIsBulkUpdateModalOpen] = useState(false);
 
   const toggleColumnVisibility = (field) => {
     setVisibleColumns(prev => {
@@ -1865,6 +1868,15 @@ export default function EmployeeManagement() {
 
             <Button
               variant="secondary"
+              onClick={() => setIsBulkUpdateModalOpen(true)}
+              icon={<FileSpreadsheet size={15} />}
+              className="text-xs"
+            >
+              Update Bulk Profile
+            </Button>
+
+            <Button
+              variant="secondary"
               onClick={handleExport}
               disabled={exportLoading || tableLoading}
               icon={exportLoading ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
@@ -2316,6 +2328,14 @@ export default function EmployeeManagement() {
           </div>
         </div>
       )}
+      {/* Bulk Profile Update Modal */}
+      <BulkProfileUpdateModal
+        isOpen={isBulkUpdateModalOpen}
+        onClose={() => setIsBulkUpdateModalOpen(false)}
+        employees={employees}
+        companies={["Nidhi Impex", "Silver Star"]}
+        onSuccess={refetchEmployees}
+      />
     </div>
   );
 }

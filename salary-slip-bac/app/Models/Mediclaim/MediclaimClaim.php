@@ -3,9 +3,12 @@
 namespace App\Models\Mediclaim;
 
 use App\Models\User;
+use App\Support\MediclaimClaimNumber;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Throwable;
 
 /**
  * mediclaim_claims — the claim itself, the hub of the module. `status`
@@ -173,6 +176,37 @@ class MediclaimClaim extends Model
         'totalApprovedAmount',
         'totalClaimedAmount',
     ];
+
+    public function getClaimNumberAttribute(?string $value = null): ?string
+    {
+        $raw = $value ?? ($this->attributes['claim_number'] ?? null);
+        if ($raw === null || $raw === '') {
+            return null;
+        }
+
+        if (preg_match('/^(NS|NI|SD|SI)-/', $raw)) {
+            return $raw;
+        }
+
+        $company = $this->company_code;
+        $employee = $this->relationLoaded('employee') ? $this->employee : $this->employee()->first();
+        $branch = $employee?->unit ?: $employee?->branch ?: ($this->employee_snapshot['unit'] ?? $this->employee_snapshot['branch'] ?? null);
+        $empCode = $employee?->emp_code ?: ($this->employee_snapshot['emp_code'] ?? '0001');
+        $date = $this->submitted_at ? Carbon::parse($this->submitted_at)->format('Y-m-d') : ($this->created_at ? Carbon::parse($this->created_at)->format('Y-m-d') : now()->format('Y-m-d'));
+
+        $prefix = MediclaimClaimNumber::resolvePrefix($company, $branch);
+        $formatted = sprintf('%s-%s-%s', $prefix, $empCode, $date);
+
+        try {
+            if ($this->id && !DB::table('mediclaim_claims')->where('claim_number', $formatted)->where('id', '!=', $this->id)->exists()) {
+                DB::table('mediclaim_claims')->where('id', $this->id)->update(['claim_number' => $formatted]);
+                $this->attributes['claim_number'] = $formatted;
+            }
+        } catch (Throwable $e) {
+        }
+
+        return $formatted;
+    }
 
     public function getApprovedAmountAttribute(): ?float
     {

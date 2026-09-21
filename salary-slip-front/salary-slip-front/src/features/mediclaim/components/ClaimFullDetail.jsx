@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { FileText, Receipt, ClipboardList, Gavel, Stethoscope } from "lucide-react";
+import { FileText, Receipt, ClipboardList, Gavel, Stethoscope, Check, CheckCircle2, Eye, X, XCircle } from "lucide-react";
+import toast from "react-hot-toast";
 import { CollapsibleSection } from "../../../components/ui/Drawer";
 import DocumentViewerModal from "../../../components/documents/DocumentViewerModal";
 import { useAuth } from "../../../context/AuthContext";
@@ -27,7 +28,42 @@ export default function ClaimFullDetail({ claimId }) {
   const { user } = useAuth();
   const accessToken = user?.accessToken;
   const tokenType = user?.tokenType;
-  const requestKey = claimId && accessToken ? `${claimId}|${accessToken}|${tokenType ?? ""}` : null;
+  const [reloadToken, setReloadToken] = useState(0);
+  const [actionDocId, setActionDocId] = useState(null);
+  const [actionType, setActionType] = useState(null);
+  const requestKey = claimId && accessToken ? `${claimId}|${accessToken}|${tokenType ?? ""}|${reloadToken}` : null;
+
+  const handleApproveDocument = async (docId) => {
+    if (!docId || actionDocId) return;
+    setActionDocId(docId);
+    setActionType("approve");
+    try {
+      await mediclaimApi.approveClaimDocument(claimId, docId, accessToken, tokenType);
+      toast.success("Document approved successfully.");
+      setReloadToken((t) => t + 1);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || err?.message || "Failed to approve document.");
+    } finally {
+      setActionDocId(null);
+      setActionType(null);
+    }
+  };
+
+  const handleDenyDocument = async (docId) => {
+    if (!docId || actionDocId) return;
+    setActionDocId(docId);
+    setActionType("deny");
+    try {
+      await mediclaimApi.denyClaimDocument(claimId, docId, accessToken, tokenType);
+      toast.success("Document denied successfully.");
+      setReloadToken((t) => t + 1);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || err?.message || "Failed to deny document.");
+    } finally {
+      setActionDocId(null);
+      setActionType(null);
+    }
+  };
   const [result, setResult] = useState({ key: null, claim: null, documents: [], error: null });
   const [viewerDoc, setViewerDoc] = useState(null);
 
@@ -176,17 +212,76 @@ export default function ClaimFullDetail({ claimId }) {
           <p className="py-2 text-center text-xs text-gray-400">No documents uploaded yet.</p>
         ) : (
           <div className="space-y-2">
-            {documents.map((doc) => (
-              <button
-                key={doc.documentId ?? doc.id}
-                type="button"
-                onClick={() => setViewerDoc(doc)}
-                className="flex w-full items-center justify-between rounded-lg border border-gray-100 px-3 py-2 text-left text-sm hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-700/40"
-              >
-                <span className="text-gray-700 dark:text-gray-200">{doc.documentLabel || doc.documentType}</span>
-                <span className="text-xs text-gray-400">{doc.status || "View"}</span>
-              </button>
-            ))}
+            {documents.map((doc) => {
+              const docId = doc.documentId ?? doc.id;
+              const docStatus = (doc.status || "ACTIVE").toUpperCase();
+              const isApproved = docStatus === "APPROVED";
+              const isDenied = docStatus === "DENIED" || docStatus === "REJECTED";
+              const isActive = !isApproved && !isDenied;
+
+              return (
+                <div
+                  key={docId}
+                  className="flex items-center justify-between gap-3 rounded-lg border border-gray-100 bg-white px-3 py-2.5 text-sm hover:bg-gray-50/70 dark:border-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700/40"
+                >
+                  <div
+                    onClick={() => setViewerDoc(doc)}
+                    className="min-w-0 flex-1 cursor-pointer"
+                  >
+                    <span className="truncate font-medium text-gray-800 hover:text-brand-600 dark:text-gray-200 dark:hover:text-brand-400">
+                      {doc.documentLabel || doc.documentType}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-shrink-0 items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setViewerDoc(doc)}
+                      className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+                    >
+                      <Eye size={12} />
+                      View
+                    </button>
+
+                    {isActive && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => handleApproveDocument(docId)}
+                          disabled={actionDocId === docId}
+                          className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white shadow-sm hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-1 disabled:opacity-50"
+                        >
+                          <Check size={12} />
+                          {actionDocId === docId && actionType === "approve" ? "Approving..." : "Approve"}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDenyDocument(docId)}
+                          disabled={actionDocId === docId}
+                          className="inline-flex items-center gap-1 rounded-md bg-red-600 px-2.5 py-1 text-xs font-medium text-white shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-1 disabled:opacity-50"
+                        >
+                          <X size={12} />
+                          {actionDocId === docId && actionType === "deny" ? "Denying..." : "Deny"}
+                        </button>
+                      </>
+                    )}
+
+                    {isApproved && (
+                      <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                        <CheckCircle2 size={14} className="text-emerald-600 dark:text-emerald-400" /> Approved
+                      </span>
+                    )}
+
+                    {isDenied && (
+                      <span className="inline-flex items-center gap-1 text-xs font-semibold text-red-600 dark:text-red-400">
+                        <XCircle size={14} className="text-red-600 dark:text-red-400" /> Denied
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </CollapsibleSection>

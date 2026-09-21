@@ -1,3 +1,6 @@
+import { AllCommunityModule, ModuleRegistry } from "ag-grid-community";
+ModuleRegistry.registerModules([AllCommunityModule]);
+
 /* global __APP_COLOR__ */
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'

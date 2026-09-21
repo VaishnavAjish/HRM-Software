@@ -15,6 +15,7 @@ use App\Services\Documents\DocumentAuthorizer;
 use App\Services\Documents\DocumentService;
 use App\Services\Mediclaim\ClaimWorkflowService;
 use App\Support\DocumentType;
+use App\Support\MediclaimActivityLogSupport;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
@@ -155,6 +156,101 @@ class ClaimDocumentController extends Controller
                 'error' => ['code' => $e->errorCode, 'message' => $e->getMessage()],
             ], $e->status);
         }
+    }
+
+
+    public function approve(Request $request, int $claim, int $document): JsonResponse
+    {
+        $actor = auth('api')->user();
+        $model = MediclaimClaim::visibleTo($actor)->find($claim);
+
+        if (! $model) {
+            return $this->missing('Claim not found.');
+        }
+
+        $link = MediclaimDocumentLink::query()
+            ->where('linkable_type', MediclaimClaim::class)
+            ->where('linkable_id', $model->id)
+            ->where('document_id', $document)
+            ->first();
+
+        if (! $link) {
+            return $this->missing('Document not found on this claim.');
+        }
+
+        $doc = Document::find($document);
+        if (! $doc) {
+            return $this->missing('Document not found.');
+        }
+
+        $doc->status = Document::STATUS_APPROVED;
+        $doc->updated_by = $actor?->id;
+        $doc->save();
+
+        if (class_exists(MediclaimActivityLogSupport::class)) {
+            MediclaimActivityLogSupport::log(
+                $actor,
+                'CLAIM_DOCUMENT_APPROVED',
+                'mediclaim_claim',
+                $model->id,
+                ['document_id' => $doc->id, 'document_type' => $doc->document_type],
+                null,
+                "Document {$doc->document_label} approved.",
+                $model->company_code
+            );
+        }
+
+        return $this->ok([
+            'message' => 'Document approved successfully.',
+            'document' => $this->presentLink($link->fresh(['document.currentVersionRecord']), $actor),
+        ]);
+    }
+
+    public function deny(Request $request, int $claim, int $document): JsonResponse
+    {
+        $actor = auth('api')->user();
+        $model = MediclaimClaim::visibleTo($actor)->find($claim);
+
+        if (! $model) {
+            return $this->missing('Claim not found.');
+        }
+
+        $link = MediclaimDocumentLink::query()
+            ->where('linkable_type', MediclaimClaim::class)
+            ->where('linkable_id', $model->id)
+            ->where('document_id', $document)
+            ->first();
+
+        if (! $link) {
+            return $this->missing('Document not found on this claim.');
+        }
+
+        $doc = Document::find($document);
+        if (! $doc) {
+            return $this->missing('Document not found.');
+        }
+
+        $doc->status = Document::STATUS_DENIED;
+        $doc->updated_by = $actor?->id;
+        $doc->save();
+
+        if (class_exists(MediclaimActivityLogSupport::class)) {
+            MediclaimActivityLogSupport::log(
+                $actor,
+                'CLAIM_DOCUMENT_DENIED',
+                'mediclaim_claim',
+                $model->id,
+                ['document_id' => $doc->id, 'document_type' => $doc->document_type],
+                null,
+                "Document {$doc->document_label} denied.",
+                $model->company_code
+            );
+        }
+
+        return $this->ok([
+            'message' => 'Document denied successfully.',
+            'document' => $this->presentLink($link->fresh(['document.currentVersionRecord']), $actor),
+        ]);
     }
 
     private function presentLink(MediclaimDocumentLink $link, ?User $actor): array

@@ -2,76 +2,47 @@
 
 namespace Tests\Feature\Mediclaim;
 
+use App\Models\User;
 use App\Support\MediclaimClaimNumber;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
 /**
- * MediclaimClaimNumber::next() — per-company+year counter, exact format
- * `MC-{COMPANY}-{YEAR}-{000001}` (confirmed by reading
- * app/Support/MediclaimClaimNumber.php directly), keyed by
- * `period_key = "{COMPANY}:{YEAR}"` against `mediclaim_claim_number_counters`.
+ * MediclaimClaimNumber::next() - company + branch prefix and employee code formatting:
+ * - Nidhi Impex + Shreeji -> NS-{EMP_CODE}-{YYYY-MM-DD}
+ * - Nidhi Impex + Ichapur -> NI-{EMP_CODE}-{YYYY-MM-DD}
+ * - Silver Star + Daduk   -> SD-{EMP_CODE}-{YYYY-MM-DD}
+ * - Silver Star + Ichapur -> SI-{EMP_CODE}-{YYYY-MM-DD}
  */
 class MediclaimClaimNumberAllocationTest extends TestCase
 {
     use RefreshDatabase;
 
     #[Test]
-    public function twenty_sequential_allocations_in_one_company_are_strictly_unique_and_ordered(): void
+    public function resolves_correct_prefix_for_company_and_branch(): void
     {
-        $numbers = [];
-        for ($i = 0; $i < 20; $i++) {
-            $numbers[] = MediclaimClaimNumber::next('nidhi-impex');
-        }
-
-        $this->assertCount(20, array_unique($numbers), 'All 20 allocations must be unique.');
-
-        $year = (int) date('Y');
-        for ($i = 0; $i < 20; $i++) {
-            $expected = sprintf('MC-NIDHI-IMPEX-%d-%06d', $year, $i + 1);
-            $this->assertSame($expected, $numbers[$i]);
-        }
+        $this->assertSame('NS', MediclaimClaimNumber::resolvePrefix('Nidhi Impex', 'Shreeji'));
+        $this->assertSame('NI', MediclaimClaimNumber::resolvePrefix('Nidhi Impex', 'Ichapur'));
+        $this->assertSame('SD', MediclaimClaimNumber::resolvePrefix('Silver Star', 'Daduk'));
+        $this->assertSame('SI', MediclaimClaimNumber::resolvePrefix('Silver Star', 'Ichapur'));
     }
 
     #[Test]
-    public function numbering_is_scoped_per_company_two_companies_do_not_share_a_sequence(): void
+    public function allocates_claim_number_with_exact_requested_format(): void
     {
-        $year = (int) date('Y');
+        $date = '2026-09-21';
 
-        $nidhiFirst = MediclaimClaimNumber::next('nidhi-impex');
-        $silverFirst = MediclaimClaimNumber::next('silver-star');
-        $nidhiSecond = MediclaimClaimNumber::next('nidhi-impex');
-        $silverSecond = MediclaimClaimNumber::next('silver-star');
+        $u1 = new User(['emp_code' => '1001', 'company_code' => 'nidhi-impex', 'unit' => 'Shreeji']);
+        $this->assertSame('NS-1001-2026-09-21', MediclaimClaimNumber::next('nidhi-impex', $u1, $date));
 
-        $this->assertSame("MC-NIDHI-IMPEX-{$year}-000001", $nidhiFirst);
-        $this->assertSame("MC-SILVER-STAR-{$year}-000001", $silverFirst, 'A different company must start its own sequence at 1, unaffected by the first company already having allocated one.');
-        $this->assertSame("MC-NIDHI-IMPEX-{$year}-000002", $nidhiSecond);
-        $this->assertSame("MC-SILVER-STAR-{$year}-000002", $silverSecond);
-    }
+        $u2 = new User(['emp_code' => '1002', 'company_code' => 'nidhi-impex', 'unit' => 'Ichapur']);
+        $this->assertSame('NI-1002-2026-09-21', MediclaimClaimNumber::next('nidhi-impex', $u2, $date));
 
-    #[Test]
-    public function numbering_is_also_scoped_per_year(): void
-    {
-        $thisYearFirst = MediclaimClaimNumber::next('nidhi-impex', 2026);
-        $nextYearFirst = MediclaimClaimNumber::next('nidhi-impex', 2027);
-        $thisYearSecond = MediclaimClaimNumber::next('nidhi-impex', 2026);
+        $u3 = new User(['emp_code' => '2001', 'company_code' => 'silver-star', 'unit' => 'Daduk']);
+        $this->assertSame('SD-2001-2026-09-21', MediclaimClaimNumber::next('silver-star', $u3, $date));
 
-        $this->assertSame('MC-NIDHI-IMPEX-2026-000001', $thisYearFirst);
-        $this->assertSame('MC-NIDHI-IMPEX-2027-000001', $nextYearFirst, 'A different year for the SAME company must start its own sequence at 1.');
-        $this->assertSame('MC-NIDHI-IMPEX-2026-000002', $thisYearSecond);
-    }
-
-    #[Test]
-    public function the_underlying_counter_table_holds_one_row_per_period_key(): void
-    {
-        MediclaimClaimNumber::next('nidhi-impex', 2026);
-        MediclaimClaimNumber::next('nidhi-impex', 2026);
-        MediclaimClaimNumber::next('nidhi-impex', 2027);
-        MediclaimClaimNumber::next('silver-star', 2026);
-
-        $this->assertDatabaseHas('mediclaim_claim_number_counters', ['period_key' => 'NIDHI-IMPEX:2026', 'current_value' => 2]);
-        $this->assertDatabaseHas('mediclaim_claim_number_counters', ['period_key' => 'NIDHI-IMPEX:2027', 'current_value' => 1]);
-        $this->assertDatabaseHas('mediclaim_claim_number_counters', ['period_key' => 'SILVER-STAR:2026', 'current_value' => 1]);
+        $u4 = new User(['emp_code' => '2002', 'company_code' => 'silver-star', 'unit' => 'Ichapur']);
+        $this->assertSame('SI-2002-2026-09-21', MediclaimClaimNumber::next('silver-star', $u4, $date));
     }
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
-import { Trash2, Search, Download, RefreshCw, Columns, Check, Calendar, Filter } from "lucide-react";
+import { Trash2, Search, Download, RefreshCw, Columns } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAuth } from "../../../../../context/AuthContext";
 import { mediclaimApi } from "../../../services/mediclaimApi";
@@ -9,13 +9,24 @@ import { downloadCSV } from "../../../../../utils/exportUtils";
 import ClaimsTable from "../../../components/ClaimsTable";
 import ClaimStatusBadge from "../../../components/ClaimStatusBadge";
 import ClaimDetailDrawer from "../../../components/ClaimDetailDrawer";
-import { CLAIM_STATUS_LIST, CLAIM_STATUS_META } from "../../../models/claimStatus";
+import { CLAIM_STATUS } from "../../../models/claimStatus";
 import { FINALIZED_CLAIM_STATUSES } from "../../../models/reviewStages";
-import { formatCurrencyINR, formatClaimDate, getFinancialYearLabel } from "../../../utils/formatters";
+import { formatCurrencyINR, formatClaimDate, getFinancialYearLabel, formatClaimNumber } from "../../../utils/formatters";
 
 const PER_PAGE = 15;
 
 const FINALIZED_FILTER_VALUE = FINALIZED_CLAIM_STATUSES.join(",");
+
+const STATUS_OPTIONS = [
+  { value: CLAIM_STATUS.APPROVED, label: "Approved" },
+  { value: CLAIM_STATUS.SUBMITTED, label: "Submitted" },
+  { value: CLAIM_STATUS.PARTIALLY_APPROVED, label: "Partially Approved" },
+  { value: CLAIM_STATUS.REJECTED, label: "Rejected" },
+  { value: CLAIM_STATUS.SETTLEMENT_PENDING, label: "Settlement Pending" },
+  { value: CLAIM_STATUS.SETTLED, label: "Settled" },
+  { value: CLAIM_STATUS.CLOSED, label: "Closed" },
+  { value: CLAIM_STATUS.DRAFT, label: "Draft" },
+];
 
 const inputClass =
   "rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-xs text-gray-900 dark:text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none";
@@ -59,7 +70,7 @@ export default function ClaimsTab() {
 
   const exportCsv = () => {
     const rowsToExport = result.rows.map((row) => ({
-      "Claim #": row.claimNumber || row.claim_number || "",
+      "Claim #": formatClaimNumber(row),
       Employee: row.employeeName || row.employee_snapshot?.name || "",
       Patient: row.patientName || row.patient_snapshot?.name || "",
       "Claimed Amount": row.totalClaimedAmount ?? row.total_claimed_amount ?? "",
@@ -72,7 +83,7 @@ export default function ClaimsTab() {
 
   const deleteClaim = async (row) => {
     const id = row.id ?? row.claimId;
-    const label = row.claimNumber || row.claim_number || "this claim";
+    const label = formatClaimNumber(row) || "this claim";
     if (!window.confirm(`Permanently delete ${label}? This cannot be undone.`)) return;
 
     setDeletingId(id);
@@ -267,10 +278,9 @@ export default function ClaimsTab() {
             value={status}
             onChange={(e) => { setStatus(e.target.value); setPage(1); }}
           >
-            <option value={FINALIZED_FILTER_VALUE}>Finalized (Default)</option>
             <option value="">All Statuses</option>
-            {CLAIM_STATUS_LIST.map((s) => (
-              <option key={s} value={s}>{CLAIM_STATUS_META[s]?.label || s}</option>
+            {STATUS_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
             ))}
           </select>
 

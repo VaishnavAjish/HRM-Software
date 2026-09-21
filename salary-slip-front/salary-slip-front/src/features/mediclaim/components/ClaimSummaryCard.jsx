@@ -1,5 +1,5 @@
 import ClaimStatusBadge from "./ClaimStatusBadge";
-import { formatCurrencyINR, formatClaimDate } from "../utils/formatters";
+import { formatCurrencyINR, formatClaimDate, formatClaimNumber } from "../utils/formatters";
 
 /**
  * Compact claim header: claim number, patient name, status badge, and
@@ -10,7 +10,7 @@ import { formatCurrencyINR, formatClaimDate } from "../utils/formatters";
 export default function ClaimSummaryCard({ claim, className = "" }) {
   if (!claim) return null;
 
-  const claimNumber = claim.claimNumber || claim.claim_number || "Draft";
+  const claimNumber = (claim.status === "DRAFT" && !claim.claimNumber && !claim.claim_number) ? "Draft" : formatClaimNumber(claim);
   const patientName = claim.patientName || claim.patient_snapshot?.name || claim.patient?.name || "—";
   const relationship = claim.relationshipType || claim.relationship_type;
   const claimedAmount = claim.totalClaimedAmount ?? claim.total_claimed_amount;

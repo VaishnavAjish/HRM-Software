@@ -368,7 +368,7 @@ export function AuthProvider({ children }) {
     [],
   );
 
-  const login = useCallback(async (email, password, company_code) => {
+  const login = useCallback(async (email, password, company_code, user_id) => {
     setLoading(true);
     try {
       // Drop whatever the previous user left behind *before* the new identity is
@@ -377,7 +377,7 @@ export function AuthProvider({ children }) {
       setUser(null);
       clearStoredSession();
 
-      const data = await authApi.login(email.trim(), password, company_code);
+      const data = await authApi.login(email.trim(), password, company_code, user_id);
       const apiUser =
         data?.login || data?.data || data?.user || data?.employee || data;
       let loggedInUser = buildAuthUser(apiUser, {}, data);

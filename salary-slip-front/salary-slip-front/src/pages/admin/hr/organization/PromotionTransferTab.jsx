@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import {
-  Plus, RefreshCw, Eye, Check, X, Clock, Power, ArrowRightLeft,
+  Plus, RefreshCw, Eye, Check, X, ArrowRightLeft,
 } from "lucide-react";
 import Badge from "../../../../components/ui/Badge";
 import Button from "../../../../components/ui/Button";
@@ -13,6 +13,7 @@ import { useAuth } from "../../../../context/AuthContext";
 import { useAuthorization } from "../../../../hooks/useAuthorization";
 import { organizationApi } from "../../../../features/organization/services/organizationApi";
 import { workforceApi } from "../../../../features/workforce/services/workforceApi";
+
 
 const inputClass =
   "w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500";
@@ -48,7 +49,7 @@ function Th({ children, className = "" }) {
   return <th scope="col" className={`px-4 py-3 whitespace-nowrap ${className}`}>{children}</th>;
 }
 
-export default function PromotionTransferTab() {
+function PromotionTransferTab() {
   const { user } = useAuth();
   const { can } = useAuthorization();
   const token = user?.accessToken;
@@ -77,7 +78,6 @@ export default function PromotionTransferTab() {
   const canSubmit = can("org.change.submit");
   const canApprove = can("org.change.approve");
   const canReject = can("org.change.reject");
-  const canApply = can("org.change.apply");
 
   const reload = useCallback(() => {
     setLoading(true);
@@ -100,15 +100,56 @@ export default function PromotionTransferTab() {
     Promise.all([
       organizationApi.orgUnits({ includeInactive: false }, token, tokenType),
       organizationApi.globalPositions({}, token, tokenType),
-      workforceApi.designation.list({}, token, tokenType),
-    ]).then(([unitsRes, globalPosRes, wfDesigRes]) => {
+      workforceApi.designation.list({}, token, tokenType).catch(() => null),
+      typeof organizationApi.salaryDesignations === "function"
+        ? organizationApi.salaryDesignations(token, tokenType).catch(() => null)
+        : Promise.resolve(null),
+    ]).then(([unitsRes, globalPosRes, wfDesigRes, salaryDesigRes]) => {
       if (!active) return;
       setUnits(unitsRes?.data ?? []);
       const globalPosList = globalPosRes?.data ?? [];
       setAllPositions(globalPosList);
       setPositions(globalPosList);
-      const wfList = wfDesigRes?.data ?? [];
-      setDesignations(wfList.length > 0 ? wfList : globalPosList);
+
+      const desigMap = new Map();
+      const sList = salaryDesigRes?.data ?? (Array.isArray(salaryDesigRes) ? salaryDesigRes : []);
+      sList.forEach((d) => {
+        const title = typeof d === "string" ? d : (d.title || d.name || d.designation_name);
+        if (title && !desigMap.has(title.trim().toLowerCase())) {
+          desigMap.set(title.trim().toLowerCase(), {
+            id: d.id || title.trim(),
+            title: title.trim(),
+            name: title.trim(),
+          });
+        }
+      });
+
+      const wfList = wfDesigRes?.data ?? (Array.isArray(wfDesigRes) ? wfDesigRes : []);
+      wfList.forEach((d) => {
+        const title = typeof d === "string" ? d : (d.title || d.name);
+        if (title && !desigMap.has(title.trim().toLowerCase())) {
+          desigMap.set(title.trim().toLowerCase(), {
+            id: d.id || title.trim(),
+            title: title.trim(),
+            name: title.trim(),
+          });
+        }
+      });
+
+      // Also include standalone positions where organization_unit_id is null/empty if needed
+      globalPosList.forEach((p) => {
+        const title = p.title || p.name;
+        if (title && !p.organizationUnitId && !desigMap.has(title.trim().toLowerCase())) {
+          desigMap.set(title.trim().toLowerCase(), {
+            id: p.id,
+            title: title.trim(),
+            name: title.trim(),
+          });
+        }
+      });
+
+      const finalDesigs = Array.from(desigMap.values());
+      setDesignations(finalDesigs.length > 0 ? finalDesigs : globalPosList);
     }).catch((err) => toast.error(err.message || "Could not load form options"));
     return () => { active = false; };
   }, [token, tokenType, showCreate]);
@@ -192,12 +233,21 @@ export default function PromotionTransferTab() {
 
     setBusy(true);
     try {
+      const selectedDesig = designations.find((d) => String(d.id) === String(form.designationId));
+      const desigTitle = selectedDesig?.title || selectedDesig?.name || (typeof form.designationId === "string" ? form.designationId : "");
+      const selectedPos = positions.find((p) => String(p.id) === String(form.positionId));
+      const posTitle = selectedPos?.title || selectedPos?.name || "";
+
       await organizationApi.createPromotionTransfer({
         employeeId: Number(form.employeeId),
         currentAssignmentId: form.currentAssignmentId ? Number(form.currentAssignmentId) : undefined,
         organizationUnitId: Number(form.organizationUnitId),
         positionId: Number(form.positionId),
-        designationId: form.designationId ? Number(form.designationId) : undefined,
+        positionTitle: posTitle,
+        targetRole: posTitle,
+        designationId: form.designationId && !isNaN(Number(form.designationId)) ? Number(form.designationId) : undefined,
+        designationTitle: desigTitle,
+        targetDesignation: desigTitle,
         managerUserId: Number(form.managerUserId),
         effectiveFrom: form.effectiveFrom,
         effectiveTo: form.effectiveTo || undefined,
@@ -240,7 +290,7 @@ export default function PromotionTransferTab() {
     }
   };
 
-  const positionOptions = useMemo(() => positions, [positions]);
+
 
   return (
     <div className="min-w-0 max-w-full space-y-5">
@@ -392,7 +442,7 @@ export default function PromotionTransferTab() {
                 
               >
                 <option value="">Select...</option>
-                {positionOptions.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
+                {positions.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
               </select>
               {errors.positionId && <p className="mt-1 text-xs text-red-600">{errors.positionId}</p>}
             </div>
@@ -565,3 +615,5 @@ export default function PromotionTransferTab() {
     </div>
   );
 }
+
+export default PromotionTransferTab;

@@ -55,6 +55,7 @@ const REASON_ACTIONS = {
   deactivate: { title: "Deactivate user", verb: "Deactivate", required: true, danger: true },
   activate: { title: "Activate user", verb: "Activate", required: false },
   delete: { title: "Delete user", verb: "Delete", required: false, danger: true },
+  "sync-employee": { title: "Restore / Move User to Employee Tab", verb: "Restore Employee", required: false },
 };
 
 function formatDate(value, withTime = false) {
@@ -170,6 +171,7 @@ function RowMenu({ user, can, onAction }) {
     { key: "unlock", label: "Unlock User", icon: Unlock, allowed: can("admin.user.unlock") && user.status === "LOCKED" },
     { key: "activate", label: "Activate", icon: UserCheck, allowed: can("admin.user.update") && user.status !== "ACTIVE" },
     { key: "deactivate", label: "Deactivate", icon: UserX, allowed: can("admin.user.update") && user.status === "ACTIVE" },
+    { key: "sync-employee", label: "Restore to Employee Tab", icon: Briefcase, allowed: can("admin.user.update") },
     { key: "audit", label: "View Audit Logs", icon: History, allowed: true },
     { key: "delete", label: "Delete", icon: Trash2, allowed: can("admin.user.delete") && user.status !== "DELETED", danger: true },
   ].filter((item) => item.allowed);
@@ -466,6 +468,15 @@ function ActionDialog({ dialog, options, token, tokenType, busy, setBusy, onDone
   const [loadingUser, setLoadingUser] = useState(prefills);
   const [prefillFailed, setPrefillFailed] = useState(false);
 
+  const [syncForm, setSyncForm] = useState(() => ({
+    targetStage: "employee",
+    empCode: target?.empCode || "",
+    companyCode: target?.companyCode || target?.employment?.companyCode || "",
+    unit: target?.unit || target?.employment?.unit || "",
+    department: target?.department || target?.employment?.department || "",
+    designation: target?.designation || target?.employment?.designation || "",
+  }));
+
   useEffect(() => {
     if (!target || !prefills) return undefined;
 
@@ -498,6 +509,14 @@ function ActionDialog({ dialog, options, token, tokenType, busy, setBusy, onDone
         });
         setRoleIds((detail?.roles ?? []).map((role) => role.id));
         setPermissionRows(detail?.directPermissions ?? []);
+        setSyncForm((prev) => ({
+          ...prev,
+          empCode: detail?.empCode || prev.empCode,
+          companyCode: detail?.companyCode || detail?.employment?.companyCode || prev.companyCode,
+          unit: detail?.unit || detail?.employment?.unit || prev.unit,
+          department: detail?.department || detail?.employment?.department || prev.department,
+          designation: detail?.designation || detail?.employment?.designation || prev.designation,
+        }));
       })
       .catch((err) => { if (active) { setPrefillFailed(true); toast.error(err.message || "Could not load the user"); } })
       .finally(() => { if (active) setLoadingUser(false); });
@@ -599,6 +618,26 @@ function ActionDialog({ dialog, options, token, tokenType, busy, setBusy, onDone
       if (dialog.kind === "delete") {
         await adminUserApi.remove(target.id, reason || null, token, tokenType);
         toast.success("User deleted");
+        onDone();
+        return;
+      }
+
+      if (dialog.kind === "sync-employee") {
+        await adminUserApi.action(
+          target.id,
+          "sync-employee",
+          {
+            targetStage: syncForm.targetStage,
+            empCode: syncForm.empCode || form.empCode || null,
+            companyCode: syncForm.companyCode || form.companyCode || null,
+            unit: syncForm.unit || form.unit || null,
+            department: syncForm.department || form.department || null,
+            designation: syncForm.designation || form.designation || null,
+            reason: reason || null,
+          },
+          token, tokenType,
+        );
+        toast.success(`User restored to ${syncForm.targetStage} tab successfully`);
         onDone();
         return;
       }

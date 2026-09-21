@@ -8,13 +8,21 @@ use Illuminate\Database\Eloquent\Model;
 class Document extends Model
 {
     public const STATUS_ACTIVE      = 'ACTIVE';
+    public const STATUS_APPROVED    = 'APPROVED';
+    public const STATUS_DENIED      = 'DENIED';
     public const STATUS_QUARANTINED = 'QUARANTINED';
     public const STATUS_REJECTED    = 'REJECTED';
     public const STATUS_ARCHIVED    = 'ARCHIVED';
     public const STATUS_DELETED     = 'DELETED';
 
     /** Only these may ever produce a view/download URL. */
-    public const READABLE_STATUSES = [self::STATUS_ACTIVE, self::STATUS_ARCHIVED];
+    public const READABLE_STATUSES = [
+        self::STATUS_ACTIVE,
+        self::STATUS_APPROVED,
+        self::STATUS_DENIED,
+        self::STATUS_REJECTED,
+        self::STATUS_ARCHIVED,
+    ];
 
     protected $fillable = [
         'organization_code', 'owner_type', 'owner_id', 'owner_ref', 'user_id',
