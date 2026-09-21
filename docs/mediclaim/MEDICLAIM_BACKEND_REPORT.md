@@ -1,128 +1,809 @@
-# HRMS Mediclaim Module — Backend Report
+# HRMS Mediclaim Module — Complete Backend Report
 
-**Source:** `salary-slip-bac/` (Laravel, PHP 8.2), working tree as of 2026-09-21 (includes uncommitted edits to `Admin/ClaimController.php`).
-**Purpose of this document:** a build-ready specification of the Mediclaim backend so a new application module can be built to the same behaviour. It was produced by reading the source (routes, controllers, services, models, migrations, tests) — it was **not** produced by running the app, and the test suite was **not** executed.
-**Companion:** `MEDICLAIM_FRONTEND_REPORT.md` (how the UI consumes this API).
+| | |
+|---|---|
+| **Backend** | `salary-slip-bac/` — Laravel, PHP 8.2 |
+| **Basis** | Working tree read on 2026-09-21, **including uncommitted edits made by another developer during this work** (`routes/mediclaim.php`, `ClaimWorkflowService`, `MediclaimClaim`, `MediclaimClaimNumber`, `ClaimController`, `ClaimDocumentController`, `Admin/ClaimController`) |
+| **Method** | Source reading only. The app was **not** run and the PHPUnit suite was **not** executed. Every rule below cites the code it comes from; anything unverifiable is listed as an open question. |
+| **Base URL** | `/api/v1/mediclaim` (79 routes) |
+| **Purpose** | Build-ready specification so a new application module can reproduce this module |
+| **Companion** | `MEDICLAIM_FRONTEND_REPORT.md` |
 
----
+## How this document is organised
 
-## How to read this report
+**Parts 1–9 (this section, written from a direct re-read of the code) are the authority.** The Appendices (A–D) are the deep per-route/per-table reference produced by parallel code readers; they were generated from a slightly earlier state of the tree, so where an appendix disagrees with Parts 1–9, **Parts 1–9 win** (Part 8 lists every known difference).
 
-| Part | Content | Use it for |
-|---|---|---|
-| 0 (this page) | Executive summary, actors, live workflow, route inventory, consolidated defects, rebuild guidance | Orientation and planning |
-| 1 | Foundation: wiring, middleware, envelope & errors, **database schema**, models & visibility rules, **permissions**, seeds, support classes, documents integration, tests | Building the data layer, auth and conventions |
-| 2 | Business logic: **claim state machine**, amount rules, eligibility, members, cards, PDFs, notifications, mail, scheduled commands, constants cheat-sheet | Building the domain/service layer |
-| 3 | **Routes A** — public, self-service (`me/*`), manager (`team/*`), shared claim workflow, document upload, review queue (28 routes) | Building employee/manager/reviewer APIs |
-| 4 | **Routes B** — admin/HR: claims, employees, enrollments, policies, hospitals, contacts, document requirements, intimations, member changes (28 routes) | Building admin CRUD APIs |
-| 5 | **Routes C** — admin/HR: rule books, languages, reviewer assignments, settlements, reports, audit (20 routes) | Building config, finance and reporting APIs |
-
-Every route section has the same labelled fields: Purpose · Controller@method (file:line) · Middleware & permissions · Path params · Query params · Request body (verbatim validation rules) · Authorization/scoping · Processing steps · Success response · Error responses · Frontend usage.
-
-Base URL of every route: **`/api/v1/mediclaim`** (the api prefix comes from `bootstrap/app.php`; `routes/api.php` ends with `require __DIR__.'/mediclaim.php'`). Route inventory count verified against `routes/mediclaim.php`: **76 routes** = 28 (Part 3) + 28 (Part 4) + 20 (Part 5).
-
----
-
-## 0.1 What the module does
-
-Employee medical-insurance ("mediclaim") administration for a company:
-
-1. **Policy & coverage** — HR defines a policy with versions; each eligible employee gets an *enrollment* under a policy version with a **₹3,00,000 per-enrollment, per-financial-year floater**.
-2. **Members & cards** — employees manage covered family members (changes go through a change-request/approval flow) and get a Mediclaim ID card with a QR that opens a public verification page.
-3. **Rule book & onboarding** — a multilingual rule book must be acknowledged (onboarding gate) before use.
-4. **Intimations** — planned/emergency hospitalisation is intimated to the office before or alongside a claim.
-5. **Claims** — draft → submit (expenses, documents, declaration) → review → approve/reject/partial → settlement (payment record) → settled. Returns for correction, withdrawal, delayed discharge follow-up ("finalize treatment") and document deadlines exist.
-6. **Reviews** — reviewer queue, decisions, decision history and a full event timeline.
-7. **Admin** — hospital network directory (with contacts/photos), document requirement configuration, reviewer assignments, reports (JSON dashboard, 11 detail reports, CSV export), audit log.
-8. **Automation** — three daily commands (expiry reminders, overdue-review escalation, missing-document reminders), email + in-app notifications with de-duplication.
-
-## 0.2 Actors
-
-| Actor | How identified | Typical permission codes |
-|---|---|---|
-| Employee | `jwt.auth` user with employee record | `self.mediclaim.*` |
-| Manager | has reporting subtree (`ReportingSubtreeResolver`) | `mediclaim.team_claim.read`, `mediclaim.claim.manager.decide` |
-| Reviewer / approver | reviewer-assignment row or `mediclaim.claim.approve` | `mediclaim.claim.approve`, `*.decide` |
-| HR / admin | company admin roles | `mediclaim.enrollment.*`, `policy.*`, `hospital.*`, `rule_book.*`, `settlement.*`, `report.*`, `audit.read` |
-| Super admin | `users.role == 0` or `is_super_admin` | bypasses `permission:` middleware |
-| Anonymous | none | only `GET cards/verify/{token}` (throttled 20/min) |
-
-Full permission table (code → meaning → seeded to which roles → routes) is in Part 1 §5.
-
-## 0.3 The live claim workflow (important)
-
-The code contains **two** workflows. Only the simplified one is reachable through HTTP today:
-
-- **Live (simplified, single approval):** `DRAFT → SUBMITTED → (APPROVED | PARTIALLY_APPROVED | REJECTED) → SETTLEMENT_PENDING → SETTLED`, with `RETURNED_FOR_CORRECTION` and `WITHDRAWN` side paths. `POST /reviews/{claim}/decision` maps both `SUBMITTED` and `MANAGER_REVIEW` to `ClaimWorkflowService::approveDirect()` (`ReviewQueueController::STAGE_METHODS`, verified in source).
-- **Legacy (five-stage chain):** manager → coordinator → committee → HR eligibility → director → settlement. Statuses `MANAGER_REVIEW`, `COORDINATOR_VERIFICATION`, `COMMITTEE_RECOMMENDATION`, `HR_ELIGIBILITY_VERIFICATION`, `DIRECTOR_FINAL_APPROVAL` still exist in the model and service and in the existing tests, but `managerDecision`, `reassignReviewer` and `cancel` have no controller route.
-
-**Decision for the new application:** implement the simplified flow first; treat the five-stage chain as optional/configurable. Part 2 §1 has the full state diagram and transition table for both.
-
-Claim statuses (from `MediclaimClaim` constants): `DRAFT, SUBMITTED, MANAGER_REVIEW, COORDINATOR_VERIFICATION, COMMITTEE_RECOMMENDATION, HR_ELIGIBILITY_VERIFICATION, DIRECTOR_FINAL_APPROVAL, APPROVED, PARTIALLY_APPROVED, REJECTED, SETTLEMENT_PENDING, SETTLED, CLOSED, RETURNED_FOR_CORRECTION, WITHDRAWN, CANCELLED`.
-Treatment types: `opd, hospitalization, surgery, emergency, tests_only`.
-
-Money rules in one place (details and file:line in Part 2): claimed total = sum of expense lines; approved amount ≤ claimed total; disallowed = claimed − approved; floater cap checked at approval only, per enrollment per financial year; a floater override lifts the cap without comparing its amount. There is **no** co-pay, room-rent cap, sub-limit or per-line approval logic.
-
-## 0.4 Route inventory (76)
-
-| Area | Routes | Part |
-|---|---|---|
-| Public card verify | 1 | 3 |
-| Self-service `me/*` (coverage, rule-book ack, onboarding, members, member-change-requests, cards, intimations, claims) | 11 | 3 |
-| Manager `team/*` | 2 | 3 |
-| Shared claim workflow `claims/{claim}` (show, update, submit, withdraw, discharge, finalize-treatment, confidentiality-ack, return, documents ×2, timeline, decisions) | 12 | 3 |
-| Review queue `reviews/*` | 2 | 3 |
-| Admin: claims (list, delete), employees (list, show, bulk-issue-cards), enrollments (3), policies (5), hospitals (4), hospital contacts (3), document requirements (4), intimations (2), member-change-requests (2) | 28 | 4 |
-| Admin: rule-book-languages (4), rule-books (8), reviewer-assignments (3), settlements (2), reports (2), audit (1) | 20 | 5 |
-
-Row totals: 1 + 11 + 2 + 12 + 2 = 28 (Part 3); 2 + 3 + 3 + 5 + 4 + 3 + 4 + 2 + 2 = 28 (Part 4); 4 + 8 + 3 + 2 + 2 + 1 = 20 (Part 5).
-
-## 0.5 Consolidated defects and risks found while reading
-
-These are observations from source reading — they are **not** verified by running the app. Decide per item whether to reproduce, fix, or drop them in the new build. Each is detailed in the "Open questions" of the relevant part.
-
-**Correctness / contract**
-1. **Report query params never arrive as written** — `mediclaim.normalize_case` snake-cases query keys, but `ReportController` reads `reportType`, `includeSensitive`, `overdueDays`, `withinDays` (camelCase). Verified in source. Only `type` works; sensitive columns can never be unlocked; day thresholds stay at defaults. (Part 5)
-2. **Report CSV export is unreachable from the UI** — the frontend calls `GET /reports` and expects `data.url`; the backend streams CSV from `GET /reports/export`. The frontend also sends `reveal`, which the backend ignores. (Parts 5, F1)
-3. **`POST /settlements`** and **`DELETE /reviewer-assignments/{id}`** — the former has no working UI path; the latter is a frontend call with **no backend route**.
-4. **No decision notification in the live flow** — `approveDirect` outcomes are not mapped in `MediclaimNotifier`, so employees get no notification/email on approve/reject. (Part 2)
-5. **Submit does not check completeness** — `intimation_required_for_planned` and `isNetworkHospital` are never enforced at submit; documents are only enforced at settlement. (Parts 2, 3)
-6. **`GET /claims/{id}` 404s for HR holding only `mediclaim.claim.read`** on claims they don't own/manage/review — `visibleTo` has no company-wide branch. (Part 1 §4)
-7. **`/me/cards` never returns the QR token** the frontend expects; only the employee's own card is auto-issued; `revoke()`/`regenerateIfStale()` have no callers; nothing sets card `expired`; the public verify endpoint ignores expiry. (Parts 2, 3)
-8. **Final claim-form PDF** is generated only on the legacy director approval, though it is a required document. (Part 2)
-9. **Serialization quirk** — eager-loaded relations named like their FK columns (`reviewedBy`, `decidedBy`, `recordedBy`, `publishedBy`) overwrite the FK column in JSON output. (Parts 3–5)
-10. **Age-out reminder** fires ~1 year before the eligibility rule applies. (Part 2)
-11. **Schema mismatch** — `nature_of_illness` validated to 1000 chars but column is `varchar(255)` (would 500 on Postgres). `ScopesCompany` filters on a `unit` column that no mediclaim table defines (500 for role-2 actors or `?unit=`). (Parts 1, 4)
-
-**Security / authorization**
-12. **`permission:` shadow-mode fallback** lets company admins through every `mediclaim.*` route and any employee through every `self.mediclaim.*` route without a DB grant unless enforcement env vars are set. Effective production mode cannot be determined from the repo. (Part 1 §1, §5)
-13. **`mediclaim.rule_book.delete` is granted to every active role in every environment** (migration 000035) and deleting a language cascades to its rule books, items and acknowledgements. (Part 1 §5.3)
-14. **Migration 000031** grants every `mediclaim.*` code to every role in `local`/`testing` — dangerous if such a DB is promoted.
-15. **`company_code` on create bodies is not checked against the actor's companies**; `mediclaim.claim.approve` holders see claims of all companies; claim DELETE has no status guard; hospital DELETE only deactivates (no "in use" guard); duplicate enrollment hits the unique index and returns 500; employee detail exposes `qr_token_hash`.
-16. **Numeric `throttle:N,1`** counters share one key per user across all such routes (framework behaviour, checked in vendor code) — per-route limits are not truly per-route.
-17. **`businessReason` audit field is always null** on Mediclaim routes (middleware renames it before `RequirePermission` reads it).
-
-**Environment**
-18. Project memory notes that `php artisan migrate` from this workspace does not reach the real database; whether all 40+ Mediclaim migrations exist on the live server cannot be verified from code. Run migrations on the real host yourself.
-
-## 0.6 Recommended build order for the new module
-
-1. **Foundations** (Part 1 §1–2, §5): auth guard, permission middleware (OR-list semantics), response envelope, error codes, input-case normalisation (decide once: accept snake_case only, fix the frontend/contract instead of a global rewrite).
-2. **Schema & seeds** (Part 1 §3, §6): create the tables in migration order, seed permissions and the default ₹3,00,000 policy.
-3. **Reference data APIs** (Part 4/5): policies + versions, hospitals + contacts, document requirements, rule books + languages, reviewer assignments.
-4. **Enrollment, members, cards** (Part 3/4 + Part 2 §3–5): eligibility service, member change requests, card issue, public verify.
-5. **Claims core** (Part 2 §1–2, Part 3): number allocation, draft/update/submit, expenses, documents, discharge/finalize-treatment, withdrawal, return.
-6. **Review & settlement** (Part 2, Part 3 reviews, Part 5 settlements): `approveDirect`, floater cap, settlement recording.
-7. **Notifications & jobs** (Part 2 §8–10): notifier with de-dupe, mail, the three scheduled commands.
-8. **Reports & audit** (Part 5): dashboard, detail reports, CSV export, audit log.
-9. **Port tests** (Part 1 §9): the existing feature tests are an executable spec but target the five-stage workflow; rewrite for the simplified flow.
+| Part | Answers |
+|---|---|
+| 1 Module overview | What is this system, who uses it, what tables/services exist |
+| 2 **Claim stages** | Every status, every transition, who can do it, both workflows, returns/withdraw/cancel, discharge & ongoing treatment, visibility, timeline events, notifications |
+| 3 **Amounts & deduction** | Exactly how claimed / approved / disallowed / settled amounts are computed, how the ₹3,00,000 floater is deducted, financial-year reset, worked examples, edge cases |
+| 4 **Hospitals** | Data model, all hospital & contact routes, network membership, how claims use hospitals |
+| 5 **Documents** | Requirement checklist, upload rules, approve/deny, storage, security, how documents gate settlement |
+| 6 Master route list | All 79 routes with permissions and throttles |
+| 7 Claim number format | The new company/branch numbering |
+| 8 What changed since the first report | Three new routes, new claim-number scheme, corrections |
+| 9 Defects & risks | Verified problems to fix or consciously reproduce |
+| Appendix A | Foundation: middleware, envelope, DB schema, models, permissions, seeds |
+| Appendix B | Services, notifications, mail, scheduled jobs |
+| Appendix C | Route reference — self-service, manager, claim workflow, reviews |
+| Appendix D | Route reference — all admin/HR routes |
 
 ---
 
+# Part 1 — Module overview
 
-<!-- ======================= B1-foundation ======================= -->
+Employee medical-insurance administration for a company group (seeded companies: `nidhi-impex`, `silver-star`).
 
-# B1 — Foundation, Data Model & Permissions
+- **Policy** (per company) → **policy versions** (numbered, `draft`/`active`/`archived`, with a free-form JSON `rules` object and effective dates).
+- **Enrollment** — one row per employee per policy version. Created automatically once the employee clears the joining waiting period (`resolveOrCreateEnrollment`) or manually by HR. The enrollment is the unit the **family floater** is tracked against.
+- **Members** — the employee and covered family (spouse, children, parents), with age rules; changes go through change requests.
+- **Cards** — an ID card per member with a QR token; a public endpoint verifies a card.
+- **Intimations** — advance notice of planned/emergency hospitalisation.
+- **Claims** — the hub: draft → submit → approve/reject → documents → settlement → closed.
+- **Hospitals** — a directory; a policy version has a *network* (`mediclaim_policy_hospitals`).
+- **Documents** — HR-configurable required-document checklist; files stored through the shared `DocumentService`.
+- **Rule book** — multilingual rule book with items, acknowledged during onboarding.
+- **Reviewer assignments** — company-wide role holders (coordinator, committee, hr_verification, director, settlement).
+- **Reports & audit** — dashboards, CSV export, admin activity log.
+- **Automation** — 3 daily commands (07:30, 08:00, 08:15): expiry reminders, overdue-review escalation, missing-document reminders.
+
+Core services: `ClaimWorkflowService` (the state machine), `PolicyEligibilityService` (floater, eligibility, waiting period), `MediclaimMemberService`, `MediclaimCardService`, `MediclaimClaimFormPdfService`, `MediclaimNotifier`.
+
+Every claim state change runs inside `DB::transaction` with a row lock (`lockForUpdate`), re-checks the current status **after** locking (a raced/illegal transition → HTTP 422), and writes a timeline event (`mediclaim_claim_events`) in the same transaction; notifications are dispatched **after commit**.
+
+---
+
+# Part 2 — Claim stages (complete)
+
+## 2.1 Status catalogue
+
+Sixteen values (plain string column, constants on `MediclaimClaim`):
+
+| Status | Meaning | Terminal? |
+|---|---|---|
+| `DRAFT` | Employee is still editing; invisible to admin lists by default | no |
+| `SUBMITTED` | Submitted but **no manager could be resolved** (or the initial state before approval in the live flow when no manager) | no |
+| `MANAGER_REVIEW` | Submitted and a manager was resolved (`assigned_manager_id` set) | no |
+| `COORDINATOR_VERIFICATION` | *Legacy 5-stage chain* | no |
+| `COMMITTEE_RECOMMENDATION` | *Legacy* | no |
+| `HR_ELIGIBILITY_VERIFICATION` | *Legacy* | no |
+| `DIRECTOR_FINAL_APPROVAL` | *Legacy* | no |
+| `APPROVED` | **Live flow:** approved in full, awaiting required documents | no (resting state) |
+| `PARTIALLY_APPROVED` | **Live flow:** approved for less than claimed, awaiting documents | no (resting state) |
+| `REJECTED` | Rejected; approved amount 0 | yes |
+| `SETTLEMENT_PENDING` | Approved and documents complete, awaiting/receiving payment record | no |
+| `SETTLED` | Settled amount ≥ approved amount | transient (immediately closed by both settlement paths) |
+| `CLOSED` | Fully finished | yes |
+| `RETURNED_FOR_CORRECTION` | Sent back to the employee | no |
+| `WITHDRAWN` | Employee withdrew before approval | yes |
+| `CANCELLED` | Administratively cancelled (**no route calls this**) | yes |
+
+`TREATMENT_TYPES`: `opd`, `hospitalization`, `surgery`, `emergency`, `tests_only`. Expense categories: `CONSULTATION_FEES`, `HOSPITAL_CHARGES`, `MEDICINES`, `DIAGNOSTIC_TESTS`, `SURGERY_PROCEDURE`, `OTHER_EXPENSES`.
+
+## 2.2 Two workflows — which one is live
+
+The code contains two review models. **Only the simplified single-approval model is reachable over HTTP.**
+
+`ReviewQueueController::STAGE_METHODS` (source of truth for `POST /reviews/{claim}/decision`):
+
+| Claim status at decision time | Service method invoked |
+|---|---|
+| `SUBMITTED` | `approveDirect` |
+| `MANAGER_REVIEW` | `approveDirect` |
+| `COORDINATOR_VERIFICATION` | `coordinatorVerify` |
+| `COMMITTEE_RECOMMENDATION` | `committeeRecommend` |
+| `HR_ELIGIBILITY_VERIFICATION` | `hrVerifyEligibility` |
+| `DIRECTOR_FINAL_APPROVAL` | `directorFinalApproval` |
+| `SETTLEMENT_PENDING` | `recordSettlement` (then `closeClaim`) |
+| anything else (e.g. `APPROVED`) | 422 "not currently awaiting a review decision" |
+
+Because `submit()` only ever sets `SUBMITTED` or `MANAGER_REVIEW`, and both go to `approveDirect`, **no claim can ever enter `COORDINATOR_VERIFICATION` … `DIRECTOR_FINAL_APPROVAL` through the API today.** `managerDecision`, `reassignReviewer` and `cancel` have no controller route. Those methods remain in the service (and in the existing tests) as the "legacy" chain. Recommendation for the new build: implement the live flow; make the multi-stage chain an optional, configuration-driven extension (Section 2.6 documents it fully in case you want it).
+
+## 2.3 Live workflow
+
+```mermaid
+stateDiagram-v2
+    [*] --> DRAFT: POST /me/claims
+    DRAFT --> DRAFT: PUT /claims/{id}
+    DRAFT --> MANAGER_REVIEW: submit (manager found)
+    DRAFT --> SUBMITTED: submit (no manager)
+    RETURNED_FOR_CORRECTION --> MANAGER_REVIEW: resubmit (manager found)
+    RETURNED_FOR_CORRECTION --> SUBMITTED: resubmit (no manager)
+    MANAGER_REVIEW --> APPROVED: approveDirect "approved"
+    MANAGER_REVIEW --> PARTIALLY_APPROVED: approveDirect "partially_approved"
+    MANAGER_REVIEW --> REJECTED: approveDirect "rejected"
+    SUBMITTED --> APPROVED: approveDirect "approved"
+    SUBMITTED --> PARTIALLY_APPROVED: approveDirect "partially_approved"
+    SUBMITTED --> REJECTED: approveDirect "rejected"
+    MANAGER_REVIEW --> RETURNED_FOR_CORRECTION: POST /claims/{id}/return
+    MANAGER_REVIEW --> WITHDRAWN: withdraw
+    SUBMITTED --> WITHDRAWN: withdraw
+    APPROVED --> SETTLEMENT_PENDING: last required document uploaded (auto)
+    PARTIALLY_APPROVED --> SETTLEMENT_PENDING: last required document uploaded (auto)
+    SETTLEMENT_PENDING --> SETTLED: settlement recorded, total >= approved
+    SETTLED --> CLOSED: closeClaim (immediately)
+    REJECTED --> [*]
+    CLOSED --> [*]
+    WITHDRAWN --> [*]
+```
+
+### Stage-by-stage transition table (live flow)
+
+| # | Action | Route | Who may do it | From → To | Guards (in order) | What is written |
+|---|---|---|---|---|---|---|
+| 1 | **Create draft** | `POST /me/claims` | Employee with `self.mediclaim.claim.create` | ∅ → `DRAFT` | `assertEligible` — the 3-month joining waiting period (403 `MEDICLAIM_NOT_YET_ELIGIBLE`) | claim row, `current_revision=1`, `total_claimed_amount=0`, employee & patient **snapshots**, expense lines, event `CLAIM_DRAFT_CREATED` |
+| 2 | **Edit draft** | `PUT /claims/{id}` | Owner, `self.mediclaim.claim.update` | `DRAFT`/`RETURNED_FOR_CORRECTION` (unchanged) | status ∈ {DRAFT, RETURNED}; owner (403 `WRONG_CLAIM_OWNER`) | only `EDITABLE_FIELDS` are accepted (workflow-controlled fields cannot be written); expenses replaced wholesale; snapshots refreshed; event `CLAIM_DRAFT_UPDATED` |
+| 3 | **Submit** | `POST /claims/{id}/submit` (30/min) | Owner, `self.mediclaim.claim.submit` | `DRAFT`/`RETURNED` → `MANAGER_REVIEW` **or** `SUBMITTED` | idempotency-key replay returns the existing claim; status ∈ {DRAFT, RETURNED}; owner | see 2.3.1 |
+| 4 | **Approve / partially approve / reject** | `POST /reviews/{id}/decision` (30/min) | Holder of `mediclaim.claim.approve` (or a super admin) via `decidableBy` scope | `SUBMITTED`/`MANAGER_REVIEW` → `APPROVED` / `PARTIALLY_APPROVED` / `REJECTED` | status ∈ {SUBMITTED, MANAGER_REVIEW}; remarks ≥ 5 chars unless plain `approved`; amount rules (Part 3); floater check | `mediclaim_claim_decisions` row (`stage='APPROVAL'`, `fields.approved_amount`), `total_approved_amount`, `total_disallowed_amount`, event `CLAIM_APPROVED` / `CLAIM_PARTIALLY_APPROVED` / `CLAIM_REJECTED`. **No manager assignment or confidentiality acknowledgement is required.** No employee notification is sent (Part 9 #4). |
+| 5 | **Return for correction** | `POST /claims/{id}/return` | Reviewer via `decidableBy` | `MANAGER_REVIEW` → `RETURNED_FOR_CORRECTION` | remarks 5–4000 chars; claim must be `decidableBy` the actor (else 404); **claim must be at `MANAGER_REVIEW`** — a claim at `SUBMITTED` returns 422 "Unknown review stage" because `returnForCorrection` only knows the five stage statuses (Part 9 #6) | decision row (`decision='returned'`), assignment completed, event `MANAGER_REVIEW_RETURNED`, employee notified (returned mail) |
+| 6 | **Withdraw** | `POST /claims/{id}/withdraw` | Owner, `self.mediclaim.claim.withdraw` | `SUBMITTED`/`MANAGER_REVIEW` → `WITHDRAWN` | only before approval; owner | active assignments → `SUPERSEDED`, `withdrawn_at`, event `CLAIM_WITHDRAWN` |
+| 7 | **Upload document** | `POST /claims/{id}/documents` | Owner/visible, `self.mediclaim.document.upload` or `mediclaim.claim_document.upload` | — | discharge date must exist (Part 5) | on success calls `autoSettleIfDocumentsComplete` |
+| 8 | **Auto-advance to settlement** | (side effect of #7) | system, acting as the uploader | `APPROVED`/`PARTIALLY_APPROVED` → `SETTLEMENT_PENDING` | `total_approved_amount > 0` **and** no required document missing | event `AUTO_ADVANCED_TO_SETTLEMENT_PENDING` |
+| 9 | **Auto-settle** | (same call, second transaction) | system | `SETTLEMENT_PENDING` → `SETTLED` → `CLOSED` | re-checks documents; creates a settlement of the **full approved amount**, mode `auto_settlement`, no reference | `mediclaim_settlements` row #1, `settled_at`, `closed_at`, events `SETTLEMENT_RECORDED`, `CLAIM_CLOSED`; employee notified (settled mail) |
+| 10 | **Manual settlement** | `POST /settlements` or `POST /reviews/{id}/decision` with `decision=final_approve` | `mediclaim.settlement.create` / settlement reviewer | `SETTLEMENT_PENDING` → `SETTLED` (→ `CLOSED` via the review route only) | required documents complete; amount > 0 | settlement row with next `sequence_no`; see Part 3.6 |
+
+> **Note on #8/#9 — who is recorded:** `autoSettleIfDocumentsComplete($claim, $actor)` is called with the *uploader* as actor. When the employee uploads the last document, `recorded_by` on the auto-settlement and the `updated_by` on the claim are the **employee's** user id. Rebuilders may prefer a system actor.
+
+#### 2.3.1 What `submit()` does (in exact order)
+
+1. Lock the claim; owner check; replay check (`submission_idempotency_key` equal and status already past DRAFT → return the existing claim untouched).
+2. Status must be `DRAFT` or `RETURNED_FOR_CORRECTION`.
+3. If resubmitting, capture `prior_state` (`claim` + `expenses` arrays).
+4. **Recompute `total_claimed_amount`** = `SUM(expenses.claimed_amount)`. The client total is never trusted.
+5. **`documents_due_at`** = (`discharge_at` ?? `admission_at` ?? now) **+ 7 days**.
+6. **Policy version resolution** as-of date = `admission_at` ?? linked intimation's `expected_admission_date` ?? now: `resolveOrCreateEnrollment`, then `resolvePolicyVersionForDate` → `policy_version_id`; `enrollment_id` = the enrollment for (employee, that version).
+7. **Manager snapshot:** `ReportingHierarchy::managerFor(employee, now)` → `assigned_manager_id` (null if none).
+8. **Claim number** allocated on first submission only (Part 7).
+9. Declaration: if `declaration_accepted` and not yet timestamped → stamp `declaration_accepted_at`, IP, user-agent.
+10. Status = `MANAGER_REVIEW` if a manager was found else `SUBMITTED`; `submitted_at` set once (never overwritten on resubmission).
+11. Resubmission only: insert `mediclaim_claim_revisions` row, `current_revision += 1`, active assignments → `SUPERSEDED`.
+12. If a manager was found: insert an `ACTIVE` `MANAGER_REVIEW` assignment.
+13. If an `intimation_id` is set and unlinked, link it (`linked_claim_id`, status `linked`).
+14. Event `CLAIM_SUBMITTED`/`CLAIM_RESUBMITTED`; extra event `NO_MANAGER_ASSIGNED` when no manager.
+
+**What `submit()` does not check** (verified: no code path enforces these): that expenses exist; that documents exist; that the hospital is in the network; that an intimation exists for a planned treatment; that the patient/member is within the age rules; that the amount fits the floater. See Part 9.
+
+### 2.3.2 Discharge and ongoing treatment (live flow)
+
+A claim may be submitted while treatment is still ongoing (`is_ongoing_treatment = true`). Documents cannot be uploaded until a discharge date exists (Part 5), so two follow-up calls exist. Both are legal on any status **except** `DRAFT`, `REJECTED`, `SETTLED`, `CLOSED`, `WITHDRAWN`, `CANCELLED` (`FINISHED_STATUSES`) — deliberately including `APPROVED`/`PARTIALLY_APPROVED`, so a claim approved "in principle" mid-treatment can still be finalised.
+
+| Route | Effect |
+|---|---|
+| `POST /claims/{id}/discharge` `{discharge_at}` | Sets `discharge_at`, `is_ongoing_treatment=false`, `documents_due_at = discharge_at + 7 days`. Discharge date may not be earlier (by day) than admission. Event `CLAIM_DISCHARGE_RECORDED`. |
+| `POST /claims/{id}/finalize-treatment` `{discharge_at, expenses[≥1]}` | Same discharge handling **and appends** the expense lines (does not replace), recomputes `total_claimed_amount`, and — **if the claim is already `APPROVED`/`PARTIALLY_APPROVED` and the latest `APPROVAL` decision was plain `approved`** — sets `total_approved_amount = total_claimed_amount`, `total_disallowed_amount = 0`, status `APPROVED` (Part 3.5). A `partially_approved` cap is never raised. Event `TREATMENT_FINALIZED`. |
+
+### 2.3.3 Withdraw / return / resubmit loop
+
+`RETURNED_FOR_CORRECTION` claims can be edited (`PUT`), then `submit` again. A resubmission **always restarts at the first review stage** (never resumes where it was returned), because corrected data invalidates earlier sign-offs. `current_revision` increases and the previous state is kept in `mediclaim_claim_revisions`.
+
+## 2.4 Who can see and act on a claim
+
+| Scope | Rule (source: `MediclaimClaim`) |
+|---|---|
+| `visibleTo($actor)` — used by `GET/PUT claims/{id}`, submit, withdraw, discharge, documents, timeline | super admin: all · else: claims where `employee_user_id = actor` **OR** `assigned_manager_id = actor` **OR** `awaitingReviewBy(actor)`. There is **no** company-wide branch — so HR holding only `mediclaim.claim.read` gets **404** on a claim they do not own/manage/review; HR uses the admin list (`GET /claims`) instead. Non-visible claims return 404, not 403 (concealment). |
+| `awaitingReviewBy($actor)` | super admin: statuses SUBMITTED, MANAGER_REVIEW, APPROVED, PARTIALLY_APPROVED + the 5 stage statuses · else: if actor has `mediclaim.claim.approve` → statuses SUBMITTED, MANAGER_REVIEW, APPROVED, PARTIALLY_APPROVED (**across all companies** — no company condition) · **plus**, for each legacy stage status, claims where the actor has an `ACTIVE` claim assignment for that stage **or** an `active` company-wide `mediclaim_reviewer_assignments` row for the stage's role (`coordinator`, `committee`, `hr_verification`, `director`, and `settlement` for `SETTLEMENT_PENDING`) within its `active_from`/`active_to` window. |
+| `decidableBy($actor)` | `(status = MANAGER_REVIEW AND assigned_manager_id = actor) OR awaitingReviewBy(actor)` — gate for `reviews/{id}/decision` and `claims/{id}/return` |
+| Admin list `GET /claims` | company-scoped (`ScopesCompany`); drafts hidden unless `status` filter given (Part 8) |
+
+Note: `GET /reviews/pending` therefore lists `APPROVED`/`PARTIALLY_APPROVED` claims for approvers, but `POST /reviews/{id}/decision` on those returns 422 — they are only waiting for documents.
+
+## 2.5 Timeline events (`mediclaim_claim_events.event_type`)
+
+`CLAIM_DRAFT_CREATED`, `CLAIM_DRAFT_UPDATED`, `CLAIM_SUBMITTED`, `CLAIM_RESUBMITTED`, `NO_MANAGER_ASSIGNED`, `CLAIM_DISCHARGE_RECORDED`, `TREATMENT_FINALIZED`, `EXPENSES_UPDATED`, `CONFIDENTIALITY_ACKNOWLEDGED`, `CLAIM_APPROVED`, `CLAIM_PARTIALLY_APPROVED`, `CLAIM_REJECTED` (live flow); `MANAGER_APPROVE`, `MANAGER_REJECT`, `COORDINATOR_VERIFIED`, `COMMITTEE_RECOMMENDED`, `COMMITTEE_NOT_RECOMMENDED`, `HR_ELIGIBILITY_VERIFIED`, `DIRECTOR_APPROVED`, `DIRECTOR_PARTIALLY_APPROVED`, `DIRECTOR_REJECTED` (legacy); `<STAGE>_RETURNED` (e.g. `MANAGER_REVIEW_RETURNED`); `AUTO_ADVANCED_TO_SETTLEMENT_PENDING`, `SETTLEMENT_RECORDED`, `CLAIM_CLOSED`, `CLAIM_WITHDRAWN`, `CLAIM_CANCELLED`, `REVIEWER_REASSIGNED`.
+
+Each row stores from/to status, actor, description and optional before/after JSON, and a `notified_at` used as an atomic once-only guard for notifications.
+
+**Notifications actually sent per event** (`MediclaimNotifier::claimTransitioned`): submit/resubmit → claim-submitted mail + manager-assigned; manager/coordinator/committee/HR/director decisions (legacy) → mapped notifiers; `SETTLEMENT_RECORDED` → settled; `*_RETURNED` → returned-for-correction. **Not mapped (nothing is sent):** `CLAIM_APPROVED`, `CLAIM_PARTIALLY_APPROVED`, `CLAIM_REJECTED` (the live decisions), `CLAIM_WITHDRAWN`, `CLAIM_CLOSED`, `CLAIM_CANCELLED`, `REVIEWER_REASSIGNED`, `EXPENSES_UPDATED`, draft events. Full mail/notification catalogue: Appendix B.
+
+## 2.6 Legacy five-stage chain (documented for completeness)
+
+`MANAGER_REVIEW → COORDINATOR_VERIFICATION → COMMITTEE_RECOMMENDATION → HR_ELIGIBILITY_VERIFICATION → DIRECTOR_FINAL_APPROVAL → SETTLEMENT_PENDING → SETTLED → CLOSED`.
+
+| Stage | Method | Decisions | Guards | Next status |
+|---|---|---|---|---|
+| Manager | `managerDecision` | `approve`, `reject`, `return` | claim at `MANAGER_REVIEW`; actor is `assigned_manager_id` (403 `WRONG_ASSIGNED_REVIEWER`); **confidentiality acknowledgement** on the manager assignment (409 `CONFIDENTIALITY_ACK_REQUIRED`); remarks for reject/return; super admin bypasses and can rescue a `SUBMITTED` claim with no manager | approve → `COORDINATOR_VERIFICATION`; reject → `REJECTED`; return → `RETURNED_FOR_CORRECTION` |
+| Coordinator | `coordinatorVerify` | `verified`, `return` | status guard; return needs remarks | `COMMITTEE_RECOMMENDATION` |
+| Committee | `committeeRecommend` | `recommended`, `not_recommended` | `not_recommended` needs remarks; **both** outcomes advance (a design judgement recorded in the source) | `HR_ELIGIBILITY_VERIFICATION` |
+| HR eligibility | `hrVerifyEligibility` | `verified`, `return` | status guard | `DIRECTOR_FINAL_APPROVAL` |
+| Director | `directorFinalApproval` | `approved`, `partially_approved`, `rejected` | remarks unless plain approved; **same amount + floater rules as `approveDirect`** | approve/partial → **`SETTLEMENT_PENDING`** (never rests at APPROVED); reject → `REJECTED`; a final claim-form PDF is generated after commit (best-effort) |
+| Settlement | `recordSettlement` | amount/mode/reference | documents complete | `SETTLED` → `CLOSED` |
+
+Other legacy-only methods: `acknowledgeConfidentiality` (`POST /claims/{id}/confidentiality-ack`, **is** routed, needs `mediclaim.claim.manager.decide`), `reassignReviewer` (no route), `cancel` (no route). Stage assignments for the four non-manager stages are created lazily at the moment of decision; visibility for those stages comes from the company-wide reviewer-assignment table.
+
+---
+
+# Part 3 — Amounts and how they are deducted
+
+## 3.1 The most important fact
+
+**Nothing in this module deducts money from salary, payroll or any bank balance.** A search of the Mediclaim services, controllers, models and support classes finds no payroll/salary/payslip linkage. "Deduction" means two bookkeeping things:
+
+1. **From the claim** — the reviewer decides how much of the claimed amount is *approved*; the rest is *disallowed*.
+2. **From the coverage balance** — every approved rupee is **deducted from the employee's ₹3,00,000 family floater** for that financial year.
+
+**Settlement** is only a *record* that payment was made outside the system (mode + reference number). No payment is executed by this software.
+
+## 3.2 Amount fields on a claim
+
+| Field | Set by | Rule |
+|---|---|---|
+| `mediclaim_claim_expenses.claimed_amount` | employee (per line, `numeric ≥ 0`) | categories fixed (Part 2.1) |
+| `total_claimed_amount` | server: `SUM(expense lines)` | recomputed on every draft save, on `submit`, on `finalize-treatment`, on `update-expenses`. The client cannot send it. |
+| `total_approved_amount` | reviewer decision (`approved_amount`) | `NULL` until decided; `0` when rejected |
+| `total_disallowed_amount` | server | `max(0, total_claimed − total_approved)` |
+| `mediclaim_settlements.settled_amount` | settlement record | many rows per claim possible (`sequence_no`) |
+| `mediclaim_floater_overrides.override_amount` | reviewer, optional | authorises exceeding the floater; stored with reason, approver, claim |
+
+There is **no** co-pay, deductible, room-rent cap, disease/procedure sub-limit, per-line approval, GST, or network-vs-non-network differential anywhere in the code. The reviewer types one approved figure for the whole claim.
+
+## 3.3 Decision arithmetic (`approveDirect`; `directorFinalApproval` is identical)
+
+Inputs: `decision ∈ {approved, partially_approved, rejected}`, `approved_amount` (accepted as `approved_amount` or `approvedAmount`), `remarks`, optional `floater_override {override_amount, reason}`.
+
+```text
+claimed = total_claimed_amount
+
+if decision != 'approved':  remarks must be >= 5 characters (trimmed)
+
+if decision == 'rejected':                       approved = 0
+elif decision == 'approved' and (approved is empty or <= 0) and claimed > 0:
+                                                 approved = claimed        # "approve in full" default
+if approved < 0:                                 error  approved_amount: cannot be negative
+if approved > claimed:                           error  approved_amount: cannot exceed total claimed
+
+if decision in (approved, partially_approved) and approved > 0:
+    if claim has enrollment_id AND policy_version_id:
+        assertWithinFloater(enrollment, version, approved, override, submitted_at)   # 3.4
+    if override supplied: save override (claim_id, enrollment_id, approved_by, approved_at)
+
+total_approved_amount   = approved
+total_disallowed_amount = max(0, claimed - approved)
+status = REJECTED | PARTIALLY_APPROVED | APPROVED      # legacy director: SETTLEMENT_PENDING
+```
+
+Facts worth knowing (all verified in source):
+
+- A decision of plain **`approved` with an amount lower than claimed is accepted** — the status becomes `APPROVED` and the difference becomes disallowed. Only `partially_approved` is *meant* for that, but nothing enforces the distinction. It matters because of 3.5 (later top-ups treat `approved` as "approved in principle").
+- `partially_approved` with amount `0` (or omitted) is accepted and produces `PARTIALLY_APPROVED` with approved `0` — such a claim can **never auto-settle** (auto-settle needs approved > 0).
+- A claim submitted with **zero expenses** has claimed `0`; approving it yields approved `0` and it also never auto-settles.
+- The floater check is skipped when the claim has no `enrollment_id` or `policy_version_id`.
+- Validation of `approved_amount` at the HTTP layer is only `numeric, min:0`; the business rules above run inside the service.
+
+## 3.4 The floater — how the balance is deducted
+
+### Configuration
+`floater_limit_amount` lives in the policy version's JSON `rules`. Seeded value: **300000** (₹3,00,000) for both companies' version 1. Nothing hard-codes the number — a new policy version with another limit takes effect for treatment dates it covers.
+
+### Balance formula (`PolicyEligibilityService::floaterUsage`)
+
+```text
+FY window  = 1 April 00:00  →  31 March 23:59:59   containing the date supplied
+limit      = rules.floater_limit_amount
+used       = SUM(total_approved_amount)
+             over claims WHERE enrollment_id = <this enrollment>
+                          AND total_approved_amount IS NOT NULL
+                          AND submitted_at BETWEEN FY start AND FY end
+remaining  = max(0, limit - used)
+```
+
+- **Per enrollment, not per person:** all covered family members share the balance because the sum is over the employee's enrollment ("family floater").
+- **Financial year is anchored to `submitted_at`**, not to the decision date or treatment date. A claim submitted on 28 March and decided on 3 April still consumes the *old* year's balance. Drafts (no `submitted_at`) never count.
+- **No stored balance and no reset job.** The balance "resets on 1 April" purely because the summation window moves.
+- The claim being decided has `total_approved_amount = NULL` at check time, so it is not double-counted.
+- Rejected claims contribute `0`. Statuses do not matter — only "has an approved amount".
+
+### The check (`assertWithinFloater`)
+```text
+if override is supplied            → allowed (no comparison of amounts at all)
+if used + approved > limit         → 422  approved_amount:
+    "Approving X would exceed the family floater limit of L for FY <start> to <end>
+     (already used U, R remaining). An authorized floater override is required."
+```
+It is evaluated **at decision time only**. Submission does not reserve or check anything, so several pending claims can each look fine individually.
+
+### Override
+`floater_override.override_amount` (≥ 0.01) and `reason` (≥ 5 chars) on the decision payload create a `MediclaimFloaterOverride`. Its presence bypasses the check entirely — the override amount is stored for audit but **never compared** with the excess. There is no separate endpoint; it exists only inline on the decision.
+
+### What the employee sees
+`GET /me/coverage` returns `floater: {limit, used, remaining, financialYearStart, financialYearEnd}` computed for **the current date's** financial year.
+
+## 3.5 Changes to amounts after approval (live flow)
+
+Two employee routes can change money **after** a decision. Both recalculate `total_claimed_amount` and then apply the same "approved in principle" rule:
+
+> If status is `APPROVED` or `PARTIALLY_APPROVED` **and** the latest `stage='APPROVAL'` decision has `decision = 'approved'`, then `total_approved_amount := total_claimed_amount` and `total_disallowed_amount := 0`.
+
+| Route | Effect |
+|---|---|
+| `POST /claims/{id}/finalize-treatment` | discharge + **append** expenses; rule above; forces status `APPROVED` |
+| `POST /claims/{id}/update-expenses` 🆕 | **replace** all expenses; rule above; status unchanged |
+
+Consequences (verified, and important for a rebuild):
+- **The floater is not re-checked** when these routes raise the approved amount. A claim approved for ₹1,00,000 and later topped up to ₹4,00,000 can push the employee past ₹3,00,000 with no override and no error.
+- If the latest decision was a plain `approved` with a *lower typed amount*, the top-up silently raises approved to the full claimed total (see 3.3).
+- A `partially_approved` cap is never raised.
+- `update-expenses` is blocked only for `REJECTED`, `WITHDRAWN`, `CANCELLED`; it is allowed on `SETTLED` and `CLOSED` claims, where it changes `total_claimed_amount` but not `total_approved_amount` or the settlements, producing an inconsistent record (Part 9 #9).
+
+## 3.6 Settlement arithmetic
+
+```text
+recordSettlement(claim, amount > 0, mode, reference?):
+    claim.status must be SETTLEMENT_PENDING            else 422 "not awaiting settlement"
+    required documents must all be on file             else 422 "documents outstanding: <types>"
+    sequence_no   = max(sequence_no) + 1
+    insert settlement {settled_amount=amount, settlement_date=today, mode, reference, recorded_by}
+    total_settled = SUM(settlements.settled_amount)
+    if approved > 0 and total_settled >= approved:  status = SETTLED, settled_at = now
+```
+
+- **Partial payments** are supported: several settlements accumulate; the claim stays `SETTLEMENT_PENDING` until the sum reaches the approved total.
+- **Over-payment is not blocked** (no `amount ≤ remaining` check).
+- `SETTLED` is never left as a resting state: the review route (`final_approve`) and the auto path both immediately call `closeClaim` → `CLOSED`. `POST /settlements` (admin) does **not** close the claim, so a claim settled that way rests at `SETTLED` until something else closes it (nothing does).
+- **Auto-settlement** (the normal live path): when the last required document lands, one settlement equal to the **whole approved amount** is written with mode `auto_settlement`, then the claim is closed. So in the live flow a claim normally goes `APPROVED` → `CLOSED` without a human recording payment.
+- `mode` is a free string and `reference` optional: via the review route `final_approve` they are limited to 40 / 100 characters; via `POST /settlements` to 60 / 255. `POST /settlements` requires `claim_id`, `amount ≥ 0.01`, `mode`, and returns **201** with the updated claim.
+- `PARTIALLY_APPROVED`, `APPROVED`, `SETTLEMENT_PENDING` all count toward the floater from the moment of approval — settlement does not change floater usage.
+
+## 3.7 Worked examples
+
+Assume floater 3,00,000; FY 2026-27 (1 Apr 2026 – 31 Mar 2027); employee has used nothing.
+
+**Example 1 — partial approval**
+Expenses: Hospital charges 90,000 + Medicines 20,000 + Diagnostic tests 10,000 → `claimed = 1,20,000`.
+Reviewer: `partially_approved`, approved 1,00,000, remarks "Room rent above entitlement".
+→ `approved = 1,00,000`, `disallowed = 20,000`, status `PARTIALLY_APPROVED`. Floater: used 1,00,000, remaining **2,00,000**.
+
+**Example 2 — exceeds the floater**
+Same employee, second claim claimed 2,50,000, reviewer chooses `approved` (full).
+Check: 1,00,000 + 2,50,000 = 3,50,000 > 3,00,000 → **422** "… (already used 100000.00, 200000.00 remaining). An authorized floater override is required."
+Options: approve up to 2,00,000 (`partially_approved`) → used 3,00,000, remaining 0; or resubmit the decision with `floater_override {override_amount: 50000, reason: "Management exception"}` → accepted, used becomes 3,50,000, remaining `max(0, …) = 0`.
+
+**Example 3 — full approval defaulting**
+Claimed 45,000; reviewer sends `decision=approved` with no amount → `approved = 45,000`, `disallowed = 0`, status `APPROVED`. `missing_document_types` now drives the employee's upload prompts.
+
+**Example 4 — year boundary**
+Claim submitted 30 Mar 2027 (FY 2026-27), approved 2 Apr 2027. The floater check uses the claim's `submitted_at`, so it is charged to **FY 2026-27**, and it is *not* counted in FY 2027-28's balance on 1 April.
+
+**Example 5 — ongoing treatment top-up**
+Claim submitted with an initial 60,000 estimate while hospitalised; approved `approved` 60,000. After discharge the employee calls `finalize-treatment` with lines totalling 1,10,000 → `claimed = 1,10,000`; latest decision was `approved`, so `approved := 1,10,000`, disallowed 0, status `APPROVED`; upload window = discharge + 7 days. When the last document arrives the claim auto-settles for **1,10,000** (no floater re-check).
+
+**Example 6 — rejection**
+Reviewer `rejected` with remarks → `approved = 0`, `disallowed = claimed`, status `REJECTED`, zero floater impact.
+
+## 3.8 Eligibility and other rules that surround the money
+
+| Rule | Where enforced | Value |
+|---|---|---|
+| Joining waiting period | `assertEligible` at **draft creation**, intimation creation, member-change requests; also gates auto-enrollment | `eligibility_waiting_period_months` = 3 (from `users.joining_date`) → 403 `MEDICLAIM_NOT_YET_ELIGIBLE` |
+| Max covered children | `validateMemberEligibility` | `max_covered_children` = 2 |
+| Child max age | same | `child_max_age_years` = 18 |
+| Parent max age | same | `parent_max_age_years` = 55 |
+| Intimation required for planned treatment | **defined but never enforced** | `intimation_required_for_planned` = true (emergencies exempt) |
+| Network hospital | `isNetworkHospital` **defined but never called** | `mediclaim_policy_hospitals` |
+| Member eligibility on a claim | **not checked** at draft/submit; only at member add/change time and in reports | — |
+| Documents due | `documents_due_at` = discharge (else admission, else submit) + 7 days | drives the reminder job |
+
+---
+
+# Part 4 — Hospitals
+
+## 4.1 Data model
+
+`mediclaim_hospitals` (per **company** — the same hospital is a separate row per company)
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | bigint PK | |
+| `company_code` | string, required | scoping key |
+| `name` | string | max 255 in API |
+| `address` | text nullable | ≤ 1000 |
+| `city`, `state` | string nullable | ≤ 120 |
+| `pincode` | string nullable | ≤ 20 |
+| `latitude` / `longitude` | decimal(…,7) nullable | −90…90 / −180…180 |
+| `google_maps_url` | string nullable | valid URL ≤ 2048 |
+| `specialties` | JSON array of strings (each ≤ 100) | cast to array |
+| `is_cashless` | boolean default false | |
+| `active_from` / `active_to` | date nullable | `active_to ≥ active_from` |
+| `status` | `active` \| `inactive` (default `active`) | |
+| `created_by`, `updated_by` | FK users, null on delete | |
+| timestamps | | index `(company_code, status)` |
+
+`mediclaim_hospital_contacts` — "concern persons": `hospital_id` FK, `name`, `designation`, `phone`, `email`, `availability`, `escalation_priority` (int 0–100), `is_active`, `photo` (storage path).
+`mediclaim_policy_hospitals` — **network membership**: `policy_version_id` FK cascade, `hospital_id` FK cascade, unique `(policy_version_id, hospital_id)`.
+
+Hospitals are **never deleted**: "delete" flips `status='inactive'` so historical claims still resolve their hospital. Seeded (per company): *Surat Diamond Hospital* and *Kiran Hospital*, Surat, Gujarat.
+
+## 4.2 Hospital routes
+
+All under `jwt.auth` + `module.schema:mediclaim` + `mediclaim.normalize_case`; company scope applied with `ScopesCompany::applyCompanyScope`; all writes are audit-logged via `MediclaimActivityLogSupport`.
+
+### `GET /hospitals` — list
+Permission `mediclaim.hospital.read`. Query: `status` (comma list, e.g. `active,inactive`), `search` (matches `name` or `city`, LIKE), company scope. **Not paginated** — returns the full array ordered by `name`, each with `contacts`. Response: `{success:true, data:[Hospital…]}`.
+
+### `POST /hospitals` — create (throttle 20/min)
+Permission `mediclaim.hospital.create`. Body — `company_code` (required string ≤ 60), `name` (required ≤ 255), and optional `address, city, state, pincode, latitude, longitude, google_maps_url, specialties[], specialties.*, is_cashless, active_from, active_to, status`. Creates with `status` default `active`, `created_by/updated_by`. Logs `HOSPITAL_CREATED`. **201** with the hospital. Note: `company_code` is not verified against the actor's permitted companies.
+
+### `PUT /hospitals/{hospital}` — update
+Permission `mediclaim.hospital.update`. Same rules, all `sometimes`. 404 `Hospital not found.` when outside the actor's company scope. Logs `HOSPITAL_UPDATED` with before/after. Returns the hospital with `contacts`.
+
+### `DELETE /hospitals/{hospital}` — deactivate
+Permission `mediclaim.hospital.delete`. Sets `status='inactive'` and `active_to = active_to ?? today`. Logs `HOSPITAL_DEACTIVATED`. Response `{id, status}`. **There is no "hospital in use" guard** (open claims may still reference it).
+
+### `POST /hospitals/{hospital}/contacts` — add contact (throttle 20/min)
+Permission `mediclaim.hospital.update`. **multipart/form-data** allowed. Fields: `name` (required ≤ 150), `phone` (required ≤ 30), `designation` ≤ 150, `email` (email ≤ 255), `availability` ≤ 150, `escalation_priority` (int 0–100), `is_active` (bool), `photo` (image; `jpeg,jpg,png,webp`; **max 5120 KB**). Photo is stored on the `public` disk under `mediclaim-hospital-contacts/`. **201**, returns the **hospital** with all contacts. Logs `HOSPITAL_CONTACT_CREATED`.
+
+### `POST /hospitals/{hospital}/contacts/{contact}` — update contact (throttle 20/min)
+POST (not PUT) so a replacement photo can ride along as multipart. Same rules as create but all `sometimes`. A new photo deletes the old file. 404 `Hospital not found.` / `Hospital contact not found.`. Logs `HOSPITAL_CONTACT_UPDATED`.
+
+### `DELETE /hospitals/{hospital}/contacts/{contact}` — remove contact
+Permission `mediclaim.hospital.delete`. **Hard delete** (nothing references a contact) and removes the stored photo. Logs `HOSPITAL_CONTACT_DELETED`.
+
+Errors common to all: `401 AUTHENTICATION_REQUIRED`, `403 PERMISSION_DENIED`, `404` (scoped-out/missing), `422` validation in Laravel's default format `{message, errors:{field:[msgs]}}` (**not** wrapped in the `success/error` envelope), `503 MODULE_SCHEMA_NOT_READY`.
+
+## 4.3 How hospitals are used elsewhere
+
+| Where | Behaviour |
+|---|---|
+| **Claim** | `hospital_id` (must exist in `mediclaim_hospitals`), `is_network_hospital` (boolean **supplied by the client**, not computed), `non_network_hospital_name` (≤ 255), `non_network_reason` (≤ 1000). The backend never validates that a "network" flag is true, that the hospital is active, or that it belongs to the claim's company. |
+| **Intimation** | also carries `hospital_id`. |
+| **`GET /me/coverage`** | returns `hospitals` = `policyVersion.hospitals` (the network for the employee's version). This is the employee's *network list*. |
+| **Employee hospital picker** | frontend calls `GET /hospitals` (needs `mediclaim.hospital.read`, which plain employees may lack — see Part 9 #12) |
+| **`isNetworkHospital()`** | implemented, **never called** |
+| **Reports** | hospital-wise claim breakdown |
+
+**Gap — network membership has no API.** Nothing in the codebase inserts into `mediclaim_policy_hospitals` (the seeder explicitly leaves it for "a later phase"). Until an endpoint or admin tool exists, the network list in `/me/coverage` is empty. A rebuild must add `PUT /policies/{policy}/versions/{version}/hospitals` (or similar).
+
+---
+
+# Part 5 — Documents
+
+## 5.1 Two layers
+
+1. **Requirement checklist** (`mediclaim_document_requirements`) — which document *types* a claim needs. HR-configurable.
+2. **Uploaded documents** — real `Document`/`DocumentVersion` rows created by the shared `DocumentService`, attached to a claim through the polymorphic table `mediclaim_document_links` (`document_id`, `linkable_type = App\Models\Mediclaim\MediclaimClaim`, `linkable_id`, `document_role`, `created_by`). Storage is the shared documents subsystem (S3-compatible `StorageProvider`), not a mediclaim-specific disk.
+
+## 5.2 Requirement table & seeded defaults
+
+Columns: `document_type` (unique, `^[A-Z0-9_]+$`, ≤ 100), `label` (≤ 150), `is_required` (bool), `conditional_rule` (`null` | `hospitalized_or_surgery` | `medico_legal`), `max_file_size_kb` (default 5120), `sort_order`, `is_active`.
+
+Eight defaults, self-seeded on first access if the table is empty (`ensureDefaultsSeeded`, `insertOrIgnore`):
+
+| # | `document_type` | Label | Required | Conditional rule |
+|---|---|---|---|---|
+| 1 | `MEDICLAIM_CLAIM_FORM` | Duly Filled Claim Form | yes | — |
+| 2 | `PRESCRIPTION` | Doctor Prescription | yes | — |
+| 3 | `MEDICAL_REPORT` | Medical Reports | yes | — |
+| 4 | `HOSPITAL_BILL` | Hospital Main Bill & Break-up | yes | — |
+| 5 | `MEDICINE_BILL` | Medicine Bills | yes | — |
+| 6 | `DISCHARGE_SUMMARY` | Discharge Summary | no | required when `treatment_type ∈ {hospitalization, surgery}` (**not** `emergency`) |
+| 7 | `FIR_MLC` | FIR / MLC | no | required when `is_medico_legal_case` is true |
+| 8 | `OTHER` | Any Other Supporting Documents | no | — |
+
+**Required-for-a-claim rule** (`isRequiredFor`): if `conditional_rule` is set, it decides (the `is_required` flag is ignored); otherwise `is_required`. Only `is_active` rows count.
+
+## 5.3 Requirement routes
+
+| Route | Permission | Behaviour |
+|---|---|---|
+| `GET /document-requirements` | `mediclaim.document_requirement.read` **or** `self.mediclaim.document.upload` **or** `self.mediclaim.claim.read` | Active rows ordered `sort_order, id`. `?includeInactive=1` / `include_inactive=1` includes retired rows. Self-seeds defaults. Read by both the admin Settings screen and the employee checklist — the OR-permission exists so ordinary employees can read it. Returns `503 MODULE_SCHEMA_NOT_READY` (module `mediclaim_document_requirements`) when the table is absent. |
+| `POST /document-requirements` (20/min) | `mediclaim.document_requirement.create` | Body `document_type` (required, unique, uppercase slug), `label` (required), `is_required` (default true), `conditional_rule`, `max_file_size_kb` (int 64–51200, default 5120), `sort_order` (default max+1), `is_active` (default true). **201**. Audit `DOCUMENT_REQUIREMENT_CREATED`. |
+| `PUT /document-requirements/{requirement}` (30/min) | `…update` | Any field, `document_type` unique ignoring itself. `DOCUMENT_REQUIREMENT_UPDATED`. |
+| `DELETE /document-requirements/{requirement}` (20/min) | `…delete` | **Soft retire**: `is_active=false`; row kept for historical claims/PDFs. `DOCUMENT_REQUIREMENT_RETIRED`. |
+
+Important: `document_type` must also exist in the global `DocumentType` catalogue to be uploadable — the 8 above do (`MEDICLAIM_CLAIM_FORM`, `HOSPITAL_BILL`, `DISCHARGE_SUMMARY`, `PRESCRIPTION`, `MEDICAL_REPORT`, `MEDICINE_BILL`, `FIR_MLC`, `OTHER`; plus `MEDICAL_CERTIFICATE`, `INSURANCE_CARD`, `RULE_BOOK` in the Medical category). A custom requirement `document_type` that is not in `DocumentType` can be *created* but uploads of it fail with 422 "Unknown document type."
+
+## 5.4 Claim document routes
+
+### `GET /claims/{claim}/documents`
+Permission any of `self.mediclaim.document.download`, `mediclaim.claim_document.download`. Claim must be `visibleTo` the actor (else 404). **Blocked with 422 `discharge_at: "Discharge date is mandatory before uploading documents."` when `is_ongoing_treatment` is true or `discharge_at` is empty** (this gate also applies to *listing*). Returns links newest-first:
+
+```json
+{ "linkId": 12, "documentId": 88, "documentType": "HOSPITAL_BILL", "documentLabel": "Hospital Bill",
+  "documentRole": "HOSPITAL_BILL", "version": 1, "status": "ACTIVE",
+  "currentVersion": { "versionId": 91, "version": 1, "fileName": "…", "originalFileName": "bill.pdf",
+                      "mimeType": "application/pdf", "fileSize": 182344,
+                      "uploadStatus": "ACTIVE", "scanStatus": "NOT_SCANNED", "uploadedAt": "2026-09-21T10:15:00+05:30" },
+  "actions": { "view": true, "download": true, "replace": true, "delete": false, "restore": false } }
+```
+
+### `POST /claims/{claim}/documents` (30/min)
+Permission any of `self.mediclaim.document.upload`, `mediclaim.claim_document.upload`. **multipart/form-data**: `file` (required), `document_type` (required, must be in `DocumentType`), `document_role` (optional ≤ 60, defaults to the type). Optional header `Idempotency-Key` for safe retries. Steps:
+
+1. Claim `visibleTo`; discharge gate as above.
+2. **Max size** = the requirement row's `max_file_size_kb` for that type, else 5120 KB → `file: max:<KB>`.
+3. `DocumentService::upload(file, owner = claim's employee, type, actor, idempotencyKey, scopeKey = "mediclaim_claim_document:<claimId>")` — the scope key makes the same type on two claims separate documents while re-upload on the same claim **creates a new version**.
+4. `FileValidator` (bytes decide, browser hints ignored): rejects empty files; **global cap `documents.max_file_size` = 10 MB (env `DOCUMENT_MAX_FILE_SIZE_BYTES`)** — this applies *in addition to* the per-type limit, so an HR-configured limit above 10 MB is ineffective unless the env is raised; **allowed MIME types** for these types are the `default` list `application/pdf`, `image/jpeg`, `image/png`, `image/webp`; magic-byte signature must match; blocked extensions (php, exe, js, html, svg, sh, …) anywhere in the filename are rejected.
+5. Version stored; `scan_status = NOT_SCANNED` unless `DOCUMENT_MALWARE_SCAN_ENABLED` (then `PENDING`, and the file is unservable until clean).
+6. Insert `mediclaim_document_links`.
+7. **Call `autoSettleIfDocumentsComplete`** (may advance and close the claim — Part 2.3).
+8. **201** with the presented link (shape above). `DocumentException` → `{success:false,error:{code,message}}` with its own status (e.g. `TYPE_INVALID`, `PENDING_SCAN` 409, `IDEMPOTENCY_CONFLICT` 409, `UPLOAD_FAILED` 500).
+
+### `POST /claims/{claim}/documents/{document}/approve` 🆕 and `…/deny` 🆕
+Permission (any of): `mediclaim.claim.approve`, `mediclaim.claim.hr_verification.decide`, `mediclaim.claim.coordinator.decide`, `mediclaim.claim.committee.decide`, `mediclaim.claim.director.decide`, `mediclaim.claim.manager.decide`, `mediclaim.claim.read`. No throttle. Path: `{claim}` and `{document}` numeric; `{document}` is the **document id** (not the link id).
+Processing: claim `visibleTo` (404 otherwise) → link must exist for this claim+document (404 "Document not found on this claim.") → `Document.status = APPROVED` / `DENIED`, `updated_by` → audit `CLAIM_DOCUMENT_APPROVED` / `CLAIM_DOCUMENT_DENIED`. Response `{message, document:<presented link>}`.
+**Effect on the workflow: none.** `missingTypesFor()` counts a document as "on file" if a link exists, regardless of status — so a *denied* document still satisfies the checklist and still triggers auto-settlement (Part 9 #10). There is no reason field, no notification and no way to flip back other than calling the opposite route.
+
+## 5.5 How documents gate money
+
+`MediclaimDocumentRequirement::missingTypesFor($claim)` = `resolveRequiredTypesFor($claim) − {document_type of every linked document}`.
+- Used by `recordSettlement` (blocks manual settlement), `autoSettleIfDocumentsComplete` (triggers auto-settlement), `MyClaimController::index` (adds `missing_document_types` per claim, empty until `documents_due_at` is set) and the reminder job.
+- If the requirements table does not exist or is empty of active rows → nothing is required (returns `[]`), so a not-yet-migrated deployment settles without documents.
+- **Reminder job** `mediclaim:remind-missing-documents` (daily 08:15): for every claim whose status is not `DRAFT`, `WITHDRAWN`, `CANCELLED`, `REJECTED` or `CLOSED` and whose `documents_due_at` is **not null** (it does not wait for the due date to pass) and that still has a missing required type, it calls `MediclaimNotifier::missingDocuments` (dedupe-guarded per day). `--dry-run` lists what would be sent.
+
+## 5.6 Authorization of the files themselves
+
+`DocumentAuthorizer` has a dedicated branch (`canViewViaMediclaimClaim`) so the generic document view/download endpoints use the *same* rule as the claim: access follows the `mediclaim_document_links` row to the claim and then to `MediclaimClaim` visibility (owner, assigned manager with acknowledgement, or `awaitingReviewBy`). Employees are additionally granted `document.file.read`/`document.file.download` by migration `…000038`.
+
+Other Mediclaim documents in the same subsystem: member **ID-card PDFs** (`mediclaim_cards.document_id`, generated by `MediclaimCardService`), the **final claim-form PDF** (`final_form_document_id`, generated only on the legacy director approval), and the rule-book PDF.
+
+---
+
+# Part 6 — Master route list (79)
+
+Base path for every row: `/api/v1/mediclaim`. **All routes except #1 require `jwt.auth`, `module.schema:mediclaim` and `mediclaim.normalize_case`.** Permission cells: a single `permission:` entry with several codes means **ANY** of them; several `permission:` entries mean **ALL**. Super admins bypass permission checks. 🆕 = added after the first report.
+
+### Public
+
+| # | Method | Path (after `/api/v1/mediclaim`) | Controller@method | Permission middleware | Throttle/min |
+|---|---|---|---|---|---|
+| 1 | GET | `/cards/verify/{token}` | CardVerificationController@show | — (public) | 20 |
+
+### Self-service (me/*)
+
+| # | Method | Path (after `/api/v1/mediclaim`) | Controller@method | Permission middleware | Throttle/min |
+|---|---|---|---|---|---|
+| 2 | GET | `/me/coverage` | MyCoverageController@show | any of: `self.mediclaim.coverage.read` | — |
+| 3 | POST | `/me/rule-book-acknowledge` | MyCoverageController@acknowledgeRuleBook | any of: `self.mediclaim.onboarding.update` | 20 |
+| 4 | POST | `/me/onboarding-complete` | MyCoverageController@completeOnboarding | any of: `self.mediclaim.onboarding.update` | 20 |
+| 5 | GET | `/me/members` | MyMembersController@index | any of: `self.mediclaim.member.read` | — |
+| 6 | GET | `/me/member-change-requests` | MemberChangeRequestController@index | any of: `self.mediclaim.member_change_request.read` | — |
+| 7 | POST | `/me/member-change-requests` | MemberChangeRequestController@store | any of: `self.mediclaim.member_change_request.create` | 20 |
+| 8 | GET | `/me/cards` | MyCardController@index | any of: `self.mediclaim.card.read` | — |
+| 9 | GET | `/me/intimations` | IntimationController@index | any of: `self.mediclaim.intimation.read` | — |
+| 10 | POST | `/me/intimations` | IntimationController@store | any of: `self.mediclaim.intimation.create` | 20 |
+| 11 | GET | `/me/claims` | MyClaimController@index | any of: `self.mediclaim.claim.read` | — |
+| 12 | POST | `/me/claims` | MyClaimController@store | any of: `self.mediclaim.claim.create` | 30 |
+
+### Manager (team/*)
+
+| # | Method | Path (after `/api/v1/mediclaim`) | Controller@method | Permission middleware | Throttle/min |
+|---|---|---|---|---|---|
+| 13 | GET | `/team/claims` | TeamClaimController@index | any of: `mediclaim.team_claim.read` | — |
+| 14 | GET | `/team/pending-approvals` | TeamClaimController@pending | any of: `mediclaim.claim.manager.decide` | — |
+
+### Admin — claims list/delete
+
+| # | Method | Path (after `/api/v1/mediclaim`) | Controller@method | Permission middleware | Throttle/min |
+|---|---|---|---|---|---|
+| 15 | GET | `/claims` | Admin/ClaimController@index | any of: `mediclaim.claim.read` | — |
+| 16 | DELETE | `/claims/{claim}` | Admin/ClaimController@destroy | any of: `mediclaim.claim.delete` | — |
+
+### Shared claim workflow (claims/{claim}/...)
+
+| # | Method | Path (after `/api/v1/mediclaim`) | Controller@method | Permission middleware | Throttle/min |
+|---|---|---|---|---|---|
+| 17 | GET | `/claims/{claim}` | ClaimController@show | any of: `self.mediclaim.claim.read`, `mediclaim.claim.read`, `mediclaim.claim.approve`, `mediclaim.claim.manager.decide`, `mediclaim.claim.coordinator.decide`, `mediclaim.claim.committee.decide`, `mediclaim.claim.hr_verification.decide`, `mediclaim.claim.director.decide`, `mediclaim.audit.read` | — |
+| 18 | PUT | `/claims/{claim}` | ClaimController@update | any of: `self.mediclaim.claim.update` | — |
+| 19 | POST | `/claims/{claim}/submit` | ClaimController@submit | any of: `self.mediclaim.claim.submit` | 30 |
+| 20 | POST | `/claims/{claim}/withdraw` | ClaimController@withdraw | any of: `self.mediclaim.claim.withdraw` | — |
+| 21 | POST | `/claims/{claim}/discharge` | ClaimController@discharge | any of: `self.mediclaim.claim.update` | — |
+| 22 | POST | `/claims/{claim}/finalize-treatment` | ClaimController@finalizeTreatment | any of: `self.mediclaim.claim.update` | — |
+| 23 | POST | `/claims/{claim}/update-expenses` 🆕 | ClaimController@updateExpenses | any of: `self.mediclaim.claim.update` | — |
+| 24 | POST | `/claims/{claim}/confidentiality-ack` | ClaimController@confidentialityAck | any of: `mediclaim.claim.manager.decide` | — |
+| 25 | POST | `/claims/{claim}/return` | ClaimReviewController@return | any of: `mediclaim.claim.manager.decide`, `mediclaim.claim.coordinator.decide`, `mediclaim.claim.committee.decide`, `mediclaim.claim.hr_verification.decide`, `mediclaim.claim.director.decide` | — |
+| 26 | GET | `/claims/{claim}/documents` | ClaimDocumentController@index | any of: `self.mediclaim.document.download`, `mediclaim.claim_document.download` | — |
+| 27 | POST | `/claims/{claim}/documents` | ClaimDocumentController@store | any of: `self.mediclaim.document.upload`, `mediclaim.claim_document.upload` | 30 |
+| 28 | POST | `/claims/{claim}/documents/{document}/approve` 🆕 | ClaimDocumentController@approve | any of: `mediclaim.claim.approve`, `mediclaim.claim.hr_verification.decide`, `mediclaim.claim.coordinator.decide`, `mediclaim.claim.committee.decide`, `mediclaim.claim.director.decide`, `mediclaim.claim.manager.decide`, `mediclaim.claim.read` | — |
+| 29 | POST | `/claims/{claim}/documents/{document}/deny` 🆕 | ClaimDocumentController@deny | any of: `mediclaim.claim.approve`, `mediclaim.claim.hr_verification.decide`, `mediclaim.claim.coordinator.decide`, `mediclaim.claim.committee.decide`, `mediclaim.claim.director.decide`, `mediclaim.claim.manager.decide`, `mediclaim.claim.read` | — |
+| 30 | GET | `/claims/{claim}/timeline` | ClaimController@timeline | any of: `self.mediclaim.claim.read`, `mediclaim.audit.read` | — |
+| 31 | GET | `/claims/{claim}/decisions` | ClaimController@decisions | any of: `self.mediclaim.claim.read`, `mediclaim.audit.read` | — |
+
+### Review queue
+
+| # | Method | Path (after `/api/v1/mediclaim`) | Controller@method | Permission middleware | Throttle/min |
+|---|---|---|---|---|---|
+| 32 | GET | `/reviews/pending` | ReviewQueueController@index | any of: `mediclaim.claim.approve`, `mediclaim.claim.manager.decide`, `mediclaim.claim.coordinator.decide`, `mediclaim.claim.committee.decide`, `mediclaim.claim.hr_verification.decide`, `mediclaim.claim.director.decide`, `mediclaim.settlement.create` | — |
+| 33 | POST | `/reviews/{claim}/decision` | ReviewQueueController@decide | any of: `mediclaim.claim.approve`, `mediclaim.claim.manager.decide`, `mediclaim.claim.coordinator.decide`, `mediclaim.claim.committee.decide`, `mediclaim.claim.hr_verification.decide`, `mediclaim.claim.director.decide`, `mediclaim.settlement.create` | 30 |
+
+### Admin — intimations
+
+| # | Method | Path (after `/api/v1/mediclaim`) | Controller@method | Permission middleware | Throttle/min |
+|---|---|---|---|---|---|
+| 34 | GET | `/intimations` | Admin/IntimationController@index | any of: `mediclaim.intimation.read` | — |
+| 35 | POST | `/intimations/{intimation}/close` | Admin/IntimationController@close | any of: `mediclaim.intimation.close` | 30 |
+
+### Admin — member change requests
+
+| # | Method | Path (after `/api/v1/mediclaim`) | Controller@method | Permission middleware | Throttle/min |
+|---|---|---|---|---|---|
+| 36 | GET | `/member-change-requests` | Admin/MemberChangeRequestController@index | any of: `mediclaim.member_change_request.read` | — |
+| 37 | POST | `/member-change-requests/{changeRequest}/decision` | Admin/MemberChangeRequestController@decide | any of: `mediclaim.member_change_request.decide` | 30 |
+
+### Admin — policies
+
+| # | Method | Path (after `/api/v1/mediclaim`) | Controller@method | Permission middleware | Throttle/min |
+|---|---|---|---|---|---|
+| 38 | GET | `/policies` | Admin/PolicyController@index | any of: `mediclaim.policy.read` | — |
+| 39 | POST | `/policies` | Admin/PolicyController@store | any of: `mediclaim.policy.create` | 20 |
+| 40 | PUT | `/policies/{policy}` | Admin/PolicyController@update | any of: `mediclaim.policy.update` | — |
+| 41 | POST | `/policies/{policy}/versions` | Admin/PolicyController@storeVersion | any of: `mediclaim.policy.create` | 20 |
+| 42 | POST | `/policies/{policy}/versions/{version}/publish` | Admin/PolicyController@publishVersion | any of: `mediclaim.policy.publish` | — |
+
+### Admin — employees
+
+| # | Method | Path (after `/api/v1/mediclaim`) | Controller@method | Permission middleware | Throttle/min |
+|---|---|---|---|---|---|
+| 43 | GET | `/admin/employees` | Admin/EmployeeController@index | any of: `mediclaim.enrollment.read` | — |
+| 44 | POST | `/admin/employees/bulk-issue-cards` | Admin/EmployeeController@bulkIssue | any of: `mediclaim.enrollment.create` | 5 |
+| 45 | GET | `/admin/employees/{employee}` | Admin/EmployeeController@show | any of: `mediclaim.enrollment.read` | — |
+
+### Admin — enrollments
+
+| # | Method | Path (after `/api/v1/mediclaim`) | Controller@method | Permission middleware | Throttle/min |
+|---|---|---|---|---|---|
+| 46 | GET | `/enrollments` | Admin/EnrollmentController@index | any of: `mediclaim.enrollment.read` | — |
+| 47 | POST | `/enrollments` | Admin/EnrollmentController@store | any of: `mediclaim.enrollment.create` | 30 |
+| 48 | PUT | `/enrollments/{enrollment}` | Admin/EnrollmentController@update | any of: `mediclaim.enrollment.update` | — |
+
+### Admin — hospitals & contacts
+
+| # | Method | Path (after `/api/v1/mediclaim`) | Controller@method | Permission middleware | Throttle/min |
+|---|---|---|---|---|---|
+| 49 | GET | `/hospitals` | Admin/HospitalController@index | any of: `mediclaim.hospital.read` | — |
+| 50 | POST | `/hospitals` | Admin/HospitalController@store | any of: `mediclaim.hospital.create` | 20 |
+| 51 | PUT | `/hospitals/{hospital}` | Admin/HospitalController@update | any of: `mediclaim.hospital.update` | — |
+| 52 | DELETE | `/hospitals/{hospital}` | Admin/HospitalController@destroy | any of: `mediclaim.hospital.delete` | — |
+| 53 | POST | `/hospitals/{hospital}/contacts` | Admin/HospitalContactController@store | any of: `mediclaim.hospital.update` | 20 |
+| 54 | POST | `/hospitals/{hospital}/contacts/{contact}` | Admin/HospitalContactController@update | any of: `mediclaim.hospital.update` | 20 |
+| 55 | DELETE | `/hospitals/{hospital}/contacts/{contact}` | Admin/HospitalContactController@destroy | any of: `mediclaim.hospital.delete` | — |
+
+### Admin — document requirements
+
+| # | Method | Path (after `/api/v1/mediclaim`) | Controller@method | Permission middleware | Throttle/min |
+|---|---|---|---|---|---|
+| 56 | GET | `/document-requirements` | Admin/DocumentRequirementController@index | any of: `mediclaim.document_requirement.read`, `self.mediclaim.document.upload`, `self.mediclaim.claim.read` | — |
+| 57 | POST | `/document-requirements` | Admin/DocumentRequirementController@store | any of: `mediclaim.document_requirement.create` | 20 |
+| 58 | PUT | `/document-requirements/{requirement}` | Admin/DocumentRequirementController@update | any of: `mediclaim.document_requirement.update` | 30 |
+| 59 | DELETE | `/document-requirements/{requirement}` | Admin/DocumentRequirementController@destroy | any of: `mediclaim.document_requirement.delete` | 20 |
+
+### Admin — rule books & languages
+
+| # | Method | Path (after `/api/v1/mediclaim`) | Controller@method | Permission middleware | Throttle/min |
+|---|---|---|---|---|---|
+| 60 | GET | `/rule-book-languages` | Admin/RuleBookLanguageController@index | any of: `mediclaim.rule_book.read` | — |
+| 61 | POST | `/rule-book-languages` | Admin/RuleBookLanguageController@store | any of: `mediclaim.rule_book.create` | 20 |
+| 62 | PUT | `/rule-book-languages/{language}` | Admin/RuleBookLanguageController@update | any of: `mediclaim.rule_book.update` | 30 |
+| 63 | DELETE | `/rule-book-languages/{language}` | Admin/RuleBookLanguageController@destroy | any of: `mediclaim.rule_book.delete` | 20 |
+| 64 | GET | `/rule-books` | Admin/RuleBookController@index | any of: `mediclaim.rule_book.read` | — |
+| 65 | POST | `/rule-books` | Admin/RuleBookController@store | any of: `mediclaim.rule_book.create` | 20 |
+| 66 | PUT | `/rule-books/{ruleBook}` | Admin/RuleBookController@update | any of: `mediclaim.rule_book.update` | 30 |
+| 67 | POST | `/rule-books/{ruleBook}/publish` | Admin/RuleBookController@publish | any of: `mediclaim.rule_book.publish` | — |
+| 68 | POST | `/rule-books/{ruleBook}/items` | Admin/RuleBookController@addItem | any of: `mediclaim.rule_book.update` | 60 |
+| 69 | PUT | `/rule-books/{ruleBook}/items/{item}` | Admin/RuleBookController@updateItem | any of: `mediclaim.rule_book.update` | 60 |
+| 70 | DELETE | `/rule-books/{ruleBook}/items/{item}` | Admin/RuleBookController@deleteItem | any of: `mediclaim.rule_book.update` | 60 |
+| 71 | PUT | `/rule-books/{ruleBook}/items-reorder` | Admin/RuleBookController@reorderItems | any of: `mediclaim.rule_book.update` | 30 |
+
+### Admin — reviewer assignments
+
+| # | Method | Path (after `/api/v1/mediclaim`) | Controller@method | Permission middleware | Throttle/min |
+|---|---|---|---|---|---|
+| 72 | GET | `/reviewer-assignments` | Admin/ReviewerAssignmentController@index | any of: `mediclaim.reviewer_assignment.read` | — |
+| 73 | POST | `/reviewer-assignments` | Admin/ReviewerAssignmentController@store | any of: `mediclaim.reviewer_assignment.assign` | 30 |
+| 74 | PUT | `/reviewer-assignments/{assignment}` | Admin/ReviewerAssignmentController@update | any of: `mediclaim.reviewer_assignment.assign` | — |
+
+### Admin — settlements
+
+| # | Method | Path (after `/api/v1/mediclaim`) | Controller@method | Permission middleware | Throttle/min |
+|---|---|---|---|---|---|
+| 75 | GET | `/settlements` | Admin/SettlementController@index | any of: `mediclaim.settlement.read` | — |
+| 76 | POST | `/settlements` | Admin/SettlementController@store | any of: `mediclaim.settlement.create` | 20 |
+
+### Admin — reports
+
+| # | Method | Path (after `/api/v1/mediclaim`) | Controller@method | Permission middleware | Throttle/min |
+|---|---|---|---|---|---|
+| 77 | GET | `/reports` | Admin/ReportController@index | any of: `mediclaim.report.read` | — |
+| 78 | GET | `/reports/export` | Admin/ReportController@export | any of: `mediclaim.report.read` **AND** any of: `mediclaim.report.export` | 10 |
+
+### Admin — audit
+
+| # | Method | Path (after `/api/v1/mediclaim`) | Controller@method | Permission middleware | Throttle/min |
+|---|---|---|---|---|---|
+| 79 | GET | `/audit` | Admin/AuditController@index | any of: `mediclaim.audit.read` | — |
+
+Route-level request/response detail for every row above is in Appendices C and D (self-service/claims and admin) — each route has its validation rules, processing steps, JSON examples and error codes. Parts 3 and 5 above hold the amount and document rules that those routes rely on.
+
+---
+
+# Part 7 — Claim number format (current code)
+
+Allocated **once**, at first submission (`MediclaimClaimNumber::next($company, $employee)`), never changed on resubmission.
+
+```text
+{PREFIX}-{EMP_CODE}-{YYYY-MM-DD}          e.g.  NS-1042-2026-09-21
+```
+
+| Company (contains) | Branch/unit (contains) | Prefix |
+|---|---|---|
+| `nidhi` | `shreeji` | `NS` |
+| `nidhi` | `ichapur` or `ichhapore` | `NI` |
+| `silver` | `daduk` or `dhaduk` | `SD` |
+| `silver` | `ichapur` or `ichhapore` | `SI` |
+| `nidhi` (other branch) | — | `ND` if branch contains daduk/dhaduk, else `NS` |
+| `silver` (other branch) | — | `SS` if branch contains shreeji, else `SD` |
+| anything else | — | first letter of company + first letter of branch (`M`/`C` when blank) |
+
+- `EMP_CODE` = the employee's `emp_code`, else their user id (fallback `0001`). Branch = `users.unit` else `users.branch`. Company/branch matching is case-insensitive substring matching.
+- Date = the **submission date** (`now()`), format strictly `YYYY-MM-DD`.
+- **Uniqueness:** if the number already exists, a counter suffix is appended: `…-2`, `…-3`. This is a read-then-loop (`exists()` check) with **no lock**, so two simultaneous submissions by the same employee on the same day could still collide and one would hit the unique index (500). The old locked-counter approach is only used as a fallback when no employee is supplied.
+- **Legacy format** (`MC-{COMPANY}-{YEAR}-{000001}`, counter table `mediclaim_claim_number_counters`) still exists for callers that pass no employee, and older data may hold it.
+- ⚠ **Read-side rewrite:** `MediclaimClaim::getClaimNumberAttribute` (new, uncommitted) converts any stored number that does not start with `NS-`, `NI-`, `SD-` or `SI-` into the new format **when the attribute is read** and **writes the result back to the database** if no other row has that value (it swallows all exceptions). It rebuilds the number from the employee's *current* unit/emp_code and the claim's `submitted_at` date. Consequences: a `GET` can mutate data; `ND-`/`SS-`/fallback-prefixed numbers never match the `NS|NI|SD|SI` test, so they trigger an extra `UPDATE` (writing the same value back) on every read; and changing an employee's branch later can change how old numbers are regenerated. A rebuild should generate the number once and store it, with no accessor-side persistence.
+
+---
+
+# Part 8 — What changed since the first report
+
+The working tree changed **while this documentation was being produced** (another developer's uncommitted edits). The appendices below were generated before some of these edits and are annotated here.
+
+| Change | Detail | Where documented |
+|---|---|---|
+| **3 new routes** (76 → **79**) | `POST /claims/{claim}/update-expenses`; `POST /claims/{claim}/documents/{document}/approve`; `POST /claims/{claim}/documents/{document}/deny` | Part 3.5 and Part 5.4 (full detail) |
+| **New claim-number scheme** | `NS/NI/SD/SI-{EMP_CODE}-{YYYY-MM-DD}` replaces `MC-{COMPANY}-{YEAR}-{seq}`; `next()` gains employee/date/branch parameters; new `resolvePrefix()` and a persisting accessor | Part 7. **Appendix A §7 and Appendix B still describe the `MC-…-000145` format and the locked counter as the main mechanism — Part 7 overrides them.** |
+| `ClaimWorkflowService::updateExpenses` | new public method | Part 3.5 |
+| Employee snapshot | `buildEmployeeSnapshot` now also stores `unit` and `branch` (needed for numbering) | Part 7 |
+| `Admin\ClaimController@index` | drafts hidden **unless** a `status` filter is given (previously always hidden); new `financial_year` / `year` filter (start year `>2000`, matches `submitted_at` in the FY, or `created_at` for never-submitted claims) | Appendix D (already described the working-tree version) |
+| Corrected statement | The first assembled report said the `permissions` rows were only seeded for `rule_book.delete` in one place; in fact migration `2026_09_15_000028` seeds 47 codes (Appendix A §5) | Appendix D text patched |
+
+Route detail for the three new routes:
+
+**`POST /claims/{claim}/update-expenses`** — Permission `self.mediclaim.claim.update` (single), no throttle. Body: `expenses` (required array, min 1), `expenses.*.category` (required string ≤ 60 — *not* restricted to the six categories, unlike draft save which uses `Rule::in(CATEGORIES)`), `expenses.*.description` (≤ 500), `expenses.*.claimed_amount` (required numeric ≥ 0), `expenses.*.expense_date` (date). Claim must be `visibleTo` the actor (404) and owned by them (403 `WRONG_CLAIM_OWNER`). Refused for `REJECTED`/`WITHDRAWN`/`CANCELLED` (422 `status`). Replaces all expense lines, recomputes the claimed total, applies the approved-in-principle rule (Part 3.5), event `EXPENSES_UPDATED`. Returns **200** with the full claim (`{success:true,data:<claim>}`).
+
+**`POST /claims/{claim}/documents/{document}/approve|deny`** — see Part 5.4.
+
+---
+
+# Part 9 — Defects and risks (verified against the code)
+
+Numbered for reference. **Severity** is my judgement: 🔴 wrong money/data or security, 🟠 broken behaviour, 🟡 rough edge.
+
+| # | Sev | Finding | Evidence |
+|---|---|---|---|
+| 1 | 🔴 | **Floater is not re-checked when the approved amount is raised** by `finalize-treatment` / `update-expenses` (Part 3.5). An employee can exceed ₹3,00,000 with no override. | `ClaimWorkflowService` `finalizeTreatment`/`updateExpenses` set `total_approved_amount = total_claimed_amount` without `assertWithinFloater` |
+| 2 | 🔴 | **Plain `approved` with a lower typed amount** is accepted (status `APPROVED`); a later expense top-up silently raises approval to the full claimed total. | `approveDirect` has no `approved == claimed` check for `approved` |
+| 3 | 🔴 | **`update-expenses` is allowed on `SETTLED`/`CLOSED` claims** and changes the claimed total while approved/settled figures stay unchanged. | blocked list = REJECTED/WITHDRAWN/CANCELLED only |
+| 4 | 🟠 | **No approve/reject notification** in the live flow. | `MediclaimNotifier` map lacks `CLAIM_APPROVED/PARTIALLY_APPROVED/REJECTED` |
+| 5 | 🟠 | **Denied document still counts** as on file; approve/deny has no workflow effect, no reason, no notification. | `missingTypesFor` ignores `Document.status` |
+| 6 | 🟠 | **A claim at `SUBMITTED` (no manager resolved) cannot be returned** (422 "Unknown review stage"). | `returnForCorrection` stage map only has the five legacy stages |
+| 7 | 🟠 | **Floater check only at decision time; no reservation; no lock on the enrollment.** Two claims approved concurrently can both pass. | `assertWithinFloater` reads `SUM` without locking the enrollment row |
+| 8 | 🟠 | **Submit enforces nothing about completeness** (no expenses, no network check, no intimation for planned treatment, no member-age check, no floater). `isNetworkHospital`, `intimationRequired`, `validateMemberEligibility` (for claims) are never called. | grep of call sites |
+| 9 | 🟠 | **Manual settlement (`POST /settlements`) leaves the claim at `SETTLED`** (never `CLOSED`); over-payment is not blocked; two different max lengths for mode/reference between the two settlement entry points. | `SettlementController@store` vs `ReviewQueueController@decide` |
+| 10 | 🟠 | **Document upload requires a discharge date even for OPD / tests-only claims**, and even *listing* documents is blocked until then. | `ClaimDocumentController@index/store` gate |
+| 11 | 🟠 | **HR-configured max file size above 10 MB is ineffective** (global `FileValidator` cap). | `documents.max_file_size` default 10 MB |
+| 12 | 🟠 | **Employees may lack `mediclaim.hospital.read` / `rule_book.read`** so the hospital picker / rule book can 403 (only local/testing migration `…000031` grants everything; in shadow authorization mode the legacy fallback may hide this). | routes + seed migrations (Appendix A §5) |
+| 13 | 🟠 | **Network hospitals cannot be maintained** — no endpoint writes `mediclaim_policy_hospitals`. | grep |
+| 14 | 🟠 | **Report query params broken by case normalisation** (`reportType`, `includeSensitive`, `overdueDays`, `withinDays`); frontend Export CSV calls the wrong route and expects `data.url`; `DELETE /reviewer-assignments/{id}` has no backend route. | Appendix D, verified |
+| 15 | 🟠 | **Auto-settlement records the uploader (often the employee) as the settler.** | `autoSettleIfDocumentsComplete($model, $actor)` |
+| 16 | 🟡 | **Claim number accessor mutates the DB on read** and can collide (no lock) — Part 7. | `getClaimNumberAttribute`, `next()` loop |
+| 17 | 🟡 | **Hospital "delete" has no in-use guard; `company_code` on create isn't checked against the actor's companies; `is_network_hospital` is client-supplied.** | `HospitalController`, `ValidatesClaimPayload` |
+| 18 | 🟡 | `GET /reviews/pending` lists `APPROVED`/`PARTIALLY_APPROVED` claims that then 422 on decision. | `awaitingReviewBy` vs `STAGE_METHODS` |
+| 19 | 🟡 | `ScopesCompany` filters `unit`, a column mediclaim tables lack (500 for role-2 actors / `?unit=`). | Appendix A/D |
+| 20 | 🟡 | `nature_of_illness` validated to 1000 chars but column is `varchar(255)`. | Appendix A §3 |
+| 21 | 🟡 | `mediclaim.rule_book.delete` is granted to **every active role in every environment** and a language delete cascades rule books/items/acknowledgements. | migration `…000035` |
+| 22 | 🟡 | `permission:` shadow mode can let legacy roles through routes with no DB grant; effective mode depends on `AUTHZ_*` env vars I could not see. | Appendix A §1.6, §5.3 |
+| 23 | 🟡 | `numeric throttle:N,1` counters are shared per user across routes (framework behaviour). | Appendix A |
+| 24 | ℹ️ | Project memory: `php artisan migrate` run from this workspace does not reach the real database; confirm all Mediclaim migrations exist on the server at .53. | memory note |
+
+---
+
+
+
+---
+
+# Appendix A — Foundation, Data Model, Permissions
+
+> **Appendix note.** Generated from a code read taken *before* the latest uncommitted edits by another developer. Where this appendix disagrees with Parts 1–9 (claim-number format, route count 76 vs 79, the three new routes, `updateExpenses`), **Parts 1–9 are correct** — see Part 8.
+
+## B1 — Foundation, Data Model & Permissions
 
 Source: Laravel 12 / PHP 8.2+ backend at `salary-slip-bac` (working tree as of 2026-09-21; `Api/V1/Mediclaim/Admin/ClaimController.php` has uncommitted edits, everything below reflects the working tree). Auth = `tymon/jwt-auth` 2.x, default DB driver `pgsql` (`config/database.php`, `phpunit.xml` also uses pgsql `niss_hrms_test`).
 All paths below are relative to `salary-slip-bac/` unless absolute. Nothing in this file was modified in the codebase.
@@ -840,11 +1521,16 @@ No tests exist for: middleware behaviour (`module.schema`, `normalize_case`, per
 14. **`awaitingReviewBy` approver branch has no company filter** (all companies) and calls the audited `AuthorizationEngine::decide` on every query build (writes a decision-log row per call). Confirm multi-tenant intent and performance impact.
 15. **`ScopesCompany` role-2 `unit` filter** adds `where('unit', ...)`; Mediclaim tables have no `unit` column, so any Mediclaim query scoped for a role-2 actor with a `unit` value would error (unverified in practice; role-2 users may never hit those endpoints).
 
+
+
+
 ---
 
-<!-- ======================= B2-services ======================= -->
+# Appendix B — Services, Notifications, Mail, Scheduled Jobs
 
-# B2 — Business Logic, Workflow & Notifications
+> **Appendix note.** Generated from a code read taken *before* the latest uncommitted edits by another developer. Where this appendix disagrees with Parts 1–9 (claim-number format, route count 76 vs 79, the three new routes, `updateExpenses`), **Parts 1–9 are correct** — see Part 8.
+
+## B2 — Business Logic, Workflow & Notifications
 
 Scope: `app/Services/Mediclaim/*`, `app/Support/Mediclaim*.php`, `app/Mail/Mediclaim/*`, `resources/views/{mediclaim,emails/mediclaim}/*`, `app/Console/Commands/Mediclaim*.php`, `routes/console.php`, `database/seeders/MediclaimPolicySeeder.php`. Read-only analysis of the Laravel backend at `salary-slip-bac`. Paths below are relative to `salary-slip-bac/`. Where a rule is only visible from a caller (controller / route / model scope), that is stated explicitly and cited.
 
@@ -1319,11 +2005,16 @@ All three: `withoutOverlapping()->runInBackground()`, `--dry-run` option (prints
 16. **Timezone/`now()`**: claim-number year, FY boundaries, dedupe keys (`now()->toDateString()`), and cron day comparisons all use the app timezone; verify `config('app.timezone')` (not read here).
 17. Tables/columns referenced but whose DDL was not part of this slice (owned by other report parts): `mediclaim_claim_events.notified_at`, `mediclaim_notification_dedupe`, `mediclaim_claim_number_counters`, `mediclaim_intimation_number_counters`, `mediclaim_document_links`, `mediclaim_admin_activity_logs`.
 
+
+
+
 ---
 
-<!-- ======================= B3-routes-self-claims ======================= -->
+# Appendix C — Route Reference: Self-service, Manager, Claim Workflow, Reviews
 
-# B3 — Routes: Self-service, Manager, Shared Claim Workflow, Reviews, Public
+> **Appendix note.** Generated from a code read taken *before* the latest uncommitted edits by another developer. Where this appendix disagrees with Parts 1–9 (claim-number format, route count 76 vs 79, the three new routes, `updateExpenses`), **Parts 1–9 are correct** — see Part 8.
+
+## B3 — Routes: Self-service, Manager, Shared Claim Workflow, Reviews, Public
 
 Scope: 28 routes served by `CardVerificationController`, `MyCoverageController`, `MyMembersController`, `MemberChangeRequestController` (employee side), `MyCardController`, `IntimationController` (employee side), `MyClaimController`, `TeamClaimController`, `ClaimController` (shared), `ClaimReviewController`, `ClaimDocumentController`, `ReviewQueueController`. Admin\* controllers are documented elsewhere.
 
@@ -2193,11 +2884,16 @@ Columns set: `user_id, module='Mediclaim', title, description, priority ('Normal
 20. **Permission catalogue vs permission strings**: the `permission:` middleware runs in shadow mode by default (a legacy-allowed user can pass even without the new business code granted). The rebuild's authorization model should be explicit about whether the ANY-of lists above are enforced strictly.
 21. Unverified: exact `AuthorizationEngine` semantics for `mediclaim.claim.approve` in `awaitingReviewBy()` (calls `decide($actor,'mediclaim.claim.approve')->allowed` with default options, i.e. without the shadow-mode rescue that `RequirePermission` applies), and the exact HTTP status/shape of S3 errors (`DocumentException::fromAws`, only partially read).
 
+
+
+
 ---
 
-<!-- ======================= B4-routes-admin-a ======================= -->
+# Appendix D — Route Reference: Admin / HR
 
-# B4 — Routes: Admin/HR (Claims, Employees, Enrollments, Policies, Hospitals, Documents, Intimations, Member Changes)
+> **Appendix note.** Generated from a code read taken *before* the latest uncommitted edits by another developer. Where this appendix disagrees with Parts 1–9 (claim-number format, route count 76 vs 79, the three new routes, `updateExpenses`), **Parts 1–9 are correct** — see Part 8.
+
+## B4 — Routes: Admin/HR (Claims, Employees, Enrollments, Policies, Hospitals, Documents, Intimations, Member Changes)
 
 Source of truth: `routes/mediclaim.php` (working tree) and `app/Http/Controllers/Api/V1/Mediclaim/Admin/*` in `\\192.168.1.53\f\HRMS oldd\salary-slip-bac`. `Admin/ClaimController.php` is documented as the **working-tree (uncommitted) version** (differences from HEAD: drafts are now excluded only when no `status` filter is passed; new `financial_year`/`year` filter). All line numbers below are for the working tree.
 
@@ -2968,11 +3664,8 @@ Model: `mediclaim_member_change_requests` (employee-submitted add/update/remove 
 13. `bulkIssue` company narrowing reads `company_code` from either query or JSON body (via `$request->company_code`); the frontend sends neither, so it runs over the actor's full scope.
 14. Uncommitted `ClaimController` edits could still change; this doc reflects the working tree at time of reading (2026-09-21).
 
----
 
-<!-- ======================= B5-routes-admin-b ======================= -->
-
-# B5 — Routes: Admin/HR (Rule Books, Languages, Reviewers, Settlements, Reports, Audit)
+## B5 — Routes: Admin/HR (Rule Books, Languages, Reviewers, Settlements, Reports, Audit)
 
 Source of truth: `salary-slip-bac/routes/mediclaim.php` (required from the tail of `routes/api.php`, line 1681, outside any group -> Laravel's default `/api` prefix applies). All controllers are in `app/Http/Controllers/Api/V1/Mediclaim/Admin/`. Frontend client: `salary-slip-front/salary-slip-front/src/features/mediclaim/services/mediclaimApi.js` (`BASE = "/v1/mediclaim"`; the shared `apiRequest` prepends the API host + `/api`).
 
@@ -3521,4 +4214,4 @@ MC/2026-27/000042,E001,Asha Patel,nissgroup,SETTLED,City Hospital,inpatient,2026
 10. **JSON relation-key collisions** — `recordedBy` -> `recorded_by` (settlements index) and `publishedBy` -> `published_by` (rule-book index) overwrite the scalar FK columns with objects; the rebuild should decide whether to preserve this exact shape for the existing frontend.
 11. **Empty-map serialisation** — `claimsByStatus`, `pendingByStage`, `coveredMembers.byRelationship` come from `Collection::pluck` and serialise as `[]` (not `{}`) when empty.
 
----
+

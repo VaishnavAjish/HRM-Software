@@ -35,7 +35,7 @@
 Collected from F1 §8 and F2 "Backend contract gaps" (each is described in detail there):
 
 1. Report **Export CSV** calls `GET /reports` and expects a URL; the backend streams CSV from `GET /reports/export`.
-2. The "reveal sensitive" flag is sent as `reveal`; the backend reads `includeSensitive` (and, separately, that key is broken by case normalisation — see backend report §0.5 #1).
+2. The "reveal sensitive" flag is sent as `reveal`; the backend reads `includeSensitive` (and, separately, that key is broken by case normalisation — see the backend report, Part 9 #14).
 3. `deleteReviewerAssignment` calls a route that does not exist.
 4. Employees need hospital and rule-book **read** permissions that may not be granted to the plain Employee role.
 5. Resubmitting a returned claim pre-fills the edit form from the **list row** instead of the full claim.
@@ -46,6 +46,18 @@ Collected from F1 §8 and F2 "Backend contract gaps" (each is described in detai
 
 ---
 
+
+## 0.4 Additions the appendices below do not cover
+
+`MEDICLAIM_BACKEND_REPORT.md` (Parts 3.5, 5.4, 8) documents three backend routes that appeared during this work. The frontend API client **already has functions for all three**, but F1/F2 below were written before this was noticed and do not list them:
+
+| API-client function (`mediclaimApi.js`) | Calls | Used by | Notes |
+|---|---|---|---|
+| `updateClaimExpenses(claimId, expenses, accessToken)` | `POST /claims/{id}/update-expenses` | `ClaimDetailDrawer.jsx` (expense editing) | sends `expenses[]` as `{category, description, claimed_amount, expense_date}`; backend recomputes the total and, on an approved claim, may raise the approved amount (backend Part 3.5) |
+| `approveClaimDocument(claimId, documentId, accessToken)` | `POST /claims/{id}/documents/{documentId}/approve` | `ClaimDetailDrawer.jsx`, `ClaimFullDetail.jsx` | `documentId` is the **document id** from the documents list, not `linkId` |
+| `denyClaimDocument(claimId, documentId, accessToken)` | `POST /claims/{id}/documents/{documentId}/deny` | `ClaimDetailDrawer.jsx`, `ClaimFullDetail.jsx` | no reason is sent; denial does not block settlement on the backend (backend Part 5.4, Part 9 #5) |
+
+Treat these three as part of the API contract when rebuilding the client. Also note the frontend and backend working trees were both being edited by others at the time of reading, so re-verify function counts (F1 says 65) against the current `mediclaimApi.js`.
 
 <!-- ======================= F1-frontend-architecture ======================= -->
 
