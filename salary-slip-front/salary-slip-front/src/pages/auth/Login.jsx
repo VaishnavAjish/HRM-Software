@@ -857,39 +857,45 @@ export default function Login() {
                     </div>
 
                     {showDropdown && matchingEmployees.length > 0 && !selectedUser && (
-                      <div className="mt-1.5 w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl overflow-hidden z-30 relative max-h-56 overflow-y-auto animate-in fade-in slide-in-from-top-2 duration-200">
-                        <div className="px-3 py-1.5 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-100 dark:border-slate-700 text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                      <div className="mt-1.5 w-full bg-white dark:bg-slate-900 border-2 border-indigo-200 dark:border-indigo-900 rounded-xl shadow-2xl overflow-hidden z-40 relative max-h-60 overflow-y-auto animate-in fade-in slide-in-from-top-2 duration-200">
+                        <div className="px-3.5 py-2 bg-indigo-50/90 dark:bg-indigo-950/80 border-b border-indigo-100 dark:border-indigo-900 text-[11px] font-extrabold text-indigo-900 dark:text-indigo-200 uppercase tracking-wider">
                           Select Your Account ({matchingEmployees.length} profiles found)
                         </div>
-                        {matchingEmployees.map((emp) => (
-                          <button
-                            key={emp.id}
-                            type="button"
-                            onClick={() => {
-                              setSelectedUser(emp);
-                              setEmpCode(emp.name || emp.emp_code);
-                              setShowDropdown(false);
-                            }}
-                            className="w-full text-left px-3.5 py-2.5 hover:bg-indigo-50/80 dark:hover:bg-indigo-950/50 border-b border-slate-100 last:border-0 dark:border-slate-700/60 transition-colors flex items-center justify-between group cursor-pointer"
-                          >
-                            <div className="flex items-center gap-2.5 min-w-0">
-                              <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 flex items-center justify-center font-bold text-xs shrink-0">
-                                {emp.name ? emp.name.charAt(0).toUpperCase() : "U"}
+                        {matchingEmployees.map((emp) => {
+                          const displayName = emp.name || emp.emp_name || emp.full_name || emp.user_name || "Employee Profile";
+                          const initial = displayName.charAt(0).toUpperCase();
+                          return (
+                            <button
+                              key={emp.id}
+                              type="button"
+                              onClick={() => {
+                                setSelectedUser(emp);
+                                setEmpCode(emp.emp_code || emp.name);
+                                setShowDropdown(false);
+                              }}
+                              className="w-full text-left px-3.5 py-3 hover:bg-indigo-50 dark:hover:bg-indigo-950/70 border-b border-slate-100 last:border-0 dark:border-slate-800 transition-colors flex items-center justify-between group cursor-pointer"
+                            >
+                              <div className="flex items-center gap-3 min-w-0">
+                                <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-indigo-600 to-purple-600 text-white flex items-center justify-center font-black text-sm shrink-0 shadow-sm">
+                                  {initial}
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-sm font-extrabold text-slate-900 dark:text-white truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
+                                    {displayName}
+                                  </p>
+                                  <p className="text-xs font-medium text-slate-600 dark:text-slate-300 truncate mt-0.5">
+                                    Code: <strong className="text-indigo-700 dark:text-indigo-300 font-bold">{emp.emp_code}</strong>
+                                    {emp.company_code ? ` • ${emp.company_code.toUpperCase()}` : ""}
+                                    {emp.unit ? ` (${emp.unit})` : ""}
+                                  </p>
+                                </div>
                               </div>
-                              <div className="min-w-0">
-                                <p className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
-                                  {emp.name}
-                                </p>
-                                <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                                  Code: {emp.emp_code} • {emp.company_code ? emp.company_code.toUpperCase() : "N/A"}{emp.unit ? ` (${emp.unit})` : ""}
-                                </p>
-                              </div>
-                            </div>
-                            <span className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-2">
-                              Select →
-                            </span>
-                          </button>
-                        ))}
+                              <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 group-hover:translate-x-0.5 transition-transform shrink-0 ml-2">
+                                Select →
+                              </span>
+                            </button>
+                          );
+                        })}
                       </div>
                     )}
 
@@ -1048,41 +1054,47 @@ export default function Login() {
 
                         {/* Set Password Employee Dropdown */}
                         {fShowDropdown && fMatchingEmployees.length > 0 && !fSelectedEmployee && (
-                          <div className="mt-1.5 w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl overflow-hidden z-30 relative max-h-56 overflow-y-auto animate-in fade-in slide-in-from-top-2 duration-200">
-                            <div className="px-3 py-1.5 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-100 dark:border-slate-700 text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                          <div className="mt-1.5 w-full bg-white dark:bg-slate-900 border-2 border-indigo-200 dark:border-indigo-900 rounded-xl shadow-2xl overflow-hidden z-40 relative max-h-60 overflow-y-auto animate-in fade-in slide-in-from-top-2 duration-200">
+                            <div className="px-3.5 py-2 bg-indigo-50/90 dark:bg-indigo-950/80 border-b border-indigo-100 dark:border-indigo-900 text-[11px] font-extrabold text-indigo-900 dark:text-indigo-200 uppercase tracking-wider">
                               Select Employee Account ({fMatchingEmployees.length} profiles found)
                             </div>
-                            {fMatchingEmployees.map((emp) => (
-                              <button
-                                key={emp.id}
-                                type="button"
-                                onClick={() => {
-                                  setFSelectedEmployee(emp);
-                                  setFEmpCode(emp.emp_code);
-                                  if (emp.company_code) setFCompanyId(normalizeCompanyId(emp.company_code));
-                                  if (emp.unit) setFUnit(emp.unit);
-                                  setFShowDropdown(false);
-                                }}
-                                className="w-full text-left px-3.5 py-2.5 hover:bg-indigo-50/80 dark:hover:bg-indigo-950/50 border-b border-slate-100 last:border-0 dark:border-slate-700/60 transition-colors flex items-center justify-between group cursor-pointer"
-                              >
-                                <div className="flex items-center gap-2.5 min-w-0">
-                                  <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 flex items-center justify-center font-bold text-xs shrink-0">
-                                    {emp.name ? emp.name.charAt(0).toUpperCase() : "U"}
+                            {fMatchingEmployees.map((emp) => {
+                              const displayName = emp.name || emp.emp_name || emp.full_name || emp.user_name || "Employee Profile";
+                              const initial = displayName.charAt(0).toUpperCase();
+                              return (
+                                <button
+                                  key={emp.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setFSelectedEmployee(emp);
+                                    setFEmpCode(emp.emp_code);
+                                    if (emp.company_code) setFCompanyId(normalizeCompanyId(emp.company_code));
+                                    if (emp.unit) setFUnit(emp.unit);
+                                    setFShowDropdown(false);
+                                  }}
+                                  className="w-full text-left px-3.5 py-3 hover:bg-indigo-50 dark:hover:bg-indigo-950/70 border-b border-slate-100 last:border-0 dark:border-slate-800 transition-colors flex items-center justify-between group cursor-pointer"
+                                >
+                                  <div className="flex items-center gap-3 min-w-0">
+                                    <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-indigo-600 to-purple-600 text-white flex items-center justify-center font-black text-sm shrink-0 shadow-sm">
+                                      {initial}
+                                    </div>
+                                    <div className="min-w-0">
+                                      <p className="text-sm font-extrabold text-slate-900 dark:text-white truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
+                                        {displayName}
+                                      </p>
+                                      <p className="text-xs font-medium text-slate-600 dark:text-slate-300 truncate mt-0.5">
+                                        Code: <strong className="text-indigo-700 dark:text-indigo-300 font-bold">{emp.emp_code}</strong>
+                                        {emp.company_code ? ` • ${emp.company_code.toUpperCase()}` : ""}
+                                        {emp.unit ? ` (${emp.unit})` : ""}
+                                      </p>
+                                    </div>
                                   </div>
-                                  <div className="min-w-0">
-                                    <p className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
-                                      {emp.name}
-                                    </p>
-                                    <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                                      Code: {emp.emp_code} • {emp.company_code ? emp.company_code.toUpperCase() : "N/A"}{emp.unit ? ` (${emp.unit})` : ""}
-                                    </p>
-                                  </div>
-                                </div>
-                                <span className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-2">
-                                  Select →
-                                </span>
-                              </button>
-                            ))}
+                                  <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 group-hover:translate-x-0.5 transition-transform shrink-0 ml-2">
+                                    Select →
+                                  </span>
+                                </button>
+                              );
+                            })}
                           </div>
                         )}
 
