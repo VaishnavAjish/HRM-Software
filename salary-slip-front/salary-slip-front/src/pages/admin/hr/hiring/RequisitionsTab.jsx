@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import {
   Plus, Send, Pencil, Trash2, Copy, Archive,
-  Columns3, ChevronDown, RotateCcw,
+  Columns3, ChevronDown, RotateCcw, Eye,
 } from "lucide-react";
 import Button from "../../../../components/ui/Button";
 import Badge from "../../../../components/ui/Badge";
@@ -11,7 +11,7 @@ import Pagination from "../../../../components/ui/Pagination";
 import { SkeletonTable } from "../../../../components/ui/Skeleton";
 import { useAuth } from "../../../../context/AuthContext";
 import { useCompany } from "../../../../context/CompanyContext";
-import { hrApi } from "../../../../utils/api";
+import { employeeApi, hrApi } from "../../../../utils/api";
 import { downloadExcel, downloadCSV } from "../../../../utils/exportUtils";
 import useHrFilters from "./useHrFilters";
 import HiringFilterBar from "./HiringFilterBar";
@@ -23,6 +23,7 @@ import { useAuthorization } from "../../../../hooks/useAuthorization";
 const STATUS_OPTIONS = [
   { value: "draft", label: "Draft" },
   { value: "pending_approval", label: "Pending Approval" },
+  { value: "revision_requested", label: "Revision Requested" },
   { value: "rejected", label: "Rejected" },
   { value: "approved", label: "Approved" },
   { value: "posted", label: "Posted" },
@@ -35,7 +36,7 @@ const PRIORITY_OPTIONS = [
   { value: "high", label: "High" }, { value: "urgent", label: "Urgent" },
 ];
 const STATUS_VARIANT = {
-  draft: "gray", pending_approval: "yellow", approved: "blue",
+  draft: "gray", pending_approval: "yellow", revision_requested: "yellow", approved: "blue",
   rejected: "red", posted: "green", on_hold: "yellow", closed: "gray", cancelled: "red",
 };
 const PRIORITY_VARIANT = { low: "gray", medium: "blue", high: "yellow", urgent: "red" };
@@ -66,7 +67,17 @@ function approvalProgress(requisition) {
   return `HM ${shortStatus(hiringManager?.status)} · Director ${shortStatus(director?.status)}`;
 }
 
-export default function RequisitionsTab({ departments = [], people = [], openRequisitionForm, isHrManagerView = false, refreshKey = 0 }) {
+function getReturnReason(r) {
+  if (!r) return "";
+  if (r.return_reason) return r.return_reason;
+  const steps = r.current_approval_cycle?.steps || r.currentApprovalCycle?.steps || [];
+  const returnedStep = [...steps].reverse().find((s) => s.status === "RETURNED" && s.comment);
+  if (returnedStep && returnedStep.comment) return returnedStep.comment;
+  const anyCommentStep = [...steps].reverse().find((s) => s.comment);
+  return anyCommentStep ? anyCommentStep.comment : "";
+}
+
+export default function RequisitionsTab({ departments = [], people = [], openRequisitionForm, isHrManagerView = false, refreshKey = 0, isEmployeePortal = false }) {
   const { user } = useAuth();
   const { companyScope, scopeKey } = useCompany();
   const hr = useHrFilters("requisitions");
@@ -75,6 +86,7 @@ export default function RequisitionsTab({ departments = [], people = [], openReq
   const tokenType = user?.tokenType;
   const companyId = companyScope?.companyId;
   const unit = companyScope?.unit;
+  const isEmployee = Boolean(isEmployeePortal || openRequisitionForm || (typeof window !== "undefined" && window.location.pathname.includes('/employee/')));
 
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(0);
@@ -83,6 +95,7 @@ export default function RequisitionsTab({ departments = [], people = [], openReq
 
   const [drawerTarget, setDrawerTarget] = useState(null);
   const [submitTarget, setSubmitTarget] = useState(null);
+  const [viewReasonTarget, setViewReasonTarget] = useState(null);
   const [submittingApproval, setSubmittingApproval] = useState(false);
 
   const [visibleCols, setVisibleCols] = useState(() => {
@@ -110,14 +123,15 @@ export default function RequisitionsTab({ departments = [], people = [], openReq
   }
 
   const [reloadCount, setReloadCount] = useState(0);
-  const requestKey = JSON.stringify([companyId, unit, page, perPage, searchFilter, departmentFilter, statusFilter, reloadCount, refreshKey]);
+  const requestKey = JSON.stringify([isEmployee, companyId, unit, page, perPage, searchFilter, departmentFilter, statusFilter, reloadCount, refreshKey]);
   const [loadedKey, setLoadedKey] = useState(null);
   const loading = loadedKey !== requestKey;
 
   useEffect(() => {
     if (!accessToken) return;
     let cancelled = false;
-    hrApi.getRequisitions(accessToken, tokenType, {
+    const fetchApi = isEmployee ? employeeApi.getRequisitions : hrApi.getRequisitions;
+    fetchApi(accessToken, tokenType, {
       companyId, unit,
       page, per_page: perPage,
       search: searchFilter || undefined,
@@ -133,7 +147,7 @@ export default function RequisitionsTab({ departments = [], people = [], openReq
       .catch((err) => { if (!cancelled) toast.error(err.message || "Failed to load requisitions"); })
       .finally(() => { if (!cancelled) setLoadedKey(requestKey); });
     return () => { cancelled = true; };
-  }, [accessToken, tokenType, companyId, unit, page, perPage, searchFilter, departmentFilter, statusFilter, requestKey]);
+  }, [accessToken, tokenType, requestKey]);
 
   const load = () => setReloadCount((count) => count + 1);
 
@@ -158,8 +172,10 @@ export default function RequisitionsTab({ departments = [], people = [], openReq
 
   const openEdit = (r) => {
     if (!["draft", "rejected", "pending_approval", "pending_hr_review", "approved", "posted"].includes(r.status)) {
+      if (!(isEmployee && r.status === "revision_requested")) {
         toast.error("This requisition cannot be edited in its current state.");
         return;
+      }
     }
     if (openRequisitionForm) openRequisitionForm(r.id);
   };
@@ -168,7 +184,10 @@ export default function RequisitionsTab({ departments = [], people = [], openReq
   const remove = async (id) => {
     if (!window.confirm("Delete this requisition?")) return;
     try {
-      const res = await hrApi.deleteRequisition(id, user?.accessToken, user?.tokenType);
+      const isEmp = Boolean(openRequisitionForm || window.location.pathname.includes('/employee/'));
+      const res = isEmp
+        ? await employeeApi.deleteRequisition(id, user?.accessToken, user?.tokenType)
+        : await hrApi.deleteRequisition(id, user?.accessToken, user?.tokenType);
       if (res.status) { toast.success("Requisition deleted"); load(); }
     } catch (err) { toast.error(err.message || "Failed to delete"); }
   };
@@ -180,9 +199,10 @@ export default function RequisitionsTab({ departments = [], people = [], openReq
   const submitForApproval = async () => {
     setSubmittingApproval(true);
     try {
-      const res = await hrApi.submitRequisition(submitTarget.id, {
-        hr_manager_id: null,
-      }, user?.accessToken, user?.tokenType);
+      const isEmp = Boolean(openRequisitionForm || window.location.pathname.includes('/employee/'));
+      const res = isEmp
+        ? await employeeApi.submitRequisition(submitTarget.id, { hr_manager_id: null }, user?.accessToken, user?.tokenType)
+        : await hrApi.submitRequisition(submitTarget.id, { hr_manager_id: null }, user?.accessToken, user?.tokenType);
       if (res.status) { toast.success("Submitted to HR Manager Pool"); setSubmitTarget(null); load(); }
     } catch (err) { toast.error(err.message || "Failed to submit"); }
     finally { setSubmittingApproval(false); }
@@ -191,7 +211,10 @@ export default function RequisitionsTab({ departments = [], people = [], openReq
   const withdraw = async (id) => {
     if (!window.confirm("Withdraw this requisition back to draft?")) return;
     try {
-      const res = await hrApi.withdrawRequisition(id, user?.accessToken, user?.tokenType);
+      const isEmp = Boolean(openRequisitionForm || window.location.pathname.includes('/employee/'));
+      const res = isEmp
+        ? await employeeApi.withdrawRequisition(id, user?.accessToken, user?.tokenType)
+        : await hrApi.withdrawRequisition(id, user?.accessToken, user?.tokenType);
       if (res.status) { toast.success("Requisition withdrawn"); load(); }
     } catch (err) { toast.error(err.message || "Failed to withdraw"); }
   };
@@ -275,7 +298,10 @@ export default function RequisitionsTab({ departments = [], people = [], openReq
   const viewDrawer = async (r) => {
     setDrawerTarget(r);
     try {
-      const res = await hrApi.getRequisition(r.id, user?.accessToken, user?.tokenType);
+      const isEmp = Boolean(isEmployeePortal || openRequisitionForm || (typeof window !== "undefined" && window.location.pathname.includes('/employee/')));
+      const res = isEmp
+        ? await employeeApi.getRequisition(r.id, user?.accessToken, user?.tokenType)
+        : await hrApi.getRequisition(r.id, user?.accessToken, user?.tokenType);
       if (res.status) setDrawerTarget(res.data);
     } catch (err) {
       toast.error(err.message || "Failed to load requisition detail");
@@ -322,7 +348,7 @@ export default function RequisitionsTab({ departments = [], people = [], openReq
             </div>
           )}
         </div>
-        {can("ui.hr.hiring.requisition_create") && <Button icon={<Plus size={16} />} onClick={openCreate}>New Requisition</Button>}
+        {(can("ui.hr.hiring.requisition_create") || Boolean(openRequisitionForm)) && <Button icon={<Plus size={16} />} onClick={openCreate}>New Requisition</Button>}
       </div>
 
       <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
@@ -398,13 +424,32 @@ export default function RequisitionsTab({ departments = [], people = [], openReq
                     )}
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
-                        {["draft", "rejected"].includes(r.status) && can("ui.hr.hiring.requisition_submit") && (
+                        {/* Employee Portal: When status is revision_requested, display View Reason and Edit options */}
+                        {isEmployee && r.status === "revision_requested" && (
+                          <>
+                            <button
+                              title="View Reason"
+                              onClick={() => setViewReasonTarget(r)}
+                              className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+                            >
+                              <Eye size={14} />
+                            </button>
+                            <button
+                              title="Edit"
+                              onClick={() => openEdit(r)}
+                              className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+                            >
+                              <Pencil size={14} />
+                            </button>
+                          </>
+                        )}
+                        {["draft", "rejected", ...(isEmployee ? ["revision_requested"] : [])].includes(r.status) && (can("ui.hr.hiring.requisition_submit") || Boolean(openRequisitionForm)) && (
                           <button title="Submit for approval" onClick={() => openSubmitForApproval(r)} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"><Send size={14} /></button>
                         )}
                         {r.status === "pending_approval" && (
                           <span className="max-w-44 rounded-md bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700 dark:bg-amber-900/20 dark:text-amber-300" title="Approval progress">{approvalProgress(r)}</span>
                         )}
-                        {r.status === "pending_approval" && can("ui.hr.hiring.requisition_withdraw") && (
+                        {r.status === "pending_approval" && (can("ui.hr.hiring.requisition_withdraw") || Boolean(openRequisitionForm)) && (
                           <button title="Withdraw to draft" onClick={() => withdraw(r.id)} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"><RotateCcw size={14} /></button>
                         )}
                         {isHrManagerView && r.status === "approved" && can("ui.hr.hiring.requisition_publish") && (
@@ -425,7 +470,7 @@ export default function RequisitionsTab({ departments = [], people = [], openReq
                             {publishingIndeedId === r.id ? "..." : (r.published_to_indeed ? "✓" : "Post")}
                           </button>
                         )}
-                          {["draft", "rejected", "pending_approval", "pending_hr_review", "approved", "posted"].includes(r.status) && <button title="Edit" onClick={() => openEdit(r)} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"><Pencil size={14} /></button>}
+                          {!(isEmployee && r.status === "revision_requested") && ["draft", "rejected", "pending_approval", "pending_hr_review", "approved", "posted"].includes(r.status) && <button title="Edit" onClick={() => openEdit(r)} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"><Pencil size={14} /></button>}
                         <button title="Duplicate" onClick={() => duplicate(r)} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"><Copy size={14} /></button>
                         {!["closed", "cancelled", "pending_approval"].includes(r.status) && (
                           <button title="Archive / Close" onClick={() => archive(r.id)} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"><Archive size={14} /></button>
@@ -462,6 +507,35 @@ export default function RequisitionsTab({ departments = [], people = [], openReq
       >
         <div className="space-y-4">
           <p className="text-sm text-gray-600 dark:text-gray-300">This requisition will be submitted to the HR Manager pool. Any eligible HR Manager can pick it up, review it, and forward it to the Directors.</p>
+        </div>
+      </Modal>
+
+      {/* Return Reason View Modal (Employee Portal) */}
+      <Modal
+        isOpen={Boolean(viewReasonTarget)}
+        onClose={() => setViewReasonTarget(null)}
+        title={`Return to Department Head — ${viewReasonTarget?.title || "Requisition"}`}
+        size="md"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setViewReasonTarget(null)}>Cancel</Button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600 dark:text-gray-300">
+            Send this requisition back to the Department Head for revisions.
+          </p>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">
+              Reason for Return * (min 5 chars)
+            </label>
+            <textarea
+              readOnly
+              className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white min-h-24 focus:outline-none cursor-default"
+              value={getReturnReason(viewReasonTarget) || "No specific comments provided by reviewer."}
+            />
+          </div>
         </div>
       </Modal>
 

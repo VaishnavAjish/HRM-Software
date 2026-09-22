@@ -74,6 +74,8 @@ const Profile = lazy(() => import("./pages/employee/Profile"));
 const EmployeeAppointment = lazy(() => import("./pages/employee/EmployeeAppointment"));
 const RaiseTicket = lazy(() => import("./pages/employee/RaiseTicket"));
 const MyTickets = lazy(() => import("./pages/employee/MyTickets"));
+const UnderDevelopmentPage = lazy(() => import("./pages/employee/UnderDevelopmentPage"));
+const EmployeeRequisitions = lazy(() => import("./pages/employee/EmployeeRequisitions"));
 
 // Agent pages
 const AgentDashboard = lazy(() => import("./pages/agent/AgentDashboard"));
@@ -594,6 +596,9 @@ function AppRoutes() {
       >
         <Route index element={<EmployeeDashboard />} />
         <Route path="manager" element={<ManagerSection />} />
+        <Route path="recruitment" element={<EmployeeRequisitions />} />
+        <Route path="attendance" element={<UnderDevelopmentPage title="Attendance" />} />
+        <Route path="mediclaim-details" element={<UnderDevelopmentPage title="Employee Mediclaim Details" />} />
         <Route path="payslips" element={<Payslips />} />
         <Route path="form16" element={<EmployeeForm16 />} />
         <Route path="tds/mediclaim" element={<EmployeeMediclaim />} />

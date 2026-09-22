@@ -67,8 +67,16 @@ class MediclaimHospitalNetworkTest extends TestCase
         $this->assertNull($response['non_network_reason']);
     }
 
+    /**
+     * 2026-09-22: "Delete" was changed from a status flip to a genuine row
+     * delete, at the user's explicit request. `mediclaim_claims.hospital_id`
+     * is `nullOnDelete()`, so an already-submitted claim survives a hospital
+     * being deleted afterward — it just loses that hospital reference
+     * rather than the delete being blocked or the claim being destroyed
+     * along with it.
+     */
     #[Test]
-    public function deactivating_a_hospital_does_not_break_a_historical_claim_that_already_used_it(): void
+    public function deleting_a_hospital_permanently_removes_it_but_does_not_break_a_historical_claim(): void
     {
         $employee = $this->makeUser('Employee');
         $admin = $this->makeUser('Hospital Admin', ['role' => 1]);
@@ -87,15 +95,45 @@ class MediclaimHospitalNetworkTest extends TestCase
         $this->actingAsUser($admin)
             ->deleteJson("/api/v1/mediclaim/hospitals/{$hospital->id}")
             ->assertOk()
-            ->assertJsonPath('data.status', 'inactive');
+            ->assertJsonPath('data.deleted', true);
 
-        $this->assertDatabaseHas('mediclaim_hospitals', ['id' => $hospital->id, 'status' => 'inactive']);
+        $this->assertDatabaseMissing('mediclaim_hospitals', ['id' => $hospital->id]);
 
         $this->actingAsUser($employee)
             ->getJson("/api/v1/mediclaim/claims/{$claim['id']}")
             ->assertOk()
-            ->assertJsonPath('data.hospital.id', $hospital->id)
-            ->assertJsonPath('data.hospital.name', 'Kiran Hospital');
+            ->assertJsonPath('data.hospital', null);
+    }
+
+    #[Test]
+    public function hospitals_are_visible_to_every_company_and_delete_is_permanent(): void
+    {
+        $creator = $this->makeUser('Hospital Admin', ['role' => 1]);
+        $this->grant($creator, ['mediclaim.hospital.create', 'mediclaim.hospital.delete']);
+        $viewerOtherCompany = $this->makeUser('Other Company Employee', ['company_code' => 'silver-star']);
+        $this->grant($viewerOtherCompany, ['self.mediclaim.coverage.read']);
+
+        // Submitting an explicit company_code is ignored -- every hospital
+        // is stored (and visible) as company-agnostic.
+        $created = $this->actingAsUser($creator)
+            ->postJson('/api/v1/mediclaim/hospitals', [
+                'name' => 'Apollo Test Hospital', 'company_code' => 'nidhi-impex', 'status' => 'active',
+            ])->assertCreated()->json('data');
+
+        $this->assertSame('all-companies', $created['company_code']);
+
+        // An employee on a COMPLETELY DIFFERENT company still sees it.
+        $this->actingAsUser($viewerOtherCompany)
+            ->getJson('/api/v1/mediclaim/hospitals')
+            ->assertOk()
+            ->assertJsonFragment(['name' => 'Apollo Test Hospital']);
+
+        $this->actingAsUser($creator)
+            ->deleteJson("/api/v1/mediclaim/hospitals/{$created['id']}")
+            ->assertOk()
+            ->assertJsonPath('data.deleted', true);
+
+        $this->assertDatabaseMissing('mediclaim_hospitals', ['id' => $created['id']]);
     }
 
     private function makeUser(string $name, array $overrides = []): User

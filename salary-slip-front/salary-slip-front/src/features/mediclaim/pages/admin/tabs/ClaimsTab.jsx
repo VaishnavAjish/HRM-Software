@@ -53,19 +53,82 @@ export default function ClaimsTab() {
   const [status, setStatus] = useState(FINALIZED_FILTER_VALUE);
   const [search, setSearch] = useState("");
   const [fyFilter, setFyFilter] = useState("");
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState("");
+  const [monthFilter, setMonthFilter] = useState("");
   const [selectedClaimId, setSelectedClaimId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
   const [reloadToken, setReloadToken] = useState(0);
+
+  // Accounts' bulk "mark payment done" selection — only claims that are
+  // actually eligible (SETTLED/CLOSED, not already paid) ever end up in
+  // here; see `isPaymentEligible`/`isPaymentCompleted` below.
+  const [selectedPaymentIds, setSelectedPaymentIds] = useState(new Set());
+  const [markingPayment, setMarkingPayment] = useState(false);
 
   // Column visibility popover state
   const [showColumnsMenu, setShowColumnsMenu] = useState(false);
   const [hiddenColumns, setHiddenColumns] = useState({});
 
-  const requestKey = JSON.stringify([accessToken ?? "", tokenType ?? "", page, perPage, status, search, reloadToken]);
+  const requestKey = JSON.stringify([accessToken ?? "", tokenType ?? "", page, perPage, status, search, paymentStatusFilter, monthFilter, reloadToken]);
+
+  // Clears a stale selection whenever the page/filters change underneath it
+  // — a checkbox ticked on page 1 shouldn't silently still be "selected"
+  // once the accounts user has moved on to a different page or filter.
+  // A render-body comparison (not a useEffect) so the reset lands in the
+  // same render the filter change causes, matching this module's existing
+  // "prevId" idiom (see FinalizeClaimModal.jsx) instead of an extra
+  // effect-triggered re-render.
+  const [prevRequestKey, setPrevRequestKey] = useState(requestKey);
+  if (requestKey !== prevRequestKey) {
+    setPrevRequestKey(requestKey);
+    setSelectedPaymentIds(new Set());
+  }
 
   const handleSearchChange = (value) => {
     setSearch(value);
     setPage(1);
+  };
+
+  // Last 24 months for Accounts' month-end tracking filter, newest first —
+  // matches `Admin\ClaimController::index()`'s `month=YYYY-MM` param, which
+  // filters on `settled_at` (falling back to `updated_at`).
+  const monthOptions = useMemo(() => {
+    const opts = [];
+    const now = new Date();
+    for (let i = 0; i < 24; i += 1) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      opts.push({ value, label: d.toLocaleString("en-US", { month: "long", year: "numeric" }) });
+    }
+    return opts;
+  }, []);
+
+  const isPaymentEligible = (row) => [CLAIM_STATUS.SETTLED, CLAIM_STATUS.CLOSED].includes(row.status);
+  const isPaymentCompleted = (row) => (row.paymentStatus || row.payment_status) === "completed";
+
+  const togglePaymentSelection = (id, checked) => {
+    setSelectedPaymentIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id); else next.delete(id);
+      return next;
+    });
+  };
+
+  const markSelectedPaymentsDone = async () => {
+    const ids = Array.from(selectedPaymentIds);
+    if (ids.length === 0) return;
+
+    setMarkingPayment(true);
+    try {
+      await mediclaimApi.markClaimsPaymentCompleted(ids, accessToken, tokenType);
+      toast.success(`Marked ${ids.length} claim${ids.length === 1 ? "" : "s"} as payment completed.`);
+      setSelectedPaymentIds(new Set());
+      setReloadToken((n) => n + 1);
+    } catch (err) {
+      toast.error(err?.message || "Failed to mark payment as completed.");
+    } finally {
+      setMarkingPayment(false);
+    }
   };
 
   const exportCsv = () => {
@@ -76,6 +139,7 @@ export default function ClaimsTab() {
       "Claimed Amount": row.totalClaimedAmount ?? row.total_claimed_amount ?? "",
       "Approved Amount": row.approvedAmount ?? row.approved_amount ?? row.totalApprovedAmount ?? row.total_approved_amount ?? "",
       Status: row.status || "",
+      "Payment Status": isPaymentEligible(row) ? (isPaymentCompleted(row) ? "Completed" : "Pending") : "",
       "Last Updated": row.updatedAt || row.updated_at || "",
     }));
     downloadCSV(rowsToExport, "mediclaim-admin-claims");
@@ -99,6 +163,23 @@ export default function ClaimsTab() {
   };
 
   const ALL_COLUMNS = [
+    {
+      key: "select",
+      label: "Select",
+      render: (row) => {
+        if (!isPaymentEligible(row) || isPaymentCompleted(row)) return null;
+        const id = row.id ?? row.claimId;
+        return (
+          <input
+            type="checkbox"
+            checked={selectedPaymentIds.has(id)}
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => togglePaymentSelection(id, e.target.checked)}
+            className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+          />
+        );
+      },
+    },
     { key: "claimNumber", label: "Claim #", render: (row) => formatClaimNumber(row) || "—" },
     { key: "employeeName", label: "Employee", render: (row) => row.employeeName || row.employee_snapshot?.name || "—" },
     { key: "patientName", label: "Patient", render: (row) => row.patientName || row.patient_snapshot?.name || "—" },
@@ -112,6 +193,25 @@ export default function ClaimsTab() {
       },
     },
     { key: "status", label: "Status", render: (row) => <ClaimStatusBadge status={row.status} /> },
+    {
+      key: "paymentStatus",
+      label: "Payment Status",
+      render: (row) => {
+        if (!isPaymentEligible(row)) return <span className="text-xs text-gray-400">—</span>;
+        const paid = isPaymentCompleted(row);
+        return (
+          <span
+            className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+              paid
+                ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300"
+                : "bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300"
+            }`}
+          >
+            {paid ? "Completed" : "Pending"}
+          </span>
+        );
+      },
+    },
     { key: "updatedOn", label: "Last Updated", render: (row) => formatClaimDate(row.updatedAt || row.updated_at || row.createdAt || row.created_at) },
     ...(canDelete ? [{
       key: "actions",
@@ -138,7 +238,18 @@ export default function ClaimsTab() {
     if (!accessToken) return undefined;
     let cancelled = false;
 
-    mediclaimApi.adminClaims({ page, perPage, status: status || undefined, search: search || undefined }, accessToken, tokenType)
+    mediclaimApi.adminClaims(
+      {
+        page,
+        perPage,
+        status: status || undefined,
+        search: search || undefined,
+        payment_status: paymentStatusFilter || undefined,
+        month: monthFilter || undefined,
+      },
+      accessToken,
+      tokenType,
+    )
       .then((res) => {
         if (cancelled) return;
         const payload = res?.data;
@@ -152,7 +263,7 @@ export default function ClaimsTab() {
       });
 
     return () => { cancelled = true; };
-  }, [accessToken, tokenType, page, perPage, status, search, reloadToken, requestKey]);
+  }, [accessToken, tokenType, page, perPage, status, search, paymentStatusFilter, monthFilter, reloadToken, requestKey]);
 
   const loading = result.key !== requestKey;
   
@@ -166,6 +277,26 @@ export default function ClaimsTab() {
   }, [result.rows, fyFilter]);
 
   const state = { loading, rows: filteredRows, total: result.total, error: loading ? null : result.error };
+
+  // "Select all" only ever targets the currently-loaded page's eligible
+  // (unpaid, settled/closed) rows — this is a server-paginated list, so
+  // there is no complete row set to select across every page at once.
+  const eligibleVisibleIds = useMemo(
+    () => filteredRows.filter((row) => isPaymentEligible(row) && !isPaymentCompleted(row)).map((row) => row.id ?? row.claimId),
+    [filteredRows],
+  );
+  const allVisibleSelected = eligibleVisibleIds.length > 0 && eligibleVisibleIds.every((id) => selectedPaymentIds.has(id));
+  const toggleSelectAllVisible = () => {
+    setSelectedPaymentIds((prev) => {
+      const next = new Set(prev);
+      if (allVisibleSelected) {
+        eligibleVisibleIds.forEach((id) => next.delete(id));
+      } else {
+        eligibleVisibleIds.forEach((id) => next.add(id));
+      }
+      return next;
+    });
+  };
 
   // Calculate Counters
   const counters = useMemo(() => {
@@ -295,10 +426,44 @@ export default function ClaimsTab() {
             <option value="2024-25">FY 2024-25</option>
             <option value="2023-24">FY 2023-24</option>
           </select>
+
+          {/* Payment Status Dropdown Filter — Accounts' pending/completed tracking */}
+          <select
+            className={inputClass}
+            value={paymentStatusFilter}
+            onChange={(e) => { setPaymentStatusFilter(e.target.value); setPage(1); }}
+          >
+            <option value="">All Payment Status</option>
+            <option value="pending">Payment Pending</option>
+            <option value="completed">Payment Completed</option>
+          </select>
+
+          {/* Month Dropdown Filter — Accounts' month-end tracking, by settlement month */}
+          <select
+            className={inputClass}
+            value={monthFilter}
+            onChange={(e) => { setMonthFilter(e.target.value); setPage(1); }}
+          >
+            <option value="">All Months</option>
+            {monthOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
         </div>
 
         {/* Counter Summary (matching View Employees page count badges) */}
-        <div className="flex items-center gap-2 text-xs font-semibold text-gray-500 dark:text-gray-400">
+        <div className="flex items-center gap-3 text-xs font-semibold text-gray-500 dark:text-gray-400">
+          {eligibleVisibleIds.length > 0 && (
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={allVisibleSelected}
+                onChange={toggleSelectAllVisible}
+                className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+              />
+              Select all on this page
+            </label>
+          )}
           <span>
             <strong className="text-gray-800 dark:text-gray-200">{counters.total}</strong> Total
           </span>
@@ -321,6 +486,27 @@ export default function ClaimsTab() {
 
   return (
     <div className="space-y-4">
+      {selectedPaymentIds.size > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-brand-100 bg-brand-50/70 px-4 py-2.5 dark:border-brand-500/30 dark:bg-brand-500/10">
+          <p className="text-xs font-semibold text-brand-800 dark:text-brand-200">
+            {selectedPaymentIds.size} claim{selectedPaymentIds.size === 1 ? "" : "s"} selected
+          </p>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="secondary" onClick={() => setSelectedPaymentIds(new Set())} disabled={markingPayment}>
+              Clear
+            </Button>
+            <Button
+              size="sm"
+              onClick={markSelectedPaymentsDone}
+              disabled={markingPayment}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
+            >
+              {markingPayment ? "Marking…" : "Mark Payment Done"}
+            </Button>
+          </div>
+        </div>
+      )}
+
       <ClaimsTable
         columns={ALL_COLUMNS}
         rows={state.rows}

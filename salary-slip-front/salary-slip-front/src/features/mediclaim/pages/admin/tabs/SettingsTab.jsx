@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { BookOpen, Building2, ChevronRight, SlidersHorizontal, UserCog } from "lucide-react";
+import CardDesignSettingsTab from "./CardDesignSettingsTab";
+import { BookOpen, Building2, ChevronRight, IdCard, SlidersHorizontal, UserCog } from "lucide-react";
 import { useMediclaimAuthorization, MEDICLAIM_PERMISSIONS } from "../../../hooks/useMediclaimAuthorization";
 import RuleBooksTab from "./RuleBooksTab";
 import HospitalsTab from "./HospitalsTab";
@@ -11,6 +12,7 @@ import ReviewersTab from "./ReviewersTab";
 // big buttons or a popup per section — one section is open at a time, in
 // place, with no drawer/modal layering to manage.
 const SECTIONS = [
+  { key: "card-design", label: "ID Card Settings", subtitle: "Support email, phone & card layout", icon: IdCard, Tab: CardDesignSettingsTab },
   { key: "rulebooks", label: "Rule Books", subtitle: "Languages & policy rules", icon: BookOpen, Tab: RuleBooksTab },
   { key: "hospitals", label: "Hospitals", subtitle: "Network directory & contacts", icon: Building2, Tab: HospitalsTab },
   {

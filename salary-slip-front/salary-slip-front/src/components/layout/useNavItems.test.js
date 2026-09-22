@@ -63,6 +63,7 @@ describe("buildEmployeeNav", () => {
 
     expect(nav.map((item) => item.to || item.label)).toEqual([
       "/employee",
+      "Department & Management",
       "/employee/payslips",
       "Statutory & Benefits",
       "/employee/tickets",

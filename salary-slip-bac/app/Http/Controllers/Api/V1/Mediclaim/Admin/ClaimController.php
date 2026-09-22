@@ -12,7 +12,9 @@ use App\Support\MediclaimActivityLogSupport;
 use App\Support\MediclaimFinancialYear;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Throwable;
 
 /**
  * `GET /claims` — admin/company-scoped claim list. This is reconciliation
@@ -78,7 +80,110 @@ class ClaimController extends Controller
             }
         }
 
+        if ($request->filled('payment_status')) {
+            $query->where('payment_status', (string) $request->query('payment_status'));
+        }
+
+        // Accounts' month-end tracking: which claims were actually settled
+        // (money-wise, not just workflow-wise) in a given calendar month.
+        // Falls back to `updated_at` for the rare row with no `settled_at`
+        // (e.g. a REJECTED/WITHDRAWN/CANCELLED claim, which never settles),
+        // mirroring the `financial_year` fallback pattern just above.
+        if ($request->filled('month')) {
+            try {
+                $start = Carbon::createFromFormat('Y-m', (string) $request->query('month'))->startOfMonth();
+                $end = $start->copy()->endOfMonth();
+                $query->where(function ($q) use ($start, $end) {
+                    $q->whereBetween('settled_at', [$start, $end])
+                        ->orWhere(function ($sub) use ($start, $end) {
+                            $sub->whereNull('settled_at')
+                                ->whereBetween('updated_at', [$start, $end]);
+                        });
+                });
+            } catch (Throwable $e) {
+                // Invalid "month" value — ignore the filter rather than 500.
+            }
+        }
+
         return $this->ok($query->orderByDesc('id')->paginate(min((int) $request->query('per_page', 25), 100)));
+    }
+
+    /**
+     * `POST /claims/payment-status` — Accounts' bulk "mark payment done"
+     * action on the admin "Claims" tab. Deliberately its own tiny endpoint rather
+     * than routed through `ClaimWorkflowService`/`ReviewQueueController`:
+     * `payment_status` is Accounts' own bookkeeping flag, not a workflow
+     * transition `status` drives, so it has no stage-method to dispatch to
+     * and no decision/remarks shape to validate.
+     *
+     * Only SETTLED/CLOSED claims are eligible — a REJECTED/WITHDRAWN/
+     * CANCELLED claim never had money approved to pay out, and a claim still
+     * short of SETTLED hasn't finished the approved-amount reconciliation
+     * `recordSettlement()` performs, so there's nothing for Accounts to
+     * reconcile against yet.
+     *
+     * Gated on `mediclaim.claim.read` (the route middleware) — the same
+     * permission `GET /claims` above already requires, rather than minting a
+     * new Accounts-specific permission: whoever can already open this Claims
+     * screen is trusted to also confirm a settled claim was paid out.
+     */
+    public function markPaymentCompleted(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'claim_ids' => ['required', 'array', 'min:1'],
+            'claim_ids.*' => ['integer'],
+        ]);
+
+        $query = MediclaimClaim::query()->whereIn('id', $data['claim_ids']);
+        $this->applyCompanyScope($query, $request);
+        $claims = $query->get();
+
+        $foundIds = $claims->pluck('id')->all();
+        $missingIds = array_values(array_diff($data['claim_ids'], $foundIds));
+        if (! empty($missingIds)) {
+            return $this->missing('Claim(s) not found: ' . implode(', ', $missingIds));
+        }
+
+        $ineligible = $claims->filter(fn (MediclaimClaim $c) => ! in_array($c->status, [MediclaimClaim::STATUS_SETTLED, MediclaimClaim::STATUS_CLOSED], true));
+        if ($ineligible->isNotEmpty()) {
+            return response()->json([
+                'success' => false,
+                'error' => [
+                    'code' => 'CLAIM_NOT_ELIGIBLE_FOR_PAYMENT',
+                    'message' => 'Only settled/closed claims can be marked as payment completed: '
+                        . $ineligible->map(fn (MediclaimClaim $c) => $c->claim_number ?? $c->id)->implode(', '),
+                ],
+            ], 422);
+        }
+
+        $actor = auth('api')->user();
+        $now = now();
+
+        DB::transaction(function () use ($claims, $actor, $now) {
+            foreach ($claims as $claim) {
+                if ($claim->payment_status === MediclaimClaim::PAYMENT_STATUS_COMPLETED) {
+                    continue;
+                }
+
+                $claim->payment_status = MediclaimClaim::PAYMENT_STATUS_COMPLETED;
+                $claim->payment_completed_at = $now;
+                $claim->payment_completed_by = $actor->id;
+                $claim->save();
+
+                MediclaimActivityLogSupport::log(
+                    $actor,
+                    'CLAIM_PAYMENT_MARKED_COMPLETED',
+                    'mediclaim_claim',
+                    $claim->id,
+                    ['payment_status' => MediclaimClaim::PAYMENT_STATUS_PENDING],
+                    ['payment_status' => MediclaimClaim::PAYMENT_STATUS_COMPLETED],
+                    'Payment marked as completed.',
+                    $claim->company_code
+                );
+            }
+        });
+
+        return $this->ok(['updated' => $claims->pluck('id')->values()->all()]);
     }
 
     /**

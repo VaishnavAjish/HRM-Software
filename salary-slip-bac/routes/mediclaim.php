@@ -107,6 +107,13 @@ Route::middleware('jwt.auth')->prefix('v1/mediclaim')->middleware(['module.schem
         ->whereNumber('claim')
         ->middleware('permission:mediclaim.claim.delete');
 
+    // Accounts' bulk "mark payment done" action on the admin Claims tab —
+    // same `mediclaim.claim.read` gate as the list above (see
+    // AdminClaimController::markPaymentCompleted()'s docblock for why no new
+    // permission was minted for this).
+    Route::post('claims/payment-status', [AdminClaimController::class, 'markPaymentCompleted'])
+        ->middleware(['throttle:20,1', 'permission:mediclaim.claim.read']);
+
     /* --------------------------------------- Shared claim detail/workflow */
 
     // Read is intentionally broad-OR'd across every legitimate reader of a
@@ -319,6 +326,15 @@ Route::middleware('jwt.auth')->prefix('v1/mediclaim')->middleware(['module.schem
     Route::delete('document-requirements/{requirement}', [AdminDocumentRequirementController::class, 'destroy'])
         ->whereNumber('requirement')
         ->middleware(['throttle:20,1', 'permission:mediclaim.document_requirement.delete']);
+
+    
+    // ID Card Customizer & Settings Endpoints
+    Route::get('card-settings', [AdminCardSettingController::class, 'index'])
+        ->middleware('permission:mediclaim.enrollment.read,self.mediclaim.coverage.read,mediclaim.hospital.read');
+    Route::put('admin/card-settings', [AdminCardSettingController::class, 'update'])
+        ->middleware(['throttle:30,1', 'permission:mediclaim.hospital.update,mediclaim.enrollment.update']);
+    Route::post('admin/card-settings/reset', [AdminCardSettingController::class, 'reset'])
+        ->middleware(['throttle:20,1', 'permission:mediclaim.hospital.update,mediclaim.enrollment.update']);
 
     Route::get('rule-book-languages', [AdminRuleBookLanguageController::class, 'index'])
         ->middleware('permission:mediclaim.rule_book.read');

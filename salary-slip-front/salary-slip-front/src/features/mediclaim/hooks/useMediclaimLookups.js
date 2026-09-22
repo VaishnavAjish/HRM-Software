@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../../../context/AuthContext";
 import { mediclaimApi } from "../services/mediclaimApi";
+import { saveStoredCardSettings, getStoredCardSettings } from "../../idCards/config/idCardThemes";
 
 function unwrapList(result) {
   if (result.status !== "fulfilled") return [];
@@ -61,18 +62,26 @@ export function useMediclaimLookups() {
   });
 
   const fetchLookups = useCallback(async () => {
-    const [hospitalsResult, ruleBooksResult, membersResult, coverageResult, documentRequirementsResult] = await Promise.allSettled([
+    const [hospitalsResult, ruleBooksResult, membersResult, coverageResult, documentRequirementsResult, cardSettingsResult] = await Promise.allSettled([
       mediclaimApi.hospitals({}, token, tokenType),
       mediclaimApi.ruleBooks({}, token, tokenType),
       mediclaimApi.myMembers(token, tokenType),
       mediclaimApi.myCoverage(token, tokenType),
       mediclaimApi.documentRequirements({}, token, tokenType),
+      mediclaimApi.cardSettings("", token, tokenType),
     ]);
 
     const firstRejection = [hospitalsResult, ruleBooksResult, membersResult]
       .find((result) => result.status === "rejected");
 
     const coverage = coverageResult.status === "fulfilled" ? coverageResult.value?.data : null;
+    if (cardSettingsResult.status === "fulfilled" && cardSettingsResult.value?.data) {
+      const apiSettings = cardSettingsResult.value.data;
+      if (apiSettings && typeof apiSettings === "object") {
+        const current = getStoredCardSettings();
+        saveStoredCardSettings({ ...current, ...apiSettings });
+      }
+    }
 
     return {
       hospitals: unwrapList(hospitalsResult),

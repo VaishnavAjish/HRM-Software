@@ -1,0 +1,263 @@
+import { useState, useEffect } from "react";
+import { salaryApi } from "../../utils/api";
+import { isEmployeeProfileComplete } from "../../utils/profileCompletion";
+import { useAuth } from "../../context/AuthContext";
+import { useCompany } from "../../context/CompanyContext";
+import { useModuleAvailability } from "../../hooks/useModuleAvailability";
+import { useAuthorization } from "../../hooks/useAuthorization";
+import {
+  LayoutDashboard,
+  Users,
+  DollarSign,
+  Receipt,
+  UserCircle,
+  FileText,
+  ClipboardList,
+  Plus,
+  Calendar,
+  Briefcase,
+  ShieldCheck,
+  Ticket
+} from "lucide-react";
+function getAdminNav(companyId, user, isAllCompanies, isModuleAvailable = () => true) {
+  const rawRole = user?.rawRole;
+  const permissions = user?.permissions;
+  const hasAccess = (key) => {
+    if (rawRole === 0) return true;
+    if (user?.authorization?.permissions?.[key]) return user.authorization.permissions[key].allowed;
+    if (!permissions) return false;
+    return permissions[key] !== "no_access";
+  };
+  const pagePermission = {
+    dashboard: "ui.admin.dashboard.view",
+    appointments: "ui.admin.appointments.view",
+    trial_form: "recruitment.trial_form.read",
+    employees: "ui.admin.employees.view",
+    salary: "ui.admin.salary.view",
+    attendance: "ui.admin.attendance.view",
+    tds: "ui.admin.tds.view",
+    form16: "ui.admin.form16.view",
+    mediclaim: "ui.admin.mediclaim.view"
+  };
+  const canPage = (legacyKey) => hasAccess(pagePermission[legacyKey] || legacyKey) || !user?.authorization && hasAccess(legacyKey);
+  const nav = [
+    ...canPage("dashboard") ? [{ to: "/admin", label: "Dashboard", icon: LayoutDashboard, end: true }] : [],
+    ...canPage("appointments") || canPage("trial_form") && (companyId === "nidhi-impex" || isAllCompanies) ? [{
+      label: "Forms",
+      icon: ClipboardList,
+      subItems: [
+        ...canPage("appointments") ? [{ to: "/admin/appointments", label: "Appointment Form" }] : [],
+        ...canPage("trial_form") && (companyId === "nidhi-impex" || isAllCompanies) ? [{ to: "/admin/trial-form", label: "Trial Form" }] : []
+      ]
+    }] : [],
+    ...canPage("employees") ? [{
+      label: "Employees",
+      icon: Users,
+      subItems: [
+        { to: "/admin/employees/add", label: "Employee Master" },
+        { to: "/admin/employees", label: "View Employees", end: true }
+      ]
+    }] : [],
+    ...canPage("salary") ? [{
+      label: "Salary",
+      icon: DollarSign,
+      subItems: [
+        { to: "/admin/salary", label: "Month & Batch Details", end: true },
+        { to: "/admin/salary/upload", label: "Salary Upload" }
+      ]
+    }] : [],
+    ...canPage("attendance") ? [{
+      label: "Attendance",
+      icon: Calendar,
+      subItems: [
+        { to: "/admin/attendance", label: "View Attendance", end: true },
+        // Attendance Engine Rebuild -- additive nav entry, own permission
+        // code, next to the existing "View Attendance" entry above.
+        ...hasAccess("attendance.daily.read") ? [{ to: "/admin/attendance/control-center", label: "Control Center (New)" }] : [],
+        ...hasAccess("attendance.daily.read") ? [{ to: "/admin/attendance/monthly", label: "Monthly View (New)" }] : [],
+        ...hasAccess("attendance.punch.read") ? [{ to: "/admin/attendance/raw-punches", label: "Raw Punches & Devices (New)" }] : [],
+        ...hasAccess("attendance.report.read") ? [{ to: "/admin/attendance/reports", label: "Reports & Dashboard (New)" }] : [],
+        ...hasAccess("attendance.rule.read") ? [{ to: "/admin/attendance/rules", label: "Rule Management (New)" }] : [],
+        ...hasAccess("hr.shift.read") ? [{ to: "/admin/attendance/shift", label: "Shift" }] : []
+      ]
+    }] : []
+  ];
+  const tdsSubItems = [
+    ...canPage("tds") ? [{ to: "/admin/tds/calculation", label: "TDS Calculation" }] : [],
+    ...canPage("form16") ? [{ to: "/admin/form16", label: "Form 16" }] : [],
+    ...canPage("mediclaim") && isModuleAvailable("mediclaim") ? [{ to: "/admin/tds/mediclaim", label: "Mediclaim" }] : []
+  ];
+  if (tdsSubItems.length > 0) {
+    nav.push({
+      label: "Statutory & Benefits",
+      icon: Receipt,
+      subItems: tdsSubItems
+    });
+  }
+  if ((rawRole === 0 || hasAccess("hr.dashboard.read")) && isModuleAvailable("hr")) {
+    nav.push({
+      label: "HR",
+      icon: Briefcase,
+      subItems: [
+        { to: "/admin/hr", label: "HR Dashboard", end: true },
+        { to: "/admin/hr/hiring", label: "Recruitment" },
+        { to: "/admin/hr/onboarding", label: "Onboarding" },
+        { to: "/admin/hr/organization", label: "Organization" },
+        { to: "/admin/hr/assets", label: "Asset Allocation" },
+        { to: "/admin/hr/performance", label: "Performance Matrix" },
+        { to: "/admin/hr/exit", label: "Exit Management" },
+        { to: "/admin/hr/reports", label: "HR Reports" },
+        { to: "/admin/hr/settings", label: "HR Settings" }
+      ]
+    });
+  }
+  if ((rawRole === 0 || hasAccess("support.ticket.read")) && isModuleAvailable("tickets")) {
+    if (rawRole === 0 || user?.role === "super_admin" || user?.role === "owner") {
+      nav.push({ to: "/admin/tickets/control-center", label: "Ticket Control Center", icon: Ticket });
+    } else {
+      nav.push({ to: "/admin/tickets", label: "Tickets", icon: Ticket });
+    }
+  }
+  if (isModuleAvailable("authorization")) {
+    nav.push({ to: "/admin/my-delegations", label: "My Delegations", icon: ShieldCheck });
+  }
+  const accessControlPagePermissions = [
+    "admin.user.read",
+    "admin.role.read",
+    "admin.policy.read",
+    "admin.access_request.read",
+    "admin.delegation.manage",
+    "admin.emergency_access.approve"
+  ];
+  const canOpenAccessControl = rawRole === 0 || accessControlPagePermissions.some(hasAccess);
+  if (canOpenAccessControl && isModuleAvailable("authorization")) {
+    nav.push({
+      label: "Access Control",
+      icon: ShieldCheck,
+      subItems: [
+        ...hasAccess("admin.user.read") || rawRole === 0 ? [{ to: "/admin/access-control/users", label: "Users" }] : [],
+        ...hasAccess("admin.role.read") || rawRole === 0 ? [{ to: "/admin/access-control/roles", label: "Roles" }] : [],
+        // Company & Unit moved to HR > Organization's "Company & Unit" tab
+        // (still gated on the same admin.company.read code) — see App.jsx's
+        // redirect for the old path and Organization.jsx for the new tab.
+        ...hasAccess("admin.role.read") || rawRole === 0 ? [{ to: "/admin/access-control/permission-matrix", label: "Permission Matrix" }] : [],
+        ...hasAccess("admin.policy.read") || rawRole === 0 ? [{ to: "/admin/access-control/policies", label: "Policies" }] : [],
+        ...hasAccess("admin.access_request.read") || rawRole === 0 ? [{ to: "/admin/access-control/access-requests", label: "Access Requests" }] : [],
+        ...hasAccess("admin.delegation.manage") || rawRole === 0 ? [{ to: "/admin/access-control/delegations", label: "Delegations" }] : [],
+        ...hasAccess("admin.emergency_access.approve") || rawRole === 0 ? [{ to: "/admin/access-control/emergency-access", label: "Emergency Access" }] : []
+      ]
+    });
+  }
+  nav.push({ to: "/admin/profile", label: "Profile", icon: UserCircle });
+  return nav;
+}
+export function buildEmployeeNav(isModuleAvailable, isManager = false) {
+  return [
+    { to: "/employee", label: "Dashboard", icon: LayoutDashboard, end: true },
+    {
+      label: "Department & Management",
+      icon: Users,
+      subItems: [
+        { to: "/employee/manager", label: "Department" },
+        { to: "/employee/recruitment", label: "Recruitment" },
+        { to: "/employee/attendance", label: "Attendance" },
+        { to: "/employee/mediclaim-details", label: "Employee Mediclaim Details" }
+      ]
+    },
+    { to: "/employee/payslips", label: "Payslips", icon: FileText },
+    {
+      label: "Statutory & Benefits",
+      icon: Receipt,
+      subItems: [
+        { to: "/employee/form16", label: "Form 16" },
+        ...isModuleAvailable("mediclaim") ? [{ to: "/employee/tds/mediclaim", label: "Mediclaim" }] : []
+      ]
+    },
+    { to: "/employee/tickets", label: "My Tickets", icon: Ticket },
+    { to: "/employee/profile", label: "Profile", icon: UserCircle },
+    { to: "/employee/appointment", label: "Appointment Form", icon: ClipboardList }
+  ];
+}
+const agentNav = [
+  { to: "/agent", label: "Dashboard", icon: LayoutDashboard, end: true },
+  { to: "/agent/trial-forms", label: "Trial Form", icon: FileText, company: "nidhi-impex" },
+  { to: "/agent/appointments", label: "Appointment Form", icon: Plus }
+];
+export function useNavItems() {
+  const { user } = useAuth();
+  const [isManager, setIsManager] = useState(false);
+  useEffect(() => {
+    if (user?.role === "admin") {
+      setIsManager(true);
+      return;
+    }
+    if (user?.accessToken) {
+      salaryApi.checkManagerStatus(user.accessToken, user.tokenType || "Bearer").then((res) => {
+        setIsManager(Boolean(res?.is_manager));
+      }).catch(() => {
+        setIsManager(false);
+      });
+    } else {
+      setIsManager(false);
+    }
+  }, [user?.accessToken, user?.tokenType, user?.role]);
+  const { companyId, isAllCompanies } = useCompany();
+  const { isAvailable: isModuleAvailable } = useModuleAvailability();
+  const { routeState } = useAuthorization();
+  const nav = (() => {
+    if (user?.role === "admin") {
+      return getAdminNav(companyId, user, isAllCompanies, isModuleAvailable);
+    }
+    if (user?.role === "agent") {
+      return agentNav.filter((item) => {
+        if (!item.company) return true;
+        if (user?.company_code === "all-companies") return true;
+        if (user?.company_code?.includes(item.company)) return true;
+        return false;
+      });
+    }
+    const empNav = buildEmployeeNav(isModuleAvailable, isManager).filter((item) => item.label !== "My Tickets" || isModuleAvailable("tickets"));
+    const isComplete = isEmployeeProfileComplete(user);
+    return empNav.map((item) => {
+      if (item.to === "/employee/profile") {
+        return { ...item, disabled: false };
+      }
+      return {
+        ...item,
+        disabled: !isComplete,
+        ...item.subItems ? {
+          subItems: item.subItems.map((sub) => ({
+            ...sub,
+            disabled: !isComplete
+          }))
+        } : {}
+      };
+    });
+  })();
+  return decorateNavigation(nav, routeState);
+}
+export function decorateNavigation(nav, routeState) {
+  const decorate = (item) => {
+    if (item.to === "/employee/profile" || item.to === "/admin/profile" || item.to?.endsWith("/profile")) {
+      return { ...item, disabled: false };
+    }
+    let state = routeState ? routeState(item.to) : "allow";
+    if (state === "unassigned" && item.to?.startsWith("/admin/attendance/")) {
+      state = "allow";
+    }
+    return state === "unassigned" ? null : { ...item, disabled: Boolean(item.disabled) || state === "deny" };
+  };
+  return nav.map((item) => {
+    if (!item.subItems) return decorate(item);
+    const subItems = item.subItems.map(decorate).filter(Boolean);
+    if (subItems.length === 0) return null;
+    return {
+      ...item,
+      subItems,
+      disabled: Boolean(item.disabled) || subItems.every((sub) => sub.disabled)
+    };
+  }).filter(Boolean);
+}
+export function dashboardPathFor(user) {
+  return user?.role === "admin" ? "/admin" : user?.role === "agent" ? "/agent" : "/employee";
+}

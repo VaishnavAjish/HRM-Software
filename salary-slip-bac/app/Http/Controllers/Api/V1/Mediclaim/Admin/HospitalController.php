@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Api\V1\Mediclaim\Admin;
 
-use App\Http\Controllers\Admin\Hr\Concerns\ScopesCompany;
 use App\Http\Controllers\Api\V1\Mediclaim\Concerns\RespondsWithEnvelope;
 use App\Http\Controllers\Controller;
 use App\Models\Mediclaim\MediclaimHospital;
@@ -14,32 +13,32 @@ use Illuminate\Validation\Rule;
 /**
  * `GET,POST,PUT,DELETE /hospitals`.
  *
- * "Delete" is a status flip to 'inactive', never a row delete — the plan is
- * explicit that inactive hospitals are retained so historical claims still
- * resolve the hospital they were treated at (no `softDeletes()` anywhere in
- * this module; see `MediclaimHospital`'s own docblock).
+ * Hospitals are ONE shared directory, not scoped per company (2026-09-22, at
+ * the user's explicit direction — a hospital isn't "owned" by a company;
+ * every employee across every company should see the same list). Earlier
+ * this endpoint scoped hospitals per employee `company_code`, which — on top
+ * of a since-fixed matching bug — meant the same hospital could be
+ * "deactivated" for one company and still active for another, so two
+ * employees at different companies saw different lists for no real business
+ * reason. `company_code` stays on the row (the column is still `NOT NULL`)
+ * purely for the audit trail; every hospital is always stored and read as
+ * `all-companies`, and no request may set it to anything else.
+ *
+ * "Delete" is a genuine row delete (2026-09-22, at the user's explicit
+ * request — previously just flipped `status` to `inactive`).
+ * `mediclaim_claims.hospital_id` / `mediclaim_intimations.hospital_id` are
+ * both `nullOnDelete()`, so a historical claim/intimation pointing at a
+ * deleted hospital simply loses that reference rather than blocking the
+ * delete. `mediclaim_hospital_contacts` and `mediclaim_policy_hospitals`
+ * DO cascade-delete with the hospital, by design.
  */
 class HospitalController extends Controller
 {
-    use ScopesCompany;
     use RespondsWithEnvelope;
 
     public function index(Request $request): JsonResponse
     {
         $query = MediclaimHospital::query()->with('contacts');
-
-        $actor = auth('api')->user();
-        if ($actor && ! $actor->isSuperAdmin()) {
-            $userCompany = $actor->company_code;
-            $query->where(function ($q) use ($userCompany) {
-                $q->whereNull('company_code')
-                  ->orWhere('company_code', '')
-                  ->orWhere('company_code', 'all')
-                  ->orWhere('company_code', $userCompany);
-            });
-        } else {
-            $this->applyCompanyScope($query, $request);
-        }
 
         if ($request->filled('status')) {
             $query->whereIn('status', explode(',', (string) $request->query('status')));
@@ -56,6 +55,7 @@ class HospitalController extends Controller
     public function store(Request $request): JsonResponse
     {
         $data = $request->validate($this->hospitalRules());
+        $data['company_code'] = 'all-companies';
 
         $actor = auth('api')->user();
         $hospital = MediclaimHospital::create($data + [
@@ -71,13 +71,14 @@ class HospitalController extends Controller
 
     public function update(Request $request, int $hospital): JsonResponse
     {
-        $model = $this->scoped($request, $hospital);
+        $model = MediclaimHospital::find($hospital);
 
         if (! $model) {
             return $this->missing('Hospital not found.');
         }
 
         $data = $request->validate($this->hospitalRules(true));
+        unset($data['company_code']); // hospitals are shared network-wide, not per-company — see class docblock
 
         $actor = auth('api')->user();
         $before = $model->toArray();
@@ -93,7 +94,7 @@ class HospitalController extends Controller
 
     public function destroy(Request $request, int $hospital): JsonResponse
     {
-        $model = $this->scoped($request, $hospital);
+        $model = MediclaimHospital::find($hospital);
 
         if (! $model) {
             return $this->missing('Hospital not found.');
@@ -101,15 +102,14 @@ class HospitalController extends Controller
 
         $actor = auth('api')->user();
         $before = $model->toArray();
+        $name = $model->name;
+        $id = $model->id;
 
-        $model->status = 'inactive';
-        $model->active_to = $model->active_to ?? now()->toDateString();
-        $model->updated_by = $actor->id;
-        $model->save();
+        $model->delete();
 
-        MediclaimActivityLogSupport::log($actor, 'HOSPITAL_DEACTIVATED', 'mediclaim_hospital', $model->id, $before, $model->fresh()->toArray(), 'Hospital deactivated.', $model->company_code);
+        MediclaimActivityLogSupport::log($actor, 'HOSPITAL_DELETED', 'mediclaim_hospital', $id, $before, null, "Hospital \"{$name}\" permanently deleted.", $before['company_code'] ?? null);
 
-        return $this->ok(['id' => $model->id, 'status' => $model->status]);
+        return $this->ok(['id' => $id, 'deleted' => true]);
     }
 
     private function hospitalRules(bool $update = false): array
@@ -117,7 +117,6 @@ class HospitalController extends Controller
         $required = $update ? 'sometimes' : 'required';
 
         return [
-            'company_code' => [$update ? 'sometimes' : 'required', 'string', 'max:60'],
             'name' => [$required, 'string', 'max:255'],
             'address' => ['sometimes', 'nullable', 'string', 'max:1000'],
             'city' => ['sometimes', 'nullable', 'string', 'max:120'],
@@ -133,13 +132,5 @@ class HospitalController extends Controller
             'active_to' => ['sometimes', 'nullable', 'date', 'after_or_equal:active_from'],
             'status' => ['sometimes', Rule::in(MediclaimHospital::STATUSES)],
         ];
-    }
-
-    private function scoped(Request $request, int $id): ?MediclaimHospital
-    {
-        $query = MediclaimHospital::query()->where('id', $id);
-        $this->applyCompanyScope($query, $request);
-
-        return $query->first();
     }
 }

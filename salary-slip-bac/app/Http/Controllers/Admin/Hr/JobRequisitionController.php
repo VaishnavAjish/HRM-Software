@@ -19,6 +19,7 @@ class JobRequisitionController extends Controller
 
     public function index(Request $request)
     {
+        $userAuth = auth('api')->user();
         $query = JobRequisition::with([
             'department', 'departmentManager:id,name,designation', 'requestedBy:id,name,email',
             'approvedBy:id,name,email', 'hiringManager:id,name,email,designation', 'director:id,name,email,designation',
@@ -26,7 +27,29 @@ class JobRequisitionController extends Controller
             'currentApprovalCycle.steps.decisionActor:id,name,email,designation',
         ])
             ->withCount('candidates');
+
         $this->applyCompanyScope($query, $request);
+
+        if ($userAuth && (int)$userAuth->role === 3) {
+            $deptIds = \App\Models\DepartmentManager::where('user_id', $userAuth->id)->pluck('department_id');
+            $query->where(function($q) use ($userAuth, $deptIds) {
+                $q->where('requested_by', $userAuth->id)
+                  ->orWhere('department_manager_id', $userAuth->id)
+                  ->orWhereIn('department_id', $deptIds);
+            });
+        } else {
+            // HR / Admin portal view: do NOT display unsubmitted employee drafts.
+            // Draft requisitions created by employees remain in the Employee portal until submitted for approval.
+            $query->where(function ($q) {
+                $q->where('status', '!=', 'draft')
+                  ->orWhere(function ($sub) {
+                      $sub->where('status', 'draft')
+                          ->whereHas('requestedBy', function ($r) {
+                              $r->whereIn('role', [0, 1, 2])->orWhere('is_super_admin', true);
+                          });
+                  });
+            });
+        }
 
         if ($request->status) {
             $query->whereIn('status', explode(',', $request->status));
@@ -679,6 +702,221 @@ class JobRequisitionController extends Controller
             ]);
         }
     }
+
+    public function employeeStore(Request $request, DepartmentManagers $managers, JobRequisitionApprovalService $approvals)
+    {
+        $actor = auth('api')->user();
+        if (!$actor) {
+            return response()->json(['status' => false, 'message' => 'Unauthenticated'], 401);
+        }
+
+        $data = $request->validate([
+            'title' => 'required|string|max:255',
+            'department_id' => 'required|integer|exists:departments,id',
+            'department_manager_id' => 'required|integer|exists:users,id',
+            'hr_manager_id' => 'nullable|integer|exists:users,id',
+            'designation' => 'nullable|string|max:255',
+            'employment_type' => 'nullable|in:full_time,part_time,contract,intern',
+            'openings' => 'nullable|integer|min:1',
+            'priority' => 'nullable|in:low,medium,high,urgent',
+            'min_experience' => 'nullable|numeric|min:0',
+            'max_experience' => 'nullable|numeric|min:0',
+            'salary_min' => 'nullable|numeric|min:0',
+            'salary_max' => 'nullable|numeric|min:0',
+            'description' => 'nullable|string',
+            'requirements' => 'nullable|string',
+            'target_closing_date' => 'nullable|date',
+        ]);
+
+        $this->assertRangesAreOrdered($data);
+
+        $department = Department::find((int) $data['department_id']);
+        if (!$department) {
+            return response()->json(['status' => false, 'message' => 'Department not found'], 404);
+        }
+
+        $context = $this->defaultCompanyContext($request);
+        $reqCompany = $request->input('company_code') ?: $request->input('companyId');
+        $codes = array_filter(array_unique(array_merge(
+            explode(',', (string) ($department->company_code ?? '')),
+            explode(',', (string) ($actor->company_code ?? '')),
+            explode(',', (string) ($reqCompany ?? ''))
+        )));
+        $mergedCompanyCode = implode(',', array_map('trim', $codes));
+
+        $requisition = JobRequisition::create($data + [
+            'status' => 'draft',
+            'company_code' => $mergedCompanyCode,
+            'unit' => ($context['unit'] ?? null) ?: $actor->unit,
+            'requested_by' => $actor->id,
+        ]);
+
+        if ($request->has('hr_manager_id') || $request->boolean('auto_submit')) {
+            $requisition = $approvals->submit(
+                $requisition,
+                $actor,
+                !empty($data['hr_manager_id']) ? (int) $data['hr_manager_id'] : null
+            );
+            return response()->json(['status' => true, 'message' => 'Requisition created and submitted to HR Manager Pool', 'data' => $requisition], 201);
+        }
+
+        return response()->json(['status' => true, 'message' => 'Requisition created successfully', 'data' => $requisition], 201);
+    }
+
+    public function employeeUpdate(Request $request, $id, DepartmentManagers $managers)
+    {
+        $actor = auth('api')->user();
+        if (!$actor) {
+            return response()->json(['status' => false, 'message' => 'Unauthenticated'], 401);
+        }
+
+        $requisition = JobRequisition::find($id);
+        if (!$requisition) {
+            return response()->json(['status' => false, 'message' => 'Requisition not found'], 404);
+        }
+
+        if (! in_array($requisition->status, ['draft', 'rejected', 'revision_requested', 'pending_hr_review', 'pending_approval', 'approved', 'posted'], true)) {
+            throw ValidationException::withMessages([
+                'status' => 'This requisition cannot be edited in its current state.',
+            ]);
+        }
+
+        $data = $request->validate([
+            'title' => 'sometimes|required|string|max:255',
+            'department_id' => 'sometimes|required|integer|exists:departments,id',
+            'department_manager_id' => 'sometimes|required|integer|exists:users,id',
+            'designation' => 'nullable|string|max:255',
+            'employment_type' => 'nullable|in:full_time,part_time,contract,intern',
+            'openings' => 'nullable|integer|min:1',
+            'priority' => 'nullable|in:low,medium,high,urgent',
+            'min_experience' => 'nullable|numeric|min:0',
+            'max_experience' => 'nullable|numeric|min:0',
+            'salary_min' => 'nullable|numeric|min:0',
+            'salary_max' => 'nullable|numeric|min:0',
+            'description' => 'nullable|string',
+            'requirements' => 'nullable|string',
+            'target_closing_date' => 'nullable|date',
+        ]);
+
+        $this->assertRangesAreOrdered(array_merge(
+            $requisition->only(['min_experience', 'max_experience', 'salary_min', 'salary_max']),
+            $data,
+        ));
+
+        $requisition->update($data);
+
+        return response()->json(['status' => true, 'message' => 'Requisition updated successfully', 'data' => $requisition]);
+    }
+
+    public function employeeDestroy(Request $request, $id)
+    {
+        $actor = auth('api')->user();
+        if (!$actor) {
+            return response()->json(['status' => false, 'message' => 'Unauthenticated'], 401);
+        }
+
+        $requisition = JobRequisition::find($id);
+        if (!$requisition) {
+            return response()->json(['status' => false, 'message' => 'Requisition not found'], 404);
+        }
+
+        $requisition->delete();
+
+        return response()->json(['status' => true, 'message' => 'Requisition deleted']);
+    }
+
+    public function employeeSubmit(Request $request, $id, JobRequisitionApprovalService $approvals)
+    {
+        return $this->submit($request, $id, $approvals);
+    }
+
+    public function employeeWithdraw(Request $request, $id, JobRequisitionApprovalService $approvals)
+    {
+        return $this->withdraw($request, $id, $approvals);
+    }
+
+    public function employeeShow(Request $request, $id)
+    {
+        $actor = auth('api')->user();
+        if (!$actor) {
+            return response()->json(['status' => false, 'message' => 'Unauthenticated'], 401);
+        }
+
+        $requisition = JobRequisition::with([
+            'department', 'departmentManager:id,name,designation', 'requestedBy:id,name,email',
+            'approvedBy:id,name,email', 'hiringManager:id,name,email,designation', 'director:id,name,email,designation',
+            'currentApprovalCycle.submitter:id,name,email',
+            'currentApprovalCycle.steps.assignedUser:id,name,email,designation',
+            'currentApprovalCycle.steps.decisionActor:id,name,email,designation', 'candidates',
+        ])->find($id);
+
+        if (!$requisition) {
+            return response()->json(['status' => false, 'message' => 'Requisition not found'], 404);
+        }
+
+        return response()->json(['status' => true, 'data' => $requisition]);
+    }
+
+    function employeeIndex(Request $request)
+    {
+        $actor = auth('api')->user();
+        if (!$actor) {
+            return response()->json(['status' => false, 'message' => 'Unauthenticated'], 401);
+        }
+
+        $query = JobRequisition::with([
+            'department', 'departmentManager:id,name,designation', 'requestedBy:id,name,email',
+            'approvedBy:id,name,email', 'hiringManager:id,name,email,designation', 'director:id,name,email,designation',
+            'currentApprovalCycle.steps.assignedUser:id,name,email,designation',
+            'currentApprovalCycle.steps.decisionActor:id,name,email,designation',
+        ])
+            ->withCount('candidates');
+
+        // $this->applyCompanyScope($query, $request);
+
+        $managedDeptIds = \App\Models\DepartmentManager::where('user_id', $actor->id)->pluck('department_id')->toArray();
+        $deptTableIds = \App\Models\Department::where('manager_id', $actor->id)
+            ->orWhere('manager_id', $actor->emp_code)
+            ->pluck('id')->toArray();
+        $allManagedIds = array_values(array_unique(array_filter(array_merge($managedDeptIds, $deptTableIds))));
+
+        $query->where(function ($q) use ($actor, $allManagedIds) {
+            $q->where('requested_by', $actor->id)
+              ->orWhere('department_manager_id', $actor->id);
+            if (!empty($allManagedIds)) {
+                $q->orWhereIn('department_id', $allManagedIds);
+            }
+        });
+
+        if ($request->filled('status') && $request->status !== 'all') {
+            $query->whereIn('status', explode(',', $request->status));
+        }
+        if ($request->filled('department_id')) {
+            $query->where('department_id', $request->department_id);
+        }
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('title', 'like', "%{$search}%")
+                  ->orWhereHas('department', fn ($d) => $d->where('name', 'like', "%{$search}%"));
+            });
+        }
+
+        $perPage = max(1, min(100, (int) $request->input('per_page', 25)));
+        $paginated = $query->orderByDesc('id')->paginate($perPage);
+
+        return response()->json([
+            'status' => true,
+            'data' => [
+                'data' => $paginated->items(),
+                'total' => $paginated->total(),
+                'current_page' => $paginated->currentPage(),
+                'last_page' => $paginated->lastPage(),
+                'per_page' => $paginated->perPage(),
+            ],
+        ]);
+    }
+
 }
 
 

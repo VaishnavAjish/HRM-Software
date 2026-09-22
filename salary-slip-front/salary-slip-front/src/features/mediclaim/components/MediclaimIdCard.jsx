@@ -19,6 +19,12 @@ export default function MediclaimIdCard({
   department,
   designation,
 }) {
+    const [, setTick] = React.useState(0);
+  React.useEffect(() => {
+    const handleUpdate = () => setTick((t) => t + 1);
+    window.addEventListener("card_settings_updated", handleUpdate);
+    return () => window.removeEventListener("card_settings_updated", handleUpdate);
+  }, []);
   const [side, setSide] = useState("front"); // 'front' | 'back'
   const [imagePreview, setImagePreview] = useState({ open: false, src: null, loading: false });
   const [downloading, setDownloading] = useState(false);

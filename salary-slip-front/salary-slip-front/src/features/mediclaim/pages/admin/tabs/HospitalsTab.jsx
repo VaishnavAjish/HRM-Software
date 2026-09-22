@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAuth } from "../../../../../context/AuthContext";
-import { useCompany } from "../../../../../context/CompanyContext";
 import Modal from "../../../../../components/ui/Modal";
 import Button from "../../../../../components/ui/Button";
 import Badge from "../../../../../components/ui/Badge";
@@ -29,7 +28,7 @@ const EMPTY_FORM = {
   specialties: "",
   isNetworkHospital: true,
   cashlessAvailable: false,
-  status: "ACTIVE",
+  status: "active",
 };
 
 const EMPTY_CONTACT_FORM = { name: "", designation: "", phone: "", email: "", availability: "" };
@@ -42,14 +41,21 @@ const EMPTY_CONTACT_FORM = { name: "", designation: "", phone: "", email: "", av
  * preloads `myMembers`/`ruleBooks`, which this tab has no use for and which
  * would surface an unrelated permission failure as a misleading error here).
  *
- * "Delete" never removes the row (the backend only status-flips it to
- * `inactive` — historical claims still need to resolve the hospital they
- * were treated at) — this management table defaults to hiding inactive rows
- * behind a "Show removed hospitals" toggle instead, which is what actually
- * satisfies "removed hospital disappears from the list" without touching
- * the retention behavior. `HospitalDirectory` itself always excludes
+ * Hospitals are one shared directory, not scoped per company (2026-09-22, at
+ * the user's explicit direction) — every hospital created here is visible
+ * to every company's employees, and there's no per-company assignment to
+ * configure.
+ *
+ * "Delete" is a genuine, permanent row delete (2026-09-22, at the user's
+ * explicit request — it previously only status-flipped the row to
+ * `inactive`). The separate Active/Inactive **status** field is still there
+ * for "hide from the employee directory without deleting" (e.g. temporarily
+ * closed) — the "Show removed hospitals" toggle below shows those inactive
+ * rows in this management table; `HospitalDirectory` itself always excludes
  * inactive hospitals regardless of this toggle, since that's the surface an
- * employee browses to decide where to go for treatment.
+ * employee browses to decide where to go for treatment. Deleting a hospital
+ * cannot be undone and detaches it from any past claim (the claim itself is
+ * kept, just with no hospital reference left).
  *
  * The Edit drawer (only once a hospital already exists) also manages its
  * contact roster — a named "concern person" with phone + optional
@@ -57,7 +63,6 @@ const EMPTY_CONTACT_FORM = { name: "", designation: "", phone: "", email: "", av
  */
 export default function HospitalsTab() {
   const { user } = useAuth();
-  const { companyScope } = useCompany();
   const { can } = useMediclaimAuthorization();
 
   const accessToken = user?.accessToken;
@@ -141,7 +146,7 @@ export default function HospitalsTab() {
       specialties: specialties.join(", "),
       isNetworkHospital: hospital.isNetworkHospital ?? hospital.is_network_hospital ?? true,
       cashlessAvailable: hospital.cashlessAvailable ?? hospital.cashless_available ?? false,
-      status: hospital.status || "ACTIVE",
+      status: String(hospital.status || "active").toLowerCase(),
     });
     setFormError(null);
     setDrawerContacts(hospital.contacts || hospital.hospitalContacts || []);
@@ -166,7 +171,6 @@ export default function HospitalsTab() {
       latitude: form.latitude !== "" ? Number(form.latitude) : null,
       longitude: form.longitude !== "" ? Number(form.longitude) : null,
       googleMapsUrl: form.googleMapsUrl.trim() || null,
-      companyCode: companyScope?.companyId || undefined,
       specialties: form.specialties ? form.specialties.split(",").map((s) => s.trim()).filter(Boolean) : [],
       isNetworkHospital: Boolean(form.isNetworkHospital),
       cashlessAvailable: Boolean(form.cashlessAvailable),
@@ -243,14 +247,14 @@ export default function HospitalsTab() {
 
   const remove = async (hospital) => {
     const id = hospital.id ?? hospital.hospitalId;
-    if (!window.confirm(`Remove "${hospital.name}" from the hospital directory?`)) return;
+    if (!window.confirm(`Permanently delete "${hospital.name}"? This cannot be undone. Any past claims referencing it are kept, just without a hospital reference.`)) return;
     setDeletingId(id);
     try {
       await mediclaimApi.deleteHospital(id, user?.accessToken, user?.tokenType);
-      toast.success("Hospital removed");
+      toast.success("Hospital permanently deleted");
       load();
     } catch (err) {
-      toast.error(err?.message || "Failed to remove this hospital.");
+      toast.error(err?.message || "Failed to delete this hospital.");
     } finally {
       setDeletingId(null);
     }
@@ -301,17 +305,17 @@ export default function HospitalsTab() {
                       <tr key={id}>
                         <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{hospital.name}</td>
                         <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{hospital.city || "—"}</td>
-                        <td className="px-4 py-3"><Badge variant={isInactive ? "gray" : "green"}>{isInactive ? "Removed" : "Active"}</Badge></td>
+                        <td className="px-4 py-3"><Badge variant={isInactive ? "gray" : "green"}>{isInactive ? "Inactive" : "Active"}</Badge></td>
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-end gap-3">
                             {canUpdate && (
                               <button type="button" onClick={() => openEdit(hospital)} className="text-xs font-semibold text-brand-600 hover:underline dark:text-brand-400">
-                                {isInactive ? "Edit / Restore" : "Edit"}
+                                Edit
                               </button>
                             )}
-                            {canDelete && !isInactive && (
+                            {canDelete && (
                               <button type="button" disabled={deletingId === id} onClick={() => remove(hospital)} className="text-xs font-semibold text-red-600 hover:underline disabled:opacity-50 dark:text-red-400">
-                                {deletingId === id ? "Removing…" : "Delete"}
+                                {deletingId === id ? "Deleting…" : "Delete"}
                               </button>
                             )}
                           </div>
@@ -396,8 +400,8 @@ export default function HospitalsTab() {
           </div>
           <Field label="Status">
             <select className={inputClass} value={form.status} onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}>
-              <option value="ACTIVE">Active</option>
-              <option value="INACTIVE">Inactive</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
             </select>
           </Field>
           {formError && <p className="text-xs text-red-500">{formError}</p>}

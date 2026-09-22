@@ -156,6 +156,17 @@ export const mediclaimApi = {
     });
   },
 
+  // Accounts' bulk "mark payment done" action — `Admin\ClaimController::
+  // markPaymentCompleted()`. Same `mediclaim.claim.read` gate as `adminClaims()`
+  // above. See `ClaimsTab.jsx`'s Payment Status column/bulk bar.
+  markClaimsPaymentCompleted(claimIds, accessToken, tokenType = "Bearer") {
+    return apiRequest(`${BASE}/claims/payment-status`, {
+      method: "POST",
+      headers: headers(accessToken, tokenType),
+      body: JSON.stringify({ claim_ids: claimIds }),
+    });
+  },
+
   /* --------------------------------------------------------------- claim resource (shared) */
   // Same endpoints serve the employee (own claim) and a reviewer, per the
   // backend's resource-scoped visibility rule — no separate admin/self split
@@ -413,6 +424,29 @@ export const mediclaimApi = {
       method: "PUT",
       headers: headers(accessToken, tokenType),
       body: JSON.stringify(payload),
+    });
+  },
+
+
+  /* ------------------------------------------------------------------------- card settings */
+  cardSettings(companyCode = "", accessToken, tokenType = "Bearer") {
+    const q = companyCode ? `?company_code=${encodeURIComponent(companyCode)}` : "";
+    return apiRequest(`${BASE}/card-settings${q}`, { headers: headers(accessToken, tokenType) });
+  },
+
+  saveCardSettings(data, accessToken, tokenType = "Bearer") {
+    return apiRequest(`${BASE}/admin/card-settings`, {
+      method: "PUT",
+      headers: headers(accessToken, tokenType),
+      body: JSON.stringify(data),
+    });
+  },
+
+  resetCardSettings(companyCode, accessToken, tokenType = "Bearer") {
+    return apiRequest(`${BASE}/admin/card-settings/reset`, {
+      method: "POST",
+      headers: headers(accessToken, tokenType),
+      body: JSON.stringify({ company_code: companyCode }),
     });
   },
 

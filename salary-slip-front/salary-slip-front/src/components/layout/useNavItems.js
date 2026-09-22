@@ -108,7 +108,6 @@ function getAdminNav(companyId, user, isAllCompanies, isModuleAvailable = () => 
       icon: Briefcase,
       subItems: [
         { to: "/admin/hr", label: "HR Dashboard", end: true },
-        { to: "/admin/hr/id-cards", label: "ID Cards" },
         { to: "/admin/hr/hiring", label: "Recruitment" },
         { to: "/admin/hr/onboarding", label: "Onboarding" },
         { to: "/admin/hr/organization", label: "Organization" },
@@ -201,7 +200,16 @@ function getAdminNav(companyId, user, isAllCompanies, isModuleAvailable = () => 
 export function buildEmployeeNav(isModuleAvailable, isManager = false) {
   return [
     { to: "/employee", label: "Dashboard", icon: LayoutDashboard, end: true },
-    ...(isManager ? [{ to: "/employee/manager", label: "Department", icon: Users }] : []),
+    {
+      label: "Department & Management",
+      icon: Users,
+      subItems: [
+        { to: "/employee/manager", label: "Department" },
+        { to: "/employee/recruitment", label: "Requisitions" },
+        { to: "/employee/attendance", label: "Attendance" },
+        { to: "/employee/mediclaim-details", label: "Employee Mediclaim Details" },
+      ],
+    },
     { to: "/employee/payslips", label: "Payslips", icon: FileText },
     {
       label: "Statutory & Benefits",

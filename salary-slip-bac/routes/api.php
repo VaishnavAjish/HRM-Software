@@ -1,5 +1,4 @@
 <?php
-
 use App\Http\Controllers\Admin\AdminController;
 use App\Http\Controllers\Admin\AttendanceController;
 use App\Http\Controllers\Admin\Hr\AssetController;
@@ -182,6 +181,17 @@ Route::post('logout', [AuthController::class, 'logout'])->middleware('throttle:3
 
 Route::middleware('jwt.auth')->group(function () {
     Route::get('v1/manager/team', [UserController::class, 'managerTeam']);
+    Route::group(['prefix' => 'employee/requisitions'], function () {
+        Route::get('get', [\App\Http\Controllers\Admin\Hr\JobRequisitionController::class, 'employeeIndex']);
+        Route::get('get/{id}', [\App\Http\Controllers\Admin\Hr\JobRequisitionController::class, 'employeeShow']);
+        Route::get('departments/{id}/managers', [\App\Http\Controllers\Admin\Hr\JobRequisitionController::class, 'departmentManagers']);
+        Route::post('store', [\App\Http\Controllers\Admin\Hr\JobRequisitionController::class, 'employeeStore']);
+        Route::put('update/{id}', [\App\Http\Controllers\Admin\Hr\JobRequisitionController::class, 'employeeUpdate']);
+        Route::delete('delete/{id}', [\App\Http\Controllers\Admin\Hr\JobRequisitionController::class, 'employeeDestroy']);
+        Route::post('{id}/submit', [\App\Http\Controllers\Admin\Hr\JobRequisitionController::class, 'employeeSubmit']);
+        Route::post('{id}/withdraw', [\App\Http\Controllers\Admin\Hr\JobRequisitionController::class, 'employeeWithdraw']);
+    });
+
     Route::get('v1/manager/check', [UserController::class, 'managerCheck']);
     // Any authenticated role (admin, agent, employee)
     Route::get('profile', [AuthController::class, 'me'])->middleware(['throttle:30,1', 'permission:self.profile.read']);

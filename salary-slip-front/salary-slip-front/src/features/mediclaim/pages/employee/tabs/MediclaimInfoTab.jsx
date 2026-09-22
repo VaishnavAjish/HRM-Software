@@ -178,7 +178,10 @@ export default function MediclaimInfoTab({ lookups, onNavigate }) {
   const fyEnd = floater.financialYearEnd || floater.financial_year_end;
 
   const members = coverage.members || [];
-  const hospitalsCount = (coverage.hospitals || []).length;
+  const hospitalsList = (lookups?.hospitals && lookups.hospitals.length > 0)
+    ? lookups.hospitals
+    : (coverage?.hospitals || []);
+  const hospitalsCount = hospitalsList.length;
   const publishedRuleBookLanguages = new Set(
     (lookups?.ruleBooks || [])
       .filter((rb) => String(rb.status || "").toLowerCase() === "published")
@@ -309,7 +312,7 @@ export default function MediclaimInfoTab({ lookups, onNavigate }) {
           <RuleBookViewer ruleBooks={lookups?.ruleBooks || []} loading={lookups?.loading} error={lookups?.error} />
         )}
         {activeSection === "hospitals" && (
-          <HospitalDirectory hospitals={lookups?.hospitals || []} loading={lookups?.loading} error={lookups?.error} />
+          <HospitalDirectory hospitals={hospitalsList} loading={lookups?.loading} error={lookups?.error} />
         )}
       </Drawer>
     </div>

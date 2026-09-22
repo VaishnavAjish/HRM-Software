@@ -8,6 +8,16 @@ use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 
+/**
+ * READ-ONLY toward the physical eSSL devices, by design and by policy: the
+ * only SOAP action this service ever calls is `GetTransactionsLog` (fetch
+ * punch history) — never a write/push action (no `SetUserInfo`, no
+ * `ClearGLog`/`ClearData`, no `EnableDevice`/`DisableDevice`, no remote
+ * command queue push, nothing that changes a device's own state). Do not add
+ * one without an explicit, separate decision to do so — a bug here can
+ * corrupt or wipe a physical biometric terminal's own data, which this
+ * codebase has no way to undo.
+ */
 class EsslBiometricService
 {
     /**
@@ -27,6 +37,7 @@ class EsslBiometricService
     private string $username;
     private string $password;
     private string $namespace;
+    private int $maxConcurrentFetches;
 
     public function __construct()
     {
@@ -34,14 +45,24 @@ class EsslBiometricService
         $this->username = env('ESSL_USERNAME', 'API');
         $this->password = env('ESSL_PASSWORD', 'Api@12345');
         $this->namespace = env('ESSL_NAMESPACE', 'http://tempuri.org/');
+        // ALL 28 devices share this one apiUrl (the serial goes in the SOAP
+        // body, not the URL) — a free ngrok tunnel to what's almost
+        // certainly a single small on-prem Windows/IIS box, not a
+        // load-balanced production API. That combination frequently tolerates
+        // only ONE request at a time; sending even a *bounded* handful of
+        // concurrent requests at it was enough to make the whole tunnel/box
+        // close, breaking a sync that ran fine (if slowly) one device at a
+        // time before. Default is therefore sequential (1) — the behavior
+        // that was actually working — with concurrency available as an
+        // explicit opt-in via .env for anyone whose eSSL endpoint is known
+        // to handle it (a dedicated server, a paid ngrok tier, etc.).
+        $this->maxConcurrentFetches = max(1, (int) env('ESSL_MAX_CONCURRENT_FETCHES', 1));
     }
 
-    /**
-     * Fetch logs for a single device via SOAP XML GetTransactionsLog
-     */
-    public function fetchDeviceLogs(string $serial, string $fromDateTime, string $toDateTime): array
+    /** Builds the (read-only) GetTransactionsLog SOAP request body — the ONLY SOAP action this class ever issues. */
+    private function buildTransactionsLogSoapEnvelope(string $serial, string $fromDateTime, string $toDateTime): string
     {
-        $soapXml = '<?xml version="1.0" encoding="utf-8"?>' .
+        return '<?xml version="1.0" encoding="utf-8"?>' .
             '<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">' .
             '<soap:Body>' .
             '<GetTransactionsLog xmlns="' . htmlspecialchars($this->namespace) . '">' .
@@ -54,18 +75,49 @@ class EsslBiometricService
             '</GetTransactionsLog>' .
             '</soap:Body>' .
             '</soap:Envelope>';
+    }
 
+    private function transactionsLogHttpHeaders(): array
+    {
+        return [
+            'Content-Type: text/xml; charset=utf-8',
+            'SOAPAction: "' . rtrim($this->namespace, '/') . '/GetTransactionsLog"',
+            'ngrok-skip-browser-warning: true',
+        ];
+    }
+
+    /** Extracts the newline-delimited punch lines out of a raw GetTransactionsLog SOAP response body. */
+    private function parseTransactionsLogResponse(string $response): array
+    {
+        if (preg_match('/<strDataList>([\s\S]*?)<\/strDataList>/i', $response, $matches)) {
+            $rawText = trim($matches[1]);
+            if ($rawText === '') {
+                return [];
+            }
+
+            return preg_split('/\r?\n/', $rawText);
+        }
+
+        return [];
+    }
+
+    /**
+     * Fetch logs for a single device via SOAP XML GetTransactionsLog
+     * (read-only). Kept for any external/manual single-device caller;
+     * `syncAttendance()` itself uses `fetchAllDeviceLogsConcurrently()`
+     * below instead, so a 28-device sync doesn't serialize 28 sequential
+     * timeouts into one HTTP request.
+     */
+    public function fetchDeviceLogs(string $serial, string $fromDateTime, string $toDateTime): array
+    {
         $ch = curl_init($this->apiUrl);
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_POST           => true,
-            CURLOPT_POSTFIELDS     => $soapXml,
-            CURLOPT_HTTPHEADER     => [
-                'Content-Type: text/xml; charset=utf-8',
-                'SOAPAction: "' . rtrim($this->namespace, '/') . '/GetTransactionsLog"',
-                'ngrok-skip-browser-warning: true',
-            ],
+            CURLOPT_POSTFIELDS     => $this->buildTransactionsLogSoapEnvelope($serial, $fromDateTime, $toDateTime),
+            CURLOPT_HTTPHEADER     => $this->transactionsLogHttpHeaders(),
             CURLOPT_TIMEOUT        => 25,
+            CURLOPT_CONNECTTIMEOUT => 15,
             CURLOPT_SSL_VERIFYPEER => false,
             CURLOPT_SSL_VERIFYHOST => false,
         ]);
@@ -80,15 +132,134 @@ class EsslBiometricService
             return [];
         }
 
-        if (preg_match('/<strDataList>([\s\S]*?)<\/strDataList>/i', $response, $matches)) {
-            $rawText = trim($matches[1]);
-            if (empty($rawText)) {
-                return [];
-            }
-            return preg_split('/\r?\n/', $rawText);
+        return $this->parseTransactionsLogResponse($response);
+    }
+
+    /**
+     * Fetches GetTransactionsLog (read-only) from every device in
+     * `$serials`, in batches of `$this->maxConcurrentFetches`
+     * (DEFAULT 1 — sequential, `.env`-tunable via
+     * `ESSL_MAX_CONCURRENT_FETCHES` for an endpoint known to tolerate more)
+     * run via curl_multi.
+     *
+     * This three-part history matters: the ORIGINAL loop ran fully
+     * sequentially and worked, if slowly — up to count($serials) x 25s of
+     * cURL timeout back-to-back in a single HTTP request, which with all 28
+     * devices could push the whole request past a minute or more when
+     * several were genuinely slow/offline, occasionally killed by a reverse
+     * proxy or PHP's own execution-time limit ("Unable to connect to the
+     * HRMS server"). Firing ALL 28 devices at once next "fixed" that but
+     * introduced a worse regression: every device shares ONE `apiUrl` (the
+     * serial travels in the SOAP body, not the URL) — typically a single
+     * small on-prem Windows/IIS box reached through a free ngrok tunnel,
+     * not a scaled production API — and even a modest handful of
+     * simultaneous requests can make that box or tunnel close outright
+     * ("the server is being closed"), breaking a sync that used to work.
+     * The default is therefore back to sequential — genuinely one request
+     * in flight at a time, same as the original working behavior — with
+     * concurrency available as an explicit, non-default opt-in. What DID
+     * change and stay changed: the per-batch failure detection and circuit
+     * breaker below, which apply just as well at concurrency 1.
+     *
+     * Circuit breaker: once at least `min(3, count($serials))` devices have
+     * been attempted and EVERY one of them has failed, the shared `apiUrl`
+     * itself is almost certainly the problem (a dead tunnel, a wrong
+     * `.env` value, the relay box being off) rather than three-plus
+     * individual devices coincidentally all being down at once. Checked
+     * after every batch regardless of `maxConcurrentFetches` — including
+     * the sequential default (1) — so a dead endpoint is detected within a
+     * handful of devices instead of grinding through all 28 one at a time.
+     * Grinding through the rest in that situation only turns a config
+     * problem into ANOTHER multi-minute timeout that a proxy or the browser
+     * kills — reproducing the exact "Unable to connect" symptom for a
+     * different underlying reason underneath. Aborting instead means the
+     * request returns in seconds with one clear, specific reason.
+     *
+     * @return array<string, array{lines: array<int,string>, ok: bool, error: ?string}>
+     */
+    public function fetchAllDeviceLogsConcurrently(array $serials, string $fromDateTime, string $toDateTime): array
+    {
+        if (empty($serials)) {
+            return [];
         }
 
-        return [];
+        $minSampleBeforeTripping = min(3, count($serials));
+        $results = [];
+
+        foreach (array_chunk($serials, $this->maxConcurrentFetches) as $batch) {
+            $results += $this->fetchDeviceBatchConcurrently($batch, $fromDateTime, $toDateTime);
+
+            $attempted = count($results);
+            $failed = count(array_filter($results, fn ($r) => ! $r['ok']));
+
+            if ($attempted >= $minSampleBeforeTripping && $failed === $attempted) {
+                $sampleError = reset($results)['error'] ?? 'unknown error';
+                Log::error("eSSL sync aborted early: all {$attempted} attempted device(s) failed to connect (sample error: {$sampleError}). The shared eSSL endpoint is likely unreachable -- check the tunnel/ESSL_API_URL rather than individual devices.");
+
+                foreach ($serials as $skippedSerial) {
+                    if (! isset($results[$skippedSerial])) {
+                        $results[$skippedSerial] = ['lines' => [], 'ok' => false, 'error' => 'Skipped: eSSL endpoint appeared unreachable (see earlier failures this run)'];
+                    }
+                }
+
+                break;
+            }
+        }
+
+        return $results;
+    }
+
+    /** One bounded batch of `curl_multi` requests, all against the same shared eSSL endpoint. */
+    private function fetchDeviceBatchConcurrently(array $serials, string $fromDateTime, string $toDateTime): array
+    {
+        $multiHandle = curl_multi_init();
+        $handles = [];
+
+        foreach ($serials as $serial) {
+            $ch = curl_init($this->apiUrl);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_POST           => true,
+                CURLOPT_POSTFIELDS     => $this->buildTransactionsLogSoapEnvelope($serial, $fromDateTime, $toDateTime),
+                CURLOPT_HTTPHEADER     => $this->transactionsLogHttpHeaders(),
+                CURLOPT_TIMEOUT        => 25,
+                CURLOPT_CONNECTTIMEOUT => 15,
+                CURLOPT_SSL_VERIFYPEER => false,
+                CURLOPT_SSL_VERIFYHOST => false,
+            ]);
+            curl_multi_add_handle($multiHandle, $ch);
+            $handles[$serial] = $ch;
+        }
+
+        $running = null;
+        do {
+            $status = curl_multi_exec($multiHandle, $running);
+            if ($running) {
+                curl_multi_select($multiHandle, 1.0);
+            }
+        } while ($running > 0 && $status === CURLM_OK);
+
+        $results = [];
+        foreach ($handles as $serial => $ch) {
+            $response = curl_multi_getcontent($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curlError = curl_error($ch);
+            curl_multi_remove_handle($multiHandle, $ch);
+            curl_close($ch);
+
+            if ($response === '' || $response === false || $httpCode !== 200) {
+                $error = $curlError ?: "HTTP {$httpCode}";
+                Log::warning("eSSL device {$serial} fetch failed (HTTP {$httpCode}): {$error}");
+                $results[$serial] = ['lines' => [], 'ok' => false, 'error' => $error];
+                continue;
+            }
+
+            $results[$serial] = ['lines' => $this->parseTransactionsLogResponse((string) $response), 'ok' => true, 'error' => null];
+        }
+
+        curl_multi_close($multiHandle);
+
+        return $results;
     }
 
     /**
@@ -103,6 +274,19 @@ class EsslBiometricService
         ?string $startDateStr = null,
         ?string $endDateStr = null
     ): array {
+        // Concurrent device fetch below bounds network wait to ~one device's
+        // timeout (~25s), but a wide date range across many employees can
+        // still mean real work parsing/matching/upserting thousands of rows
+        // afterward -- raise the ceiling past a low hosting-default (some
+        // environments default max_execution_time to 30s) so THAT isn't a
+        // second way to hit the same "connection dies mid-request" failure.
+        // Guarded: some hosts disable ini_set, which must never abort a sync.
+        try {
+            @ini_set('max_execution_time', '180');
+        } catch (\Throwable $e) {
+            // best-effort only
+        }
+
         $serials = !empty($deviceSerials) ? $deviceSerials : self::DEVICE_SERIALS;
 
         $start = $startDateStr
@@ -131,22 +315,35 @@ class EsslBiometricService
         $rawPunchRows = [];
 
         // Attendance Engine Rebuild — Phase 4 (spec §26 Sync History): one
-        // `attendance_sync_logs` row per device per run. `fetchDeviceLogs()`
-        // itself already swallows and logs its own transport errors,
-        // returning an empty array either way (no punches vs. a failed
-        // fetch look identical from here) — so `status` below can only ever
-        // be SUCCESS for a device this loop reaches without the whole
-        // method throwing; distinguishing a genuine per-device transport
-        // failure from "zero punches this window" is a follow-up (would
-        // need fetchDeviceLogs() to return its own success flag instead of
-        // just an array — deliberately not changed here to avoid touching
-        // that method's existing, working contract).
-        $deviceMapForLog = \App\Models\AttendanceDevice::pluck('id', 'serial_number')->all();
+        // `attendance_sync_logs` row per device per run. All devices are
+        // fetched CONCURRENTLY (see fetchAllDeviceLogsConcurrently()'s own
+        // docblock for why: sequential per-device polling was the actual
+        // cause of the "Unable to connect to the HRMS server" failure during
+        // a full sync — up to 28 x 25s of cURL timeout stacked into one HTTP
+        // request). The per-device `ok`/`error` the concurrent fetch returns
+        // also lets `status` below correctly distinguish a genuine transport
+        // failure (FAILED) from "device reachable, zero punches this
+        // window" (SUCCESS) — previously indistinguishable.
+        // Guarded: this table is part of the new engine's own migrations,
+        // which may not exist yet on a given environment (e.g. not yet run
+        // on the real server). Sync history is a nice-to-have alongside the
+        // legacy sync this method's core job is -- a missing table here must
+        // degrade to "no device stamped" (device_id null in every row below),
+        // never take down the whole sync response.
+        try {
+            $deviceMapForLog = \App\Models\AttendanceDevice::pluck('id', 'serial_number')->all();
+        } catch (\Throwable $e) {
+            Log::warning('EsslBiometricService: attendance_devices lookup failed (migrations not run yet?): ' . $e->getMessage());
+            $deviceMapForLog = [];
+        }
         $syncLogRows = [];
+        $batchStartedAt = now();
+        $fetchResults = $this->fetchAllDeviceLogsConcurrently($serials, $fromDateTime, $toDateTime);
+        $batchCompletedAt = now();
 
         foreach ($serials as $serial) {
-            $deviceStartedAt = now();
-            $lines = $this->fetchDeviceLogs($serial, $fromDateTime, $toDateTime);
+            $fetchResult = $fetchResults[$serial] ?? ['lines' => [], 'ok' => false, 'error' => 'No response received'];
+            $lines = $fetchResult['lines'];
             $count = count($lines);
             $deviceResults[$serial] = $count;
 
@@ -154,10 +351,12 @@ class EsslBiometricService
                 'device_id' => $deviceMapForLog[$serial] ?? null,
                 'device_serial' => $serial,
                 'company_code' => $companyCode,
-                'started_at' => $deviceStartedAt,
-                'completed_at' => now(),
-                'status' => \App\Models\AttendanceSyncLog::STATUS_SUCCESS,
+                'started_at' => $batchStartedAt,
+                'completed_at' => $batchCompletedAt,
+                'status' => $fetchResult['ok'] ? \App\Models\AttendanceSyncLog::STATUS_SUCCESS : \App\Models\AttendanceSyncLog::STATUS_FAILED,
                 'fetched_count' => $count,
+                'failed_count' => $fetchResult['ok'] ? 0 : 1,
+                'error_message' => $fetchResult['ok'] ? null : $fetchResult['error'],
                 'triggered_by' => $markedBy,
                 'trigger_type' => 'manual',
             ];
@@ -201,13 +400,40 @@ class EsslBiometricService
         }
 
         if (empty($logMap)) {
+            // Persisted here too (not just the batch-upsert success path
+            // further below) -- previously an all-devices-failed run
+            // returned early and never wrote a single AttendanceSyncLog row
+            // or updated device status, so Sync History / Device Health
+            // stayed silent about a failed sync instead of showing it.
+            $this->persistSyncLogsAndDeviceStatus($syncLogRows, null);
+
+            $failedCount = count(array_filter($fetchResults, fn ($r) => ! $r['ok']));
+            $allFailed = $failedCount > 0 && $failedCount === count($serials);
+
+            if ($allFailed) {
+                $sampleError = reset($fetchResults)['error'] ?? 'unknown error';
+
+                return [
+                    'status'         => false,
+                    'message'        => "eSSL sync failed: could not reach any of {$failedCount} device(s) — the eSSL service itself appears unreachable (sample error: {$sampleError}). Check that the eSSL relay / ngrok tunnel is running and that ESSL_API_URL is current, rather than treating this as a per-device issue.",
+                    'total_punches'  => 0,
+                    'records_synced' => 0,
+                    'unique_employees' => 0,
+                    'devices_count'  => count($serials),
+                    'devices_failed' => $failedCount,
+                    'device_results' => $deviceResults,
+                ];
+            }
+
             return [
                 'status'         => true,
-                'message'        => 'No attendance logs found for the selected timeframe across ' . count($serials) . ' device(s).',
+                'message'        => 'No attendance logs found for the selected timeframe across ' . count($serials) . ' device(s).'
+                    . ($failedCount > 0 ? " ({$failedCount} device(s) could not be reached.)" : ''),
                 'total_punches'  => 0,
                 'records_synced' => 0,
                 'unique_employees' => 0,
                 'devices_count'  => count($serials),
+                'devices_failed' => $failedCount,
                 'device_results' => $deviceResults,
             ];
         }
@@ -378,29 +604,7 @@ class EsslBiometricService
             Log::error('AttendancePunchIngestor: sync-time ingest failed: ' . $e->getMessage());
         }
 
-        // Persist the per-device sync log rows collected during the fetch
-        // loop above (spec §26), and stamp each device's last-seen state
-        // (spec §24/§62's device health) — both best-effort, matching the
-        // guarded pattern above.
-        try {
-            $now = now();
-            foreach ($syncLogRows as $serial => $row) {
-                $row['sync_batch_id'] = $batchId;
-                \App\Models\AttendanceSyncLog::create($row);
-
-                if ($row['device_id']) {
-                    \App\Models\AttendanceDevice::whereKey($row['device_id'])->update([
-                        'status' => 'online',
-                        'last_sync_at' => $now,
-                        'last_successful_sync_at' => $now,
-                        'last_sync_error' => null,
-                        'last_sync_punch_count' => $row['fetched_count'],
-                    ]);
-                }
-            }
-        } catch (\Throwable $e) {
-            Log::error('EsslBiometricService: failed to persist sync history/device status: ' . $e->getMessage());
-        }
+        $this->persistSyncLogsAndDeviceStatus($syncLogRows, $batchId);
 
         return [
             'status'           => true,
@@ -412,6 +616,49 @@ class EsslBiometricService
             'devices_count'    => count($serials),
             'device_results'   => $deviceResults,
         ];
+    }
+
+    /**
+     * Persists the per-device sync log rows collected during the fetch loop
+     * (spec §26), and stamps each device's last-seen state (spec §24/§62's
+     * device health). Best-effort — a persistence failure here must never
+     * turn an otherwise-successful sync into an error, matching this
+     * class's guarded pattern elsewhere. Called from BOTH the normal
+     * success path and the all-devices-unreachable early return, so a
+     * failed sync still shows up in Sync History / Device Health instead of
+     * vanishing silently (a real gap in the original code — an all-failed
+     * run used to return early before this block ever ran at all).
+     */
+    private function persistSyncLogsAndDeviceStatus(array $syncLogRows, ?int $batchId): void
+    {
+        try {
+            $now = now();
+            foreach ($syncLogRows as $serial => $row) {
+                $row['sync_batch_id'] = $batchId;
+                \App\Models\AttendanceSyncLog::create($row);
+
+                if ($row['device_id']) {
+                    $isOnline = $row['status'] === \App\Models\AttendanceSyncLog::STATUS_SUCCESS;
+
+                    $update = [
+                        'status' => $isOnline ? 'online' : 'offline',
+                        'last_sync_at' => $now,
+                        'last_sync_error' => $isOnline ? null : ($row['error_message'] ?? 'Unknown error'),
+                        'last_sync_punch_count' => $row['fetched_count'],
+                    ];
+                    // Only advances on an actual successful fetch -- a run of
+                    // failures must not make a stale device look freshly synced,
+                    // so on failure this column is simply left untouched.
+                    if ($isOnline) {
+                        $update['last_successful_sync_at'] = $now;
+                    }
+
+                    \App\Models\AttendanceDevice::whereKey($row['device_id'])->update($update);
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::error('EsslBiometricService: failed to persist sync history/device status: ' . $e->getMessage());
+        }
     }
 
     /**

@@ -640,6 +640,12 @@ export const salaryApi = {
       method: "POST",
       headers: accessToken ? { Authorization: `${tokenType} ${accessToken}` } : {},
       body: JSON.stringify(payload),
+      // A full sync now fetches every device concurrently (backend fix for
+      // the "Unable to connect to the HRMS server" report), bounded to
+      // roughly one device's own ~25s timeout rather than the old serial
+      // sum -- but that's still close to apiRequest's 30s default abort, so
+      // this call gets real headroom instead of racing it.
+      timeout: 90000,
     });
   },
 
@@ -3159,3 +3165,54 @@ export const candidateApi = {
 };
 
 
+
+export const employeeApi = {
+  getRequisition(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/employee/requisitions/get/${id}`, {
+      headers: hrAuthHeaders(accessToken, tokenType),
+    });
+  },
+  getDepartmentManagers(departmentId, accessToken, tokenType = "Bearer", filters = {}) {
+    return apiRequest(`/employee/requisitions/departments/${departmentId}/managers${hrQuery(filters)}`, {
+      headers: hrAuthHeaders(accessToken, tokenType),
+    });
+  },
+  getRequisitions(accessToken, tokenType = "Bearer", filters = {}) {
+    return apiRequest(`/employee/requisitions/get${hrQuery(filters)}`, {
+      headers: hrAuthHeaders(accessToken, tokenType),
+    });
+  },
+  storeRequisition(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest("/employee/requisitions/store", {
+      method: "POST",
+      headers: hrAuthHeaders(accessToken, tokenType),
+      body: JSON.stringify(payload),
+    });
+  },
+  updateRequisition(id, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/employee/requisitions/update/${id}`, {
+      method: "PUT",
+      headers: hrAuthHeaders(accessToken, tokenType),
+      body: JSON.stringify(payload),
+    });
+  },
+  deleteRequisition(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/employee/requisitions/delete/${id}`, {
+      method: "DELETE",
+      headers: hrAuthHeaders(accessToken, tokenType),
+    });
+  },
+  submitRequisition(id, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/employee/requisitions/${id}/submit`, {
+      method: "POST",
+      headers: hrAuthHeaders(accessToken, tokenType),
+      body: JSON.stringify(payload),
+    });
+  },
+  withdrawRequisition(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/employee/requisitions/${id}/withdraw`, {
+      method: "POST",
+      headers: hrAuthHeaders(accessToken, tokenType),
+    });
+  },
+};

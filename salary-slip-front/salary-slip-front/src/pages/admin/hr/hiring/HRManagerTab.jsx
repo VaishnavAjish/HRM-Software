@@ -148,7 +148,7 @@ export default function HRManagerTab({ departments = [], people = [], openRequis
   // endpoint — applied to the current page only, a known limit at very large
   // scale rather than a fabricated "it filters everything" claim.
   const visibleRows = useMemo(() => {
-    let r = [...rows];
+    let r = rows.filter((x) => x.status !== "draft");
     if (hr.filters.hiringManagerId) r = r.filter((x) => String(x.hiring_manager_id) === String(hr.filters.hiringManagerId));
     if (hr.filters.directorId) r = r.filter((x) => String(x.director_id) === String(hr.filters.directorId));
     if (hr.filters.priority) r = r.filter((x) => x.priority === hr.filters.priority);

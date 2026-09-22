@@ -6,9 +6,18 @@ use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * mediclaim_hospitals — hospital directory (network + non-network).
- * Inactive hospitals are retained (status flip, never deleted) so
- * historical claims still resolve the hospital they were treated at.
+ * mediclaim_hospitals — a single shared hospital directory, not scoped per
+ * company (2026-09-22, at the user's explicit direction) — `company_code`
+ * stays `NOT NULL` on the row for the audit trail only, and is always
+ * `all-companies`; see `HospitalController`'s docblock.
+ *
+ * `status` (`active`/`inactive`) is a separate, still-supported "hide from
+ * the employee directory without deleting" flag — e.g. a temporarily closed
+ * hospital. Deleting the row itself (`HospitalController::destroy()`) is a
+ * genuine, permanent delete as of 2026-09-22 (previously just flipped
+ * `status` to `inactive`); `hospital_id` on claims/intimations is
+ * `nullOnDelete()`, so a deleted hospital simply detaches from any
+ * historical claim rather than blocking the delete.
  */
 class MediclaimHospital extends Model
 {
@@ -33,6 +42,8 @@ class MediclaimHospital extends Model
         'updated_by',
     ];
 
+    protected $appends = ['is_network_hospital', 'cashless_available'];
+
     protected function casts(): array
     {
         return [
@@ -43,6 +54,29 @@ class MediclaimHospital extends Model
             'active_from' => 'date',
             'active_to' => 'date',
         ];
+    }
+
+    /**
+     * Normalizes every write to the documented `STATUSES` convention
+     * (`active`/`inactive`, lowercase) regardless of what a caller sends —
+     * the admin hospital form was found submitting `"ACTIVE"`/`"INACTIVE"`
+     * (uppercase), which every case-sensitive `where('status', 'active')`
+     * filter elsewhere in the app would silently miss.
+     */
+    public function setStatusAttribute($value): void
+    {
+        $normalized = strtolower(trim((string) $value));
+        $this->attributes['status'] = in_array($normalized, self::STATUSES, true) ? $normalized : 'active';
+    }
+
+    public function getIsNetworkHospitalAttribute(): bool
+    {
+        return true;
+    }
+
+    public function getCashlessAvailableAttribute(): bool
+    {
+        return (bool) $this->is_cashless;
     }
 
     public function contacts()

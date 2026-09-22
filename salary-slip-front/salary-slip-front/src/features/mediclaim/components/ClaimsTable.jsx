@@ -74,16 +74,22 @@ export default function ClaimsTable({
   const columnDefs = useMemo(() => {
     return visibleColumns.map((col) => {
       const isAction = col.key === "actions";
+      // A row-selection checkbox column: no sortable/filterable text value
+      // to offer (unlike every data column here), and pinned to the
+      // opposite side from "actions" so it reads as the row's leading
+      // control rather than another data column.
+      const isSelect = col.key === "select";
+      const isUtility = isAction || isSelect;
       return {
         colId: col.key,
         field: col.key,
         headerName: col.label,
-        sortable: !isAction && enableSorting,
-        filter: isAction ? false : "agTextColumnFilter",
-        suppressHeaderFilterButton: isAction,
-        flex: isAction ? 0 : 1,
-        minWidth: isAction ? 110 : 130,
-        pinned: isAction ? 'right' : null,
+        sortable: !isUtility && enableSorting,
+        filter: isUtility ? false : "agTextColumnFilter",
+        suppressHeaderFilterButton: isUtility,
+        flex: isUtility ? 0 : 1,
+        minWidth: isSelect ? 60 : isAction ? 110 : 130,
+        pinned: isAction ? 'right' : isSelect ? 'left' : null,
         valueGetter: (params) => {
           if (!params.data) return "";
           if (col.key === "claimNumber") return formatClaimNumber(params.data);

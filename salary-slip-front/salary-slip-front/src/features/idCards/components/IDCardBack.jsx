@@ -11,6 +11,12 @@ export default function IDCardBack({
   fieldToggles = {},
   customTheme = null,
 }) {
+  const [, setTick] = React.useState(0);
+  React.useEffect(() => {
+    const handleUpdate = () => setTick((t) => t + 1);
+    window.addEventListener("card_settings_updated", handleUpdate);
+    return () => window.removeEventListener("card_settings_updated", handleUpdate);
+  }, []);
   const theme = customTheme || getIDCardTheme(employee.companyId || employee.company_code || companyConfig.id);
   const isNidhi = theme.id === "nidhi-impex";
 

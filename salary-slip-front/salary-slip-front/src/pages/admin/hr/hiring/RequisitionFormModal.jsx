@@ -8,7 +8,7 @@ import RichTextEditor from "../../../../components/ui/RichTextEditor";
 import DatePicker from "../../../../components/ui/DatePicker";
 import { useAuth } from "../../../../context/AuthContext";
 import { useCompany } from "../../../../context/CompanyContext";
-import { hrApi, rbacApi, salaryApi } from "../../../../utils/api";
+import { employeeApi, hrApi, rbacApi, salaryApi } from "../../../../utils/api";
 
 const inputClass = "w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500";
 
@@ -120,7 +120,7 @@ export default function RequisitionFormModal(props) {
   return <RequisitionFormModalSession key={sessionKey} {...props} />;
 }
 
-function RequisitionFormModalSession({ targetId, isOpen, onClose, onSuccess, initialDepartments, extraContent = null, extraFooter = null, titleOverride = null }) {
+function RequisitionFormModalSession({ targetId, isOpen, onClose, onSuccess, initialDepartments, extraContent = null, extraFooter = null, titleOverride = null, isEmployeePortal = false }) {
   const { user } = useAuth();
   const { companyScope } = useCompany();
   const accessToken = user?.accessToken;
@@ -159,7 +159,7 @@ function RequisitionFormModalSession({ targetId, isOpen, onClose, onSuccess, ini
   }, [initialDepartments, accessToken, tokenType, companyId]);
 
   useEffect(() => {
-    if (!isOpen || !accessToken) return;
+    if (!isOpen || !accessToken || isEmployeePortal || window.location.pathname.includes('/employee/')) return;
     let cancelled = false;
     rbacApi.getSettings(accessToken, tokenType, "hr")
       .then((res) => {
@@ -179,7 +179,11 @@ function RequisitionFormModalSession({ targetId, isOpen, onClose, onSuccess, ini
   useEffect(() => {
     if (!editTargetId) return;
     let cancelled = false;
-    hrApi.getRequisition(editTargetId, accessToken, tokenType).then(res => {
+    const isEmployee = Boolean(isEmployeePortal || (typeof window !== "undefined" && window.location.pathname.includes('/employee/')));
+    const fetchTarget = isEmployee
+      ? employeeApi.getRequisition(editTargetId, accessToken, tokenType)
+      : hrApi.getRequisition(editTargetId, accessToken, tokenType);
+    fetchTarget.then(res => {
       if (cancelled) return;
       if (res.status && res.data) {
         const r = res.data;
@@ -228,19 +232,57 @@ function RequisitionFormModalSession({ targetId, isOpen, onClose, onSuccess, ini
     setManagersLoading(true);
     setManagersError(false);
     setManagers([]);
-    hrApi.getDepartmentManagers(deptId, user?.accessToken, user?.tokenType, { ...companyScope })
+    const fetchManagersApi = (isEmployeePortal || window.location.pathname.includes('/employee/'))
+      ? employeeApi.getDepartmentManagers
+      : hrApi.getDepartmentManagers;
+    fetchManagersApi(deptId, user?.accessToken, user?.tokenType, { ...companyScope })
       .then((res) => {
         if (seq !== managerSeq.current) return;
-        const list = res.data || [];
+        let list = res.data || [];
+        if (list.length === 0) {
+          const selectedDeptObj = departments.find((d) => String(d.id) === String(deptId));
+          if (selectedDeptObj?.manager) {
+            list = [{ id: selectedDeptObj.manager.id, name: selectedDeptObj.manager.name, designation: selectedDeptObj.manager.designation }];
+          } else if (selectedDeptObj?.managers && selectedDeptObj.managers.length > 0) {
+            list = selectedDeptObj.managers.map((m) => ({ id: m.id, name: m.name, designation: m.designation }));
+          } else if (user) {
+            list = [{ id: user.id, name: user.name, designation: user.designation || "Manager" }];
+          }
+        }
         setManagers(list);
         setForm((f) => {
           if (keepManagerId && list.some((m) => String(m.id) === String(keepManagerId))) return f;
-          return { ...f, department_manager_id: list.length === 1 ? String(list[0].id) : "" };
+          return { ...f, department_manager_id: list.length >= 1 ? String(list[0].id) : "" };
         });
       })
-      .catch(() => { if (seq === managerSeq.current) setManagersError(true); })
+      .catch(() => {
+        if (seq !== managerSeq.current) return;
+        const selectedDeptObj = departments.find((d) => String(d.id) === String(deptId));
+        let fallbackList = [];
+        if (selectedDeptObj?.manager) {
+          fallbackList = [{ id: selectedDeptObj.manager.id, name: selectedDeptObj.manager.name, designation: selectedDeptObj.manager.designation }];
+        } else if (selectedDeptObj?.managers && selectedDeptObj.managers.length > 0) {
+          fallbackList = selectedDeptObj.managers.map((m) => ({ id: m.id, name: m.name, designation: m.designation }));
+        } else if (user) {
+          fallbackList = [{ id: user.id, name: user.name, designation: user.designation || "Manager" }];
+        }
+        if (fallbackList.length > 0) {
+          setManagers(fallbackList);
+          setForm((f) => ({ ...f, department_manager_id: String(fallbackList[0].id) }));
+        } else {
+          setManagersError(true);
+        }
+      })
       .finally(() => { if (seq === managerSeq.current) setManagersLoading(false); });
   };
+
+  useEffect(() => {
+    if (isOpen && step === 1 && !form.department_id && deptOptions.length === 1 && !editTargetId) {
+      const singleDeptId = String(deptOptions[0].id);
+      setForm((f) => ({ ...f, department_id: singleDeptId, department_manager_id: "" }));
+      loadManagers(singleDeptId);
+    }
+  }, [isOpen, step, form.department_id, deptOptions, editTargetId]);
 
   const onDepartmentChange = (deptId) => {
     setForm((f) => ({ ...f, department_id: deptId, department_manager_id: "" }));
@@ -311,9 +353,14 @@ function RequisitionFormModalSession({ targetId, isOpen, onClose, onSuccess, ini
         delete payload.department_id;
         delete payload.department_manager_id;
       }
-      const res = editing
-        ? await hrApi.updateRequisition(editing.id, payload, user?.accessToken, user?.tokenType)
-        : await hrApi.storeRequisition(payload, user?.accessToken, user?.tokenType);
+      const isEmployee = Boolean(isEmployeePortal || window.location.pathname.includes('/employee/'));
+      const res = isEmployee
+        ? (editing
+            ? await employeeApi.updateRequisition(editing.id, payload, user?.accessToken, user?.tokenType)
+            : await employeeApi.storeRequisition(payload, user?.accessToken, user?.tokenType))
+        : (editing
+            ? await hrApi.updateRequisition(editing.id, payload, user?.accessToken, user?.tokenType)
+            : await hrApi.storeRequisition(payload, user?.accessToken, user?.tokenType));
       if (res.status) { 
         toast.success(res.message || "Saved"); 
         onSuccess();

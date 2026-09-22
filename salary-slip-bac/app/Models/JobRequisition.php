@@ -77,4 +77,30 @@ class JobRequisition extends Model
     {
         return $this->hasMany(Candidate::class, 'requisition_id');
     }
+
+    protected $appends = ['return_reason'];
+
+    public function getReturnReasonAttribute(): ?string
+    {
+        if ($this->relationLoaded('currentApprovalCycle') && $this->currentApprovalCycle) {
+            $steps = $this->currentApprovalCycle->steps;
+            if ($steps) {
+                $step = $steps->where('status', 'RETURNED')->sortByDesc('decided_at')->first();
+                if ($step && !empty($step->comment)) {
+                    return $step->comment;
+                }
+            }
+        }
+        if ($this->current_approval_cycle_id) {
+            $step = JobRequisitionApprovalStep::where('approval_cycle_id', $this->current_approval_cycle_id)
+                ->where('status', 'RETURNED')
+                ->latest('id')
+                ->first();
+            if ($step && !empty($step->comment)) {
+                return $step->comment;
+            }
+        }
+        return null;
+    }
+
 }

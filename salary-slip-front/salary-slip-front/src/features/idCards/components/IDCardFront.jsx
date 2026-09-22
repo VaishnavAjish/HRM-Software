@@ -20,6 +20,12 @@ export default function IDCardFront({
   fieldToggles = {},
   customTheme = null,
 }) {
+  const [, setTick] = React.useState(0);
+  React.useEffect(() => {
+    const handleUpdate = () => setTick((t) => t + 1);
+    window.addEventListener("card_settings_updated", handleUpdate);
+    return () => window.removeEventListener("card_settings_updated", handleUpdate);
+  }, []);
   const [photoFailed, setPhotoFailed] = useState(false);
 
   const theme = customTheme || getIDCardTheme(employee.companyId || employee.company_code || companyConfig.id);
@@ -45,39 +51,11 @@ export default function IDCardFront({
       className="relative w-[320px] h-[520px] bg-white text-gray-900 rounded-[22px] shadow-2xl overflow-hidden flex flex-col justify-between border border-gray-200 select-none font-sans"
       style={{ aspectRatio: "53.98 / 85.60" }}
     >
-      {/* SVG Background Geometry Matching Reference Image 2 Exactly */}
-      {isNidhi ? (
-        <svg className="absolute inset-0 w-full h-full pointer-events-none z-0" viewBox="0 0 320 520" fill="none">
-          {/* Top Left Navy Block */}
-          <path d="M0 0 H180 L140 140 L0 180 Z" fill="#0B1F33" />
-          {/* Royal Blue Accent Diagonal Band */}
-          <path d="M0 35 L160 0 L145 35 L0 100 Z" fill="#1E3A8A" opacity="0.85" />
-          {/* Gold Accent Line */}
-          <path d="M0 112 L120 148 L115 153 L0 117 Z" fill="#D4AF37" />
-
-          {/* Bottom Right Navy Block */}
-          <path d="M320 280 L220 480 L320 480 Z" fill="#0B1F33" />
-          {/* Gold Accent Line on Bottom Right */}
-          <path d="M320 370 L250 440 L255 444 L320 376 Z" fill="#D4AF37" />
-
-          {/* Background Geometric Light Facet Overlay */}
-          <path d="M120 140 L320 200 L240 380 L100 280 Z" fill="#F1F5F9" opacity="0.4" />
-        </svg>
-      ) : (
-        <svg className="absolute inset-0 w-full h-full pointer-events-none z-0" viewBox="0 0 320 520" fill="none">
-          {/* Top Left Orange & Graphite Block */}
-          <path d="M0 0 H190 L135 150 L0 190 Z" fill="#F97316" />
-          <path d="M0 45 L165 0 L150 40 L0 110 Z" fill="#374151" opacity="0.85" />
-
-          {/* Bottom Right Charcoal Block */}
-          <path d="M320 270 L210 480 L320 480 Z" fill="#1F2937" />
-          {/* Orange Accent Line on Bottom Right */}
-          <path d="M320 365 L245 440 L250 445 L320 372 Z" fill="#F97316" />
-
-          {/* Background Geometric Light Facet Overlay */}
-          <path d="M120 140 L320 200 L240 380 L100 280 Z" fill="#F1F5F9" opacity="0.4" />
-        </svg>
-      )}
+      {/* Top Thin Accent Line */}
+      <div
+        className="absolute top-0 left-0 right-0 h-1.5 z-0"
+        style={{ background: isNidhi ? "linear-gradient(to right, #0B1F33, #1E3A8A, #D4AF37)" : "linear-gradient(to right, #1F2937, #374151, #F97316)" }}
+      />
 
       {/* Lanyard Slot Punch Hole Cutout (Top Center) */}
       <div className="relative z-20 w-full pt-2 flex justify-center flex-shrink-0">
@@ -98,11 +76,11 @@ export default function IDCardFront({
         </div>
 
         {/* Logo Tile */}
-        <div className="h-10 w-12 rounded-xl bg-white border border-gray-200/80 p-1 shadow-xs flex flex-col items-center justify-center flex-shrink-0">
+        <div className="h-12 w-20 rounded-xl bg-white border border-gray-200 p-1 shadow-sm flex items-center justify-center flex-shrink-0 overflow-hidden">
           {theme.logo ? (
-            <img src={theme.logo} alt="Logo" crossOrigin="anonymous" className="max-h-full max-w-full object-contain" />
+            <img src={theme.logo} alt="Logo" crossOrigin="anonymous" className="h-full w-full object-contain" />
           ) : (
-            <span className="text-[7px] font-bold text-gray-400 text-center uppercase leading-tight">YOUR LOGO HERE</span>
+            <span className="text-[7.5px] font-bold text-gray-400 text-center uppercase leading-tight">YOUR LOGO</span>
           )}
         </div>
       </div>
@@ -212,13 +190,22 @@ export default function IDCardFront({
 
           {/* Signature */}
           <div className="flex flex-col items-end text-right">
-            <svg className="h-7 w-24 text-slate-800" viewBox="0 0 120 40" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-              <path d="M10 25 Q 25 5, 35 25 T 55 20 T 75 30 T 110 15" />
-              <path d="M20 30 C 40 35, 70 35, 100 28" />
-            </svg>
+            {theme.signatureUrl ? (
+              <img
+                src={theme.signatureUrl}
+                alt="Signature"
+                crossOrigin="anonymous"
+                className="h-8 max-w-[110px] object-contain mb-0.5"
+              />
+            ) : (
+              <svg className="h-7 w-24 text-slate-800" viewBox="0 0 120 40" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <path d="M10 25 Q 25 5, 35 25 T 55 20 T 75 30 T 110 15" />
+                <path d="M20 30 C 40 35, 70 35, 100 28" />
+              </svg>
+            )}
             <div className="w-24 border-t border-slate-300 mt-0.5" />
-            <span className="text-[8.5px] font-serif italic text-slate-500 mt-0.5">
-              Authorized Signatory
+            <span className="text-[8.5px] font-serif italic text-slate-600 mt-0.5">
+              {theme.signatureTitle || "Authorized Signatory"}
             </span>
           </div>
         </div>

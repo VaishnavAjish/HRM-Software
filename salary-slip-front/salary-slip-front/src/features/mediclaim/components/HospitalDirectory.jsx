@@ -13,12 +13,16 @@ const smallInputClass = "rounded-lg border border-gray-300 dark:border-gray-600 
  * rather than fetching its own copy, so switching tabs never re-fetches.
  *
  * Always excludes `status !== 'active'` hospitals regardless of the other
- * filters — a hospital is never hard-deleted (see the backend
- * `HospitalController` docblock), only status-flipped to `inactive`, and
- * this is the directory an employee actually browses to decide where to go
- * for treatment, so a retired hospital must never show up here as a live
- * option — unlike the admin's own raw management table, which deliberately
- * still lists inactive rows for reference/reactivation.
+ * filters — `status` is a separate "temporarily hidden, not deleted" flag
+ * (see the backend `HospitalController` docblock; an admin's actual Delete
+ * is a permanent row removal), and this is the directory an employee
+ * actually browses to decide where to go for treatment, so a hospital
+ * marked inactive must never show up here as a live option — unlike the
+ * admin's own raw management table, which deliberately still lists
+ * inactive rows for reference/reactivation.
+ *
+ * Hospitals are one shared list, not scoped per company — every employee
+ * across every company sees the same directory.
  *
  * Contact rows (`hospital.contacts`) are no longer necessarily empty — HR
  * can add a named "concern person" with a phone number and photo through
@@ -50,9 +54,13 @@ export default function HospitalDirectory({ hospitals = [], loading = false, err
       // of any other filter, unlike the admin's own raw management table
       // which still shows inactive rows on purpose.
       const status = String(h.status || "").toLowerCase();
-      if (status && status !== "active") return false;
-      if (networkOnly && !(h.isNetworkHospital ?? h.is_network_hospital)) return false;
-      if (cashlessOnly && !(h.cashlessAvailable ?? h.cashless_available)) return false;
+      const isActive = !status || status === "active" || status === "1" || status === "true";
+      const isNetwork = h.isNetworkHospital ?? h.is_network_hospital ?? true;
+      const isCashless = h.cashlessAvailable ?? h.cashless_available ?? h.is_cashless ?? false;
+
+      if (!isActive) return false;
+      if (networkOnly && !isNetwork) return false;
+      if (cashlessOnly && !isCashless) return false;
       if (!term) return true;
       const specialties = h.specialties || h.specialities || [];
       const haystack = [h.name, h.city, h.state, ...specialties].filter(Boolean).join(" ").toLowerCase();
@@ -111,8 +119,8 @@ export default function HospitalDirectory({ hospitals = [], loading = false, err
 function HospitalCard({ hospital, onCopy }) {
   const contacts = hospital.contacts || hospital.hospitalContacts || [];
   const specialties = hospital.specialties || hospital.specialities || [];
-  const isNetwork = hospital.isNetworkHospital ?? hospital.is_network_hospital;
-  const cashless = hospital.cashlessAvailable ?? hospital.cashless_available;
+  const isNetwork = hospital.isNetworkHospital ?? hospital.is_network_hospital ?? true;
+  const cashless = hospital.cashlessAvailable ?? hospital.cashless_available ?? hospital.is_cashless ?? false;
   const address = [hospital.address, hospital.city, hospital.state, hospital.pincode || hospital.pinCode].filter(Boolean).join(", ");
 
   const latitude = hospital.latitude ?? hospital.lat;

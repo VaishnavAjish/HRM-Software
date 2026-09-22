@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1\Mediclaim;
 
 use App\Http\Controllers\Api\V1\Mediclaim\Concerns\RespondsWithEnvelope;
 use App\Http\Controllers\Controller;
+use App\Models\Mediclaim\MediclaimHospital;
 use App\Services\Mediclaim\MediclaimMemberService;
 use App\Services\Mediclaim\PolicyEligibilityService;
 use Illuminate\Http\JsonResponse;
@@ -56,10 +57,31 @@ class MyCoverageController extends Controller
             'enrollment' => $enrollment,
             'members' => $policyVersion ? $this->eligibility->eligibleMembers($enrollment, now())->values() : [],
             'floater' => $policyVersion ? $this->eligibility->floaterUsage($enrollment, $policyVersion) : null,
-            'hospitals' => $policyVersion ? $policyVersion->hospitals : [],
+            'hospitals' => ($policyVersion && $policyVersion->hospitals->isNotEmpty())
+                ? $policyVersion->hospitals
+                : $this->activeHospitals(),
             'eligibility' => $eligibility,
             'onboarding' => $this->onboardingState($enrollment),
         ]);
+    }
+
+    /**
+     * Falls back to here whenever the employee's policy version has no
+     * `mediclaim_policy_hospitals` rows curated yet (the seeder deliberately
+     * leaves that pivot empty — see `MediclaimPolicySeeder`'s own docblock —
+     * so this is the common case, not an edge case). Hospitals are a single
+     * shared directory, not scoped per company (2026-09-22, at the user's
+     * explicit direction — a hospital isn't "owned" by a company) — this is
+     * the exact same unscoped list `HospitalController::index()` returns, so
+     * "My Coverage" and the hospital directory never disagree.
+     */
+    private function activeHospitals()
+    {
+        return MediclaimHospital::query()
+            ->where('status', 'active')
+            ->with('contacts')
+            ->orderBy('name')
+            ->get();
     }
 
     public function acknowledgeRuleBook(Request $request): JsonResponse

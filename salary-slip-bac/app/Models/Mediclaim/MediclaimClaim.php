@@ -53,6 +53,12 @@ class MediclaimClaim extends Model
 
     public const STATUS_CANCELLED = 'CANCELLED';
 
+    /** Accounts' own "have we paid this out yet" flag — see the adding
+     *  migration's docblock for why this is separate from `status`. */
+    public const PAYMENT_STATUS_PENDING = 'pending';
+
+    public const PAYMENT_STATUS_COMPLETED = 'completed';
+
     public const STATUSES = [
         self::STATUS_DRAFT,
         self::STATUS_SUBMITTED,
@@ -166,6 +172,9 @@ class MediclaimClaim extends Model
         'cancelled_at',
         'settled_at',
         'closed_at',
+        'payment_status',
+        'payment_completed_at',
+        'payment_completed_by',
         'created_by',
         'updated_by',
     ];
@@ -310,6 +319,7 @@ class MediclaimClaim extends Model
             'cancelled_at' => 'datetime',
             'settled_at' => 'datetime',
             'closed_at' => 'datetime',
+            'payment_completed_at' => 'datetime',
         ];
     }
 
