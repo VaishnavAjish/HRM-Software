@@ -75,11 +75,16 @@ export function getHospitalContactPhotoUrl(photo) {
  * - Silver Star + Ichapur -> SI-EMP_CODE-YYYY-MM-DD
  * Date format is strictly YYYY-MM-DD.
  */
-export function formatClaimNumber(claim) {
+export function formatClaimNumber(claim, fallbackEmployee = null) {
   if (!claim) return "-";
 
   if (typeof claim === "string") {
-    return claim.trim() || "-";
+    const trimmed = claim.trim();
+    const strMatch = trimmed.match(/^([A-Za-z]{2})-(.+?)-(\d{4}-\d{2}-\d{2})(?:-\d+)?$/);
+    if (strMatch) {
+      return `${strMatch[1].toUpperCase()}-${strMatch[2]}-${strMatch[3]}`;
+    }
+    return trimmed || "-";
   }
 
   const raw = String(claim.claimNumber || claim.claim_number || "").trim();
@@ -87,6 +92,7 @@ export function formatClaimNumber(claim) {
   const company = String(
     claim.employee?.company_code ||
     claim.employee_snapshot?.company_code ||
+    fallbackEmployee?.company_code ||
     claim.company_code ||
     claim.companyCode ||
     claim.companyId ||
@@ -96,11 +102,13 @@ export function formatClaimNumber(claim) {
   const branch = String(
     claim.employee?.unit ||
     claim.employee?.branch ||
-    claim.unit ||
-    claim.branch ||
     claim.patient_snapshot?.unit ||
     claim.employee_snapshot?.unit ||
     claim.employee_snapshot?.branch ||
+    fallbackEmployee?.unit ||
+    fallbackEmployee?.branch ||
+    claim.unit ||
+    claim.branch ||
     ""
   ).trim();
 
@@ -114,7 +122,7 @@ export function formatClaimNumber(claim) {
   const isIchapur = branchLower.includes("ichapur") || branchLower.includes("ichhapore") || branchLower.includes("ichhapor") || branchLower.startsWith("i");
   const isDaduk = branchLower.includes("daduk") || branchLower.includes("dhaduk") || branchLower.startsWith("d");
 
-  let expectedPrefix;
+  let expectedPrefix = null;
   if (isNidhi && isShreeji) {
     expectedPrefix = "NS";
   } else if (isNidhi && isIchapur) {
@@ -123,13 +131,12 @@ export function formatClaimNumber(claim) {
     expectedPrefix = "SD";
   } else if (isSilver && isIchapur) {
     expectedPrefix = "SI";
-  } else {
-    // First alphabet of company + First alphabet of unit
+  } else if (branch) {
     const cClean = company.replace(/[^a-zA-Z]/g, "");
     const cInitial = isNidhi ? "N" : (isSilver ? "S" : (cClean[0] ? cClean[0].toUpperCase() : "M"));
 
     const bClean = branch.replace(/[^a-zA-Z]/g, "");
-    let bInitial;
+    let bInitial = "";
     if (isShreeji) {
       bInitial = "S";
     } else if (isIchapur) {
@@ -138,28 +145,28 @@ export function formatClaimNumber(claim) {
       bInitial = "D";
     } else if (bClean[0]) {
       bInitial = bClean[0].toUpperCase();
-    } else {
-      bInitial = cInitial === "N" ? "S" : (cInitial === "S" ? "D" : "C");
     }
-    expectedPrefix = `${cInitial}${bInitial}`;
+    if (bInitial) {
+      expectedPrefix = `${cInitial}${bInitial}`;
+    }
   }
 
-  // If raw is already formatted as {PREFIX}-{EMP_CODE}-{YYYY-MM-DD}[-{SEQ}]
-  const match = raw.match(/^([A-Za-z]{2})-(.+)-(\d{4}-\d{2}-\d{2}(?:-\d+)?)$/);
+  // If raw is formatted as {PREFIX}-{EMP_CODE}-{YYYY-MM-DD}[-{SEQ}]
+  const match = raw.match(/^([A-Za-z]{2})-(.+?)-(\d{4}-\d{2}-\d{2})(?:-\d+)?$/);
   if (match) {
     const currentPrefix = match[1].toUpperCase();
-    const rest = `${match[2]}-${match[3]}`;
+    const currEmp = match[2];
+    const currDate = match[3];
 
-    // If expectedPrefix was resolved and differs from currentPrefix, rewrite with the accurate prefix
-    if (expectedPrefix && currentPrefix !== expectedPrefix) {
-      return `${expectedPrefix}-${rest}`;
-    }
-    return `${currentPrefix}-${rest}`;
+    // If expectedPrefix was resolved from valid company & unit, use it; otherwise keep currentPrefix
+    const finalPrefix = (expectedPrefix && currentPrefix !== expectedPrefix) ? expectedPrefix : currentPrefix;
+    return `${finalPrefix}-${currEmp}-${currDate}`;
   }
 
   const empCode = String(
     claim.employee?.emp_code ||
     claim.employee_snapshot?.emp_code ||
+    fallbackEmployee?.emp_code ||
     claim.emp_code ||
     claim.empCode ||
     "0001"
@@ -197,5 +204,6 @@ export function formatClaimNumber(claim) {
     }
   }
 
-  return `${expectedPrefix || "MC"}-${empCode}-${dateStr}`;
+  const fallbackPrefix = expectedPrefix || (isNidhi ? "NS" : (isSilver ? "SI" : "MC"));
+  return `${fallbackPrefix}-${empCode}-${dateStr}`;
 }

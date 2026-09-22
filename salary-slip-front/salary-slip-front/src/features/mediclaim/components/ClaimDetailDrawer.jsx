@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, FileText, Receipt, ClipboardList, Gavel, UploadCloud, BedDouble, Check, CheckCircle2, Eye, X, XCircle } from "lucide-react";
+import { AlertTriangle, FileText, Receipt, ClipboardList, Gavel, UploadCloud, BedDouble, Check, CheckCircle2, Eye, X, XCircle, ShieldCheck } from "lucide-react";
 import toast from "react-hot-toast";
 import Drawer, { CollapsibleSection } from "../../../components/ui/Drawer";
 import Button from "../../../components/ui/Button";
@@ -10,6 +10,7 @@ import { isTerminalClaimStatus } from "../models/claimStatus";
 import { getRequiredDocumentTypes } from "../utils/documentChecklistRules";
 import { formatCurrencyINR, formatClaimDate, formatClaimNumber } from "../utils/formatters";
 import ClaimSummaryCard from "./ClaimSummaryCard";
+import FinalizeClaimModal from "./FinalizeClaimModal";
 import ClaimTimeline from "./ClaimTimeline";
 import ClaimDecisionsList from "./ClaimDecisionsList";
 import DocumentChecklist from "./DocumentChecklist";
@@ -164,7 +165,7 @@ export default function ClaimDetailDrawer({ isOpen, onClose, claimId, footer, ti
 
   const documentsDueAt = claim?.documentsDueAt || claim?.documents_due_at;
   const missingTypes = claim
-    ? getRequiredDocumentTypes(documentRequirements, { treatmentType: claim.treatmentType || claim.treatment_type, isMedicoLegal: claim.isMedicoLegal ?? claim.is_medico_legal_case })
+    ? getRequiredDocumentTypes(documentRequirements, { treatmentType: claim.treatmentType || claim.treatment_type, isMedicoLegal: claim.isMedicoLegal ?? claim.is_medico_legal_case ?? claim.is_medico_legal ?? claim.isMedicoLegalCase })
       .filter((type) => !documents.some((d) => (d.documentType || d.document_type) === type))
     : [];
   const isOverdue = documentsDueAt && new Date(documentsDueAt).getTime() < now.getTime();
@@ -231,6 +232,23 @@ export default function ClaimDetailDrawer({ isOpen, onClose, claimId, footer, ti
     }
   };
 
+  const [submittingFinal, setSubmittingFinal] = useState(false);
+  const [isFinalizeModalOpen, setIsFinalizeModalOpen] = useState(false);
+
+  const handleSubmitFinalApproval = async () => {
+    if (!claimId || submittingFinal) return;
+    setSubmittingFinal(true);
+    try {
+      await mediclaimApi.submitFinalApproval(claimId, accessToken, tokenType);
+      toast.success("Submitted for Final Approval! Admin will verify documents and complete settlement.");
+      reloadDocuments();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || err?.message || "Failed to submit for final approval.");
+    } finally {
+      setSubmittingFinal(false);
+    }
+  };
+
   const startEditingExpenses = () => {
     const lines = expenses.length > 0
       ? expenses.map((line) => ({
@@ -279,6 +297,48 @@ export default function ClaimDetailDrawer({ isOpen, onClose, claimId, footer, ti
         {!loading && !error && claim && (
           <div className="space-y-4">
             <ClaimSummaryCard claim={claim} />
+
+            {/* Manual "Finalize Claim" is only ever valid from SETTLEMENT_PENDING
+                (`ClaimWorkflowService::recordSettlement()`'s one legal source
+                status). A claim resting at APPROVED/PARTIALLY_APPROVED under
+                the simplified workflow has no decision left for a human to
+                make here — it settles itself the moment its last required
+                document lands (`autoSettleIfDocumentsComplete()`), so
+                offering this button for those statuses only ever produced
+                the backend's "not currently awaiting a review decision"
+                error. See the banner below for what those statuses show
+                instead. */}
+            {!allowDocumentUpload && claim?.status === "SETTLEMENT_PENDING" && (
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-indigo-100 bg-indigo-50/80 px-4 py-3 dark:border-indigo-500/30 dark:bg-indigo-500/10">
+                <div>
+                  <p className="font-semibold text-indigo-900 dark:text-indigo-200 text-xs">
+                    Pending for Document Approval
+                  </p>
+                  <p className="text-[11px] text-indigo-700 dark:text-indigo-300">
+                    Review uploaded documents below and click &quot;Finalize Claim&quot; to confirm payout and deduct policy floater.
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={() => setIsFinalizeModalOpen(true)}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold flex-shrink-0"
+                >
+                  <ShieldCheck size={14} className="mr-1.5" />
+                  Finalize Claim
+                </Button>
+              </div>
+            )}
+
+            {!allowDocumentUpload && ["APPROVED", "PARTIALLY_APPROVED"].includes(claim?.status) && (
+              <div className="rounded-xl border border-amber-100 bg-amber-50/80 px-4 py-3 dark:border-amber-500/30 dark:bg-amber-500/10">
+                <p className="font-semibold text-amber-900 dark:text-amber-200 text-xs">
+                  Awaiting Employee Documents
+                </p>
+                <p className="text-[11px] text-amber-700 dark:text-amber-300">
+                  This claim settles automatically once every required document is uploaded — no manual action is needed here.
+                </p>
+              </div>
+            )}
 
             <CollapsibleSection
               title="Expense Breakdown"
@@ -441,11 +501,30 @@ export default function ClaimDetailDrawer({ isOpen, onClose, claimId, footer, ti
                     claimId={claimId}
                     requirements={documentRequirements}
                     requirementsLoading={documentRequirementsLoading}
-                    claimSnapshot={{ treatmentType: claim.treatmentType || claim.treatment_type, isMedicoLegal: claim.isMedicoLegal ?? claim.is_medico_legal_case }}
+                    claimSnapshot={{ treatmentType: claim.treatmentType || claim.treatment_type, isMedicoLegal: claim.isMedicoLegal ?? claim.is_medico_legal_case ?? claim.is_medico_legal ?? claim.isMedicoLegalCase }}
                     uploadedDocs={documents}
                     onUploaded={reloadDocuments}
                     dischargeDateMissing={isDischargeMissing}
                   />
+
+                  {canUploadNow && (claim?.status === "APPROVED" || claim?.status === "PARTIALLY_APPROVED") && (
+                    <div className="mt-4 flex flex-col items-end border-t border-gray-100 pt-3 dark:border-gray-700">
+                      <Button
+                        size="sm"
+                        onClick={handleSubmitFinalApproval}
+                        disabled={submittingFinal || missingTypes.length > 0}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
+                      >
+                        <CheckCircle2 size={14} className="mr-1.5" />
+                        {submittingFinal ? "Submitting..." : "Submit for Final Approval"}
+                      </Button>
+                      {missingTypes.length > 0 && (
+                        <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
+                          Please upload all required documents above to submit for final approval.
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
               ) : documents.length === 0 ? (
                 <p className="py-2 text-center text-xs text-gray-400">No documents uploaded yet.</p>
@@ -482,7 +561,18 @@ export default function ClaimDetailDrawer({ isOpen, onClose, claimId, footer, ti
                             View
                           </button>
 
-                          {isActive && (
+                          {/* Approve/Deny is a reviewer action on someone
+                              else's document, never on the employee's own —
+                              gated on `allowDocumentUpload` (true only for
+                              the employee's own "My Claims" view), not on
+                              `canUploadNow`. `canUploadNow` also goes false
+                              once the employee's own claim reaches a
+                              terminal status (isTerminalClaimStatus), which
+                              was letting an employee viewing their own
+                              settled/closed claim fall into this exact
+                              branch and see Approve/Deny on their own
+                              documents. */}
+                          {isActive && !allowDocumentUpload && (
                             <>
                               <button
                                 type="button"
@@ -534,6 +624,14 @@ export default function ClaimDetailDrawer({ isOpen, onClose, claimId, footer, ti
             </CollapsibleSection>
           </div>
         )}
+        <FinalizeClaimModal
+          isOpen={isFinalizeModalOpen}
+          onClose={() => setIsFinalizeModalOpen(false)}
+          claim={claim}
+          onFinalized={() => {
+            reloadDocuments();
+          }}
+        />
       </Drawer>
 
       <DocumentViewerModal document={viewerDoc} open={Boolean(viewerDoc)} onClose={() => setViewerDoc(null)} />

@@ -199,30 +199,28 @@ class MediclaimClaim extends Model
 
         $expectedPrefix = MediclaimClaimNumber::resolvePrefix($company, $branch);
 
-        // If raw claim number is already formatted as {PREFIX}-{EMP_CODE}-{YYYY-MM-DD}[-{SEQ}]
-        if (preg_match('/^([A-Za-z]{2})-(.+)-(\d{4}-\d{2}-\d{2})(?:-(\d+))?$/', $raw, $matches)) {
+        // If raw claim number is formatted as {PREFIX}-{EMP_CODE}-{YYYY-MM-DD}[-{SEQ}]
+        if (preg_match('/^([A-Za-z]{2})-(.+?)-(\d{4}-\d{2}-\d{2})(?:-\d+)?$/', $raw, $matches)) {
             $currPrefix = strtoupper($matches[1]);
             $currEmpCode = $matches[2];
             $currDate = $matches[3];
-            $currSeq = isset($matches[4]) ? '-'.$matches[4] : '';
 
-            // If prefix matches expectedPrefix, it's accurate!
-            if ($currPrefix === $expectedPrefix) {
+            // Normalize strictly to {expectedPrefix}-{empCode}-{date} without any sequence counter
+            $target = sprintf('%s-%s-%s', $expectedPrefix, $currEmpCode ?: $empCode, $currDate);
+
+            if ($raw === $target) {
                 return $raw;
             }
 
-            // Prefix is inaccurate; update to expectedPrefix
-            $corrected = sprintf('%s-%s-%s%s', $expectedPrefix, $currEmpCode ?: $empCode, $currDate, $currSeq);
-
             try {
-                if ($this->id && ! DB::table('mediclaim_claims')->where('claim_number', $corrected)->where('id', '!=', $this->id)->exists()) {
-                    DB::table('mediclaim_claims')->where('id', $this->id)->update(['claim_number' => $corrected]);
-                    $this->attributes['claim_number'] = $corrected;
+                if ($this->id) {
+                    DB::table('mediclaim_claims')->where('id', $this->id)->update(['claim_number' => $target]);
+                    $this->attributes['claim_number'] = $target;
                 }
             } catch (Throwable $e) {
             }
 
-            return $corrected;
+            return $target;
         }
 
         // Non-standard or legacy format
@@ -232,23 +230,16 @@ class MediclaimClaim extends Model
         }
 
         $base = sprintf('%s-%s-%s', $expectedPrefix, $empCode, $date);
-        $candidate = $base;
-        $counter = 1;
-
-        while (DB::table('mediclaim_claims')->where('claim_number', $candidate)->where('id', '!=', $this->id ?? 0)->exists()) {
-            $counter++;
-            $candidate = sprintf('%s-%d', $base, $counter);
-        }
 
         try {
             if ($this->id) {
-                DB::table('mediclaim_claims')->where('id', $this->id)->update(['claim_number' => $candidate]);
-                $this->attributes['claim_number'] = $candidate;
+                DB::table('mediclaim_claims')->where('id', $this->id)->update(['claim_number' => $base]);
+                $this->attributes['claim_number'] = $base;
             }
         } catch (Throwable $e) {
         }
 
-        return $candidate;
+        return $base;
     }
 
     public function getApprovedAmountAttribute(): ?float

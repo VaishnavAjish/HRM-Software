@@ -104,8 +104,8 @@ export const CLAIM_STATUS_META = {
     isTerminal: true,
   },
   [CLAIM_STATUS.SETTLEMENT_PENDING]: {
-    label: "Settlement Pending",
-    description: "Approved and awaiting settlement/payout.",
+    label: "Pending for Document Approval",
+    description: "Documents uploaded by employee; awaiting Admin document approval and final claim settlement.",
     badge: "bg-indigo-50 text-indigo-700 ring-indigo-600/20 dark:bg-indigo-500/10 dark:text-indigo-300 dark:ring-indigo-500/30",
     dot: "bg-indigo-500",
     isTerminal: false,

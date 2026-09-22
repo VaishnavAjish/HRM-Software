@@ -3460,25 +3460,37 @@ class UserController extends Controller
         $perPage = $request->limit ?? $request->per_page ?? 1000;
         $employees = $query->orderBy('name', 'asc')->paginate($perPage);
 
-        $employeeData = collect($employees->items())->map(function ($emp) {
-            $arr = $emp->toArray();
-            $arr['empCode'] = $emp->emp_code;
-            $arr['mobileNo'] = $emp->mobile_number;
-            $arr['joiningDate'] = $emp->doj;
-            $arr['resignationDate'] = $emp->resignation_date;
-            $arr['aadharCardNo'] = $emp->aadhar_card_no;
-            $arr['panCardNo'] = $emp->pan_card_no;
-            $arr['bankName'] = $emp->bank_name;
-            $arr['bankIfscCode'] = $emp->bank_ifsc_code;
-            $arr['bankAccountNo'] = $emp->bank_account_no;
-            $arr['pfNo'] = $emp->pf_no;
-            $arr['esiNo'] = $emp->esi_no;
-            $arr['companyLabel'] = $emp->company_code;
-            $arr['loginRole'] = $emp->role === 0 ? 'superadmin' : 'employee';
-            $arr['statusLabel'] = ($emp->status === 0 || (string)$emp->status === '0' || strtolower((string)$emp->status) === 'active') ? 'Active' : 'Inactive';
-            return $arr;
-        });
+        $employeeData = collect($employees->items())->map(function ($emp) use ($userAuth) {
+            $data = $emp->attributesToArray();
+            $this->enrichEmployeeWithActiveAssignment($emp, $data);
 
+            if (empty($data['designation']) && $this->isDepartmentHead($emp)) {
+                $data['designation'] = 'Manager';
+            }
+
+            $full = AadhaarDisclosure::fullFor($emp, $userAuth);
+            if ($full !== null) {
+                $data['aadhaar_full'] = $full;
+            }
+
+            $data['has_aadhaar'] = $emp->has_aadhaar;
+            $data['aadhaar_masked'] = $emp->aadhaar_masked;
+            $data['empCode'] = $emp->emp_code;
+            $data['mobileNo'] = $emp->mobile_number;
+            $data['joiningDate'] = $emp->joining_date ?? $emp->doj;
+            $data['resignationDate'] = $emp->resignation_date;
+            $data['aadharCardNo'] = $full ?? $emp->aadhar_card_no;
+            $data['panCardNo'] = $emp->pan_card_no;
+            $data['bankName'] = $emp->bank_name;
+            $data['bankIfscCode'] = $emp->bank_ifsc_code;
+            $data['bankAccountNo'] = $emp->bank_account_no;
+            $data['pfNo'] = $emp->pf_no;
+            $data['esiNo'] = $emp->esi_no;
+            $data['companyLabel'] = $emp->company_code;
+            $data['loginRole'] = $emp->role === 0 ? 'superadmin' : 'employee';
+            $data['statusLabel'] = ($emp->status === 0 || (string)$emp->status === '0' || strtolower((string)$emp->status) === 'active') ? 'Active' : 'Inactive';
+            return $data;
+        });
         return response()->json([
             'status' => true,
             'success' => true,

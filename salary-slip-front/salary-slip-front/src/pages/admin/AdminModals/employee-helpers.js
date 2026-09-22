@@ -65,14 +65,18 @@ export function isPasswordValid(pwd) {
 
 export function formatDateInputValue(value) {
   if (!value) return "";
+  const str = String(value).trim();
+  if (str.startsWith("1899") || str.startsWith("1900") || str.startsWith("0000")) {
+    return "";
+  }
 
-  if (/^\d{4}-\d{2}-\d{2}$/.test(String(value))) {
-    return value;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+    return str;
   }
 
   const date = new Date(value);
 
-  if (Number.isNaN(date.getTime())) {
+  if (Number.isNaN(date.getTime()) || date.getFullYear() <= 1900) {
     return "";
   }
 
@@ -84,11 +88,15 @@ export function formatDateInputValue(value) {
 
 export function formatDisplayDate(value) {
   if (!value) return "";
+  const str = String(value).trim();
+  if (str.startsWith("1899") || str.startsWith("1900") || str.startsWith("0000")) {
+    return "";
+  }
 
   const date = new Date(value);
 
-  if (Number.isNaN(date.getTime())) {
-    return value;
+  if (Number.isNaN(date.getTime()) || date.getFullYear() <= 1900) {
+    return "";
   }
 
   return date.toLocaleDateString("en-IN", {
@@ -96,4 +104,97 @@ export function formatDisplayDate(value) {
     month: "short",
     year: "numeric",
   });
+}
+
+import { getCompanyConfig } from "../../../config/companyConfig";
+import { getAadhaarDisplayValue, hasStoredAadhaar } from "../../../utils/aadhaar";
+
+export function firstPresent(...values) {
+  return values.find((value) => value !== undefined && value !== null) ?? "";
+}
+
+export function mapEmployee(item) {
+  const displayName = item.name || item.email?.split("@")[0] || "-";
+
+  const avatar = displayName
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+
+  const isActive = String(item.status) === "0";
+  const isPending = String(item.status) === "2";
+  const isResigned = Boolean(item.resignation_date) && String(item.resignation_date).slice(0, 10) <= new Date().toISOString().slice(0, 10);
+  const roleValue = String(item.role);
+  const loginRole =
+    roleValue === "0"
+      ? "superadmin"
+      : roleValue === "1"
+        ? "master"
+        : roleValue === "2"
+          ? "manager"
+          : roleValue === "4" || item.type === "agent"
+            ? "agent"
+            : "employee";
+
+  return {
+    id: item.id,
+    name: item.name ?? "",
+    displayName,
+    empCode: String(item.emp_code ?? item.empCode ?? ""),
+    email: item.email ?? "",
+    companyId: item.company_code ?? "",
+    companyLabel: getCompanyConfig(item.company_code)?.label || "-",
+    unit: item.unit ?? "",
+    department: item.department ?? "",
+    positionTitle: item.position_title ?? item.position ?? item.designation ?? "",
+    managerName: item.manager_name ?? item.manager ?? "",
+    status: isResigned ? "Resigned" : isPending ? "Pending" : isActive ? "Active" : "Inactive",
+    loginRole,
+    agentCompany: item.company_code === "nidhi-impex,silverstar" || item.company_code === "all" ? "" : item.company_code,
+    avatar,
+    accountName: item.account_name ?? "",
+    accountNo: item.account_no ?? "",
+    mobileNo: firstPresent(item.mobileNo, item.mobile_no, item.mobile_number, item.mob_num),
+    dob: firstPresent(item.dob, item.date_of_birth, item.birth_date),
+    address: firstPresent(
+      item.address,
+      item.residential_address,
+      item.current_address,
+    ),
+    gender: item.gender ?? "",
+    city: item.city ?? "",
+    pin: item.pin ?? "",
+    district: item.district ?? "",
+    state: item.state ?? "",
+    pfNo: firstPresent(item.pfNo, item.pf_no),
+    esiNo: firstPresent(item.esiNo, item.esi_no),
+    bankName: firstPresent(item.bankName, item.bank_name),
+    bankIfscCode: firstPresent(item.bankIfscCode, item.bank_ifsc_code),
+    bankAccountNo: firstPresent(item.bankAccountNo, item.bank_account_no),
+    aadharCardNo: getAadhaarDisplayValue(item),
+    aadhaarOnFile: getAadhaarDisplayValue(item),
+    aadhaarMasked: item.aadhaar_masked ?? "",
+    hasAadhaar: hasStoredAadhaar(item),
+    panCardNo: firstPresent(item.panCardNo, item.pan_card_no, item.pan_no),
+    designation: item.designation ?? "",
+    joiningDate: firstPresent(item.joiningDate, item.joining_date, item.date_of_joining),
+    resignationDate: firstPresent(item.resignationDate, item.resignation_date),
+    photo: firstPresent(
+      item.photo,
+      item.image,
+      item.profile_photo,
+      item.profile_image,
+      item.avatar,
+    ),
+    familyDetails: Array.isArray(item.family_members)
+      ? item.family_members.map((m) => ({
+          id: m.id,
+          name: m.name ?? "",
+          relation: m.relation ?? "",
+          mobileNumber: m.mobile_number ?? "",
+        }))
+      : undefined,
+  };
 }

@@ -44,6 +44,22 @@ class ShiftController extends Controller
             'end_time' => 'required|date_format:H:i',
             'grace_minutes' => 'nullable|integer|min:0|max:180',
             'description' => 'nullable|string',
+            // Attendance Engine Rebuild — Phase 1 (all optional/`sometimes`,
+            // so every existing caller of this endpoint that never sends
+            // them keeps working exactly as before).
+            'shift_code' => 'sometimes|nullable|string|max:40',
+            'grace_out_minutes' => 'sometimes|nullable|integer|min:0|max:180',
+            'minimum_work_minutes' => 'sometimes|nullable|integer|min:0',
+            'full_day_minutes' => 'sometimes|nullable|integer|min:0',
+            'half_day_minutes' => 'sometimes|nullable|integer|min:0',
+            'overtime_enabled' => 'sometimes|boolean',
+            'overtime_after_minutes' => 'sometimes|nullable|integer|min:0',
+            'break_policy' => 'sometimes|nullable|in:first_last,multi_punch',
+            'is_overnight' => 'sometimes|boolean',
+            'overnight_offset_minutes' => 'sometimes|nullable|integer|min:0|max:720',
+            'weekly_off_days' => 'sometimes|nullable|array',
+            'weekly_off_days.*' => 'integer|min:0|max:6',
+            'is_active' => 'sometimes|boolean',
         ];
     }
 

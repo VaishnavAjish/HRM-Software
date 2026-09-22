@@ -117,7 +117,7 @@ export default function ClaimFullDetail({ claimId }) {
   const hospitalName = claim.isNetworkHospital ?? claim.is_network_hospital
     ? (claim.hospital?.name || claim.hospitalName)
     : (claim.nonNetworkHospitalName || claim.non_network_hospital_name);
-  const isMedicoLegal = Boolean(claim.isMedicoLegalCase ?? claim.is_medico_legal_case);
+  const isMedicoLegal = Boolean(claim.isMedicoLegal ?? claim.is_medico_legal_case ?? claim.is_medico_legal ?? claim.isMedicoLegalCase);
   const isOngoing = Boolean(claim.isOngoingTreatment ?? claim.is_ongoing_treatment);
 
   return (

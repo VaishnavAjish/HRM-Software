@@ -73,6 +73,13 @@ function getAdminNav(companyId, user, isAllCompanies, isModuleAvailable = () => 
       icon: Calendar,
       subItems: [
         { to: "/admin/attendance", label: "View Attendance", end: true },
+        // Attendance Engine Rebuild -- additive nav entry, own permission
+        // code, next to the existing "View Attendance" entry above.
+        ...(hasAccess("attendance.daily.read") ? [{ to: "/admin/attendance/control-center", label: "Control Center (New)" }] : []),
+        ...(hasAccess("attendance.daily.read") ? [{ to: "/admin/attendance/monthly", label: "Monthly View (New)" }] : []),
+        ...(hasAccess("attendance.punch.read") ? [{ to: "/admin/attendance/raw-punches", label: "Raw Punches & Devices (New)" }] : []),
+        ...(hasAccess("attendance.report.read") ? [{ to: "/admin/attendance/reports", label: "Reports & Dashboard (New)" }] : []),
+        ...(hasAccess("attendance.rule.read") ? [{ to: "/admin/attendance/rules", label: "Rule Management (New)" }] : []),
         ...(hasAccess("hr.shift.read") ? [{ to: "/admin/attendance/shift", label: "Shift" }] : []),
       ]
     }] : []),
@@ -101,6 +108,7 @@ function getAdminNav(companyId, user, isAllCompanies, isModuleAvailable = () => 
       icon: Briefcase,
       subItems: [
         { to: "/admin/hr", label: "HR Dashboard", end: true },
+        { to: "/admin/hr/id-cards", label: "ID Cards" },
         { to: "/admin/hr/hiring", label: "Recruitment" },
         { to: "/admin/hr/onboarding", label: "Onboarding" },
         { to: "/admin/hr/organization", label: "Organization" },

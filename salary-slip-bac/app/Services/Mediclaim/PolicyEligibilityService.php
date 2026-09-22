@@ -176,6 +176,7 @@ class PolicyEligibilityService
         $limit = (float) ($version->rules['floater_limit_amount'] ?? 0);
         $used = (float) MediclaimClaim::query()
             ->where('enrollment_id', $enrollment->id)
+            ->whereIn('status', [MediclaimClaim::STATUS_SETTLED, MediclaimClaim::STATUS_CLOSED])
             ->whereNotNull('total_approved_amount')
             ->whereBetween('submitted_at', [$fyStart, $fyEnd])
             ->sum('total_approved_amount');

@@ -121,10 +121,46 @@ class EsslBiometricService
         $totalPunches = 0;
         $deviceResults = [];
 
+        // Attendance Engine Rebuild — Phase 0: every individual raw scan,
+        // collected alongside (not instead of) $logMap's per-day aggregate —
+        // $logMap only keeps "which devices saw this employee this day", not
+        // the per-scan (serial, exact timestamp, raw line) triple the
+        // permanent `attendance_punches` ledger needs. Fed to
+        // AttendancePunchIngestor after the existing sync logic below is
+        // unchanged and complete.
+        $rawPunchRows = [];
+
+        // Attendance Engine Rebuild — Phase 4 (spec §26 Sync History): one
+        // `attendance_sync_logs` row per device per run. `fetchDeviceLogs()`
+        // itself already swallows and logs its own transport errors,
+        // returning an empty array either way (no punches vs. a failed
+        // fetch look identical from here) — so `status` below can only ever
+        // be SUCCESS for a device this loop reaches without the whole
+        // method throwing; distinguishing a genuine per-device transport
+        // failure from "zero punches this window" is a follow-up (would
+        // need fetchDeviceLogs() to return its own success flag instead of
+        // just an array — deliberately not changed here to avoid touching
+        // that method's existing, working contract).
+        $deviceMapForLog = \App\Models\AttendanceDevice::pluck('id', 'serial_number')->all();
+        $syncLogRows = [];
+
         foreach ($serials as $serial) {
+            $deviceStartedAt = now();
             $lines = $this->fetchDeviceLogs($serial, $fromDateTime, $toDateTime);
             $count = count($lines);
             $deviceResults[$serial] = $count;
+
+            $syncLogRows[$serial] = [
+                'device_id' => $deviceMapForLog[$serial] ?? null,
+                'device_serial' => $serial,
+                'company_code' => $companyCode,
+                'started_at' => $deviceStartedAt,
+                'completed_at' => now(),
+                'status' => \App\Models\AttendanceSyncLog::STATUS_SUCCESS,
+                'fetched_count' => $count,
+                'triggered_by' => $markedBy,
+                'trigger_type' => 'manual',
+            ];
 
             foreach ($lines as $line) {
                 $line = trim($line);
@@ -151,6 +187,14 @@ class EsslBiometricService
                         }
                         $logMap[$empId][$dateStr]['times'][] = $timeStr;
                         $logMap[$empId][$dateStr]['devices'][$serial] = true;
+
+                        $rawPunchRows[] = [
+                            'emp_code_raw' => $empId,
+                            'device_serial' => $serial,
+                            'punch_datetime' => $dateStr . ' ' . $timeStr,
+                            'punch_type' => null, // eSSL's plain GetTransactionsLog text does not report IN/OUT
+                            'raw_line' => $line,
+                        ];
                     }
                 }
             }
@@ -297,6 +341,7 @@ class EsslBiometricService
         }
 
         // Record UploadBatch audit
+        $batchId = null;
         try {
             $batch = UploadBatch::create([
                 'type'          => 'attendance_essl',
@@ -310,13 +355,57 @@ class EsslBiometricService
                 'failed_count'  => 0,
                 'uploaded_by'   => $markedBy,
             ]);
+            $batchId = $batch->id;
         } catch (\Throwable $e) {
             Log::error("Failed to record biometric sync batch: " . $e->getMessage());
+        }
+
+        // Attendance Engine Rebuild — Phase 0: write the permanent raw-punch
+        // ledger alongside the existing `attendances` upsert above, which is
+        // complete and unchanged by this point. Wrapped in its own try/catch
+        // so a punch-ledger failure can NEVER turn an otherwise-successful
+        // sync into an error response — same "guarded, best-effort" pattern
+        // used elsewhere in this codebase for non-critical side effects.
+        $punchIngestResult = null;
+        try {
+            $punchIngestResult = (new AttendancePunchIngestor())->ingest(
+                $rawPunchRows,
+                $userLookup,
+                $batchId,
+                $companyCode
+            );
+        } catch (\Throwable $e) {
+            Log::error('AttendancePunchIngestor: sync-time ingest failed: ' . $e->getMessage());
+        }
+
+        // Persist the per-device sync log rows collected during the fetch
+        // loop above (spec §26), and stamp each device's last-seen state
+        // (spec §24/§62's device health) — both best-effort, matching the
+        // guarded pattern above.
+        try {
+            $now = now();
+            foreach ($syncLogRows as $serial => $row) {
+                $row['sync_batch_id'] = $batchId;
+                \App\Models\AttendanceSyncLog::create($row);
+
+                if ($row['device_id']) {
+                    \App\Models\AttendanceDevice::whereKey($row['device_id'])->update([
+                        'status' => 'online',
+                        'last_sync_at' => $now,
+                        'last_successful_sync_at' => $now,
+                        'last_sync_error' => null,
+                        'last_sync_punch_count' => $row['fetched_count'],
+                    ]);
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::error('EsslBiometricService: failed to persist sync history/device status: ' . $e->getMessage());
         }
 
         return [
             'status'           => true,
             'message'          => "Synced {$totalPunches} biometric punches across " . count($serials) . " devices for {$uniqueEmployees} employees ({$totalRecords} daily records).",
+            'punch_ledger'     => $punchIngestResult,
             'total_punches'    => $totalPunches,
             'records_synced'   => $totalRecords,
             'unique_employees' => $uniqueEmployees,

@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 import { useState, useEffect, useMemo, useRef } from "react";
 import {
   Search,
@@ -20,8 +21,13 @@ import Modal from "../../components/ui/Modal";
 import Pagination from "../../components/ui/Pagination";
 import { downloadCSV } from "../../utils/exportUtils";
 import toast from "react-hot-toast";
+import { getProfileCompletionPercentage } from "../../utils/profileCompletion";
+import { isPhotoDeletedOrDummy } from "../../utils/photoStatus";
+import { getEmployeePhotoUrl, mapEmployee } from "../admin/AdminModals/employee-helpers";
+import { AlertCircle } from "lucide-react";
 
 const ALL_COLUMNS = [
+  { field: "profile", label: "PROFILE", defaultVisible: true },
   { field: "empCode", label: "EMP CODE", defaultVisible: true },
   { field: "name", label: "NAME", defaultVisible: true },
   { field: "gender", label: "GENDER", defaultVisible: true },
@@ -76,8 +82,14 @@ export default function ManagerSection() {
 
   // Column visibility state
   const [visibleColumns, setVisibleColumns] = useState([
-    "empCode", "name", "gender", "department", "designation", "companyLabel", "unit", "loginRole", "status"
+    "profile", "empCode", "name", "gender", "department", "designation", "companyLabel", "unit", "loginRole", "status"
   ]);
+
+  // Photo modal state
+  const [photoModalRow, setPhotoModalRow] = useState(null);
+  const modalPhotoUrl = photoModalRow
+    ? getEmployeePhotoUrl(photoModalRow.photo || photoModalRow.user?.photo || photoModalRow.employee?.photo || photoModalRow.userPhoto || photoModalRow.userAvatar)
+    : null;
   const [showColModal, setShowColModal] = useState(false);
 
   // Column filter popups state: { [field]: { operator: "contains", value: "" } }
@@ -126,9 +138,10 @@ export default function ManagerSection() {
       .then((res) => {
         if (cancelled) return;
         if (res?.status || res?.success) {
-          const teamData = Array.isArray(res?.data)
+          const rawList = Array.isArray(res?.data)
             ? res.data
             : (Array.isArray(res?.data?.data) ? res.data.data : []);
+          const teamData = rawList.map(mapEmployee);
           setTeam({
             key: requestKey,
             employees: teamData,
@@ -171,6 +184,8 @@ export default function ManagerSection() {
   // Helper to extract field value from employee
   const getFieldValue = (emp, field) => {
     switch (field) {
+      case "profile":
+        return `${getProfileCompletionPercentage(emp)}%`;
       case "empCode":
         return emp.empCode || emp.emp_code || "";
       case "name":
@@ -267,6 +282,7 @@ export default function ManagerSection() {
 
   // Reset page to 1 whenever filters change
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setCurrentPage(1);
   }, [searchTerm, statusFilter, selectedDept, selectedCompany, selectedUnit, selectedGender, columnFilters]);
 
@@ -566,22 +582,29 @@ export default function ManagerSection() {
                 {ALL_COLUMNS.filter(col => visibleColumns.includes(col.field)).map(col => {
                   const hasActiveFilter = Boolean(columnFilters[col.field]?.value || columnFilters[col.field]?.operator === "isEmpty" || columnFilters[col.field]?.operator === "isNotEmpty");
                   return (
-                    <th key={col.field} className="px-4 py-3 relative whitespace-nowrap bg-gray-50 dark:bg-slate-950">
-                      <div className="flex items-center justify-between gap-1">
+                    <th
+                      key={col.field}
+                      className={`px-4 py-3 relative whitespace-nowrap bg-gray-50 dark:bg-slate-950 ${
+                        col.field === "profile" ? "text-center w-24 min-w-[90px]" : ""
+                      }`}
+                    >
+                      <div className={`flex items-center gap-1 ${col.field === "profile" ? "justify-center" : "justify-between"}`}>
                         <span>{col.label}</span>
-                        <button
-                          onClick={(e) => openFilterPopup(e, col.field)}
-                          className={`p-1 rounded hover:bg-gray-200 dark:hover:bg-slate-800 transition ${
-                            hasActiveFilter ? "text-purple-600 dark:text-purple-400 font-bold" : "text-gray-400 dark:text-slate-500"
-                          }`}
-                          title={`Filter ${col.label}`}
-                        >
-                          <Filter size={13} />
-                        </button>
+                        {col.field !== "profile" && (
+                          <button
+                            onClick={(e) => openFilterPopup(e, col.field)}
+                            className={`p-1 rounded hover:bg-gray-200 dark:hover:bg-slate-800 transition ${
+                              hasActiveFilter ? "text-purple-600 dark:text-purple-400 font-bold" : "text-gray-400 dark:text-slate-500"
+                            }`}
+                            title={`Filter ${col.label}`}
+                          >
+                            <Filter size={13} />
+                          </button>
+                        )}
                       </div>
 
                       {/* Column Filter Popup Modal */}
-                      {activeFilterField === col.field && (
+                      {col.field !== "profile" && activeFilterField === col.field && (
                         <div
                           ref={filterPopupRef}
                           onClick={(e) => e.stopPropagation()}
@@ -689,6 +712,89 @@ export default function ManagerSection() {
 
                       {/* Visible Column Data Cells */}
                       {ALL_COLUMNS.filter(col => visibleColumns.includes(col.field)).map(col => {
+                        if (col.field === "profile") {
+                          const pct = getProfileCompletionPercentage(emp);
+                          const photoUrl = getEmployeePhotoUrl(emp.photo || emp.user?.photo || emp.employee?.photo || emp.userPhoto || emp.userAvatar);
+                          const initial = (emp.name || "?").trim().charAt(0).toUpperCase() || "?";
+
+                          const barColorText =
+                            pct === 100
+                              ? "text-emerald-500"
+                              : pct >= 75
+                              ? "text-purple-500 dark:text-purple-400"
+                              : pct >= 50
+                              ? "text-amber-500"
+                              : "text-red-500";
+
+                          const badgeBg =
+                            pct === 100
+                              ? "bg-emerald-600 text-white border-white dark:border-gray-800"
+                              : pct >= 75
+                              ? "bg-purple-600 text-white border-white dark:border-gray-800"
+                              : pct >= 50
+                              ? "bg-amber-500 text-white border-white dark:border-gray-800"
+                              : "bg-red-500 text-white border-white dark:border-gray-800";
+
+                          // Radius r=17 -> circumference C = 2 * PI * 17 ≈ 106.81
+                          const strokeDasharray = 106.81;
+                          const strokeDashoffset = strokeDasharray - (pct / 100) * strokeDasharray;
+
+                          return (
+                            <td key={col.field} className="px-4 py-2 whitespace-nowrap text-center" onClick={(e) => e.stopPropagation()}>
+                              <div className="flex h-full w-full items-center justify-center">
+                                <div className="relative flex h-10 w-10 shrink-0 items-center justify-center">
+                                  <svg className="absolute inset-0 h-full w-full -rotate-90 transform" viewBox="0 0 40 40">
+                                    <circle
+                                      cx="20"
+                                      cy="20"
+                                      r="17"
+                                      className="text-gray-200 dark:text-gray-700"
+                                      strokeWidth="2.5"
+                                      stroke="currentColor"
+                                      fill="transparent"
+                                    />
+                                    <circle
+                                      cx="20"
+                                      cy="20"
+                                      r="17"
+                                      className={`${barColorText} transition-all duration-500`}
+                                      strokeWidth="2.5"
+                                      strokeDasharray={strokeDasharray}
+                                      strokeDashoffset={strokeDashoffset}
+                                      strokeLinecap="round"
+                                      stroke="currentColor"
+                                      fill="transparent"
+                                    />
+                                  </svg>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => setPhotoModalRow(emp)}
+                                    className="group relative flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-purple-100 font-bold text-[11px] text-purple-600 dark:bg-purple-900/30 dark:text-purple-300 transition-transform hover:scale-110"
+                                    title={`View photo card for ${emp.name || "employee"}`}
+                                  >
+                                    <span>{initial}</span>
+                                    {photoUrl && (
+                                      <img
+                                        src={photoUrl}
+                                        alt={emp.name || "Photo"}
+                                        className="absolute inset-0 h-full w-full rounded-full object-cover"
+                                        onError={(e) => { e.currentTarget.style.display = "none"; }}
+                                      />
+                                    )}
+                                  </button>
+
+                                  <span
+                                    className={`absolute -bottom-0.5 left-1/2 -translate-x-1/2 px-1 py-0.5 rounded-full text-[9px] font-extrabold leading-none border shadow-md whitespace-nowrap z-10 ${badgeBg}`}
+                                  >
+                                    {pct}%
+                                  </span>
+                                </div>
+                              </div>
+                            </td>
+                          );
+                        }
+
                         if (col.field === "empCode") {
                           return (
                             <td key={col.field} className="px-4 py-3 font-mono text-gray-600 dark:text-gray-300 font-semibold whitespace-nowrap">
@@ -837,6 +943,127 @@ export default function ManagerSection() {
           openEdit={null}
           hideEdit={true}
         />
+      )}
+
+      {/* Photo Popup Modal */}
+      {photoModalRow && (
+        <div
+          onClick={() => setPhotoModalRow(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative bg-white dark:bg-gray-800 w-full max-w-md flex flex-col rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 border border-gray-100 dark:border-gray-700"
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-800/80">
+              <h3 className="text-base font-extrabold text-gray-900 dark:text-white flex items-center gap-2">
+                <span>Employee Photo</span>
+                {isPhotoDeletedOrDummy(photoModalRow) && (
+                  <span className="px-2 py-0.5 text-[10px] font-bold bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 rounded-full border border-red-200 dark:border-red-800">
+                    Dummy Photo Detected (Locked)
+                  </span>
+                )}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setPhotoModalRow(null)}
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-200/60 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-200 transition-colors"
+                title="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Content Body */}
+            <div className="p-6 flex flex-col items-center text-center">
+              {/* Photo Display Box */}
+              <div className="relative group flex items-center justify-center w-56 h-56 sm:w-64 sm:h-64 rounded-2xl bg-gradient-to-br from-purple-500/10 via-gray-100 to-purple-500/5 dark:from-purple-900/30 dark:via-gray-800 dark:to-gray-900 border-2 border-purple-500/20 shadow-inner overflow-hidden mb-4">
+                {modalPhotoUrl && !isPhotoDeletedOrDummy(photoModalRow) ? (
+                  <img
+                    src={modalPhotoUrl}
+                    alt={photoModalRow.name || "Employee"}
+                    className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                    onError={(e) => {
+                      e.currentTarget.onerror = null;
+                      e.currentTarget.style.display = "none";
+                    }}
+                  />
+                ) : (
+                  <div className="flex flex-col items-center justify-center p-4">
+                    <div className="w-16 h-16 rounded-full bg-red-100 dark:bg-red-900/30 text-red-500 flex items-center justify-center font-black text-3xl mb-2">
+                      !
+                    </div>
+                    <p className="text-xs font-bold text-red-600 dark:text-red-400">
+                      {isPhotoDeletedOrDummy(photoModalRow) ? "Dummy Photo Detected / Deleted" : "No Profile Photo"}
+                    </p>
+                    <p className="text-[11px] text-gray-400 mt-1">Profile locked until photo uploaded</p>
+                  </div>
+                )}
+              </div>
+
+              {isPhotoDeletedOrDummy(photoModalRow) && (
+                <div className="w-full mb-4 px-4 py-2.5 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 rounded-xl text-left flex items-start gap-2 text-xs text-red-700 dark:text-red-300 font-medium">
+                  <AlertCircle size={16} className="shrink-0 text-red-500 mt-0.5" />
+                  <span>
+                    <strong>Dummy Photo Detected:</strong> Employee profile is currently locked. The employee will see a prompt to upload their original photo.
+                  </span>
+                </div>
+              )}
+
+              {/* Employee Info Details */}
+              <h4 className="text-xl font-black tracking-tight text-gray-900 dark:text-white mb-1">
+                {photoModalRow.name || "Unnamed Employee"}
+              </h4>
+              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-3">
+                {photoModalRow.email || "No email"}
+              </p>
+
+              {/* Metadata Grid */}
+              <div className="w-full grid grid-cols-2 gap-2 p-3 rounded-xl bg-gray-50 dark:bg-gray-900/50 border border-gray-100 dark:border-gray-800 text-left text-xs">
+                <div>
+                  <span className="block text-[10px] font-bold uppercase tracking-wider text-gray-400">Emp Code</span>
+                  <span className="font-semibold text-gray-800 dark:text-gray-200">{photoModalRow.empCode || photoModalRow.emp_code || "—"}</span>
+                </div>
+                <div>
+                  <span className="block text-[10px] font-bold uppercase tracking-wider text-gray-400">Department</span>
+                  <span className="font-semibold text-gray-800 dark:text-gray-200">{photoModalRow.department || "—"}</span>
+                </div>
+                <div>
+                  <span className="block text-[10px] font-bold uppercase tracking-wider text-gray-400">Designation</span>
+                  <span className="font-semibold text-gray-800 dark:text-gray-200">{photoModalRow.designation || "—"}</span>
+                </div>
+                <div>
+                  <span className="block text-[10px] font-bold uppercase tracking-wider text-gray-400">Company</span>
+                  <span className="font-semibold text-gray-800 dark:text-gray-200">
+                    {photoModalRow.companyLabel || photoModalRow.companyId || photoModalRow.company_code || "—"}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 border-t border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 flex flex-wrap gap-2">
+              {modalPhotoUrl && !isPhotoDeletedOrDummy(photoModalRow) && (
+                <a
+                  href={modalPhotoUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/40 dark:hover:bg-purple-900/40 text-purple-600 dark:text-purple-300 text-xs font-bold rounded-xl transition-colors"
+                >
+                  View Full Image
+                </a>
+              )}
+              <button
+                type="button"
+                onClick={() => setPhotoModalRow(null)}
+                className="flex-1 px-3 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 text-xs font-bold rounded-xl transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

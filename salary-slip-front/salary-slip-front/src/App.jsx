@@ -35,6 +35,13 @@ const EmployeeManagement = lazy(() => import("./pages/admin/EmployeeManagement")
 const SalaryManagement = lazy(() => import("./pages/admin/SalaryManagement"));
 const SalaryUploadPage = lazy(() => import("./pages/admin/SalaryUploadPage"));
 const AttendanceView = lazy(() => import("./pages/admin/AttendanceView"));
+// Attendance Engine Rebuild -- new page at a new route; AttendanceView above
+// is untouched and still backs the existing /admin/attendance route.
+const AttendanceControlCenter = lazy(() => import("./pages/admin/AttendanceControlCenter"));
+const AttendanceMonthlyView = lazy(() => import("./pages/admin/AttendanceMonthlyView"));
+const AttendanceRawPunches = lazy(() => import("./pages/admin/AttendanceRawPunches"));
+const AttendanceReportsCenter = lazy(() => import("./pages/admin/AttendanceReportsCenter"));
+const AttendanceRuleManagement = lazy(() => import("./pages/admin/AttendanceRuleManagement"));
 
 const ShiftManagement = lazy(() => import("./pages/admin/ShiftManagement"));
 const Appointments = lazy(() => import("./pages/admin/Appointments"));
@@ -74,6 +81,7 @@ import { useAuthorization } from "./hooks/useAuthorization";
 
 // HR module
 const HrDashboard = lazy(() => import("./pages/admin/hr/HrDashboard"));
+const IdCardsPage = lazy(() => import("./features/idCards/pages/IdCardsPage"));
 const HrOrganization = lazy(() => import("./pages/admin/hr/Organization"));
 const RecruitmentDashboard = lazy(() => import("./pages/admin/recruitment/RecruitmentDashboard"));
 const HiringProcess = lazy(() => import("./pages/admin/hr/HiringProcess"));
@@ -354,6 +362,49 @@ function AppRoutes() {
             </ProtectedRoute>
           }
         />
+        {/* Attendance Engine Rebuild -- new, additive route. The permission
+            code (attendance.daily.read) is separate from the legacy page's
+            ui.admin.attendance.view, per the new engine's own migration. */}
+        <Route
+          path="attendance/control-center"
+          element={
+            <ProtectedRoute requiredRole="admin" requiredPermission="attendance.daily.read">
+              <AttendanceControlCenter />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="attendance/monthly"
+          element={
+            <ProtectedRoute requiredRole="admin" requiredPermission="attendance.daily.read">
+              <AttendanceMonthlyView />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="attendance/raw-punches"
+          element={
+            <ProtectedRoute requiredRole="admin" requiredPermission="attendance.punch.read">
+              <AttendanceRawPunches />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="attendance/reports"
+          element={
+            <ProtectedRoute requiredRole="admin" requiredPermission="attendance.report.read">
+              <AttendanceReportsCenter />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="attendance/rules"
+          element={
+            <ProtectedRoute requiredRole="admin" requiredPermission="attendance.rule.read">
+              <AttendanceRuleManagement />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="attendance/shift"
           element={
@@ -413,6 +464,8 @@ function AppRoutes() {
 
         {/* HR module */}
         <Route path="hr" element={<ProtectedRoute requiredPermission="hr.dashboard.read"><HrDashboard /></ProtectedRoute>} />
+        <Route path="hr/id-cards" element={<ProtectedRoute requiredPermission="hr.dashboard.read"><IdCardsPage /></ProtectedRoute>} />
+        <Route path="id-cards" element={<ProtectedRoute requiredPermission="hr.dashboard.read"><IdCardsPage /></ProtectedRoute>} />
         <Route path="hr/organization" element={<ProtectedRoute requiredPermission="hr.dashboard.read"><HrOrganization /></ProtectedRoute>} />
         <Route path="hr/recruitment-dashboard" element={<ProtectedRoute requiredPermission="hr.requisition.read"><RecruitmentDashboard /></ProtectedRoute>} />
         <Route path="hr/hiring" element={<ProtectedRoute requiredPermission="hr.requisition.read"><HiringProcess /></ProtectedRoute>} />

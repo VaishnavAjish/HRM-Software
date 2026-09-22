@@ -5,6 +5,13 @@ export const REQUIREMENT = {
 
 const HOSPITALIZED_TREATMENT_TYPES = ["hospitalization", "surgery"];
 
+function isTrueBoolean(val) {
+  if (val === true || val === 1 || val === '1' || val === 'true' || val === 'Yes' || val === 'YES' || val === 'yes') {
+    return true;
+  }
+  return false;
+}
+
 function requirementFor(row, { treatmentType, isMedicoLegal } = {}) {
   const rule = row.conditionalRule ?? row.conditional_rule ?? null;
   let required;
@@ -12,7 +19,7 @@ function requirementFor(row, { treatmentType, isMedicoLegal } = {}) {
   if (rule === "hospitalized_or_surgery") {
     required = HOSPITALIZED_TREATMENT_TYPES.includes(treatmentType);
   } else if (rule === "medico_legal") {
-    required = Boolean(isMedicoLegal);
+    required = isTrueBoolean(isMedicoLegal);
   } else {
     required = Boolean(row.isRequired ?? row.is_required);
   }

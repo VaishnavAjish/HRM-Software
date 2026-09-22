@@ -36,6 +36,7 @@ trait ValidatesClaimPayload
             'first_consultation_date' => ['sometimes', 'nullable', 'date'],
             'treating_doctor_name' => ['sometimes', 'nullable', 'string', 'max:255'],
             'is_medico_legal_case' => ['sometimes', 'boolean'],
+            'is_medico_legal' => ['sometimes', 'boolean'],
             'reported_to_police' => ['sometimes', 'boolean'],
             'police_station_details' => ['sometimes', 'nullable', 'string', 'max:1000'],
             'treatment_type' => ['sometimes', 'nullable', Rule::in(MediclaimClaim::TREATMENT_TYPES)],

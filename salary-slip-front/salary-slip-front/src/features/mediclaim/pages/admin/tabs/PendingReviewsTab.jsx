@@ -18,7 +18,6 @@ import CoordinatorReviewPanel from "../../../components/CoordinatorReviewPanel";
 import CommitteeReviewPanel from "../../../components/CommitteeReviewPanel";
 import HrEligibilityReviewPanel from "../../../components/HrEligibilityReviewPanel";
 import DirectorDecisionPanel from "../../../components/DirectorDecisionPanel";
-import SettlementPanel from "../../../components/SettlementPanel";
 import {
   REVIEW_STAGE,
   REVIEW_STAGE_META,
@@ -51,7 +50,11 @@ const STATUS_OPTIONS = [
 // round-trip when switching between them.
 const PENDING_FETCH_SIZE = 100;
 
-// Which panel component renders for a resolved stage.
+// Which panel component renders for a resolved stage. SETTLEMENT is
+// deliberately absent: a SETTLEMENT_PENDING claim now falls through to the
+// same `ClaimDetailDrawer` + `FinalizeClaimModal` "Finalize Claim" action
+// every other tab uses, instead of the standalone `SettlementPanel` form
+// that used to render here — one finalize UI instead of two.
 const STAGE_PANEL = {
   [REVIEW_STAGE.APPROVAL]: SingleApprovalPanel,
   [REVIEW_STAGE.MANAGER]: ManagerReviewPanel,
@@ -59,7 +62,6 @@ const STAGE_PANEL = {
   [REVIEW_STAGE.COMMITTEE]: CommitteeReviewPanel,
   [REVIEW_STAGE.HR_ELIGIBILITY]: HrEligibilityReviewPanel,
   [REVIEW_STAGE.DIRECTOR]: DirectorDecisionPanel,
-  [REVIEW_STAGE.SETTLEMENT]: SettlementPanel,
 };
 
 // Which `mediclaimActionAccess(can)` boolean gates that stage's decision
@@ -72,7 +74,6 @@ const STAGE_ACCESS_KEY = {
   [REVIEW_STAGE.COMMITTEE]: "committeeDecide",
   [REVIEW_STAGE.HR_ELIGIBILITY]: "hrVerificationDecide",
   [REVIEW_STAGE.DIRECTOR]: "directorDecide",
-  [REVIEW_STAGE.SETTLEMENT]: "settlementCreate",
 };
 
 const SUB_TABS = [
@@ -84,7 +85,7 @@ const SUB_TABS = [
   {
     key: CLAIM_WORKFLOW_BUCKET.PENDING_DOCUMENT,
     label: "Pending Document",
-    description: "Approved claims waiting on the employee's documents — they settle automatically once every required document is on file (legacy Settlement-stage claims still need HR's manual final approval).",
+    description: "Approved claims awaiting employee document submission and final Admin review & settlement approval.",
   },
     {
     key: CLAIM_WORKFLOW_BUCKET.FINALIZED,
@@ -135,8 +136,9 @@ function toCsvRow(row) {
  *    the next bucket.
  *  - **Pending Document**: SETTLEMENT_PENDING claims — cleared every review
  *    stage, now waiting on the employee's document upload and then HR's
- *    Final Approve (`SettlementPanel`, which shows the actual uploaded
- *    documents read-only right there, not just a missing-count).
+ *    Final Approve (the same `ClaimDetailDrawer` + `FinalizeClaimModal`
+ *    "Finalize Claim" action every other tab uses, which shows the actual
+ *    uploaded documents and blocks finalizing until they're all on file).
  *  - **Approved Claim**: the finished pipeline — settled/closed (and also
  *    rejected/withdrawn/cancelled, so a claim never just vanishes from
  *    every tab) — the same `FINALIZED_CLAIM_STATUSES` set the admin Claims
@@ -345,15 +347,17 @@ export default function PendingReviewsTab() {
   const selectedStage = selectedClaim ? resolveStage(selectedClaim) : null;
   const SelectedPanel = selectedStage ? STAGE_PANEL[selectedStage] : null;
   const canDecideSelected = selectedStage ? Boolean(access[STAGE_ACCESS_KEY[selectedStage]]) : false;
-  // Anything that isn't an actionable decision panel the current user can
-  // actually use — finalized, awaiting documents (APPROVED/
+  // Anything that isn't one of the five review-stage decision panels the
+  // current user can actually use — finalized, awaiting documents (APPROVED/
   // PARTIALLY_APPROVED under the simplified workflow auto-settle once
   // documents are complete — see autoSettleIfDocumentsComplete() — so there
-  // is nothing to decide here), or a legacy stage the viewer lacks
-  // permission for — falls back to the same full, read-only
-  // `ClaimDetailDrawer` the Approved Claim tab already uses, instead of a
-  // bare summary card plus a "no permission" message that was actively
-  // misleading for a claim with no decision pending at all.
+  // is nothing to decide here), SETTLEMENT_PENDING (finalized via the same
+  // `ClaimDetailDrawer` "Finalize Claim" action every other tab uses, not a
+  // dedicated panel here), or a legacy stage the viewer lacks permission
+  // for — falls back to the same full `ClaimDetailDrawer` the Approved Claim
+  // tab already uses, instead of a bare summary card plus a "no permission"
+  // message that was actively misleading for a claim with no decision
+  // pending at all.
   const selectedIsActionable = Boolean(selectedClaim && SelectedPanel && canDecideSelected);
 
   const baseColumns = [
@@ -571,6 +575,14 @@ export default function PendingReviewsTab() {
           onClose={() => setSelectedClaim(null)}
           claimId={selectedClaim?.id ?? selectedClaim?.claimId}
           title={formatClaimNumber(selectedClaim)}
+          // Without this, finalizing (or approving/denying a document) inside
+          // the drawer only refreshed the drawer's own claim fetch — the
+          // outer table's already-loaded `pendingResult.rows` never
+          // re-fetched, so a just-finalized claim kept showing its stale
+          // "Pending for Document Approval" badge/bucket in the list behind
+          // the drawer until an unrelated full page reload happened to
+          // refetch it.
+          onDocumentsChanged={loadPending}
         />
       )}
     </div>

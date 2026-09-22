@@ -106,7 +106,7 @@ function mapClaimToFormData(claim, members = []) {
     initialSymptomOtherDetail: claim.initialSymptomOtherDetail ?? claim.initial_symptom_other_detail ?? "",
     firstConsultationDate: claim.firstConsultationDate ?? claim.first_consultation_date ?? "",
     treatingDoctorOrHospital: claim.treatingDoctorOrHospital ?? claim.treating_doctor_name ?? "",
-    isMedicoLegal: claim.isMedicoLegal ?? claim.is_medico_legal_case,
+    isMedicoLegal: claim.isMedicoLegal ?? claim.is_medico_legal_case ?? claim.is_medico_legal ?? claim.isMedicoLegalCase,
     reportedToPolice: claim.reportedToPolice ?? claim.reported_to_police,
     policeStationDetails: claim.policeStationDetails ?? claim.police_station_details ?? "",
 
@@ -151,6 +151,7 @@ function mapFormDataToClaimPayload(formData) {
     first_consultation_date: formData.firstConsultationDate || undefined,
     treating_doctor_name: formData.treatingDoctorOrHospital || undefined,
     is_medico_legal_case: Boolean(formData.isMedicoLegal),
+    is_medico_legal: Boolean(formData.isMedicoLegal),
     reported_to_police: formData.isMedicoLegal ? Boolean(formData.reportedToPolice) : undefined,
     police_station_details: formData.policeStationDetails || undefined,
     treatment_type: formData.treatmentType || undefined,

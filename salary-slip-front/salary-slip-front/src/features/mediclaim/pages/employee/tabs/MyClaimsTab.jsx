@@ -125,7 +125,7 @@ export default function MyClaimsTab({ lookups }) {
   };
 
   const ALL_COLUMNS = [
-    { key: "claimNumber", label: "Claim #", render: (row) => formatClaimNumber(row) || "—" },
+    { key: "claimNumber", label: "Claim #", render: (row) => formatClaimNumber(row, user) || "—" },
     { key: "patientName", label: "Patient", render: (row) => row.patientName || row.patient_snapshot?.name || "—" },
     { key: "claimedAmount", label: "Claimed", render: (row) => formatCurrencyINR(row.totalClaimedAmount ?? row.total_claimed_amount) },
     {
@@ -142,7 +142,7 @@ export default function MyClaimsTab({ lookups }) {
 
   const exportCsv = () => {
     const rowsToExport = claimsState.rows.map((row) => ({
-      "Claim #": formatClaimNumber(row),
+      "Claim #": formatClaimNumber(row, user),
       Patient: row.patientName || row.patient_snapshot?.name || "",
       "Claimed Amount": row.totalClaimedAmount ?? row.total_claimed_amount ?? "",
       "Approved Amount": row.approvedAmount ?? row.approved_amount ?? row.totalApprovedAmount ?? row.total_approved_amount ?? "",

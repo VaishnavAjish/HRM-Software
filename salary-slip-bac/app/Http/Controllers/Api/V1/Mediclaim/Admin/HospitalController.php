@@ -27,7 +27,19 @@ class HospitalController extends Controller
     public function index(Request $request): JsonResponse
     {
         $query = MediclaimHospital::query()->with('contacts');
-        $this->applyCompanyScope($query, $request);
+
+        $actor = auth('api')->user();
+        if ($actor && ! $actor->isSuperAdmin()) {
+            $userCompany = $actor->company_code;
+            $query->where(function ($q) use ($userCompany) {
+                $q->whereNull('company_code')
+                  ->orWhere('company_code', '')
+                  ->orWhere('company_code', 'all')
+                  ->orWhere('company_code', $userCompany);
+            });
+        } else {
+            $this->applyCompanyScope($query, $request);
+        }
 
         if ($request->filled('status')) {
             $query->whereIn('status', explode(',', (string) $request->query('status')));

@@ -990,7 +990,7 @@ export default function Profile() {
               iconBg="bg-orange-50 dark:bg-orange-900/20"
               iconColor="text-orange-600"
               label="Date of Birth"
-              value={emp.dob ? new Date(emp.dob).toLocaleDateString() : "—"}
+              value={emp.dob && !String(emp.dob).startsWith("1899") && !String(emp.dob).startsWith("1900") ? new Date(emp.dob).toLocaleDateString() : "—"}
               editing={editing}
               editNode={
                 <ModernDatePicker

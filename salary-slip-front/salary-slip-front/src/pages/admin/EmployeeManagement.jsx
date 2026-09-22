@@ -166,7 +166,7 @@ function mapEmployee(item) {
     avatar,
     accountName: item.account_name ?? "",
     accountNo: item.account_no ?? "",
-    mobileNo: firstPresent(item.mobile_no, item.mobile_number, item.mob_num),
+    mobileNo: firstPresent(item.mobileNo, item.mobile_no, item.mobile_number, item.mob_num),
     dob: firstPresent(item.dob, item.date_of_birth, item.birth_date),
     address: firstPresent(
       item.address,
@@ -178,11 +178,11 @@ function mapEmployee(item) {
     pin: item.pin ?? "",
     district: item.district ?? "",
     state: item.state ?? "",
-    pfNo: item.pf_no ?? "",
-    esiNo: item.esi_no ?? "",
-    bankName: item.bank_name ?? "",
-    bankIfscCode: item.bank_ifsc_code ?? "",
-    bankAccountNo: item.bank_account_no ?? "",
+    pfNo: firstPresent(item.pfNo, item.pf_no),
+    esiNo: firstPresent(item.esiNo, item.esi_no),
+    bankName: firstPresent(item.bankName, item.bank_name),
+    bankIfscCode: firstPresent(item.bankIfscCode, item.bank_ifsc_code),
+    bankAccountNo: firstPresent(item.bankAccountNo, item.bank_account_no),
     // The complete number. The employee list returns aadhaar_full for every row
     // inside the caller's company and unit scope, so the grid, the details modal,
     // the edit form and the exports all show the same value.
@@ -191,7 +191,7 @@ function mapEmployee(item) {
     // Kept because the API still returns it; no longer rendered anywhere.
     aadhaarMasked: item.aadhaar_masked ?? "",
     hasAadhaar: hasStoredAadhaar(item),
-    panCardNo: item.pan_card_no ?? "",
+    panCardNo: firstPresent(item.panCardNo, item.pan_card_no, item.pan_no),
     designation: item.designation ?? "",
     joiningDate: firstPresent(item.joining_date, item.date_of_joining),
     resignationDate: item.resignation_date ?? "",

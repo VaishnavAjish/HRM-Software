@@ -147,6 +147,23 @@ class ClaimController extends Controller
         )));
     }
 
+
+    /**
+     * POST /claims/{claim}/submit-final-approval — employee submits all uploaded
+     * documents for final admin review and settlement.
+     */
+    public function submitFinalApproval(Request $request, int $claim): JsonResponse
+    {
+        $actor = auth('api')->user();
+        $model = MediclaimClaim::visibleTo($actor)->find($claim);
+
+        if (! $model) {
+            return $this->missing('Claim not found.');
+        }
+
+        return $this->guarded(fn () => $this->ok($this->workflow->submitForFinalApproval($model, $actor)));
+    }
+
     public function updateExpenses(Request $request, int $claim): JsonResponse
     {
         $actor = auth('api')->user();

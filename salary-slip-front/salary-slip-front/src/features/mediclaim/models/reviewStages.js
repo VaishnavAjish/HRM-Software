@@ -136,11 +136,12 @@ export const REVIEW_STAGE_META = {
     sectionLabel: null,
     pendingStatus: CLAIM_STATUS.SETTLEMENT_PENDING,
     decidePermission: "mediclaim.settlement.create",
-    // No `decisions`/`cleanApproveDecision` vocabulary — `SettlementPanel.jsx`
-    // is a standalone form (amount/mode/reference), not built on
-    // `ReviewPanelShell`'s decision-buttons-plus-remarks shape, so those
-    // fields are left unset here rather than populated with values nothing
-    // reads.
+    // No `decisions`/`cleanApproveDecision` vocabulary — settlement is
+    // finalized via `FinalizeClaimModal`'s standalone form (amount/mode/
+    // reference), not `ReviewPanelShell`'s decision-buttons-plus-remarks
+    // shape, so those fields are left unset here rather than populated with
+    // values nothing reads. `pendingStatus` is still used to resolve the
+    // "Settlement" stage label shown in the Pending Reviews table.
   },
 };
 

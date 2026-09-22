@@ -142,12 +142,8 @@ class ClaimDocumentController extends Controller
             ]);
 
             // Simplified workflow: opportunistically finish the claim the
-            // moment its last required document lands — a no-op unless the
-            // claim is actually APPROVED/PARTIALLY_APPROVED and every
-            // required document is now on file. See
-            // ClaimWorkflowService::autoSettleIfDocumentsComplete()'s
-            // docblock.
-            $this->workflow->autoSettleIfDocumentsComplete($model, $actor);
+            // Document saved. The employee must click Submit for Final Approval
+            // once all required documents are attached.
 
             return $this->ok($this->presentLink($link->fresh(['document.currentVersionRecord']), $actor), 201);
         } catch (DocumentException $e) {

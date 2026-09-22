@@ -157,6 +157,10 @@ Route::middleware('jwt.auth')->prefix('v1/mediclaim')->middleware(['module.schem
         ->whereNumber('claim')
         ->middleware('permission:self.mediclaim.claim.update');
 
+    Route::post('claims/{claim}/submit-final-approval', [ClaimController::class, 'submitFinalApproval'])
+        ->whereNumber('claim')
+        ->middleware(['throttle:30,1', 'permission:self.mediclaim.claim.update']);
+
     // Not in the plan's literal B4 endpoint table — see ClaimController::
     // confidentialityAck()'s docblock: without this route managerDecision()'s
     // CONFIDENTIALITY_ACK_REQUIRED gate could never be satisfied.
@@ -262,7 +266,7 @@ Route::middleware('jwt.auth')->prefix('v1/mediclaim')->middleware(['module.schem
         ->middleware('permission:mediclaim.enrollment.update');
 
     Route::get('hospitals', [AdminHospitalController::class, 'index'])
-        ->middleware('permission:mediclaim.hospital.read');
+        ->middleware('permission:mediclaim.hospital.read,self.mediclaim.coverage.read,self.mediclaim.claim.create,self.mediclaim.claim.read');
     Route::post('hospitals', [AdminHospitalController::class, 'store'])
         ->middleware(['throttle:20,1', 'permission:mediclaim.hospital.create']);
     Route::put('hospitals/{hospital}', [AdminHospitalController::class, 'update'])

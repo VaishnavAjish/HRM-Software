@@ -659,6 +659,211 @@ export const salaryApi = {
     });
   },
 
+  // ---------------------------------------------------------------------
+  // Attendance Engine Rebuild -- new /v1/attendance/* endpoints. Additive:
+  // every function above this block (getAttendanceGrid, syncEsslAttendance,
+  // updateAttendanceCell, importAttendance) is untouched and still backs
+  // the existing AttendanceView.jsx page exactly as before.
+  // ---------------------------------------------------------------------
+
+  getAttendanceDaily(params, accessToken, tokenType = "Bearer") {
+    const query = new URLSearchParams(
+      Object.fromEntries(Object.entries(params || {}).filter(([, v]) => v !== undefined && v !== null && v !== ""))
+    );
+    return apiRequest(`/v1/attendance/daily?${query}`, {
+      headers: accessToken ? { Authorization: `${tokenType} ${accessToken}` } : {},
+    });
+  },
+
+  getAttendanceMonthly(params, accessToken, tokenType = "Bearer") {
+    const query = new URLSearchParams(
+      Object.fromEntries(Object.entries(params || {}).filter(([, v]) => v !== undefined && v !== null && v !== ""))
+    );
+    return apiRequest(`/v1/attendance/monthly?${query}`, {
+      headers: accessToken ? { Authorization: `${tokenType} ${accessToken}` } : {},
+    });
+  },
+
+  getAttendanceDetails(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/attendance/${id}/details`, {
+      headers: accessToken ? { Authorization: `${tokenType} ${accessToken}` } : {},
+    });
+  },
+
+  getAttendanceEmployeeProfile(userId, params, accessToken, tokenType = "Bearer") {
+    const query = new URLSearchParams(
+      Object.fromEntries(Object.entries(params || {}).filter(([, v]) => v !== undefined && v !== null && v !== ""))
+    );
+    return apiRequest(`/v1/attendance/employee/${userId}?${query}`, {
+      headers: accessToken ? { Authorization: `${tokenType} ${accessToken}` } : {},
+    });
+  },
+
+  getAttendancePunches(params, accessToken, tokenType = "Bearer") {
+    const query = new URLSearchParams(
+      Object.fromEntries(Object.entries(params || {}).filter(([, v]) => v !== undefined && v !== null && v !== ""))
+    );
+    return apiRequest(`/v1/attendance/punches?${query}`, {
+      headers: accessToken ? { Authorization: `${tokenType} ${accessToken}` } : {},
+    });
+  },
+
+  recalculateAttendance(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest("/v1/attendance/recalculate", {
+      method: "POST",
+      headers: accessToken ? { Authorization: `${tokenType} ${accessToken}` } : {},
+      body: JSON.stringify(payload),
+    });
+  },
+
+  simulateAttendanceRule(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest("/v1/attendance/simulate", {
+      method: "POST",
+      headers: accessToken ? { Authorization: `${tokenType} ${accessToken}` } : {},
+      body: JSON.stringify(payload),
+    });
+  },
+
+  getAttendanceRules(params, accessToken, tokenType = "Bearer") {
+    const query = new URLSearchParams(
+      Object.fromEntries(Object.entries(params || {}).filter(([, v]) => v !== undefined && v !== null && v !== ""))
+    );
+    return apiRequest(`/v1/attendance/rules?${query}`, {
+      headers: accessToken ? { Authorization: `${tokenType} ${accessToken}` } : {},
+    });
+  },
+
+  createAttendanceRule(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest("/v1/attendance/rules", {
+      method: "POST",
+      headers: accessToken ? { Authorization: `${tokenType} ${accessToken}` } : {},
+      body: JSON.stringify(payload),
+    });
+  },
+
+  retireAttendanceRule(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/attendance/rules/${id}`, {
+      method: "DELETE",
+      headers: accessToken ? { Authorization: `${tokenType} ${accessToken}` } : {},
+    });
+  },
+
+  getAttendanceRegularizations(params, accessToken, tokenType = "Bearer") {
+    const query = new URLSearchParams(
+      Object.fromEntries(Object.entries(params || {}).filter(([, v]) => v !== undefined && v !== null && v !== ""))
+    );
+    return apiRequest(`/v1/attendance/regularizations?${query}`, {
+      headers: accessToken ? { Authorization: `${tokenType} ${accessToken}` } : {},
+    });
+  },
+
+  requestAttendanceRegularization(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest("/v1/attendance/regularizations", {
+      method: "POST",
+      headers: accessToken ? { Authorization: `${tokenType} ${accessToken}` } : {},
+      body: JSON.stringify(payload),
+    });
+  },
+
+  decideAttendanceRegularization(id, payload, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/attendance/regularizations/${id}/decision`, {
+      method: "POST",
+      headers: accessToken ? { Authorization: `${tokenType} ${accessToken}` } : {},
+      body: JSON.stringify(payload),
+    });
+  },
+
+  getAttendanceDevices(params, accessToken, tokenType = "Bearer") {
+    const query = new URLSearchParams(
+      Object.fromEntries(Object.entries(params || {}).filter(([, v]) => v !== undefined && v !== null && v !== ""))
+    );
+    return apiRequest(`/v1/attendance/devices?${query}`, {
+      headers: accessToken ? { Authorization: `${tokenType} ${accessToken}` } : {},
+    });
+  },
+
+  getAttendanceSyncHistory(params, accessToken, tokenType = "Bearer") {
+    const query = new URLSearchParams(
+      Object.fromEntries(Object.entries(params || {}).filter(([, v]) => v !== undefined && v !== null && v !== ""))
+    );
+    return apiRequest(`/v1/attendance/sync-history?${query}`, {
+      headers: accessToken ? { Authorization: `${tokenType} ${accessToken}` } : {},
+    });
+  },
+
+  getAttendanceRecalculationJobs(params, accessToken, tokenType = "Bearer") {
+    const query = new URLSearchParams(
+      Object.fromEntries(Object.entries(params || {}).filter(([, v]) => v !== undefined && v !== null && v !== ""))
+    );
+    return apiRequest(`/v1/attendance/recalculation-jobs?${query}`, {
+      headers: accessToken ? { Authorization: `${tokenType} ${accessToken}` } : {},
+    });
+  },
+
+  getAttendanceRecalculationJob(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/v1/attendance/recalculation-jobs/${id}`, {
+      headers: accessToken ? { Authorization: `${tokenType} ${accessToken}` } : {},
+    });
+  },
+
+  getAttendanceDashboard(params, accessToken, tokenType = "Bearer") {
+    const query = new URLSearchParams(
+      Object.fromEntries(Object.entries(params || {}).filter(([, v]) => v !== undefined && v !== null && v !== ""))
+    );
+    return apiRequest(`/v1/attendance/dashboard?${query}`, {
+      headers: accessToken ? { Authorization: `${tokenType} ${accessToken}` } : {},
+    });
+  },
+
+  getAttendanceReport(type, params, accessToken, tokenType = "Bearer") {
+    const query = new URLSearchParams(
+      Object.fromEntries(Object.entries(params || {}).filter(([, v]) => v !== undefined && v !== null && v !== ""))
+    );
+    return apiRequest(`/v1/attendance/reports/${type}?${query}`, {
+      headers: accessToken ? { Authorization: `${tokenType} ${accessToken}` } : {},
+    });
+  },
+
+  // Deliberately NOT built on apiRequest() -- that helper always parses the
+  // response as JSON, but this endpoint streams a CSV/PDF file. Fetches the
+  // file as a blob with the same Bearer header every other call uses (never
+  // put the token in the URL -- unlike a plain <a href> to this endpoint,
+  // which the browser would send with NO Authorization header at all and get
+  // a 401), then triggers a normal browser download via a throwaway <a>.
+  async exportAttendanceReport(type, params, accessToken, tokenType = "Bearer", format = "csv") {
+    const query = new URLSearchParams(
+      Object.fromEntries(Object.entries({ ...params, format } || {}).filter(([, v]) => v !== undefined && v !== null && v !== ""))
+    );
+    const url = `${baseUrl}/api/v1/attendance/reports/${type}/export?${query}`;
+    const res = await fetch(url, {
+      headers: accessToken ? { Authorization: `${tokenType} ${accessToken}` } : {},
+    });
+    if (!res.ok) {
+      let message = `Export failed (HTTP ${res.status}).`;
+      try {
+        const body = await res.json();
+        message = body?.error?.message || body?.message || message;
+      } catch {
+        // response wasn't JSON (e.g. a real file streamed partway then failed) -- keep the generic message
+      }
+      throw new Error(message);
+    }
+
+    const blob = await res.blob();
+    const disposition = res.headers.get("Content-Disposition") || "";
+    const match = disposition.match(/filename="?([^"]+)"?/);
+    const filename = match ? match[1] : `attendance-${type}-${Date.now()}.${format}`;
+
+    const objectUrl = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(objectUrl);
+  },
+
   getShifts(accessToken, tokenType = "Bearer", { companyId, unit } = {}) {
     const params = new URLSearchParams();
     if (companyId) params.set("company_code", resolveWriteCompanyId(companyId));

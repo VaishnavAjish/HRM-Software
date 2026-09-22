@@ -6,9 +6,9 @@ use App\Models\User;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Allocates the next Mediclaim claim number.
+ * Generates and parses human-facing Mediclaim claim numbers:
  *
- * Requirements:
+ * Pattern:
  * - Company NIDHI IMPEX and Branch SHREEJI: NS-{EMP_CODE}-{YYYY-MM-DD}
  * - Company NIDHI IMPEX and Branch ICHAPUR: NI-{EMP_CODE}-{YYYY-MM-DD}
  * - Company SILVER STAR and Branch DADUK:   SD-{EMP_CODE}-{YYYY-MM-DD}
@@ -16,9 +16,8 @@ use Illuminate\Support\Facades\DB;
  *
  * Rule: First alphabet of company + First alphabet of unit (from View Employees / users table).
  * Date format is strictly YYYY-MM-DD.
- *
  * When multiple claims are created for the same employee on the same date,
- * they are sequenced in chronological order starting from -1, -2, -3, ...
+ * the claim number remains strictly {PREFIX}-{EMP_CODE}-{YYYY-MM-DD} without any sequence counter.
  */
 class MediclaimClaimNumber
 {
@@ -69,8 +68,8 @@ class MediclaimClaimNumber
         } elseif (! empty($bClean)) {
             $bInitial = strtoupper(substr($bClean, 0, 1));
         } else {
-            // Default unit if not set: Shreeji (S) for Nidhi, Daduk (D) for Silver Star
-            $bInitial = ($cInitial === 'N') ? 'S' : (($cInitial === 'S') ? 'D' : 'C');
+            // Default unit if not set: Shreeji (S) for Nidhi, Ichapur (I) for Silver Star
+            $bInitial = ($cInitial === 'N') ? 'S' : (($cInitial === 'S') ? 'I' : 'C');
         }
 
         return $cInitial.$bInitial;
@@ -79,8 +78,7 @@ class MediclaimClaimNumber
     /**
      * Allocates next claim number.
      * When employee context is provided (User, stdClass object, or employee array), generates:
-     *   {PREFIX}-{EMP_CODE}-{YYYY-MM-DD} (if single claim on date)
-     *   {PREFIX}-{EMP_CODE}-{YYYY-MM-DD}-1, -2, -3... (if multiple claims on date)
+     *   {PREFIX}-{EMP_CODE}-{YYYY-MM-DD}
      * Otherwise falls back to legacy atomic company+year counter.
      */
     public static function next(string $companyCode, mixed $employeeOrYear = null, ?string $date = null, ?string $branch = null): string
@@ -89,7 +87,7 @@ class MediclaimClaimNumber
         $isObj = is_object($employeeOrYear) && (isset($employeeOrYear->emp_code) || isset($employeeOrYear->id) || isset($employeeOrYear->unit));
         $isArr = is_array($employeeOrYear) && (isset($employeeOrYear['emp_code']) || isset($employeeOrYear['id']) || isset($employeeOrYear['unit']));
 
-        // If employee context is passed, format according to the new company/branch specification
+        // If employee context is passed, format according to the company/unit specification: {PREFIX}-{EMP_CODE}-{YYYY-MM-DD}
         if ($isUser || $isObj || $isArr) {
             $empCode = '0001';
             $userBranch = $branch;
@@ -119,54 +117,8 @@ class MediclaimClaimNumber
             $prefix = self::resolvePrefix($company, $userBranch);
             $dateStr = $date ?: now()->format('Y-m-d');
 
-            $base = sprintf('%s-%s-%s', $prefix, $empCode, $dateStr);
-
-            // Query existing claims for this employee on this date
-            $existing = DB::table('mediclaim_claims')
-                ->where('employee_user_id', $userId)
-                ->where(function ($q) use ($dateStr, $base) {
-                    $q->whereDate('submitted_at', $dateStr)
-                        ->orWhere(function ($q2) use ($dateStr) {
-                            $q2->whereNull('submitted_at')->whereDate('created_at', $dateStr);
-                        })
-                        ->orWhere('claim_number', 'like', "{$base}%");
-                })
-                ->orderBy('id')
-                ->get();
-
-            if ($existing->isEmpty()) {
-                // First claim of the day
-                return $base;
-            }
-
-            // If the first claim on this date has no suffix, upgrade it to -1
-            $first = $existing->first();
-            if ($first->claim_number === $base) {
-                $firstSeq = sprintf('%s-1', $base);
-                if (! DB::table('mediclaim_claims')->where('claim_number', $firstSeq)->exists()) {
-                    DB::table('mediclaim_claims')->where('id', $first->id)->update(['claim_number' => $firstSeq]);
-                }
-            }
-
-            // Find highest sequence suffix currently used for this base
-            $maxSeq = 1;
-            foreach ($existing as $c) {
-                if (preg_match('/-(\d+)$/', (string) $c->claim_number, $m)) {
-                    $val = (int) $m[1];
-                    if ($val > $maxSeq) {
-                        $maxSeq = $val;
-                    }
-                }
-            }
-
-            $nextSeq = $maxSeq + 1;
-            $candidate = sprintf('%s-%d', $base, $nextSeq);
-            while (DB::table('mediclaim_claims')->where('claim_number', $candidate)->exists()) {
-                $nextSeq++;
-                $candidate = sprintf('%s-%d', $base, $nextSeq);
-            }
-
-            return $candidate;
+            // Strictly {PREFIX}-{EMP_CODE}-{YYYY-MM-DD} without any sequence suffix
+            return sprintf('%s-%s-%s', $prefix, $empCode, $dateStr);
         }
 
         // Legacy counter fallback when called without employee context (e.g. older tests or tools)

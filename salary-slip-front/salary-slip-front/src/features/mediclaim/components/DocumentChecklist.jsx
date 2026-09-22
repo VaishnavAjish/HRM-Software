@@ -35,7 +35,7 @@ const CONDITION_NOTES = {
  * `MediclaimDocumentRequirement::ensureDefaultsSeeded()`), but the honest
  * empty-state message stays as a safety net regardless.
  */
-export default function DocumentChecklist({ claimId, requirements = [], requirementsLoading = false, claimSnapshot = {}, uploadedDocs = [], onUploaded, readOnly = false, dischargeDateMissing = false }) {
+export default function DocumentChecklist({ claimId, requirements = [], requirementsLoading = false, claimSnapshot = {}, uploadedDocs = [], onUploaded, readOnly = false }) {
   const { user } = useAuth();
   const [uploadingType, setUploadingType] = useState(null);
   const [viewerDoc, setViewerDoc] = useState(null);
@@ -121,7 +121,7 @@ export default function DocumentChecklist({ claimId, requirements = [], requirem
                   )}
                 </div>
 
-                {!readOnly && (
+                {!readOnly && docs.length === 0 && (
                   <label
                     htmlFor={claimId ? inputId : undefined}
                     className={`inline-flex flex-shrink-0 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${

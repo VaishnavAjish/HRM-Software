@@ -1685,5 +1685,6 @@ Route::group(['prefix' => 'candidate'], function () {
 });
 
 require __DIR__.'/mediclaim.php';
+require __DIR__.'/attendance_engine.php';
 
 

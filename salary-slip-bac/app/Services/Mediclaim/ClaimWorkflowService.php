@@ -527,6 +527,58 @@ class ClaimWorkflowService
         });
     }
 
+    /**
+     * Called by the employee after uploading all required post-discharge documents.
+     * Transitions claim from APPROVED / PARTIALLY_APPROVED to SETTLEMENT_PENDING
+     * for final admin document review & settlement approval.
+     */
+    public function submitForFinalApproval(MediclaimClaim $claim, User $employee): MediclaimClaim
+    {
+        return DB::transaction(function () use ($claim, $employee) {
+            $locked = MediclaimClaim::query()->lockForUpdate()->findOrFail($claim->id);
+
+            if ((int) $locked->employee_user_id !== (int) $employee->id && ! $employee->isSuperAdmin()) {
+                throw MediclaimException::forbidden('WRONG_CLAIM_OWNER', 'You may only submit your own claim.');
+            }
+
+            if (! in_array($locked->status, [MediclaimClaim::STATUS_APPROVED, MediclaimClaim::STATUS_PARTIALLY_APPROVED], true)) {
+                throw ValidationException::withMessages([
+                    'status' => 'Only an approved claim awaiting documents can be submitted for final approval.'
+                ]);
+            }
+
+            if ($locked->is_ongoing_treatment || ! $locked->discharge_at) {
+                throw ValidationException::withMessages([
+                    'discharge_at' => 'Discharge date must be set and treatment finalized before submitting for final approval.'
+                ]);
+            }
+
+            $missing = $this->missingDocumentTypes($locked);
+            if (! empty($missing)) {
+                $labels = array_column($missing, 'label');
+                throw ValidationException::withMessages([
+                    'documents' => 'Please upload all mandatory documents before submitting for final approval: ' . implode(', ', $labels)
+                ]);
+            }
+
+            $fromStatus = $locked->status;
+            $locked->status = MediclaimClaim::STATUS_SETTLEMENT_PENDING;
+            $locked->updated_by = $employee->id;
+            $locked->save();
+
+            $this->logTransition(
+                $locked,
+                'SUBMITTED_FOR_FINAL_APPROVAL',
+                $fromStatus,
+                $locked->status,
+                $employee,
+                'Employee submitted all required documents for final Admin review and settlement.'
+            );
+
+            return $this->freshClaim($locked);
+        });
+    }
+
     public function acknowledgeConfidentiality(MediclaimClaim $claim, User $manager): MediclaimClaimAssignment
     {
         return DB::transaction(function () use ($claim, $manager) {

@@ -246,7 +246,12 @@ export default function TeamClaimsTab() {
         onPageSizeChange={setPerPage}
       />
 
-      <ClaimDetailDrawer isOpen={Boolean(selectedClaimId)} onClose={() => setSelectedClaimId(null)} claimId={selectedClaimId} />
+      <ClaimDetailDrawer
+        isOpen={Boolean(selectedClaimId)}
+        onClose={() => setSelectedClaimId(null)}
+        claimId={selectedClaimId}
+        onDocumentsChanged={() => setReloadToken((n) => n + 1)}
+      />
     </div>
   );
 }

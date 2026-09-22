@@ -179,6 +179,12 @@ export const mediclaimApi = {
       headers: headers(accessToken, tokenType),
     });
   },
+  submitFinalApproval(claimId, accessToken, tokenType = "Bearer") {
+    return apiRequest(`${BASE}/claims/${claimId}/submit-final-approval`, {
+      method: "POST",
+      headers: headers(accessToken, tokenType),
+    });
+  },
 
   // Narrower than `submitReviewDecision` below — sends a claim back to the
   // employee from whichever stage currently holds it (see reconciliation #5).
