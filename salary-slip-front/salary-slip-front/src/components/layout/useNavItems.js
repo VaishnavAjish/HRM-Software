@@ -350,7 +350,10 @@ export function decorateNavigation(nav, routeState) {
       return { ...item, disabled: false };
     }
 
-    const state = routeState ? routeState(item.to) : "allow";
+    let state = routeState ? routeState(item.to) : "allow";
+    if (state === "unassigned" && item.to?.startsWith("/admin/attendance/")) {
+      state = "allow";
+    }
 
     return state === "unassigned" ? null : { ...item, disabled: Boolean(item.disabled) || state === "deny" };
   };

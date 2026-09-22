@@ -465,6 +465,36 @@ class PermissionRegistry
             'description' => 'Import attendance from a device or sheet.',
             'implies' => ['hr.attendance.import'],
         ],
+        'ui.attendance.control_center' => [
+            'type' => self::TYPE_PAGE, 'label' => 'Control Center', 'order' => 15,
+            'parent' => 'ui.attendance', 'route' => '/admin/attendance/control-center',
+            'description' => 'Open the Attendance Control Center.',
+            'implies' => ['attendance.daily.read'],
+        ],
+        'ui.attendance.monthly' => [
+            'type' => self::TYPE_PAGE, 'label' => 'Monthly View', 'order' => 16,
+            'parent' => 'ui.attendance', 'route' => '/admin/attendance/monthly',
+            'description' => 'Open the Attendance Monthly Grid View.',
+            'implies' => ['attendance.daily.read'],
+        ],
+        'ui.attendance.raw_punches' => [
+            'type' => self::TYPE_PAGE, 'label' => 'Raw Punches', 'order' => 17,
+            'parent' => 'ui.attendance', 'route' => '/admin/attendance/raw-punches',
+            'description' => 'Open Raw Punches and Devices management.',
+            'implies' => ['attendance.punch.read'],
+        ],
+        'ui.attendance.reports' => [
+            'type' => self::TYPE_PAGE, 'label' => 'Attendance Reports', 'order' => 18,
+            'parent' => 'ui.attendance', 'route' => '/admin/attendance/reports',
+            'description' => 'Open Attendance Reports and Analytics.',
+            'implies' => ['attendance.report.read'],
+        ],
+        'ui.attendance.rules' => [
+            'type' => self::TYPE_PAGE, 'label' => 'Rule Management', 'order' => 19,
+            'parent' => 'ui.attendance', 'route' => '/admin/attendance/rules',
+            'description' => 'Open Attendance Rule Management.',
+            'implies' => ['attendance.rule.read'],
+        ],
         'ui.attendance.shift' => [
             'type' => self::TYPE_PAGE, 'label' => 'Shift', 'order' => 20,
             'parent' => 'ui.attendance', 'route' => '/admin/attendance/shift',
