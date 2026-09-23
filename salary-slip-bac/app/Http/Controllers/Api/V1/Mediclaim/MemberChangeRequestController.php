@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1\Mediclaim;
 
 use App\Http\Controllers\Api\V1\Mediclaim\Concerns\RespondsWithEnvelope;
 use App\Http\Controllers\Controller;
+use App\Models\Mediclaim\MediclaimMember;
 use App\Models\Mediclaim\MediclaimMemberChangeRequest;
 use App\Services\Mediclaim\MediclaimMemberService;
 use App\Services\Mediclaim\PolicyEligibilityService;
@@ -87,8 +88,8 @@ class MemberChangeRequestController extends Controller
             if (! $proposedValues['full_name']) {
                 throw ValidationException::withMessages(['proposedValues.name' => 'Member name is required.']);
             }
-            if (! in_array($proposedValues['relationship_type'], ['spouse', 'child', 'parent'], true)) {
-                throw ValidationException::withMessages(['proposedValues.relationshipType' => 'relationshipType must be one of: spouse, child, parent.']);
+            if (! in_array($proposedValues['relationship_type'], MediclaimMember::RELATIONSHIP_TYPES, true)) {
+                throw ValidationException::withMessages(['proposedValues.relationshipType' => 'relationshipType must be one of: ' . implode(', ', MediclaimMember::RELATIONSHIP_TYPES)]);
             }
         }
 

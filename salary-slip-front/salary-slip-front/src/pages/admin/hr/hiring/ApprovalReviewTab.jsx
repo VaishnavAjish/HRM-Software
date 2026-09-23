@@ -123,12 +123,13 @@ export default function ApprovalReviewTab({ kind, departments = [], refreshKey =
     if (!req) return;
     setSaving(true);
     try {
-      const res = await hrApi.hrManagerForward(req.id, {
+      const apiCall = req.status === "returned_to_hr" ? hrApi.hrManagerRespond : hrApi.hrManagerForward;
+      const res = await apiCall(req.id, {
         director_id: null,
         comment: comment.trim() || undefined,
       }, user.accessToken, user.tokenType);
       if (res.status) {
-        toast.success("Requisition forwarded to Director!");
+        toast.success(req.status === "returned_to_hr" ? "Requisition re-forwarded to Director" : "Requisition forwarded to Director!");
         setForwardModalOpen(false);
         setSelected(null);
         setComment("");
@@ -402,17 +403,25 @@ export default function ApprovalReviewTab({ kind, departments = [], refreshKey =
               <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-3">
                 <Detail label="Job Title" value={selected.cycle.requisition.title} />
                 <Detail label="Department" value={departments.find(d => d.id === selected.cycle.requisition.department_id)?.name || selected.cycle.requisition.department?.name} />
-                <Detail label="Openings" value={selected.cycle.requisition.total_openings} />
+                <Detail label="Openings" value={selected.cycle.requisition.openings ?? selected.cycle.requisition.total_openings} />
                 <Detail label="Employment Type" value={selected.cycle.requisition.employment_type} />
                 <Detail label="Priority" value={<Badge variant={selected.cycle.requisition.priority === "urgent" ? "red" : selected.cycle.requisition.priority === "high" ? "orange" : selected.cycle.requisition.priority === "medium" ? "blue" : "gray"}>{selected.cycle.requisition.priority}</Badge>} />
-                <Detail label="Target Joining" value={selected.cycle.requisition.target_joining_date ? date(selected.cycle.requisition.target_joining_date) : null} />
-                <Detail label="Experience" value={selected.cycle.requisition.min_experience_years ? `${selected.cycle.requisition.min_experience_years} - ${selected.cycle.requisition.max_experience_years} years` : null} />
-                <Detail label="Salary" value={selected.cycle.requisition.min_salary ? `${selected.cycle.requisition.min_salary} - ${selected.cycle.requisition.max_salary}` : null} />
+                <Detail label="Target Joining" value={(selected.cycle.requisition.target_closing_date || selected.cycle.requisition.target_joining_date) ? date(selected.cycle.requisition.target_closing_date || selected.cycle.requisition.target_joining_date) : null} />
+                <Detail label="Experience" value={
+                  (selected.cycle.requisition.min_experience !== undefined && selected.cycle.requisition.min_experience !== null && selected.cycle.requisition.min_experience !== "")
+                    ? `${selected.cycle.requisition.min_experience} - ${selected.cycle.requisition.max_experience} yrs`
+                    : (selected.cycle.requisition.min_experience_years ? `${selected.cycle.requisition.min_experience_years} - ${selected.cycle.requisition.max_experience_years} yrs` : null)
+                } />
+                <Detail label="Salary" value={
+                  (selected.cycle.requisition.salary_min !== undefined && selected.cycle.requisition.salary_min !== null && selected.cycle.requisition.salary_min !== "")
+                    ? `₹${Number(selected.cycle.requisition.salary_min).toLocaleString('en-IN')} - ₹${Number(selected.cycle.requisition.salary_max).toLocaleString('en-IN')}`
+                    : (selected.cycle.requisition.min_salary ? `₹${Number(selected.cycle.requisition.min_salary).toLocaleString('en-IN')} - ₹${Number(selected.cycle.requisition.max_salary).toLocaleString('en-IN')}` : null)
+                } />
               </div>
             </section>
 
             <section className="space-y-6">
-              <TextBlock label="Job Description" html={selected.cycle.requisition.job_description} />
+              <TextBlock label="Job Description" html={selected.cycle.requisition.description || selected.cycle.requisition.job_description} />
               <TextBlock label="Requirements" html={selected.cycle.requisition.requirements} />
             </section>
 

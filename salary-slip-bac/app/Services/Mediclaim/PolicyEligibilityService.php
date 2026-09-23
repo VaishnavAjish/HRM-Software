@@ -111,7 +111,9 @@ class PolicyEligibilityService
             ? (int) floor(Carbon::parse($member->date_of_birth)->diffInYears($treatmentDate))
             : null;
 
-        if ($member->relationship_type === 'child') {
+        $category = MediclaimMember::categoryForRelationship($member->relationship_type);
+
+        if ($category === 'child') {
             $maxAge = $rules['child_max_age_years'] ?? null;
             if ($maxAge !== null && $ageYears !== null && $ageYears > (int) $maxAge) {
                 $reasons[] = "This child exceeds the policy's maximum covered age of {$maxAge} years.";
@@ -126,7 +128,7 @@ class PolicyEligibilityService
             }
         }
 
-        if ($member->relationship_type === 'parent') {
+        if ($category === 'parent') {
             $maxAge = $rules['parent_max_age_years'] ?? null;
             if ($maxAge !== null && $ageYears !== null && $ageYears > (int) $maxAge) {
                 $reasons[] = "This parent exceeds the policy's maximum covered age of {$maxAge} years.";
@@ -143,7 +145,7 @@ class PolicyEligibilityService
 
         return MediclaimMember::query()
             ->where('employee_user_id', $employeeUserId)
-            ->where('relationship_type', 'child')
+            ->whereIn('relationship_type', ['child', 'son', 'daughter'])
             ->where('status', 'active')
             ->where('effective_from', '<=', $date)
             ->where(fn ($q) => $q->whereNull('effective_to')->orWhere('effective_to', '>=', $date))

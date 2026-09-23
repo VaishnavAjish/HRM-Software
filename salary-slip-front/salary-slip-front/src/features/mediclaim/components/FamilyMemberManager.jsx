@@ -13,7 +13,7 @@ const REQUEST_TYPE = { ADD: "ADD", UPDATE: "UPDATE", REMOVE: "REMOVE" };
 // SELF isn't offered here — that's the employee's own record, not a
 // dependent added through this flow. Only actual covered dependents, per
 // the policy rule book's Section B (Spouse/Child/Parent).
-const RELATIONSHIP_OPTIONS = ["SPOUSE", "CHILD", "PARENT"];
+const RELATIONSHIP_OPTIONS = ["CHILD", "MOTHER", "FATHER", "GRANDPARENTS", "BROTHER", "SISTER", "WIFE", "HUSBAND", "OTHERS", "SPOUSE", "PARENT"];
 const REQUEST_STATUS_VARIANT = { pending: "yellow", approved: "green", rejected: "red" };
 
 // From the actual policy rule book (EMPLOYEE MEDICAL CLAIM.pdf):
@@ -55,7 +55,7 @@ function ageInYears(dateOfBirth) {
 function countActiveChildren(members, excludingMemberId) {
   return members.filter((m) => {
     const relationship = String(m.relationshipType || m.relationship_type || "").toUpperCase();
-    if (relationship !== "CHILD") return false;
+    if (!["CHILD", "SON", "DAUGHTER"].includes(relationship)) return false;
     if (excludingMemberId && String(m.id) === String(excludingMemberId)) return false;
     const status = String(m.status || "").toLowerCase();
     return status === "" || status === "active" || status === "pending";
@@ -65,7 +65,7 @@ function countActiveChildren(members, excludingMemberId) {
 function countActiveSpouses(members, excludingMemberId = null) {
   return members.filter((m) => {
     const relationship = String(m.relationshipType || m.relationship_type || "").toUpperCase();
-    if (relationship !== "SPOUSE") return false;
+    if (!["SPOUSE", "WIFE", "HUSBAND"].includes(relationship)) return false;
     if (excludingMemberId && String(m.id) === String(excludingMemberId)) return false;
     const status = String(m.status || "").toLowerCase();
     return status === "" || status === "active" || status === "pending";
@@ -89,7 +89,7 @@ function getAvailableRelationshipOptions(members, requestType, currentMemberId =
 
   return RELATIONSHIP_OPTIONS.filter((option) => {
     const optUpper = option.toUpperCase();
-    if (optUpper === "SPOUSE") {
+    if (["SPOUSE", "WIFE", "HUSBAND"].includes(optUpper)) {
       return spouseCount < 1;
     }
     if (["PARENT", "FATHER", "MOTHER"].includes(optUpper)) {

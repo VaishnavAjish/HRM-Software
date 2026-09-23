@@ -52,7 +52,7 @@ class AuthController extends Controller
         $loginInput = trim((string) $request->input('email'));
         $password = $request->input('password');
         $companyCode = $request->input('company_code');
-        $selectedUserId = $request->input('user_id');
+        $selectedUserId = $request->input('user_id') ?? $request->input('userId') ?? $request->input('selected_user_id');
 
         $lockoutKey = 'login|' . strtolower($loginInput) . '|' . $request->ip();
 
@@ -646,22 +646,51 @@ class AuthController extends Controller
     {
         $code = trim((string) $code);
         if ($code === '') {
-            return response()->json(['status' => false, 'message' => 'Employee code is required', 'employees' => []], 400);
+            return response()->json([
+                'status' => false,
+                'message' => 'Employee code is required',
+                'count' => 0,
+                'employees' => [],
+            ], 400);
         }
 
-        $employees = User::where('is_deleted', 0)
+        $users = User::where('is_deleted', 0)
             ->where(function ($q) use ($code) {
                 $q->where('emp_code', $code)
                   ->orWhere(DB::raw('LOWER(email)'), strtolower($code))
                   ->orWhere('mobile_number', $code);
             })
-            ->select(['id', 'name', 'emp_code', 'email', 'company_code', 'unit', 'department', 'designation', 'status', 'photo'])
+            ->select(['id', 'name', 'emp_code', 'email', 'mobile_number', 'company_code', 'unit', 'department', 'designation', 'status', 'photo'])
             ->get();
+
+        $formatted = $users->map(function ($u) {
+            $photoUrl = $u->photo ? (str_starts_with($u->photo, 'http') ? $u->photo : url('storage/' . $u->photo)) : null;
+
+            return [
+                'id' => $u->id,
+                'user_id' => $u->id,
+                'name' => $u->name,
+                'emp_code' => $u->emp_code,
+                'empCode' => $u->emp_code,
+                'email' => $u->email,
+                'mobile_number' => $u->mobile_number,
+                'mobileNumber' => $u->mobile_number,
+                'company_code' => $u->company_code,
+                'companyCode' => $u->company_code,
+                'unit' => $u->unit,
+                'department' => $u->department,
+                'designation' => $u->designation,
+                'status' => $u->status,
+                'photo' => $u->photo,
+                'photo_url' => $photoUrl,
+                'avatar_url' => $photoUrl,
+            ];
+        });
 
         return response()->json([
             'status' => true,
-            'count' => $employees->count(),
-            'employees' => $employees,
+            'count' => $formatted->count(),
+            'employees' => $formatted,
         ]);
     }
 

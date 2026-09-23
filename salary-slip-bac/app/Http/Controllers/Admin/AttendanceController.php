@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Attendance;
 use App\Models\UploadBatch;
 use App\Models\User;
+use App\Services\Biometric\BiometricUserResolver;
 use App\Services\Biometric\EsslBiometricService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -149,11 +150,13 @@ class AttendanceController extends Controller
             }
         }
 
-        // Include any biometric punched employees whose ID isn't in users table yet (just like Google Apps Script)
+        // Include any biometric punched employees whose ID isn't in users table yet.
+        // Use BiometricUserResolver to check the code-map table and resolve
+        // "Employee 10044" entries to real user names where a mapping exists.
         $knownCodes = $employees->pluck('emp_code')->filter()->map(fn($c) => (string)$c)->flip();
         $knownIds = $employees->pluck('id')->filter()->map(fn($id) => (int)$id)->flip();
 
-        $unmatchedPunches = [];
+        $unmatchedCodes = [];
         foreach ($records as $r) {
             $c = (string) $r->emp_code;
             $trimmed = ltrim($c, '0');
@@ -163,15 +166,49 @@ class AttendanceController extends Controller
                 || ($trimmed !== '' && isset($knownCodes[$trimmed]))
                 || ($uId && isset($knownIds[$uId]));
 
-            if (!$matched && !isset($unmatchedPunches[$c])) {
-                $unmatchedPunches[$c] = [
-                    'id'           => $uId,
-                    'emp_code'     => $c,
-                    'name'         => "Employee " . $c,
-                    'department'   => 'Biometric Enrolled',
-                    'unit'         => $r->unit ?: 'Headquarters',
-                    'company_code' => $r->company_code ?: 'nidhi-impex',
-                ];
+            if (!$matched && !isset($unmatchedCodes[$c])) {
+                $unmatchedCodes[$c] = $r;
+            }
+        }
+
+        $unmatchedPunches = [];
+        if (!empty($unmatchedCodes)) {
+            // Try resolving unmatched biometric codes via the code-map table
+            $resolver = new BiometricUserResolver(array_keys($unmatchedCodes));
+
+            foreach ($unmatchedCodes as $c => $r) {
+                $resolvedUser = $resolver->resolve($c);
+                $uId = !empty($r->user_id) ? (int) $r->user_id : (is_numeric($c) ? (int)$c : null);
+
+                if ($resolvedUser) {
+                    // Code-map matched a real user — use their actual name
+                    $effectiveCode = (string) ($resolvedUser->emp_code ?: $resolvedUser->punching_no ?: $resolvedUser->form_no ?: $resolvedUser->id);
+                    $unmatchedPunches[$c] = [
+                        'id'           => $resolvedUser->id,
+                        'emp_code'     => $effectiveCode,
+                        'name'         => $resolvedUser->name,
+                        'department'   => $resolvedUser->department ?: 'Biometric Enrolled',
+                        'unit'         => $resolvedUser->unit ?: ($r->unit ?: 'Headquarters'),
+                        'company_code' => $resolvedUser->company_code ?: ($r->company_code ?: 'nidhi-impex'),
+                    ];
+
+                    // Also register the resolved user's code in the empIdentifierMap
+                    // so their attendance data is linked correctly in the grid
+                    $empIdentifierMap[$c] = $effectiveCode;
+                    if ($trimmedC = ltrim($c, '0')) {
+                        $empIdentifierMap[$trimmedC] = $effectiveCode;
+                    }
+                } else {
+                    // No match anywhere — show as "Employee XXXXX"
+                    $unmatchedPunches[$c] = [
+                        'id'           => $uId,
+                        'emp_code'     => $c,
+                        'name'         => "Employee " . $c,
+                        'department'   => 'Biometric Enrolled',
+                        'unit'         => $r->unit ?: 'Headquarters',
+                        'company_code' => $r->company_code ?: 'nidhi-impex',
+                    ];
+                }
                 $recordedEmpCodes[$c] = true;
             }
         }

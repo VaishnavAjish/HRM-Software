@@ -145,10 +145,22 @@ class JobRequisitionController extends Controller
             return response()->json(['status' => false, 'message' => 'Requisition not found'], 404);
         }
 
-        if (! in_array($requisition->status, ['draft', 'rejected', 'revision_requested', 'approved', 'posted'], true)) {
+        $pendingStatuses = ['pending_hr_review', 'returned_to_hr', 'pending_director_review', 'pending_approval'];
+        $uneditableStatuses = ['closed', 'cancelled'];
+
+        if (in_array($requisition->status, $uneditableStatuses, true)) {
             throw ValidationException::withMessages([
                 'status' => 'This requisition cannot be edited in its current state.',
             ]);
+        }
+
+        if (in_array($requisition->status, $pendingStatuses, true)) {
+            $user = auth('api')->user();
+            if (! $user || ! $this->canEditPendingRequisition($user, $requisition)) {
+                throw ValidationException::withMessages([
+                    'status' => 'This requisition cannot be edited in its current state.',
+                ]);
+            }
         }
         if ($request->exists('status')) {
             throw ValidationException::withMessages([
@@ -917,7 +929,33 @@ class JobRequisitionController extends Controller
         ]);
     }
 
+
+    private function canEditPendingRequisition(\App\Models\User $user, \App\Models\JobRequisition $requisition): bool
+    {
+        if ($user->isSuperAdmin()) {
+            return true;
+        }
+
+        if ($requisition->hr_manager_id && (int) $requisition->hr_manager_id === (int) $user->id) {
+            return true;
+        }
+
+        if ($requisition->director_id && (int) $requisition->director_id === (int) $user->id) {
+            return true;
+        }
+
+        $engine = app(\App\Services\Authorization\AuthorizationEngine::class);
+        if ($engine->decide($user, 'hr.requisition.hr_manager.decide', $requisition, ['audit' => false])->allowed) {
+            return true;
+        }
+        if ($engine->decide($user, 'hr.requisition.hiring_manager.decide', $requisition, ['audit' => false])->allowed) {
+            return true;
+        }
+        if ($engine->decide($user, 'hr.requisition.director.decide', $requisition, ['audit' => false])->allowed) {
+            return true;
+        }
+
+        return false;
+    }
+
 }
-
-
-

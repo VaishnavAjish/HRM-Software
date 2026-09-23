@@ -14,7 +14,32 @@ class MediclaimMember extends Model
 {
     public const STATUSES = ['active', 'inactive', 'removed'];
 
-    public const RELATIONSHIP_TYPES = ['self', 'spouse', 'child', 'parent'];
+    public const RELATIONSHIP_TYPES = [
+        'self',
+        'spouse', 'wife', 'husband',
+        'child', 'son', 'daughter',
+        'parent', 'father', 'mother',
+        'grandparents', 'grandparent', 'grandfather', 'grandmother',
+        'brother', 'sister', 'sibling',
+        'parent_in_law', 'father_in_law', 'mother_in_law',
+        'others', 'other',
+    ];
+
+    public static function categoryForRelationship(?string $type): string
+    {
+        $normalized = strtolower(trim((string) $type));
+
+        return match ($normalized) {
+            'spouse', 'wife', 'husband' => 'spouse',
+            'child', 'son', 'daughter' => 'child',
+            'parent', 'father', 'mother' => 'parent',
+            'grandparents', 'grandparent', 'grandfather', 'grandmother' => 'grandparent',
+            'brother', 'sister', 'sibling' => 'sibling',
+            'parent_in_law', 'father_in_law', 'mother_in_law' => 'parent_in_law',
+            'self' => 'self',
+            default => 'other',
+        };
+    }
 
     protected $fillable = [
         'enrollment_id',

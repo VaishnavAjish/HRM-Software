@@ -77,6 +77,30 @@ function getReturnReason(r) {
   return anyCommentStep ? anyCommentStep.comment : "";
 }
 
+function calculateRequisitionProgress(r) {
+  if (!r) return 0;
+  const statusProgressMap = {
+    draft: 15,
+    pending_approval: 30,
+    pending_hr_review: 35,
+    returned_to_hr: 25,
+    revision_requested: 25,
+    pending_director_review: 65,
+    approved: 85,
+    posted: 95,
+    published: 95,
+    closed: 100,
+    filled: 100,
+  };
+  const statusProgress = statusProgressMap[r.status] ?? 20;
+  const openings = Math.max(1, Number(r.openings || r.total_openings || 1));
+  const candidates = Number(r.candidates_count || r.candidatesCount || 0);
+  const candidatePct = Math.round((candidates / openings) * 100);
+
+  if (['closed', 'filled'].includes(r.status)) return 100;
+  return Math.min(100, Math.max(statusProgress, candidatePct));
+}
+
 export default function RequisitionsTab({ departments = [], people = [], openRequisitionForm, isHrManagerView = false, refreshKey = 0, isEmployeePortal = false }) {
   const { user } = useAuth();
   const { companyScope, scopeKey } = useCompany();
@@ -414,10 +438,10 @@ export default function RequisitionsTab({ departments = [], people = [], openReq
                     {isVisible("targetJoining") && <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs">{r.target_closing_date || "—"}</td>}
                     {isVisible("progress") && (
                       <td className="px-4 py-3 w-28">
-                        <div className="h-1.5 w-full bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden" title="Applications received vs. openings">
+                        <div className="h-1.5 w-full bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden" title={`Progress: ${calculateRequisitionProgress(r)}%`}>
                           <div
-                            className="h-full bg-brand-500 rounded-full"
-                            style={{ width: `${Math.min(100, ((r.candidates_count ?? 0) / Math.max(1, r.openings)) * 100)}%` }}
+                            className="h-full bg-brand-500 rounded-full transition-all duration-300"
+                            style={{ width: `${calculateRequisitionProgress(r)}%` }}
                           />
                         </div>
                       </td>

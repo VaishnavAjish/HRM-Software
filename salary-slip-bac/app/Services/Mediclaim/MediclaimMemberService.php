@@ -258,10 +258,12 @@ class MediclaimMemberService
                 // Spouse overlap: the policy covers exactly one active spouse
                 // at a time. A same-slot addition/update that would leave two
                 // simultaneously-active spouse rows is rejected here.
-                if ($member->relationship_type === 'spouse') {
+                $category = MediclaimMember::categoryForRelationship($member->relationship_type);
+
+                if ($category === 'spouse') {
                     $overlap = MediclaimMember::query()
                         ->where('enrollment_id', $enrollment->id)
-                        ->where('relationship_type', 'spouse')
+                        ->whereIn('relationship_type', ['spouse', 'wife', 'husband'])
                         ->where('status', 'active')
                         ->when($member->exists, fn ($q) => $q->where('id', '!=', $member->id))
                         ->exists();
@@ -276,7 +278,7 @@ class MediclaimMemberService
                 // child is not yet a DB row, so a count of existing active
                 // children would otherwise be one short of what adding this
                 // one would actually produce.
-                if ($locked->request_type === 'add' && $member->relationship_type === 'child' && $policyVersion) {
+                if ($locked->request_type === 'add' && $category === 'child' && $policyVersion) {
                     $maxChildren = (int) ($policyVersion->rules['max_covered_children'] ?? PHP_INT_MAX);
                     $existingChildren = $this->eligibility->countActiveChildren((int) $locked->employee_user_id, $effectiveFrom);
 

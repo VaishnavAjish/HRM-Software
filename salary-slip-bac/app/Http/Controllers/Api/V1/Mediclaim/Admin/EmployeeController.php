@@ -154,7 +154,7 @@ class EmployeeController extends Controller
         $members = MediclaimMember::query()
             ->where('employee_user_id', $employee)
             ->whereIn('status', ['active', 'inactive'])
-            ->orderByRaw("CASE relationship_type WHEN 'self' THEN 0 WHEN 'spouse' THEN 1 WHEN 'child' THEN 2 ELSE 3 END")
+            ->orderByRaw("CASE relationship_type WHEN 'self' THEN 0 WHEN 'spouse' THEN 1 WHEN 'wife' THEN 1 WHEN 'husband' THEN 1 WHEN 'child' THEN 2 WHEN 'son' THEN 2 WHEN 'daughter' THEN 2 WHEN 'mother' THEN 3 WHEN 'father' THEN 3 WHEN 'parent' THEN 3 ELSE 4 END")
             ->orderBy('full_name')
             ->get();
 

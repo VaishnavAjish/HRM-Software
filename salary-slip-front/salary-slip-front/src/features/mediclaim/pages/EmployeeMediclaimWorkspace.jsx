@@ -68,17 +68,7 @@ const TABS = [
 const ONBOARDING_TAB_KEYS = ["rulebook", "family"];
 
 function WorkspaceHeader() {
-  return (
-    <div className="flex items-center gap-3">
-      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-600 shadow-sm shadow-brand-600/30">
-        <ShieldCheck size={18} className="text-white" />
-      </div>
-      <div>
-        <h1 className="text-lg font-bold text-gray-900 dark:text-white">Mediclaim</h1>
-        <p className="text-xs text-gray-400">Coverage, family members, cards, hospitals and claim history</p>
-      </div>
-    </div>
-  );
+  return null;
 }
 
 function WaitingPeriodLock({ eligibility }) {

@@ -147,7 +147,7 @@ class JobRequisitionApprovalService
         return DB::transaction(function () use ($requisition, $actor, $directorId, $comment) {
             $locked = JobRequisition::query()->lockForUpdate()->findOrFail($requisition->id);
 
-            if ($locked->status !== 'pending_hr_review' || ! $locked->current_approval_cycle_id) {
+            if (! in_array($locked->status, ['pending_hr_review', 'returned_to_hr'], true) || ! $locked->current_approval_cycle_id) {
                 throw ValidationException::withMessages(['status' => 'This requisition is not awaiting HR Manager review.']);
             }
 
@@ -170,9 +170,9 @@ class JobRequisitionApprovalService
 
             $hrStep = $cycle->steps()
                 ->where('step_type', JobRequisitionApprovalStep::TYPE_HR_MANAGER)
-                ->where('status', JobRequisitionApprovalStep::STATUS_PENDING)
+                ->whereIn('status', [JobRequisitionApprovalStep::STATUS_PENDING, JobRequisitionApprovalStep::STATUS_RETURNED])
                 ->lockForUpdate()
-                ->firstOrFail();
+                ->first();
 
             $hrStep->update([
                 'status' => JobRequisitionApprovalStep::STATUS_APPROVED,
@@ -288,7 +288,9 @@ class JobRequisitionApprovalService
             }
 
             $cycle = JobRequisitionApprovalCycle::query()->lockForUpdate()->findOrFail($locked->current_approval_cycle_id);
-            $this->assertIndependentReviewer($locked, $cycle, $actor, JobRequisitionApprovalStep::TYPE_HR_MANAGER);
+            if ($decision === 'approved') {
+                $this->assertIndependentReviewer($locked, $cycle, $actor, JobRequisitionApprovalStep::TYPE_HR_MANAGER);
+            }
             $directorStep = $cycle->steps()
                 ->where('step_type', JobRequisitionApprovalStep::TYPE_DIRECTOR)
                 ->where('status', JobRequisitionApprovalStep::STATUS_PENDING)
@@ -369,9 +371,9 @@ class JobRequisitionApprovalService
 
             $hrStep = $cycle->steps()
                 ->where('step_type', JobRequisitionApprovalStep::TYPE_HR_MANAGER)
-                ->where('status', JobRequisitionApprovalStep::STATUS_PENDING)
+                ->whereIn('status', [JobRequisitionApprovalStep::STATUS_PENDING, JobRequisitionApprovalStep::STATUS_RETURNED])
                 ->lockForUpdate()
-                ->firstOrFail();
+                ->first();
 
             $hrStep->update([
                 'status' => JobRequisitionApprovalStep::STATUS_APPROVED,
@@ -516,6 +518,10 @@ class JobRequisitionApprovalService
 
     private function assertIndependentReviewer(JobRequisition $requisition, JobRequisitionApprovalCycle $cycle, User $actor, string $otherStepType): void
     {
+        if ($actor->isSuperAdmin()) {
+            return;
+        }
+
         $actorId = (int) $actor->id;
 
         if (in_array($actorId, [(int) $requisition->requested_by, (int) $cycle->submitted_by], true)) {

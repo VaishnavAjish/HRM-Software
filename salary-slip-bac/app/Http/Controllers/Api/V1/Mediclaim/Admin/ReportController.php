@@ -750,8 +750,9 @@ class ReportController extends Controller
             $rules = $member->enrollment?->policyVersion?->rules ?? [];
             $companyCode = $member->enrollment?->company_code;
 
-            if (in_array($member->relationship_type, ['child', 'parent'], true) && $member->date_of_birth) {
-                $maxAgeKey = $member->relationship_type === 'child' ? 'child_max_age_years' : 'parent_max_age_years';
+            $category = MediclaimMember::categoryForRelationship($member->relationship_type);
+            if (in_array($category, ['child', 'parent'], true) && $member->date_of_birth) {
+                $maxAgeKey = $category === 'child' ? 'child_max_age_years' : 'parent_max_age_years';
                 $maxAge = $rules[$maxAgeKey] ?? null;
 
                 if ($maxAge !== null) {
