@@ -223,6 +223,39 @@ class User extends Authenticatable implements JWTSubject
             return;
         }
 
+        // The profile form re-posts the (unmasked) Aadhaar number on every
+        // save, including ones that have nothing to do with it — e.g. just
+        // updating a photo. Re-encrypting unconditionally here produced a
+        // brand-new ciphertext every time (AES is randomised per call) even
+        // when the digits hadn't changed, which made `encrypted_aadhaar_number`
+        // dirty on every single save. Eloquent's dirty-check for an
+        // `'encrypted'` cast can't compare two ciphertexts as strings (they'd
+        // never match even for identical plaintext), so it decrypts *both*
+        // sides — including the untouched original still sitting in the
+        // column — to compare. Any account whose stored value was encrypted
+        // under a since-rotated APP_KEY then throws `DecryptException: The
+        // MAC is invalid.` on every profile save, not just one that actually
+        // touches Aadhaar.
+        //
+        // The only signal reliable enough to gate this on is the plaintext
+        // `aadhar_card_no` column itself — it is written unconditionally two
+        // lines up on every save regardless of the encrypted mirror's health,
+        // so (unlike `aadhaar_secure_reference`, which can itself be null —
+        // e.g. written back when AADHAAR_REFERENCE_SECRET was unset) it is
+        // essentially always available to compare against. If the resubmitted
+        // number matches what was already on file, the encrypted mirror is
+        // left completely untouched, so its raw ciphertext stays
+        // byte-identical to `$original` and Eloquent's fast `===` check short
+        // -circuits the dirty-check before it would ever need to decrypt
+        // anything.
+        $oldDigits = \App\Support\AadhaarReference::normalise(
+            (string) $this->getRawOriginal('aadhar_card_no')
+        );
+
+        if ($oldDigits !== '' && $oldDigits === $digits && $this->getRawOriginal('encrypted_aadhaar_number') !== null) {
+            return;
+        }
+
         $this->attributes['encrypted_aadhaar_number'] = $this->castAttributeAsEncryptedString(
             'encrypted_aadhaar_number',
             $digits

@@ -125,6 +125,61 @@ class AadhaarAtRestTest extends TestCase
     }
 
     #[Test]
+    public function resubmitting_the_same_number_does_not_touch_an_undecryptable_stored_ciphertext(): void
+    {
+        // Reproduces the live bug: the profile form re-posts the Aadhaar
+        // number on every save, including a save that's only actually
+        // changing something unrelated (e.g. the photo). Re-encrypting an
+        // unchanged number unconditionally produced a brand-new ciphertext
+        // every time (AES is randomised per call), which made
+        // `encrypted_aadhaar_number` dirty even though nothing meaningful
+        // changed — and Eloquent's dirty-check for an `'encrypted'` cast
+        // resolves that by decrypting BOTH sides, including the untouched
+        // original still sitting in the column. Any account whose stored
+        // ciphertext can no longer be decrypted (e.g. APP_KEY was rotated
+        // after it was written) then threw `DecryptException: The MAC is
+        // invalid.` on every single profile save, not just an Aadhaar change.
+        $user = $this->makeUser(['aadhar_card_no' => self::AADHAAR])->fresh();
+
+        // Simulate a stored ciphertext that can no longer be decrypted. Also
+        // null out aadhaar_secure_reference — real accounts can have this
+        // null (e.g. it was written back when AADHAAR_REFERENCE_SECRET was
+        // unset), so the fix must not rely on that hash being present; only
+        // the always-written plaintext aadhar_card_no column may be relied on.
+        \DB::table('users')->where('id', $user->id)->update([
+            'encrypted_aadhaar_number' => 'not-a-real-ciphertext',
+            'aadhaar_secure_reference' => null,
+        ]);
+
+        $user = $user->fresh();
+
+        // Must not throw — this is the exact crash the bug report showed.
+        $user->update(['aadhar_card_no' => self::AADHAAR, 'photo' => 'photos/new.jpg']);
+
+        $this->assertSame('photos/new.jpg', $user->fresh()->photo);
+        // Untouched: proves we skipped the rewrite rather than happening to
+        // re-encrypt to the same corrupted placeholder.
+        $this->assertSame(
+            'not-a-real-ciphertext',
+            \DB::table('users')->where('id', $user->id)->value('encrypted_aadhaar_number')
+        );
+    }
+
+    #[Test]
+    public function a_genuinely_different_number_still_overwrites_the_stored_value(): void
+    {
+        $user = $this->makeUser(['aadhar_card_no' => self::AADHAAR])->fresh();
+        $originalReference = $user->aadhaar_secure_reference;
+
+        $user->update(['aadhar_card_no' => '987654321098']);
+
+        $fresh = $user->fresh();
+        $this->assertSame('987654321098', $fresh->encrypted_aadhaar_number);
+        $this->assertSame('1098', $fresh->aadhaar_last_four);
+        $this->assertNotSame($originalReference, $fresh->aadhaar_secure_reference);
+    }
+
+    #[Test]
     public function a_write_still_succeeds_where_the_columns_do_not_exist(): void
     {
         // Production's actual shape. The migration that adds the three columns

@@ -326,15 +326,15 @@ export default function AttendanceView() {
   const filteredRows = useMemo(() => {
     return processedRows.filter((row) => {
       // Search text query
-      const q = searchQuery.toLowerCase().trim();
+      const q = String(searchQuery || "").toLowerCase().trim();
       const matchesSearch = !q ||
-        (row.name || "").toLowerCase().includes(q) ||
-        (row.emp_code || "").toLowerCase().includes(q) ||
-        (row.punching_no ? String(row.punching_no).toLowerCase().includes(q) : false) ||
-        (row.form_no ? String(row.form_no).toLowerCase().includes(q) : false) ||
-        (row.id ? String(row.id).toLowerCase().includes(q) : false) ||
-        (row.department || "").toLowerCase().includes(q) ||
-        (row.shiftName || "").toLowerCase().includes(q);
+        String(row.name || "").toLowerCase().includes(q) ||
+        String(row.emp_code || "").toLowerCase().includes(q) ||
+        String(row.punching_no || "").toLowerCase().includes(q) ||
+        String(row.form_no || "").toLowerCase().includes(q) ||
+        String(row.id || "").toLowerCase().includes(q) ||
+        String(row.department || "").toLowerCase().includes(q) ||
+        String(row.shiftName || "").toLowerCase().includes(q);
 
       // Department filter
       const matchesDept = !selectedDepartment || row.department === selectedDepartment;
@@ -345,10 +345,12 @@ export default function AttendanceView() {
 
       return matchesSearch && matchesDept && matchesShift && matchesStatus;
     }).sort((a, b) => {
-      let valA = a[sortField] || "";
-      let valB = b[sortField] || "";
-      if (typeof valA === "string") valA = valA.toLowerCase();
-      if (typeof valB === "string") valB = valB.toLowerCase();
+      let valA = a[sortField] ?? "";
+      let valB = b[sortField] ?? "";
+      if (typeof valA !== "string") valA = String(valA);
+      if (typeof valB !== "string") valB = String(valB);
+      valA = valA.toLowerCase();
+      valB = valB.toLowerCase();
 
       if (valA < valB) return sortDirection === "asc" ? -1 : 1;
       if (valA > valB) return sortDirection === "asc" ? 1 : -1;

@@ -58,11 +58,11 @@ trait RespondsWithEnvelope
      * the query before `find()`/`first()` rather than loading the row and
      * then checking `if (!authorized) abort(403)`.
      */
-    protected function missing(string $message = 'Not found.'): JsonResponse
+    protected function missing(string $message = 'Not found.', string $code = 'NOT_FOUND'): JsonResponse
     {
         return response()->json([
             'success' => false,
-            'error' => ['code' => 'NOT_FOUND', 'message' => $message],
+            'error' => ['code' => $code, 'message' => $message],
         ], 404);
     }
 }

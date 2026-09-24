@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1\Mediclaim;
 use App\Http\Controllers\Api\V1\Mediclaim\Concerns\RespondsWithEnvelope;
 use App\Http\Controllers\Controller;
 use App\Models\Mediclaim\MediclaimHospital;
+use App\Models\User;
 use App\Services\Mediclaim\MediclaimMemberService;
 use App\Services\Mediclaim\PolicyEligibilityService;
 use Illuminate\Http\JsonResponse;
@@ -90,7 +91,7 @@ class MyCoverageController extends Controller
         $enrollment = $this->eligibility->resolveOrCreateEnrollment($actor);
 
         if (! $enrollment) {
-            return $this->missing('No active Mediclaim enrollment was found for this employee.');
+            return $this->enrollmentMissingResponse($actor);
         }
 
         if (! $enrollment->rule_book_acknowledged_at) {
@@ -107,7 +108,7 @@ class MyCoverageController extends Controller
         $enrollment = $this->eligibility->resolveOrCreateEnrollment($actor);
 
         if (! $enrollment) {
-            return $this->missing('No active Mediclaim enrollment was found for this employee.');
+            return $this->enrollmentMissingResponse($actor);
         }
 
         if (! $enrollment->rule_book_acknowledged_at) {
@@ -120,6 +121,49 @@ class MyCoverageController extends Controller
         }
 
         return $this->ok(['onboarding' => $this->onboardingState($enrollment)]);
+    }
+
+    /**
+     * `resolveOrCreateEnrollment()` returns null for exactly two reasons —
+     * the employee hasn't cleared the waiting period yet, or their company
+     * has no active `MediclaimPolicyVersion` to enroll them under — and the
+     * two need very different responses. Collapsing both into one generic
+     * "no enrollment was found" message (the previous behavior) made a
+     * company-wide policy-setup gap look like a single employee's missing
+     * data, which sent support hunting through the wrong system. Re-deriving
+     * `waitingPeriodStatus()` here (cheap — no enrollment row involved) lets
+     * us tell the two apart and point at the actual fix in each case.
+     */
+    private function enrollmentMissingResponse(User $actor): JsonResponse
+    {
+        $status = $this->eligibility->waitingPeriodStatus($actor);
+
+        if (! $status['eligible']) {
+            if (($status['reason'] ?? null) === 'missing_joining_date') {
+                return $this->missing(
+                    'Your joining date isn\'t on file yet, so Mediclaim eligibility can\'t be determined — please ask HR to add it to your profile.',
+                    'MEDICLAIM_JOINING_DATE_MISSING'
+                );
+            }
+
+            return $this->missing(
+                sprintf(
+                    'Mediclaim becomes available %d day(s) from now, on %s (3 months after your joining date).',
+                    $status['days_remaining'],
+                    $status['eligible_from']
+                ),
+                'MEDICLAIM_NOT_YET_ELIGIBLE'
+            );
+        }
+
+        // Eligible by tenure, but no active policy version exists for this
+        // employee's company (or at all) — a policy-setup gap, not a
+        // per-employee one. Fixed by publishing/activating a policy version
+        // for the company, not by anything scoped to this employee.
+        return $this->missing(
+            'Your company\'s Mediclaim policy hasn\'t been set up yet. Please contact HR/Admin to get it configured — this isn\'t something specific to your account.',
+            'MEDICLAIM_POLICY_NOT_CONFIGURED'
+        );
     }
 
     /** @param  \App\Models\Mediclaim\MediclaimEnrollment|null  $enrollment */
