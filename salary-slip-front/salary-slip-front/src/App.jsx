@@ -363,13 +363,12 @@ function AppRoutes() {
             </ProtectedRoute>
           }
         />
-        {/* Attendance Engine Rebuild -- new, additive route. The permission
-            code (attendance.daily.read) is separate from the legacy page's
-            ui.admin.attendance.view, per the new engine's own migration. */}
+        {/* Monthly View reads the same /attendance/grid data as the legacy
+            page above, so it shares that page's permission code. */}
         <Route
           path="attendance/monthly"
           element={
-            <ProtectedRoute requiredRole="admin" requiredPermission="attendance.daily.read">
+            <ProtectedRoute requiredRole="admin" requiredPermission="ui.admin.attendance.view">
               <AttendanceMonthlyView />
             </ProtectedRoute>
           }

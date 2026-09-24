@@ -494,24 +494,7 @@ export default function HRManagerTab({ departments = [], people = [], openRequis
                           {r.status === "pending_approval" && can("ui.hr.hiring.requisition_withdraw") && (
                           <button title="Withdraw to draft" onClick={() => withdraw(r.id)} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"><RotateCcw size={14} /></button>
                         )}
-                        {isHrManagerView && r.status === "approved" && can("ui.hr.hiring.requisition_publish") && (
-                            <button title="Post" onClick={() => publish(r.id)} className="p-1.5 rounded-lg text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20"><Send size={14} /></button>
-                          )}
-                        {isHrManagerView && r.status === "approved" && can("ui.hr.hiring.requisition_publish") && (
-                            <button
-                              title={r.published_to_indeed ? "Published on Indeed" : "Publish to Indeed"}
-                            onClick={() => publishToIndeed(r)}
-                            disabled={publishingIndeedId === r.id}
-                            className={`px-2 py-1 rounded-md text-xs font-bold flex items-center gap-1 transition-colors ${
-                              r.published_to_indeed
-                                ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
-                                : "bg-blue-600 text-white hover:bg-blue-700 shadow-xs"
-                            }`}
-                          >
-                            <span className="font-black">Indeed</span>
-                            {publishingIndeedId === r.id ? "..." : (r.published_to_indeed ? "✓" : "Post")}
-                          </button>
-                        )}
+                        
                           {["draft", "rejected", "pending_approval", "pending_hr_review", "approved", "posted"].includes(r.status) && <button title="Edit" onClick={() => openEdit(r)} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"><Pencil size={14} /></button>}
                         <button title="Duplicate" onClick={() => duplicate(r)} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"><Copy size={14} /></button>
                         {!["closed", "cancelled", "pending_approval"].includes(r.status) && (

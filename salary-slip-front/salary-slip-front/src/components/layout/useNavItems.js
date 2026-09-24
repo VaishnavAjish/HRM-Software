@@ -73,9 +73,10 @@ function getAdminNav(companyId, user, isAllCompanies, isModuleAvailable = () => 
       icon: Calendar,
       subItems: [
         { to: "/admin/attendance", label: "View Attendance", end: true },
-        // Attendance Engine Rebuild -- additive nav entry, own permission
-        // code, next to the existing "View Attendance" entry above.
-        ...(hasAccess("attendance.daily.read") ? [{ to: "/admin/attendance/monthly", label: "Monthly View (New)" }] : []),
+        // Monthly View reads the same /attendance/grid data (and permission)
+        // as "View Attendance" above, so it's gated by canPage("attendance")
+        // only -- no separate permission code needed.
+        { to: "/admin/attendance/monthly", label: "Monthly View" },
         ...(hasAccess("attendance.punch.read") ? [{ to: "/admin/attendance/raw-punches", label: "Raw Punches & Devices (New)" }] : []),
         ...(hasAccess("attendance.report.read") ? [{ to: "/admin/attendance/reports", label: "Reports & Dashboard (New)" }] : []),
         ...(hasAccess("attendance.rule.read") ? [{ to: "/admin/attendance/rules", label: "Rule Management (New)" }] : []),
