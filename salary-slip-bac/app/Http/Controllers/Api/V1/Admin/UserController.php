@@ -411,7 +411,13 @@ class UserController extends Controller
             'reason' => ['nullable', 'string', 'max:1000'],
         ]);
 
+        /** @var User $actor */
         $actor = auth('api')->user();
+
+        if (! $actor instanceof User) {
+            return $this->error('UNAUTHENTICATED', 'Unauthenticated.', 401);
+        }
+
         $user = User::query()->find($id);
 
         if (! $user) {
