@@ -990,6 +990,33 @@ class UserController extends Controller
             ],
         ]);
     }
+        public function bulkProfileUpdateHistory(Request $request)
+    {
+        $query = \App\Models\BulkProfileUpdateHistory::query();
+
+        if ($request->filled('company_code')) {
+            $query->where('company_code', $request->query('company_code'));
+        }
+
+        $records = $query->orderByDesc('id')->limit(50)->get()->map(function ($row) {
+            return [
+                'id' => $row->batch_id,
+                'timestamp' => $row->created_at->toISOString(),
+                'company' => $row->company_code ?: 'All',
+                'actor' => $row->actor_name ?: ($row->actor?->name ?? 'Admin'),
+                'updatedEmployees' => $row->updated_employees,
+                'totalFieldsUpdated' => $row->total_fields_updated,
+                'skippedErrors' => $row->skipped_errors,
+                'changes' => $row->changes ?? [],
+            ];
+        });
+
+        return response()->json([
+            'success' => true,
+            'history' => $records,
+        ]);
+    }
+
     public function bulkProfileUpdate(Request $request)
     {
         $data = $request->validate([
@@ -1073,6 +1100,22 @@ class UserController extends Controller
                 $user->save();
                 $updatedCount++;
             }
+        }
+
+        $companyCode = $request->input('company_code') ?? $request->input('company') ?? 'Nidhi Impex';
+        $changesLog = $request->input('changes') ?? $request->input('changes_log') ?? [];
+
+        if (! empty($changesLog) || $updatedCount > 0) {
+            \App\Models\BulkProfileUpdateHistory::create([
+                'batch_id' => 'batch-' . time() . '-' . rand(100, 999),
+                'company_code' => $companyCode,
+                'actor_id' => $actor->id,
+                'actor_name' => $actor->name,
+                'updated_employees' => $updatedCount,
+                'total_fields_updated' => count($changesLog),
+                'skipped_errors' => count($errors),
+                'changes' => $changesLog,
+            ]);
         }
 
         \Illuminate\Support\Facades\Log::info('Bulk employee profile update performed', [

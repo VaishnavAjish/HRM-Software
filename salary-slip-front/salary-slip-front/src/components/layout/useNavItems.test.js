@@ -49,7 +49,7 @@ describe("buildEmployeeNav", () => {
   });
 
   it("adds Mediclaim under the Statutory & Benefits group when the module is available", () => {
-    const nav = buildEmployeeNav(() => true);
+    const nav = buildEmployeeNav(() => true, true);
     const tds = nav.find((item) => item.label === "Statutory & Benefits");
 
     expect(tds.subItems).toEqual([
@@ -59,7 +59,7 @@ describe("buildEmployeeNav", () => {
   });
 
   it("leaves every other employee nav entry unchanged", () => {
-    const nav = buildEmployeeNav(() => true);
+    const nav = buildEmployeeNav(() => true, true);
 
     expect(nav.map((item) => item.to || item.label)).toEqual([
       "/employee",
@@ -73,7 +73,7 @@ describe("buildEmployeeNav", () => {
   });
 
   it("composes with decorateNavigation the same way the admin nav does", () => {
-    const nav = buildEmployeeNav(() => true);
+    const nav = buildEmployeeNav(() => true, true);
     const states = { "/employee/tds/mediclaim": "unassigned" };
 
     const decorated = decorateNavigation(nav, (path) => states[path] ?? "allow");

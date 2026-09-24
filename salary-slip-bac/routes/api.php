@@ -361,6 +361,8 @@ Route::middleware('jwt.auth')->group(function () {
             ->whereNumber('id')->middleware('permission:admin.user.assign_permission');
         Route::post('{id}/sync-employee', [V1AdminUserController::class, 'syncEmployee'])
             ->whereNumber('id')->middleware('permission:admin.user.update');
+        Route::get('bulk-profile-update-history', [V1AdminUserController::class, 'bulkProfileUpdateHistory'])
+            ->middleware(['throttle:30,1', 'permission:admin.user.read']);
         Route::post('bulk-profile-update', [V1AdminUserController::class, 'bulkProfileUpdate'])
             ->middleware(['throttle:30,1', 'permission:admin.user.update']);
     });

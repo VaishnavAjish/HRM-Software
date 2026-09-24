@@ -197,19 +197,26 @@ function getAdminNav(companyId, user, isAllCompanies, isModuleAvailable = () => 
  * Form16 stays unconditional inside the group, matching its existing route
  * convention (no permission prop, resolved via canRoute()).
  */
-export function buildEmployeeNav(isModuleAvailable, isManager = false) {
+export function buildEmployeeNav(isModuleAvailable, isManager = false, user = null) {
+  const userDesig = String(user?.designation || "").trim().toLowerCase();
+  const isManagerDesignation = isManager || userDesig.includes("manager");
+
   return [
     { to: "/employee", label: "Dashboard", icon: LayoutDashboard, end: true },
-    {
-      label: "Department & Management",
-      icon: Users,
-      subItems: [
-        { to: "/employee/manager", label: "Department" },
-        { to: "/employee/recruitment", label: "Requisitions" },
-        { to: "/employee/attendance", label: "Attendance" },
-        { to: "/employee/mediclaim-details", label: "Employee Mediclaim Details" },
-      ],
-    },
+    ...(isManagerDesignation
+      ? [
+          {
+            label: "Department & Management",
+            icon: Users,
+            subItems: [
+              { to: "/employee/manager", label: "Department" },
+              { to: "/employee/recruitment", label: "Requisitions" },
+              { to: "/employee/attendance", label: "Attendance" },
+              { to: "/employee/mediclaim-details", label: "Employee Mediclaim Details" },
+            ],
+          },
+        ]
+      : []),
     { to: "/employee/payslips", label: "Payslips", icon: FileText },
     {
       label: "Statutory & Benefits",
@@ -247,18 +254,21 @@ export function useNavItems() {
       setIsManager(true);
       return;
     }
+    const userDesig = String(user?.designation || "").trim().toLowerCase();
+    const hasManagerDesignation = userDesig.includes("manager");
+
     if (user?.accessToken) {
       salaryApi.checkManagerStatus(user.accessToken, user.tokenType || "Bearer")
         .then(res => {
-          setIsManager(Boolean(res?.is_manager));
+          setIsManager(Boolean(res?.is_manager) || hasManagerDesignation);
         })
         .catch(() => {
-          setIsManager(false);
+          setIsManager(hasManagerDesignation);
         });
     } else {
-      setIsManager(false);
+      setIsManager(hasManagerDesignation);
     }
-  }, [user?.accessToken, user?.tokenType, user?.role]);
+  }, [user?.accessToken, user?.tokenType, user?.role, user?.designation]);
 
   const { companyId, isAllCompanies } = useCompany();
   const { isAvailable: isModuleAvailable } = useModuleAvailability();
@@ -302,7 +312,7 @@ export function useNavItems() {
      * rendered whatever the Permission Matrix said. Each page now declares its
      * route in PermissionRegistry, which is what makes the filter real.
      */
-    const empNav = buildEmployeeNav(isModuleAvailable, isManager)
+    const empNav = buildEmployeeNav(isModuleAvailable, isManager, user)
       .filter(item => item.label !== "My Tickets" || isModuleAvailable("tickets"));
 
     const isComplete = isEmployeeProfileComplete(user);

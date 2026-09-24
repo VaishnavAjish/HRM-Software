@@ -119,7 +119,7 @@ class EmployeeController extends Controller
             $rows = $rows->filter(fn (array $row) => in_array($row['mediclaimStatus'], $wanted, true))->values();
         }
 
-        $perPage = min((int) $request->query('per_page', 25), 200);
+        $perPage = min((int) $request->query('per_page', 25), 2000);
         $page = max((int) $request->query('page', 1), 1);
         $total = $rows->count();
         $pageItems = $rows->forPage($page, $perPage)->values();
@@ -136,7 +136,11 @@ class EmployeeController extends Controller
 
     public function show(Request $request, int $employee): JsonResponse
     {
-        $user = $this->baseEmployeeQuery($request)->where('id', $employee)->first();
+        $user = User::query()
+            ->where('is_deleted', 0)
+            ->where('id', $employee)
+            ->select(['id', 'name', 'email', 'emp_code', 'company_code', 'unit', 'department', 'designation', 'joining_date', 'dob', 'gender', 'mobile_number', 'photo'])
+            ->first();
 
         if (! $user) {
             return $this->missing('Employee not found.');
@@ -229,7 +233,9 @@ class EmployeeController extends Controller
             })
             ->select(['id', 'name', 'email', 'emp_code', 'company_code', 'unit', 'department', 'designation', 'joining_date', 'dob', 'gender', 'mobile_number', 'photo']);
 
-        $this->applyCompanyScope($query, $request);
+        if (! $request->boolean('bypass_company_scope')) {
+            $this->applyCompanyScope($query, $request);
+        }
 
         return $query;
     }
@@ -261,11 +267,20 @@ class EmployeeController extends Controller
 
         return $users->map(function (User $user) use ($enrollments, $memberCounts) {
             $eligibility = $this->eligibility->waitingPeriodStatus($user);
-            $onboardingCompleted = (bool) $enrollments->get($user->id)?->onboarding_completed_at;
+            $enrollment = $enrollments->get($user->id);
+            $onboardingCompleted = (bool) $enrollment?->onboarding_completed_at;
 
             $status = ! $eligibility['eligible']
                 ? 'not_eligible'
                 : ($onboardingCompleted ? 'completed' : 'pending');
+
+            $floater = ($enrollment && $enrollment->policyVersion)
+                ? $this->eligibility->floaterUsage($enrollment, $enrollment->policyVersion)
+                : [
+                    'limit' => 300000.0,
+                    'used' => 0.0,
+                    'remaining' => 300000.0,
+                ];
 
             return [
                 'id' => $user->id,
@@ -282,7 +297,8 @@ class EmployeeController extends Controller
                 'mobileNumber' => $user->mobile_number,
                 'photo' => $user->photo,
                 'eligibility' => $eligibility,
-                'enrollment' => $enrollments->get($user->id),
+                'enrollment' => $enrollment,
+                'floater' => $floater,
                 'activeMembersCount' => (int) ($memberCounts->get($user->id) ?? 0),
                 'mediclaimStatus' => $status,
             ];

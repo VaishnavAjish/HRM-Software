@@ -138,9 +138,9 @@ export default function CardDesignSettingsTab() {
     setFieldToggles((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const handleSave = () => {
-    const allStored = getStoredCardSettings();
-    allStored[selectedCompany] = {
+  const handleSave = async () => {
+    const companyPayload = {
+      company_code: selectedCompany,
       name: formData.name,
       legalName: formData.legalName,
       logo: formData.logo,
@@ -165,12 +165,30 @@ export default function CardDesignSettingsTab() {
       fieldToggles: { ...fieldToggles },
     };
 
+    const allStored = getStoredCardSettings();
+    allStored[selectedCompany] = companyPayload;
     saveStoredCardSettings(allStored);
-    toast.success(`ID Card settings & toggles for ${baseTheme.name} saved successfully!`);
+
+    try {
+      if (user?.accessToken) {
+        await mediclaimApi.saveCardSettings(companyPayload, user.accessToken, user.tokenType);
+      }
+      toast.success(`ID Card settings for ${baseTheme.name} saved to database successfully!`);
+    } catch (e) {
+      console.error("Failed to save to database:", e);
+      toast.success(`Saved locally. (${e?.message || "DB sync offline"})`);
+    }
   };
 
-  const handleReset = () => {
+  const handleReset = async () => {
     resetCardSettings(selectedCompany);
+    if (user?.accessToken) {
+      try {
+        await mediclaimApi.resetCardSettings(selectedCompany, user.accessToken, user.tokenType);
+      } catch (e) {
+        console.error("Failed to reset in DB:", e);
+      }
+    }
     const base = ID_CARD_THEMES[selectedCompany];
     setFormData({
       name: base.name,

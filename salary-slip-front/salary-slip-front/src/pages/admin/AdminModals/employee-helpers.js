@@ -148,7 +148,7 @@ export function mapEmployee(item) {
     companyLabel: getCompanyConfig(item.company_code)?.label || "-",
     unit: item.unit ?? "",
     department: item.department ?? "",
-    positionTitle: item.position_title ?? item.position ?? item.designation ?? "",
+    positionTitle: item.position_title ?? item.position ?? "",
     managerName: item.manager_name ?? item.manager ?? "",
     status: isResigned ? "Resigned" : isPending ? "Pending" : isActive ? "Active" : "Inactive",
     loginRole,
@@ -197,4 +197,16 @@ export function mapEmployee(item) {
         }))
       : undefined,
   };
+}
+
+
+export function getRoleDisplayLabel(item) {
+  if (!item) return "Employee";
+  const roleVal = String(item.role ?? item.loginRole ?? "");
+
+  if (roleVal === "0" || roleVal === "superadmin") return "Super Admin";
+  if (roleVal === "1" || roleVal === "master") return "Master";
+  if (roleVal === "2" || roleVal === "manager") return "Manager";
+  if (roleVal === "4" || roleVal === "agent" || item.type === "agent") return "Agent";
+  return "Employee";
 }

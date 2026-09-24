@@ -47,15 +47,16 @@ function saveStoredReasonsMap(map) {
 }
 
 /**
- * Checks whether an employee record has a deleted/rejected or dummy profile photo.
+ * Every localStorage-backed check below (deleted-set, reasons map) needs to key
+ * off the same identifiers, whether it's handed the flat row or a wrapper like
+ * `{ employee: {...} }` / `{ user: {...} }`. Kept in one place so the four
+ * functions below can never drift into checking different key sets.
  */
-export function isPhotoDeletedOrDummy(u) {
-  if (!u) return true;
+function deriveDummyPhotoKeys(u) {
+  if (!u) return [];
+  if (typeof u === "string" || typeof u === "number") return [String(u)];
   const target = u.employee || u.user || u.profile || u;
-  const rawPhoto = target.photo || target.userPhoto || target.userAvatar || u.photo;
-
-  const set = getStoredDummySet();
-  const keys = [
+  return [
     target.empCode,
     target.emp_code,
     target.id,
@@ -63,37 +64,77 @@ export function isPhotoDeletedOrDummy(u) {
     u.empCode,
     u.emp_code,
     u.id,
-    u.email
+    u.email,
   ].filter(Boolean).map(String);
+}
 
-  const isInDeletedSet = keys.some((key) => set.has(key));
+/**
+ * Storage-only half of clearPhotoDeletedFlag: drops the given keys from the
+ * deleted-set/reasons-map without mutating any object fields. Used to
+ * self-heal a stale flag from a read-only check (isPhotoDeletedOrDummy runs
+ * during render, e.g. one row per grid cell — it must not mutate the record
+ * it was just handed).
+ */
+function forgetDummyPhotoKeys(keys) {
+  if (!keys.length) return;
+  const set = getStoredDummySet();
+  const map = getStoredReasonsMap();
+  let changed = false;
+  keys.forEach((key) => {
+    if (set.delete(key)) changed = true;
+    if (key in map) {
+      delete map[key];
+      changed = true;
+    }
+  });
+  if (changed) {
+    saveStoredDummySet(set);
+    saveStoredReasonsMap(map);
+  }
+}
+
+/**
+ * Checks whether an employee record has a deleted/rejected or dummy profile photo.
+ */
+export function isPhotoDeletedOrDummy(u) {
+  if (!u) return true;
+  const target = u.employee || u.user || u.profile || u;
+  const rawPhoto = target.photo || target.userPhoto || target.userAvatar || u.photo;
 
   // If no photo string or empty string
   if (!rawPhoto || String(rawPhoto).trim() === "") {
     return true;
   }
 
-  // If in localStorage deleted set -> deleted / dummy photo
-  if (isInDeletedSet) {
-    return true;
-  }
-
-  // If explicit photo_deleted / photo_rejected is set on target object AND in deleted set
-  if ((target.photo_deleted || target.photo_rejected || target.is_photo_dummy) && isInDeletedSet) {
-    return true;
-  }
-
-  // If not in deleted set and valid photo URL exists, it is NOT deleted (e.g. newly uploaded)
   const url = getEmployeePhotoUrl(rawPhoto);
-  if (url && String(url).trim() !== "") {
+  const hasResolvableUrl = Boolean(url && String(url).trim() !== "");
+  const serverFlaggedDummy = Boolean(
+    target.photo_deleted || target.photo_rejected || target.is_photo_dummy
+  );
+
+  // The record's own (server-fetched) flags are the freshest signal we have.
+  // If the server says the photo is fine and it actually resolves to a real
+  // URL, treat it as fixed — and self-heal any stale "dummy" flag left behind
+  // in this browser's localStorage from an earlier deletion. Without this,
+  // uploading a brand-new valid photo through any flow other than the
+  // employee's own Profile-page save (the only caller of
+  // clearPhotoDeletedFlag) left the record capped below 100% completion
+  // forever in whichever browser had previously marked it dummy.
+  if (hasResolvableUrl && !serverFlaggedDummy) {
+    forgetDummyPhotoKeys(deriveDummyPhotoKeys(u));
     return false;
   }
 
-  if (target.photo_deleted || target.photo_rejected || target.is_photo_dummy) {
+  if (serverFlaggedDummy) {
     return true;
   }
 
-  return false;
+  // No resolvable URL and no server flag either — fall back to this browser's
+  // locally-remembered deletion state (e.g. an optimistic delete whose
+  // follow-up save hasn't round-tripped through the server yet).
+  const set = getStoredDummySet();
+  const isInDeletedSet = deriveDummyPhotoKeys(u).some((key) => set.has(key));
+  return isInDeletedSet;
 }
 
 /**
@@ -104,16 +145,7 @@ export function getPhotoDeletionReason(u) {
   const target = u.employee || u.user || u.profile || u;
 
   const map = getStoredReasonsMap();
-  const keys = [
-    target.empCode,
-    target.emp_code,
-    target.id,
-    target.email,
-    u.empCode,
-    u.emp_code,
-    u.id,
-    u.email
-  ].filter(Boolean).map(String);
+  const keys = deriveDummyPhotoKeys(u);
 
   for (const key of keys) {
     if (map[key]) return map[key];
@@ -133,13 +165,7 @@ export function markPhotoAsDeleted(u, reason) {
   if (!u) return;
   const set = getStoredDummySet();
   const map = getStoredReasonsMap();
-  const keys = [
-    u?.empCode,
-    u?.emp_code,
-    u?.id,
-    u?.email,
-    typeof u === "string" || typeof u === "number" ? u : null
-  ].filter(Boolean).map(String);
+  const keys = deriveDummyPhotoKeys(u);
 
   const cleanReason = (reason && String(reason).trim()) || "Dummy photo detected / Invalid profile picture";
 
@@ -165,23 +191,7 @@ export function markPhotoAsDeleted(u, reason) {
  */
 export function clearPhotoDeletedFlag(u) {
   if (!u) return;
-  const set = getStoredDummySet();
-  const map = getStoredReasonsMap();
-  const keys = [
-    u?.empCode,
-    u?.emp_code,
-    u?.id,
-    u?.email,
-    typeof u === "string" || typeof u === "number" ? u : null
-  ].filter(Boolean).map(String);
-
-  keys.forEach((key) => {
-    set.delete(key);
-    delete map[key];
-  });
-
-  saveStoredDummySet(set);
-  saveStoredReasonsMap(map);
+  forgetDummyPhotoKeys(deriveDummyPhotoKeys(u));
 
   const targets = [u, u?.employee, u?.user, u?.profile].filter(Boolean);
   targets.forEach((t) => {

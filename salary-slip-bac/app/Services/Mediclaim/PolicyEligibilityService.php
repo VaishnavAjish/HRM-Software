@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Support\MediclaimFinancialYear;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -175,13 +176,25 @@ class PolicyEligibilityService
         $fyStart = MediclaimFinancialYear::start($asOf);
         $fyEnd = MediclaimFinancialYear::end($asOf);
 
-        $limit = (float) ($version->rules['floater_limit_amount'] ?? 0);
+        $limit = (float) ($version->rules['floater_limit_amount'] ?? 300000.0);
+        if ($limit <= 0) {
+            $limit = 300000.0;
+        }
+
         $used = (float) MediclaimClaim::query()
-            ->where('enrollment_id', $enrollment->id)
-            ->whereIn('status', [MediclaimClaim::STATUS_SETTLED, MediclaimClaim::STATUS_CLOSED])
-            ->whereNotNull('total_approved_amount')
+            ->where(function ($q) use ($enrollment) {
+                $q->where('enrollment_id', $enrollment->id)
+                  ->orWhere('employee_user_id', $enrollment->employee_user_id);
+            })
+            ->whereIn('status', [
+                MediclaimClaim::STATUS_APPROVED,
+                MediclaimClaim::STATUS_PARTIALLY_APPROVED,
+                MediclaimClaim::STATUS_SETTLEMENT_PENDING,
+                MediclaimClaim::STATUS_SETTLED,
+                MediclaimClaim::STATUS_CLOSED,
+            ])
             ->whereBetween('submitted_at', [$fyStart, $fyEnd])
-            ->sum('total_approved_amount');
+            ->sum(\DB::raw('COALESCE(total_approved_amount, 0)'));
 
         return [
             'limit' => $limit,
@@ -257,22 +270,83 @@ class PolicyEligibilityService
      * version (not through an enrollment), since a new joiner within the
      * waiting period has no enrollment yet by definition.
      *
-     * @return array{eligible: bool, eligible_from: ?string, days_remaining: int, joining_date: ?string, waiting_period_months: int}
+     * `joining_date` (the real HR field — a plain nullable `string` column,
+     * so it can genuinely be blank) is the ONLY real source of truth here;
+     * `doj`/`date_of_joining`/`date_of_appointment` were dead fallbacks —
+     * none of them are actual columns on `users`, so those `??` branches
+     * never fired.
+     *
+     * This used to fall back to `$employee->created_at` (the moment the
+     * USER ROW was created — a bulk import, a re-sync, an admin fixing an
+     * unrelated field — never the employee's actual join date) whenever
+     * `joining_date` was blank, which silently mis-classified any
+     * long-tenured employee whose row happened to be created/touched
+     * recently as a brand-new joiner (2026-09-24 fix #1). That was then
+     * changed to fail OPEN (already eligible) on a missing `joining_date` —
+     * which fixed that false block, but created the opposite problem on the
+     * live admin dashboard (`Admin\EmployeeController`): `joining_date` is
+     * missing for a lot of real employees, INCLUDING genuinely brand-new
+     * ones HR hasn't back-filled it for yet, so they were all being marked
+     * "already eligible" on day one — silently skipping the waiting period
+     * for exactly the people it exists to gate (2026-09-24 fix #2).
+     *
+     * We genuinely cannot tell "long-tenured, data never filled in" apart
+     * from "brand new, data not filled in yet" without the real date — so
+     * neither "assume eligible" nor "assume not yet eligible" is honest.
+     * This now returns a THIRD, distinct outcome for that case:
+     * `eligible: false` with `reason: 'missing_joining_date'` (no fake
+     * countdown) — access stays gated (the safe default for an unverified
+     * new-joiner insurance benefit) but callers can tell "your joining date
+     * isn't on file, ask HR to add it" apart from the real "N days left"
+     * message, instead of either guessing wrong. This is what makes the
+     * admin dashboard's `not_eligible` bucket meaningful again — HR can now
+     * find and fix these by adding the missing joining date, and the
+     * employee flips to their real status (eligible or genuinely waiting)
+     * the moment it's filled in.
+     *
+     * @return array{eligible: bool, eligible_from: ?string, days_remaining: ?int, joining_date: ?string, waiting_period_months: int, reason: ?string}
      */
     public function waitingPeriodStatus(User $employee, ?Carbon $asOf = null): array
     {
         $asOf ??= Carbon::now();
-        $joiningDate = $employee->joining_date ? Carbon::parse($employee->joining_date) : null;
-        $version = $this->activePolicyVersionForCompany($employee->company_code, $asOf);
-        $months = (int) ($version->rules['eligibility_waiting_period_months'] ?? 0);
 
-        if ($joiningDate === null || $months <= 0) {
+        $rawJoiningDate = $employee->joining_date;
+        $joiningDate = ($rawJoiningDate !== null && trim((string) $rawJoiningDate) !== '')
+            ? Carbon::parse($rawJoiningDate)
+            : null;
+
+        $version = $this->activePolicyVersionForCompany($employee->company_code, $asOf);
+
+        // Standard Mediclaim policy rule: 3 months waiting period from joining date
+        $months = isset($version?->rules['eligibility_waiting_period_months'])
+            ? (int) $version->rules['eligibility_waiting_period_months']
+            : 3;
+
+        if ($joiningDate === null) {
+            Log::warning('Mediclaim waiting-period check: employee has no joining_date on file; eligibility cannot be determined until HR adds it.', [
+                'employee_id' => $employee->id,
+                'emp_code' => $employee->emp_code,
+                'company_code' => $employee->company_code,
+            ]);
+
+            return [
+                'eligible' => false,
+                'eligible_from' => null,
+                'days_remaining' => null,
+                'joining_date' => null,
+                'waiting_period_months' => $months,
+                'reason' => 'missing_joining_date',
+            ];
+        }
+
+        if ($months <= 0) {
             return [
                 'eligible' => true,
-                'eligible_from' => null,
+                'eligible_from' => $joiningDate->toDateString(),
                 'days_remaining' => 0,
-                'joining_date' => $joiningDate?->toDateString(),
-                'waiting_period_months' => $months,
+                'joining_date' => $joiningDate->toDateString(),
+                'waiting_period_months' => 0,
+                'reason' => null,
             ];
         }
 
@@ -285,23 +359,34 @@ class PolicyEligibilityService
             'days_remaining' => $eligible ? 0 : (int) $asOf->copy()->startOfDay()->diffInDays($eligibleFrom->copy()->startOfDay()),
             'joining_date' => $joiningDate->toDateString(),
             'waiting_period_months' => $months,
+            'reason' => $eligible ? null : 'waiting_period',
         ];
     }
 
-    /** Throws a 403 MediclaimException if the employee is still within the waiting period. */
+    /** Throws a 403 MediclaimException if the employee is still within the waiting period (or their joining date is missing). */
     public function assertEligible(User $employee, ?Carbon $asOf = null): void
     {
         $status = $this->waitingPeriodStatus($employee, $asOf);
-        if (! $status['eligible']) {
+
+        if ($status['eligible']) {
+            return;
+        }
+
+        if (($status['reason'] ?? null) === 'missing_joining_date') {
             throw MediclaimException::forbidden(
-                'MEDICLAIM_NOT_YET_ELIGIBLE',
-                sprintf(
-                    'Mediclaim becomes available %d day(s) from now, on %s (3 months after your joining date).',
-                    $status['days_remaining'],
-                    $status['eligible_from']
-                )
+                'MEDICLAIM_JOINING_DATE_MISSING',
+                'Your joining date isn\'t on file yet, so Mediclaim eligibility can\'t be determined — please ask HR to add it to your profile.'
             );
         }
+
+        throw MediclaimException::forbidden(
+            'MEDICLAIM_NOT_YET_ELIGIBLE',
+            sprintf(
+                'Mediclaim becomes available %d day(s) from now, on %s (3 months after your joining date).',
+                $status['days_remaining'],
+                $status['eligible_from']
+            )
+        );
     }
 
     /**
@@ -320,6 +405,11 @@ class PolicyEligibilityService
     {
         $asOf ??= Carbon::now();
 
+        $status = $this->waitingPeriodStatus($employee, $asOf);
+        if (! $status['eligible']) {
+            return null;
+        }
+
         $existing = MediclaimEnrollment::query()
             ->where('employee_user_id', $employee->id)
             ->where('status', 'active')
@@ -330,13 +420,19 @@ class PolicyEligibilityService
             return $existing;
         }
 
-        $status = $this->waitingPeriodStatus($employee, $asOf);
-        if (! $status['eligible']) {
-            return null;
-        }
-
         $version = $this->activePolicyVersionForCompany($employee->company_code, $asOf);
         if (! $version) {
+            // TEMPORARY diagnostic (2026-09-24) — an eligible-by-tenure
+            // employee reported "no active enrollment"; this is the other
+            // way resolveOrCreateEnrollment() can return null (the
+            // waiting-period check itself just passed, so it's not that).
+            // Safe to remove once confirmed which cause it actually is.
+            Log::warning('Mediclaim: employee cleared the waiting period but no active policy version was found for their company.', [
+                'employee_id' => $employee->id,
+                'emp_code' => $employee->emp_code,
+                'company_code' => $employee->company_code,
+            ]);
+
             return null;
         }
 
@@ -354,15 +450,26 @@ class PolicyEligibilityService
 
     private function activePolicyVersionForCompany(?string $companyCode, Carbon $asOf): ?MediclaimPolicyVersion
     {
+        $date = $asOf->toDateString();
         $primaryCompany = $companyCode ? trim(explode(',', $companyCode)[0]) : null;
-        if (! $primaryCompany) {
-            return null;
+
+        if ($primaryCompany) {
+            $version = MediclaimPolicyVersion::query()
+                ->whereHas('policy', function ($q) use ($primaryCompany) {
+                    $q->where(\Illuminate\Support\Facades\DB::raw('LOWER(company_code)'), strtolower($primaryCompany));
+                })
+                ->where('status', 'active')
+                ->where('effective_from', '<=', $date)
+                ->where(fn ($q) => $q->whereNull('effective_to')->orWhere('effective_to', '>=', $date))
+                ->orderByDesc('version_number')
+                ->first();
+
+            if ($version) {
+                return $version;
+            }
         }
 
-        $date = $asOf->toDateString();
-
         return MediclaimPolicyVersion::query()
-            ->whereHas('policy', fn ($q) => $q->where('company_code', $primaryCompany))
             ->where('status', 'active')
             ->where('effective_from', '<=', $date)
             ->where(fn ($q) => $q->whereNull('effective_to')->orWhere('effective_to', '>=', $date))

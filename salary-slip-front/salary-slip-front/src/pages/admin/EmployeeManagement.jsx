@@ -51,6 +51,7 @@ import {
   formatDisplayDate,
   isPasswordValid,
   getEmployeePhotoUrl,
+  getRoleDisplayLabel
 } from "./AdminModals/employee-helpers";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
@@ -158,7 +159,7 @@ function mapEmployee(item) {
     companyLabel: getCompanyConfig(item.company_code)?.label || "-",
     unit: item.unit ?? "",
     department: item.department ?? "",
-    positionTitle: item.position_title ?? item.position ?? item.designation ?? "",
+    positionTitle: item.position_title ?? item.position ?? "",
     managerName: item.manager_name ?? item.manager ?? "",
     status: isResigned ? "Resigned" : isPending ? "Pending" : isActive ? "Active" : "Inactive",
     loginRole,
@@ -1042,7 +1043,7 @@ export default function EmployeeManagement() {
         "ESI No": e.esiNo || "N.A.",
         "Joining Date": formatDisplayDate(e.joiningDate) || "N.A.",
         "Resignation Date": formatDisplayDate(e.resignationDate) || "N.A.",
-        Role: e.loginRole === "superadmin" ? "Super Admin" : "Employee",
+        Role: getRoleDisplayLabel(e),
         Status: e.status,
       }));
 
@@ -1605,16 +1606,14 @@ export default function EmployeeManagement() {
         minWidth: 130,
         hide: isMobile || !visibleColumns.includes("loginRole"),
         filter: "agTextColumnFilter",
-        filterValueGetter: ({ data }) =>
-          data?.loginRole === "superadmin" ? "Super Admin" : "Employee",
-        valueFormatter: ({ value }) =>
-          value === "superadmin" ? "Super Admin" : "Employee",
+        filterValueGetter: ({ data }) => getRoleDisplayLabel(data),
+        valueFormatter: ({ data }) => getRoleDisplayLabel(data),
         cellRenderer: ({ data: emp }) => {
           if (!emp) return null;
 
           return (
             <span className="text-sm text-gray-600 dark:text-gray-300 truncate">
-              {emp.loginRole === "superadmin" ? "Super Admin" : "Employee"}
+              {getRoleDisplayLabel(emp)}
             </span>
           );
         },

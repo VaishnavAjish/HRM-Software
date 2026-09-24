@@ -1235,6 +1235,13 @@ export const adminUserApi = {
     });
   },
 
+  bulkProfileUpdateHistory(companyCode = "", accessToken, tokenType = "Bearer") {
+    const q = companyCode ? `?company_code=${encodeURIComponent(companyCode)}` : "";
+    return apiRequest(`/v1/admin/users/bulk-profile-update-history${q}`, {
+      headers: authHeaders(accessToken, tokenType),
+    });
+  },
+
   bulkProfileUpdate(payload, accessToken, tokenType = "Bearer") {
     return apiRequest("/v1/admin/users/bulk-profile-update", {
       method: "POST", headers: authHeaders(accessToken, tokenType),

@@ -598,7 +598,7 @@ function AppRoutes() {
         <Route path="manager" element={<ManagerSection />} />
         <Route path="recruitment" element={<EmployeeRequisitions />} />
         <Route path="attendance" element={<UnderDevelopmentPage title="Attendance" />} />
-        <Route path="mediclaim-details" element={<UnderDevelopmentPage title="Employee Mediclaim Details" />} />
+        <Route path="mediclaim-details" element={<EmployeeMediclaimDetails />} />
         <Route path="payslips" element={<Payslips />} />
         <Route path="form16" element={<EmployeeForm16 />} />
         <Route path="tds/mediclaim" element={<EmployeeMediclaim />} />
@@ -630,6 +630,7 @@ function AppRoutes() {
 }
 
 import { NotificationProvider } from "./context/NotificationContext";
+import EmployeeMediclaimDetails from "./pages/employee/EmployeeMediclaimDetails";
 
 export default function App() {
   return (

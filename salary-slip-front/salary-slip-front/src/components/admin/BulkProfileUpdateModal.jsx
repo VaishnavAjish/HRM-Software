@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import ExcelJS from "exceljs";
 import {
   X,
@@ -67,6 +67,29 @@ export default function BulkProfileUpdateModal({
   const [expandedBatchId, setExpandedBatchId] = useState(null);
   const [historySearchQuery, setHistorySearchQuery] = useState("");
   const [prevIsOpen, setPrevIsOpen] = useState(isOpen);
+
+  // Fetch history from database on modal open or tab switch
+  useEffect(() => {
+    if (!isOpen) return;
+    const token = currentUser?.accessToken || localStorage.getItem("accessToken") || localStorage.getItem("token") || sessionStorage.getItem("accessToken");
+    const tokenType = currentUser?.tokenType || "Bearer";
+    if (!token) return;
+
+    let cancelled = false;
+    adminUserApi.bulkProfileUpdateHistory("", token, tokenType).then((res) => {
+      if (cancelled) return;
+      if (res && res.history && Array.isArray(res.history)) {
+        setUpdateHistory(res.history);
+        try {
+          localStorage.setItem("bulk_profile_update_history", JSON.stringify(res.history));
+        } catch {}
+      }
+    }).catch((err) => {
+      console.warn("Could not fetch database update history, using local cache:", err);
+    });
+
+    return () => { cancelled = true; };
+  }, [isOpen, currentUser]);
 
   // Adjust state during render when isOpen changes (React recommended pattern)
   if (isOpen !== prevIsOpen) {
@@ -507,8 +530,16 @@ export default function BulkProfileUpdateModal({
 
       const updatesArray = Object.values(updatesMap);
 
+      const changesList = validDiffs.map((d) => ({
+        empCode: d.empCode,
+        empName: d.empName,
+        fieldLabel: d.fieldLabel,
+        oldValue: d.oldValue,
+        newValue: d.newValue,
+      }));
+
       const res = await adminUserApi.bulkProfileUpdate(
-        { updates: updatesArray },
+        { updates: updatesArray, company_code: selectedCompany, changes: changesList },
         accessToken,
         tokenType
       );

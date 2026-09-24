@@ -675,7 +675,12 @@ class UserController extends Controller
 
         $status = $request->status;
         $query = User::where('is_deleted', 0)
-            ->whereNotIn('role', [0, 1, 2]);
+            ->whereNotIn('role', [0, 1, 2])
+            ->whereNotIn('status', [2, '2'])
+            ->where(function ($q) {
+                $q->whereNull('type')
+                  ->orWhereNotIn('type', ['appointment', 'agent', 'pending_employee', 'trial', 'account-master']);
+            });
 
         if ($status !== null && (string) $status === '2') {
             $query->where('type', 'pending_employee')
@@ -775,9 +780,7 @@ class UserController extends Controller
             $data = $employee->attributesToArray();
             $this->enrichEmployeeWithActiveAssignment($employee, $data);
 
-            if (empty($data['designation']) && $this->isDepartmentHead($employee)) {
-                $data['designation'] = 'Manager';
-            }
+            // Preserve employee designation
 
             $full = AadhaarDisclosure::fullFor($employee, $userAuth);
 
@@ -835,9 +838,7 @@ class UserController extends Controller
 
         $empArr = $employee->toArray();
         $this->enrichEmployeeWithActiveAssignment($employee, $empArr);
-        if (empty($empArr['designation']) && $isDeptHead) {
-            $empArr['designation'] = 'Manager';
-        }
+        // Preserve employee designation
 
         $payload = AadhaarDisclosure::attach(
             $empArr,
@@ -3374,7 +3375,12 @@ class UserController extends Controller
         $isAdmin = (int) $userAuth->role === 0 || (int) $userAuth->role === 1 || (int) $userAuth->role === 2 || (bool) $userAuth->getAttribute('is_super_admin');
 
         $query = User::where('is_deleted', 0)
-            ->whereNotIn('role', [0, 1, 2]);
+            ->whereNotIn('role', [0, 1, 2])
+            ->whereNotIn('status', [2, '2'])
+            ->where(function ($q) {
+                $q->whereNull('type')
+                  ->orWhereNotIn('type', ['appointment', 'agent', 'pending_employee', 'trial', 'account-master']);
+            });
 
         if (! $isAdmin) {
             if (empty($subordinateIds)) {

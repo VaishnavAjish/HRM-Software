@@ -141,7 +141,21 @@ export default function ManagerSection() {
           const rawList = Array.isArray(res?.data)
             ? res.data
             : (Array.isArray(res?.data?.data) ? res.data.data : []);
-          const teamData = rawList.map(mapEmployee);
+          
+          // Verify Stage from Employee Master: Only display employees whose Stage is exactly 'Employee'
+          const employeeStageList = rawList.filter((e) => {
+            const status = String(e.status ?? "").trim();
+            const type = String(e.type || e.user_type || "").trim().toLowerCase();
+            const stage = String(e.__stage || e.stage || "").trim().toLowerCase();
+
+            // Exclude non-employee stages (trial, appointment, pending employee)
+            if (stage && stage !== "employee") return false;
+            if (status === "2" || type === "pending_employee" || type === "pending") return false;
+            if (type === "trial" || type === "appointment") return false;
+            return true;
+          });
+
+          const teamData = employeeStageList.map(mapEmployee);
           setTeam({
             key: requestKey,
             employees: teamData,

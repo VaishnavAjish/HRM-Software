@@ -10,7 +10,7 @@ import { mediclaimApi } from "../../../services/mediclaimApi";
 import ClaimsTable from "../../../components/ClaimsTable";
 import MediclaimIdCard from "../../../components/MediclaimIdCard";
 import { getEmployeePhotoUrl } from "../../../../../pages/admin/AdminModals/employee-helpers";
-import { formatClaimDate } from "../../../utils/formatters";
+import { formatClaimDate, formatCurrencyINR } from "../../../utils/formatters";
 
 // NOTE: this is the Mediclaim admin workspace's Employees tab
 // (`src/features/mediclaim/pages/admin/tabs/EmployeesTab.jsx`) — an
@@ -67,7 +67,7 @@ function StatusBadge({ status }) {
  * covered family member (including the auto-created "self" row), issued
  * cards, and change-request history — via `adminEmployeeDetail()`.
  */
-export default function EmployeesTab() {
+export default function EmployeesTab({ initialRows = null, managerDepartmentNames = null, managerEmpCodes = null, managerEmpIds = null, managerEmails = null, currentUserId = null, currentUserEmpCode = null, currentUserEmail = null, isManagerView = false } = {}) {
   const { user } = useAuth();
   const { can } = useMediclaimAuthorization();
 
@@ -82,7 +82,7 @@ export default function EmployeesTab() {
   const [departmentFilter, setDepartmentFilter] = useState("");
   const [reloadToken, setReloadToken] = useState(0);
   const requestKey = JSON.stringify([
-    accessToken ?? "", tokenType ?? "", page, perPage, statusFilter, debouncedSearch, departmentFilter, reloadToken,
+    accessToken ?? "", tokenType ?? "", page, perPage, statusFilter, debouncedSearch, departmentFilter, reloadToken, isManagerView,
   ]);
 
   // Debounce the search box so typing doesn't fire a request per keystroke —
@@ -111,32 +111,148 @@ export default function EmployeesTab() {
   useEffect(() => {
     if (!accessToken) return undefined;
     let cancelled = false;
-    mediclaimApi.adminEmployees(
-      {
-        page,
-        perPage,
-        status: statusFilter === "all" ? undefined : statusFilter,
-        search: debouncedSearch || undefined,
-        department: departmentFilter || undefined,
-      },
-      accessToken,
-      tokenType,
-    )
-      .then((res) => {
-        if (cancelled) return;
-        const payload = res?.data;
-        const rows = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
-        const total = payload?.total ?? rows.length;
-        const departments = Array.isArray(payload?.departments) ? payload.departments : [];
-        const statusCounts = payload?.statusCounts && typeof payload.statusCounts === "object" ? payload.statusCounts : {};
-        setResult({ key: requestKey, rows, total, error: null, departments, statusCounts });
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setResult({ key: requestKey, rows: [], total: 0, error: err?.message || "Failed to load employees.", departments: [], statusCounts: {} });
-      });
-    return () => { cancelled = true; };
-  }, [accessToken, tokenType, page, perPage, statusFilter, debouncedSearch, departmentFilter, requestKey]);
+
+    const fetchData = async () => {
+      try {
+        if (isManagerView && Array.isArray(initialRows)) {
+          const statusCounts = {
+            all: initialRows.length,
+            not_eligible: initialRows.filter((r) => r.mediclaimStatus === "not_eligible").length,
+            pending: initialRows.filter((r) => r.mediclaimStatus === "pending").length,
+            completed: initialRows.filter((r) => r.mediclaimStatus === "completed").length,
+          };
+          const teamDepts = Array.from(
+            new Set(initialRows.map((r) => r.department).filter(Boolean))
+          );
+          setResult({
+            key: requestKey,
+            rows: initialRows,
+            total: initialRows.length,
+            error: null,
+            departments: teamDepts.length > 0 ? teamDepts : managerDepartmentNames || [],
+            statusCounts,
+            allTeamRows: initialRows,
+          });
+          return;
+        }
+
+        if (isManagerView) {
+          let allCompanyRows = [];
+          let pageNum = 1;
+          let totalCount = 0;
+
+          do {
+            const res = await mediclaimApi.adminEmployees(
+              { page: pageNum, perPage: 200 },
+              accessToken,
+              tokenType
+            );
+            if (cancelled) return;
+            const payload = res?.data;
+            const pageRows = Array.isArray(payload?.data)
+              ? payload.data
+              : Array.isArray(payload)
+              ? payload
+              : [];
+            totalCount = payload?.total ?? pageRows.length;
+            allCompanyRows = allCompanyRows.concat(pageRows);
+            if (pageRows.length === 0 || allCompanyRows.length >= totalCount) break;
+            pageNum++;
+          } while (pageNum <= 10);
+
+          const normDepts = (managerDepartmentNames || []).map((d) => String(d).trim().toLowerCase());
+
+          let teamRows = allCompanyRows.filter((r) => {
+            const rId = String(r.id || "").trim();
+            const rCode = String(r.empCode || r.emp_code || "").trim();
+            const rEmail = String(r.email || "").trim().toLowerCase();
+            const rCodeUnpadded = rCode.replace(/^0+/, "");
+
+            // Always exclude current logged-in user from Employee Mediclaim Details team list
+            if (currentUserId && rId === String(currentUserId).trim()) return false;
+            if (currentUserEmpCode && (rCode === String(currentUserEmpCode).trim() || (rCodeUnpadded && rCodeUnpadded === String(currentUserEmpCode).trim().replace(/^0+/, "")))) return false;
+            if (currentUserEmail && rEmail === String(currentUserEmail).trim().toLowerCase()) return false;
+
+            // Check ID match
+            if (managerEmpIds && (managerEmpIds.has(rId) || managerEmpIds.has(Number(rId)))) return true;
+
+            // Check EmpCode match (padded & unpadded)
+            if (managerEmpCodes && (managerEmpCodes.has(rCode) || (rCodeUnpadded && managerEmpCodes.has(rCodeUnpadded)) || managerEmpCodes.has(rCode.toLowerCase()))) return true;
+
+            // Check Email match
+            if (managerEmails && managerEmails.has(rEmail)) return true;
+
+            // Check Department match
+            if (r.department && normDepts.length > 0) {
+              const rowDept = String(r.department).trim().toLowerCase();
+              const rowDeptBase = rowDept.replace(/\s*\([^)]*\)/g, "").replace(/^[0-9\s-]+/, "").trim();
+              for (const mDept of normDepts) {
+                const mDeptBase = mDept.replace(/\s*\([^)]*\)/g, "").replace(/^[0-9\s-]+/, "").trim();
+                if (
+                  rowDept === mDept ||
+                  (rowDeptBase && mDeptBase && rowDeptBase === mDeptBase) ||
+                  (rowDeptBase && mDeptBase && (rowDeptBase.includes(mDeptBase) || mDeptBase.includes(rowDeptBase)))
+                ) {
+                  return true;
+                }
+              }
+            }
+            return false;
+          });
+
+          const statusCounts = {
+            all: teamRows.length,
+            not_eligible: teamRows.filter((r) => r.mediclaimStatus === "not_eligible").length,
+            pending: teamRows.filter((r) => r.mediclaimStatus === "pending").length,
+            completed: teamRows.filter((r) => r.mediclaimStatus === "completed").length,
+          };
+
+          const teamDepts = Array.from(
+            new Set(teamRows.map((r) => r.department).filter(Boolean))
+          );
+
+          setResult({
+            key: requestKey,
+            rows: teamRows,
+            total: teamRows.length,
+            error: null,
+            departments: teamDepts.length > 0 ? teamDepts : managerDepartmentNames || [],
+            statusCounts,
+            allTeamRows: teamRows,
+          });
+        } else {
+          const res = await mediclaimApi.adminEmployees(
+            {
+              page,
+              perPage,
+              status: statusFilter === "all" ? undefined : statusFilter,
+              search: debouncedSearch || undefined,
+              department: departmentFilter || undefined,
+            },
+            accessToken,
+            tokenType
+          );
+          if (cancelled) return;
+          const payload = res?.data;
+          const rows = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
+          const total = payload?.total ?? rows.length;
+          const departments = Array.isArray(payload?.departments) ? payload.departments : [];
+          const statusCounts = payload?.statusCounts && typeof payload.statusCounts === "object" ? payload.statusCounts : {};
+          setResult({ key: requestKey, rows, total, error: null, departments, statusCounts, allTeamRows: null });
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setResult({ key: requestKey, rows: [], total: 0, error: err?.message || "Failed to load employees.", departments: [], statusCounts: {}, allTeamRows: null });
+        }
+      }
+    };
+
+    fetchData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken, tokenType, page, perPage, statusFilter, debouncedSearch, departmentFilter, reloadToken, requestKey, isManagerView, managerDepartmentNames, managerEmpCodes, initialRows, managerEmpIds, managerEmails, currentUserId, currentUserEmpCode, currentUserEmail]);
 
   const loading = result.key !== requestKey;
   const state = { loading, rows: result.rows, total: result.total, error: loading ? null : result.error };
@@ -259,15 +375,64 @@ export default function EmployeesTab() {
     {
       key: "eligibility",
       label: "Eligibility",
-      render: (row) => row.eligibility?.eligible
-        ? <span className="text-xs text-gray-500 dark:text-gray-400">Since {formatClaimDate(row.eligibility?.eligible_from)}</span>
-        : <span className="text-xs text-amber-600 dark:text-amber-400">{row.eligibility?.days_remaining ?? 0} day(s) left</span>,
+      render: (row) => {
+        if (row.eligibility?.eligible) {
+          return <span className="text-xs text-gray-500 dark:text-gray-400">Since {formatClaimDate(row.eligibility?.eligible_from)}</span>;
+        }
+        // Distinct from a real waiting period: joining_date was never
+        // filled in for this employee, so how long they've actually
+        // worked here — and their real eligibility — is unknown, not
+        // "0 days left". Flagged so HR can fix the actual gap: adding it.
+        if (row.eligibility?.reason === "missing_joining_date") {
+          return <span className="text-xs text-red-500 dark:text-red-400">Joining date missing</span>;
+        }
+        return <span className="text-xs text-amber-600 dark:text-amber-400">{row.eligibility?.days_remaining ?? 0} day(s) left</span>;
+      },
     },
     { key: "members", label: "Members", render: (row) => row.activeMembersCount ?? 0 },
     {
       key: "policy",
       label: "Policy",
       render: (row) => row.enrollment?.policyVersion?.policy?.name || row.enrollment?.policy_version?.policy?.name || "—",
+    },
+    {
+      key: "amountUsage",
+      label: "Amount Usage",
+      render: (row) => {
+        const floater = row.floater || row.enrollment?.floater || {};
+        const limit = Number(floater.limit) || 300000;
+        const used = Number(floater.used) || 0;
+        const usedPct = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
+        const formattedUsed = formatCurrencyINR(used);
+        const formattedLimit = formatCurrencyINR(limit);
+        const tooltipText = `${formattedUsed} used out of ${formattedLimit} (${usedPct}% used)`;
+
+        return (
+          <div
+            title={tooltipText}
+            className="flex h-full w-full min-w-[160px] flex-col justify-center gap-1.5 py-1.5 cursor-pointer"
+          >
+            {/* Amount Usage Text: Used Amount / Total Amount */}
+            <div className="text-[11px] font-medium leading-tight text-gray-700 dark:text-gray-300 whitespace-nowrap">
+              {formattedUsed} / {formattedLimit}
+            </div>
+
+            {/* Thinner Progress Bar Track - Centered Vertically */}
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700 border border-gray-300/40 dark:border-gray-600/40 relative shrink-0">
+              <div
+                className={`h-full rounded-full transition-all duration-500 ${
+                  usedPct >= 90
+                    ? "bg-red-500"
+                    : usedPct >= 70
+                    ? "bg-amber-500"
+                    : "bg-brand-600"
+                }`}
+                style={{ width: `${usedPct}%` }}
+              />
+            </div>
+          </div>
+        );
+      },
     },
   ];
 
@@ -323,7 +488,7 @@ export default function EmployeesTab() {
         )}
       </div>
 
-      {canIssue && (
+      {!isManagerView && canIssue && (
         <Button
           size="sm"
           variant="secondary"
@@ -337,11 +502,38 @@ export default function EmployeesTab() {
     </div>
   );
 
+  let displayRows = state.rows;
+  let displayTotal = state.total;
+
+  if (isManagerView && result.allTeamRows) {
+    let filtered = result.allTeamRows;
+
+    if (statusFilter !== "all") {
+      filtered = filtered.filter((r) => r.mediclaimStatus === statusFilter);
+    }
+    if (departmentFilter) {
+      filtered = filtered.filter((r) => r.department === departmentFilter);
+    }
+    if (debouncedSearch) {
+      const q = debouncedSearch.toLowerCase();
+      filtered = filtered.filter(
+        (r) =>
+          (r.name && String(r.name).toLowerCase().includes(q)) ||
+          (r.empCode && String(r.empCode).toLowerCase().includes(q)) ||
+          (r.email && String(r.email).toLowerCase().includes(q)) ||
+          (r.department && String(r.department).toLowerCase().includes(q))
+      );
+    }
+
+    displayTotal = filtered.length;
+    displayRows = filtered.slice((page - 1) * perPage, page * perPage);
+  }
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <ClaimsTable
         columns={columns}
-        rows={state.rows}
+        rows={displayRows}
         loading={state.loading}
         error={state.error}
         emptyMessage="No employees match this filter."
@@ -350,7 +542,7 @@ export default function EmployeesTab() {
         onRowClick={openDetail}
         page={page}
         perPage={perPage}
-        total={state.total}
+        total={displayTotal}
         onPageChange={setPage}
         onPageSizeChange={(size) => { setPerPage(size); setPage(1); }}
         fillHeight
@@ -439,7 +631,13 @@ function EmployeeDetailPanel({ data, canUpdate, onEditEnrollment }) {
           <p>Joined: <span className="text-gray-700 dark:text-gray-200">{formatClaimDate(employee.joiningDate) || "—"}</span></p>
           <p>Mobile: <span className="text-gray-700 dark:text-gray-200">{employee.mobileNumber || "—"}</span></p>
         </div>
-        {eligibility && !eligibility.eligible && (
+        {eligibility && !eligibility.eligible && eligibility.reason === "missing_joining_date" && (
+          <div className="mt-2 flex items-center gap-1.5 rounded-lg bg-red-50 px-2 py-1.5 text-red-700 dark:bg-red-900/20 dark:text-red-400">
+            <Clock size={12} />
+            Joining date isn't on file — add it above to determine eligibility.
+          </div>
+        )}
+        {eligibility && !eligibility.eligible && eligibility.reason !== "missing_joining_date" && (
           <div className="mt-2 flex items-center gap-1.5 rounded-lg bg-amber-50 px-2 py-1.5 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400">
             <Clock size={12} />
             Becomes eligible in {eligibility.days_remaining} day(s), on {formatClaimDate(eligibility.eligible_from)}.

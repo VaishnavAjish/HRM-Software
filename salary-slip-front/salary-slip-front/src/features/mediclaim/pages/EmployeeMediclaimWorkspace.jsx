@@ -75,6 +75,32 @@ function WaitingPeriodLock({ eligibility }) {
   const days = eligibility?.days_remaining ?? eligibility?.daysRemaining ?? 0;
   const eligibleFrom = eligibility?.eligible_from ?? eligibility?.eligibleFrom;
   const months = eligibility?.waiting_period_months ?? eligibility?.waitingPeriodMonths ?? 3;
+  const reason = eligibility?.reason;
+
+  // Distinct from a real waiting period: HR hasn't filled in this
+  // employee's joining date at all, so how long they've actually worked
+  // here — and therefore whether they've cleared the waiting period — is
+  // genuinely unknown. Showing a countdown here would just be a guess
+  // (this used to silently guess `0 days remaining`, wrongly unlocking
+  // day-one hires) — the honest thing is to say so plainly and point at
+  // the actual fix (HR adding the date), not fabricate a number.
+  if (reason === "missing_joining_date") {
+    return (
+      <div className="space-y-4">
+        <WorkspaceHeader />
+
+        <div className="flex flex-col items-center gap-3 rounded-2xl border border-gray-100 bg-white px-6 py-16 text-center shadow-sm dark:border-gray-700 dark:bg-gray-800">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400">
+            <Clock size={22} />
+          </div>
+          <h2 className="text-base font-semibold text-gray-900 dark:text-white">Mediclaim isn't available yet</h2>
+          <p className="max-w-sm text-sm text-gray-500 dark:text-gray-400">
+            Your joining date isn't on file yet, so we can't tell when your {months}-month waiting period ends. Please ask HR to add it to your profile — this unlocks automatically as soon as they do.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">

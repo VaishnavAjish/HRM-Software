@@ -297,7 +297,7 @@ export default function EmployeeDetailsModal({
                     <Field label="Employee ID" value={selected.empCode} />
                     <Field label="Department" value={selected.department} />
                     <Field label="Designation" value={selected.designation} />
-                    <Field label="Position / Role" value={selected.positionTitle || selected.position_title || selected.position || roleLabel} />
+                    <Field label="Position / Role" value={selected.positionTitle || roleLabel} />
                     <Field label="Reporting Manager" value={selected.managerName || selected.manager_name || "-"} />
                     <Field label="Working Unit" value={selected.unit} />
                     <Field label="Status" value={selected.status} />

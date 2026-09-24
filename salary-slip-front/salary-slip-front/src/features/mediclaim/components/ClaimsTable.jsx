@@ -88,7 +88,7 @@ export default function ClaimsTable({
         filter: isUtility ? false : "agTextColumnFilter",
         suppressHeaderFilterButton: isUtility,
         flex: isUtility ? 0 : 1,
-        minWidth: isSelect ? 60 : isAction ? 110 : 130,
+        minWidth: isSelect ? 60 : isAction ? 110 : col.key === "amountUsage" ? 170 : 130,
         pinned: isAction ? 'right' : isSelect ? 'left' : null,
         valueGetter: (params) => {
           if (!params.data) return "";
@@ -98,6 +98,10 @@ export default function ClaimsTable({
           if (col.key === "claimedAmount") return params.data.totalClaimedAmount ?? params.data.total_claimed_amount ?? "";
           if (col.key === "approvedAmount") return params.data.approvedAmount ?? params.data.approved_amount ?? params.data.totalApprovedAmount ?? params.data.total_approved_amount ?? "";
           if (col.key === "status") return params.data.status || "";
+          if (col.key === "amountUsage") {
+            const floater = params.data?.floater || params.data?.enrollment?.floater || {};
+            return Number(floater.used) || 0;
+          }
           return params.data[col.key] ?? "";
         },
         cellRenderer: (params) => {

@@ -76,7 +76,7 @@ class DepartmentController extends Controller
                 "department_id" => $department->id,
                 "user_id" => $data["manager_id"]
             ]);
-            User::where('id', $data['manager_id'])->update(['designation' => 'Manager']);
+            // Do not overwrite user designation on department creation
         }
 
         return response()->json([
@@ -293,14 +293,7 @@ class DepartmentController extends Controller
                 Department::where('id', $deptId)->update(['manager_id' => $userId]);
             }
 
-            // Set Department Head's designation as Manager in users table if assigned, else clear if not managing any
-            if (!empty($departmentIds)) {
-                User::where('id', $userId)->update(['designation' => 'Manager']);
-            } else {
-                User::where('id', $userId)->where(function($q) {
-                    $q->where('designation', 'Manager')->orWhere('designation', 'manager');
-                })->update(['designation' => null]);
-            }
+// Do not overwrite user designation on manager assignment
         });
 
         return response()->json([
@@ -328,11 +321,7 @@ class DepartmentController extends Controller
         $stillManaging = DepartmentManager::where("user_id", $userId)->exists()
             || Department::where("manager_id", $userId)->exists();
 
-        if (!$stillManaging) {
-            User::where("id", $userId)->where(function($q) {
-                $q->where('designation', 'Manager')->orWhere('designation', 'manager');
-            })->update(["designation" => null]);
-        }
+// Do not clear user designation on manager removal
 
         return response()->json([
             "status" => true,
