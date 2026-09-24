@@ -448,7 +448,7 @@ class PolicyEligibilityService
         );
     }
 
-    private function activePolicyVersionForCompany(?string $companyCode, Carbon $asOf): ?MediclaimPolicyVersion
+    private function activePolicyVersionForCompany(?string $companyCode, Carbon $asOf, bool $allowSelfHeal = true): ?MediclaimPolicyVersion
     {
         $date = $asOf->toDateString();
         $primaryCompany = $companyCode ? trim(explode(',', $companyCode)[0]) : null;
@@ -469,11 +469,43 @@ class PolicyEligibilityService
             }
         }
 
-        return MediclaimPolicyVersion::query()
+        $fallback = MediclaimPolicyVersion::query()
             ->where('status', 'active')
             ->where('effective_from', '<=', $date)
             ->where(fn ($q) => $q->whereNull('effective_to')->orWhere('effective_to', '>=', $date))
             ->orderByDesc('version_number')
             ->first();
+
+        if ($fallback) {
+            return $fallback;
+        }
+
+        // Zero active policy versions anywhere in the whole system is not a
+        // per-company gap — it means the standard company policies were
+        // never seeded against this database at all (e.g. a fresh restore
+        // that skipped `db:seed`), which otherwise permanently blocks every
+        // employee's Mediclaim onboarding with no self-service recovery: the
+        // admin UI to create/publish a policy doesn't exist yet, and running
+        // an artisan command requires server access nobody hitting this path
+        // has. `MediclaimPolicySeeder` is already deliberately idempotent
+        // (firstOrCreate throughout — its own docblock says running it again
+        // "costs nothing"), so it's safe to run it inline, once, exactly the
+        // way `DatabaseSeeder` already does, rather than leave every eligible
+        // employee stuck. Guarded by $allowSelfHeal so this can never recurse
+        // if the seeder still leaves no active version behind (e.g. a
+        // genuinely new/unseeded company_code it doesn't know about) —
+        // explicit product decision (2026-09-24), since this runs an
+        // unattended write against the live database the first time it fires.
+        if ($allowSelfHeal) {
+            Log::warning('Mediclaim: no active policy version exists anywhere in the database — running MediclaimPolicySeeder to self-heal.', [
+                'company_code' => $companyCode,
+            ]);
+
+            (new \Database\Seeders\MediclaimPolicySeeder())->run();
+
+            return $this->activePolicyVersionForCompany($companyCode, $asOf, allowSelfHeal: false);
+        }
+
+        return null;
     }
 }
