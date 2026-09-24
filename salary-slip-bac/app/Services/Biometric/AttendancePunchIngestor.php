@@ -59,63 +59,80 @@ class AttendancePunchIngestor
         $usersById = $userIds ? User::whereIn('id', $userIds)->get()->keyBy('id') : collect();
 
         $now = now();
-        $insertRows = [];
         $unmappedCount = 0;
         $touchedKeys = []; // dedupe-scan work list: "u{id}|{date}" or "c{company}|{code}|{date}"
 
-        foreach ($rows as $row) {
-            $codeStr = (string) $row['emp_code_raw'];
-            $trimmed = ltrim($codeStr, '0');
-            $deviceSerial = $row['device_serial'] ?? null;
-            $deviceId = $deviceSerial ? ($deviceMap[$deviceSerial] ?? null) : null;
-
-            $user = null;
-            if ($deviceId && isset($deviceCodeMap["{$deviceId}|{$codeStr}"])) {
-                $user = $usersById[$deviceCodeMap["{$deviceId}|{$codeStr}"]->user_id] ?? null;
-            } elseif (isset($anyDeviceCodeMap[$codeStr])) {
-                $user = $usersById[$anyDeviceCodeMap[$codeStr]] ?? null;
-            }
-            $user ??= $userLookup[$codeStr] ?? ($trimmed !== '' ? ($userLookup[$trimmed] ?? null) : null);
-
-            $punchAt = Carbon::parse($row['punch_datetime']);
-            $punchDate = $punchAt->toDateString();
-
-            $companyCode = $user?->company_code ?? $explicitCompany;
-            $unit = $user?->unit;
-            $status = $user ? AttendancePunch::STATUS_VALID : AttendancePunch::STATUS_UNMAPPED;
-            if (! $user) {
-                $unmappedCount++;
-            }
-
-            $insertRows[] = [
-                'emp_code_raw' => $codeStr,
-                'device_serial' => $deviceSerial,
-                'punch_datetime' => $punchAt,
-                'punch_date' => $punchDate,
-                'attendance_day_resolved' => false,
-                'punch_type' => $row['punch_type'] ?? null,
-                'source' => $source,
-                'raw_line' => $row['raw_line'] ?? null,
-                'user_id' => $user?->id,
-                'device_id' => $deviceId,
-                'company_code' => $companyCode,
-                'unit' => $unit,
-                'sync_batch_id' => $syncBatchId,
-                'status' => $status,
-                'created_at' => $now,
-                'updated_at' => $now,
-            ];
-
-            $touchedKeys[$user ? "u{$user->id}|{$punchDate}" : "c{$companyCode}|{$codeStr}|{$punchDate}"] = true;
-        }
-
+        // Inserted in bounded chunks AS the source rows are walked, rather
+        // than collecting every row into one array first -- a full month
+        // across 28 devices can be tens of thousands of rows, and building
+        // that whole array before the first insert is what previously blew
+        // past PHP's 128M memory_limit and fatally crashed the request
+        // (uncatchable -- try/catch below cannot recover from it, so it
+        // must never be allowed to happen in the first place).
+        $chunkSize = 500;
+        $pendingChunk = [];
         $insertedTotal = 0;
+        $totalRows = 0;
+
         try {
-            foreach (array_chunk($insertRows, 500) as $chunk) {
-                // insertOrIgnore relies on the (device_serial, emp_code_raw,
-                // punch_datetime) unique index — a re-run of the same sync
-                // window is a safe no-op, never a duplicate row (spec §25).
-                $insertedTotal += DB::table('attendance_punches')->insertOrIgnore($chunk);
+            foreach ($rows as $row) {
+                $codeStr = (string) $row['emp_code_raw'];
+                $trimmed = ltrim($codeStr, '0');
+                $deviceSerial = $row['device_serial'] ?? null;
+                $deviceId = $deviceSerial ? ($deviceMap[$deviceSerial] ?? null) : null;
+
+                $user = null;
+                if ($deviceId && isset($deviceCodeMap["{$deviceId}|{$codeStr}"])) {
+                    $user = $usersById[$deviceCodeMap["{$deviceId}|{$codeStr}"]->user_id] ?? null;
+                } elseif (isset($anyDeviceCodeMap[$codeStr])) {
+                    $user = $usersById[$anyDeviceCodeMap[$codeStr]] ?? null;
+                }
+                $user ??= $userLookup[$codeStr] ?? ($trimmed !== '' ? ($userLookup[$trimmed] ?? null) : null);
+
+                $punchAt = Carbon::parse($row['punch_datetime']);
+                $punchDate = $punchAt->toDateString();
+
+                $companyCode = $user?->company_code ?? $explicitCompany;
+                $unit = $user?->unit;
+                $status = $user ? AttendancePunch::STATUS_VALID : AttendancePunch::STATUS_UNMAPPED;
+                if (! $user) {
+                    $unmappedCount++;
+                }
+
+                $pendingChunk[] = [
+                    'emp_code_raw' => $codeStr,
+                    'device_serial' => $deviceSerial,
+                    'punch_datetime' => $punchAt,
+                    'punch_date' => $punchDate,
+                    'attendance_day_resolved' => false,
+                    'punch_type' => $row['punch_type'] ?? null,
+                    'source' => $source,
+                    'raw_line' => $row['raw_line'] ?? null,
+                    'user_id' => $user?->id,
+                    'device_id' => $deviceId,
+                    'company_code' => $companyCode,
+                    'unit' => $unit,
+                    'sync_batch_id' => $syncBatchId,
+                    'status' => $status,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ];
+                $totalRows++;
+
+                $touchedKeys[$user ? "u{$user->id}|{$punchDate}" : "c{$companyCode}|{$codeStr}|{$punchDate}"] = true;
+
+                if (count($pendingChunk) >= $chunkSize) {
+                    // insertOrIgnore relies on the (device_serial, emp_code_raw,
+                    // punch_datetime) unique index — a re-run of the same sync
+                    // window is a safe no-op, never a duplicate row (spec §25).
+                    $insertedTotal += DB::table('attendance_punches')->insertOrIgnore($pendingChunk);
+                    $pendingChunk = [];
+                }
+            }
+
+            if (! empty($pendingChunk)) {
+                $insertedTotal += DB::table('attendance_punches')->insertOrIgnore($pendingChunk);
+                $pendingChunk = [];
             }
         } catch (\Throwable $e) {
             // Never let a punch-ledger write failure break the existing,
@@ -129,7 +146,7 @@ class AttendancePunchIngestor
 
         return [
             'inserted' => $insertedTotal,
-            'ignored_existing' => count($insertRows) - $insertedTotal,
+            'ignored_existing' => $totalRows - $insertedTotal,
             'unmapped' => $unmappedCount,
             'duplicates_flagged' => $duplicatesFlagged,
         ];

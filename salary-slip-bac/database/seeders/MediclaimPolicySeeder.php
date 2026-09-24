@@ -77,6 +77,7 @@ class MediclaimPolicySeeder extends Seeder
                     'status' => 'active',
                 ]
             );
+            $policy->update(['status' => 'active']);
 
             // version_number 1 is the only version on first run; a later
             // policy change creates version 2+ through the admin Policies
@@ -94,7 +95,42 @@ class MediclaimPolicySeeder extends Seeder
                     'published_at' => now(),
                 ]
             );
-            $version->update(['rules' => self::INITIAL_RULES]);
+            $version->update([
+                'status' => 'active',
+                'effective_from' => $version->effective_from ?? today(),
+                'rules' => self::INITIAL_RULES,
+            ]);
+        }
+
+        // Also ensure a policy exists for any other company present in the database
+        if (Schema::hasTable('companies')) {
+            try {
+                $otherCompanies = \App\Models\Company::all();
+                foreach ($otherCompanies as $comp) {
+                    $code = strtolower(trim((string) $comp->code));
+                    $clean = preg_replace('/[^a-zA-Z0-9]/', '', $code);
+                    if ($clean && ! in_array($clean, ['nidhiimpex', 'silverstar'], true)) {
+                        $pCode = strtoupper(preg_replace('/[^a-zA-Z0-9]/', '-', $code)) . '-MEDICLAIM';
+                        $pName = ($comp->name ?: ucwords(str_replace(['-', '_'], ' ', $code))) . ' Group Mediclaim Policy';
+                        $p = MediclaimPolicy::firstOrCreate(
+                            ['policy_code' => $pCode],
+                            ['company_code' => $code, 'name' => $pName, 'status' => 'active']
+                        );
+                        $p->update(['status' => 'active']);
+
+                        $v = MediclaimPolicyVersion::firstOrCreate(
+                            ['policy_id' => $p->id, 'version_number' => 1],
+                            ['status' => 'active', 'rules' => self::INITIAL_RULES, 'effective_from' => today(), 'published_at' => now()]
+                        );
+                        $v->update([
+                            'status' => 'active',
+                            'effective_from' => $v->effective_from ?? today(),
+                            'rules' => self::INITIAL_RULES,
+                        ]);
+                    }
+                }
+            } catch (\Throwable) {
+            }
         }
 
         foreach (array_keys(self::POLICIES) as $companyCode) {

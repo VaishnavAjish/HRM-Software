@@ -76,7 +76,7 @@ class DepartmentController extends Controller
                 "department_id" => $department->id,
                 "user_id" => $data["manager_id"]
             ]);
-            // Do not overwrite user designation on department creation
+            $this->updateManagerDesignationOnAssignment((int)$data['manager_id']);
         }
 
         return response()->json([
@@ -293,7 +293,7 @@ class DepartmentController extends Controller
                 Department::where('id', $deptId)->update(['manager_id' => $userId]);
             }
 
-// Do not overwrite user designation on manager assignment
+$this->updateManagerDesignationOnAssignment((int)$userId);
         });
 
         return response()->json([
@@ -321,7 +321,7 @@ class DepartmentController extends Controller
         $stillManaging = DepartmentManager::where("user_id", $userId)->exists()
             || Department::where("manager_id", $userId)->exists();
 
-// Do not clear user designation on manager removal
+$this->updateManagerDesignationOnRemoval((int)$userId);
 
         return response()->json([
             "status" => true,
@@ -360,5 +360,33 @@ class DepartmentController extends Controller
         }
         return response()->json(['status' => true, 'message' => "Imported $imported departments"]);
     }
-}
 
+    private function updateManagerDesignationOnAssignment(int $userId): void
+    {
+        $user = User::find($userId);
+        if (!$user) return;
+
+        $currentDesig = trim((string) ($user->designation ?? ''));
+        if (empty($user->previous_designation) && strtolower($currentDesig) !== 'manager') {
+            $user->previous_designation = $currentDesig;
+        }
+        $user->designation = 'Manager';
+        $user->save();
+    }
+
+    private function updateManagerDesignationOnRemoval(int $userId): void
+    {
+        $stillManaging = DepartmentManager::where('user_id', $userId)->exists()
+            || Department::where('manager_id', $userId)->exists();
+
+        if (!$stillManaging) {
+            $user = User::find($userId);
+            if ($user && $user->previous_designation !== null && $user->previous_designation !== '') {
+                $user->designation = $user->previous_designation;
+                $user->previous_designation = null;
+                $user->save();
+            }
+        }
+    }
+
+}

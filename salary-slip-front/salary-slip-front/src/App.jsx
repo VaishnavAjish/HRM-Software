@@ -37,7 +37,6 @@ const SalaryUploadPage = lazy(() => import("./pages/admin/SalaryUploadPage"));
 const AttendanceView = lazy(() => import("./pages/admin/AttendanceView"));
 // Attendance Engine Rebuild -- new page at a new route; AttendanceView above
 // is untouched and still backs the existing /admin/attendance route.
-const AttendanceControlCenter = lazy(() => import("./pages/admin/AttendanceControlCenter"));
 const AttendanceMonthlyView = lazy(() => import("./pages/admin/AttendanceMonthlyView"));
 const AttendanceRawPunches = lazy(() => import("./pages/admin/AttendanceRawPunches"));
 const AttendanceReportsCenter = lazy(() => import("./pages/admin/AttendanceReportsCenter"));
@@ -367,14 +366,6 @@ function AppRoutes() {
         {/* Attendance Engine Rebuild -- new, additive route. The permission
             code (attendance.daily.read) is separate from the legacy page's
             ui.admin.attendance.view, per the new engine's own migration. */}
-        <Route
-          path="attendance/control-center"
-          element={
-            <ProtectedRoute requiredRole="admin" requiredPermission="attendance.daily.read">
-              <AttendanceControlCenter />
-            </ProtectedRoute>
-          }
-        />
         <Route
           path="attendance/monthly"
           element={

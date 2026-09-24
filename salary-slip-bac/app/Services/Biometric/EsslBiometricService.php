@@ -38,13 +38,23 @@ class EsslBiometricService
     private string $password;
     private string $namespace;
     private int $maxConcurrentFetches;
+    private bool $isConfigured;
 
     public function __construct()
     {
-        $this->apiUrl = env('ESSL_API_URL', 'https://unkneeling-lekisha-unimpeachably.ngrok-free.dev/WebAPIService.asmx');
-        $this->username = env('ESSL_USERNAME', 'API');
-        $this->password = env('ESSL_PASSWORD', 'Api@12345');
-        $this->namespace = env('ESSL_NAMESPACE', 'http://tempuri.org/');
+        // No hardcoded fallback for the URL/credentials -- they live in
+        // .env only (never committed; see .env.example for the required
+        // keys). A missing value does NOT throw here: construction happens
+        // during Laravel's controller-dependency resolution, before the
+        // controller's own try/catch is in scope, so an exception here
+        // would surface as a raw framework error page instead of the same
+        // graceful "status: false" JSON every other eSSL failure returns.
+        // $isConfigured is checked at the top of syncAttendance() instead.
+        $this->apiUrl = (string) env('ESSL_API_URL', '');
+        $this->username = (string) env('ESSL_USERNAME', '');
+        $this->password = (string) env('ESSL_PASSWORD', '');
+        $this->namespace = (string) env('ESSL_NAMESPACE', 'http://tempuri.org/');
+        $this->isConfigured = $this->apiUrl !== '' && $this->username !== '' && $this->password !== '';
         // ALL 28 devices share this one apiUrl (the serial goes in the SOAP
         // body, not the URL) — a free ngrok tunnel to what's almost
         // certainly a single small on-prem Windows/IIS box, not a
@@ -274,6 +284,21 @@ class EsslBiometricService
         ?string $startDateStr = null,
         ?string $endDateStr = null
     ): array {
+        if (! $this->isConfigured) {
+            Log::error('eSSL sync skipped: ESSL_API_URL/ESSL_USERNAME/ESSL_PASSWORD are not set in .env.');
+
+            return [
+                'status'         => false,
+                'message'        => 'eSSL biometric sync is not configured (missing ESSL_API_URL/ESSL_USERNAME/ESSL_PASSWORD in .env). Data is not available -- no request was sent to any device.',
+                'total_punches'  => 0,
+                'records_synced' => 0,
+                'unique_employees' => 0,
+                'devices_count'  => 0,
+                'devices_failed' => 0,
+                'device_results' => [],
+            ];
+        }
+
         // Concurrent device fetch below bounds network wait to ~one device's
         // timeout (~25s), but a wide date range across many employees can
         // still mean real work parsing/matching/upserting thousands of rows
@@ -281,8 +306,14 @@ class EsslBiometricService
         // environments default max_execution_time to 30s) so THAT isn't a
         // second way to hit the same "connection dies mid-request" failure.
         // Guarded: some hosts disable ini_set, which must never abort a sync.
+        // Same reasoning covers memory_limit: a wide date range across 28
+        // devices means $logMap/$rawPunchRows below hold every raw punch
+        // for the whole window at once, which measured over PHP's 128M
+        // hosting default (see AttendancePunchIngestor's own chunked-insert
+        // fix for the crash this caused in production).
         try {
             @ini_set('max_execution_time', '180');
+            @ini_set('memory_limit', '512M');
         } catch (\Throwable $e) {
             // best-effort only
         }

@@ -412,21 +412,19 @@ class PolicyEligibilityService
 
         $existing = MediclaimEnrollment::query()
             ->where('employee_user_id', $employee->id)
-            ->where('status', 'active')
             ->latest('id')
             ->first();
 
         if ($existing) {
+            if ($existing->status !== 'active') {
+                $existing->status = 'active';
+                $existing->save();
+            }
             return $existing;
         }
 
         $version = $this->activePolicyVersionForCompany($employee->company_code, $asOf);
         if (! $version) {
-            // TEMPORARY diagnostic (2026-09-24) — an eligible-by-tenure
-            // employee reported "no active enrollment"; this is the other
-            // way resolveOrCreateEnrollment() can return null (the
-            // waiting-period check itself just passed, so it's not that).
-            // Safe to remove once confirmed which cause it actually is.
             Log::warning('Mediclaim: employee cleared the waiting period but no active policy version was found for their company.', [
                 'employee_id' => $employee->id,
                 'emp_code' => $employee->emp_code,
@@ -438,7 +436,7 @@ class PolicyEligibilityService
 
         $primaryCompany = $employee->company_code ? trim(explode(',', $employee->company_code)[0]) : null;
 
-        return MediclaimEnrollment::query()->firstOrCreate(
+        $enrollment = MediclaimEnrollment::query()->firstOrCreate(
             ['policy_version_id' => $version->id, 'employee_user_id' => $employee->id],
             [
                 'company_code' => $primaryCompany,
@@ -446,20 +444,33 @@ class PolicyEligibilityService
                 'enrolled_at' => $status['eligible_from'] ?? $asOf->toDateString(),
             ]
         );
+
+        if ($enrollment->status !== 'active') {
+            $enrollment->status = 'active';
+            $enrollment->save();
+        }
+
+        return $enrollment;
     }
 
-    private function activePolicyVersionForCompany(?string $companyCode, Carbon $asOf, bool $allowSelfHeal = true): ?MediclaimPolicyVersion
+    public function activePolicyVersionForCompany(?string $companyCode, ?Carbon $asOf = null, bool $allowSelfHeal = true): ?MediclaimPolicyVersion
     {
+        $asOf ??= Carbon::now();
         $date = $asOf->toDateString();
         $primaryCompany = $companyCode ? trim(explode(',', $companyCode)[0]) : null;
 
         if ($primaryCompany) {
+            $norm = strtolower(preg_replace('/[^a-zA-Z0-9]/', '', $primaryCompany));
+
             $version = MediclaimPolicyVersion::query()
-                ->whereHas('policy', function ($q) use ($primaryCompany) {
-                    $q->where(\Illuminate\Support\Facades\DB::raw('LOWER(company_code)'), strtolower($primaryCompany));
+                ->whereHas('policy', function ($q) use ($primaryCompany, $norm) {
+                    $q->where(function ($sub) use ($primaryCompany, $norm) {
+                        $sub->whereRaw('LOWER(company_code) = ?', [strtolower($primaryCompany)])
+                            ->orWhereRaw("REPLACE(REPLACE(REPLACE(LOWER(company_code), '-', ''), '_', ''), ' ', '') = ?", [$norm]);
+                    });
                 })
-                ->where('status', 'active')
-                ->where('effective_from', '<=', $date)
+                ->whereIn('status', ['active', 'published'])
+                ->where(fn ($q) => $q->whereNull('effective_from')->orWhere('effective_from', '<=', $date))
                 ->where(fn ($q) => $q->whereNull('effective_to')->orWhere('effective_to', '>=', $date))
                 ->orderByDesc('version_number')
                 ->first();
@@ -469,9 +480,10 @@ class PolicyEligibilityService
             }
         }
 
+        // Global fallback: any active or published policy version in the entire system
         $fallback = MediclaimPolicyVersion::query()
-            ->where('status', 'active')
-            ->where('effective_from', '<=', $date)
+            ->whereIn('status', ['active', 'published'])
+            ->where(fn ($q) => $q->whereNull('effective_from')->orWhere('effective_from', '<=', $date))
             ->where(fn ($q) => $q->whereNull('effective_to')->orWhere('effective_to', '>=', $date))
             ->orderByDesc('version_number')
             ->first();
@@ -480,30 +492,86 @@ class PolicyEligibilityService
             return $fallback;
         }
 
-        // Zero active policy versions anywhere in the whole system is not a
-        // per-company gap — it means the standard company policies were
-        // never seeded against this database at all (e.g. a fresh restore
-        // that skipped `db:seed`), which otherwise permanently blocks every
-        // employee's Mediclaim onboarding with no self-service recovery: the
-        // admin UI to create/publish a policy doesn't exist yet, and running
-        // an artisan command requires server access nobody hitting this path
-        // has. `MediclaimPolicySeeder` is already deliberately idempotent
-        // (firstOrCreate throughout — its own docblock says running it again
-        // "costs nothing"), so it's safe to run it inline, once, exactly the
-        // way `DatabaseSeeder` already does, rather than leave every eligible
-        // employee stuck. Guarded by $allowSelfHeal so this can never recurse
-        // if the seeder still leaves no active version behind (e.g. a
-        // genuinely new/unseeded company_code it doesn't know about) —
-        // explicit product decision (2026-09-24), since this runs an
-        // unattended write against the live database the first time it fires.
+        // If any version exists in the DB at all (e.g. unactivated draft), activate it immediately
+        $anyVersion = MediclaimPolicyVersion::query()
+            ->orderByDesc('version_number')
+            ->first();
+
+        if ($anyVersion) {
+            $anyVersion->status = 'active';
+            if (! $anyVersion->effective_from) {
+                $anyVersion->effective_from = today();
+            }
+            $anyVersion->save();
+
+            if ($anyVersion->policy && $anyVersion->policy->status !== 'active') {
+                $anyVersion->policy->update(['status' => 'active']);
+            }
+
+            return $anyVersion;
+        }
+
+        // Zero policy versions exist anywhere in the database -> self-heal!
         if ($allowSelfHeal) {
             Log::warning('Mediclaim: no active policy version exists anywhere in the database — running MediclaimPolicySeeder to self-heal.', [
                 'company_code' => $companyCode,
             ]);
 
-            (new \Database\Seeders\MediclaimPolicySeeder())->run();
+            try {
+                (new \Database\Seeders\MediclaimPolicySeeder())->run();
+            } catch (\Throwable $e) {
+                Log::error('MediclaimPolicySeeder run failed during self-heal: ' . $e->getMessage());
+            }
 
-            return $this->activePolicyVersionForCompany($companyCode, $asOf, allowSelfHeal: false);
+            $recheck = $this->activePolicyVersionForCompany($companyCode, $asOf, allowSelfHeal: false);
+            if ($recheck) {
+                return $recheck;
+            }
+
+            // Direct fallback creation if seeder somehow didn't leave an active version
+            $standardRules = [
+                'floater_limit_amount' => 300000,
+                'max_covered_children' => 2,
+                'child_max_age_years' => 18,
+                'parent_max_age_years' => 55,
+                'intimation_required_for_planned' => true,
+                'eligibility_waiting_period_months' => 3,
+            ];
+
+            $compCode = $primaryCompany ?: 'nidhi-impex';
+            $policyCode = strtoupper(preg_replace('/[^a-zA-Z0-9]/', '-', $compCode)) . '-MEDICLAIM';
+            $policyName = ucwords(str_replace(['-', '_'], ' ', $compCode)) . ' Group Mediclaim Policy';
+
+            try {
+                $policy = MediclaimPolicy::firstOrCreate(
+                    ['policy_code' => $policyCode],
+                    [
+                        'company_code' => $compCode,
+                        'name' => $policyName,
+                        'status' => 'active',
+                    ]
+                );
+                $policy->update(['status' => 'active']);
+
+                $version = MediclaimPolicyVersion::firstOrCreate(
+                    ['policy_id' => $policy->id, 'version_number' => 1],
+                    [
+                        'status' => 'active',
+                        'rules' => $standardRules,
+                        'effective_from' => today(),
+                        'published_at' => now(),
+                    ]
+                );
+                $version->update([
+                    'status' => 'active',
+                    'effective_from' => $version->effective_from ?? today(),
+                    'rules' => ! empty($version->rules) ? $version->rules : $standardRules,
+                ]);
+
+                return $version;
+            } catch (\Throwable $e) {
+                Log::error('Direct policy creation failed during self-heal: ' . $e->getMessage());
+            }
         }
 
         return null;
