@@ -39,13 +39,42 @@ export default function CandidateLogin() {
           <p className="mt-2 text-sm text-nx-muted">Sign in to apply for jobs and manage your applications.</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="mt-8 space-y-5 text-sm">
+        <form
+          method="post"
+          action="#"
+          autoComplete="off"
+          noValidate
+          onSubmit={handleSubmit}
+          className="mt-8 space-y-5 text-sm"
+        >
+          {/* Decoy hidden inputs to prevent browser password managers from auto-filling credentials */}
+          <div
+            style={{
+              position: "absolute",
+              top: "-9999px",
+              left: "-9999px",
+              opacity: 0,
+              height: 0,
+              width: 0,
+              overflow: "hidden",
+            }}
+            aria-hidden="true"
+            tabIndex={-1}
+          >
+            <input type="text" name="fake_usernameremembered" tabIndex={-1} autoComplete="off" />
+            <input type="password" name="fake_passwordremembered" tabIndex={-1} autoComplete="off" />
+          </div>
+
           <div>
             <label className="mb-1.5 block text-xs font-bold text-nx-body">Email Address *</label>
             <div className="relative">
               <Mail size={17} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-nx-faint" />
               <input
                 type="email"
+                name="auth_candidate_identity"
+                autoComplete="off"
+                data-lpignore="true"
+                data-form-type="other"
                 required
                 disabled={loading}
                 value={email}
@@ -63,6 +92,10 @@ export default function CandidateLogin() {
               <Lock size={17} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-nx-faint" />
               <input
                 type="password"
+                name="auth_candidate_credential"
+                autoComplete="new-password"
+                data-lpignore="true"
+                data-form-type="other"
                 required
                 disabled={loading}
                 value={password}

@@ -274,6 +274,44 @@ export default function Login() {
   };
   useEffect(() => clearOtpTimers, []);
 
+  /* ── Scrub sensitive credentials from URL immediately so they are never copied/shared in links ── */
+  useEffect(() => {
+    try {
+      if (window.location.search || window.location.hash) {
+        const url = new URL(window.location.href);
+        const sensitiveKeys = [
+          "username",
+          "password",
+          "pass",
+          "pwd",
+          "user",
+          "admin",
+          "email",
+          "emp_code",
+          "code",
+        ];
+        let cleaned = false;
+        sensitiveKeys.forEach((key) => {
+          if (url.searchParams.has(key)) {
+            url.searchParams.delete(key);
+            cleaned = true;
+          }
+        });
+        if (cleaned) {
+          window.history.replaceState(null, "", url.pathname + (url.search ? url.search : ""));
+        }
+      }
+    } catch {
+      if (window.location.search && (window.location.search.includes("password") || window.location.search.includes("username"))) {
+        window.history.replaceState(null, "", window.location.pathname);
+      }
+    }
+    // Ensure form inputs are cleanly unpopulated on fresh mount
+    setEmpCode("");
+    setPassword("");
+    setSelectedUser(null);
+  }, []);
+
   // Step 3 — Set Password
   const [newPass, setNewPass] = useState("");
   const [confPass, setConfPass] = useState("");
@@ -466,7 +504,10 @@ export default function Login() {
 
   /* ── Normal login handler ── */
   const handleLogin = async (e) => {
-    e.preventDefault();
+    if (e && typeof e.preventDefault === "function") {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     setLoginErr("");
     setShowDropdown(false);
 
@@ -826,7 +867,32 @@ export default function Login() {
                   </div>
                 )}
 
-                <form onSubmit={handleLogin} className="space-y-4">
+                <form
+                  method="post"
+                  action="#"
+                  autoComplete="off"
+                  noValidate
+                  onSubmit={handleLogin}
+                  className="space-y-4"
+                >
+                  {/* Decoy hidden inputs to prevent browser password managers from auto-filling saved admin credentials */}
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: "-9999px",
+                      left: "-9999px",
+                      opacity: 0,
+                      height: 0,
+                      width: 0,
+                      overflow: "hidden",
+                    }}
+                    aria-hidden="true"
+                    tabIndex={-1}
+                  >
+                    <input type="text" name="fake_usernameremembered" tabIndex={-1} autoComplete="off" />
+                    <input type="password" name="fake_passwordremembered" tabIndex={-1} autoComplete="off" />
+                  </div>
+
                   <div>
                     <label htmlFor="login-username" className="block text-xs font-semibold text-[#334155] dark:text-slate-300 mb-2">
                       Email Address or Employee Code
@@ -835,8 +901,10 @@ export default function Login() {
                       <User size={18} className={iconCls} aria-hidden="true" />
                       <input
                         id="login-username"
-                        name="username"
-                        autoComplete="username"
+                        name="auth_user_identity"
+                        autoComplete="off"
+                        data-lpignore="true"
+                        data-form-type="other"
                         value={empCode}
                         onChange={(e) => {
                           setEmpCode(e.target.value);
@@ -929,8 +997,10 @@ export default function Login() {
                       <Lock size={18} className={iconCls} aria-hidden="true" />
                       <input
                         id="login-password"
-                        name="password"
-                        autoComplete="current-password"
+                        name="auth_user_credential"
+                        autoComplete="new-password"
+                        data-lpignore="true"
+                        data-form-type="other"
                         type={showPass ? "text" : "password"}
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
