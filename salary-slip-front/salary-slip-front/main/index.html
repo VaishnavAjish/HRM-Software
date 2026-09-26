@@ -2,6 +2,19 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <script>
+      (function() {
+        try {
+          if (window.location.search || window.location.hash) {
+            var raw = window.location.href;
+            var low = raw.toLowerCase();
+            if (low.indexOf("password") !== -1 || low.indexOf("pass") !== -1 || low.indexOf("admin") !== -1 || low.indexOf("user") !== -1 || low.indexOf("code") !== -1 || low.indexOf("token") !== -1 || low.indexOf("email") !== -1) {
+              window.history.replaceState(null, document.title, window.location.pathname);
+            }
+          }
+        } catch (e) {}
+      })();
+    </script>
 
     <!-- Responsive viewport — viewport-fit=cover fills the iPhone notch area -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
@@ -112,8 +125,8 @@
       ]
     }
     </script>
-    <script type="module" crossorigin src="/assets/index-CdlWaqEJ.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-CnMfs21x.css">
+    <script type="module" crossorigin src="/assets/index-D6C91AmK.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-Pn0dRcWB.css">
   </head>
   <body>
     <div id="root"></div>

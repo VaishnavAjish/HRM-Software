@@ -231,6 +231,8 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
   const [loginErr, setLoginErr] = useState("");
+  const [isReadOnly, setIsReadOnly] = useState(true);
+  const [passFocused, setPassFocused] = useState(false);
 
   /* ── Login Employee Dropdown state ── */
   const [matchingEmployees, setMatchingEmployees] = useState([]);
@@ -306,10 +308,22 @@ export default function Login() {
         window.history.replaceState(null, "", window.location.pathname);
       }
     }
-    // Ensure form inputs are cleanly unpopulated on fresh mount
+    // Force wipe fields on mount & shortly after mount against aggressive browser password managers
     setEmpCode("");
     setPassword("");
     setSelectedUser(null);
+    const t1 = setTimeout(() => {
+      setEmpCode("");
+      setPassword("");
+    }, 100);
+    const t2 = setTimeout(() => {
+      setEmpCode("");
+      setPassword("");
+    }, 350);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
   }, []);
 
   // Step 3 — Set Password
@@ -905,6 +919,7 @@ export default function Login() {
                         autoComplete="off"
                         data-lpignore="true"
                         data-form-type="other"
+                        readOnly={isReadOnly}
                         value={empCode}
                         onChange={(e) => {
                           setEmpCode(e.target.value);
@@ -913,6 +928,7 @@ export default function Login() {
                           }
                         }}
                         onFocus={() => {
+                          setIsReadOnly(false);
                           if (matchingEmployees.length > 0 && !selectedUser) setShowDropdown(true);
                         }}
                         placeholder="Enter your email or employee code"
@@ -1001,9 +1017,17 @@ export default function Login() {
                         autoComplete="new-password"
                         data-lpignore="true"
                         data-form-type="other"
-                        type={showPass ? "text" : "password"}
+                        readOnly={isReadOnly}
+                        type={showPass ? "text" : passFocused ? "password" : "text"}
+                        style={{
+                          WebkitTextSecurity: showPass ? "none" : passFocused ? undefined : "disc",
+                        }}
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
+                        onFocus={() => {
+                          setIsReadOnly(false);
+                          setPassFocused(true);
+                        }}
                         placeholder="Enter your password"
                         required
                         className={inCls + " pr-11"}
