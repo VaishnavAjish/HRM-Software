@@ -46,11 +46,19 @@ class AttendanceRuleController extends Controller
             'employee_user_id' => ['required_if:scope_type,employee', 'nullable', 'integer', 'exists:users,id'],
             'shift_id' => ['sometimes', 'nullable', 'integer', 'exists:shifts,id'],
             'name' => ['sometimes', 'nullable', 'string', 'max:190'],
+            // Direct punch-in/punch-out schedule on the rule itself -- an
+            // admin doesn't have to create/assign a Shift just to give a
+            // department or employee their own timing.
+            'scheduled_start_time' => ['sometimes', 'nullable', 'date_format:H:i'],
+            'scheduled_end_time' => ['sometimes', 'nullable', 'date_format:H:i'],
             'grace_in_minutes' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:600'],
             'grace_out_minutes' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:600'],
             'late_threshold_minutes' => ['sometimes', 'nullable', 'integer', 'min:0'],
             'early_exit_threshold_minutes' => ['sometimes', 'nullable', 'integer', 'min:0'],
             'half_day_threshold_minutes' => ['sometimes', 'nullable', 'integer', 'min:0'],
+            // Clock-time half-day cutoff: punching in after this time marks
+            // the day HALF_DAY regardless of total minutes worked.
+            'half_day_cutoff_time' => ['sometimes', 'nullable', 'date_format:H:i'],
             'minimum_work_minutes' => ['sometimes', 'nullable', 'integer', 'min:0'],
             'full_day_minutes' => ['sometimes', 'nullable', 'integer', 'min:0'],
             'overtime_enabled' => ['sometimes', 'nullable', 'boolean'],

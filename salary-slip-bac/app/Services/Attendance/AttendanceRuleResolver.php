@@ -29,8 +29,9 @@ use Illuminate\Support\Carbon;
 class AttendanceRuleResolver
 {
     private const FIELDS = [
+        'scheduled_start_time', 'scheduled_end_time',
         'grace_in_minutes', 'grace_out_minutes', 'late_threshold_minutes',
-        'early_exit_threshold_minutes', 'half_day_threshold_minutes', 'minimum_work_minutes',
+        'early_exit_threshold_minutes', 'half_day_threshold_minutes', 'half_day_cutoff_time', 'minimum_work_minutes',
         'full_day_minutes', 'overtime_enabled', 'overtime_after_minutes', 'break_policy',
         'weekly_off_days', 'biometric_required', 'manual_attendance_allowed', 'attendance_exempt',
         'shift_id',
@@ -38,11 +39,14 @@ class AttendanceRuleResolver
 
     /** The floor every field falls back to if NO scope, including global, ever sets it. */
     private const HARD_DEFAULTS = [
+        'scheduled_start_time' => null, // falls back to the employee's assigned Shift, if any
+        'scheduled_end_time' => null,
         'grace_in_minutes' => 10,
         'grace_out_minutes' => 0,
         'late_threshold_minutes' => 0,
         'early_exit_threshold_minutes' => 0,
         'half_day_threshold_minutes' => 240,
+        'half_day_cutoff_time' => null, // no clock-time cutoff unless a scope sets one
         'minimum_work_minutes' => 60,
         'full_day_minutes' => 480,
         'overtime_enabled' => false,

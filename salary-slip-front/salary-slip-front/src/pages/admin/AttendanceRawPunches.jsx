@@ -1,18 +1,22 @@
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
-import { RefreshCw, Fingerprint, Cpu, ChevronLeft, ChevronRight, CircleCheck, CircleX, CircleAlert, CircleSlash } from "lucide-react";
+import { RefreshCw, Cpu, ChevronLeft, ChevronRight, CircleCheck, CircleX, CircleAlert, CircleSlash } from "lucide-react";
 import { salaryApi } from "../../utils/api";
 import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";
 import { getCompanyConfig, COMPANY_OPTIONS } from "../../config/companyConfig";
+import AttendanceRuleManagement from "./AttendanceRuleManagement";
 
 /**
  * Attendance Engine Rebuild -- Raw Punches page (spec S27) + a lightweight
- * Device Health panel (spec S24, S62) as a second tab on the same screen,
- * since both read from small, closely-related new endpoints
- * (/v1/attendance/punches, /v1/attendance/devices, /v1/attendance/sync-history).
- * A NEW page at a NEW route -- purely additive, read-only (raw biometric
- * history has no delete affordance anywhere in this UI, per spec S27/S66).
+ * Device Health panel (spec S24, S62) as a second tab, and Rule Management
+ * (spec S32) as a third -- all three read from small, closely-related new
+ * endpoints (/v1/attendance/punches, /v1/attendance/devices,
+ * /v1/attendance/rules) and previously had separate nav entries; merged
+ * into one screen so "raw punching" and "rules" aren't split across the menu.
+ * Read-only for punches/devices (raw biometric history has no delete
+ * affordance anywhere in this UI, per spec S27/S66); Rules keeps its own
+ * create/retire actions since that's its whole purpose.
  */
 const PUNCH_STATUS_CONFIG = {
   VALID: { label: "Valid", icon: CircleCheck, cls: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300" },
@@ -144,14 +148,11 @@ export default function AttendanceRawPunches() {
 
   return (
     <div className="flex flex-col gap-5 min-h-screen pb-12 bg-gray-50/50 dark:bg-gray-950/50 text-gray-900 dark:text-gray-100">
-      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 border-b border-gray-200/80 dark:border-gray-800 pb-3">
-        <div>
-          <h1 className="text-lg font-extrabold text-gray-900 dark:text-white flex items-center gap-2"><Fingerprint className="h-5 w-5 text-gray-400" /> Raw Punches &amp; Device Health</h1>
-          <p className="text-xs text-gray-400">Permanent, append-only biometric ledger — read-only, never edited here</p>
-        </div>
+      <div className="flex items-center gap-4 border-b border-gray-200/80 dark:border-gray-800 pb-3">
         <div className="inline-flex rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-0.5">
           <button onClick={() => setTab("punches")} className={`px-3 py-1.5 text-xs font-semibold rounded-lg ${tab === "punches" ? "bg-indigo-600 text-white" : "text-gray-500"}`}>Punch Ledger</button>
           <button onClick={() => setTab("devices")} className={`px-3 py-1.5 text-xs font-semibold rounded-lg ${tab === "devices" ? "bg-indigo-600 text-white" : "text-gray-500"}`}>Device Health</button>
+          <button onClick={() => setTab("rules")} className={`px-3 py-1.5 text-xs font-semibold rounded-lg ${tab === "rules" ? "bg-indigo-600 text-white" : "text-gray-500"}`}>Rules</button>
         </div>
       </div>
 
@@ -244,10 +245,12 @@ export default function AttendanceRawPunches() {
             </div>
           )}
         </>
-      ) : (
+      ) : tab === "devices" ? (
         <div className="rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm">
           <DeviceHealthPanel selectedCompanyId={selectedCompanyId} accessToken={user?.accessToken} tokenType={user?.tokenType} />
         </div>
+      ) : (
+        <AttendanceRuleManagement />
       )}
     </div>
   );

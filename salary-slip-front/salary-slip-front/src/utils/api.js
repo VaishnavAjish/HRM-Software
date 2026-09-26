@@ -665,6 +665,56 @@ export const salaryApi = {
     });
   },
 
+  // Employee <-> punching-code mapping (attendance_employee_code_map) --
+  // fixes biometric punches attributing to the wrong/no employee.
+  getAttendanceCodeMaps(params, accessToken, tokenType = "Bearer") {
+    const query = new URLSearchParams(
+      Object.fromEntries(Object.entries(params || {}).filter(([, v]) => v !== undefined && v !== null && v !== ""))
+    );
+    return apiRequest(`/attendance/code-map?${query}`, {
+      headers: accessToken ? { Authorization: `${tokenType} ${accessToken}` } : {},
+    });
+  },
+
+  saveAttendanceCodeMap(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest("/attendance/code-map", {
+      method: "POST",
+      headers: accessToken ? { Authorization: `${tokenType} ${accessToken}` } : {},
+      body: JSON.stringify(payload),
+    });
+  },
+
+  deleteAttendanceCodeMap(id, accessToken, tokenType = "Bearer") {
+    return apiRequest(`/attendance/code-map/${id}`, {
+      method: "DELETE",
+      headers: accessToken ? { Authorization: `${tokenType} ${accessToken}` } : {},
+    });
+  },
+
+  bulkImportAttendanceCodeMap(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest("/attendance/code-map/import", {
+      method: "POST",
+      headers: accessToken ? { Authorization: `${tokenType} ${accessToken}` } : {},
+      body: JSON.stringify(payload),
+      timeout: 60000,
+    });
+  },
+
+  // Machine serial <-> friendly name (attendance_devices.name).
+  getAttendanceCodeMapDevices(accessToken, tokenType = "Bearer") {
+    return apiRequest("/attendance/code-map/devices", {
+      headers: accessToken ? { Authorization: `${tokenType} ${accessToken}` } : {},
+    });
+  },
+
+  nameAttendanceDevice(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest("/attendance/code-map/device-name", {
+      method: "POST",
+      headers: accessToken ? { Authorization: `${tokenType} ${accessToken}` } : {},
+      body: JSON.stringify(payload),
+    });
+  },
+
   // ---------------------------------------------------------------------
   // Attendance Engine Rebuild -- new /v1/attendance/* endpoints. Additive:
   // every function above this block (getAttendanceGrid, syncEsslAttendance,

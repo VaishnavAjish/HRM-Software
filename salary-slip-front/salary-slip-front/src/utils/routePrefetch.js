@@ -10,7 +10,6 @@ const routeLoaders = {
   "/admin/salary": () => import("../pages/admin/SalaryManagement"),
   "/admin/salary/upload": () => import("../pages/admin/SalaryUploadPage"),
   "/admin/attendance": () => import("../pages/admin/AttendanceView"),
-  "/admin/attendance/shift": () => import("../pages/admin/ShiftManagement"),
   "/admin/appointments": () => import("../pages/admin/Appointments"),
   "/admin/trial-form": () => import("../pages/admin/TrialForm"),
   "/admin/reports": () => import("../pages/admin/Reports"),

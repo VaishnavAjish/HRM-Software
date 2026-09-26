@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Attendance;
+use App\Models\AttendanceEmployeeCodeMap;
 use App\Models\SalarySlip;
 use App\Models\UploadBatch;
 use App\Models\User;
@@ -11,12 +12,12 @@ use Illuminate\Http\Request;
 
 /**
  * Recent-uploads history + per-row pass/fail report for the salary-slip,
- * employee, attendance and account-master bulk uploads — same underlying
- * batch/rows tables, distinguished by $type.
+ * employee, attendance, account-master and attendance code-map bulk
+ * uploads — same underlying batch/rows tables, distinguished by $type.
  */
 class UploadBatchController extends Controller
 {
-    private const TYPES = ['salary', 'employee', 'account-master', 'attendance'];
+    private const TYPES = ['salary', 'employee', 'account-master', 'attendance', 'attendance_code_map'];
 
     public function index(Request $request, string $type)
     {
@@ -136,6 +137,17 @@ class UploadBatchController extends Controller
                     Attendance::where('emp_code', $empCode)
                         ->where('company_code', $comp)
                         ->where('date', $date)
+                        ->delete();
+                }
+            } elseif ($type === 'attendance_code_map') {
+                $punchingCode = $data['punching_code'] ?? null;
+                if ($punchingCode) {
+                    AttendanceEmployeeCodeMap::where('device_user_code', $punchingCode)
+                        ->when(
+                            $data['device_id'] ?? null,
+                            fn ($q, $deviceId) => $q->where('device_id', $deviceId),
+                            fn ($q) => $q->whereNull('device_id'),
+                        )
                         ->delete();
                 }
             }

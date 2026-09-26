@@ -485,11 +485,15 @@ class EsslBiometricService
             // Use the resolver which checks code-map table first, then legacy fields
             $user = $resolver->resolve($codeStr);
 
-            // Determine canonical code, tenant company, and user ID
+            // Determine canonical code, tenant company, and user ID. Punching
+            // code first -- eSSL devices only ever report a punching_no, so
+            // that's what attendance rows should be keyed by (matches
+            // AttendanceController::effectiveCode(), which the grid/upsert
+            // endpoints resolve against).
             $empCompany = $user ? $user->company_code : ($companyCode && !in_array($companyCode, ['all', 'all-companies']) ? $companyCode : 'nidhi-impex');
             $empUnit = $user ? $user->unit : null;
             $userId = $user ? $user->id : null;
-            $canonicalCode = $user ? (string)($user->emp_code ?: $user->punching_no ?: $user->form_no ?: $user->id) : $codeStr;
+            $canonicalCode = $user ? (string)($user->punching_no ?: $user->emp_code ?: $user->form_no ?: $user->id) : $codeStr;
 
             foreach ($dates as $dateStr => $data) {
                 $times = $data['times'];

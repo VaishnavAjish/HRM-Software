@@ -37,12 +37,10 @@ const SalaryUploadPage = lazy(() => import("./pages/admin/SalaryUploadPage"));
 const AttendanceView = lazy(() => import("./pages/admin/AttendanceView"));
 // Attendance Engine Rebuild -- new page at a new route; AttendanceView above
 // is untouched and still backs the existing /admin/attendance route.
-const AttendanceMonthlyView = lazy(() => import("./pages/admin/AttendanceMonthlyView"));
+// AttendanceRuleManagement is no longer a routed page -- it's rendered as a
+// tab inside AttendanceRawPunches, which imports it directly.
 const AttendanceRawPunches = lazy(() => import("./pages/admin/AttendanceRawPunches"));
-const AttendanceReportsCenter = lazy(() => import("./pages/admin/AttendanceReportsCenter"));
-const AttendanceRuleManagement = lazy(() => import("./pages/admin/AttendanceRuleManagement"));
 
-const ShiftManagement = lazy(() => import("./pages/admin/ShiftManagement"));
 const Appointments = lazy(() => import("./pages/admin/Appointments"));
 const TrialForm = lazy(() => import("./pages/admin/TrialForm"));
 const Reports = lazy(() => import("./pages/admin/Reports"));
@@ -363,45 +361,11 @@ function AppRoutes() {
             </ProtectedRoute>
           }
         />
-        {/* Monthly View reads the same /attendance/grid data as the legacy
-            page above, so it shares that page's permission code. */}
-        <Route
-          path="attendance/monthly"
-          element={
-            <ProtectedRoute requiredRole="admin" requiredPermission="ui.admin.attendance.view">
-              <AttendanceMonthlyView />
-            </ProtectedRoute>
-          }
-        />
         <Route
           path="attendance/raw-punches"
           element={
             <ProtectedRoute requiredRole="admin" requiredPermission="attendance.punch.read">
               <AttendanceRawPunches />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="attendance/reports"
-          element={
-            <ProtectedRoute requiredRole="admin" requiredPermission="attendance.report.read">
-              <AttendanceReportsCenter />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="attendance/rules"
-          element={
-            <ProtectedRoute requiredRole="admin" requiredPermission="attendance.rule.read">
-              <AttendanceRuleManagement />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="attendance/shift"
-          element={
-            <ProtectedRoute requiredRole="admin" requiredPermission="hr.shift.read">
-              <ShiftManagement />
             </ProtectedRoute>
           }
         />

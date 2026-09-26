@@ -28,8 +28,10 @@ import {
   Check,
   Server,
   Radio,
+  UserCog,
 } from "lucide-react";
 import Modal from "../../components/ui/Modal";
+import MapAttendanceModal from "../../components/admin/MapAttendanceModal";
 import { salaryApi } from "../../utils/api";
 import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";
@@ -96,6 +98,7 @@ export default function AttendanceView() {
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [isCalendarModalOpen, setIsCalendarModalOpen] = useState(false);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
+  const [isMapModalOpen, setIsMapModalOpen] = useState(false);
 
   // Biometric eSSL Sync Modal States
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
@@ -106,6 +109,13 @@ export default function AttendanceView() {
   const [syncStartDate, setSyncStartDate] = useState("");
   const [syncEndDate, setSyncEndDate] = useState("");
   const [showDevicesList, setShowDevicesList] = useState(false);
+
+  // Per-employee export modal state
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [selectedExportEmp, setSelectedExportEmp] = useState(null);
+  const [exportMonth, setExportMonth] = useState(String(new Date().getMonth() + 1));
+  const [exportDay, setExportDay] = useState("");
+  const [isExporting, setIsExporting] = useState(false);
 
   // Pagination & Sorting state
   const [currentPage, setCurrentPage] = useState(1);
@@ -227,15 +237,20 @@ export default function AttendanceView() {
 
       let checkIn = empDetails.check_in || "—";
       let checkOut = empDetails.check_out || "—";
-      let workHours = empDetails.work_hours !== undefined && empDetails.work_hours !== null
-        ? `${Number(empDetails.work_hours).toFixed(1)} hrs`
-        : "—";
+      // The backend stores work_hours as an already-suffixed string (e.g.
+      // "7.50 hrs") for eSSL-synced rows -- Number() on that returns NaN
+      // because of the trailing text, where parseFloat() correctly reads
+      // just the leading numeric part.
+      const workHoursNum = empDetails.work_hours !== undefined && empDetails.work_hours !== null
+        ? parseFloat(empDetails.work_hours)
+        : NaN;
+      let workHours = !Number.isNaN(workHoursNum) ? `${workHoursNum.toFixed(1)} hrs` : "—";
       let deviceSerial = empDetails.device_serial || null;
       let breakTime = "—";
       let overtime = "0.0 hrs";
 
-      if (empDetails.work_hours && Number(empDetails.work_hours) > 8) {
-        overtime = `${(Number(empDetails.work_hours) - 8).toFixed(1)} hrs`;
+      if (!Number.isNaN(workHoursNum) && workHoursNum > 8) {
+        overtime = `${(workHoursNum - 8).toFixed(1)} hrs`;
       }
 
       let remarks;
@@ -334,7 +349,12 @@ export default function AttendanceView() {
         String(row.form_no || "").toLowerCase().includes(q) ||
         String(row.id || "").toLowerCase().includes(q) ||
         String(row.department || "").toLowerCase().includes(q) ||
-        String(row.shiftName || "").toLowerCase().includes(q);
+        String(row.shiftName || "").toLowerCase().includes(q) ||
+        // Manually mapped punching codes (Map Attendance) don't live on any
+        // of the employee's own fields above, so a code that only resolves
+        // via that mapping was otherwise unsearchable even though it now
+        // shows correct attendance.
+        (Array.isArray(row.mapped_codes) && row.mapped_codes.some((c) => String(c).toLowerCase().includes(q)));
 
       // Department filter
       const matchesDept = !selectedDepartment || row.department === selectedDepartment;
@@ -436,6 +456,148 @@ export default function AttendanceView() {
     setIsCalendarModalOpen(true);
   };
 
+  const openExportModal = (emp) => {
+    setSelectedExportEmp(emp);
+    setExportMonth(selectedMonth);
+    setExportDay("");
+    setIsExportModalOpen(true);
+  };
+
+  const exportDaysInMonth = useMemo(() => {
+    const mNum = parseInt(exportMonth || selectedMonth, 10);
+    const yNum = parseInt(selectedYear, 10);
+    if (Number.isNaN(mNum) || Number.isNaN(yNum)) return 31;
+    return new Date(yNum, mNum, 0).getDate();
+  }, [exportMonth, selectedMonth, selectedYear]);
+
+  const handleExportSingleEmployee = async () => {
+    if (!selectedExportEmp) return;
+    setIsExporting(true);
+
+    try {
+      const targetMonth = exportMonth || selectedMonth;
+      const targetYear = selectedYear;
+
+      let detailsMap = attendanceDetails;
+      let mapData = attendanceMap;
+
+      if (targetMonth !== selectedMonth || targetYear !== selectedYear) {
+        const res = await salaryApi.getAttendanceGrid(user?.accessToken, user?.tokenType, {
+          companyId: selectedCompanyId === "all-companies" ? "" : selectedCompanyId,
+          unit: selectedUnit,
+          month: targetMonth,
+          year: targetYear,
+          only_uploaded: onlyUploaded ? 1 : 0,
+        });
+        if (res?.data) {
+          detailsMap = res.data.attendance_details || {};
+          mapData = res.data.attendance || {};
+        }
+      }
+
+      const codeKey = String(selectedExportEmp.emp_code || selectedExportEmp.punching_no || selectedExportEmp.form_no || selectedExportEmp.id || "").trim();
+      const trimmedKey = codeKey.replace(/^0+/, "");
+      const punchingKey = selectedExportEmp.punching_no ? String(selectedExportEmp.punching_no).trim() : "";
+      const formKey = selectedExportEmp.form_no ? String(selectedExportEmp.form_no).trim() : "";
+      const userIdKey = selectedExportEmp.id ? `user_${selectedExportEmp.id}` : "";
+      const rawIdKey = selectedExportEmp.id ? String(selectedExportEmp.id) : "";
+
+      const empDetailsByDate = detailsMap[codeKey]
+        || (trimmedKey && detailsMap[trimmedKey])
+        || (punchingKey && detailsMap[punchingKey])
+        || (formKey && detailsMap[formKey])
+        || (userIdKey && detailsMap[userIdKey])
+        || (rawIdKey && detailsMap[rawIdKey])
+        || {};
+
+      const empStatusByDate = mapData[codeKey]
+        || (trimmedKey && mapData[trimmedKey])
+        || (punchingKey && mapData[punchingKey])
+        || (formKey && mapData[formKey])
+        || (userIdKey && mapData[userIdKey])
+        || (rawIdKey && mapData[rawIdKey])
+        || {};
+
+      const mNum = parseInt(targetMonth, 10);
+      const yNum = parseInt(targetYear, 10);
+      const daysInMonth = new Date(yNum, mNum, 0).getDate();
+
+      let daysToExport = [];
+      if (exportDay) {
+        daysToExport = [parseInt(exportDay, 10)];
+      } else {
+        daysToExport = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+      }
+
+      const headers = [
+        "Date",
+        "Day",
+        "Employee Code",
+        "Employee Name",
+        "Department",
+        "Shift",
+        "Check-In",
+        "Check-Out",
+        "Work Hours",
+        "Status",
+        "Remarks",
+      ];
+
+      const rows = daysToExport.map((dayNum) => {
+        const dateStr = `${yNum}-${String(mNum).padStart(2, "0")}-${String(dayNum).padStart(2, "0")}`;
+        const dateObj = new Date(yNum, mNum - 1, dayNum);
+        const dayName = DAY_NAMES[dateObj.getDay()] || "";
+
+        const detail = empDetailsByDate[dateStr] || {};
+        const statusVal = detail.status || empStatusByDate[dateStr] || "not_marked";
+
+        const checkIn = detail.check_in || "-";
+        const checkOut = detail.check_out || "-";
+
+        const whNum = detail.work_hours !== undefined && detail.work_hours !== null ? parseFloat(detail.work_hours) : NaN;
+        const workHours = !Number.isNaN(whNum) ? `${whNum.toFixed(1)} hrs` : "-";
+
+        let statusLabel = "Not Marked";
+        let remarks = "Not Marked";
+        if (statusVal === "present") { statusLabel = "Present"; remarks = "Present"; }
+        else if (statusVal === "late") { statusLabel = "Late"; remarks = "Late Arrival"; }
+        else if (statusVal === "half_day") { statusLabel = "Half Day"; remarks = "Half Day"; }
+        else if (statusVal === "leave") { statusLabel = "Leave"; remarks = "Leave Approved"; }
+        else if (statusVal === "absent") { statusLabel = "Absent"; remarks = "Absent"; }
+
+        return [
+          dateStr,
+          dayName,
+          selectedExportEmp.emp_code || "-",
+          selectedExportEmp.name || "-",
+          selectedExportEmp.department || "-",
+          selectedExportEmp.shiftName || selectedExportEmp.shift || "-",
+          checkIn,
+          checkOut,
+          workHours,
+          statusLabel,
+          remarks,
+        ];
+      });
+
+      const monthName = MONTHS[mNum - 1] || `Month_${mNum}`;
+      const cleanEmpCode = String(selectedExportEmp.emp_code || "EMP").replace(/[^a-zA-Z0-9_-]/g, "_");
+      const cleanEmpName = String(selectedExportEmp.name || "Employee").replace(/[^a-zA-Z0-9_-]/g, "_");
+
+      const filename = exportDay
+        ? `Attendance_${cleanEmpCode}_${cleanEmpName}_${monthName}_Day_${exportDay}_${yNum}.xlsx`
+        : `Attendance_${cleanEmpCode}_${cleanEmpName}_${monthName}_${yNum}.xlsx`;
+
+      await saveAoaToXlsx(filename, "Attendance Data", [headers, ...rows]);
+      toast.success(`Exported attendance data for ${selectedExportEmp.name || selectedExportEmp.emp_code}!`);
+      setIsExportModalOpen(false);
+    } catch (err) {
+      toast.error(err.message || "Failed to export attendance data");
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-5 min-h-screen pb-12 bg-gray-50/50 dark:bg-gray-950/50 text-gray-900 dark:text-gray-100">
       {/* Dashboard Header: KPI Cards & Actions */}
@@ -488,6 +650,14 @@ export default function AttendanceView() {
             <Fingerprint className="h-4 w-4 animate-pulse text-blue-200" />
             <span>Sync eSSL Biometric</span>
             <span className="rounded-full bg-white/20 px-1.5 py-0.2 text-[10px] font-bold">28 Machines</span>
+          </button>
+
+          <button
+            onClick={() => setIsMapModalOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 dark:border-indigo-900/40 bg-indigo-50 dark:bg-indigo-950/50 px-3 py-1.5 text-xs font-semibold text-indigo-700 dark:text-indigo-300 shadow-sm hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition"
+          >
+            <UserCog className="h-3.5 w-3.5" />
+            Map Attendance
           </button>
 
           <button
@@ -774,13 +944,22 @@ export default function AttendanceView() {
                         </div>
                       </div>
 
-                      <button
-                        onClick={() => openEmployeeCalendar(emp)}
-                        className="inline-flex items-center gap-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2.5 py-1 text-xs font-semibold text-brand-600 dark:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-900/30 transition shadow-2xs"
-                      >
-                        <Eye className="h-3.5 w-3.5" />
-                        View
-                      </button>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => openExportModal(emp)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 dark:border-emerald-800/60 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-1 text-xs font-semibold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 transition shadow-2xs"
+                        >
+                          <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
+                          Export
+                        </button>
+                        <button
+                          onClick={() => openEmployeeCalendar(emp)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2.5 py-1 text-xs font-semibold text-brand-600 dark:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-900/30 transition shadow-2xs"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                          View
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
@@ -805,6 +984,7 @@ export default function AttendanceView() {
                     <th className="py-3 px-3 cursor-pointer hover:bg-gray-200/60 dark:hover:bg-gray-700/60 transition" onClick={() => handleSort("dayStatus")}>
                       Status {sortField === "dayStatus" && (sortDirection === "asc" ? "↑" : "↓")}
                     </th>
+                    <th className="py-3 px-3">Export Data</th>
                     <th className="py-3 px-4 text-right">Actions</th>
                   </tr>
                 </thead>
@@ -873,6 +1053,18 @@ export default function AttendanceView() {
                             <StatusIcon className="h-3 w-3" />
                             {statusConfig.short}
                           </span>
+                        </td>
+
+                        {/* Export Data */}
+                        <td className="py-2.5 px-3">
+                          <button
+                            onClick={() => openExportModal(emp)}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 dark:border-emerald-800/60 bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition shadow-2xs"
+                            title="Export Attendance Data for Employee"
+                          >
+                            <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                            Export
+                          </button>
                         </td>
 
                         {/* Actions */}
@@ -960,6 +1152,14 @@ export default function AttendanceView() {
             || (rawIdKey && attendanceMap[rawIdKey])
             || {};
 
+          const empDetailsByDate = attendanceDetails[codeKey]
+            || (trimmedKey && attendanceDetails[trimmedKey])
+            || (punchingKey && attendanceDetails[punchingKey])
+            || (formKey && attendanceDetails[formKey])
+            || (userIdKey && attendanceDetails[userIdKey])
+            || (rawIdKey && attendanceDetails[rawIdKey])
+            || {};
+
           Object.values(empData).forEach(status => {
             if (status === 'present' || status === 'late') presentCount++;
             else if (status === 'absent') absentCount++;
@@ -1025,24 +1225,35 @@ export default function AttendanceView() {
                 <div className="grid grid-cols-7 bg-white">
                   {calendarCells.map((cell, idx) => {
                     if (!cell.day) {
-                      return <div key={`empty-${idx}`} className="h-10 sm:h-14 border-r border-b border-gray-100" />;
+                      return <div key={`empty-${idx}`} className="h-14 sm:h-20 border-r border-b border-gray-100" />;
                     }
 
                     const status = empData[cell.dateStr];
                     const conf = status ? STATUS_CONFIG[status] : null;
+                    const detail = empDetailsByDate[cell.dateStr];
+                    const hasPunches = detail && (detail.check_in || detail.check_out);
 
                     return (
                       <div
                         key={cell.dateStr}
-                        className="h-10 sm:h-14 border-r border-b border-gray-100 p-1 flex flex-col items-center justify-center transition hover:bg-gray-50 relative"
+                        title={hasPunches ? `In: ${detail.check_in || "—"}  Out: ${detail.check_out || "—"}` : undefined}
+                        className="h-14 sm:h-20 border-r border-b border-gray-100 p-1 flex flex-col items-center justify-center gap-0.5 transition hover:bg-gray-50 relative"
                       >
                         <span className={`text-[10px] sm:text-[11px] font-bold ${idx % 7 === 0 ? 'text-red-500' : 'text-gray-600'}`}>
                           {cell.day}
                         </span>
                         {conf && (
-                          <div className="mt-0.5 sm:mt-1">
-                            <span className={`inline-flex items-center justify-center rounded px-1 py-0.5 text-[8px] font-bold ${conf.badge}`}>
-                              {conf.short.charAt(0)}
+                          <span className={`inline-flex items-center justify-center rounded px-1 py-0.5 text-[8px] font-bold ${conf.badge}`}>
+                            {conf.short.charAt(0)}
+                          </span>
+                        )}
+                        {hasPunches && (
+                          <div className="flex flex-col items-center leading-none">
+                            <span className="text-[7px] sm:text-[8px] font-mono font-semibold text-emerald-600">
+                              {detail.check_in ? detail.check_in.slice(0, 5) : "--:--"}
+                            </span>
+                            <span className="text-[7px] sm:text-[8px] font-mono font-semibold text-red-500">
+                              {detail.check_out ? detail.check_out.slice(0, 5) : "--:--"}
                             </span>
                           </div>
                         )}
@@ -1250,6 +1461,128 @@ export default function AttendanceView() {
             </button>
           </div>
         </div>
+      </Modal>
+
+      {/* Employee <-> Punching Code Mapping Modal (single + bulk Excel) */}
+      <MapAttendanceModal
+        isOpen={isMapModalOpen}
+        onClose={() => setIsMapModalOpen(false)}
+        employees={employees}
+        companyId={selectedCompanyId === "all-companies" ? "" : selectedCompanyId}
+        deviceSerials={ESSL_DEVICES}
+      />
+
+
+      {/* Employee Per-Entry Attendance Export Modal */}
+      <Modal
+        isOpen={isExportModalOpen}
+        onClose={() => !isExporting && setIsExportModalOpen(false)}
+        title="Export Employee Attendance Data"
+        maxWidth="max-w-md"
+      >
+        {selectedExportEmp && (
+          <div className="flex flex-col gap-4 text-xs text-gray-700 dark:text-gray-300">
+            {/* Employee Banner */}
+            <div className="flex items-center gap-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 p-3">
+              <div className="rounded-lg bg-emerald-600 p-2 text-white shrink-0 shadow-sm">
+                <FileSpreadsheet className="h-5 w-5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="font-bold text-gray-900 dark:text-white text-sm truncate">
+                  {selectedExportEmp.name}
+                </div>
+                <div className="text-[11px] text-gray-500 dark:text-gray-400 flex items-center gap-2 mt-0.5">
+                  <span>Code: <strong className="text-gray-700 dark:text-gray-300 font-mono">{selectedExportEmp.emp_code}</strong></span>
+                  {selectedExportEmp.department && (
+                    <>
+                      <span>•</span>
+                      <span>Dept: <strong className="text-gray-700 dark:text-gray-300">{selectedExportEmp.department}</strong></span>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Select Month & Day Inputs */}
+            <div className="grid grid-cols-2 gap-3 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/50 p-3.5">
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1">
+                  Month
+                </label>
+                <select
+                  value={exportMonth}
+                  onChange={(e) => {
+                    const newM = e.target.value;
+                    setExportMonth(newM);
+                    const maxD = new Date(parseInt(selectedYear, 10), parseInt(newM, 10), 0).getDate();
+                    if (exportDay && parseInt(exportDay, 10) > maxD) {
+                      setExportDay("");
+                    }
+                  }}
+                  disabled={isExporting}
+                  className="w-full rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 px-3 py-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-emerald-500/20"
+                >
+                  {MONTHS.map((m, idx) => (
+                    <option key={m} value={String(idx + 1)}>{m}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1">
+                  Day (Optional)
+                </label>
+                <select
+                  value={exportDay}
+                  onChange={(e) => setExportDay(e.target.value)}
+                  disabled={isExporting}
+                  className="w-full rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 px-3 py-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-emerald-500/20"
+                >
+                  <option value="">All Days (Entire Month)</option>
+                  {Array.from({ length: exportDaysInMonth }, (_, i) => i + 1).map((d) => (
+                    <option key={d} value={String(d)}>Day {d}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="text-[11px] text-gray-500 dark:text-gray-400 italic">
+              {exportDay
+                ? `Will export attendance for Day ${exportDay} of ${MONTHS[parseInt(exportMonth, 10) - 1]} ${selectedYear}.`
+                : `Will export complete attendance data for all ${exportDaysInMonth} days of ${MONTHS[parseInt(exportMonth, 10) - 1]} ${selectedYear}.`}
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-gray-200 dark:border-gray-800">
+              <button
+                type="button"
+                onClick={() => setIsExportModalOpen(false)}
+                disabled={isExporting}
+                className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2 text-xs font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-750 transition disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleExportSingleEmployee}
+                disabled={isExporting}
+                className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 px-4 py-2 text-xs font-semibold text-white shadow hover:from-emerald-700 hover:to-teal-700 transition active:scale-95 disabled:opacity-60"
+              >
+                {isExporting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>Generating Excel...</span>
+                  </>
+                ) : (
+                  <>
+                    <FileSpreadsheet className="h-4 w-4" />
+                    <span>Export to Excel</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   );

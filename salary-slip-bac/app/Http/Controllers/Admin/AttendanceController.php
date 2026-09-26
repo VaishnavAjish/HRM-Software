@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Http\Controllers\Admin\Concerns\ResolvesEmployeeByCode;
 use App\Http\Controllers\Controller;
 use App\Models\Attendance;
+use App\Models\AttendanceEmployeeCodeMap;
 use App\Models\UploadBatch;
 use App\Models\User;
 use App\Services\Biometric\BiometricUserResolver;
@@ -20,6 +22,8 @@ use Illuminate\Support\Facades\Schema;
  */
 class AttendanceController extends Controller
 {
+    use ResolvesEmployeeByCode;
+
     private const STATUS_CODES = [
         'P' => 'present',
         'A' => 'absent',
@@ -72,9 +76,10 @@ class AttendanceController extends Controller
             ->orderBy('name')
             ->get(['id', 'emp_code', 'punching_no', 'form_no', 'name', 'department', 'unit', 'company_code'])
             ->map(function ($u) {
-                // Ensure emp_code is never empty: fall back to punching_no, form_no, or user id
-                $effectiveCode = (string) ($u->emp_code ?: $u->punching_no ?: $u->form_no ?: $u->id);
-                $u->emp_code = $effectiveCode;
+                // The grid's "Code" column and every attendance lookup below
+                // key off this punching-code-first value, not the raw DB
+                // emp_code column — see effectiveCode()'s docblock.
+                $u->emp_code = $this->effectiveCode($u);
                 return $u;
             })
             ->values();
@@ -96,24 +101,76 @@ class AttendanceController extends Controller
             ->whereBetween('date', [$start->toDateString(), $end->toDateString()])
             ->get($selectCols);
 
-        // Build employee identifier lookup dictionary
+        // Build employee identifier lookup dictionary. This is a single flat
+        // map shared across every employee, so a raw code has to resolve to
+        // exactly one of them -- and punching_no has to win that contest.
+        // eSSL devices only ever report a punching_no; if some other
+        // employee's emp_code or numeric id happens to equal that same raw
+        // string and got registered afterwards, an unconditional overwrite
+        // here would silently reattribute the punch to the wrong person.
+        // Registering identifiers in priority passes (manual code-map, then
+        // punching_no, then emp_code, then form_no, then id) and never
+        // overwriting an already-claimed slot makes each pass un-stealable
+        // by a lower-priority one, whichever employee it belongs to.
         $empIdentifierMap = [];
+        $claim = function (string $ident, string $eff) use (&$empIdentifierMap) {
+            if ($ident !== '' && !isset($empIdentifierMap[$ident])) {
+                $empIdentifierMap[$ident] = $eff;
+            }
+        };
+
+        // Highest priority: an admin's explicit code-map entry (Map
+        // Attendance). This exists specifically to override a mismatch the
+        // raw emp_code/punching_no/form_no/id chain got wrong, so it has to
+        // win over all of them, not just fill in gaps they miss.
+        $employeeIds = $employees->pluck('id')->filter()->all();
+        $mappedCodesByUserId = [];
+        if (!empty($employeeIds)) {
+            $effCodeByUserId = $employees->keyBy('id')->map(fn ($e) => (string) $e->emp_code);
+            AttendanceEmployeeCodeMap::query()
+                ->where('is_active', true)
+                ->whereIn('user_id', $employeeIds)
+                ->get(['device_user_code', 'user_id'])
+                ->each(function ($row) use ($claim, $effCodeByUserId, &$mappedCodesByUserId) {
+                    $mappedCodesByUserId[$row->user_id][] = (string) $row->device_user_code;
+
+                    $eff = $effCodeByUserId[$row->user_id] ?? null;
+                    if ($eff) {
+                        $claim((string) $row->device_user_code, $eff);
+                        $claim(ltrim((string) $row->device_user_code, '0'), $eff);
+                    }
+                });
+        }
+
+        // The frontend search box only ever knew to check emp_code/punching_no/
+        // form_no/id -- an employee whose only working identifier is a manual
+        // code-map entry (their own fields don't match what the device sends)
+        // was otherwise unfindable by typing that code in, even though their
+        // attendance now resolves correctly. Handing back the mapped codes
+        // lets the search box check those too.
+        $employees->each(function ($e) use ($mappedCodesByUserId) {
+            $e->mapped_codes = $mappedCodesByUserId[$e->id] ?? [];
+        });
+
         foreach ($employees as $e) {
             $eff = (string) $e->emp_code;
-            $identifiers = [
-                $eff,
-                ltrim($eff, '0'),
-                (string) ($e->punching_no ?? ''),
-                ltrim((string) ($e->punching_no ?? ''), '0'),
-                (string) ($e->form_no ?? ''),
-                ltrim((string) ($e->form_no ?? ''), '0'),
-                (string) ($e->id ?? ''),
-            ];
-            foreach ($identifiers as $ident) {
-                if ($ident !== '') {
-                    $empIdentifierMap[$ident] = $eff;
-                }
-            }
+            $p = (string) ($e->punching_no ?? '');
+            $claim($p, $eff);
+            $claim(ltrim($p, '0'), $eff);
+        }
+        foreach ($employees as $e) {
+            $eff = (string) $e->emp_code;
+            $claim($eff, $eff);
+            $claim(ltrim($eff, '0'), $eff);
+        }
+        foreach ($employees as $e) {
+            $eff = (string) $e->emp_code;
+            $f = (string) ($e->form_no ?? '');
+            $claim($f, $eff);
+            $claim(ltrim($f, '0'), $eff);
+        }
+        foreach ($employees as $e) {
+            $claim((string) ($e->id ?? ''), (string) $e->emp_code);
         }
 
         $map = [];
@@ -162,9 +219,17 @@ class AttendanceController extends Controller
             $trimmed = ltrim($c, '0');
             $uId = !empty($r->user_id) ? (int) $r->user_id : (is_numeric($c) ? (int)$c : null);
 
+            // A code already resolved above via $empIdentifierMap -- including
+            // via a manual code-map entry -- is matched even when it isn't
+            // literally anyone's emp_code/id. Missing this check duplicated
+            // that employee's row here (a synthetic "Employee <code>" entry
+            // alongside their real one) every time a mapping was the only
+            // thing that resolved the code.
             $matched = isset($knownCodes[$c])
                 || ($trimmed !== '' && isset($knownCodes[$trimmed]))
-                || ($uId && isset($knownIds[$uId]));
+                || ($uId && isset($knownIds[$uId]))
+                || isset($empIdentifierMap[$c])
+                || ($trimmed !== '' && isset($empIdentifierMap[$trimmed]));
 
             if (!$matched && !isset($unmatchedCodes[$c])) {
                 $unmatchedCodes[$c] = $r;
@@ -182,7 +247,7 @@ class AttendanceController extends Controller
 
                 if ($resolvedUser) {
                     // Code-map matched a real user — use their actual name
-                    $effectiveCode = (string) ($resolvedUser->emp_code ?: $resolvedUser->punching_no ?: $resolvedUser->form_no ?: $resolvedUser->id);
+                    $effectiveCode = $this->effectiveCode($resolvedUser);
                     $unmatchedPunches[$c] = [
                         'id'           => $resolvedUser->id,
                         'emp_code'     => $effectiveCode,
@@ -294,16 +359,21 @@ class AttendanceController extends Controller
             return response()->json(['status' => false, 'message' => 'Company is required'], 422);
         }
 
-        $employee = User::where('emp_code', $data['emp_code'])->where('company_code', $companyCode)->first();
+        // The grid hands back punching_no-first codes (see effectiveCode()),
+        // so a strict emp_code match here missed anyone without their own
+        // emp_code — findEmployeeByCode() matches whichever field the
+        // frontend's code actually came from.
+        $employee = $this->findEmployeeByCode($data['emp_code'], $companyCode);
         if (!$employee) {
             return response()->json(['status' => false, 'message' => 'Employee not found in this company'], 404);
         }
+        $canonicalCode = $this->effectiveCode($employee);
 
         // A cell cycled all the way back to "unmarked" clears the record
         // rather than storing an empty status — that keeps the grid and the
         // stored data in agreement instead of the cell just looking blank.
         if (empty($data['status'])) {
-            Attendance::where('emp_code', $data['emp_code'])
+            Attendance::where('emp_code', $canonicalCode)
                 ->where('company_code', $companyCode)
                 ->where('date', $data['date'])
                 ->delete();
@@ -319,7 +389,7 @@ class AttendanceController extends Controller
         // constraint. upsert() can't be raced that way.
         Attendance::upsert(
             [[
-                'emp_code' => $data['emp_code'],
+                'emp_code' => $canonicalCode,
                 'company_code' => $companyCode,
                 'date' => $data['date'],
                 'unit' => $employee->unit,
@@ -331,7 +401,7 @@ class AttendanceController extends Controller
             ['unit', 'status', 'marked_by', 'user_id'],
         );
 
-        $attendance = Attendance::where('emp_code', $data['emp_code'])
+        $attendance = Attendance::where('emp_code', $canonicalCode)
             ->where('company_code', $companyCode)
             ->where('date', $data['date'])
             ->first();
@@ -382,13 +452,17 @@ class AttendanceController extends Controller
                 continue;
             }
 
-            $employee = User::where('emp_code', $empCode)->where('company_code', $companyCode)->first();
+            // findEmployeeByCode() matches punching_no/emp_code/form_no/id --
+            // a strict emp_code match alone rejected any Excel row keyed by
+            // punching code for an employee without their own emp_code.
+            $employee = $this->findEmployeeByCode($empCode, $companyCode);
             if (!$employee) {
                 $reason = "Employee code '{$empCode}' not found in this company";
                 $skipped[] = "Row {$excelRowNum}: {$reason}";
                 $rowReports[] = ['row_number' => $excelRowNum, 'status' => 'failed', 'reason' => $reason, 'row_data' => $row];
                 continue;
             }
+            $canonicalCode = $this->effectiveCode($employee);
 
             $days = is_array($row['days'] ?? null) ? $row['days'] : [];
             $dayRows = [];
@@ -398,7 +472,7 @@ class AttendanceController extends Controller
                     continue;
                 }
                 $dayRows[] = [
-                    'emp_code' => $empCode,
+                    'emp_code' => $canonicalCode,
                     'company_code' => $companyCode,
                     'date' => sprintf('%04d-%02d-%02d', $year, $month, (int) $day),
                     'unit' => $employee->unit,

@@ -30,6 +30,11 @@ const COLUMNS_BY_TYPE = {
     { key: "bank_account_no", label: "Account No" },
     { key: "bank_ifsc_code", label: "IFSC" },
   ],
+  attendance_code_map: [
+    { key: "employee_code", label: "Employee Code" },
+    { key: "employee_name", label: "Name" },
+    { key: "punching_code", label: "Punching Code" },
+  ],
 };
 
 function cellValue(row, col) {

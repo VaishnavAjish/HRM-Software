@@ -1,5 +1,6 @@
 <?php
 use App\Http\Controllers\Admin\AdminController;
+use App\Http\Controllers\Admin\AttendanceCodeMapController;
 use App\Http\Controllers\Admin\AttendanceController;
 use App\Http\Controllers\Admin\Hr\AssetController;
 use App\Http\Controllers\Admin\Hr\CandidateController;
@@ -1387,6 +1388,16 @@ Route::middleware('jwt.auth')->group(function () {
             Route::post('cell', [AttendanceController::class, 'upsertCell'])->middleware('permission:hr.attendance.update');
             Route::post('import', [AttendanceController::class, 'bulkImport'])->middleware(['throttle:20,1', 'permission:hr.attendance.import']);
             Route::post('sync-essl', [AttendanceController::class, 'syncEssl'])->middleware('permission:hr.attendance.update');
+
+            // Employee <-> punching-code mapping (attendance_employee_code_map).
+            Route::get('code-map', [AttendanceCodeMapController::class, 'index'])->middleware('permission:hr.attendance.read');
+            Route::post('code-map', [AttendanceCodeMapController::class, 'store'])->middleware('permission:hr.attendance.update');
+            Route::delete('code-map/{id}', [AttendanceCodeMapController::class, 'destroy'])->whereNumber('id')->middleware('permission:hr.attendance.update');
+            Route::post('code-map/import', [AttendanceCodeMapController::class, 'bulkImport'])->middleware(['throttle:20,1', 'permission:hr.attendance.import']);
+
+            // Machine serial <-> friendly name (attendance_devices.name).
+            Route::get('code-map/devices', [AttendanceCodeMapController::class, 'devices'])->middleware('permission:hr.attendance.read');
+            Route::post('code-map/device-name', [AttendanceCodeMapController::class, 'nameDevice'])->middleware('permission:hr.attendance.update');
         });
         Route::group(['prefix' => 'shifts'], function () {
             Route::get('get', [ShiftController::class, 'index'])->middleware('permission:hr.shift.read');

@@ -114,6 +114,8 @@ export default function AttendanceMonthlyView() {
   const [employees, setEmployees] = useState([]);
   const [attendanceMap, setAttendanceMap] = useState({});
   const [attendanceDetails, setAttendanceDetails] = useState({});
+  const [currentPage, setCurrentPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(20);
 
   const activeCompanyConfig = getCompanyConfig(selectedCompanyId);
   const unitOptions = activeCompanyConfig ? activeCompanyConfig.units : [];
@@ -184,11 +186,28 @@ export default function AttendanceMonthlyView() {
     return processedEmployees.filter((e) =>
       String(e.name || "").toLowerCase().includes(q) ||
       String(e.emp_code || "").toLowerCase().includes(q) ||
-      String(e.department || "").toLowerCase().includes(q)
+      String(e.department || "").toLowerCase().includes(q) ||
+      // Manually mapped punching codes (Map Attendance) don't live on any
+      // of the employee's own fields above -- see the matching comment in
+      // AttendanceView.jsx's search filter.
+      (Array.isArray(e.mapped_codes) && e.mapped_codes.some((c) => String(c).toLowerCase().includes(q)))
     );
   }, [processedEmployees, search]);
 
   const activeEmployee = filteredEmployees.length === 1 ? filteredEmployees[0] : null;
+
+  // Rendering all ~1000 employees x 31 day-columns at once (~30k cells) is
+  // what was making the sidebar's collapse/expand animation janky -- that
+  // many DOM nodes made every reflow (including the sidebar's own) expensive.
+  // Paginating the compact grid keeps the on-screen row count small. Clamping
+  // here (rather than resetting via an effect) means a filter change that
+  // leaves fewer pages just snaps back to the last valid one on render.
+  const totalPages = Math.max(1, Math.ceil(filteredEmployees.length / rowsPerPage));
+  const safePage = Math.min(currentPage, totalPages);
+  const paginatedEmployees = useMemo(() => {
+    const start = (safePage - 1) * rowsPerPage;
+    return filteredEmployees.slice(start, start + rowsPerPage);
+  }, [filteredEmployees, safePage, rowsPerPage]);
 
   return (
     <div className="flex flex-col gap-5 min-h-screen pb-12 bg-gray-50/50 dark:bg-gray-950/50 text-gray-900 dark:text-gray-100">
@@ -276,7 +295,7 @@ export default function AttendanceMonthlyView() {
               ) : filteredEmployees.length === 0 ? (
                 <tr><td colSpan={dayNumbers.length + 3} className="py-12 text-center text-gray-400">No employees match the current filters.</td></tr>
               ) : (
-                filteredEmployees.map((emp) => (
+                paginatedEmployees.map((emp) => (
                   <tr key={emp.id || emp.emp_code} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                     <td className="sticky left-0 bg-white dark:bg-gray-900 z-10 px-3 py-1.5 border-b border-gray-100 dark:border-gray-800">
                       <div className="font-semibold text-gray-800 dark:text-gray-100 truncate max-w-[10rem]">{emp.name || "—"}</div>
@@ -317,9 +336,43 @@ export default function AttendanceMonthlyView() {
         </div>
       )}
 
-      <div className="text-[11px] text-gray-400">
-        {activeEmployee ? 1 : filteredEmployees.length} employee(s) shown for {monthLabel(year, month)}.
-      </div>
+      {!activeEmployee && filteredEmployees.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3 text-xs">
+          <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
+            <span>
+              Showing {Math.min((safePage - 1) * rowsPerPage + 1, filteredEmployees.length)} to {Math.min(safePage * rowsPerPage, filteredEmployees.length)} of {filteredEmployees.length} employees
+            </span>
+            <select
+              value={rowsPerPage}
+              onChange={(e) => setRowsPerPage(Number(e.target.value))}
+              className="rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 px-2 py-1 outline-none text-xs"
+            >
+              <option value={10}>10 rows</option>
+              <option value={20}>20 rows</option>
+              <option value={50}>50 rows</option>
+              <option value={100}>100 rows</option>
+            </select>
+          </div>
+
+          <div className="flex items-center gap-1">
+            <button
+              disabled={safePage === 1}
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              className="p-1.5 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-800 disabled:opacity-40 hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <span className="px-2 font-medium">Page {safePage} of {totalPages}</span>
+            <button
+              disabled={safePage === totalPages}
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              className="p-1.5 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-800 disabled:opacity-40 hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -394,7 +447,15 @@ function EmployeeMonthlyReport({ employee, year, month, dayNumbers, loading, onB
                     <td className="py-2 px-3 font-mono text-[11px] text-gray-700 dark:text-gray-300">{detail.check_in || "—"}</td>
                     <td className="py-2 px-3 font-mono text-[11px] text-gray-700 dark:text-gray-300">{detail.check_out || "—"}</td>
                     <td className="py-2 px-3 font-mono text-[11px] text-gray-700 dark:text-gray-300">
-                      {detail.work_hours !== undefined && detail.work_hours !== null ? `${Number(detail.work_hours).toFixed(1)} hrs` : "—"}
+                      {(() => {
+                        // work_hours comes back as an already-suffixed string
+                        // (e.g. "7.50 hrs") for eSSL-synced rows -- parseFloat
+                        // reads the leading number; Number() on that string is NaN.
+                        const hrs = detail.work_hours !== undefined && detail.work_hours !== null
+                          ? parseFloat(detail.work_hours)
+                          : NaN;
+                        return !Number.isNaN(hrs) ? `${hrs.toFixed(1)} hrs` : "—";
+                      })()}
                     </td>
                   </tr>
                 );

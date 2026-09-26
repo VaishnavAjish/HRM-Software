@@ -27,8 +27,9 @@ class AttendanceRule extends Model
 
     protected $fillable = [
         'scope_type', 'company_code', 'unit', 'department', 'employee_user_id', 'shift_id', 'name',
+        'scheduled_start_time', 'scheduled_end_time',
         'grace_in_minutes', 'grace_out_minutes', 'late_threshold_minutes', 'early_exit_threshold_minutes',
-        'half_day_threshold_minutes', 'minimum_work_minutes', 'full_day_minutes',
+        'half_day_threshold_minutes', 'half_day_cutoff_time', 'minimum_work_minutes', 'full_day_minutes',
         'overtime_enabled', 'overtime_after_minutes', 'break_policy', 'weekly_off_days',
         'biometric_required', 'manual_attendance_allowed', 'attendance_exempt',
         'effective_from', 'effective_to', 'is_active', 'created_by', 'change_reason',

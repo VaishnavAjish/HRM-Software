@@ -144,6 +144,19 @@ class AttendanceStatusEngine
             $result['primary_status'] = AttendanceDaily::STATUS_PRESENT;
         }
 
+        // A punch-in later than the configured half-day cutoff clock time
+        // downgrades an otherwise-full day to HALF_DAY, independent of total
+        // minutes worked -- e.g. someone who still clocks a full 8 hours only
+        // because they stayed very late after a very late start. Never
+        // upgrades an ABSENT day (insufficient minutes worked already decided
+        // that, more strictly).
+        if ($result['primary_status'] === AttendanceDaily::STATUS_PRESENT && ! empty($ruleValues['half_day_cutoff_time']) && $first) {
+            $cutoff = Carbon::parse($first->toDateString() . ' ' . $ruleValues['half_day_cutoff_time']);
+            if ($first->gt($cutoff)) {
+                $result['primary_status'] = AttendanceDaily::STATUS_HALF_DAY;
+            }
+        }
+
         $this->computeLateEarly($result, $first, $last, $shift, $ruleValues);
         $this->computeOvertime($result, $ruleValues);
 
@@ -183,14 +196,31 @@ class AttendanceStatusEngine
 
     private function computeLateEarly(array &$result, ?Carbon $first, ?Carbon $last, ?Shift $shift, array $ruleValues): void
     {
-        if (! $shift || ! $first || ! $last) {
-            return; // cannot judge lateness/earliness with no assigned shift to compare against
+        if (! $first || ! $last) {
+            return;
         }
 
-        $shiftStart = Carbon::parse($first->toDateString() . ' ' . $shift->start_time);
-        $shiftEnd = Carbon::parse($first->toDateString() . ' ' . $shift->end_time);
-        if ($shift->is_overnight && $shiftEnd->lte($shiftStart)) {
-            $shiftEnd->addDay();
+        // The rule's own scheduled_start_time/scheduled_end_time (set directly
+        // on a company/branch/department/employee rule) take priority over the
+        // employee's assigned Shift -- an admin can give a department its own
+        // punch-in/punch-out schedule without ever creating a Shift row.
+        $startTime = $ruleValues['scheduled_start_time'] ?? $shift?->start_time;
+        $endTime = $ruleValues['scheduled_end_time'] ?? $shift?->end_time;
+        if (! $startTime || ! $endTime) {
+            return; // no scheduled time from the rule and no assigned shift -- nothing to compare against
+        }
+
+        $shiftStart = Carbon::parse($first->toDateString() . ' ' . $startTime);
+        $shiftEnd = Carbon::parse($first->toDateString() . ' ' . $endTime);
+        if ($shiftEnd->lte($shiftStart)) {
+            // A Shift row says explicitly whether it's overnight; a rule's
+            // own scheduled times carry no such flag, so an end time at or
+            // before the start time is the only signal available -- treat
+            // it as crossing midnight rather than a (nonsensical) same-day
+            // negative span.
+            if (! $shift || $shift->is_overnight) {
+                $shiftEnd->addDay();
+            }
         }
 
         $graceIn = (int) $ruleValues['grace_in_minutes'];

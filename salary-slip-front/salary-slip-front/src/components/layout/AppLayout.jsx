@@ -13,7 +13,7 @@ const pageTitles = {
   "/admin/salary": "Month & Batch Details",
   "/admin/salary/upload": "Salary Upload",
   "/admin/attendance": "View Attendance",
-  "/admin/attendance/shift": "Shift",
+  "/admin/attendance/raw-punches": "Raw Punches, Devices & Rules",
   "/admin/tds/calculation": "TDS Calculation",
   "/admin/tds/mediclaim": "Mediclaim Administration",
   "/admin/form16": "Form 16",
