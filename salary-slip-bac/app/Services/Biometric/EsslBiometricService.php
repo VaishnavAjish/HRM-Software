@@ -3,8 +3,11 @@
 namespace App\Services\Biometric;
 
 use App\Models\Attendance;
+use App\Models\AttendanceRule;
 use App\Models\UploadBatch;
 use App\Models\User;
+use App\Services\Attendance\AttendanceRuleResolver;
+use App\Support\EsslSettings;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 
@@ -33,6 +36,23 @@ class EsslBiometricService
         "CPAK223760603", "CPAK222560306", "CPAK222560307", "CPAK222560447"
     ];
 
+    /**
+     * Status thresholds for a raw punch code that never resolved to a real
+     * User (no matching emp_code/punching_no/form_no/id and no manual
+     * code-map entry) -- there is no department/employee to look an
+     * AttendanceRule up for, so this reproduces the exact fixed thresholds
+     * this method used before rules existed (full day >= 7.5h, half day
+     * 4.0-7.5h, never marks absent). Anyone who DOES resolve to a real User
+     * gets their actual department/employee/company/global rule instead —
+     * see the AttendanceRuleResolver call in syncAttendance() below.
+     */
+    private const UNMAPPED_STATUS_RULE_VALUES = [
+        'minimum_work_minutes' => 0,
+        'half_day_threshold_minutes' => 240,
+        'full_day_minutes' => 450,
+        'half_day_cutoff_time' => null,
+    ];
+
     private string $apiUrl;
     private string $username;
     private string $password;
@@ -42,18 +62,23 @@ class EsslBiometricService
 
     public function __construct()
     {
-        // No hardcoded fallback for the URL/credentials -- they live in
-        // .env only (never committed; see .env.example for the required
-        // keys). A missing value does NOT throw here: construction happens
-        // during Laravel's controller-dependency resolution, before the
-        // controller's own try/catch is in scope, so an exception here
-        // would surface as a raw framework error page instead of the same
-        // graceful "status: false" JSON every other eSSL failure returns.
-        // $isConfigured is checked at the top of syncAttendance() instead.
-        $this->apiUrl = (string) env('ESSL_API_URL', '');
-        $this->username = (string) env('ESSL_USERNAME', '');
-        $this->password = (string) env('ESSL_PASSWORD', '');
-        $this->namespace = (string) env('ESSL_NAMESPACE', 'http://tempuri.org/');
+        // Read from the database (essl_settings, managed via the eSSL
+        // Settings screen / EsslSettingsController) instead of .env, so the
+        // tunnel URL/credentials can be rotated from the app without a
+        // server file edit or restart. See App\Support\EsslSettings for the
+        // fallback-to-.env behavior on an environment that hasn't been
+        // given a settings row yet. A missing value does NOT throw here:
+        // construction happens during Laravel's controller-dependency
+        // resolution, before the controller's own try/catch is in scope, so
+        // an exception here would surface as a raw framework error page
+        // instead of the same graceful "status: false" JSON every other
+        // eSSL failure returns. $isConfigured is checked at the top of
+        // syncAttendance() instead.
+        $settings = EsslSettings::all();
+        $this->apiUrl = $settings['api_url'];
+        $this->username = $settings['username'];
+        $this->password = $settings['password'];
+        $this->namespace = $settings['namespace'];
         $this->isConfigured = $this->apiUrl !== '' && $this->username !== '' && $this->password !== '';
         // ALL 28 devices share this one apiUrl (the serial goes in the SOAP
         // body, not the URL) — a free ngrok tunnel to what's almost
@@ -64,9 +89,10 @@ class EsslBiometricService
         // close, breaking a sync that ran fine (if slowly) one device at a
         // time before. Default is therefore sequential (1) — the behavior
         // that was actually working — with concurrency available as an
-        // explicit opt-in via .env for anyone whose eSSL endpoint is known
-        // to handle it (a dedicated server, a paid ngrok tier, etc.).
-        $this->maxConcurrentFetches = max(1, (int) env('ESSL_MAX_CONCURRENT_FETCHES', 1));
+        // explicit opt-in (via the eSSL Settings screen) for anyone whose
+        // eSSL endpoint is known to handle it (a dedicated server, a paid
+        // ngrok tier, etc.).
+        $this->maxConcurrentFetches = max(1, (int) $settings['max_concurrent_fetches']);
     }
 
     /** Builds the (read-only) GetTransactionsLog SOAP request body — the ONLY SOAP action this class ever issues. */
@@ -148,9 +174,9 @@ class EsslBiometricService
     /**
      * Fetches GetTransactionsLog (read-only) from every device in
      * `$serials`, in batches of `$this->maxConcurrentFetches`
-     * (DEFAULT 1 — sequential, `.env`-tunable via
-     * `ESSL_MAX_CONCURRENT_FETCHES` for an endpoint known to tolerate more)
-     * run via curl_multi.
+     * (DEFAULT 1 — sequential, tunable via the "Max Concurrent Fetches"
+     * field on the eSSL Settings screen for an endpoint known to tolerate
+     * more) run via curl_multi.
      *
      * This three-part history matters: the ORIGINAL loop ran fully
      * sequentially and worked, if slowly — up to count($serials) x 25s of
@@ -174,7 +200,7 @@ class EsslBiometricService
      * Circuit breaker: once at least `min(3, count($serials))` devices have
      * been attempted and EVERY one of them has failed, the shared `apiUrl`
      * itself is almost certainly the problem (a dead tunnel, a wrong
-     * `.env` value, the relay box being off) rather than three-plus
+     * eSSL Settings value, the relay box being off) rather than three-plus
      * individual devices coincidentally all being down at once. Checked
      * after every batch regardless of `maxConcurrentFetches` — including
      * the sequential default (1) — so a dead endpoint is detected within a
@@ -204,7 +230,7 @@ class EsslBiometricService
 
             if ($attempted >= $minSampleBeforeTripping && $failed === $attempted) {
                 $sampleError = reset($results)['error'] ?? 'unknown error';
-                Log::error("eSSL sync aborted early: all {$attempted} attempted device(s) failed to connect (sample error: {$sampleError}). The shared eSSL endpoint is likely unreachable -- check the tunnel/ESSL_API_URL rather than individual devices.");
+                Log::error("eSSL sync aborted early: all {$attempted} attempted device(s) failed to connect (sample error: {$sampleError}). The shared eSSL endpoint is likely unreachable -- check the tunnel URL in the eSSL Settings screen rather than individual devices.");
 
                 foreach ($serials as $skippedSerial) {
                     if (! isset($results[$skippedSerial])) {
@@ -274,6 +300,15 @@ class EsslBiometricService
 
     /**
      * Sync attendance records from eSSL biometric machines for a given month or date range.
+     *
+     * Present/half-day/absent status is decided per-employee, per-date via
+     * AttendanceRuleResolver -- a department, branch, company, employee, or
+     * global attendance rule (Attendance > Rules in the admin UI) governs
+     * minimum work minutes, the half-day worked-minutes threshold, the
+     * full-day threshold, and an optional half-day clock-time cutoff. A punch
+     * that never resolves to a real User (no matching emp_code/punching_no/
+     * form_no/id and no manual code-map entry) falls back to the original
+     * fixed thresholds -- see UNMAPPED_STATUS_RULE_VALUES.
      */
     public function syncAttendance(
         int $month,
@@ -285,11 +320,11 @@ class EsslBiometricService
         ?string $endDateStr = null
     ): array {
         if (! $this->isConfigured) {
-            Log::error('eSSL sync skipped: ESSL_API_URL/ESSL_USERNAME/ESSL_PASSWORD are not set in .env.');
+            Log::error('eSSL sync skipped: API URL/username/password are not configured in the eSSL Settings screen (essl_settings table).');
 
             return [
                 'status'         => false,
-                'message'        => 'eSSL biometric sync is not configured (missing ESSL_API_URL/ESSL_USERNAME/ESSL_PASSWORD in .env). Data is not available -- no request was sent to any device.',
+                'message'        => 'eSSL biometric sync is not configured. Open Attendance > eSSL Settings and enter the API URL, username, and password. Data is not available -- no request was sent to any device.',
                 'total_punches'  => 0,
                 'records_synced' => 0,
                 'unique_employees' => 0,
@@ -446,7 +481,7 @@ class EsslBiometricService
 
                 return [
                     'status'         => false,
-                    'message'        => "eSSL sync failed: could not reach any of {$failedCount} device(s) — the eSSL service itself appears unreachable (sample error: {$sampleError}). Check that the eSSL relay / ngrok tunnel is running and that ESSL_API_URL is current, rather than treating this as a per-device issue.",
+                    'message'        => "eSSL sync failed: could not reach any of {$failedCount} device(s) — the eSSL service itself appears unreachable (sample error: {$sampleError}). Check that the eSSL relay / ngrok tunnel is running and that the API URL in eSSL Settings is current, rather than treating this as a per-device issue.",
                     'total_punches'  => 0,
                     'records_synced' => 0,
                     'unique_employees' => 0,
@@ -474,6 +509,13 @@ class EsslBiometricService
         $empCodes = array_keys($logMap);
         $resolver = new BiometricUserResolver($empCodes);
         $userLookup = $resolver->getUserLookup();
+
+        // Every active attendance_rules row, loaded once and resolved in
+        // memory per employee-day below (AttendanceRuleResolver::resolve()
+        // accepts a preloaded Collection specifically for this) -- a sync can
+        // cover a whole month for every employee, and re-querying rules per
+        // employee per day would be tens of thousands of extra queries.
+        $ruleResolver = new AttendanceRuleResolver(AttendanceRule::where('is_active', true)->get());
 
         $batchRows = [];
         $rowReports = [];
@@ -508,16 +550,43 @@ class EsslBiometricService
                 $diffSeconds = max(0, $t2 - $t1);
                 $hours = round($diffSeconds / 3600, 2);
                 $workHours = sprintf('%.2f hrs', $hours);
+                $workedMinutes = (int) round($diffSeconds / 60);
 
-                // Determine attendance status based on standard labor rules
-                // Full Day: >= 7.5 hrs, Half Day: 4.0 - 7.5 hrs, Late arrival: check-in > 09:30 AM
-                $status = 'present';
-                if ($hours >= 7.5) {
-                    $status = 'present';
-                } elseif ($hours >= 4.0) {
+                // Department/employee/company/global attendance rule for this
+                // employee on this specific date -- rules are versioned by
+                // effective_from/effective_to, so the SAME employee can
+                // legitimately resolve different thresholds across a
+                // multi-month sync. An unmapped punch (no real User) has no
+                // department to look a rule up for, so it keeps the old
+                // fixed thresholds instead (see the constant's docblock).
+                $ruleValues = $user
+                    ? $ruleResolver->resolve($user, \Illuminate\Support\Carbon::parse($dateStr))['values']
+                    : self::UNMAPPED_STATUS_RULE_VALUES;
+
+                $minimumWork = (int) ($ruleValues['minimum_work_minutes'] ?? 0);
+                $halfDayThreshold = (int) ($ruleValues['half_day_threshold_minutes'] ?? 240);
+                $fullDayMinutes = (int) ($ruleValues['full_day_minutes'] ?? 450);
+                $halfDayCutoff = $ruleValues['half_day_cutoff_time'] ?? null;
+
+                if ($workedMinutes < $minimumWork) {
+                    $status = 'absent';
+                } elseif ($workedMinutes < $halfDayThreshold) {
+                    $status = 'absent';
+                } elseif ($workedMinutes < $fullDayMinutes) {
                     $status = 'half_day';
                 } else {
                     $status = 'present';
+                }
+
+                // A punch-in later than the configured half-day cutoff clock
+                // time downgrades an otherwise-full day to half_day,
+                // independent of total minutes worked (e.g. a department rule
+                // saying "in after 11 AM is always half day").
+                if ($status === 'present' && $halfDayCutoff) {
+                    $cutoff = strtotime(substr($dateStr, 0, 10) . ' ' . $halfDayCutoff);
+                    if ($cutoff !== false && $t1 > $cutoff) {
+                        $status = 'half_day';
+                    }
                 }
 
                 $deviceList = implode(',', array_keys($data['devices']));

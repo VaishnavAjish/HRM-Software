@@ -1,6 +1,7 @@
 <?php
 use App\Http\Controllers\Admin\AdminController;
 use App\Http\Controllers\Admin\AttendanceCodeMapController;
+use App\Http\Controllers\Admin\EsslSettingsController;
 use App\Http\Controllers\Admin\AttendanceController;
 use App\Http\Controllers\Admin\Hr\AssetController;
 use App\Http\Controllers\Admin\Hr\CandidateController;
@@ -1398,6 +1399,11 @@ Route::middleware('jwt.auth')->group(function () {
             // Machine serial <-> friendly name (attendance_devices.name).
             Route::get('code-map/devices', [AttendanceCodeMapController::class, 'devices'])->middleware('permission:hr.attendance.read');
             Route::post('code-map/device-name', [AttendanceCodeMapController::class, 'nameDevice'])->middleware('permission:hr.attendance.update');
+
+            // eSSL biometric API connection config (essl_settings) -- replaces
+            // ESSL_API_URL/ESSL_USERNAME/ESSL_PASSWORD/etc. living in .env.
+            Route::get('essl-settings', [EsslSettingsController::class, 'show'])->middleware('permission:hr.attendance.biometric_settings.read');
+            Route::put('essl-settings', [EsslSettingsController::class, 'update'])->middleware('permission:hr.attendance.biometric_settings.update');
         });
         Route::group(['prefix' => 'shifts'], function () {
             Route::get('get', [ShiftController::class, 'index'])->middleware('permission:hr.shift.read');

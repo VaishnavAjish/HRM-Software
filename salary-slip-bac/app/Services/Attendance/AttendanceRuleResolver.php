@@ -6,6 +6,7 @@ use App\Models\AttendanceRule;
 use App\Models\Shift;
 use App\Models\User;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 
 /**
  * Attendance Engine Rebuild — Phase 1.
@@ -58,6 +59,24 @@ class AttendanceRuleResolver
         'attendance_exempt' => false,
         'shift_id' => null,
     ];
+
+    /**
+     * When set (bulk callers like EsslBiometricService::syncAttendance() pass
+     * every active rule in once up front), resolution runs entirely in
+     * memory -- no per-employee, per-day query. Without it (the default,
+     * used by AttendanceRecalculationService/AttendanceSimulatorController,
+     * which resolve one employee-day at a time), each scope level is its own
+     * small indexed query, same as before this cache option existed.
+     */
+    private ?Collection $preloadedRules;
+
+    /** Shift::find() memoized per shift id -- many employees/rules share one. */
+    private array $shiftCache = [];
+
+    public function __construct(?Collection $preloadedRules = null)
+    {
+        $this->preloadedRules = $preloadedRules;
+    }
 
     /**
      * @return array{values: array, sources: array<string,string>, rule_ids: array<string,?int>}
@@ -126,9 +145,8 @@ class AttendanceRuleResolver
 
         // Resolve the actual Shift row: employee's assigned shift wins over
         // whatever scope-level default shift_id the rule cascade produced.
-        $shift = $employee->shift_id
-            ? Shift::find($employee->shift_id)
-            : ($values['shift_id'] ? Shift::find($values['shift_id']) : null);
+        $shiftId = $employee->shift_id ?: $values['shift_id'];
+        $shift = $shiftId ? $this->resolveShift($shiftId) : null;
 
         return [
             'values' => $values,
@@ -139,8 +157,26 @@ class AttendanceRuleResolver
         ];
     }
 
+    /**
+     * $scopeCallback is written once in resolve() as `fn ($q) =>
+     * $q->where(...)->where(...)` and works unmodified against either an
+     * Eloquent Builder or a Support Collection -- both respond to the same
+     * 2-arg `where($key, $value)` chain, so no preloaded/live branching is
+     * needed inside the callback itself.
+     */
     private function latestMatch(callable $scopeCallback, string $dateStr): ?AttendanceRule
     {
+        if ($this->preloadedRules !== null) {
+            $inForce = $this->preloadedRules
+                ->where('is_active', true)
+                ->filter(fn (AttendanceRule $r) => $r->effective_from->toDateString() <= $dateStr
+                    && (! $r->effective_to || $r->effective_to->toDateString() >= $dateStr));
+
+            return $scopeCallback($inForce)
+                ->sortByDesc(fn (AttendanceRule $r) => sprintf('%s|%010d', $r->effective_from->toDateString(), $r->id))
+                ->first();
+        }
+
         $query = AttendanceRule::query()
             ->where('is_active', true)
             ->where('effective_from', '<=', $dateStr)
@@ -149,5 +185,14 @@ class AttendanceRuleResolver
         $scopeCallback($query);
 
         return $query->orderByDesc('effective_from')->orderByDesc('id')->first();
+    }
+
+    private function resolveShift(int $shiftId): ?Shift
+    {
+        if (! array_key_exists($shiftId, $this->shiftCache)) {
+            $this->shiftCache[$shiftId] = Shift::find($shiftId);
+        }
+
+        return $this->shiftCache[$shiftId];
     }
 }

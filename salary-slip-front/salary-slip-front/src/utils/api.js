@@ -715,6 +715,25 @@ export const salaryApi = {
     });
   },
 
+  // eSSL biometric API connection config (essl_settings table) -- replaces
+  // ESSL_API_URL/ESSL_USERNAME/ESSL_PASSWORD/etc. living in .env. The
+  // password is never returned by getEsslSettings (only `has_password`);
+  // updateEsslSettings only overwrites it when a non-empty `password` is
+  // sent, so leaving the field blank keeps the currently stored one.
+  getEsslSettings(accessToken, tokenType = "Bearer") {
+    return apiRequest("/attendance/essl-settings", {
+      headers: accessToken ? { Authorization: `${tokenType} ${accessToken}` } : {},
+    });
+  },
+
+  updateEsslSettings(payload, accessToken, tokenType = "Bearer") {
+    return apiRequest("/attendance/essl-settings", {
+      method: "PUT",
+      headers: accessToken ? { Authorization: `${tokenType} ${accessToken}` } : {},
+      body: JSON.stringify(payload),
+    });
+  },
+
   // ---------------------------------------------------------------------
   // Attendance Engine Rebuild -- new /v1/attendance/* endpoints. Additive:
   // every function above this block (getAttendanceGrid, syncEsslAttendance,

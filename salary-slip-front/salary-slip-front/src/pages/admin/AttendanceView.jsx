@@ -18,20 +18,18 @@ import {
   TrendingUp,
   Filter,
   Eye,
-  SlidersHorizontal,
   ChevronDown,
   UserCheck,
   UserX,
   AlertCircle,
   Fingerprint,
-  Sparkles,
-  Check,
   Server,
-  Radio,
   UserCog,
+  Settings as SettingsIcon,
 } from "lucide-react";
 import Modal from "../../components/ui/Modal";
 import MapAttendanceModal from "../../components/admin/MapAttendanceModal";
+import EsslSettingsModal from "../../components/admin/EsslSettingsModal";
 import { salaryApi } from "../../utils/api";
 import { useAuth } from "../../context/AuthContext";
 import { useCompany } from "../../context/CompanyContext";
@@ -66,6 +64,35 @@ const STATUS_CONFIG = {
   not_marked: { label: "-", short: "Not Marked", bg: "bg-slate-400", bgLight: "bg-slate-50 dark:bg-slate-900/40", text: "text-slate-500 dark:text-slate-400", border: "border-slate-200 dark:border-slate-800", badge: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 border border-slate-200 dark:border-slate-700", icon: Clock },
 };
 
+const STATUS_TABS = [
+  { key: "all", label: "All" },
+  { key: "present", label: "Present" },
+  { key: "absent", label: "Absent" },
+  { key: "late", label: "Late" },
+  { key: "half_day", label: "Half Day" },
+  { key: "leave", label: "On Leave" },
+  { key: "not_marked", label: "Not Marked" },
+];
+
+// Derives a short operational-exception label from data the row already
+// carries (real check-in/out presence + computed status) -- never invents
+// values the backend didn't produce (e.g. no fabricated "late by N min").
+function getExceptionInfo(row) {
+  if (row.dayStatus === "late") {
+    return { text: "Late arrival", className: "text-amber-600 dark:text-amber-400" };
+  }
+  if (row.dayStatus === "half_day") {
+    return { text: "Half day", className: "text-purple-600 dark:text-purple-400" };
+  }
+  if (row.checkIn !== "—" && row.checkOut === "—") {
+    return { text: "Missing checkout", className: "text-red-600 dark:text-red-400" };
+  }
+  if (row.checkIn === "—" && row.checkOut !== "—") {
+    return { text: "Missing check-in", className: "text-red-600 dark:text-red-400" };
+  }
+  return null;
+}
+
 function daysInMonth(month, year) {
   return new Date(Number(year), Number(month), 0).getDate();
 }
@@ -99,6 +126,7 @@ export default function AttendanceView() {
   const [isCalendarModalOpen, setIsCalendarModalOpen] = useState(false);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [isMapModalOpen, setIsMapModalOpen] = useState(false);
+  const [isEsslSettingsOpen, setIsEsslSettingsOpen] = useState(false);
 
   // Biometric eSSL Sync Modal States
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
@@ -119,8 +147,8 @@ export default function AttendanceView() {
 
   // Pagination & Sorting state
   const [currentPage, setCurrentPage] = useState(1);
-  const [rowsPerPage, setRowsPerPage] = useState(10);
-  const [sortField, setSortField] = useState("emp_code");
+  const [rowsPerPage, setRowsPerPage] = useState(25);
+  const [sortField, setSortField] = useState("name");
   const [sortDirection, setSortDirection] = useState("asc");
 
   // Keep selectedCompanyId in sync when company context changes
@@ -337,11 +365,12 @@ export default function AttendanceView() {
     };
   }, [processedRows]);
 
-  // Filtered & Sorted Employees Table
-  const filteredRows = useMemo(() => {
+  // Rows matching search/department/shift, BEFORE the status tab filter --
+  // used both as the base for the table and to compute stable status-tab
+  // counts that don't collapse to zero once a tab other than "All" is active.
+  const baseFilteredRows = useMemo(() => {
+    const q = String(searchQuery || "").toLowerCase().trim();
     return processedRows.filter((row) => {
-      // Search text query
-      const q = String(searchQuery || "").toLowerCase().trim();
       const matchesSearch = !q ||
         String(row.name || "").toLowerCase().includes(q) ||
         String(row.emp_code || "").toLowerCase().includes(q) ||
@@ -356,27 +385,41 @@ export default function AttendanceView() {
         // shows correct attendance.
         (Array.isArray(row.mapped_codes) && row.mapped_codes.some((c) => String(c).toLowerCase().includes(q)));
 
-      // Department filter
       const matchesDept = !selectedDepartment || row.department === selectedDepartment;
-      // Shift filter
       const matchesShift = !selectedShift || row.shiftName === selectedShift;
-      // Status filter
-      const matchesStatus = statusFilter === "all" || row.dayStatus === statusFilter;
 
-      return matchesSearch && matchesDept && matchesShift && matchesStatus;
-    }).sort((a, b) => {
-      let valA = a[sortField] ?? "";
-      let valB = b[sortField] ?? "";
-      if (typeof valA !== "string") valA = String(valA);
-      if (typeof valB !== "string") valB = String(valB);
-      valA = valA.toLowerCase();
-      valB = valB.toLowerCase();
-
-      if (valA < valB) return sortDirection === "asc" ? -1 : 1;
-      if (valA > valB) return sortDirection === "asc" ? 1 : -1;
-      return 0;
+      return matchesSearch && matchesDept && matchesShift;
     });
-  }, [processedRows, searchQuery, selectedDepartment, selectedShift, statusFilter, sortField, sortDirection]);
+  }, [processedRows, searchQuery, selectedDepartment, selectedShift]);
+
+  // Counts per status for the quick-filter tabs (reflects search/dept/shift
+  // filters but not the tab selection itself, so switching tabs doesn't
+  // change the other tabs' numbers).
+  const statusCounts = useMemo(() => {
+    const counts = { all: baseFilteredRows.length, present: 0, absent: 0, late: 0, half_day: 0, leave: 0, not_marked: 0 };
+    baseFilteredRows.forEach((r) => {
+      counts[r.dayStatus] = (counts[r.dayStatus] || 0) + 1;
+    });
+    return counts;
+  }, [baseFilteredRows]);
+
+  // Filtered & Sorted Employees Table
+  const filteredRows = useMemo(() => {
+    return baseFilteredRows
+      .filter((row) => statusFilter === "all" || row.dayStatus === statusFilter)
+      .sort((a, b) => {
+        let valA = a[sortField] ?? "";
+        let valB = b[sortField] ?? "";
+        if (typeof valA !== "string") valA = String(valA);
+        if (typeof valB !== "string") valB = String(valB);
+        valA = valA.toLowerCase();
+        valB = valB.toLowerCase();
+
+        if (valA < valB) return sortDirection === "asc" ? -1 : 1;
+        if (valA > valB) return sortDirection === "asc" ? 1 : -1;
+        return 0;
+      });
+  }, [baseFilteredRows, statusFilter, sortField, sortDirection]);
 
   // Pagination slices
   const paginatedRows = useMemo(() => {
@@ -599,45 +642,25 @@ export default function AttendanceView() {
   };
 
   return (
-    <div className="flex flex-col gap-5 min-h-screen pb-12 bg-gray-50/50 dark:bg-gray-950/50 text-gray-900 dark:text-gray-100">
-      {/* Dashboard Header: KPI Cards & Actions */}
-      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 border-b border-gray-200/80 dark:border-gray-800 pb-3">
-        
-        {/* 4 KPI Dashboard Summary Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 flex-1 xl:max-w-4xl">
-          {[
-            { label: "Total Employees", value: metrics.total, icon: Users, color: "text-blue-600 dark:text-blue-400", bg: "bg-blue-50 dark:bg-blue-950/50", border: "border-l-blue-500" },
-            { label: "Present Today", value: metrics.present, icon: UserCheck, color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-950/50", border: "border-l-emerald-500" },
-            { label: "Absent Today", value: metrics.absent, icon: UserX, color: "text-red-600 dark:text-red-400", bg: "bg-red-50 dark:bg-red-950/50", border: "border-l-red-500" },
-            { label: "Attendance %", value: `${metrics.attPercentage}%`, icon: Percent, color: "text-teal-600 dark:text-teal-400", bg: "bg-teal-50 dark:bg-teal-950/50", border: "border-l-teal-500" },
-          ].map((card, idx) => (
-            <div
-              key={idx}
-              className={`flex flex-col justify-between rounded-xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 shadow-xs hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 border-l-4 ${card.border}`}
-            >
-              <div className="flex items-center justify-between gap-1 mb-1">
-                <span className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 truncate">
-                  {card.label}
-                </span>
-                <div className={`p-1.5 rounded-lg ${card.bg}`}>
-                  <card.icon className={`h-3.5 w-3.5 ${card.color}`} />
-                </div>
-              </div>
-              <div className="flex items-baseline justify-between">
-                <span className="text-lg font-extrabold text-gray-900 dark:text-white tracking-tight">
-                  {card.value}
-                </span>
-                <span className="text-[10px] text-emerald-600 font-medium flex items-center">
-                  <TrendingUp className="h-2.5 w-2.5 mr-0.5" /> Live
-                </span>
-              </div>
-            </div>
-          ))}
+    <div className="flex flex-col gap-4 h-full min-h-0 bg-gray-50/60 dark:bg-gray-950/50 text-gray-900 dark:text-gray-100">
+      {/* Page Header */}
+      <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+        <div className="flex items-start gap-3">
+          <div className="rounded-xl bg-indigo-600 p-2.5 text-white shadow-sm shrink-0">
+            <Fingerprint className="h-5 w-5" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold text-gray-900 dark:text-white tracking-tight">
+              Attendance Management
+            </h1>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 max-w-md">
+              Monitor workforce attendance, biometric punches and attendance exceptions.
+            </p>
+          </div>
         </div>
 
-        {/* Top Actions Bar */}
+        {/* Actions: one primary, rest ghost/outline */}
         <div className="flex flex-wrap items-center gap-2">
-          {/* Direct eSSL Biometric Cloud Sync Trigger */}
           <button
             onClick={() => {
               setSyncMonth(selectedMonth);
@@ -645,16 +668,16 @@ export default function AttendanceView() {
               setSyncResult(null);
               setIsSyncModalOpen(true);
             }}
-            className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-700 hover:via-indigo-700 hover:to-purple-700 px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:shadow transition active:scale-95"
+            className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-700 hover:via-indigo-700 hover:to-purple-700 px-3.5 py-2 text-xs font-semibold text-white shadow-sm hover:shadow transition active:scale-95"
           >
-            <Fingerprint className="h-4 w-4 animate-pulse text-blue-200" />
+            <Fingerprint className="h-4 w-4 text-blue-200" />
             <span>Sync eSSL Biometric</span>
-            <span className="rounded-full bg-white/20 px-1.5 py-0.2 text-[10px] font-bold">28 Machines</span>
+            <span className="rounded-full bg-white/20 px-1.5 py-0.5 text-[10px] font-bold">28 Machines</span>
           </button>
 
           <button
             onClick={() => setIsMapModalOpen(true)}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 dark:border-indigo-900/40 bg-indigo-50 dark:bg-indigo-950/50 px-3 py-1.5 text-xs font-semibold text-indigo-700 dark:text-indigo-300 shadow-sm hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-3 py-2 text-xs font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-indigo-600 dark:hover:text-indigo-400 transition"
           >
             <UserCog className="h-3.5 w-3.5" />
             Map Attendance
@@ -665,87 +688,111 @@ export default function AttendanceView() {
               loadAttendance();
               toast.success("Attendance refreshed!");
             }}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-3 py-1.5 text-xs font-semibold text-gray-700 dark:text-gray-200 shadow-sm hover:bg-gray-50 dark:hover:bg-gray-800 transition"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-3 py-2 text-xs font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-indigo-600 dark:hover:text-indigo-400 transition"
           >
-            <RotateCcw className={`h-3.5 w-3.5 ${loading ? "animate-spin text-brand-600" : ""}`} />
+            <RotateCcw className={`h-3.5 w-3.5 ${loading ? "animate-spin text-indigo-600" : ""}`} />
             Refresh
           </button>
           <button
             onClick={handleExportExcel}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 dark:border-emerald-900/40 bg-emerald-50 dark:bg-emerald-950/50 px-3 py-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300 shadow-sm hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-3 py-2 text-xs font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-indigo-600 dark:hover:text-indigo-400 transition"
           >
             <FileSpreadsheet className="h-3.5 w-3.5" />
-            Export Excel
+            Export
           </button>
           <button
             onClick={handlePrint}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-3 py-1.5 text-xs font-semibold text-gray-700 dark:text-gray-200 shadow-sm hover:bg-gray-50 dark:hover:bg-gray-800 transition"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-3 py-2 text-xs font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-indigo-600 dark:hover:text-indigo-400 transition"
           >
             <Printer className="h-3.5 w-3.5" />
             Print
           </button>
+          <button
+            onClick={() => setIsEsslSettingsOpen(true)}
+            title="eSSL Biometric Connection Settings"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-3 py-2 text-xs font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-indigo-600 dark:hover:text-indigo-400 transition"
+          >
+            <SettingsIcon className="h-3.5 w-3.5" />
+            Settings
+          </button>
         </div>
       </div>
 
-      {/* Compact Filters & Controls Toolbar */}
-      <div className="rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md p-3 shadow-sm flex flex-col gap-3">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <SlidersHorizontal className="h-4 w-4 text-brand-600 dark:text-brand-400" />
-            <span className="text-xs font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300">
-              Filters & Search
-            </span>
+      {/* Compact Summary: all 8 KPIs in a single row */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-2.5">
+        {[
+          { label: "Total Employees", value: metrics.total, icon: Users, color: "text-blue-600 dark:text-blue-400", bg: "bg-blue-50 dark:bg-blue-950/50" },
+          { label: "Present Today", value: metrics.present, icon: UserCheck, color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-950/50" },
+          { label: "Absent Today", value: metrics.absent, icon: UserX, color: "text-red-600 dark:text-red-400", bg: "bg-red-50 dark:bg-red-950/50" },
+          { label: "Attendance %", value: `${metrics.attPercentage}%`, icon: Percent, color: "text-teal-600 dark:text-teal-400", bg: "bg-teal-50 dark:bg-teal-950/50" },
+          { label: "Late Arrivals", value: metrics.late, icon: Clock, color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-50 dark:bg-amber-950/40" },
+          { label: "Half Day", value: metrics.halfDay, icon: AlertCircle, color: "text-purple-600 dark:text-purple-400", bg: "bg-purple-50 dark:bg-purple-950/40" },
+          { label: "On Leave", value: metrics.leave, icon: Palmtree, color: "text-sky-600 dark:text-sky-400", bg: "bg-sky-50 dark:bg-sky-950/40" },
+          { label: "With Overtime", value: metrics.overtime, icon: TrendingUp, color: "text-indigo-600 dark:text-indigo-400", bg: "bg-indigo-50 dark:bg-indigo-950/40" },
+        ].map((card, idx) => (
+          <div
+            key={idx}
+            className="flex items-center gap-2 rounded-xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-gray-900 px-3 py-2.5 shadow-xs min-w-0"
+          >
+            <div className={`p-1.5 rounded-lg ${card.bg} shrink-0`}>
+              <card.icon className={`h-3.5 w-3.5 ${card.color}`} />
+            </div>
+            <div className="min-w-0">
+              <div className="text-[10px] font-medium text-gray-500 dark:text-gray-400 truncate">
+                {card.label}
+              </div>
+              <div className="text-base font-bold text-gray-900 dark:text-white tracking-tight leading-tight truncate">
+                {card.value}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Compact Filters Panel */}
+      <div className="rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md p-4 shadow-sm flex flex-col gap-3">
+        <div className="flex items-center gap-3">
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search employee, code or department..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 pl-9 pr-4 py-2 text-xs text-gray-900 dark:text-white placeholder-gray-400 outline-none focus:ring-2 focus:ring-brand-500/20"
+            />
           </div>
 
-          <div className="flex items-center gap-2">
-            {/* Mobile Filter Toggle Button */}
-            <button
-              onClick={() => setShowMobileFilters((prev) => !prev)}
-              className="md:hidden inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-lg border border-brand-200 dark:border-brand-800 bg-brand-50 dark:bg-brand-950/40 text-brand-700 dark:text-brand-300 transition"
-            >
-              <Filter className="h-3 w-3" />
-              <span>Filters</span>
-              <ChevronDown className={`h-3 w-3 transition-transform ${showMobileFilters ? "rotate-180" : ""}`} />
-            </button>
+          {/* Mobile Filter Toggle Button */}
+          <button
+            onClick={() => setShowMobileFilters((prev) => !prev)}
+            className="md:hidden inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-brand-200 dark:border-brand-800 bg-brand-50 dark:bg-brand-950/40 text-brand-700 dark:text-brand-300 transition"
+          >
+            <Filter className="h-3 w-3" />
+            <span>Filters</span>
+            <ChevronDown className={`h-3 w-3 transition-transform ${showMobileFilters ? "rotate-180" : ""}`} />
+          </button>
 
-            <label className="inline-flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={onlyUploaded}
-                onChange={(e) => setOnlyUploaded(e.target.checked)}
-                className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
-              />
-              <span className="text-[11px]">Only with logs</span>
-            </label>
+          <label className="hidden md:inline-flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400 cursor-pointer select-none whitespace-nowrap">
+            <input
+              type="checkbox"
+              checked={onlyUploaded}
+              onChange={(e) => setOnlyUploaded(e.target.checked)}
+              className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+            />
+            <span className="text-[11px]">Only with logs</span>
+          </label>
 
-            <button
-              onClick={handleResetFilters}
-              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 transition"
-            >
-              <RotateCcw className="h-3 w-3" /> Reset
-            </button>
-          </div>
+          <button
+            onClick={handleResetFilters}
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 transition whitespace-nowrap"
+          >
+            <RotateCcw className="h-3 w-3" /> Reset
+          </button>
         </div>
 
         {/* Filter Controls Grid */}
-        <div className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-9 gap-2.5 ${showMobileFilters ? "block" : "hidden md:grid"}`}>
-          {/* Search Bar Input */}
-          <div className="col-span-2 md:col-span-2">
-            <label className="block text-[10px] font-bold uppercase text-gray-400 dark:text-gray-500 mb-1">
-              Search Employee
-            </label>
-            <div className="relative w-full">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search name, code, department..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 pl-9 pr-4 py-1.5 text-xs text-gray-900 dark:text-white placeholder-gray-400 outline-none focus:ring-2 focus:ring-brand-500/20"
-              />
-            </div>
-          </div>
-
+        <div className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2.5 ${showMobileFilters ? "block" : "hidden md:grid"}`}>
           {/* Company */}
           <div className="col-span-1 md:col-span-1">
             <label className="block text-[10px] font-bold uppercase text-gray-400 dark:text-gray-500 mb-1">
@@ -874,37 +921,71 @@ export default function AttendanceView() {
         </div>
       </div>
 
-      {/* Main Enterprise Attendance Table */}
-      <div className="rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm overflow-hidden flex flex-col">
+      {/* Attendance Status Tabs (quick filters) */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        {STATUS_TABS.map((tab) => {
+          const isActive = statusFilter === tab.key;
+          return (
+            <button
+              key={tab.key}
+              onClick={() => {
+                setStatusFilter(tab.key);
+                setCurrentPage(1);
+              }}
+              className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                isActive
+                  ? "bg-indigo-600 text-white shadow-sm"
+                  : "bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
+              }`}
+            >
+              {tab.label}
+              <span className={`text-[10px] font-bold ${isActive ? "text-indigo-100" : "text-gray-400 dark:text-gray-500"}`}>
+                {statusCounts[tab.key] ?? 0}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Main Enterprise Attendance Table -- this card owns the only
+          scrollbar on this page: it fills the remaining viewport height and
+          scrolls its own body, so the header/summary/filters/tabs above
+          never scroll away and the page itself never needs a scrollbar. */}
+      <div className="rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm overflow-hidden flex flex-col flex-1 min-h-0">
         {!selectedCompanyId ? (
-          <div className="py-20 text-center text-sm text-gray-400 flex flex-col items-center justify-center gap-2">
+          <div className="flex-1 min-h-0 py-20 text-center text-sm text-gray-400 flex flex-col items-center justify-center gap-2">
             <Building2 className="h-8 w-8 text-gray-300 dark:text-gray-700" />
             <span>Select a company to view attendance details.</span>
           </div>
         ) : loading ? (
-          <div className="py-20 flex flex-col items-center justify-center text-gray-400 gap-2">
+          <div className="flex-1 min-h-0 flex flex-col items-center justify-center text-gray-400 gap-2">
             <Loader2 className="h-8 w-8 animate-spin text-brand-600" />
             <span className="text-xs font-medium">Loading attendance data...</span>
           </div>
         ) : filteredRows.length === 0 ? (
-          <div className="py-20 text-center text-sm text-gray-500 dark:text-gray-400 flex flex-col items-center justify-center gap-2">
+          <div className="flex-1 min-h-0 text-center text-sm text-gray-500 dark:text-gray-400 flex flex-col items-center justify-center gap-2">
             <AlertCircle className="h-8 w-8 text-gray-300 dark:text-gray-700" />
             <span>No attendance records matching current filters.</span>
           </div>
         ) : (
           <>
+            {/* Scrollable body: mobile cards + desktop table share this single
+                scroll region so the sticky table header works correctly and
+                the outer page never grows past the viewport. */}
+            <div className="flex-1 min-h-0 overflow-auto">
             {/* Mobile Card List View (No horizontal scrolling on mobile) */}
             <div className="sm:hidden divide-y divide-gray-100 dark:divide-gray-800">
               {paginatedRows.map((emp) => {
                 const statusConfig = STATUS_CONFIG[emp.dayStatus] || STATUS_CONFIG.present;
                 const StatusIcon = statusConfig.icon;
+                const exception = getExceptionInfo(emp);
 
                 return (
                   <div key={emp.id || emp.emp_code} className="p-3.5 flex flex-col gap-2.5">
                     {/* Top: Avatar, Name, Code, Status */}
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="h-8 w-8 rounded-full bg-brand-100 dark:bg-brand-900/50 text-brand-700 dark:text-brand-300 font-bold flex items-center justify-center text-xs overflow-hidden border border-brand-200 dark:border-brand-800 shrink-0">
+                        <div className="h-9 w-9 rounded-full bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 font-bold flex items-center justify-center text-xs overflow-hidden border border-indigo-200 dark:border-indigo-800 shrink-0">
                           {emp.photo ? (
                             <img src={emp.photo} alt={emp.name} className="h-full w-full object-cover" />
                           ) : (
@@ -912,11 +993,11 @@ export default function AttendanceView() {
                           )}
                         </div>
                         <div className="min-w-0">
-                          <div className="font-semibold text-gray-900 dark:text-white text-xs truncate">
+                          <div className="font-semibold text-gray-900 dark:text-white text-sm truncate">
                             {emp.name}
                           </div>
                           <div className="text-[10px] text-gray-400 font-mono">
-                            Code: {emp.emp_code} {emp.department ? `· ${emp.department}` : ''}
+                            #{emp.emp_code} {emp.department ? `· ${emp.department}` : ''}
                           </div>
                         </div>
                       </div>
@@ -947,36 +1028,51 @@ export default function AttendanceView() {
                       <div className="flex items-center gap-1.5">
                         <button
                           onClick={() => openExportModal(emp)}
-                          className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 dark:border-emerald-800/60 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-1 text-xs font-semibold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 transition shadow-2xs"
+                          aria-label="Export attendance"
+                          title="Export attendance"
+                          className="inline-flex items-center justify-center h-7 w-7 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition"
                         >
-                          <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
-                          Export
+                          <FileSpreadsheet className="h-3.5 w-3.5" />
                         </button>
                         <button
                           onClick={() => openEmployeeCalendar(emp)}
-                          className="inline-flex items-center gap-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2.5 py-1 text-xs font-semibold text-brand-600 dark:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-900/30 transition shadow-2xs"
+                          aria-label="View attendance details"
+                          title="View attendance details"
+                          className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 transition"
                         >
                           <Eye className="h-3.5 w-3.5" />
                           View
                         </button>
                       </div>
                     </div>
+
+                    {exception && (
+                      <div className={`text-[11px] font-medium ${exception.className}`}>
+                        {exception.text}
+                      </div>
+                    )}
                   </div>
                 );
               })}
             </div>
 
-            {/* Desktop Table View */}
-            <div className="hidden sm:block overflow-x-auto">
-              <table className="w-full text-left text-xs border-collapse">
+            {/* Desktop Table View -- lives directly in the single scroll
+                region above (no nested overflow wrapper) so its sticky
+                <thead> sticks to that region instead of to itself. */}
+            <table className="hidden sm:table w-full text-left text-xs border-collapse">
+                <colgroup>
+                  <col className="w-[36%]" />
+                  <col className="w-[11%]" />
+                  <col className="w-[11%]" />
+                  <col className="w-[11%]" />
+                  <col className="w-[11%]" />
+                  <col className="w-[12%]" />
+                  <col className="w-[8%]" />
+                </colgroup>
                 <thead>
                   <tr className="sticky top-0 z-10 bg-gray-100/80 dark:bg-gray-800/80 backdrop-blur border-b border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 uppercase tracking-wider font-bold text-[11px]">
-                    <th className="py-3 px-4">Employee</th>
-                    <th className="py-3 px-3 cursor-pointer hover:bg-gray-200/60 dark:hover:bg-gray-700/60 transition" onClick={() => handleSort("emp_code")}>
-                      Code {sortField === "emp_code" && (sortDirection === "asc" ? "↑" : "↓")}
-                    </th>
-                    <th className="py-3 px-3 cursor-pointer hover:bg-gray-200/60 dark:hover:bg-gray-700/60 transition" onClick={() => handleSort("department")}>
-                      Department {sortField === "department" && (sortDirection === "asc" ? "↑" : "↓")}
+                    <th className="py-3 px-4 cursor-pointer hover:bg-gray-200/60 dark:hover:bg-gray-700/60 transition" onClick={() => handleSort("name")}>
+                      Employee {sortField === "name" && (sortDirection === "asc" ? "↑" : "↓")}
                     </th>
                     <th className="py-3 px-3">Check-In</th>
                     <th className="py-3 px-3">Check-Out</th>
@@ -984,7 +1080,7 @@ export default function AttendanceView() {
                     <th className="py-3 px-3 cursor-pointer hover:bg-gray-200/60 dark:hover:bg-gray-700/60 transition" onClick={() => handleSort("dayStatus")}>
                       Status {sortField === "dayStatus" && (sortDirection === "asc" ? "↑" : "↓")}
                     </th>
-                    <th className="py-3 px-3">Export Data</th>
+                    <th className="py-3 px-3">Exception</th>
                     <th className="py-3 px-4 text-right">Actions</th>
                   </tr>
                 </thead>
@@ -992,6 +1088,7 @@ export default function AttendanceView() {
                   {paginatedRows.map((emp, index) => {
                     const statusConfig = STATUS_CONFIG[emp.dayStatus] || STATUS_CONFIG.present;
                     const StatusIcon = statusConfig.icon;
+                    const exception = getExceptionInfo(emp);
 
                     return (
                       <tr
@@ -1000,47 +1097,39 @@ export default function AttendanceView() {
                           index % 2 === 0 ? "bg-white dark:bg-gray-900" : "bg-gray-50/30 dark:bg-gray-900/40"
                         }`}
                       >
-                        {/* Employee Name & Photo */}
-                        <td className="py-2.5 px-4">
+                        {/* Employee identity: name is the dominant element, code + dept secondary */}
+                        <td className="py-3.5 px-4">
                           <div className="flex items-center gap-3">
-                            <div className="h-8 w-8 rounded-full bg-brand-100 dark:bg-brand-900/50 text-brand-700 dark:text-brand-300 font-bold flex items-center justify-center text-xs overflow-hidden border border-brand-200 dark:border-brand-800 shrink-0">
+                            <div className="h-9 w-9 rounded-full bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 font-bold flex items-center justify-center text-xs overflow-hidden border border-indigo-200 dark:border-indigo-800 shrink-0">
                               {emp.photo ? (
                                 <img src={emp.photo} alt={emp.name} className="h-full w-full object-cover" />
                               ) : (
                                 (emp.name || "E").slice(0, 2).toUpperCase()
                               )}
                             </div>
-                            <div>
-                              <div className="font-semibold text-gray-900 dark:text-white leading-tight">
+                            <div className="min-w-0">
+                              <div className="font-semibold text-[14px] text-gray-900 dark:text-white leading-tight truncate">
                                 {emp.name}
                               </div>
-                              <div className="text-[10px] text-gray-400">{emp.email || emp.emp_code}</div>
+                              <div className="text-[11px] text-gray-400 font-mono truncate">
+                                #{emp.emp_code}{emp.department ? ` · ${emp.department}` : ''}
+                              </div>
                             </div>
                           </div>
                         </td>
 
-                        {/* Code */}
-                        <td className="py-2.5 px-3 font-mono font-medium text-gray-700 dark:text-gray-300">
-                          {emp.emp_code}
-                        </td>
-
-                        {/* Department */}
-                        <td className="py-2.5 px-3 text-gray-600 dark:text-gray-300">
-                          {emp.department || "—"}
-                        </td>
-
                         {/* Check-In */}
-                        <td className="py-2.5 px-3 text-gray-700 dark:text-gray-300 font-mono text-[11px]">
+                        <td className="py-3.5 px-3 text-gray-700 dark:text-gray-300 font-mono text-[12px]">
                           {emp.checkIn}
                         </td>
 
                         {/* Check-Out */}
-                        <td className="py-2.5 px-3 text-gray-700 dark:text-gray-300 font-mono text-[11px]">
+                        <td className="py-3.5 px-3 text-gray-700 dark:text-gray-300 font-mono text-[12px]">
                           {emp.checkOut}
                         </td>
 
                         {/* Work Hours */}
-                        <td className="py-2.5 px-3 font-mono text-[11px] text-gray-700 dark:text-gray-300">
+                        <td className="py-3.5 px-3 font-mono text-[12px] text-gray-700 dark:text-gray-300">
                           {emp.workHours}
                           {emp.overtime && emp.overtime !== "0.0 hrs" && (
                             <span className="ml-1 text-[10px] text-amber-600 font-medium">({emp.overtime} OT)</span>
@@ -1048,35 +1137,42 @@ export default function AttendanceView() {
                         </td>
 
                         {/* Status Badge */}
-                        <td className="py-2.5 px-3">
+                        <td className="py-3.5 px-3">
                           <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${statusConfig.badge}`}>
                             <StatusIcon className="h-3 w-3" />
                             {statusConfig.short}
                           </span>
                         </td>
 
-                        {/* Export Data */}
-                        <td className="py-2.5 px-3">
-                          <button
-                            onClick={() => openExportModal(emp)}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 dark:border-emerald-800/60 bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition shadow-2xs"
-                            title="Export Attendance Data for Employee"
-                          >
-                            <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-                            Export
-                          </button>
+                        {/* Exception */}
+                        <td className="py-3.5 px-3 text-[12px]">
+                          {exception ? (
+                            <span className={`font-medium ${exception.className}`}>{exception.text}</span>
+                          ) : (
+                            <span className="text-gray-300 dark:text-gray-600">—</span>
+                          )}
                         </td>
 
-                        {/* Actions */}
-                        <td className="py-2.5 px-4 text-right">
-                          <button
-                            onClick={() => openEmployeeCalendar(emp)}
-                            className="inline-flex items-center gap-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2.5 py-1 text-xs font-semibold text-brand-600 dark:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-900/30 transition shadow-2xs"
-                            title="View Employee Monthly Calendar"
-                          >
-                            <Eye className="h-3.5 w-3.5" />
-                            View
-                          </button>
+                        {/* Actions: primary View + a minimal secondary Export icon */}
+                        <td className="py-3.5 px-4 text-right">
+                          <div className="inline-flex items-center gap-1">
+                            <button
+                              onClick={() => openExportModal(emp)}
+                              aria-label="Export attendance"
+                              title="Export attendance"
+                              className="inline-flex items-center justify-center h-7 w-7 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition"
+                            >
+                              <FileSpreadsheet className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              onClick={() => openEmployeeCalendar(emp)}
+                              aria-label="View attendance details"
+                              title="View attendance details"
+                              className="inline-flex items-center justify-center h-7 w-7 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition"
+                            >
+                              <Eye className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -1094,7 +1190,6 @@ export default function AttendanceView() {
                   onChange={(e) => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }}
                   className="rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 px-2 py-1 outline-none text-xs"
                 >
-                  <option value={10}>10 rows</option>
                   <option value={25}>25 rows</option>
                   <option value={50}>50 rows</option>
                   <option value={100}>100 rows</option>
@@ -1128,7 +1223,7 @@ export default function AttendanceView() {
         isOpen={isCalendarModalOpen}
         onClose={() => setIsCalendarModalOpen(false)}
         title={selectedEmployee ? `${selectedEmployee.name || selectedEmployee.employee_name || "Employee"} - Attendance Calendar` : "Attendance Calendar"}
-        maxWidth="max-w-4xl"
+        size="xl"
       >
         {selectedEmployee && (() => {
           // Calculate counts for this employee
@@ -1280,7 +1375,7 @@ export default function AttendanceView() {
         isOpen={isSyncModalOpen}
         onClose={() => !isSyncing && setIsSyncModalOpen(false)}
         title="eSSL Biometric Attendance Sync"
-        maxWidth="max-w-2xl"
+        size="lg"
       >
         <div className="flex flex-col gap-4 text-xs text-gray-700 dark:text-gray-300">
           {/* Header Info Banner */}
@@ -1472,13 +1567,18 @@ export default function AttendanceView() {
         deviceSerials={ESSL_DEVICES}
       />
 
+      <EsslSettingsModal
+        isOpen={isEsslSettingsOpen}
+        onClose={() => setIsEsslSettingsOpen(false)}
+      />
+
 
       {/* Employee Per-Entry Attendance Export Modal */}
       <Modal
         isOpen={isExportModalOpen}
         onClose={() => !isExporting && setIsExportModalOpen(false)}
         title="Export Employee Attendance Data"
-        maxWidth="max-w-md"
+        size="sm"
       >
         {selectedExportEmp && (
           <div className="flex flex-col gap-4 text-xs text-gray-700 dark:text-gray-300">
